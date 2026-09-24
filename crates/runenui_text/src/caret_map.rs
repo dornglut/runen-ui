@@ -449,6 +449,11 @@ impl TextCaretMap {
         self.grapheme_boundaries.to_vec()
     }
 
+    #[cfg(test)]
+    pub(crate) fn legal_byte_offsets_shared_candidate_for_test(&self) -> Arc<[usize]> {
+        Arc::clone(&self.grapheme_boundaries)
+    }
+
     /// Converts a displayed surface point into a shaping-valid position.
     ///
     /// `displayed_snapshot` must identify the exact published document revision.
