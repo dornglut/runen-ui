@@ -24,7 +24,7 @@ pub fn extract_layout<B: Brush>(
     let mut lines = Vec::with_capacity(layout.lines().count());
 
     for line in layout.lines() {
-        let trailing_whitespace = legacy_trailing_whitespace_advance(line, source)?;
+        let trailing_whitespace = legacy_trailing_whitespace_advance(&line, source)?;
         let metrics = line.metrics();
         let metrics = TextLineMetrics::from_finite([
             metrics.line_height,
@@ -121,7 +121,7 @@ pub fn extract_layout<B: Brush>(
 }
 
 fn legacy_trailing_whitespace_advance<B: Brush>(
-    line: parley::layout::Line<'_, B>,
+    line: &parley::layout::Line<'_, B>,
     source: &str,
 ) -> Option<f32> {
     let line_range = line.text_range();
