@@ -86,15 +86,30 @@ fn layout_candidate_matches_exhaustive_oracle_across_controlled_corpus()
     for (label, text, family, width) in [
         ("empty", "", "Cantarell", None),
         ("ascii", "plain ascii text", "Cantarell", None),
-        ("multiline", "line one\nline two\nline three", "Cantarell", None),
+        (
+            "multiline",
+            "line one\nline two\nline three",
+            "Cantarell",
+            None,
+        ),
         (
             "wrapped_ascii",
             "wrapped words wrapped words wrapped words",
             "Cantarell",
             Some(90.0),
         ),
-        ("combining_emoji", "e\u{301} office 👩\u{200d}💻", "Cantarell", None),
-        ("devanagari_ligature", "क्षि", "RunenUI Fixture Devanagari", None),
+        (
+            "combining_emoji",
+            "e\u{301} office 👩\u{200d}💻",
+            "Cantarell",
+            None,
+        ),
+        (
+            "devanagari_ligature",
+            "क्षि",
+            "RunenUI Fixture Devanagari",
+            None,
+        ),
         (
             "devanagari_wrapped",
             "कक्षा क्षि",
