@@ -69,7 +69,7 @@ fn assert_candidate_matches_oracle(map: &TextCaretMap) {
     let (candidate, candidate_offsets, candidate_validations) =
         map.legal_byte_offsets_layout_candidate_for_test();
     assert_eq!(candidate, oracle);
-    assert!(candidate_offsets <= map.grapheme_boundaries.len());
+    assert!(candidate_offsets <= map.grapheme_boundary_count_for_test());
     assert!(candidate_validations <= exhaustive_validations);
 }
 
