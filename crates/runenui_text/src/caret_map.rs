@@ -447,14 +447,19 @@ impl TextCaretMap {
     #[cfg(test)]
     pub(crate) fn legal_byte_offsets_layout_candidate_for_test(
         &self,
-    ) -> (Vec<usize>, usize, usize, usize) {
+    ) -> (Vec<usize>, usize, usize, usize, usize) {
         let mut candidates = Vec::new();
         candidates.push(0);
         candidates.push(self.display_text().len());
+        let mut raw_cluster_count = 0usize;
+        let mut artifact_max_end = 0usize;
         for line in self.cached.artifact.lines() {
             for run in line.runs() {
                 for cluster in run.clusters() {
-                    candidates.push(cluster.text_range().start);
+                    let range = cluster.text_range();
+                    raw_cluster_count = raw_cluster_count.saturating_add(1);
+                    artifact_max_end = artifact_max_end.max(range.end);
+                    candidates.push(range.start);
                 }
             }
         }
@@ -475,12 +480,12 @@ impl TextCaretMap {
                     })
             })
             .collect::<Vec<_>>();
-        let candidate_max_offset = offsets.last().copied().unwrap_or_default();
         (
             offsets,
             candidate_count,
             cursor_validations,
-            candidate_max_offset,
+            raw_cluster_count,
+            artifact_max_end,
         )
     }
 
