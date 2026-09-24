@@ -3,6 +3,10 @@
 use core::{error::Error, fmt};
 use std::{collections::HashSet, sync::Arc};
 
+use crate::{
+    TextArtifact, TextPreeditProjection, TextPreeditProjectionError, layout_state::CachedTextLayout,
+};
+
 use parley::{
     editing::{Cursor, Selection},
     layout::Affinity,
@@ -11,10 +15,6 @@ use runenui_core::{
     LogicalLength, LogicalPoint, LogicalRect, LogicalTransform, TextAffinity, TextDisplayPosition,
     TextDocumentSnapshot, TextPosition, TextPositionError, TextSelection,
 };
-use crate::{
-    TextArtifact, TextPreeditProjection, TextPreeditProjectionError, layout_state::CachedTextLayout,
-};
-
 /// Failure while using an exact retained-layout caret map.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
