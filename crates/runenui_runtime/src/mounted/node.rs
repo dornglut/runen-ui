@@ -4,7 +4,8 @@ use core::fmt;
 
 use runenui_core::{
     __runtime::{MountedWidget, MountedWidgetState},
-    AuthoringDiagnostic, ElementId, ElementKey, ExplicitTimeline, FocusScope, Focusability,
+    AuthoringDiagnostic, ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry,
+    FocusScope, Focusability,
     LayoutStyle, StyleIntent, WidgetActivation, WidgetStateTypeId, WidgetTypeId,
 };
 
@@ -25,6 +26,8 @@ pub(crate) struct MountedNode<Action> {
     pub(crate) timelines: Vec<ExplicitTimeline>,
     pub(crate) focusability: Focusability,
     pub(crate) focus_scope: Option<FocusScope>,
+    pub(crate) focus_group: Option<FocusGroup>,
+    pub(crate) focus_group_entry: FocusGroupEntry,
     pub(crate) authoring_diagnostics: Vec<AuthoringDiagnostic>,
     pub(crate) widget: MountedWidget<Action>,
     pub(crate) state: MountedWidgetState,
@@ -127,6 +130,14 @@ impl<'a, Action> MountedNodeRef<'a, Action> {
     #[must_use]
     pub const fn focus_scope(&self) -> Option<FocusScope> {
         self.node.focus_scope
+    }
+    #[must_use]
+    pub const fn focus_group(&self) -> Option<FocusGroup> {
+        self.node.focus_group
+    }
+    #[must_use]
+    pub const fn focus_group_entry(&self) -> FocusGroupEntry {
+        self.node.focus_group_entry
     }
     #[must_use]
     pub const fn interaction(&self) -> InteractionStateRef<'a> {
