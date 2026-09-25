@@ -175,6 +175,7 @@ impl<Action> MountedTree<Action> {
             diagnostics: Vec::new(),
             moved: 0,
         };
+        collect_focus_group_diagnostics(&root, "root", &mut planning.diagnostics);
         let root = self.plan_existing(Some(old_root), None, root, "root".to_owned(), &mut planning);
         Ok(ReconciliationPlan {
             root,
@@ -645,6 +646,51 @@ impl<Action> MountedTree<Action> {
             .unwrap_or_else(|| unreachable!("new mounted node remains live"))
             .children = mounted_children;
         id
+    }
+}
+
+fn collect_focus_group_diagnostics<Action>(
+    node: &IncomingNode<Action>,
+    path: &str,
+    diagnostics: &mut Vec<ReconciliationDiagnostic>,
+) {
+    if node.focus_group.is_some() {
+        let mut preferred_member_paths = Vec::new();
+        collect_nearest_group_preferred_members(
+            node,
+            path,
+            &mut preferred_member_paths,
+        );
+        if preferred_member_paths.len() > 1 {
+            diagnostics.push(ReconciliationDiagnostic::MultiplePreferredFocusGroupMembers {
+                group_path: path.to_owned(),
+                preferred_member_paths,
+            });
+        }
+    }
+    for (position, child) in node.children.iter().enumerate() {
+        let child_path = format!("{path}/{position}");
+        collect_focus_group_diagnostics(child, &child_path, diagnostics);
+    }
+}
+
+fn collect_nearest_group_preferred_members<Action>(
+    group: &IncomingNode<Action>,
+    group_path: &str,
+    preferred_member_paths: &mut Vec<String>,
+) {
+    for (position, child) in group.children.iter().enumerate() {
+        let child_path = format!("{group_path}/{position}");
+        if child.focus_group_entry == FocusGroupEntry::Preferred {
+            preferred_member_paths.push(child_path.clone());
+        }
+        if child.focus_group.is_none() {
+            collect_nearest_group_preferred_members(
+                child,
+                &child_path,
+                preferred_member_paths,
+            );
+        }
     }
 }
 
