@@ -202,10 +202,7 @@ pub fn is_focus_eligible<Action>(tree: &mut MountedTree<Action>, id: &MountedNod
         }
 }
 
-fn nearest_group<Action>(
-    tree: &MountedTree<Action>,
-    id: &MountedNodeId,
-) -> Option<MountedNodeId> {
+fn nearest_group<Action>(tree: &MountedTree<Action>, id: &MountedNodeId) -> Option<MountedNodeId> {
     let mut current = tree.node(id)?.parent.clone()?;
     loop {
         let node = tree.node(&current)?;
@@ -247,7 +244,10 @@ fn focus_group_members<Action>(
         if nearest_group(tree, &id).as_ref() != Some(group) {
             continue;
         }
-        if tree.node(&id).is_some_and(|node| node.focus_group.is_some()) {
+        if tree
+            .node(&id)
+            .is_some_and(|node| node.focus_group.is_some())
+        {
             if let Some(target) = focus_group_entry_target(tree, &id) {
                 members.push(FocusGroupMember { anchor: id, target });
             }
