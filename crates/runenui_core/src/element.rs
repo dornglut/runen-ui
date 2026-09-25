@@ -7,10 +7,8 @@ use crate::widget_erasure::{ElementParts, ErasedWidget, MountedWidget, WidgetAda
 use crate::widget_mapping::MappedWidget;
 use crate::widget_protocol::Widget;
 use crate::{
-    BrushValue, ColorValue, ElementId, ElementKey, ExplicitTimeline, FocusScope, Focusability,
-    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, MotionTarget, OpacityValue,
-    OutlineValue, PresentationValue, RadiusValue, ShadowValue, SpacingValue, StyleIntent,
-    StyleRecipeId, StyleVariantId, TransitionSpec, TypographyValue,
+    ElementId, ElementKey, ExplicitTimeline, FocusScope, Focusability, IdentifierError,
+    IntoElementId, IntoElementKey, LayoutStyle, StyleIntent,
 };
 
 #[derive(Clone, Debug, PartialEq)]
