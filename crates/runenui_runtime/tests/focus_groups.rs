@@ -7,7 +7,7 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, ReconciliationDiagnostic,
-    SurfaceBuildContext,
+    SurfaceBuildContext, TraceRecordKind,
 };
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -191,10 +191,32 @@ fn internal_navigation_wraps_and_activation_is_deferred_until_after_focus() {
     let a = id(&mut runtime, "a");
 
     command(&mut runtime, b.clone(), SemanticCommand::RequestFocus);
+    let trace_start = runtime.trace().len();
     command(&mut runtime, b, SemanticCommand::FocusGroupNext);
     assert_eq!(runtime.focus().focused_node(), Some(&c));
     assert_eq!(runtime.focus().reason(), Some(FocusReason::GroupNavigation));
     assert!(runtime.state().activations.is_empty());
+
+    let records = runtime.trace().records().skip(trace_start).collect::<Vec<_>>();
+    let transition = records
+        .iter()
+        .position(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusTransitionCommitted {
+                    reason: FocusReason::GroupNavigation,
+                }
+            )
+        })
+        .unwrap_or_else(|| unreachable!("group focus transition is traced"));
+    let delegated_activation = records
+        .iter()
+        .position(|record| {
+            matches!(record.kind(), TraceRecordKind::CommandSubmissionAccepted)
+                && record.original_target() == Some(&c)
+        })
+        .unwrap_or_else(|| unreachable!("delegated activation is accepted for the new member"));
+    assert!(transition < delegated_activation);
     settle(&mut runtime);
     assert_eq!(runtime.state().activations, vec!["c"]);
 
