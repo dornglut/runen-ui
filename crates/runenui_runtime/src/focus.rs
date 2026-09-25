@@ -219,72 +219,104 @@ struct FocusGroupMember {
     target: MountedNodeId,
 }
 
-fn is_within_group<Action>(
-    tree: &MountedTree<Action>,
+struct FocusGroupMembers {
+    members: Vec<FocusGroupMember>,
+    preferred: Option<MountedNodeId>,
+}
+
+fn collect_focus_group_members<Action>(
+    tree: &mut MountedTree<Action>,
     id: &MountedNodeId,
-    group: &MountedNodeId,
-) -> bool {
-    let mut current = Some(id.clone());
-    while let Some(id) = current {
-        if &id == group {
-            return true;
+    members: &mut Vec<FocusGroupMember>,
+    preferred: &mut Option<MountedNodeId>,
+    multiple_preferred: &mut bool,
+) {
+    let Some(node) = tree.node(id) else {
+        return;
+    };
+    let nested_group = node.focus_group.is_some();
+    let entry = node.focus_group_entry;
+    let children = node.children.clone();
+
+    if entry == FocusGroupEntry::Preferred {
+        if preferred.is_some() {
+            *multiple_preferred = true;
+        } else {
+            *preferred = Some(id.clone());
         }
-        current = tree.node(&id).and_then(|node| node.parent.clone());
     }
-    false
+
+    if nested_group {
+        if let Some(target) = focus_group_entry_target(tree, id) {
+            members.push(FocusGroupMember {
+                anchor: id.clone(),
+                target,
+            });
+        }
+        return;
+    }
+
+    if is_focus_eligible(tree, id) {
+        members.push(FocusGroupMember {
+            anchor: id.clone(),
+            target: id.clone(),
+        });
+    }
+
+    for child in children {
+        collect_focus_group_members(
+            tree,
+            &child,
+            members,
+            preferred,
+            multiple_preferred,
+        );
+    }
 }
 
 fn focus_group_members<Action>(
     tree: &mut MountedTree<Action>,
     group: &MountedNodeId,
-) -> Vec<FocusGroupMember> {
-    let ids = tree.publication_preorder_ids();
+) -> Option<FocusGroupMembers> {
+    let children = tree.node(group)?.children.clone();
     let mut members = Vec::new();
-    for id in ids {
-        if nearest_group(tree, &id).as_ref() != Some(group) {
-            continue;
-        }
-        if tree
-            .node(&id)
-            .is_some_and(|node| node.focus_group.is_some())
-        {
-            if let Some(target) = focus_group_entry_target(tree, &id) {
-                members.push(FocusGroupMember { anchor: id, target });
-            }
-        } else if is_focus_eligible(tree, &id) {
-            members.push(FocusGroupMember {
-                anchor: id.clone(),
-                target: id,
-            });
-        }
+    let mut preferred = None;
+    let mut multiple_preferred = false;
+
+    for child in children {
+        collect_focus_group_members(
+            tree,
+            &child,
+            &mut members,
+            &mut preferred,
+            &mut multiple_preferred,
+        );
     }
-    members
+
+    if multiple_preferred {
+        return None;
+    }
+
+    Some(FocusGroupMembers { members, preferred })
 }
 
 fn focus_group_entry_target<Action>(
     tree: &mut MountedTree<Action>,
     group: &MountedNodeId,
 ) -> Option<MountedNodeId> {
-    let authored_preferred = tree
-        .publication_preorder_ids()
-        .into_iter()
-        .filter(|id| nearest_group(tree, id).as_ref() == Some(group))
-        .filter(|id| {
-            tree.node(id)
-                .is_some_and(|node| node.focus_group_entry == FocusGroupEntry::Preferred)
-        })
-        .collect::<Vec<_>>();
-    if authored_preferred.len() > 1 {
-        return None;
-    }
-
-    let members = focus_group_members(tree, group);
-    if let Some(preferred) = authored_preferred.first()
-        && let Some(member) = members.iter().find(|member| &member.anchor == preferred)
+    let resolved = focus_group_members(tree, group)?;
+    if let Some(preferred) = resolved.preferred.as_ref()
+        && let Some(member) = resolved
+            .members
+            .iter()
+            .find(|member| &member.anchor == preferred)
     {
         return Some(member.target.clone());
     }
-    members.first().map(|member| member.target.clone())
+    resolved
+        .members
+        .first()
+        .map(|member| member.target.clone())
 }
 
 fn candidate_contains<Action>(
@@ -411,7 +443,8 @@ pub fn select_focus_group_member<Action>(
         nearest_group(tree, current).or_else(|| nearest_group(tree, command_target))?
     };
     let config = tree.node(&group)?.focus_group?;
-    let members = focus_group_members(tree, &group);
+    let resolved = focus_group_members(tree, &group)?;
+    let members = resolved.members;
     if members.is_empty() {
         return Some(FocusGroupSelection {
             target: None,
