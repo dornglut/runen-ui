@@ -320,9 +320,7 @@ impl SurfaceProjection {
         next_node_id.checked_add(required - 1).is_some()
     }
 
-    fn node_id_exhausted_update(
-        &self,
-    ) -> (UpdateMode, TreeUpdate, Vec<AdapterDiagnostic>) {
+    fn node_id_exhausted_update(&self) -> (UpdateMode, TreeUpdate, Vec<AdapterDiagnostic>) {
         let focus = self
             .current_snapshot
             .as_ref()
@@ -1201,9 +1199,9 @@ mod tests {
         );
         assert!(update.tree_update.nodes.is_empty());
         assert!(update.tree_update.tree.is_none());
-        assert_eq!(adapter.projection.current_surface, None);
-        assert_eq!(adapter.projection.current_revision, None);
-        assert_eq!(adapter.projection.current_snapshot, None);
+        assert!(adapter.projection.current_surface.is_none());
+        assert!(adapter.projection.current_revision.is_none());
+        assert!(adapter.projection.current_snapshot.is_none());
         assert!(adapter.projection.semantic_to_accesskit.is_empty());
         assert!(adapter.projection.accesskit_to_semantic.is_empty());
         assert!(adapter.projection.current_nodes.is_empty());
@@ -1225,7 +1223,7 @@ mod tests {
                 .diagnostics
                 .contains(&AdapterDiagnostic::NodeIdSpaceExhausted)
         );
-        assert_eq!(adapter.projection.next_node_id, None);
+        assert!(adapter.projection.next_node_id.is_none());
         assert_eq!(adapter.projection.synthetic_root, Some(NodeId(u64::MAX)));
         let mut semantic_ids = adapter
             .projection
@@ -1284,7 +1282,7 @@ mod tests {
             rejected.diagnostics,
             vec![AdapterDiagnostic::NodeIdSpaceExhausted]
         );
-        assert_eq!(adapter.projection.next_node_id, None);
+        assert!(adapter.projection.next_node_id.is_none());
         assert_eq!(
             adapter.projection.semantic_to_accesskit,
             before_semantic_to_accesskit
