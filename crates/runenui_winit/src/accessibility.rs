@@ -1243,6 +1243,7 @@ mod tests {
         let first_publication = publication(&mut runtime);
         let mut adapter = SemanticAdapter::new();
         adapter.update(&first_publication);
+        adapter.projection.next_node_id = None;
 
         let _ = runtime.submit_action(FixtureAction);
         runtime.pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64));
@@ -1254,6 +1255,7 @@ mod tests {
                 .diagnostics
                 .contains(&AdapterDiagnostic::NodeIdSpaceExhausted)
         );
+        assert!(adapter.projection.next_node_id.is_none());
 
         let surface = second_publication.snapshot().surface_id().clone();
         let button = second_publication.snapshot().roots()[0].clone();
@@ -1273,7 +1275,6 @@ mod tests {
         let mut activation = adapter.activation_handler();
         let before_tree = activation.request_initial_tree().unwrap();
 
-        adapter.projection.next_node_id = None;
         let _ = runtime.submit_action(FixtureAction);
         runtime.pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64));
         let third_publication = publication(&mut runtime);
