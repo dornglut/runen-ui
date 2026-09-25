@@ -1,8 +1,8 @@
-use crate::element::{
+use crate::widget_erasure::{ErasedWidget, WidgetBridgeError};
+use crate::widget_protocol::{
     WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetMeasureInput,
     WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
 };
-use crate::widget_erasure::{ErasedWidget, WidgetBridgeError};
 use crate::{
     EditableContribution, EventContext, HitContribution, HitContributionContext, PaintContribution,
     PaintContributionContext, SemanticContribution, SemanticContributionContext, SubscriptionSet,
