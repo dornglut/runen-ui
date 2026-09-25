@@ -35,11 +35,7 @@ impl Widget<Toggle> for CheckableProbe {
         WidgetActivationOutput::changed_with_action(Toggle)
     }
 
-    fn semantics(
-        &self,
-        (): &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         SemanticContribution::single(
             SemanticNodeContribution::primary(SemanticRole::Checkbox)
                 .with_name("Feature")
