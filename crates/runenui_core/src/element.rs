@@ -167,6 +167,7 @@ macro_rules! common_node_builder_methods {
             self.common.style = self.common.style.with_presentation(value);
             self
         }
+        /// Contributes transition policy through the ordinary style cascade.
         #[must_use]
         pub fn transition(
             mut self,
@@ -176,11 +177,18 @@ macro_rules! common_node_builder_methods {
             self.common.style = self.common.style.with_transition(target, spec);
             self
         }
+
+        /// Explicitly disables transition for one motion target at the authored layer.
         #[must_use]
         pub fn transition_disabled(mut self, target: $crate::MotionTarget) -> Self {
             self.common.style = self.common.style.with_transition_disabled(target);
             self
         }
+
+        /// Adds one owner-local declarative explicit timeline.
+        ///
+        /// Duplicate animation IDs and duplicate targets are retained here and
+        /// rejected transactionally by runtime candidate planning.
         #[must_use]
         pub fn timeline(mut self, timeline: $crate::ExplicitTimeline) -> Self {
             self.common.timelines.push(timeline);
