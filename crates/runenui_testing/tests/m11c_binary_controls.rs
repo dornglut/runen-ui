@@ -54,16 +54,11 @@ impl UiApp for BinaryControlsApp {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum StaticAction {
-    Noop,
-}
-
 struct StaticBinaryControlsApp;
 
 impl UiApp for StaticBinaryControlsApp {
     type State = ();
-    type Action = StaticAction;
+    type Action = ();
     type HostProtocol = NoHostProtocol;
 
     fn root((): &Self::State) -> impl View<Self::Action> {
