@@ -1311,19 +1311,8 @@ mod tests {
         );
         assert_eq!(rejected.tree_update.tree_id, before_tree.tree_id);
         assert_eq!(rejected.tree_update.focus, before_tree.focus);
-        assert_eq!(
-            rejected
-                .tree_update
-                .nodes
-                .iter()
-                .map(|(id, _)| *id)
-                .collect::<Vec<_>>(),
-            before_tree
-                .nodes
-                .iter()
-                .map(|(id, _)| *id)
-                .collect::<Vec<_>>()
-        );
+        assert!(rejected.tree_update.nodes.is_empty());
+        assert!(rejected.tree_update.tree.is_none());
         let after_tree = activation.request_initial_tree().unwrap();
         assert_eq!(after_tree.tree_id, before_tree.tree_id);
         assert_eq!(after_tree.focus, before_tree.focus);
