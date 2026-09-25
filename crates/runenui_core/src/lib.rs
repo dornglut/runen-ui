@@ -263,6 +263,7 @@ mod visual;
 mod visual_style;
 mod widget_context;
 mod widget_erasure;
+mod widget_protocol;
 mod widget_mapping;
 mod work;
 
@@ -282,10 +283,11 @@ pub use editing::{
     UpdateOutput,
 };
 pub use effects::{Effects, IntoEffects};
-pub use element::{
-    AuthoringDiagnostic, ChildBearingWidget, Element, View, Views, Widget, WidgetActivation,
-    WidgetActivationOutput, WidgetAvailableSpace, WidgetDiagnostic, WidgetMeasure,
-    WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
+pub use element::{AuthoringDiagnostic, Element, View, Views};
+pub use widget_protocol::{
+    ChildBearingWidget, Widget, WidgetActivation, WidgetActivationOutput, WidgetAvailableSpace,
+    WidgetDiagnostic, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId,
+    WidgetTextInput, WidgetTypeId,
 };
 pub use event::{
     CommandDerivation, CommandOrigin, DragDropEvent, EventPhase, EventSource, SemanticCommand,
