@@ -1,5 +1,5 @@
 use runenui_core::{
-    Element, FlexContainerStyle, FlexDirection, FontFamily, GenericFontFamily, LayoutContainer,
+    Element, ElementId, ElementKey, FlexContainerStyle, FlexDirection, FontFamily, GenericFontFamily, LayoutContainer,
     LayoutDimension, LayoutStyle, LogicalLength, MotionTarget, PresentationOrigin,
     PresentationRotation, PresentationScale, PresentationTransform, PresentationTranslation,
     PresentationValue, StyleRecipeId, StyleVariantId, TransitionPolicy, Typography,
@@ -167,7 +167,8 @@ fn presentation_transform() -> PresentationTransform {
 }
 
 #[test]
-fn common_presentation_and_transition_authoring_has_element_builtin_parity() {
+fn common_presentation_and_transition_authoring_has_element_builtin_parity()
+-> Result<(), Box<dyn std::error::Error>> {
     let presentation = presentation_transform();
     let custom: Element<Action> = Element::new(Probe)
         .id("custom")
@@ -181,15 +182,15 @@ fn common_presentation_and_transition_authoring_has_element_builtin_parity() {
         .transition_disabled(MotionTarget::Opacity)
         .into_element();
 
-    assert_eq!(custom.element_id().map(ToString::to_string).as_deref(), Some("custom"));
+    assert_eq!(custom.element_id(), Some(&ElementId::from_static("custom")?));
     assert_eq!(
-        custom.element_key().map(ToString::to_string).as_deref(),
-        Some("custom-key")
+        custom.element_key(),
+        Some(&ElementKey::from_static("custom-key")?)
     );
-    assert_eq!(builtin.element_id().map(ToString::to_string).as_deref(), Some("builtin"));
+    assert_eq!(builtin.element_id(), Some(&ElementId::from_static("builtin")?));
     assert_eq!(
-        builtin.element_key().map(ToString::to_string).as_deref(),
-        Some("builtin-key")
+        builtin.element_key(),
+        Some(&ElementKey::from_static("builtin-key")?)
     );
     assert_eq!(
         custom
@@ -213,4 +214,5 @@ fn common_presentation_and_transition_authoring_has_element_builtin_parity() {
         builtin.style().transition_policy(MotionTarget::Opacity),
         Some(&TransitionPolicy::Disabled)
     );
+    Ok(())
 }
