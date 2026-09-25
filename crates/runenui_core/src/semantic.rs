@@ -825,14 +825,26 @@ fn validate_role_state_contract(
         };
         let checked = node.state().checked();
         match node.role() {
-            SemanticRole::Checkbox => {
-                if checked.is_none() {
+            SemanticRole::Checkbox => match checked {
+                None => {
                     return Err(SemanticContributionError::MissingRequiredCheckedState {
                         key: node.key().clone(),
                         role: node.role(),
                     });
                 }
-            }
+                Some(
+                    SemanticCheckedState::Unchecked
+                    | SemanticCheckedState::Checked
+                    | SemanticCheckedState::Mixed,
+                ) => {}
+                #[allow(unreachable_patterns)]
+                Some(_) => {
+                    return Err(SemanticContributionError::CheckedStateNotSupported {
+                        key: node.key().clone(),
+                        role: node.role(),
+                    });
+                }
+            },
             SemanticRole::RadioButton | SemanticRole::Switch => match checked {
                 None => {
                     return Err(SemanticContributionError::MissingRequiredCheckedState {
