@@ -274,7 +274,10 @@ include!("token_macros.rs");
 pub use application::{
     HostProtocol, NoHostCommand, NoHostProtocol, NoHostResponse, NoHostResponseKind, UiApp,
 };
-pub use builtins::{Button, Container, Text, button, column, container, row, text};
+pub use builtins::{
+    Button, Checkbox, Container, Switch, Text, button, checkbox, column, container, row, switch,
+    text,
+};
 pub use computed_style::ComputedStyle;
 pub use editing::{
     EditChangeMap, EditGroupHint, EditIntent, EditInverse, EditKind, EditRequestId, EditResolution,
