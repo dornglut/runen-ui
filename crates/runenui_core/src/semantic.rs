@@ -816,9 +816,7 @@ fn collect_structure(
     Ok(())
 }
 
-fn validate_role_state_contract(
-    items: &[SemanticItem],
-) -> Result<(), SemanticContributionError> {
+fn validate_role_state_contract(items: &[SemanticItem]) -> Result<(), SemanticContributionError> {
     for item in items {
         let SemanticItem::Node(node) = item else {
             continue;
@@ -955,7 +953,11 @@ mod tests {
         ] {
             let checkbox = SemanticNodeContribution::primary(SemanticRole::Checkbox)
                 .with_state(SemanticState::ENABLED.with_checked(checked));
-            assert!(SemanticContribution::single(checkbox).validate(context).is_ok());
+            assert!(
+                SemanticContribution::single(checkbox)
+                    .validate(context)
+                    .is_ok()
+            );
         }
 
         for role in [SemanticRole::RadioButton, SemanticRole::Switch] {
@@ -968,9 +970,8 @@ mod tests {
                 assert!(SemanticContribution::single(node).validate(context).is_ok());
             }
 
-            let mixed = SemanticNodeContribution::primary(role).with_state(
-                SemanticState::ENABLED.with_checked(SemanticCheckedState::Mixed),
-            );
+            let mixed = SemanticNodeContribution::primary(role)
+                .with_state(SemanticState::ENABLED.with_checked(SemanticCheckedState::Mixed));
             assert_eq!(
                 SemanticContribution::single(mixed).validate(context),
                 Err(SemanticContributionError::MixedCheckedStateNotSupported {
@@ -1006,9 +1007,8 @@ mod tests {
             SemanticRole::EditableText,
             SemanticRole::RadioGroup,
         ] {
-            let node = SemanticNodeContribution::primary(role).with_state(
-                SemanticState::ENABLED.with_checked(SemanticCheckedState::Checked),
-            );
+            let node = SemanticNodeContribution::primary(role)
+                .with_state(SemanticState::ENABLED.with_checked(SemanticCheckedState::Checked));
             assert_eq!(
                 SemanticContribution::single(node).validate(context),
                 Err(SemanticContributionError::CheckedStateNotSupported {
