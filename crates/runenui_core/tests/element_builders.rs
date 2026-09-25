@@ -154,7 +154,6 @@ fn typography_is_publicly_authored_on_elements_and_builtins()
     Ok(())
 }
 
-
 fn presentation_transform() -> PresentationTransform {
     PresentationTransform::new(
         PresentationTranslation::new(8.0, -3.0)
@@ -169,7 +168,6 @@ fn presentation_transform() -> PresentationTransform {
         ),
     )
 }
-
 
 fn common_transition() -> TransitionSpec {
     TransitionSpec::new(
