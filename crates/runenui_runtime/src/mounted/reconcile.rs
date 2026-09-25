@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use runenui_core::{
-    __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusScope,
-    Focusability, LayoutStyle, StyleIntent, WidgetInvalidation, WidgetMountContext,
+    __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusGroup,
+    FocusGroupEntry, FocusScope, Focusability, LayoutStyle, StyleIntent, WidgetInvalidation,
+    WidgetMountContext,
     WidgetUnmountReason, WidgetUpdateContext,
 };
 
@@ -70,6 +71,8 @@ pub(super) struct IncomingNode<Action> {
     timelines: Vec<ExplicitTimeline>,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
+    focus_group: Option<FocusGroup>,
+    focus_group_entry: FocusGroupEntry,
     authoring_diagnostics: Vec<runenui_core::AuthoringDiagnostic>,
     widget: MountedWidget<Action>,
     children: Vec<Self>,
@@ -77,6 +80,9 @@ pub(super) struct IncomingNode<Action> {
 
 impl<Action> IncomingNode<Action> {
     pub(super) fn from_element(element: Element<Action>) -> Self {
+        let parts = element.into_runtime_parts();
+        let focus_group = parts.focus_group();
+        let focus_group_entry = parts.focus_group_entry();
         let (
             authored_id,
             key,
@@ -85,10 +91,12 @@ impl<Action> IncomingNode<Action> {
             timelines,
             focusability,
             focus_scope,
+            focus_group,
+            focus_group_entry,
             authoring_diagnostics,
             widget,
             children,
-        ) = element.into_runtime_parts().into_parts();
+        ) = parts.into_parts();
         Self {
             authored_id,
             key,
@@ -97,6 +105,8 @@ impl<Action> IncomingNode<Action> {
             timelines,
             focusability,
             focus_scope,
+            focus_group,
+            focus_group_entry,
             authoring_diagnostics,
             widget,
             children: children.into_iter().map(Self::from_element).collect(),
@@ -216,6 +226,8 @@ impl<Action> MountedTree<Action> {
             timelines,
             focusability,
             focus_scope,
+            focus_group,
+            focus_group_entry,
             authoring_diagnostics,
             widget,
             children,
@@ -233,6 +245,8 @@ impl<Action> MountedTree<Action> {
                 timelines,
                 focusability,
                 focus_scope,
+                focus_group,
+                focus_group_entry,
                 authoring_diagnostics,
                 widget,
                 children: Vec::new(),
@@ -468,6 +482,8 @@ impl<Action> MountedTree<Action> {
             timelines,
             focusability,
             focus_scope,
+            focus_group,
+            focus_group_entry,
             authoring_diagnostics,
             widget,
             children: _,
@@ -505,6 +521,8 @@ impl<Action> MountedTree<Action> {
                 &style,
                 focusability,
                 focus_scope,
+                focus_group,
+                focus_group_entry,
                 &authoring_diagnostics,
             );
             node.authored_id = authored_id;
@@ -514,6 +532,8 @@ impl<Action> MountedTree<Action> {
             node.timelines = timelines;
             node.focusability = focusability;
             node.focus_scope = focus_scope;
+            node.focus_group = focus_group;
+            node.focus_group_entry = focus_group_entry;
             node.authoring_diagnostics = authoring_diagnostics;
             node.widget = widget;
             // Input capability declarations belong to the incoming widget instance,
@@ -560,6 +580,8 @@ impl<Action> MountedTree<Action> {
             timelines,
             focusability,
             focus_scope,
+            focus_group,
+            focus_group_entry,
             authoring_diagnostics,
             widget,
             children,
@@ -584,6 +606,8 @@ impl<Action> MountedTree<Action> {
                     timelines,
                     focusability,
                     focus_scope,
+                    focus_group,
+                    focus_group_entry,
                     authoring_diagnostics,
                     widget,
                     state: widget_state,
@@ -687,6 +711,8 @@ fn common_field_invalidation<Action>(
     style: &StyleIntent,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
+    focus_group: Option<FocusGroup>,
+    focus_group_entry: FocusGroupEntry,
     diagnostics: &[runenui_core::AuthoringDiagnostic],
 ) -> WidgetInvalidation {
     let mut invalidation = WidgetInvalidation::NONE;
@@ -702,7 +728,11 @@ fn common_field_invalidation<Action>(
     if node.authored_id.as_ref() != authored_id || node.authoring_diagnostics != diagnostics {
         invalidation |= WidgetInvalidation::DIAGNOSTICS;
     }
-    if node.focusability != focusability || node.focus_scope != focus_scope {
+    if node.focusability != focusability
+        || node.focus_scope != focus_scope
+        || node.focus_group != focus_group
+        || node.focus_group_entry != focus_group_entry
+    {
         invalidation |= WidgetInvalidation::INTERACTION;
     }
     invalidation
