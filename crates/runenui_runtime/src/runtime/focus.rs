@@ -420,12 +420,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     return Err(TraceRoutedIntegrityFailure::OutputAllowanceExceeded);
                 }
                 transaction.remaining_outputs -= 1;
-                transaction.default_outputs.push(CollectedRoutedOutput::Command {
-                    target,
-                    command: SemanticCommand::Activate,
-                    origin: CommandOrigin::__runtime_delegated(transaction.origin.source()),
-                    causal_parent: transaction.parent,
-                });
+                transaction
+                    .default_outputs
+                    .push(CollectedRoutedOutput::Command {
+                        target,
+                        command: SemanticCommand::Activate,
+                        origin: CommandOrigin::__runtime_delegated(transaction.origin.source()),
+                        causal_parent: transaction.parent,
+                    });
             }
             return Ok(());
         }
