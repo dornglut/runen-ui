@@ -122,21 +122,9 @@ fn passive_binary_controls_publish_exact_application_authored_state() {
             "Checked",
             SemanticCheckedState::Checked,
         ),
-        (
-            SemanticRole::Checkbox,
-            "Mixed",
-            SemanticCheckedState::Mixed,
-        ),
-        (
-            SemanticRole::Switch,
-            "Off",
-            SemanticCheckedState::Unchecked,
-        ),
-        (
-            SemanticRole::Switch,
-            "On",
-            SemanticCheckedState::Checked,
-        ),
+        (SemanticRole::Checkbox, "Mixed", SemanticCheckedState::Mixed),
+        (SemanticRole::Switch, "Off", SemanticCheckedState::Unchecked),
+        (SemanticRole::Switch, "On", SemanticCheckedState::Checked),
     ] {
         let query = SemanticQuery::new()
             .with_role(role)
