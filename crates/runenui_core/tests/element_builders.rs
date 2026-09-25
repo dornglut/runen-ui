@@ -214,22 +214,15 @@ fn authored_outline() -> runenui_core::Outline {
 
 fn authored_shadows() -> Vec<DropShadow> {
     vec![
-        DropShadow::new(
-            1.0,
-            2.0,
-            LogicalLength::from(3_u16),
-            4.0,
-            Color::BLACK,
-        )
-        .unwrap_or_else(|_| unreachable!("controlled shadow is finite")),
+        DropShadow::new(1.0, 2.0, LogicalLength::from(3_u16), 4.0, Color::BLACK)
+            .unwrap_or_else(|_| unreachable!("controlled shadow is finite")),
     ]
 }
 
 #[test]
-fn common_node_authoring_has_element_builtin_parity()
--> Result<(), Box<dyn std::error::Error>> {
-    let layout = LayoutStyle::default()
-        .with_width(LayoutDimension::length(LogicalLength::from(120_u16)));
+fn common_node_authoring_has_element_builtin_parity() -> Result<(), Box<dyn std::error::Error>> {
+    let layout =
+        LayoutStyle::default().with_width(LayoutDimension::length(LogicalLength::from(120_u16)));
     let recipe = StyleRecipeId::from_static("common.authoring")?;
     let variant = StyleVariantId::from_static("compact")?;
     let typography = Typography::new(
@@ -284,7 +277,10 @@ fn common_node_authoring_has_element_builtin_parity()
         .timeline(timeline)
         .into_element();
 
-    assert_eq!(custom.element_id(), Some(&ElementId::from_static("common")?));
+    assert_eq!(
+        custom.element_id(),
+        Some(&ElementId::from_static("common")?)
+    );
     assert_eq!(
         custom.element_key(),
         Some(&ElementKey::from_static("common-key")?)
