@@ -220,7 +220,6 @@ fn nearest_group<Action>(
 struct FocusGroupMember {
     anchor: MountedNodeId,
     target: MountedNodeId,
-    order: usize,
 }
 
 fn is_within_group<Action>(
@@ -244,23 +243,18 @@ fn focus_group_members<Action>(
 ) -> Vec<FocusGroupMember> {
     let ids = tree.publication_preorder_ids();
     let mut members = Vec::new();
-    for (order, id) in ids.into_iter().enumerate() {
+    for id in ids {
         if nearest_group(tree, &id).as_ref() != Some(group) {
             continue;
         }
         if tree.node(&id).is_some_and(|node| node.focus_group.is_some()) {
             if let Some(target) = focus_group_entry_target(tree, &id) {
-                members.push(FocusGroupMember {
-                    anchor: id,
-                    target,
-                    order,
-                });
+                members.push(FocusGroupMember { anchor: id, target });
             }
         } else if is_focus_eligible(tree, &id) {
             members.push(FocusGroupMember {
                 anchor: id.clone(),
                 target: id,
-                order,
             });
         }
     }
