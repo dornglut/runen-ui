@@ -91,8 +91,6 @@ impl<Action> IncomingNode<Action> {
             timelines,
             focusability,
             focus_scope,
-            focus_group,
-            focus_group_entry,
             authoring_diagnostics,
             widget,
             children,
@@ -656,16 +654,14 @@ fn collect_focus_group_diagnostics<Action>(
 ) {
     if node.focus_group.is_some() {
         let mut preferred_member_paths = Vec::new();
-        collect_nearest_group_preferred_members(
-            node,
-            path,
-            &mut preferred_member_paths,
-        );
+        collect_nearest_group_preferred_members(node, path, &mut preferred_member_paths);
         if preferred_member_paths.len() > 1 {
-            diagnostics.push(ReconciliationDiagnostic::MultiplePreferredFocusGroupMembers {
-                group_path: path.to_owned(),
-                preferred_member_paths,
-            });
+            diagnostics.push(
+                ReconciliationDiagnostic::MultiplePreferredFocusGroupMembers {
+                    group_path: path.to_owned(),
+                    preferred_member_paths,
+                },
+            );
         }
     }
     for (position, child) in node.children.iter().enumerate() {
@@ -685,11 +681,7 @@ fn collect_nearest_group_preferred_members<Action>(
             preferred_member_paths.push(child_path.clone());
         }
         if child.focus_group.is_none() {
-            collect_nearest_group_preferred_members(
-                child,
-                &child_path,
-                preferred_member_paths,
-            );
+            collect_nearest_group_preferred_members(child, &child_path, preferred_member_paths);
         }
     }
 }
