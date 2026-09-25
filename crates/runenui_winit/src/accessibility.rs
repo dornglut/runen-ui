@@ -1086,6 +1086,14 @@ mod tests {
                         )
                         .with_value(SemanticValue::Integer(7))
                         .with_state(SemanticState::ENABLED.with_disabled(true).with_inert(true)),
+                    )
+                    .with_child(
+                        SemanticNodeContribution::new(
+                            SemanticKey::from_static("boolean-value").unwrap(),
+                            SemanticRole::Generic,
+                        )
+                        .with_name("Boolean value")
+                        .with_value(SemanticValue::Boolean(true)),
                     );
             }
             SemanticContribution::single(button)
@@ -1193,6 +1201,27 @@ mod tests {
             .map(|(_, node)| node)
             .unwrap();
         assert!(disabled_group.is_disabled());
+        let boolean_value = update
+            .tree_update
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some("Boolean value"))
+            .map(|(_, node)| node)
+            .unwrap();
+        assert_eq!(boolean_value.role(), Role::GenericContainer);
+        assert_eq!(boolean_value.value(), None);
+        assert_eq!(boolean_value.toggled(), None);
+        assert_eq!(
+            update
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| matches!(
+                    diagnostic,
+                    AdapterDiagnostic::UnsupportedValueType(_)
+                ))
+                .count(),
+            2
+        );
         let activated = activation.request_initial_tree().unwrap();
         assert_eq!(activated.tree_id, update.tree_update.tree_id);
         assert!(activated.tree.is_some());
