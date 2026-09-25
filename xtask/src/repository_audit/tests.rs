@@ -86,7 +86,7 @@ impl Fixture {
             ("docs/architecture/public-api.md", "# Public API\n"),
             (
                 "docs/conformance/README.md",
-                "# Conformance\n\n- [M4 conformance matrix](m4-conformance-matrix.md)\n- [M5 conformance matrix](m5-conformance-matrix.md)\n- [M6 conformance matrix](m6-conformance-matrix.md)\n- [M7 conformance matrix](m7-conformance-matrix.md)\n- [M8 conformance matrix](m8-conformance-matrix.md)\n- [M9 conformance matrix](m9-conformance-matrix.md)\n- [M10 conformance matrix](m10-conformance-matrix.md)\n",
+                "# Conformance\n\n- [M4 conformance matrix](m4-conformance-matrix.md)\n- [M5 conformance matrix](m5-conformance-matrix.md)\n- [M6 conformance matrix](m6-conformance-matrix.md)\n- [M7 conformance matrix](m7-conformance-matrix.md)\n- [M8 conformance matrix](m8-conformance-matrix.md)\n- [M9 conformance matrix](m9-conformance-matrix.md)\n- [M10 conformance matrix](m10-conformance-matrix.md)\n- [M11 conformance matrix](m11-conformance-matrix.md)\n",
             ),
         ] {
             self.write(path, contents)?;
@@ -210,6 +210,11 @@ impl Fixture {
                 "docs/conformance/m10-conformance-matrix.md",
                 "M10TEXT-01",
                 "M10B",
+            ),
+            (
+                "docs/conformance/m11-conformance-matrix.md",
+                "M11CTRL-01",
+                "M11A",
             ),
         ] {
             self.write(
