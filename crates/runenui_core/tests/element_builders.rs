@@ -260,7 +260,7 @@ fn common_node_authoring_has_element_builtin_parity() -> Result<(), Box<dyn std:
     let builtin: Element<Action> = text("Title")
         .id("common")
         .key("common-key")
-        .with_layout(layout.clone())
+        .with_layout(layout)
         .recipe(recipe)
         .variant(variant)
         .foreground(Color::WHITE)
