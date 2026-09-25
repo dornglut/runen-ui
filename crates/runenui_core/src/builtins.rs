@@ -9,7 +9,7 @@ use crate::{
     SemanticState, SemanticText, ShadowValue, SpacingValue, StyleIntent, StyleRecipeId,
     StyleVariantId, TransitionSpec, TypographyValue, WidgetActivationContext, WidgetInvalidation,
     WidgetUpdateContext,
-    element::{AuthoredElementFields, AuthoringDiagnostic, Element, View, Views},
+    element::{CommonNodeAuthoring, Element, View, Views, common_node_builder_methods},
     widget_erasure::{ErasedWidget, WidgetAdapter},
     widget_protocol::{
         ChildBearingWidget, Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure,
@@ -17,105 +17,10 @@ use crate::{
     },
 };
 
-macro_rules! common_builder_methods {
-    () => {
-        #[must_use]
-        pub fn id(mut self, id: impl IntoElementId) -> Self {
-            assign_id(&mut self.id, &mut self.diagnostics, id);
-            self
-        }
-        #[must_use]
-        pub fn key(mut self, key: impl IntoElementKey) -> Self {
-            assign_key(&mut self.key, &mut self.diagnostics, key);
-            self
-        }
-        #[must_use]
-        pub fn with_layout(mut self, layout: LayoutStyle) -> Self {
-            self.layout = layout;
-            self
-        }
-        #[must_use]
-        pub fn recipe(mut self, recipe: StyleRecipeId) -> Self {
-            self.style = self.style.with_recipe(recipe);
-            self
-        }
-        #[must_use]
-        pub fn variant(mut self, variant: StyleVariantId) -> Self {
-            self.style = self.style.with_variant(variant);
-            self
-        }
-        #[must_use]
-        pub fn foreground(mut self, value: impl Into<ColorValue>) -> Self {
-            self.style = self.style.with_foreground(value);
-            self
-        }
-        #[must_use]
-        pub fn background(mut self, value: impl Into<BrushValue>) -> Self {
-            self.style = self.style.with_background(value);
-            self
-        }
-        #[must_use]
-        pub fn padding(mut self, value: impl Into<SpacingValue>) -> Self {
-            self.style = self.style.with_padding(value);
-            self
-        }
-        #[must_use]
-        pub fn radius(mut self, value: impl Into<RadiusValue>) -> Self {
-            self.style = self.style.with_radius(value);
-            self
-        }
-        #[must_use]
-        pub fn typography(mut self, value: impl Into<TypographyValue>) -> Self {
-            self.style = self.style.with_typography(value);
-            self
-        }
-        #[must_use]
-        pub fn outline(mut self, value: impl Into<OutlineValue>) -> Self {
-            self.style = self.style.with_outline(value);
-            self
-        }
-        #[must_use]
-        pub fn shadows(mut self, value: impl Into<ShadowValue>) -> Self {
-            self.style = self.style.with_shadows(value);
-            self
-        }
-        #[must_use]
-        pub fn opacity(mut self, value: impl Into<OpacityValue>) -> Self {
-            self.style = self.style.with_opacity(value);
-            self
-        }
-        #[must_use]
-        pub fn presentation(mut self, value: impl Into<PresentationValue>) -> Self {
-            self.style = self.style.with_presentation(value);
-            self
-        }
-        #[must_use]
-        pub fn transition(mut self, target: MotionTarget, spec: TransitionSpec) -> Self {
-            self.style = self.style.with_transition(target, spec);
-            self
-        }
-        #[must_use]
-        pub fn transition_disabled(mut self, target: MotionTarget) -> Self {
-            self.style = self.style.with_transition_disabled(target);
-            self
-        }
-        #[must_use]
-        pub fn timeline(mut self, timeline: ExplicitTimeline) -> Self {
-            self.timelines.push(timeline);
-            self
-        }
-    };
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Text {
     content: String,
-    id: Option<ElementId>,
-    key: Option<ElementKey>,
-    layout: LayoutStyle,
-    style: StyleIntent,
-    timelines: Vec<ExplicitTimeline>,
-    diagnostics: Vec<AuthoringDiagnostic>,
+    common: CommonNodeAuthoring,
 }
 
 impl Text {
@@ -123,15 +28,10 @@ impl Text {
     pub fn new(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
-            id: None,
-            key: None,
-            layout: LayoutStyle::default(),
-            style: StyleIntent::EMPTY,
-            timelines: Vec::new(),
-            diagnostics: Vec::new(),
+            common: CommonNodeAuthoring::default(),
         }
     }
-    common_builder_methods!();
+    common_node_builder_methods!();
     #[must_use]
     pub const fn content(&self) -> &str {
         self.content.as_str()
@@ -178,36 +78,26 @@ impl<Action> Widget<Action> for TextWidget {
 
 impl<Action: 'static> View<Action> for Text {
     fn into_element(self) -> Element<Action> {
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(crate::Focusability::Automatic, None);
         Element::from_authored_parts(
-            AuthoredElementFields::new(
-                self.id,
-                self.key,
-                self.layout,
-                self.style,
-                self.timelines,
-                crate::Focusability::Automatic,
-                None,
-            ),
+            fields,
             Box::new(WidgetAdapter(TextWidget {
                 content: self.content,
             })),
             Vec::new(),
-            self.diagnostics,
+            diagnostics,
         )
     }
 }
 
 pub struct Button<Action> {
     label: String,
-    id: Option<ElementId>,
-    key: Option<ElementKey>,
-    layout: LayoutStyle,
+    common: CommonNodeAuthoring,
     enabled: bool,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
-    style: StyleIntent,
-    timelines: Vec<ExplicitTimeline>,
-    diagnostics: Vec<AuthoringDiagnostic>,
 }
 
 impl<Action> fmt::Debug for Button<Action> {
@@ -215,15 +105,15 @@ impl<Action> fmt::Debug for Button<Action> {
         formatter
             .debug_struct("Button")
             .field("label", &self.label)
-            .field("id", &self.id)
-            .field("key", &self.key)
-            .field("layout", &self.layout)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("layout", &self.common.layout)
             .field("enabled", &self.enabled)
             .field("actionable", &self.actionable)
             .field("has_callback", &self.activation_factory.is_some())
-            .field("style", &self.style)
-            .field("timelines", &self.timelines)
-            .field("diagnostics", &self.diagnostics)
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
+            .field("diagnostics", &self.common.diagnostics)
             .finish()
     }
 }
@@ -233,18 +123,13 @@ impl<Action> Button<Action> {
     pub fn new(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
-            id: None,
-            key: None,
-            layout: LayoutStyle::default(),
+            common: CommonNodeAuthoring::default(),
             enabled: true,
             activation_factory: None,
             actionable: false,
-            style: StyleIntent::EMPTY,
-            timelines: Vec::new(),
-            diagnostics: Vec::new(),
         }
     }
-    common_builder_methods!();
+    common_node_builder_methods!();
     #[must_use]
     pub const fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
@@ -379,16 +264,11 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
 
 impl<Action: 'static> View<Action> for Button<Action> {
     fn into_element(self) -> Element<Action> {
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(crate::Focusability::Automatic, None);
         Element::from_authored_parts(
-            AuthoredElementFields::new(
-                self.id,
-                self.key,
-                self.layout,
-                self.style,
-                self.timelines,
-                crate::Focusability::Automatic,
-                None,
-            ),
+            fields,
             Box::new(WidgetAdapter(ButtonWidget {
                 label: self.label,
                 enabled: self.enabled,
@@ -396,7 +276,7 @@ impl<Action: 'static> View<Action> for Button<Action> {
                 actionable: self.actionable,
             })),
             Vec::new(),
-            self.diagnostics,
+            diagnostics,
         )
     }
 }
@@ -404,12 +284,7 @@ impl<Action: 'static> View<Action> for Button<Action> {
 pub struct Container<Action> {
     widget: Box<dyn ErasedWidget<Action>>,
     children: Vec<Element<Action>>,
-    id: Option<ElementId>,
-    key: Option<ElementKey>,
-    layout: LayoutStyle,
-    style: StyleIntent,
-    timelines: Vec<ExplicitTimeline>,
-    diagnostics: Vec<AuthoringDiagnostic>,
+    common: CommonNodeAuthoring,
 }
 
 impl<Action> fmt::Debug for Container<Action> {
@@ -418,12 +293,12 @@ impl<Action> fmt::Debug for Container<Action> {
             .debug_struct("Container")
             .field("widget", &self.widget)
             .field("children", &self.children)
-            .field("id", &self.id)
-            .field("key", &self.key)
-            .field("layout", &self.layout)
-            .field("style", &self.style)
-            .field("timelines", &self.timelines)
-            .field("diagnostics", &self.diagnostics)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("layout", &self.common.layout)
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
+            .field("diagnostics", &self.common.diagnostics)
             .finish()
     }
 }
@@ -437,18 +312,13 @@ impl<Action> Container<Action> {
         Self {
             widget: Box::new(WidgetAdapter(widget)),
             children: children.into_elements(),
-            id: None,
-            key: None,
-            layout: LayoutStyle::default(),
-            style: StyleIntent::EMPTY,
-            timelines: Vec::new(),
-            diagnostics: Vec::new(),
+            common: CommonNodeAuthoring::default(),
         }
     }
-    common_builder_methods!();
+    common_node_builder_methods!();
     #[must_use]
     pub fn gap(mut self, gap: impl Into<LogicalLength>) -> Self {
-        self.layout = self.layout.with_gap(gap);
+        self.common.layout = self.common.layout.with_gap(gap);
         self
     }
 }
@@ -476,20 +346,10 @@ impl<Action> ChildBearingWidget<Action> for GroupWidget {}
 
 impl<Action: 'static> View<Action> for Container<Action> {
     fn into_element(self) -> Element<Action> {
-        Element::from_authored_parts(
-            AuthoredElementFields::new(
-                self.id,
-                self.key,
-                self.layout,
-                self.style,
-                self.timelines,
-                crate::Focusability::Automatic,
-                None,
-            ),
-            self.widget,
-            self.children,
-            self.diagnostics,
-        )
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(crate::Focusability::Automatic, None);
+        Element::from_authored_parts(fields, self.widget, self.children, diagnostics)
     }
 }
 
@@ -529,32 +389,3 @@ fn local_rect(size: LogicalSize) -> LogicalRect {
         .unwrap_or_else(|_| unreachable!("validated local size yields a valid local rectangle"))
 }
 
-fn assign_id(
-    slot: &mut Option<ElementId>,
-    diagnostics: &mut Vec<AuthoringDiagnostic>,
-    value: impl IntoElementId,
-) {
-    match value.into_element_id() {
-        Ok(id) => *slot = Some(id),
-        Err((value, error)) => diagnostics.push(AuthoringDiagnostic {
-            field: "id",
-            value,
-            error,
-        }),
-    }
-}
-
-fn assign_key(
-    slot: &mut Option<ElementKey>,
-    diagnostics: &mut Vec<AuthoringDiagnostic>,
-    value: impl IntoElementKey,
-) {
-    match value.into_element_key() {
-        Ok(key) => *slot = Some(key),
-        Err((value, error)) => diagnostics.push(AuthoringDiagnostic {
-            field: "key",
-            value,
-            error,
-        }),
-    }
-}
