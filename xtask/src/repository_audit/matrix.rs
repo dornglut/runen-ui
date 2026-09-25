@@ -577,7 +577,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{
-        M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC, M10_SPEC, MATRIX_SPECS,
+        M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC, M10_SPEC, M11_SPEC, MATRIX_SPECS,
         analyze_contents, audit_inventory, compare_declared_summary, declared_metric, parse_rows,
         parse_summary, valid_id, validate_inventory,
     };
