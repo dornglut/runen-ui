@@ -157,6 +157,20 @@ impl ReferenceDocumentPreset {
             Self::StressDocument => generated_reference_document(STRESS_DOCUMENT_LINES),
         }
     }
+
+    fn initial_state(self) -> DemoState {
+        let text = self.initial_text();
+        match self {
+            Self::Default => DemoState::with_selection(
+                text,
+                INITIAL_EDITOR_TEXT.len(),
+                TextAffinity::Upstream,
+            ),
+            Self::LargeDocument | Self::StressDocument => {
+                DemoState::with_selection(text, 0, TextAffinity::Downstream)
+            }
+        }
+    }
 }
 
 fn generated_reference_document(line_count: usize) -> String {
@@ -169,23 +183,23 @@ fn generated_reference_document(line_count: usize) -> String {
         match line % 16 {
             0 => write!(
                 text,
-                "[section {section:03} line {line:05}] stable reference marker for navigation"
+                "[section {section:03} line {line:05}] reference marker for navigation"
             ),
             1 => write!(
                 text,
-                "Plain ASCII text for ordinary editing, selection, and typing."
+                "Plain ASCII text for editing, selection, and typing."
             ),
             2 => write!(
                 text,
-                "    Indented line with stable whitespace and caret targets."
+                "    Indented line with whitespace and caret targets."
             ),
-            3 => write!(text, "Combining: cafe\u{301} nai\u{308}ve A\u{30a} remain grapheme clusters."),
+            3 => write!(text, "Combining: cafe\u{301} nai\u{308}ve A\u{30a} grapheme clusters."),
             4 => Ok(()),
-            5 => write!(text, "Emoji/ZWJ: 👩‍💻 👨‍👩‍👧‍👦 🚀 with nearby ASCII text."),
+            5 => write!(text, "Emoji/ZWJ: 👩‍💻 👨‍👩‍👧‍👦 🚀 with ASCII text."),
             6 => write!(text, "Mixed direction: marker ثم العربية ثم ASCII marker."),
             7 => write!(
                 text,
-                "Long wrapping line exercises deterministic responsive reflow across the reference window width and resize path."
+                "Long wrapping line exercises responsive reflow across the reference window width and resize path."
             ),
             8 => write!(text, "Short line for quick navigation."),
             9 => write!(
@@ -194,7 +208,7 @@ fn generated_reference_document(line_count: usize) -> String {
             ),
             10 => write!(
                 text,
-                "Ordinary prose for mouse selection, word navigation, and editing."
+                "Prose for mouse selection, word navigation, and editing."
             ),
             11 => write!(
                 text,
@@ -231,8 +245,8 @@ struct DemoHistoryEntry {
 }
 
 impl DemoState {
-    fn with_text(text: String) -> Self {
-        let selection_seed = EditSelection::collapsed(&text, text.len(), TextAffinity::Upstream)
+    fn with_selection(text: String, byte_offset: usize, affinity: TextAffinity) -> Self {
+        let selection_seed = EditSelection::collapsed(&text, byte_offset, affinity)
             .unwrap_or_else(|_| unreachable!("reference selection seed is checked"));
         Self {
             text,
@@ -246,7 +260,11 @@ impl DemoState {
 
 impl Default for DemoState {
     fn default() -> Self {
-        Self::with_text(INITIAL_EDITOR_TEXT.to_owned())
+        Self::with_selection(
+            INITIAL_EDITOR_TEXT.to_owned(),
+            INITIAL_EDITOR_TEXT.len(),
+            TextAffinity::Upstream,
+        )
     }
 }
 
@@ -2286,7 +2304,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_loop = EventLoop::<HostEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
-    let mut host = ReferenceHost::new(proxy, DemoState::with_text(preset.initial_text()));
+    let mut host = ReferenceHost::new(proxy, preset.initial_state());
     event_loop.run_app(&mut host)?;
     Ok(())
 }
@@ -2345,14 +2363,14 @@ mod tests {
             (
                 ReferenceDocumentPreset::LargeDocument,
                 LARGE_DOCUMENT_LINES,
-                220_000,
-                280_000,
+                225_000,
+                240_000,
             ),
             (
                 ReferenceDocumentPreset::StressDocument,
                 STRESS_DOCUMENT_LINES,
-                880_000,
-                1_100_000,
+                910_000,
+                945_000,
             ),
         ] {
             let first = preset.initial_text();
@@ -2366,6 +2384,10 @@ mod tests {
             assert!(first.contains("👩‍💻"));
             assert!(first.contains("العربية"));
             assert!(first.contains("Long wrapping line"));
+
+            let state = preset.initial_state();
+            assert_eq!(state.text, first);
+            assert_eq!(state.selection_seed.byte_range(), 0..0);
         }
     }
 
