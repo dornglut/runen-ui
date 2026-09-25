@@ -384,4 +384,3 @@ fn local_rect(size: LogicalSize) -> LogicalRect {
     LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
         .unwrap_or_else(|_| unreachable!("validated local size yields a valid local rectangle"))
 }
-
