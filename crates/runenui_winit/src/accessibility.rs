@@ -324,7 +324,9 @@ impl SurfaceProjection {
         let focus = self
             .current_snapshot
             .as_ref()
-            .map_or(NodeId(0), |snapshot| self.focus_id_without_mutation(snapshot));
+            .map_or(NodeId(0), |snapshot| {
+                self.focus_id_without_mutation(snapshot)
+            });
         (
             UpdateMode::Unchanged,
             TreeUpdate {
