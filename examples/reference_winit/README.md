@@ -8,6 +8,15 @@ Because the example is a native desktop host, it explicitly permits system-font 
 
 Run the host with `cargo run -p reference_winit`. Click or drag in the text, type committed text, use native IME composition where supported, and try copy/cut/paste with a selected range. Native winit touch contacts are normalized through the public `runenui_winit` adapter using the exact displayed-frame mapping; mapping, focus, and suspension loss cancel live contacts. Pointer identity uses disjoint mouse/touch namespaces. File drops are admitted only at the exact widget target; the example does not open or read dropped files.
 
+For reproducible large-document interaction checks, the same binary can initialize the ordinary application-owned editor state with deterministic generated text:
+
+```text
+cargo run -p reference_winit --release -- --large-document
+cargo run -p reference_winit --release -- --stress-document
+```
+
+`--large-document` generates 4,000 lines at roughly 230 KB; `--stress-document` generates 16,000 lines at roughly 930 KB. Both fixtures include stable line/section markers, varied line lengths and wrapping, whitespace, combining graphemes, emoji/ZWJ sequences, and a small mixed-direction sample. They use the same application/runtime/text/render path as the default editor and are intended for repeatable manual scrolling, caret/selection, editing, clipboard, undo/redo, resize/reflow, and IME checks—not as a separate editor implementation or Unicode correctness corpus.
+
 The selected native profile is this winit 0.30.13 desktop reference host, exercised on macOS/Metal in the local proof run. That verifies the host mechanisms and event translations, not attached-device touch, all IME implementations, or other platform backends; broader native hardware/platform coverage remains M13.
 
 ## Native wheel normalization

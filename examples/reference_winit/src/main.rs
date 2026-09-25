@@ -1,5 +1,6 @@
 use std::{
-    env, fmt,
+    env,
+    fmt::{self, Write as _},
     future::Future,
     path::PathBuf,
     pin::pin,
@@ -117,7 +118,113 @@ impl From<accesskit_winit::Event> for HostEvent {
 }
 
 const INITIAL_EDITOR_TEXT: &str = "RunenUI M10 Reference Host\n\nThis is an application-owned editable document. Click anywhere and type; try mouse selection, clipboard shortcuts, IME composition, and scrolling.";
+const LARGE_DOCUMENT_LINES: usize = 4_000;
+const STRESS_DOCUMENT_LINES: usize = 16_000;
 const MAX_EDITOR_HISTORY_ENTRIES: usize = 100;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReferenceDocumentPreset {
+    Default,
+    LargeDocument,
+    StressDocument,
+}
+
+impl ReferenceDocumentPreset {
+    fn parse(arguments: impl IntoIterator<Item = String>) -> Result<Self, String> {
+        let mut arguments = arguments.into_iter();
+        let preset = match arguments.next().as_deref() {
+            None => Self::Default,
+            Some("--large-document") => Self::LargeDocument,
+            Some("--stress-document") => Self::StressDocument,
+            Some(argument) => {
+                return Err(format!(
+                    "unknown reference_winit argument `{argument}`; expected --large-document or --stress-document"
+                ));
+            }
+        };
+        if let Some(argument) = arguments.next() {
+            return Err(format!(
+                "unexpected extra reference_winit argument `{argument}`; choose at most one document preset"
+            ));
+        }
+        Ok(preset)
+    }
+
+    fn initial_text(self) -> String {
+        match self {
+            Self::Default => INITIAL_EDITOR_TEXT.to_owned(),
+            Self::LargeDocument => generated_reference_document(LARGE_DOCUMENT_LINES),
+            Self::StressDocument => generated_reference_document(STRESS_DOCUMENT_LINES),
+        }
+    }
+
+    fn initial_state(self) -> DemoState {
+        let text = self.initial_text();
+        let (byte_offset, affinity) = if self == Self::Default {
+            (text.len(), TextAffinity::Upstream)
+        } else {
+            (0, TextAffinity::Downstream)
+        };
+        DemoState::with_selection(text, byte_offset, affinity)
+    }
+}
+
+fn generated_reference_document(line_count: usize) -> String {
+    let mut text = String::with_capacity(line_count.saturating_mul(64));
+    for line in 0..line_count {
+        if line > 0 {
+            text.push('\n');
+        }
+        let section = line / 200;
+        match line % 16 {
+            0 => write!(
+                text,
+                "[section {section:03} line {line:05}] reference marker for navigation"
+            ),
+            1 => write!(
+                text,
+                "Plain ASCII text for editing, selection, and typing."
+            ),
+            2 => write!(
+                text,
+                "    Indented line with whitespace and caret targets."
+            ),
+            3 => write!(text, "Combining: cafe\u{301} nai\u{308}ve A\u{30a} grapheme clusters."),
+            4 => Ok(()),
+            5 => write!(text, "Emoji/ZWJ: 👩‍💻 👨‍👩‍👧‍👦 🚀 with ASCII text."),
+            6 => write!(text, "Mixed direction: marker ثم العربية ثم ASCII marker."),
+            7 => write!(
+                text,
+                "Long wrapping line exercises responsive reflow across the reference window width and resize path."
+            ),
+            8 => write!(text, "Short line for quick navigation."),
+            9 => write!(
+                text,
+                "Numbers 0123456789 and punctuation !?.,:; [] {{}} () +-=/."
+            ),
+            10 => write!(
+                text,
+                "Prose for mouse selection, word navigation, and editing."
+            ),
+            11 => write!(
+                text,
+                "        Deep indentation provides visible leading-space caret targets."
+            ),
+            12 => write!(
+                text,
+                "Resize to exercise wrapping, scrolling, caret geometry, and publication."
+            ),
+            13 => write!(text, "Unicode: Ελληνικά 日本語 हिन्दी alongside ordinary text."),
+            14 => write!(
+                text,
+                "Near-line marker keeps middle and end navigation predictable."
+            ),
+            _ => write!(text, "[line {line:05}] end of deterministic pattern marker"),
+        }
+        .unwrap_or_else(|_| unreachable!("writing to a String is infallible"));
+    }
+    text
+}
 
 struct DemoState {
     text: String,
@@ -133,11 +240,10 @@ struct DemoHistoryEntry {
     selection: EditSelection,
 }
 
-impl Default for DemoState {
-    fn default() -> Self {
-        let text = INITIAL_EDITOR_TEXT.to_owned();
-        let selection_seed = EditSelection::collapsed(&text, text.len(), TextAffinity::Upstream)
-            .unwrap_or_else(|_| unreachable!("initial reference selection is checked"));
+impl DemoState {
+    fn with_selection(text: String, byte_offset: usize, affinity: TextAffinity) -> Self {
+        let selection_seed = EditSelection::collapsed(&text, byte_offset, affinity)
+            .unwrap_or_else(|_| unreachable!("reference selection seed is checked"));
         Self {
             text,
             revision: 0,
@@ -145,6 +251,16 @@ impl Default for DemoState {
             undo: Vec::new(),
             redo: Vec::new(),
         }
+    }
+}
+
+impl Default for DemoState {
+    fn default() -> Self {
+        Self::with_selection(
+            INITIAL_EDITOR_TEXT.to_owned(),
+            INITIAL_EDITOR_TEXT.len(),
+            TextAffinity::Upstream,
+        )
     }
 }
 
@@ -628,9 +744,8 @@ struct ReferenceHost {
 
 impl ReferenceHost {
     #[must_use]
-    fn new(proxy: EventLoopProxy<HostEvent>) -> Self {
-        let (runtime, trace_sink) =
-            proof_trace::mount::<DemoApp>(DemoState::default(), proof_enabled());
+    fn new(proxy: EventLoopProxy<HostEvent>, state: DemoState) -> Self {
+        let (runtime, trace_sink) = proof_trace::mount::<DemoApp>(state, proof_enabled());
         let wake_proxy = proxy.clone();
         runtime.set_wake_transport(move || {
             let _ = wake_proxy.send_event(HostEvent::Wake);
@@ -2180,10 +2295,12 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let preset = ReferenceDocumentPreset::parse(env::args().skip(1))
+        .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidInput, message))?;
     let event_loop = EventLoop::<HostEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
-    let mut host = ReferenceHost::new(proxy);
+    let mut host = ReferenceHost::new(proxy, preset.initial_state());
     event_loop.run_app(&mut host)?;
     Ok(())
 }
@@ -2192,9 +2309,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::{
         AppRuntime, CommandOrigin, CommittedTextEvent, DemoApp, DemoHistoryEntry, DemoState,
-        DisplayedFrame, HOST_PUMP_BUDGET, INITIAL_EDITOR_TEXT, KeyboardEvent, LogicalSize,
-        MAX_EDITOR_HISTORY_ENTRIES, NativeMapping, PendingFrame, PointIngressDiagnostic,
-        SemanticAdapter, SemanticCommand, StyleEnvironment, SurfaceBuildContext,
+        DisplayedFrame, HOST_PUMP_BUDGET, INITIAL_EDITOR_TEXT, KeyboardEvent, LARGE_DOCUMENT_LINES,
+        LogicalSize, MAX_EDITOR_HISTORY_ENTRIES, NativeMapping, PendingFrame,
+        PointIngressDiagnostic, ReferenceDocumentPreset, STRESS_DOCUMENT_LINES, SemanticAdapter,
+        SemanticCommand, StyleEnvironment, SurfaceBuildContext,
         mouse_input::{
             MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
             translate_mouse_button,
@@ -2210,6 +2328,76 @@ mod tests {
         event::{ElementState, MouseButton},
         keyboard::ModifiersState,
     };
+
+    #[test]
+    fn reference_document_preset_parsing_is_explicit_and_bounded() {
+        assert_eq!(
+            ReferenceDocumentPreset::parse(Vec::<String>::new()),
+            Ok(ReferenceDocumentPreset::Default)
+        );
+        assert_eq!(
+            ReferenceDocumentPreset::parse(["--large-document".to_owned()]),
+            Ok(ReferenceDocumentPreset::LargeDocument)
+        );
+        assert_eq!(
+            ReferenceDocumentPreset::parse(["--stress-document".to_owned()]),
+            Ok(ReferenceDocumentPreset::StressDocument)
+        );
+        assert!(ReferenceDocumentPreset::parse(["--unknown".to_owned()]).is_err());
+        assert!(
+            ReferenceDocumentPreset::parse([
+                "--large-document".to_owned(),
+                "--stress-document".to_owned(),
+            ])
+            .is_err()
+        );
+
+        let default_state = ReferenceDocumentPreset::Default.initial_state();
+        assert_eq!(default_state.text, INITIAL_EDITOR_TEXT);
+        assert_eq!(
+            default_state.selection_seed.anchor(),
+            INITIAL_EDITOR_TEXT.len()
+        );
+        assert_eq!(
+            default_state.selection_seed.active(),
+            INITIAL_EDITOR_TEXT.len()
+        );
+    }
+
+    #[test]
+    fn generated_document_presets_are_deterministic_and_match_declared_scale() {
+        for (preset, expected_lines, minimum_bytes, maximum_bytes) in [
+            (
+                ReferenceDocumentPreset::LargeDocument,
+                LARGE_DOCUMENT_LINES,
+                225_000,
+                240_000,
+            ),
+            (
+                ReferenceDocumentPreset::StressDocument,
+                STRESS_DOCUMENT_LINES,
+                910_000,
+                945_000,
+            ),
+        ] {
+            let first = preset.initial_text();
+            let second = preset.initial_text();
+
+            assert_eq!(first, second);
+            assert_eq!(first.lines().count(), expected_lines);
+            assert!((minimum_bytes..=maximum_bytes).contains(&first.len()));
+            assert!(first.contains("[section 000 line 00000]"));
+            assert!(first.contains("cafe\u{301}"));
+            assert!(first.contains("👩‍💻"));
+            assert!(first.contains("العربية"));
+            assert!(first.contains("Long wrapping line"));
+
+            let state = preset.initial_state();
+            assert_eq!(state.text, first);
+            assert_eq!(state.selection_seed.anchor(), 0);
+            assert_eq!(state.selection_seed.active(), 0);
+        }
+    }
 
     fn input_device(value: u64) -> InputDeviceId {
         InputDeviceId::new(value)
