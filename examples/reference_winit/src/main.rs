@@ -2309,10 +2309,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::{
         AppRuntime, CommandOrigin, CommittedTextEvent, DemoApp, DemoHistoryEntry, DemoState,
-        DisplayedFrame, HOST_PUMP_BUDGET, INITIAL_EDITOR_TEXT, KeyboardEvent,
-        LARGE_DOCUMENT_LINES, LogicalSize, MAX_EDITOR_HISTORY_ENTRIES, NativeMapping,
-        PendingFrame, PointIngressDiagnostic, ReferenceDocumentPreset, STRESS_DOCUMENT_LINES,
-        SemanticAdapter, SemanticCommand, StyleEnvironment, SurfaceBuildContext,
+        DisplayedFrame, HOST_PUMP_BUDGET, INITIAL_EDITOR_TEXT, KeyboardEvent, LARGE_DOCUMENT_LINES,
+        LogicalSize, MAX_EDITOR_HISTORY_ENTRIES, NativeMapping, PendingFrame,
+        PointIngressDiagnostic, ReferenceDocumentPreset, STRESS_DOCUMENT_LINES, SemanticAdapter,
+        SemanticCommand, StyleEnvironment, SurfaceBuildContext,
         mouse_input::{
             MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
             translate_mouse_button,
@@ -2354,8 +2354,14 @@ mod tests {
 
         let default_state = ReferenceDocumentPreset::Default.initial_state();
         assert_eq!(default_state.text, INITIAL_EDITOR_TEXT);
-        assert_eq!(default_state.selection_seed.anchor(), INITIAL_EDITOR_TEXT.len());
-        assert_eq!(default_state.selection_seed.active(), INITIAL_EDITOR_TEXT.len());
+        assert_eq!(
+            default_state.selection_seed.anchor(),
+            INITIAL_EDITOR_TEXT.len()
+        );
+        assert_eq!(
+            default_state.selection_seed.active(),
+            INITIAL_EDITOR_TEXT.len()
+        );
     }
 
     #[test]
