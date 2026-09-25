@@ -106,6 +106,16 @@ pub enum SemanticCheckedState {
     Mixed,
 }
 
+impl From<bool> for SemanticCheckedState {
+    fn from(checked: bool) -> Self {
+        if checked {
+            Self::Checked
+        } else {
+            Self::Unchecked
+        }
+    }
+}
+
 /// Revision-scoped editable text facts projected through the neutral semantic tree.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemanticEditable {
