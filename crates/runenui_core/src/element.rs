@@ -12,13 +12,13 @@ use crate::{
 };
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct CommonNodeAuthoring {
-    pub id: Option<ElementId>,
-    pub key: Option<ElementKey>,
-    pub layout: LayoutStyle,
-    pub style: StyleIntent,
-    pub timelines: Vec<ExplicitTimeline>,
-    pub diagnostics: Vec<AuthoringDiagnostic>,
+pub(super) struct CommonNodeAuthoring {
+    pub(super) id: Option<ElementId>,
+    pub(super) key: Option<ElementKey>,
+    pub(super) layout: LayoutStyle,
+    pub(super) style: StyleIntent,
+    pub(super) timelines: Vec<ExplicitTimeline>,
+    pub(super) diagnostics: Vec<AuthoringDiagnostic>,
 }
 
 impl Default for CommonNodeAuthoring {
@@ -35,7 +35,7 @@ impl Default for CommonNodeAuthoring {
 }
 
 impl CommonNodeAuthoring {
-    pub fn from_authored_fields(
+    pub(super) fn from_authored_fields(
         fields: AuthoredElementFields,
         diagnostics: Vec<AuthoringDiagnostic>,
     ) -> (Self, Focusability, Option<FocusScope>) {
@@ -53,7 +53,7 @@ impl CommonNodeAuthoring {
         )
     }
 
-    pub fn into_authored_fields(
+    pub(super) fn into_authored_fields(
         self,
         focusability: Focusability,
         focus_scope: Option<FocusScope>,
@@ -72,7 +72,7 @@ impl CommonNodeAuthoring {
         )
     }
 
-    pub fn assign_id(&mut self, value: impl IntoElementId) {
+    pub(super) fn assign_id(&mut self, value: impl IntoElementId) {
         match value.into_element_id() {
             Ok(id) => self.id = Some(id),
             Err((value, error)) => self.diagnostics.push(AuthoringDiagnostic {
@@ -83,7 +83,7 @@ impl CommonNodeAuthoring {
         }
     }
 
-    pub fn assign_key(&mut self, value: impl IntoElementKey) {
+    pub(super) fn assign_key(&mut self, value: impl IntoElementKey) {
         match value.into_element_key() {
             Ok(key) => self.key = Some(key),
             Err((value, error)) => self.diagnostics.push(AuthoringDiagnostic {
@@ -197,7 +197,7 @@ macro_rules! common_node_builder_methods {
     };
 }
 
-pub use common_node_builder_methods;
+pub(super) use common_node_builder_methods;
 
 pub struct Element<Action> {
     common: CommonNodeAuthoring,
@@ -277,7 +277,7 @@ impl<Action> Element<Action> {
         }
     }
 
-    pub fn from_authored_parts(
+    pub(crate) fn from_authored_parts(
         fields: AuthoredElementFields,
         widget: Box<dyn ErasedWidget<Action>>,
         children: Vec<Self>,
@@ -446,9 +446,9 @@ where
 /// Invalid authored configuration retained for deterministic runtime reporting.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AuthoringDiagnostic {
-    pub field: &'static str,
-    pub value: String,
-    pub error: IdentifierError,
+    pub(crate) field: &'static str,
+    pub(crate) value: String,
+    pub(crate) error: IdentifierError,
 }
 
 impl AuthoringDiagnostic {
