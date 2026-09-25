@@ -14,7 +14,7 @@ use crate::{
     TraceSpaceCleanupReason, TraceSurfaceContext, TraceTarget, TraceTargetTransition, WorkSequence,
     focus::{
         FocusBoundaryOutcome, FocusNavigation, FocusSelection, is_focus_eligible, nearest_scope,
-        select_focus,
+        select_focus, select_focus_group_member,
     },
     mounted::{PlannedInvalidation, PlannedLifetimeReason, RouteBuildError, TargetStatus},
     trace::{MandatoryTracePlan, TraceRecordDraft, TraceReservation},
@@ -391,6 +391,41 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     Some(target),
                     FocusReason::ProgrammaticRequest,
                 );
+            }
+            return Ok(());
+        }
+        if matches!(
+            command,
+            SemanticCommand::FocusGroupNext | SemanticCommand::FocusGroupPrevious
+        ) {
+            let forward = command == SemanticCommand::FocusGroupNext;
+            let Some(selection) = select_focus_group_member(
+                &mut self.tree,
+                &self.focus,
+                &transaction.target,
+                forward,
+            ) else {
+                return Ok(());
+            };
+            let Some(target) = selection.target else {
+                return Ok(());
+            };
+            self.commit_focus_transition(
+                transaction,
+                Some(target.clone()),
+                FocusReason::GroupNavigation,
+            )?;
+            if selection.activation == runenui_core::FocusGroupActivationPolicy::ActivateTarget {
+                if transaction.remaining_outputs == 0 {
+                    return Err(TraceRoutedIntegrityFailure::OutputAllowanceExceeded);
+                }
+                transaction.remaining_outputs -= 1;
+                transaction.default_outputs.push(CollectedRoutedOutput::Command {
+                    target,
+                    command: SemanticCommand::Activate,
+                    origin: CommandOrigin::__runtime_delegated(transaction.origin.source()),
+                    causal_parent: transaction.parent,
+                });
             }
             return Ok(());
         }
