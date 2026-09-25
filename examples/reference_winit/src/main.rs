@@ -159,16 +159,18 @@ impl ReferenceDocumentPreset {
     }
 
     fn initial_state(self) -> DemoState {
-        let text = self.initial_text();
         match self {
-            Self::Default => DemoState::with_selection(
-                text,
-                INITIAL_EDITOR_TEXT.len(),
-                TextAffinity::Upstream,
+            Self::Default => DemoState::default(),
+            Self::LargeDocument => DemoState::with_selection(
+                generated_reference_document(LARGE_DOCUMENT_LINES),
+                0,
+                TextAffinity::Downstream,
             ),
-            Self::LargeDocument | Self::StressDocument => {
-                DemoState::with_selection(text, 0, TextAffinity::Downstream)
-            }
+            Self::StressDocument => DemoState::with_selection(
+                generated_reference_document(STRESS_DOCUMENT_LINES),
+                0,
+                TextAffinity::Downstream,
+            ),
         }
     }
 }
@@ -2387,7 +2389,8 @@ mod tests {
 
             let state = preset.initial_state();
             assert_eq!(state.text, first);
-            assert_eq!(state.selection_seed.byte_range(), 0..0);
+            assert_eq!(state.selection_seed.anchor(), 0);
+            assert_eq!(state.selection_seed.active(), 0);
         }
     }
 
