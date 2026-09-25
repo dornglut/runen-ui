@@ -322,11 +322,19 @@ Current role mapping is exact and deliberately small:
 | `SemanticRole::Group` | `Role::Group` |
 | `SemanticRole::Text` | `Role::Label` |
 | `SemanticRole::Button` | `Role::Button` |
+| `SemanticRole::EditableText` | `Role::TextInput` (or `Role::PasswordInput` for secret editable content) |
+| `SemanticRole::Checkbox` | `Role::CheckBox` |
+| `SemanticRole::RadioButton` | `Role::RadioButton` |
+| `SemanticRole::RadioGroup` | `Role::RadioGroup` |
+| `SemanticRole::Switch` | `Role::Switch` |
 
 For `Role::Label`, plain RunenUI text is exposed through AccessKit value/content
-rather than inventing editable-text semantics. Name, description, value,
-disabled/inert state, bounds, children, focus, and supported actions map only to
-corresponding AccessKit facts. RunenUI relationships map directly where AccessKit
+rather than inventing editable-text semantics. Application-authored neutral
+checked state maps to AccessKit `Toggled::{False, True, Mixed}` only for roles
+whose neutral contract permits it; checked state remains semantic state rather
+than a generic Boolean value. Name, description, value, disabled/inert/read-only
+state, bounds, children, focus, and supported actions map only to corresponding
+AccessKit facts. RunenUI relationships map directly where AccessKit
 has the same relation: `LabelledBy -> labelled_by`, `DescribedBy -> described_by`,
 and `Controls -> controls`. A published fact without a justified AccessKit
 equivalent produces an explicit adapter diagnostic rather than behavioral
