@@ -373,9 +373,9 @@ pub use scene_geometry::{
 pub use semantic::{
     SemanticAction, SemanticBounds, SemanticCheckedState, SemanticContribution,
     SemanticContributionContext, SemanticContributionError, SemanticContributionValidation,
-    SemanticEditable, SemanticItem,
-    SemanticKey, SemanticNodeContribution, SemanticReference, SemanticRelationship,
-    SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText, SemanticValue,
+    SemanticEditable, SemanticItem, SemanticKey, SemanticNodeContribution, SemanticReference,
+    SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText,
+    SemanticValue,
 };
 pub use semantic_action::{SemanticActionData, SemanticActionRequest, SemanticActionTarget};
 pub use style::{
