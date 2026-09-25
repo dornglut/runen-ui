@@ -11,8 +11,8 @@ use core::num::NonZeroU64;
 use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
-    LogicalRect, SemanticAction, SemanticEditable, SemanticRelationshipKind, SemanticRole,
-    SemanticText, SemanticValue, SurfaceId,
+    LogicalRect, SemanticAction, SemanticCheckedState, SemanticEditable, SemanticRelationshipKind,
+    SemanticRole, SemanticText, SemanticValue, SurfaceId,
 };
 
 use crate::SemanticNodeId;
@@ -49,6 +49,7 @@ pub struct SemanticNodeState {
     disabled: bool,
     inert: bool,
     read_only: bool,
+    checked: Option<SemanticCheckedState>,
 }
 
 impl SemanticNodeState {
@@ -68,6 +69,12 @@ impl SemanticNodeState {
     #[must_use]
     pub const fn read_only(self) -> bool {
         self.read_only
+    }
+
+    /// Returns the application-authored checked state when this node is checkable.
+    #[must_use]
+    pub const fn checked(self) -> Option<SemanticCheckedState> {
+        self.checked
     }
 }
 
