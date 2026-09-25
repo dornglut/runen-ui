@@ -266,7 +266,7 @@ fn run_origin(origin: ActivationOrigin) {
 }
 
 #[test]
-fn counter_converges_semantic_pointer_keyboard_automation_and_programmatic_activation() {
+fn counter_converges_semantic_pointer_keyboard_automation_programmatic_and_controller_activation() {
     for origin in [
         ActivationOrigin::SemanticAction,
         ActivationOrigin::Pointer,
