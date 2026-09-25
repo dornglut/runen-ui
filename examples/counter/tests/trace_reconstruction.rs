@@ -8,7 +8,7 @@ mod ui;
 use app::{Counter, CounterApp};
 use runenui_core::{
     ElementId, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase,
-    LogicalKey, LogicalLength, PhysicalKey, SemanticCommand, StyleEnvironment,
+    LogicalKey, LogicalLength, PhysicalKey, SemanticCommand,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceActionCategory,
@@ -238,7 +238,7 @@ fn assert_update_reconciliation_and_publication(
     let redraw_sequence = redraw.sequence();
     let redraw_instant = redraw.instant();
 
-    let style_environment = StyleEnvironment::default();
+    let style_environment = ui::style_environment();
     let context = SurfaceBuildContext::tight(&style_environment, SURFACE_SIZE);
     let publication = runtime
         .publish_surface(&context)
