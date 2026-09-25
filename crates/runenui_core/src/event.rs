@@ -103,6 +103,13 @@ impl CommandOrigin {
         }
     }
 
+    /// Creates a delegated origin for runtime-authored canonical command chaining.
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn __runtime_delegated(source: EventSource) -> Self {
+        Self::delegated(source)
+    }
+
     /// Creates the direct origin used while routing canonical pointer ingress.
     #[doc(hidden)]
     #[must_use]
