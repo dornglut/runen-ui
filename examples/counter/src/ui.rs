@@ -7,7 +7,8 @@ use runenui_core::{
     MotionKeyframe, MotionRepeat, MotionTarget, MotionValue, Outline, OverflowPolicy,
     OverflowStyle, Radius, SceneOpacity, StrokeStyle, StyleEnvironment, StyleInteractionState,
     StyleProperties, StyleRecipe, StyleRecipeId, StyleTheme, StyleTokens, TimelineSpec,
-    TransitionSpec, UnitInterval, View, button, children, column, row, text,
+    TransitionSpec, UnitInterval, View, Widget, WidgetMeasure, WidgetMeasureInput, button, children,
+    column, row, text,
 };
 
 use crate::app::{Counter, CounterAction};
@@ -76,8 +77,21 @@ fn stepper_group_layout() -> LayoutStyle {
         .with_flex_item(fixed_control_item())
 }
 
-fn vertical_spacer() -> impl View<CounterAction> {
-    row::<CounterAction>(Vec::<Element<CounterAction>>::new()).with_layout(
+#[derive(Debug)]
+struct LayoutSpacer;
+
+impl Widget<CounterAction> for LayoutSpacer {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::ZERO, LogicalLength::ZERO)
+    }
+}
+
+fn vertical_spacer() -> Element<CounterAction> {
+    Element::new(LayoutSpacer).with_layout(
         LayoutStyle::default()
             .with_height(LayoutDimension::length(LogicalLength::ZERO))
             .with_flex_item(
