@@ -9,11 +9,12 @@ use crate::{
     SemanticState, SemanticText, ShadowValue, SpacingValue, StyleIntent, StyleRecipeId,
     StyleVariantId, TransitionSpec, TypographyValue, WidgetActivationContext, WidgetInvalidation,
     WidgetUpdateContext,
-    element::{
-        AuthoredElementFields, AuthoringDiagnostic, ChildBearingWidget, Element, View, Views,
-        Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetMeasureInput,
-    },
+    element::{AuthoredElementFields, AuthoringDiagnostic, Element, View, Views},
     widget_erasure::{ErasedWidget, WidgetAdapter},
+    widget_protocol::{
+        ChildBearingWidget, Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure,
+        WidgetMeasureInput,
+    },
 };
 
 macro_rules! common_builder_methods {

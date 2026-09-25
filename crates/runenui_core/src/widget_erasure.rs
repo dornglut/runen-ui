@@ -1,7 +1,7 @@
-use crate::element::{
-    AuthoredElementFields, AuthoringDiagnostic, Element, Widget, WidgetActivation,
-    WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetMeasureInput, WidgetStateTypeId,
-    WidgetTextInput, WidgetTypeId,
+use crate::element::{AuthoredElementFields, AuthoringDiagnostic, Element};
+use crate::widget_protocol::{
+    Widget, WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure,
+    WidgetMeasureInput, WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
 };
 use crate::{
     CommandOrigin, EditableContribution, ElementId, ElementKey, EventContext, EventPhase,
@@ -602,7 +602,8 @@ impl<Action> ElementParts<Action> {
 mod tests {
     use std::{cell::Cell, rc::Rc};
 
-    use crate::element::{Element, Widget, WidgetActivation};
+    use crate::element::Element;
+    use crate::widget_protocol::{Widget, WidgetActivation};
 
     use super::WidgetBridgeError;
 
