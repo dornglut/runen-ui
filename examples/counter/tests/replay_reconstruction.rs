@@ -8,7 +8,7 @@ mod ui;
 use app::{Counter, CounterApp};
 use runenui_core::{
     ElementId, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase,
-    LogicalKey, LogicalLength, PhysicalKey, SemanticCommand, StyleEnvironment,
+    LogicalKey, LogicalLength, PhysicalKey, SemanticCommand,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceReplay, TraceReplayRecord,
@@ -190,7 +190,7 @@ fn counter_jsonl() -> String {
     settle(&mut runtime);
     assert_eq!(runtime.state().count, 1);
 
-    let style_environment = StyleEnvironment::default();
+    let style_environment = ui::style_environment();
     let context = SurfaceBuildContext::tight(&style_environment, SURFACE_SIZE);
     let publication = runtime
         .publish_surface(&context)
