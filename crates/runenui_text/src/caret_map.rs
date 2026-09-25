@@ -394,8 +394,8 @@ impl TextCaretMap {
 
     /// Returns the ordered UTF-8 offsets that are legal compact caret stops.
     ///
-    /// The retained Parley representation used by RunenUI defines grapheme edges as caret,
-    /// selection, and hit-testing edges. RunenUI already retains the exact UAX #29 grapheme
+    /// The retained Parley representation used by `RunenUI` defines grapheme edges as caret,
+    /// selection, and hit-testing edges. `RunenUI` already retains the exact UAX #29 grapheme
     /// boundaries for this layout, so this compact projection does not need to repeat
     /// affinity-sensitive cursor validation for every boundary. Affinity-sensitive position
     /// validation and navigation remain Parley-backed through the ordinary caret APIs.
