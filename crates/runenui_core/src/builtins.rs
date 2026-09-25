@@ -2,9 +2,9 @@ use core::fmt;
 
 use crate::{
     FlexContainerStyle, FlexDirection, HitContribution, HitContributionContext, LayoutContainer,
-    LayoutStyle, LogicalLength, LogicalRect, LogicalSize, SemanticAction, SemanticCheckedState, SemanticContribution,
-    SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
-    SemanticText, WidgetActivationContext, WidgetInvalidation, WidgetUpdateContext,
+    LayoutStyle, LogicalLength, LogicalRect, LogicalSize, SemanticAction, SemanticCheckedState,
+    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
+    SemanticState, SemanticText, WidgetActivationContext, WidgetInvalidation, WidgetUpdateContext,
     element::{CommonNodeAuthoring, Element, View, Views, common_node_builder_methods},
     widget_erasure::{ErasedWidget, WidgetAdapter},
     widget_protocol::{
@@ -276,7 +276,6 @@ impl<Action: 'static> View<Action> for Button<Action> {
         )
     }
 }
-
 
 pub struct Checkbox<Action> {
     label: String,
