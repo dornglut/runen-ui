@@ -21,6 +21,7 @@ pub enum FocusReason {
     Pointer,
     LinearNavigation,
     DirectionalNavigation,
+    GroupNavigation,
     ProgrammaticRequest,
     Removal,
     Disablement,
@@ -145,6 +146,76 @@ impl Default for FocusScope {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Boundary behavior for ordered navigation inside one composite focus group.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum FocusGroupBoundaryPolicy {
+    #[default]
+    Stop,
+    Wrap,
+}
+
+/// Whether successful internal focus-group navigation also activates the destination.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum FocusGroupActivationPolicy {
+    #[default]
+    Manual,
+    ActivateTarget,
+}
+
+/// Host-neutral authored configuration for one composite focus group.
+///
+/// A focus group is distinct from a focus scope: scopes own nested traversal
+/// boundaries, while groups collapse multiple real focus targets into one
+/// external traversal stop and provide ordered internal member navigation.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct FocusGroup {
+    boundary: FocusGroupBoundaryPolicy,
+    activation: FocusGroupActivationPolicy,
+}
+
+impl FocusGroup {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            boundary: FocusGroupBoundaryPolicy::Stop,
+            activation: FocusGroupActivationPolicy::Manual,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_boundary(mut self, boundary: FocusGroupBoundaryPolicy) -> Self {
+        self.boundary = boundary;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_activation(mut self, activation: FocusGroupActivationPolicy) -> Self {
+        self.activation = activation;
+        self
+    }
+
+    #[must_use]
+    pub const fn boundary(self) -> FocusGroupBoundaryPolicy {
+        self.boundary
+    }
+
+    #[must_use]
+    pub const fn activation(self) -> FocusGroupActivationPolicy {
+        self.activation
+    }
+}
+
+/// Authored external-entry preference for a member of its nearest focus group.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum FocusGroupEntry {
+    #[default]
+    Automatic,
+    Preferred,
 }
 
 /// Authored participation of one mounted node in focus selection.
