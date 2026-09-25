@@ -25,6 +25,7 @@ enum ActivationOrigin {
     Keyboard,
     Automation,
     Programmatic,
+    Controller,
 }
 
 struct CounterTargets {
@@ -188,6 +189,17 @@ fn submit_activation(
                     unreachable!("Counter programmatic activation is accepted: {error:?}")
                 });
         }
+        ActivationOrigin::Controller => {
+            harness
+                .submit_command(
+                    targets.mounted,
+                    SemanticCommand::Activate,
+                    CommandOrigin::controller(),
+                )
+                .unwrap_or_else(|error| {
+                    unreachable!("Counter controller activation is accepted: {error:?}")
+                });
+        }
     }
 }
 
@@ -222,7 +234,7 @@ fn assert_trace(harness: &TestHarness<CounterApp>, origin: ActivationOrigin) {
         ActivationOrigin::Automation => {
             assert_eq!(kind_count(&kinds, "automation_resolution_unique"), 1);
         }
-        ActivationOrigin::Programmatic => {}
+        ActivationOrigin::Programmatic | ActivationOrigin::Controller => {}
     }
 }
 
@@ -261,6 +273,7 @@ fn counter_converges_semantic_pointer_keyboard_automation_and_programmatic_activ
         ActivationOrigin::Keyboard,
         ActivationOrigin::Automation,
         ActivationOrigin::Programmatic,
+        ActivationOrigin::Controller,
     ] {
         run_origin(origin);
     }
