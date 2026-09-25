@@ -90,12 +90,12 @@ fn checked_semantics_follow_application_state_through_ordinary_activation() {
 
     let mut harness = TestHarness::<CheckedApp>::mount(false);
     assert!(harness.publish().is_ok());
-    let Ok(target) = harness.unique_semantic_target(&unchecked) else {
-        return;
-    };
-    let Ok(before) = harness.semantic_snapshot() else {
-        return;
-    };
+    let target = harness
+        .unique_semantic_target(&unchecked)
+        .unwrap_or_else(|error| unreachable!("unchecked semantic target is unique: {error:?}"));
+    let before = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|error| unreachable!("initial semantic snapshot is available: {error:?}"));
     let before_revision = before.revision();
 
     assert!(
@@ -110,13 +110,13 @@ fn checked_semantics_follow_application_state_through_ordinary_activation() {
     assert!(*harness.state());
     assert!(harness.publish().is_ok());
 
-    let Ok(matches) = harness.query_semantics(&unchecked) else {
-        return;
-    };
+    let matches = harness
+        .query_semantics(&unchecked)
+        .unwrap_or_else(|error| unreachable!("updated semantics remain queryable: {error:?}"));
     assert!(matches.is_empty());
     assert!(harness.unique_semantic_target(&checked).is_ok());
-    let Ok(after) = harness.semantic_snapshot() else {
-        return;
-    };
+    let after = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|error| unreachable!("updated semantic snapshot is available: {error:?}"));
     assert!(after.revision() > before_revision);
 }
