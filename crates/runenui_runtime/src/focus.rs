@@ -303,11 +303,8 @@ fn candidates<Action>(
 }
 
 pub struct FocusGroupSelection {
-    pub group: MountedNodeId,
     pub target: Option<MountedNodeId>,
-    pub boundary: FocusGroupBoundaryPolicy,
     pub activation: FocusGroupActivationPolicy,
-    pub wrapped: bool,
 }
 
 pub fn select_focus_group_member<Action>(
@@ -319,19 +316,16 @@ pub fn select_focus_group_member<Action>(
     let current = state.focused_node().unwrap_or(command_target);
     let group = nearest_group(tree, current).or_else(|| nearest_group(tree, command_target))?;
     let config = tree.node(&group)?.focus_group?;
-    let members = tree
-        .publication_preorder_ids()
-        .into_iter()
-        .filter(|id| nearest_group(tree, id).as_ref() == Some(&group))
-        .filter(|id| is_focus_eligible(tree, id))
-        .collect::<Vec<_>>();
+    let mut members = Vec::new();
+    for id in tree.publication_preorder_ids() {
+        if nearest_group(tree, &id).as_ref() == Some(&group) && is_focus_eligible(tree, &id) {
+            members.push(id);
+        }
+    }
     if members.is_empty() {
         return Some(FocusGroupSelection {
-            group,
             target: None,
-            boundary: config.boundary(),
             activation: config.activation(),
-            wrapped: false,
         });
     }
     let position = members.iter().position(|id| id == current);
@@ -346,11 +340,8 @@ pub fn select_focus_group_member<Action>(
     });
     if target.is_some() {
         return Some(FocusGroupSelection {
-            group,
             target,
-            boundary: config.boundary(),
             activation: config.activation(),
-            wrapped: false,
         });
     }
     let target = match config.boundary() {
@@ -365,11 +356,8 @@ pub fn select_focus_group_member<Action>(
         _ => None,
     };
     Some(FocusGroupSelection {
-        group,
         target,
-        boundary: config.boundary(),
         activation: config.activation(),
-        wrapped: target.is_some(),
     })
 }
 
@@ -484,7 +472,7 @@ fn select_in_scope<Action>(
 }
 
 fn restore_selection<Action>(
-    tree: &MountedTree<Action>,
+    tree: &mut MountedTree<Action>,
     state: &FocusState,
     scope: MountedNodeId,
     policy: FocusScopePolicy,
@@ -493,6 +481,7 @@ fn restore_selection<Action>(
     let remembered = state.remembered(&scope).cloned();
     if scope_remembers(tree, &scope)
         && let Some(remembered) = remembered.as_ref()
+        && is_focus_eligible(tree, remembered)
         && candidates
             .iter()
             .any(|candidate| candidate_contains(tree, candidate, remembered))
