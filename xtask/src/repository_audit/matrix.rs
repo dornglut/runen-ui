@@ -873,7 +873,7 @@ mod tests {
         assert_eq!(binary_control_rows.len(), 2);
         assert!(binary_control_rows.iter().all(|row| {
             matches!(row.cells[0].as_str(), "M11CTRL-09" | "M11CTRL-10")
-                && row.cells[6] == "proof-complete"
+                && row.cells[6] == "owner-accepted"
                 && row.cells[7] == "Required"
         }));
 
