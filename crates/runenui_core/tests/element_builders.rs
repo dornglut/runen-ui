@@ -1,7 +1,10 @@
 use runenui_core::{
     Element, FlexContainerStyle, FlexDirection, FontFamily, GenericFontFamily, LayoutContainer,
-    LayoutDimension, LayoutStyle, LogicalLength, StyleRecipeId, StyleVariantId, Typography,
-    TypographyToken, TypographyValue, View, Widget, button, children, column, row, text,
+    LayoutDimension, LayoutStyle, LogicalLength, MotionTarget, PresentationOrigin,
+    PresentationRotation, PresentationScale, PresentationTransform, PresentationTranslation,
+    PresentationValue, StyleRecipeId, StyleVariantId, TransitionPolicy, Typography,
+    TypographyToken, TypographyValue, UnitInterval, View, Widget, button, children, column, row,
+    text,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -145,4 +148,69 @@ fn typography_is_publicly_authored_on_elements_and_builtins()
         Some(&typography)
     );
     Ok(())
+}
+
+
+fn presentation_transform() -> PresentationTransform {
+    PresentationTransform::new(
+        PresentationTranslation::new(8.0, -3.0)
+            .unwrap_or_else(|_| unreachable!("controlled translation is finite")),
+        PresentationScale::new(1.25, 0.75)
+            .unwrap_or_else(|_| unreachable!("controlled scale is finite")),
+        PresentationRotation::radians(0.25)
+            .unwrap_or_else(|_| unreachable!("controlled rotation is finite")),
+        PresentationOrigin::new(
+            UnitInterval::new(0.5).unwrap_or_else(|_| unreachable!("controlled unit is valid")),
+            UnitInterval::new(0.25).unwrap_or_else(|_| unreachable!("controlled unit is valid")),
+        ),
+    )
+}
+
+#[test]
+fn common_presentation_and_transition_authoring_has_element_builtin_parity() {
+    let presentation = presentation_transform();
+    let custom: Element<Action> = Element::new(Probe)
+        .id("custom")
+        .key("custom-key")
+        .presentation(presentation)
+        .transition_disabled(MotionTarget::Opacity);
+    let builtin: Element<Action> = text("Title")
+        .id("builtin")
+        .key("builtin-key")
+        .presentation(presentation)
+        .transition_disabled(MotionTarget::Opacity)
+        .into_element();
+
+    assert_eq!(custom.element_id().map(ToString::to_string).as_deref(), Some("custom"));
+    assert_eq!(
+        custom.element_key().map(ToString::to_string).as_deref(),
+        Some("custom-key")
+    );
+    assert_eq!(builtin.element_id().map(ToString::to_string).as_deref(), Some("builtin"));
+    assert_eq!(
+        builtin.element_key().map(ToString::to_string).as_deref(),
+        Some("builtin-key")
+    );
+    assert_eq!(
+        custom
+            .style()
+            .presentation()
+            .and_then(PresentationValue::as_literal),
+        Some(presentation)
+    );
+    assert_eq!(
+        builtin
+            .style()
+            .presentation()
+            .and_then(PresentationValue::as_literal),
+        Some(presentation)
+    );
+    assert_eq!(
+        custom.style().transition_policy(MotionTarget::Opacity),
+        Some(&TransitionPolicy::Disabled)
+    );
+    assert_eq!(
+        builtin.style().transition_policy(MotionTarget::Opacity),
+        Some(&TransitionPolicy::Disabled)
+    );
 }
