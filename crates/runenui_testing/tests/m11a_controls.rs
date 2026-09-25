@@ -33,10 +33,7 @@ impl UiApp for ControlsApp {
         if !state.enabled {
             control = control.disabled();
         }
-        column(children![
-            text("Status").id("m11.text"),
-            control,
-        ])
+        column(children![text("Status").id("m11.text"), control,])
     }
 
     fn update(
@@ -104,7 +101,9 @@ fn button_semantic_activation_is_repeatable_and_application_owned() {
     for expected in [1, 2] {
         harness
             .submit_semantic_action(&target, SemanticAction::Activate)
-            .unwrap_or_else(|error| unreachable!("enabled button activation is accepted: {error:?}"));
+            .unwrap_or_else(|error| {
+                unreachable!("enabled button activation is accepted: {error:?}")
+            });
         assert_eq!(
             harness.run_until_idle(settle_budget()).outcome(),
             SettleOutcome::Idle
@@ -124,7 +123,9 @@ fn disabled_button_remains_semantic_but_rejects_activation() {
 
     let target = harness
         .unique_semantic_target(&button_query().with_disabled(true))
-        .unwrap_or_else(|error| unreachable!("disabled button remains semantically visible: {error:?}"));
+        .unwrap_or_else(|error| {
+            unreachable!("disabled button remains semantically visible: {error:?}")
+        });
 
     assert!(
         harness
