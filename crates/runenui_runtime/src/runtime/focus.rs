@@ -410,15 +410,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             let Some(target) = selection.target else {
                 return Ok(());
             };
+            let activate_target =
+                selection.activation == runenui_core::FocusGroupActivationPolicy::ActivateTarget;
+            if activate_target && transaction.remaining_outputs == 0 {
+                return Err(TraceRoutedIntegrityFailure::OutputAllowanceExceeded);
+            }
             self.commit_focus_transition(
                 transaction,
                 Some(target.clone()),
                 FocusReason::GroupNavigation,
             )?;
-            if selection.activation == runenui_core::FocusGroupActivationPolicy::ActivateTarget {
-                if transaction.remaining_outputs == 0 {
-                    return Err(TraceRoutedIntegrityFailure::OutputAllowanceExceeded);
-                }
+            if activate_target {
                 transaction.remaining_outputs -= 1;
                 transaction
                     .default_outputs
