@@ -219,6 +219,21 @@ struct FocusGroupMember {
     target: MountedNodeId,
 }
 
+fn is_within_group<Action>(
+    tree: &MountedTree<Action>,
+    id: &MountedNodeId,
+    group: &MountedNodeId,
+) -> bool {
+    let mut current = Some(id.clone());
+    while let Some(id) = current {
+        if &id == group {
+            return true;
+        }
+        current = tree.node(&id).and_then(|node| node.parent.clone());
+    }
+    false
+}
+
 struct FocusGroupMembers {
     members: Vec<FocusGroupMember>,
     preferred: Option<MountedNodeId>,
@@ -264,13 +279,7 @@ fn collect_focus_group_members<Action>(
     }
 
     for child in children {
-        collect_focus_group_members(
-            tree,
-            &child,
-            members,
-            preferred,
-            multiple_preferred,
-        );
+        collect_focus_group_members(tree, &child, members, preferred, multiple_preferred);
     }
 }
 
@@ -313,10 +322,7 @@ fn focus_group_entry_target<Action>(
     {
         return Some(member.target.clone());
     }
-    resolved
-        .members
-        .first()
-        .map(|member| member.target.clone())
+    resolved.members.first().map(|member| member.target.clone())
 }
 
 fn candidate_contains<Action>(
