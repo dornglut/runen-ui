@@ -3,8 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use runenui_core::{
     __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusGroup,
     FocusGroupEntry, FocusScope, Focusability, LayoutStyle, StyleIntent, WidgetInvalidation,
-    WidgetMountContext,
-    WidgetUnmountReason, WidgetUpdateContext,
+    WidgetMountContext, WidgetUnmountReason, WidgetUpdateContext,
 };
 
 use crate::ReconciliationDiagnostic;

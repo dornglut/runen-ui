@@ -308,7 +308,6 @@ fn prevented_initiating_command_changes_modality_but_commits_no_focus_notificati
     assert!(log.borrow().is_empty());
 }
 
-
 struct ExternalGroupApp;
 
 impl UiApp for ExternalGroupApp {
@@ -317,23 +316,15 @@ impl UiApp for ExternalGroupApp {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> Element<()> {
-        let before = Element::new(ExternalFocusWidget::new(
-            "before",
-            Rc::clone(state),
-            true,
-        ))
-        .id("group.before")
-        .focusable(true);
+        let before = Element::new(ExternalFocusWidget::new("before", Rc::clone(state), true))
+            .id("group.before")
+            .focusable(true);
         let group = container(
             ExternalFocusWidget::new("group", Rc::clone(state), false),
             vec![
-                Element::new(ExternalFocusWidget::new(
-                    "a",
-                    Rc::clone(state),
-                    true,
-                ))
-                .id("group.a")
-                .focusable(true),
+                Element::new(ExternalFocusWidget::new("a", Rc::clone(state), true))
+                    .id("group.a")
+                    .focusable(true),
                 Element::new(ExternalFocusWidget::new("b", Rc::clone(state), true))
                     .id("group.b")
                     .focusable(true)
@@ -342,9 +333,7 @@ impl UiApp for ExternalGroupApp {
         )
         .id("group.root")
         .into_element()
-        .focus_group(
-            FocusGroup::new().with_boundary(FocusGroupBoundaryPolicy::Wrap),
-        );
+        .focus_group(FocusGroup::new().with_boundary(FocusGroupBoundaryPolicy::Wrap));
         let after = Element::new(ExternalFocusWidget::new("after", Rc::clone(state), true))
             .id("group.after")
             .focusable(true);

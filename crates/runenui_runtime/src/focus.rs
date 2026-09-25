@@ -331,9 +331,9 @@ fn candidates<Action>(
                 .iter()
                 .position(|candidate| candidate == &outermost_group)
                 .unwrap_or(order);
-            let rect = geometry.iter().find_map(|(geometry_id, rect)| {
-                (geometry_id == &outermost_group).then_some(*rect)
-            });
+            let rect = geometry
+                .iter()
+                .find_map(|(geometry_id, rect)| (geometry_id == &outermost_group).then_some(*rect));
             output.push(Candidate {
                 id: target,
                 order: group_order,
@@ -342,7 +342,10 @@ fn candidates<Action>(
             });
             continue;
         }
-        if tree.node(&id).is_some_and(|node| node.focus_group.is_some()) {
+        if tree
+            .node(&id)
+            .is_some_and(|node| node.focus_group.is_some())
+        {
             if !seen_groups.insert(id.clone()) {
                 continue;
             }
@@ -420,7 +423,9 @@ pub fn select_focus_group_member<Action>(
         .position(|member| focus_group_member_contains(tree, member, current));
     let target = position.and_then(|position| {
         if forward {
-            members.get(position + 1).map(|member| member.target.clone())
+            members
+                .get(position + 1)
+                .map(|member| member.target.clone())
         } else {
             position
                 .checked_sub(1)

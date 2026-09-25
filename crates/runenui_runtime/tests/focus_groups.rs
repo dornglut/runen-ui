@@ -197,7 +197,11 @@ fn internal_navigation_wraps_and_activation_is_deferred_until_after_focus() {
     assert_eq!(runtime.focus().reason(), Some(FocusReason::GroupNavigation));
     assert!(runtime.state().activations.is_empty());
 
-    let records = runtime.trace().records().skip(trace_start).collect::<Vec<_>>();
+    let records = runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .collect::<Vec<_>>();
     let transition = records
         .iter()
         .position(|record| {
@@ -423,16 +427,16 @@ fn invalid_multiple_preferred_members_diagnose_and_fail_closed() {
             .iter()
             .any(|diagnostic| {
                 matches!(
-                    diagnostic,
-                    ReconciliationDiagnostic::MultiplePreferredFocusGroupMembers {
-                group_path,
-                preferred_member_paths,
-            } if group_path == "root/1"
-                && preferred_member_paths == &vec![
-                    String::from("root/1/0"),
-                    String::from("root/1/1"),
-                ]
-                )
+                        diagnostic,
+                        ReconciliationDiagnostic::MultiplePreferredFocusGroupMembers {
+                    group_path,
+                    preferred_member_paths,
+                } if group_path == "root/1"
+                    && preferred_member_paths == &vec![
+                        String::from("root/1/0"),
+                        String::from("root/1/1"),
+                    ]
+                    )
             })
     );
 
