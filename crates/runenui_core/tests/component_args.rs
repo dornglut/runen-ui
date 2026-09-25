@@ -131,8 +131,7 @@ fn binary_control_builders_use_the_open_widget_protocol() {
         Some(SemanticCheckedState::Checked)
     );
 
-    let passive_element: runenui_core::Element<Action> =
-        checkbox("Passive", false).into_element();
+    let passive_element: runenui_core::Element<Action> = checkbox("Passive", false).into_element();
     let (_, _, _, _, _, _, _, _, passive_widget, _) =
         passive_element.into_runtime_parts().into_parts();
     let passive_state = passive_widget.create_state();
@@ -150,8 +149,9 @@ fn binary_control_builders_use_the_open_widget_protocol() {
             .is_empty()
     );
 
-    let actionable_element: runenui_core::Element<Action> =
-        switch("Actionable", false).on_activate(|| Action::Save).into_element();
+    let actionable_element: runenui_core::Element<Action> = switch("Actionable", false)
+        .on_activate(|| Action::Save)
+        .into_element();
     let (_, _, _, _, _, _, _, _, actionable_widget, _) =
         actionable_element.into_runtime_parts().into_parts();
     let actionable_state = actionable_widget.create_state();
