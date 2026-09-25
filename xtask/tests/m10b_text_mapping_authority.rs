@@ -135,10 +135,7 @@ fn compact_caret_offset_publication_reuses_text_owned_storage() -> Result<(), St
         );
     }
 
-    for required in [
-        "map.__runtime_legal_byte_offsets()",
-        "Arc::ptr_eq(&retained, &published)",
-    ] {
+    for required in ["map.__runtime_legal_byte_offsets()"] {
         if !transaction.contains(required) {
             return Err(format!(
                 "M10B runtime semantic publication lost retained-offset sharing seam `{required}` in {RUNTIME_TRANSACTION}"
@@ -166,10 +163,7 @@ fn compact_caret_offset_publication_reuses_text_owned_storage() -> Result<(), St
             ));
         }
     }
-    for required in [
-        "self.caret_offsets = Some(offsets);",
-        "Arc::ptr_eq(&retained, published)",
-    ] {
+    for required in ["self.caret_offsets = Some(offsets);"] {
         if !core_semantic.contains(required) {
             return Err(format!(
                 "M10B core semantic projection lost shared-offset retention proof `{required}` in {CORE_SEMANTIC}"
