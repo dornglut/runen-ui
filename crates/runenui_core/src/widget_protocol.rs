@@ -464,4 +464,3 @@ pub trait Widget<Action>: fmt::Debug {
 
 /// Marker for widgets whose elements may structurally own children.
 pub trait ChildBearingWidget<Action>: Widget<Action> {}
-
