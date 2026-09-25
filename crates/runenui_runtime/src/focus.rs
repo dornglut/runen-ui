@@ -1,10 +1,10 @@
 //! Runtime-owned focus state, scope membership, and candidate selection.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use runenui_core::{
-    FocusBoundaryPolicy, FocusDirection, FocusReason, FocusScope, FocusScopePolicy, Focusability,
-    InputModality,
+    FocusBoundaryPolicy, FocusDirection, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy,
+    FocusGroupEntry, FocusReason, FocusScope, FocusScopePolicy, Focusability, InputModality,
 };
 
 use crate::{LogicalRect, MountedNodeId, mounted::MountedTree};
@@ -133,6 +133,7 @@ struct Candidate {
     id: MountedNodeId,
     order: usize,
     rect: Option<LogicalRect>,
+    group: Option<MountedNodeId>,
 }
 
 pub fn root_scope<Action>(tree: &MountedTree<Action>) -> Option<MountedNodeId> {
@@ -201,26 +202,175 @@ pub fn is_focus_eligible<Action>(tree: &mut MountedTree<Action>, id: &MountedNod
         }
 }
 
+fn nearest_group<Action>(
+    tree: &MountedTree<Action>,
+    id: &MountedNodeId,
+) -> Option<MountedNodeId> {
+    let mut current = tree.node(id)?.parent.clone()?;
+    loop {
+        let node = tree.node(&current)?;
+        if node.focus_group.is_some() {
+            return Some(current);
+        }
+        current = node.parent.clone()?;
+    }
+}
+
+fn focus_group_entry_target<Action>(
+    tree: &mut MountedTree<Action>,
+    group: &MountedNodeId,
+) -> Option<MountedNodeId> {
+    let ids = tree.publication_preorder_ids();
+    let preferred = ids
+        .iter()
+        .filter(|id| nearest_group(tree, id).as_ref() == Some(group))
+        .filter(|id| {
+            tree.node(id)
+                .is_some_and(|node| node.focus_group_entry == FocusGroupEntry::Preferred)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if preferred.len() > 1 {
+        return None;
+    }
+    if let Some(preferred) = preferred.first()
+        && is_focus_eligible(tree, preferred)
+    {
+        return Some(preferred.clone());
+    }
+    ids.into_iter()
+        .find(|id| nearest_group(tree, id).as_ref() == Some(group) && is_focus_eligible(tree, id))
+}
+
+fn candidate_contains<Action>(
+    tree: &MountedTree<Action>,
+    candidate: &Candidate,
+    id: &MountedNodeId,
+) -> bool {
+    candidate.id == *id
+        || candidate
+            .group
+            .as_ref()
+            .is_some_and(|group| nearest_group(tree, id).as_ref() == Some(group))
+}
+
 fn candidates<Action>(
     tree: &mut MountedTree<Action>,
     scope: &MountedNodeId,
     geometry: &[(MountedNodeId, LogicalRect)],
 ) -> Vec<Candidate> {
-    tree.publication_preorder_ids()
+    let ids = tree.publication_preorder_ids();
+    let mut seen_groups = HashSet::new();
+    let mut output = Vec::new();
+    for (order, id) in ids.iter().cloned().enumerate() {
+        if nearest_scope(tree, &id).as_ref() != Some(scope) {
+            continue;
+        }
+        if let Some(group) = nearest_group(tree, &id) {
+            if !seen_groups.insert(group.clone()) {
+                continue;
+            }
+            let Some(target) = focus_group_entry_target(tree, &group) else {
+                continue;
+            };
+            let group_order = ids
+                .iter()
+                .position(|candidate| candidate == &group)
+                .unwrap_or(order);
+            let rect = geometry
+                .iter()
+                .find_map(|(geometry_id, rect)| (geometry_id == &group).then_some(*rect));
+            output.push(Candidate {
+                id: target,
+                order: group_order,
+                rect,
+                group: Some(group),
+            });
+            continue;
+        }
+        if is_focus_eligible(tree, &id) {
+            output.push(Candidate {
+                rect: geometry
+                    .iter()
+                    .find_map(|(geometry_id, rect)| (geometry_id == &id).then_some(*rect)),
+                id,
+                order,
+                group: None,
+            });
+        }
+    }
+    output
+}
+
+pub struct FocusGroupSelection {
+    pub group: MountedNodeId,
+    pub target: Option<MountedNodeId>,
+    pub boundary: FocusGroupBoundaryPolicy,
+    pub activation: FocusGroupActivationPolicy,
+    pub wrapped: bool,
+}
+
+pub fn select_focus_group_member<Action>(
+    tree: &mut MountedTree<Action>,
+    state: &FocusState,
+    command_target: &MountedNodeId,
+    forward: bool,
+) -> Option<FocusGroupSelection> {
+    let current = state.focused_node().unwrap_or(command_target);
+    let group = nearest_group(tree, current).or_else(|| nearest_group(tree, command_target))?;
+    let config = tree.node(&group)?.focus_group?;
+    let members = tree
+        .publication_preorder_ids()
         .into_iter()
-        .enumerate()
-        .filter_map(|(order, id)| {
-            (nearest_scope(tree, &id).as_ref() == Some(scope) && is_focus_eligible(tree, &id)).then(
-                || Candidate {
-                    rect: geometry
-                        .iter()
-                        .find_map(|(geometry_id, rect)| (geometry_id == &id).then_some(*rect)),
-                    id,
-                    order,
-                },
-            )
-        })
-        .collect()
+        .filter(|id| nearest_group(tree, id).as_ref() == Some(&group))
+        .filter(|id| is_focus_eligible(tree, id))
+        .collect::<Vec<_>>();
+    if members.is_empty() {
+        return Some(FocusGroupSelection {
+            group,
+            target: None,
+            boundary: config.boundary(),
+            activation: config.activation(),
+            wrapped: false,
+        });
+    }
+    let position = members.iter().position(|id| id == current);
+    let target = position.and_then(|position| {
+        if forward {
+            members.get(position + 1).cloned()
+        } else {
+            position
+                .checked_sub(1)
+                .and_then(|previous| members.get(previous).cloned())
+        }
+    });
+    if target.is_some() {
+        return Some(FocusGroupSelection {
+            group,
+            target,
+            boundary: config.boundary(),
+            activation: config.activation(),
+            wrapped: false,
+        });
+    }
+    let target = match config.boundary() {
+        FocusGroupBoundaryPolicy::Wrap => {
+            if forward {
+                members.first().cloned()
+            } else {
+                members.last().cloned()
+            }
+        }
+        FocusGroupBoundaryPolicy::Stop => None,
+        _ => None,
+    };
+    Some(FocusGroupSelection {
+        group,
+        target,
+        boundary: config.boundary(),
+        activation: config.activation(),
+        wrapped: target.is_some(),
+    })
 }
 
 pub fn select_focus<Action>(
@@ -263,10 +413,10 @@ fn select_in_scope<Action>(
 
     let current = state.focused_node().unwrap_or(command_target);
     let selected = match navigation {
-        FocusNavigation::Next => linear_candidate(&candidates, current, true),
-        FocusNavigation::Previous => linear_candidate(&candidates, current, false),
+        FocusNavigation::Next => linear_candidate(tree, &candidates, current, true),
+        FocusNavigation::Previous => linear_candidate(tree, &candidates, current, false),
         FocusNavigation::Direction(direction) => {
-            directional_candidate(&candidates, current, direction, geometry)
+            directional_candidate(tree, &candidates, current, direction, geometry)
         }
         FocusNavigation::Restore => unreachable!("restoration handled above"),
     };
@@ -345,7 +495,7 @@ fn restore_selection<Action>(
         && let Some(remembered) = remembered.as_ref()
         && candidates
             .iter()
-            .any(|candidate| &candidate.id == remembered)
+            .any(|candidate| candidate_contains(tree, candidate, remembered))
     {
         return FocusSelection {
             active_scope: scope,
@@ -385,14 +535,15 @@ const fn no_target(
     }
 }
 
-fn linear_candidate(
+fn linear_candidate<Action>(
+    tree: &MountedTree<Action>,
     candidates: &[Candidate],
     current: &MountedNodeId,
     forward: bool,
 ) -> Option<MountedNodeId> {
     let current_order = candidates
         .iter()
-        .find(|candidate| &candidate.id == current)
+        .find(|candidate| candidate_contains(tree, candidate, current))
         .map(|candidate| candidate.order);
     if forward {
         candidates
@@ -407,7 +558,8 @@ fn linear_candidate(
     .map(|candidate| candidate.id.clone())
 }
 
-fn directional_candidate(
+fn directional_candidate<Action>(
+    tree: &MountedTree<Action>,
     candidates: &[Candidate],
     current: &MountedNodeId,
     direction: FocusDirection,
@@ -415,7 +567,7 @@ fn directional_candidate(
 ) -> Option<MountedNodeId> {
     let origin = candidates
         .iter()
-        .find(|candidate| &candidate.id == current)
+        .find(|candidate| candidate_contains(tree, candidate, current))
         .and_then(|candidate| candidate.rect)
         .or_else(|| {
             geometry
@@ -424,7 +576,7 @@ fn directional_candidate(
         })?;
     candidates
         .iter()
-        .filter(|candidate| &candidate.id != current)
+        .filter(|candidate| !candidate_contains(tree, candidate, current))
         .filter_map(|candidate| {
             let rect = candidate.rect?;
             directional_rank(origin, rect, direction).map(|rank| (rank, candidate))
