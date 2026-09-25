@@ -3,8 +3,9 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    CommandOrigin, Element, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusReason,
-    FocusScope, FocusScopePolicy, NoHostProtocol, SemanticCommand, UiApp, View, column,
+    CommandOrigin, Element, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusGroup,
+    FocusGroupBoundaryPolicy, FocusGroupEntry, FocusReason, FocusScope, FocusScopePolicy,
+    NoHostProtocol, SemanticCommand, UiApp, View, column, container,
 };
 use runenui_external_widget_conformance::{
     ExternalFocusFact, ExternalFocusWidget, external_focus_panel,
@@ -305,4 +306,124 @@ fn prevented_initiating_command_changes_modality_but_commits_no_focus_notificati
     assert_eq!(runtime.focus().focused_node(), None);
     assert_eq!(runtime.focus().modality(), Some(InputModality::Automation));
     assert!(log.borrow().is_empty());
+}
+
+
+struct ExternalGroupApp;
+
+impl UiApp for ExternalGroupApp {
+    type State = Rc<RefCell<Vec<ExternalFocusFact>>>;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<()> {
+        let before = Element::new(ExternalFocusWidget::new(
+            "before",
+            Rc::clone(state),
+            true,
+        ))
+        .id("group.before")
+        .focusable(true);
+        let group = container(
+            ExternalFocusWidget::new("group", Rc::clone(state), false),
+            vec![
+                Element::new(ExternalFocusWidget::new(
+                    "a",
+                    Rc::clone(state),
+                    true,
+                ))
+                .id("group.a")
+                .focusable(true),
+                Element::new(ExternalFocusWidget::new("b", Rc::clone(state), true))
+                    .id("group.b")
+                    .focusable(true)
+                    .focus_group_preferred(true),
+            ],
+        )
+        .id("group.root")
+        .into_element()
+        .focus_group(
+            FocusGroup::new().with_boundary(FocusGroupBoundaryPolicy::Wrap),
+        );
+        let after = Element::new(ExternalFocusWidget::new("after", Rc::clone(state), true))
+            .id("group.after")
+            .focusable(true);
+        column(vec![before, group, after]).into_element()
+    }
+
+    fn update(_: &mut Self::State, (): ()) {}
+}
+
+fn group_id(runtime: &mut AppRuntime<ExternalGroupApp>, authored: &str) -> MountedNodeId {
+    let authored = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("external group node is mounted"))
+        .id()
+        .clone()
+}
+
+#[test]
+fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<ExternalGroupApp>::mount(Rc::clone(&log));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+
+    let before = group_id(&mut runtime, "group.before");
+    let group = group_id(&mut runtime, "group.root");
+    let a = group_id(&mut runtime, "group.a");
+    let b = group_id(&mut runtime, "group.b");
+
+    assert_eq!(
+        runtime
+            .index()
+            .node(&group)
+            .unwrap_or_else(|| unreachable!("group root is public"))
+            .focus_group(),
+        Some(FocusGroup::new().with_boundary(FocusGroupBoundaryPolicy::Wrap))
+    );
+    assert_eq!(
+        runtime
+            .index()
+            .node(&b)
+            .unwrap_or_else(|| unreachable!("preferred member is public"))
+            .focus_group_entry(),
+        FocusGroupEntry::Preferred
+    );
+
+    runtime
+        .submit_command(
+            before.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("external before target is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime
+        .submit_command(
+            before,
+            SemanticCommand::FocusNext,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("external traversal command is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.focus().focused_node(), Some(&b));
+
+    runtime
+        .submit_command(
+            b,
+            SemanticCommand::FocusGroupNext,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("external group navigation is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.focus().focused_node(), Some(&a));
 }
