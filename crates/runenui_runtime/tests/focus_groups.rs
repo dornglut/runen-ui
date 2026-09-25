@@ -30,15 +30,19 @@ impl UiApp for App {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &State) -> Element<Action> {
-        let group = column(vec![member(state, "a"), member(state, "b"), member(state, "c")])
-            .id("group")
-            .key("group")
-            .into_element()
-            .focus_group(
-                FocusGroup::new()
-                    .with_boundary(FocusGroupBoundaryPolicy::Wrap)
-                    .with_activation(FocusGroupActivationPolicy::ActivateTarget),
-            );
+        let group = column(vec![
+            member(state, "a"),
+            member(state, "b"),
+            member(state, "c"),
+        ])
+        .id("group")
+        .key("group")
+        .into_element()
+        .focus_group(
+            FocusGroup::new()
+                .with_boundary(FocusGroupBoundaryPolicy::Wrap)
+                .with_activation(FocusGroupActivationPolicy::ActivateTarget),
+        );
         column(vec![member(state, "before"), group, member(state, "after")])
             .key("root")
             .into_element()
@@ -66,7 +70,12 @@ fn member(state: &State, name: &'static str) -> Element<Action> {
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    runtime.pump(PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
 }
 
 fn id(runtime: &mut AppRuntime<App>, name: &str) -> MountedNodeId {
@@ -86,7 +95,9 @@ fn command(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: Semant
         .submit_command(target, command, CommandOrigin::programmatic())
         .unwrap_or_else(|_| unreachable!("live focus-group command is accepted"));
     assert_eq!(
-        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).processed_envelopes(),
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
         1
     );
 }
@@ -124,7 +135,10 @@ fn external_traversal_collapses_group_and_uses_preferred_entry() {
     command(&mut runtime, before.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, before.clone(), SemanticCommand::FocusNext);
     assert_eq!(runtime.focus().focused_node(), Some(&preferred));
-    assert_eq!(runtime.focus().reason(), Some(FocusReason::LinearNavigation));
+    assert_eq!(
+        runtime.focus().reason(),
+        Some(FocusReason::LinearNavigation)
+    );
 
     command(&mut runtime, preferred.clone(), SemanticCommand::FocusNext);
     assert_eq!(runtime.focus().focused_node(), Some(&after));
@@ -132,7 +146,10 @@ fn external_traversal_collapses_group_and_uses_preferred_entry() {
     command(&mut runtime, before.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, before, SemanticCommand::FocusRight);
     assert_eq!(runtime.focus().focused_node(), Some(&preferred));
-    assert_eq!(runtime.focus().reason(), Some(FocusReason::DirectionalNavigation));
+    assert_eq!(
+        runtime.focus().reason(),
+        Some(FocusReason::DirectionalNavigation)
+    );
 }
 
 #[test]
@@ -179,13 +196,19 @@ fn invalid_multiple_preferred_members_diagnose_and_fail_closed() {
     });
     settle(&mut runtime);
 
-    assert!(runtime.reconciliation_report().diagnostics().iter().any(|diagnostic| {
-        matches!(
-            diagnostic,
-            ReconciliationDiagnostic::MultiplePreferredFocusGroupMembers { group_path, .. }
-                if group_path == "root/1"
-        )
-    }));
+    assert!(
+        runtime
+            .reconciliation_report()
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| {
+                matches!(
+                    diagnostic,
+                    ReconciliationDiagnostic::MultiplePreferredFocusGroupMembers { group_path, .. }
+                        if group_path == "root/1"
+                )
+            })
+    );
 
     let before = id(&mut runtime, "before");
     let after = id(&mut runtime, "after");
