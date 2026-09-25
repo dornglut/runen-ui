@@ -14,7 +14,8 @@ const ALLOWED_STATUSES: &[&str] = &[
 ];
 
 const M4_DELIVERY_SLICES: &[&str] = &[
-    "M4A", "M4B", "M4C0", "M4C1", "M4C2", "M4C3", "M4C4", "M4C5", "M4D1", "M4D2", "M4D3", "M5",
+    "M4A", "M4B", "M4C0", "M4C1", "M4C2", "M4C3", "M4C4", "M4C5", "M4D1", "M4D2", "M4D3",
+    "M5", "M11D1",
 ];
 const M5_DELIVERY_SLICES: &[&str] = &["M5A0", "M5A", "M5B", "M5C", "M5D", "M5E"];
 const M6_DELIVERY_SLICES: &[&str] = &["M6A", "M6B", "M6C", "M6D"];
@@ -967,7 +968,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 443);
+        assert_eq!(total, 446);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }
