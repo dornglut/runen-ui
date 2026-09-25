@@ -13,7 +13,10 @@ use runenui_runtime::{
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct State {
     disable_preferred: bool,
+    hide_preferred: bool,
     duplicate_preferred: bool,
+    manual_activation: bool,
+    stop_boundary: bool,
     activations: Vec<&'static str>,
 }
 
@@ -30,6 +33,16 @@ impl UiApp for App {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &State) -> Element<Action> {
+        let boundary = if state.stop_boundary {
+            FocusGroupBoundaryPolicy::Stop
+        } else {
+            FocusGroupBoundaryPolicy::Wrap
+        };
+        let activation = if state.manual_activation {
+            FocusGroupActivationPolicy::Manual
+        } else {
+            FocusGroupActivationPolicy::ActivateTarget
+        };
         let group = column(vec![
             member(state, "a"),
             member(state, "b"),
@@ -40,8 +53,8 @@ impl UiApp for App {
         .into_element()
         .focus_group(
             FocusGroup::new()
-                .with_boundary(FocusGroupBoundaryPolicy::Wrap)
-                .with_activation(FocusGroupActivationPolicy::ActivateTarget),
+                .with_boundary(boundary)
+                .with_activation(activation),
         );
         column(vec![member(state, "before"), group, member(state, "after")])
             .key("root")
@@ -65,6 +78,9 @@ fn member(state: &State, name: &'static str) -> Element<Action> {
     let mut element = control.into_element();
     if name == "b" || (state.duplicate_preferred && name == "a") {
         element = element.focus_group_preferred(true);
+    }
+    if state.hide_preferred && name == "b" {
+        element = element.focus_hidden(true);
     }
     element
 }
@@ -189,6 +205,188 @@ fn internal_navigation_wraps_and_activation_is_deferred_until_after_focus() {
 }
 
 #[test]
+fn hidden_preferred_entry_falls_back_and_internal_navigation_skips_ineligible_members() {
+    let mut runtime = AppRuntime::<App>::mount(State {
+        hide_preferred: true,
+        ..State::default()
+    });
+    settle(&mut runtime);
+
+    let before = id(&mut runtime, "before");
+    let a = id(&mut runtime, "a");
+    let c = id(&mut runtime, "c");
+    command(&mut runtime, before.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, before, SemanticCommand::FocusNext);
+    assert_eq!(runtime.focus().focused_node(), Some(&a));
+
+    command(&mut runtime, a.clone(), SemanticCommand::FocusGroupNext);
+    assert_eq!(runtime.focus().focused_node(), Some(&c));
+
+    let mut runtime = AppRuntime::<App>::mount(State {
+        disable_preferred: true,
+        ..State::default()
+    });
+    settle(&mut runtime);
+    let a = id(&mut runtime, "a");
+    let c = id(&mut runtime, "c");
+    command(&mut runtime, a.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, a, SemanticCommand::FocusGroupNext);
+    assert_eq!(runtime.focus().focused_node(), Some(&c));
+}
+
+#[test]
+fn manual_stop_policy_moves_without_activation_and_stops_at_boundary() {
+    let mut runtime = AppRuntime::<App>::mount(State {
+        manual_activation: true,
+        stop_boundary: true,
+        ..State::default()
+    });
+    settle(&mut runtime);
+
+    let b = id(&mut runtime, "b");
+    let c = id(&mut runtime, "c");
+    command(&mut runtime, b.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, b, SemanticCommand::FocusGroupNext);
+    assert_eq!(runtime.focus().focused_node(), Some(&c));
+    settle(&mut runtime);
+    assert!(runtime.state().activations.is_empty());
+
+    command(&mut runtime, c.clone(), SemanticCommand::FocusGroupNext);
+    assert_eq!(runtime.focus().focused_node(), Some(&c));
+    settle(&mut runtime);
+    assert!(runtime.state().activations.is_empty());
+}
+
+#[test]
+fn programmatic_focus_can_target_any_exact_eligible_group_member() {
+    let mut runtime = AppRuntime::<App>::mount(State::default());
+    settle(&mut runtime);
+    let c = id(&mut runtime, "c");
+    command(&mut runtime, c.clone(), SemanticCommand::RequestFocus);
+    assert_eq!(runtime.focus().focused_node(), Some(&c));
+    assert_eq!(
+        runtime.focus().reason(),
+        Some(FocusReason::ProgrammaticRequest)
+    );
+}
+
+struct NestedApp;
+
+impl UiApp for NestedApp {
+    type State = State;
+    type Action = Action;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &State) -> Element<Action> {
+        let nested = column(vec![nested_member("x", false), nested_member("y", true)])
+            .id("inner")
+            .key("inner")
+            .into_element()
+            .focus_group(
+                FocusGroup::new()
+                    .with_boundary(FocusGroupBoundaryPolicy::Wrap)
+                    .with_activation(FocusGroupActivationPolicy::Manual),
+            );
+        let outer = column(vec![
+            nested_member("a", false),
+            nested,
+            nested_member("c", false),
+        ])
+        .id("outer")
+        .key("outer")
+        .into_element()
+        .focus_group(
+            FocusGroup::new()
+                .with_boundary(FocusGroupBoundaryPolicy::Wrap)
+                .with_activation(FocusGroupActivationPolicy::Manual),
+        );
+        column(vec![
+            nested_member("before", false),
+            outer,
+            nested_member("after", false),
+        ])
+        .key("root")
+        .into_element()
+    }
+
+    fn update(state: &mut State, action: Action) {
+        let Action::Activated(name) = action;
+        state.activations.push(name);
+    }
+}
+
+fn nested_member(name: &'static str, preferred: bool) -> Element<Action> {
+    let mut element = button(name)
+        .id(name)
+        .key(name)
+        .on_activate(move || Action::Activated(name))
+        .into_element();
+    if preferred {
+        element = element.focus_group_preferred(true);
+    }
+    element
+}
+
+fn nested_id(runtime: &mut AppRuntime<NestedApp>, name: &str) -> MountedNodeId {
+    let authored = runenui_core::ElementId::new(name).unwrap_or_else(|_| unreachable!());
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("named nested-group corpus node is mounted"))
+        .id()
+        .clone()
+}
+
+fn nested_command(
+    runtime: &mut AppRuntime<NestedApp>,
+    target: MountedNodeId,
+    command: SemanticCommand,
+) {
+    runtime
+        .submit_command(target, command, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("live nested focus-group command is accepted"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+}
+
+#[test]
+fn nested_groups_use_nearest_ownership_and_outer_group_treats_inner_as_one_member() {
+    let mut runtime = AppRuntime::<NestedApp>::mount(State::default());
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+
+    let a = nested_id(&mut runtime, "a");
+    let outer = nested_id(&mut runtime, "outer");
+    let inner = nested_id(&mut runtime, "inner");
+    let y = nested_id(&mut runtime, "y");
+    let x = nested_id(&mut runtime, "x");
+    let c = nested_id(&mut runtime, "c");
+
+    nested_command(&mut runtime, a.clone(), SemanticCommand::RequestFocus);
+    nested_command(&mut runtime, outer.clone(), SemanticCommand::FocusGroupNext);
+    assert_eq!(runtime.focus().focused_node(), Some(&y));
+
+    nested_command(&mut runtime, y.clone(), SemanticCommand::FocusGroupNext);
+    assert_eq!(runtime.focus().focused_node(), Some(&x));
+
+    nested_command(&mut runtime, inner, SemanticCommand::FocusGroupPrevious);
+    assert_eq!(runtime.focus().focused_node(), Some(&y));
+
+    nested_command(&mut runtime, outer, SemanticCommand::FocusGroupNext);
+    assert_eq!(runtime.focus().focused_node(), Some(&c));
+}
+
+#[test]
 fn invalid_multiple_preferred_members_diagnose_and_fail_closed() {
     let mut runtime = AppRuntime::<App>::mount(State {
         duplicate_preferred: true,
@@ -204,8 +402,14 @@ fn invalid_multiple_preferred_members_diagnose_and_fail_closed() {
             .any(|diagnostic| {
                 matches!(
                     diagnostic,
-                    ReconciliationDiagnostic::MultiplePreferredFocusGroupMembers { group_path, .. }
-                        if group_path == "root/1"
+                    ReconciliationDiagnostic::MultiplePreferredFocusGroupMembers {
+                group_path,
+                preferred_member_paths,
+            } if group_path == "root/1"
+                && preferred_member_paths == &vec![
+                    String::from("root/1/0"),
+                    String::from("root/1/1"),
+                ]
                 )
             })
     );
