@@ -13,8 +13,8 @@ use std::{
 
 use accesskit::{
     Action, ActionData, ActionRequest, ActivationHandler, CustomAction, Node, NodeId, Rect, Role,
-    TextPosition as AccessTextPosition, TextSelection as AccessTextSelection, Toggled, Tree, TreeId,
-    TreeUpdate,
+    TextPosition as AccessTextPosition, TextSelection as AccessTextSelection, Toggled, Tree,
+    TreeId, TreeUpdate,
 };
 use runenui_core::{
     SemanticAction, SemanticCheckedState, SemanticNodeId, SemanticRelationshipKind, SemanticRole,
@@ -591,9 +591,7 @@ impl SurfaceProjection {
             node.set_read_only();
         }
         if let Some(checked) = semantic.state().checked() {
-            if let Some(toggled) =
-                map_checked_state(checked, semantic.id(), &mut diagnostics)
-            {
+            if let Some(toggled) = map_checked_state(checked, semantic.id(), &mut diagnostics) {
                 node.set_toggled(toggled);
             }
         }
@@ -991,12 +989,12 @@ mod tests {
         EditingSessionPolicy, Element, LogicalSize, NoHostProtocol, SemanticAction,
         SemanticActionData, SemanticCheckedState, SemanticContribution,
         SemanticContributionContext, SemanticEditable, SemanticItem, SemanticKey,
-        SemanticNodeContribution, SemanticReference,
-        SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText,
-        SemanticValue, StyleEnvironment, TextDocumentId, TextDocumentRevision,
-        TextDocumentSnapshot, TextSelection, TextSensitivity, UiApp, UpdateOutput, View, Widget,
-        WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetInvalidation,
-        WidgetMeasure, WidgetMeasureInput,
+        SemanticNodeContribution, SemanticReference, SemanticRelationship,
+        SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText, SemanticValue,
+        StyleEnvironment, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
+        TextSelection, TextSensitivity, UiApp, UpdateOutput, View, Widget, WidgetActivation,
+        WidgetActivationContext, WidgetActivationOutput, WidgetInvalidation, WidgetMeasure,
+        WidgetMeasureInput,
     };
     use runenui_runtime::{AppRuntime, FontFamilyName, GenericFontFamily, SurfaceBuildContext};
 
