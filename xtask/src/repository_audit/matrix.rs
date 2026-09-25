@@ -843,35 +843,35 @@ mod tests {
         assert_eq!(parse_schema_errors, 0);
         assert_eq!(rows.len(), 10);
 
-        let m11a = rows
+        let baseline_rows = rows
             .iter()
             .filter(|row| row.cells[5] == "M11A")
             .collect::<Vec<_>>();
-        let m11b = rows
+        let semantic_rows = rows
             .iter()
             .filter(|row| row.cells[5] == "M11B")
             .collect::<Vec<_>>();
-        let m11c = rows
+        let binary_control_rows = rows
             .iter()
             .filter(|row| row.cells[5] == "M11C")
             .collect::<Vec<_>>();
 
-        assert_eq!(m11a.len(), 5);
-        assert!(m11a.iter().all(|row| {
+        assert_eq!(baseline_rows.len(), 5);
+        assert!(baseline_rows.iter().all(|row| {
             row.cells[0].starts_with("M11CTRL-")
                 && row.cells[6] == "owner-accepted"
                 && row.cells[7] == "Required"
         }));
 
-        assert_eq!(m11b.len(), 3);
-        assert!(m11b.iter().all(|row| {
+        assert_eq!(semantic_rows.len(), 3);
+        assert!(semantic_rows.iter().all(|row| {
             row.cells[0].starts_with("M11CTRL-")
                 && row.cells[6] == "owner-accepted"
                 && row.cells[7] == "Required"
         }));
 
-        assert_eq!(m11c.len(), 2);
-        assert!(m11c.iter().all(|row| {
+        assert_eq!(binary_control_rows.len(), 2);
+        assert!(binary_control_rows.iter().all(|row| {
             matches!(row.cells[0].as_str(), "M11CTRL-09" | "M11CTRL-10")
                 && row.cells[6] == "implementation-complete"
                 && row.cells[7] == "Required"
