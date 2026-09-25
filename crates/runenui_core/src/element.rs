@@ -7,23 +7,205 @@ use crate::widget_erasure::{ElementParts, ErasedWidget, MountedWidget, WidgetAda
 use crate::widget_mapping::MappedWidget;
 use crate::widget_protocol::Widget;
 use crate::{
-    BrushValue, ColorValue, ElementId, ElementKey, ExplicitTimeline, FocusScope, Focusability,
-    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, MotionTarget, OpacityValue,
-    OutlineValue, RadiusValue, ShadowValue, SpacingValue, StyleIntent, StyleRecipeId,
-    StyleVariantId, TransitionSpec, TypographyValue,
+    ElementId, ElementKey, ExplicitTimeline, FocusScope, Focusability, IdentifierError,
+    IntoElementId, IntoElementKey, LayoutStyle, StyleIntent,
 };
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct CommonNodeAuthoring {
+    pub id: Option<ElementId>,
+    pub key: Option<ElementKey>,
+    pub layout: LayoutStyle,
+    pub style: StyleIntent,
+    pub timelines: Vec<ExplicitTimeline>,
+    pub diagnostics: Vec<AuthoringDiagnostic>,
+}
+
+impl Default for CommonNodeAuthoring {
+    fn default() -> Self {
+        Self {
+            id: None,
+            key: None,
+            layout: LayoutStyle::default(),
+            style: StyleIntent::EMPTY,
+            timelines: Vec::new(),
+            diagnostics: Vec::new(),
+        }
+    }
+}
+
+impl CommonNodeAuthoring {
+    pub fn from_authored_fields(
+        fields: AuthoredElementFields,
+        diagnostics: Vec<AuthoringDiagnostic>,
+    ) -> (Self, Focusability, Option<FocusScope>) {
+        (
+            Self {
+                id: fields.id,
+                key: fields.key,
+                layout: fields.layout,
+                style: fields.style,
+                timelines: fields.timelines,
+                diagnostics,
+            },
+            fields.focusability,
+            fields.focus_scope,
+        )
+    }
+
+    pub fn into_authored_fields(
+        self,
+        focusability: Focusability,
+        focus_scope: Option<FocusScope>,
+    ) -> (AuthoredElementFields, Vec<AuthoringDiagnostic>) {
+        (
+            AuthoredElementFields::new(
+                self.id,
+                self.key,
+                self.layout,
+                self.style,
+                self.timelines,
+                focusability,
+                focus_scope,
+            ),
+            self.diagnostics,
+        )
+    }
+
+    pub fn assign_id(&mut self, value: impl IntoElementId) {
+        match value.into_element_id() {
+            Ok(id) => self.id = Some(id),
+            Err((value, error)) => self.diagnostics.push(AuthoringDiagnostic {
+                field: "id",
+                value,
+                error,
+            }),
+        }
+    }
+
+    pub fn assign_key(&mut self, value: impl IntoElementKey) {
+        match value.into_element_key() {
+            Ok(key) => self.key = Some(key),
+            Err((value, error)) => self.diagnostics.push(AuthoringDiagnostic {
+                field: "key",
+                value,
+                error,
+            }),
+        }
+    }
+}
+
+macro_rules! common_node_builder_methods {
+    () => {
+        #[must_use]
+        pub fn id(mut self, id: impl $crate::IntoElementId) -> Self {
+            self.common.assign_id(id);
+            self
+        }
+        #[must_use]
+        pub fn key(mut self, key: impl $crate::IntoElementKey) -> Self {
+            self.common.assign_key(key);
+            self
+        }
+        #[must_use]
+        pub fn with_layout(mut self, layout: $crate::LayoutStyle) -> Self {
+            self.common.layout = layout;
+            self
+        }
+        #[must_use]
+        pub fn recipe(mut self, recipe: $crate::StyleRecipeId) -> Self {
+            self.common.style = self.common.style.with_recipe(recipe);
+            self
+        }
+        #[must_use]
+        pub fn variant(mut self, variant: $crate::StyleVariantId) -> Self {
+            self.common.style = self.common.style.with_variant(variant);
+            self
+        }
+        #[must_use]
+        pub fn foreground(mut self, value: impl Into<$crate::ColorValue>) -> Self {
+            self.common.style = self.common.style.with_foreground(value);
+            self
+        }
+        #[must_use]
+        pub fn background(mut self, value: impl Into<$crate::BrushValue>) -> Self {
+            self.common.style = self.common.style.with_background(value);
+            self
+        }
+        #[must_use]
+        pub fn padding(mut self, value: impl Into<$crate::SpacingValue>) -> Self {
+            self.common.style = self.common.style.with_padding(value);
+            self
+        }
+        #[must_use]
+        pub fn radius(mut self, value: impl Into<$crate::RadiusValue>) -> Self {
+            self.common.style = self.common.style.with_radius(value);
+            self
+        }
+        #[must_use]
+        pub fn typography(mut self, value: impl Into<$crate::TypographyValue>) -> Self {
+            self.common.style = self.common.style.with_typography(value);
+            self
+        }
+        #[must_use]
+        pub fn outline(mut self, value: impl Into<$crate::OutlineValue>) -> Self {
+            self.common.style = self.common.style.with_outline(value);
+            self
+        }
+        #[must_use]
+        pub fn shadows(mut self, value: impl Into<$crate::ShadowValue>) -> Self {
+            self.common.style = self.common.style.with_shadows(value);
+            self
+        }
+        #[must_use]
+        pub fn opacity(mut self, value: impl Into<$crate::OpacityValue>) -> Self {
+            self.common.style = self.common.style.with_opacity(value);
+            self
+        }
+        #[must_use]
+        pub fn presentation(mut self, value: impl Into<$crate::PresentationValue>) -> Self {
+            self.common.style = self.common.style.with_presentation(value);
+            self
+        }
+        /// Contributes transition policy through the ordinary style cascade.
+        #[must_use]
+        pub fn transition(
+            mut self,
+            target: $crate::MotionTarget,
+            spec: $crate::TransitionSpec,
+        ) -> Self {
+            self.common.style = self.common.style.with_transition(target, spec);
+            self
+        }
+
+        /// Explicitly disables transition for one motion target at the authored layer.
+        #[must_use]
+        pub fn transition_disabled(mut self, target: $crate::MotionTarget) -> Self {
+            self.common.style = self.common.style.with_transition_disabled(target);
+            self
+        }
+
+        /// Adds one owner-local declarative explicit timeline.
+        ///
+        /// Duplicate animation IDs and duplicate targets are retained here and
+        /// rejected transactionally by runtime candidate planning.
+        #[must_use]
+        pub fn timeline(mut self, timeline: $crate::ExplicitTimeline) -> Self {
+            self.common.timelines.push(timeline);
+            self
+        }
+    };
+}
+
+#[allow(clippy::redundant_pub_crate)]
+pub(super) use common_node_builder_methods;
+
 pub struct Element<Action> {
-    id: Option<ElementId>,
-    key: Option<ElementKey>,
-    layout: LayoutStyle,
-    style: StyleIntent,
-    timelines: Vec<ExplicitTimeline>,
+    common: CommonNodeAuthoring,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
     widget: Box<dyn ErasedWidget<Action>>,
     children: Vec<Self>,
-    authoring_diagnostics: Vec<AuthoringDiagnostic>,
 }
 
 pub struct AuthoredElementFields {
@@ -62,16 +244,16 @@ impl<Action> fmt::Debug for Element<Action> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("Element")
-            .field("id", &self.id)
-            .field("key", &self.key)
-            .field("layout", &self.layout)
-            .field("style", &self.style)
-            .field("timelines", &self.timelines)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("layout", &self.common.layout)
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
             .field("focusability", &self.focusability)
             .field("focus_scope", &self.focus_scope)
             .field("widget_type", &self.widget.widget_type_name())
             .field("children", &self.children)
-            .field("authoring_diagnostics", &self.authoring_diagnostics)
+            .field("authoring_diagnostics", &self.common.diagnostics)
             .finish()
     }
 }
@@ -87,20 +269,13 @@ impl<Action> Element<Action> {
     }
 
     fn from_parts(widget: Box<dyn ErasedWidget<Action>>, children: Vec<Self>) -> Self {
-        Self::from_authored_parts(
-            AuthoredElementFields::new(
-                None,
-                None,
-                LayoutStyle::default(),
-                StyleIntent::EMPTY,
-                Vec::new(),
-                Focusability::Automatic,
-                None,
-            ),
+        Self {
+            common: CommonNodeAuthoring::default(),
+            focusability: Focusability::Automatic,
+            focus_scope: None,
             widget,
             children,
-            Vec::new(),
-        )
+        }
     }
 
     pub(crate) fn from_authored_parts(
@@ -109,121 +284,18 @@ impl<Action> Element<Action> {
         children: Vec<Self>,
         authoring_diagnostics: Vec<AuthoringDiagnostic>,
     ) -> Self {
+        let (common, focusability, focus_scope) =
+            CommonNodeAuthoring::from_authored_fields(fields, authoring_diagnostics);
         Self {
-            id: fields.id,
-            key: fields.key,
-            layout: fields.layout,
-            style: fields.style,
-            timelines: fields.timelines,
-            focusability: fields.focusability,
-            focus_scope: fields.focus_scope,
+            common,
+            focusability,
+            focus_scope,
             widget,
             children,
-            authoring_diagnostics,
         }
     }
 
-    #[must_use]
-    pub fn id(mut self, id: impl IntoElementId) -> Self {
-        assign_id(&mut self.id, &mut self.authoring_diagnostics, id);
-        self
-    }
-
-    #[must_use]
-    pub fn key(mut self, key: impl IntoElementKey) -> Self {
-        assign_key(&mut self.key, &mut self.authoring_diagnostics, key);
-        self
-    }
-
-    #[must_use]
-    pub fn with_layout(mut self, layout: LayoutStyle) -> Self {
-        self.layout = layout;
-        self
-    }
-
-    #[must_use]
-    pub fn recipe(mut self, recipe: StyleRecipeId) -> Self {
-        self.style = self.style.with_recipe(recipe);
-        self
-    }
-
-    #[must_use]
-    pub fn variant(mut self, variant: StyleVariantId) -> Self {
-        self.style = self.style.with_variant(variant);
-        self
-    }
-
-    #[must_use]
-    pub fn foreground(mut self, value: impl Into<ColorValue>) -> Self {
-        self.style = self.style.with_foreground(value);
-        self
-    }
-
-    #[must_use]
-    pub fn background(mut self, value: impl Into<BrushValue>) -> Self {
-        self.style = self.style.with_background(value);
-        self
-    }
-
-    #[must_use]
-    pub fn padding(mut self, value: impl Into<SpacingValue>) -> Self {
-        self.style = self.style.with_padding(value);
-        self
-    }
-
-    #[must_use]
-    pub fn radius(mut self, value: impl Into<RadiusValue>) -> Self {
-        self.style = self.style.with_radius(value);
-        self
-    }
-
-    #[must_use]
-    pub fn typography(mut self, value: impl Into<TypographyValue>) -> Self {
-        self.style = self.style.with_typography(value);
-        self
-    }
-
-    #[must_use]
-    pub fn outline(mut self, value: impl Into<OutlineValue>) -> Self {
-        self.style = self.style.with_outline(value);
-        self
-    }
-
-    #[must_use]
-    pub fn shadows(mut self, value: impl Into<ShadowValue>) -> Self {
-        self.style = self.style.with_shadows(value);
-        self
-    }
-
-    #[must_use]
-    pub fn opacity(mut self, value: impl Into<OpacityValue>) -> Self {
-        self.style = self.style.with_opacity(value);
-        self
-    }
-
-    /// Contributes transition policy through the ordinary style cascade.
-    #[must_use]
-    pub fn transition(mut self, target: MotionTarget, spec: TransitionSpec) -> Self {
-        self.style = self.style.with_transition(target, spec);
-        self
-    }
-
-    /// Explicitly disables transition for one motion target at the authored layer.
-    #[must_use]
-    pub fn transition_disabled(mut self, target: MotionTarget) -> Self {
-        self.style = self.style.with_transition_disabled(target);
-        self
-    }
-
-    /// Adds one owner-local declarative explicit timeline.
-    ///
-    /// Duplicate animation IDs and duplicate targets are retained here and
-    /// rejected transactionally by runtime candidate planning.
-    #[must_use]
-    pub fn timeline(mut self, timeline: ExplicitTimeline) -> Self {
-        self.timelines.push(timeline);
-        self
-    }
+    common_node_builder_methods!();
 
     /// Declares explicit participation in mounted focus selection.
     #[must_use]
@@ -279,11 +351,7 @@ impl<Action> Element<Action> {
         ParentAction: 'static,
     {
         Element {
-            id: self.id,
-            key: self.key,
-            layout: self.layout,
-            style: self.style,
-            timelines: self.timelines,
+            common: self.common,
             focusability: self.focusability,
             focus_scope: self.focus_scope,
             widget: Box::new(MappedWidget {
@@ -295,29 +363,28 @@ impl<Action> Element<Action> {
                 .into_iter()
                 .map(|child| child.map_action_shared(mapper))
                 .collect(),
-            authoring_diagnostics: self.authoring_diagnostics,
         }
     }
 
     #[must_use]
     pub const fn element_id(&self) -> Option<&ElementId> {
-        self.id.as_ref()
+        self.common.id.as_ref()
     }
     #[must_use]
     pub const fn element_key(&self) -> Option<&ElementKey> {
-        self.key.as_ref()
+        self.common.key.as_ref()
     }
     #[must_use]
     pub const fn layout(&self) -> &LayoutStyle {
-        &self.layout
+        &self.common.layout
     }
     #[must_use]
     pub const fn style(&self) -> &StyleIntent {
-        &self.style
+        &self.common.style
     }
     #[must_use]
     pub const fn timelines(&self) -> &[ExplicitTimeline] {
-        self.timelines.as_slice()
+        self.common.timelines.as_slice()
     }
     #[must_use]
     pub const fn focusability(&self) -> Focusability {
@@ -333,25 +400,20 @@ impl<Action> Element<Action> {
     }
     #[must_use]
     pub const fn authoring_diagnostics(&self) -> &[AuthoringDiagnostic] {
-        self.authoring_diagnostics.as_slice()
+        self.common.diagnostics.as_slice()
     }
     /// Consumes this transient node into unstable runtime-owned plumbing.
     #[doc(hidden)]
     #[must_use]
     pub fn into_runtime_parts(self) -> ElementParts<Action> {
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(self.focusability, self.focus_scope);
         ElementParts::new(
-            AuthoredElementFields::new(
-                self.id,
-                self.key,
-                self.layout,
-                self.style,
-                self.timelines,
-                self.focusability,
-                self.focus_scope,
-            ),
+            fields,
             MountedWidget::from_erased(self.widget),
             self.children,
-            self.authoring_diagnostics,
+            diagnostics,
         )
     }
 }
@@ -402,35 +464,5 @@ impl AuthoringDiagnostic {
     #[must_use]
     pub const fn error(&self) -> IdentifierError {
         self.error
-    }
-}
-
-fn assign_id(
-    slot: &mut Option<ElementId>,
-    diagnostics: &mut Vec<AuthoringDiagnostic>,
-    value: impl IntoElementId,
-) {
-    match value.into_element_id() {
-        Ok(id) => *slot = Some(id),
-        Err((value, error)) => diagnostics.push(AuthoringDiagnostic {
-            field: "id",
-            value,
-            error,
-        }),
-    }
-}
-
-fn assign_key(
-    slot: &mut Option<ElementKey>,
-    diagnostics: &mut Vec<AuthoringDiagnostic>,
-    value: impl IntoElementKey,
-) {
-    match value.into_element_key() {
-        Ok(key) => *slot = Some(key),
-        Err((value, error)) => diagnostics.push(AuthoringDiagnostic {
-            field: "key",
-            value,
-            error,
-        }),
     }
 }
