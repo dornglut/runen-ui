@@ -1,6 +1,7 @@
 use runenui_core::{
-    SemanticCheckedState, SemanticContributionContext, SemanticRole, View, WidgetAvailableSpace,
-    WidgetMeasure, WidgetMeasureInput, button, checkbox, children, column, switch, text,
+    HitContributionContext, LogicalSize, SemanticCheckedState, SemanticContributionContext,
+    SemanticRole, View, WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput, button, checkbox,
+    children, column, switch, text,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -128,5 +129,44 @@ fn binary_control_builders_use_the_open_widget_protocol() {
     assert_eq!(
         switch_node.state().checked(),
         Some(SemanticCheckedState::Checked)
+    );
+
+    let passive_element: runenui_core::Element<Action> =
+        checkbox("Passive", false).into_element();
+    let (_, _, _, _, _, _, _, _, passive_widget, _) =
+        passive_element.into_runtime_parts().into_parts();
+    let passive_state = passive_widget.create_state();
+    let passive_activation = passive_widget
+        .activation(&passive_state)
+        .unwrap_or_else(|_| unreachable!("passive checkbox activation is inspectable"));
+    assert!(!passive_activation.is_actionable());
+    assert!(
+        passive_widget
+            .hit_test(
+                &passive_state,
+                HitContributionContext::__runtime_new(LogicalSize::ZERO),
+            )
+            .unwrap_or_else(|_| unreachable!("passive checkbox hit contribution is inspectable"))
+            .is_empty()
+    );
+
+    let actionable_element: runenui_core::Element<Action> =
+        switch("Actionable", false).on_activate(|| Action::Save).into_element();
+    let (_, _, _, _, _, _, _, _, actionable_widget, _) =
+        actionable_element.into_runtime_parts().into_parts();
+    let actionable_state = actionable_widget.create_state();
+    let actionable_activation = actionable_widget
+        .activation(&actionable_state)
+        .unwrap_or_else(|_| unreachable!("actionable switch activation is inspectable"));
+    assert!(actionable_activation.is_actionable());
+    assert!(actionable_activation.enabled());
+    assert!(
+        !actionable_widget
+            .hit_test(
+                &actionable_state,
+                HitContributionContext::__runtime_new(LogicalSize::ZERO),
+            )
+            .unwrap_or_else(|_| unreachable!("actionable switch hit contribution is inspectable"))
+            .is_empty()
     );
 }
