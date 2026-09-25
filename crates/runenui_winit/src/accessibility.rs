@@ -123,9 +123,11 @@ impl SemanticAdapter {
 
     pub fn update(&mut self, publication: &SemanticPublication) -> AccessibilityUpdate {
         let (mode, tree_update, diagnostics) = self.projection.update(publication);
-        let full_tree = self.projection.full_tree_update();
-        if let Ok(mut latest) = self.latest_tree.write() {
-            *latest = Some(full_tree);
+        if self.projection.current_snapshot.is_some() {
+            let full_tree = self.projection.full_tree_update();
+            if let Ok(mut latest) = self.latest_tree.write() {
+                *latest = Some(full_tree);
+            }
         }
         AccessibilityUpdate {
             mode,
@@ -172,7 +174,7 @@ struct SurfaceProjection {
     retired_accesskit: HashSet<NodeId>,
     current_nodes: BTreeMap<NodeId, Node>,
     synthetic_root: Option<NodeId>,
-    next_node_id: u64,
+    next_node_id: Option<u64>,
 }
 
 impl SurfaceProjection {
@@ -189,7 +191,7 @@ impl SurfaceProjection {
             retired_accesskit: HashSet::new(),
             current_nodes: BTreeMap::new(),
             synthetic_root: None,
-            next_node_id: 1,
+            next_node_id: Some(1),
         }
     }
 
@@ -309,35 +311,40 @@ impl SurfaceProjection {
         let Ok(required) = u64::try_from(required) else {
             return false;
         };
-        self.next_node_id.checked_add(required).is_some()
+        if required == 0 {
+            return true;
+        }
+        let Some(next_node_id) = self.next_node_id else {
+            return false;
+        };
+        next_node_id.checked_add(required - 1).is_some()
     }
 
     fn node_id_exhausted_update(
         &self,
     ) -> (UpdateMode, TreeUpdate, Vec<AdapterDiagnostic>) {
-        let tree_update = self.current_snapshot.as_ref().map_or_else(
-            || TreeUpdate {
+        let focus = self
+            .current_snapshot
+            .as_ref()
+            .map_or(NodeId(0), |snapshot| self.focus_id_without_mutation(snapshot));
+        (
+            UpdateMode::Unchanged,
+            TreeUpdate {
                 nodes: Vec::new(),
                 tree: None,
                 tree_id: self.tree_id,
-                focus: NodeId(0),
+                focus,
             },
-            |_| self.full_tree_update(),
-        );
-        (
-            UpdateMode::Unchanged,
-            tree_update,
             vec![AdapterDiagnostic::NodeIdSpaceExhausted],
         )
     }
 
     fn allocate_node_id(&mut self) -> NodeId {
-        let id = NodeId(self.next_node_id);
-        self.next_node_id = self
+        let value = self
             .next_node_id
-            .checked_add(1)
             .unwrap_or_else(|| unreachable!("AccessKit node ID capacity is preflighted"));
-        id
+        self.next_node_id = value.checked_add(1);
+        NodeId(value)
     }
 
     fn ensure_node_id(&mut self, semantic: &SemanticNodeId) -> NodeId {
@@ -1178,11 +1185,37 @@ mod tests {
     }
 
     #[test]
+    fn exhausted_initial_projection_diagnoses_without_publishing_partial_state() {
+        let mut runtime = AppRuntime::<FixtureApp>::mount(0);
+        let publication = publication(&mut runtime);
+        let mut adapter = SemanticAdapter::new();
+        adapter.projection.next_node_id = None;
+        let mut activation = adapter.activation_handler();
+
+        let update = adapter.update(&publication);
+
+        assert_eq!(update.mode, UpdateMode::Unchanged);
+        assert_eq!(
+            update.diagnostics,
+            vec![AdapterDiagnostic::NodeIdSpaceExhausted]
+        );
+        assert!(update.tree_update.nodes.is_empty());
+        assert!(update.tree_update.tree.is_none());
+        assert_eq!(adapter.projection.current_surface, None);
+        assert_eq!(adapter.projection.current_revision, None);
+        assert_eq!(adapter.projection.current_snapshot, None);
+        assert!(adapter.projection.semantic_to_accesskit.is_empty());
+        assert!(adapter.projection.accesskit_to_semantic.is_empty());
+        assert!(adapter.projection.current_nodes.is_empty());
+        assert!(activation.request_initial_tree().is_none());
+    }
+
+    #[test]
     fn node_id_capacity_preflight_reaches_exact_boundary_without_wrap() {
         let mut runtime = AppRuntime::<FixtureApp>::mount(2);
         let publication = publication(&mut runtime);
         let mut adapter = SemanticAdapter::new();
-        adapter.projection.next_node_id = u64::MAX - 3;
+        adapter.projection.next_node_id = Some(u64::MAX - 2);
 
         let update = adapter.update(&publication);
 
@@ -1192,11 +1225,8 @@ mod tests {
                 .diagnostics
                 .contains(&AdapterDiagnostic::NodeIdSpaceExhausted)
         );
-        assert_eq!(adapter.projection.next_node_id, u64::MAX);
-        assert_eq!(
-            adapter.projection.synthetic_root,
-            Some(NodeId(u64::MAX - 1))
-        );
+        assert_eq!(adapter.projection.next_node_id, None);
+        assert_eq!(adapter.projection.synthetic_root, Some(NodeId(u64::MAX)));
         let mut semantic_ids = adapter
             .projection
             .semantic_to_accesskit
@@ -1204,7 +1234,7 @@ mod tests {
             .map(|id| id.0)
             .collect::<Vec<_>>();
         semantic_ids.sort_unstable();
-        assert_eq!(semantic_ids, vec![u64::MAX - 3, u64::MAX - 2]);
+        assert_eq!(semantic_ids, vec![u64::MAX - 2, u64::MAX - 1]);
     }
 
     #[test]
@@ -1243,7 +1273,7 @@ mod tests {
         let mut activation = adapter.activation_handler();
         let before_tree = activation.request_initial_tree().unwrap();
 
-        adapter.projection.next_node_id = u64::MAX;
+        adapter.projection.next_node_id = None;
         let _ = runtime.submit_action(FixtureAction);
         runtime.pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64));
         let third_publication = publication(&mut runtime);
@@ -1254,7 +1284,7 @@ mod tests {
             rejected.diagnostics,
             vec![AdapterDiagnostic::NodeIdSpaceExhausted]
         );
-        assert_eq!(adapter.projection.next_node_id, u64::MAX);
+        assert_eq!(adapter.projection.next_node_id, None);
         assert_eq!(
             adapter.projection.semantic_to_accesskit,
             before_semantic_to_accesskit
