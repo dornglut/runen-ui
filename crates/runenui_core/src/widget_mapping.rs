@@ -1,4 +1,4 @@
-use crate::element::{
+use crate::widget_protocol::{
     WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetMeasureInput,
     WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
 };
