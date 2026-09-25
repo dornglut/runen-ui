@@ -371,10 +371,11 @@ pub use scene_geometry::{
     SceneOpacityError, SceneShape,
 };
 pub use semantic::{
-    SemanticAction, SemanticBounds, SemanticContribution, SemanticContributionContext,
-    SemanticContributionError, SemanticContributionValidation, SemanticEditable, SemanticItem,
-    SemanticKey, SemanticNodeContribution, SemanticReference, SemanticRelationship,
-    SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText, SemanticValue,
+    SemanticAction, SemanticBounds, SemanticCheckedState, SemanticContribution,
+    SemanticContributionContext, SemanticContributionError, SemanticContributionValidation,
+    SemanticEditable, SemanticItem, SemanticKey, SemanticNodeContribution, SemanticReference,
+    SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText,
+    SemanticValue,
 };
 pub use semantic_action::{SemanticActionData, SemanticActionRequest, SemanticActionTarget};
 pub use style::{

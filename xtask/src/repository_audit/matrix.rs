@@ -22,7 +22,7 @@ const M7_DELIVERY_SLICES: &[&str] = &["M7A", "M7B", "M7C", "M7D"];
 const M8_DELIVERY_SLICES: &[&str] = &["M8A", "M8B", "M8C", "M8D"];
 const M9_DELIVERY_SLICES: &[&str] = &["M9A", "M9B", "M9C"];
 const M10_DELIVERY_SLICES: &[&str] = &["M10B", "M10C", "M10D", "M10E", "M10F"];
-const M11_DELIVERY_SLICES: &[&str] = &["M11A"];
+const M11_DELIVERY_SLICES: &[&str] = &["M11A", "M11B"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum GatePolicy {
@@ -832,7 +832,7 @@ mod tests {
     }
 
     #[test]
-    fn m11_inventory_accepts_current_m11a_control_baseline() -> Result<(), String> {
+    fn m11_inventory_accepts_m11a_and_m11b_control_contracts() -> Result<(), String> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .ok_or_else(|| "xtask has no repository root".to_owned())?;
@@ -841,10 +841,19 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 5);
-        assert!(rows.iter().all(|row| {
+        assert_eq!(rows.len(), 8);
+        let (accepted_rows, delivery_rows): (Vec<_>, Vec<_>) =
+            rows.iter().partition(|row| row.cells[5] == "M11A");
+        assert_eq!(accepted_rows.len(), 5);
+        assert!(accepted_rows.iter().all(|row| {
             row.cells[0].starts_with("M11CTRL-")
-                && row.cells[5] == "M11A"
+                && row.cells[6] == "owner-accepted"
+                && row.cells[7] == "Required"
+        }));
+        assert_eq!(delivery_rows.len(), 3);
+        assert!(delivery_rows.iter().all(|row| {
+            row.cells[0].starts_with("M11CTRL-")
+                && row.cells[5] == "M11B"
                 && row.cells[6] == "owner-accepted"
                 && row.cells[7] == "Required"
         }));
@@ -938,7 +947,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 438);
+        assert_eq!(total, 441);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }

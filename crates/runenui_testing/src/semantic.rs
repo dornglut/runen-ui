@@ -1,7 +1,8 @@
 use core::{error::Error, fmt};
 
 use runenui_core::{
-    SemanticAction, SemanticActionRequest, SemanticNodeId, SemanticRole, SurfaceId,
+    SemanticAction, SemanticActionRequest, SemanticCheckedState, SemanticNodeId, SemanticRole,
+    SurfaceId,
 };
 use runenui_runtime::{SemanticNode, SemanticSnapshot};
 
@@ -79,6 +80,7 @@ pub struct SemanticQuery {
     supported_action: Option<SemanticAction>,
     disabled: Option<bool>,
     inert: Option<bool>,
+    checked: Option<SemanticCheckedState>,
 }
 
 impl SemanticQuery {
@@ -92,6 +94,7 @@ impl SemanticQuery {
             supported_action: None,
             disabled: None,
             inert: None,
+            checked: None,
         }
     }
 
@@ -137,6 +140,13 @@ impl SemanticQuery {
         self
     }
 
+    /// Requires the exact application-authored checked state.
+    #[must_use]
+    pub const fn with_checked(mut self, checked: SemanticCheckedState) -> Self {
+        self.checked = Some(checked);
+        self
+    }
+
     fn matches(&self, node: &SemanticNode) -> bool {
         self.role.is_none_or(|role| node.role() == role)
             && self
@@ -156,6 +166,9 @@ impl SemanticQuery {
                 .disabled
                 .is_none_or(|disabled| node.state().disabled() == disabled)
             && self.inert.is_none_or(|inert| node.state().inert() == inert)
+            && self
+                .checked
+                .is_none_or(|checked| node.state().checked() == Some(checked))
     }
 }
 

@@ -2,8 +2,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
     __runtime::transform_rect_aabb, ElementId, Focusability, LogicalRect, LogicalTransform,
-    MountedNodeId, SemanticAction, SemanticBounds, SemanticContribution, SemanticEditable,
-    SemanticItem, SemanticKey, SemanticNodeContribution, SemanticReference,
+    MountedNodeId, SemanticAction, SemanticBounds, SemanticCheckedState, SemanticContribution,
+    SemanticEditable, SemanticItem, SemanticKey, SemanticNodeContribution, SemanticReference,
     SemanticRelationshipKind, SemanticRole, SemanticText, SemanticValue, WidgetActivation,
 };
 
@@ -42,6 +42,7 @@ pub struct SemanticCandidateNode {
     pub disabled: bool,
     pub inert: bool,
     pub read_only: bool,
+    pub checked: Option<SemanticCheckedState>,
     pub supported_actions: Vec<SemanticAction>,
     pub relationships: Vec<ResolvedSemanticRelationship>,
     pub bounds: LogicalRect,
@@ -288,6 +289,7 @@ impl<'a> SemanticCompositor<'a> {
             inert: authored.state().inert(),
             read_only: authored.state().read_only()
                 || authored.editable().is_some_and(SemanticEditable::read_only),
+            checked: authored.state().checked(),
             supported_actions: supported_actions(authored, owner, editable.as_ref()),
             relationships: Vec::new(),
             bounds,

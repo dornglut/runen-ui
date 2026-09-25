@@ -13,12 +13,12 @@ use std::{
 
 use accesskit::{
     Action, ActionData, ActionRequest, ActivationHandler, CustomAction, Node, NodeId, Rect, Role,
-    TextPosition as AccessTextPosition, TextSelection as AccessTextSelection, Tree, TreeId,
-    TreeUpdate,
+    TextPosition as AccessTextPosition, TextSelection as AccessTextSelection, Toggled, Tree,
+    TreeId, TreeUpdate,
 };
 use runenui_core::{
-    SemanticAction, SemanticNodeId, SemanticRelationshipKind, SemanticRole, SemanticText,
-    SemanticValue, SurfaceId, TextAffinity, TextPosition, TextSensitivity,
+    SemanticAction, SemanticCheckedState, SemanticNodeId, SemanticRelationshipKind, SemanticRole,
+    SemanticText, SemanticValue, SurfaceId, TextAffinity, TextPosition, TextSensitivity,
 };
 use runenui_runtime::{SemanticNode, SemanticPublication, SemanticSnapshot, SemanticUpdateResult};
 
@@ -27,6 +27,7 @@ pub const OPEN_MENU_CUSTOM_ACTION_ID: i32 = 1;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AdapterDiagnostic {
     UnsupportedInertState(SemanticNodeId),
+    UnsupportedCheckedState(SemanticNodeId),
     UnsupportedValueType(SemanticNodeId),
     UnsupportedTextShape(SemanticNodeId),
     UnsupportedRole(SemanticNodeId),
@@ -589,6 +590,11 @@ impl SurfaceProjection {
         if semantic.state().read_only() {
             node.set_read_only();
         }
+        if let Some(checked) = semantic.state().checked()
+            && let Some(toggled) = map_checked_state(checked, semantic.id(), &mut diagnostics)
+        {
+            node.set_toggled(toggled);
+        }
         if let Some(name) = semantic.name() {
             let is_duplicate_text = matches!(role, Role::Label)
                 && semantic
@@ -913,10 +919,31 @@ fn map_role(
         SemanticRole::Text => Role::Label,
         SemanticRole::Button => Role::Button,
         SemanticRole::EditableText => Role::TextInput,
+        SemanticRole::Checkbox => Role::CheckBox,
+        SemanticRole::RadioButton => Role::RadioButton,
+        SemanticRole::RadioGroup => Role::RadioGroup,
+        SemanticRole::Switch => Role::Switch,
         #[allow(unreachable_patterns)]
         _ => {
             diagnostics.push(AdapterDiagnostic::UnsupportedRole(id.clone()));
             Role::Unknown
+        }
+    }
+}
+
+fn map_checked_state(
+    checked: SemanticCheckedState,
+    id: &SemanticNodeId,
+    diagnostics: &mut Vec<AdapterDiagnostic>,
+) -> Option<Toggled> {
+    match checked {
+        SemanticCheckedState::Unchecked => Some(Toggled::False),
+        SemanticCheckedState::Checked => Some(Toggled::True),
+        SemanticCheckedState::Mixed => Some(Toggled::Mixed),
+        #[allow(unreachable_patterns)]
+        _ => {
+            diagnostics.push(AdapterDiagnostic::UnsupportedCheckedState(id.clone()));
+            None
         }
     }
 }
@@ -960,13 +987,14 @@ mod tests {
     use runenui_core::{
         __runtime::RuntimeNamespace, EditIntent, EditResolution, EditableContribution,
         EditingSessionPolicy, Element, LogicalSize, NoHostProtocol, SemanticAction,
-        SemanticActionData, SemanticContribution, SemanticContributionContext, SemanticEditable,
-        SemanticItem, SemanticKey, SemanticNodeContribution, SemanticReference,
-        SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText,
-        SemanticValue, StyleEnvironment, TextDocumentId, TextDocumentRevision,
-        TextDocumentSnapshot, TextSelection, TextSensitivity, UiApp, UpdateOutput, View, Widget,
-        WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetInvalidation,
-        WidgetMeasure, WidgetMeasureInput,
+        SemanticActionData, SemanticCheckedState, SemanticContribution,
+        SemanticContributionContext, SemanticEditable, SemanticItem, SemanticKey,
+        SemanticNodeContribution, SemanticReference, SemanticRelationship,
+        SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText, SemanticValue,
+        StyleEnvironment, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
+        TextSelection, TextSensitivity, UiApp, UpdateOutput, View, Widget, WidgetActivation,
+        WidgetActivationContext, WidgetActivationOutput, WidgetInvalidation, WidgetMeasure,
+        WidgetMeasureInput,
     };
     use runenui_runtime::{AppRuntime, FontFamilyName, GenericFontFamily, SurfaceBuildContext};
 
@@ -1040,14 +1068,33 @@ mod tests {
                     .with_child(text);
             }
             if self.phase == 0 {
-                button = button.with_child(
-                    SemanticNodeContribution::new(
-                        SemanticKey::from_static("diagnostic").unwrap(),
-                        SemanticRole::Group,
+                button = button
+                    .with_child(
+                        SemanticNodeContribution::new(
+                            SemanticKey::from_static("check").unwrap(),
+                            SemanticRole::Checkbox,
+                        )
+                        .with_name("Check it")
+                        .with_state(
+                            SemanticState::ENABLED.with_checked(SemanticCheckedState::Mixed),
+                        ),
                     )
-                    .with_value(SemanticValue::Integer(7))
-                    .with_state(SemanticState::ENABLED.with_disabled(true).with_inert(true)),
-                );
+                    .with_child(
+                        SemanticNodeContribution::new(
+                            SemanticKey::from_static("diagnostic").unwrap(),
+                            SemanticRole::Group,
+                        )
+                        .with_value(SemanticValue::Integer(7))
+                        .with_state(SemanticState::ENABLED.with_disabled(true).with_inert(true)),
+                    )
+                    .with_child(
+                        SemanticNodeContribution::new(
+                            SemanticKey::from_static("boolean-value").unwrap(),
+                            SemanticRole::Generic,
+                        )
+                        .with_name("Boolean value")
+                        .with_value(SemanticValue::Boolean(true)),
+                    );
             }
             SemanticContribution::single(button)
         }
@@ -1138,6 +1185,14 @@ mod tests {
         assert_eq!(button.1.labelled_by(), &[text.0]);
         assert_eq!(button.1.described_by(), &[text.0]);
         assert_eq!(button.1.controls(), &[text.0]);
+        let checkbox = update
+            .tree_update
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some("Check it"))
+            .unwrap();
+        assert_eq!(checkbox.1.role(), Role::CheckBox);
+        assert_eq!(checkbox.1.toggled(), Some(Toggled::Mixed));
         let disabled_group = update
             .tree_update
             .nodes
@@ -1146,6 +1201,27 @@ mod tests {
             .map(|(_, node)| node)
             .unwrap();
         assert!(disabled_group.is_disabled());
+        let boolean_value = update
+            .tree_update
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some("Boolean value"))
+            .map(|(_, node)| node)
+            .unwrap();
+        assert_eq!(boolean_value.role(), Role::GenericContainer);
+        assert_eq!(boolean_value.value(), None);
+        assert_eq!(boolean_value.toggled(), None);
+        assert_eq!(
+            update
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| matches!(
+                    diagnostic,
+                    AdapterDiagnostic::UnsupportedValueType(_)
+                ))
+                .count(),
+            2
+        );
         let activated = activation.request_initial_tree().unwrap();
         assert_eq!(activated.tree_id, update.tree_update.tree_id);
         assert!(activated.tree.is_some());
@@ -1171,6 +1247,38 @@ mod tests {
         assert_eq!(
             map_role(SemanticRole::Button, &id, &mut diagnostics),
             Role::Button
+        );
+        assert_eq!(
+            map_role(SemanticRole::EditableText, &id, &mut diagnostics),
+            Role::TextInput
+        );
+        assert_eq!(
+            map_role(SemanticRole::Checkbox, &id, &mut diagnostics),
+            Role::CheckBox
+        );
+        assert_eq!(
+            map_role(SemanticRole::RadioButton, &id, &mut diagnostics),
+            Role::RadioButton
+        );
+        assert_eq!(
+            map_role(SemanticRole::RadioGroup, &id, &mut diagnostics),
+            Role::RadioGroup
+        );
+        assert_eq!(
+            map_role(SemanticRole::Switch, &id, &mut diagnostics),
+            Role::Switch
+        );
+        assert_eq!(
+            map_checked_state(SemanticCheckedState::Unchecked, &id, &mut diagnostics),
+            Some(Toggled::False)
+        );
+        assert_eq!(
+            map_checked_state(SemanticCheckedState::Checked, &id, &mut diagnostics),
+            Some(Toggled::True)
+        );
+        assert_eq!(
+            map_checked_state(SemanticCheckedState::Mixed, &id, &mut diagnostics),
+            Some(Toggled::Mixed)
         );
         assert!(diagnostics.is_empty());
         let mut runtime = AppRuntime::<FixtureApp>::mount(0);
