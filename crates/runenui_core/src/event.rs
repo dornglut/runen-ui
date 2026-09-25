@@ -169,6 +169,8 @@ pub enum SemanticCommand {
     LogicalScroll(LogicalScrollCommand),
     FocusNext,
     FocusPrevious,
+    FocusGroupNext,
+    FocusGroupPrevious,
     FocusLeft,
     FocusRight,
     FocusUp,
