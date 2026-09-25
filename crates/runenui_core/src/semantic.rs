@@ -88,6 +88,22 @@ pub enum SemanticRole {
     Text,
     Button,
     EditableText,
+    Checkbox,
+    RadioButton,
+    RadioGroup,
+    Switch,
+}
+
+/// Platform-neutral checked state for stateful binary controls.
+///
+/// This is durable application-authored semantic meaning. Runtime publishes the
+/// fact but never toggles or otherwise owns it.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticCheckedState {
+    Unchecked,
+    Checked,
+    Mixed,
 }
 
 /// Revision-scoped editable text facts projected through the neutral semantic tree.
@@ -230,6 +246,7 @@ pub struct SemanticState {
     hidden: bool,
     inert: bool,
     read_only: bool,
+    checked: Option<SemanticCheckedState>,
 }
 
 impl SemanticState {
@@ -238,6 +255,7 @@ impl SemanticState {
         hidden: false,
         inert: false,
         read_only: false,
+        checked: None,
     };
 
     #[must_use]
@@ -264,6 +282,13 @@ impl SemanticState {
         self
     }
 
+    /// Authors the exact checked state for a checkable semantic role.
+    #[must_use]
+    pub const fn with_checked(mut self, checked: SemanticCheckedState) -> Self {
+        self.checked = Some(checked);
+        self
+    }
+
     #[must_use]
     pub const fn disabled(self) -> bool {
         self.disabled
@@ -282,6 +307,12 @@ impl SemanticState {
     #[must_use]
     pub const fn read_only(self) -> bool {
         self.read_only
+    }
+
+    /// Returns the application-authored checked state when this role is checkable.
+    #[must_use]
+    pub const fn checked(self) -> Option<SemanticCheckedState> {
+        self.checked
     }
 }
 
@@ -640,7 +671,8 @@ impl SemanticContribution {
         self.roots.as_slice()
     }
 
-    /// Validates owner-local identity, references, and the exact mounted-child marker contract.
+    /// Validates owner-local identity, references, role/state semantics, and the exact
+    /// mounted-child marker contract.
     ///
     /// # Errors
     ///
@@ -678,6 +710,7 @@ impl SemanticContribution {
         }
 
         validate_local_references(self.roots(), &keys)?;
+        validate_role_state_contract(self.roots())?;
 
         Ok(SemanticContributionValidation { ordered_keys })
     }
@@ -710,6 +743,18 @@ pub enum SemanticContributionError {
         source: SemanticKey,
         target: SemanticKey,
     },
+    MissingRequiredCheckedState {
+        key: SemanticKey,
+        role: SemanticRole,
+    },
+    CheckedStateNotSupported {
+        key: SemanticKey,
+        role: SemanticRole,
+    },
+    MixedCheckedStateNotSupported {
+        key: SemanticKey,
+        role: SemanticRole,
+    },
 }
 
 impl fmt::Display for SemanticContributionError {
@@ -728,6 +773,18 @@ impl fmt::Display for SemanticContributionError {
             Self::MissingLocalReference { source, target } => write!(
                 formatter,
                 "semantic node `{source}` references missing owner-local semantic key `{target}`"
+            ),
+            Self::MissingRequiredCheckedState { key, role } => write!(
+                formatter,
+                "semantic node `{key}` with role {role:?} requires an authored checked state"
+            ),
+            Self::CheckedStateNotSupported { key, role } => write!(
+                formatter,
+                "semantic node `{key}` with role {role:?} does not support checked state"
+            ),
+            Self::MixedCheckedStateNotSupported { key, role } => write!(
+                formatter,
+                "semantic node `{key}` with role {role:?} does not support mixed checked state"
             ),
         }
     }
@@ -755,6 +812,58 @@ fn collect_structure(
                 collect_structure(node.children(), keys, ordered_keys, marker_count)?;
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_role_state_contract(
+    items: &[SemanticItem],
+) -> Result<(), SemanticContributionError> {
+    for item in items {
+        let SemanticItem::Node(node) = item else {
+            continue;
+        };
+        let checked = node.state().checked();
+        match node.role() {
+            SemanticRole::Checkbox => {
+                if checked.is_none() {
+                    return Err(SemanticContributionError::MissingRequiredCheckedState {
+                        key: node.key().clone(),
+                        role: node.role(),
+                    });
+                }
+            }
+            SemanticRole::RadioButton | SemanticRole::Switch => match checked {
+                None => {
+                    return Err(SemanticContributionError::MissingRequiredCheckedState {
+                        key: node.key().clone(),
+                        role: node.role(),
+                    });
+                }
+                Some(SemanticCheckedState::Mixed) => {
+                    return Err(SemanticContributionError::MixedCheckedStateNotSupported {
+                        key: node.key().clone(),
+                        role: node.role(),
+                    });
+                }
+                Some(SemanticCheckedState::Unchecked | SemanticCheckedState::Checked) => {}
+                #[allow(unreachable_patterns)]
+                Some(_) => {
+                    return Err(SemanticContributionError::CheckedStateNotSupported {
+                        key: node.key().clone(),
+                        role: node.role(),
+                    });
+                }
+            },
+            _ if checked.is_some() => {
+                return Err(SemanticContributionError::CheckedStateNotSupported {
+                    key: node.key().clone(),
+                    role: node.role(),
+                });
+            }
+            _ => {}
+        }
+        validate_role_state_contract(node.children())?;
     }
     Ok(())
 }
@@ -787,9 +896,10 @@ mod tests {
     use std::sync::Arc;
 
     use super::{
-        SemanticContribution, SemanticContributionContext, SemanticContributionError,
-        SemanticEditable, SemanticItem, SemanticKey, SemanticNodeContribution, SemanticReference,
-        SemanticRelationship, SemanticRelationshipKind, SemanticRole,
+        SemanticCheckedState, SemanticContribution, SemanticContributionContext,
+        SemanticContributionError, SemanticEditable, SemanticItem, SemanticKey,
+        SemanticNodeContribution, SemanticReference, SemanticRelationship,
+        SemanticRelationshipKind, SemanticRole, SemanticState,
     };
     use crate::{
         TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,
@@ -821,6 +931,80 @@ mod tests {
             .unwrap_or_else(|| unreachable!("runtime projection retains caret offsets"));
 
         assert!(Arc::ptr_eq(&retained, published));
+    }
+
+    #[test]
+    fn checked_state_contract_is_role_aware_and_fail_closed() {
+        let context = SemanticContributionContext::default();
+        for checked in [
+            SemanticCheckedState::Unchecked,
+            SemanticCheckedState::Checked,
+            SemanticCheckedState::Mixed,
+        ] {
+            let checkbox = SemanticNodeContribution::primary(SemanticRole::Checkbox)
+                .with_state(SemanticState::ENABLED.with_checked(checked));
+            assert!(SemanticContribution::single(checkbox).validate(context).is_ok());
+        }
+
+        for role in [SemanticRole::RadioButton, SemanticRole::Switch] {
+            for checked in [
+                SemanticCheckedState::Unchecked,
+                SemanticCheckedState::Checked,
+            ] {
+                let node = SemanticNodeContribution::primary(role)
+                    .with_state(SemanticState::ENABLED.with_checked(checked));
+                assert!(SemanticContribution::single(node).validate(context).is_ok());
+            }
+
+            let mixed = SemanticNodeContribution::primary(role).with_state(
+                SemanticState::ENABLED.with_checked(SemanticCheckedState::Mixed),
+            );
+            assert_eq!(
+                SemanticContribution::single(mixed).validate(context),
+                Err(SemanticContributionError::MixedCheckedStateNotSupported {
+                    key: SemanticKey::PRIMARY,
+                    role,
+                })
+            );
+
+            let missing = SemanticNodeContribution::primary(role);
+            assert_eq!(
+                SemanticContribution::single(missing).validate(context),
+                Err(SemanticContributionError::MissingRequiredCheckedState {
+                    key: SemanticKey::PRIMARY,
+                    role,
+                })
+            );
+        }
+
+        let missing_checkbox = SemanticNodeContribution::primary(SemanticRole::Checkbox);
+        assert_eq!(
+            SemanticContribution::single(missing_checkbox).validate(context),
+            Err(SemanticContributionError::MissingRequiredCheckedState {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::Checkbox,
+            })
+        );
+
+        for role in [
+            SemanticRole::Generic,
+            SemanticRole::Group,
+            SemanticRole::Text,
+            SemanticRole::Button,
+            SemanticRole::EditableText,
+            SemanticRole::RadioGroup,
+        ] {
+            let node = SemanticNodeContribution::primary(role).with_state(
+                SemanticState::ENABLED.with_checked(SemanticCheckedState::Checked),
+            );
+            assert_eq!(
+                SemanticContribution::single(node).validate(context),
+                Err(SemanticContributionError::CheckedStateNotSupported {
+                    key: SemanticKey::PRIMARY,
+                    role,
+                })
+            );
+        }
     }
 
     #[test]
