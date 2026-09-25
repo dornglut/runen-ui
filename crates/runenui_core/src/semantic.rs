@@ -999,6 +999,13 @@ mod tests {
             })
         );
 
+        let radio_group = SemanticNodeContribution::primary(SemanticRole::RadioGroup);
+        assert!(
+            SemanticContribution::single(radio_group)
+                .validate(context)
+                .is_ok()
+        );
+
         for role in [
             SemanticRole::Generic,
             SemanticRole::Group,
