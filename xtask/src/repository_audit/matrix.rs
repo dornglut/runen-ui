@@ -854,7 +854,7 @@ mod tests {
         assert!(delivery_rows.iter().all(|row| {
             row.cells[0].starts_with("M11CTRL-")
                 && row.cells[5] == "M11B"
-                && row.cells[6] == "proof-complete"
+                && row.cells[6] == "owner-accepted"
                 && row.cells[7] == "Required"
         }));
         assert!(findings.is_empty(), "{findings:?}");
