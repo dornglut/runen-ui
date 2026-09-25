@@ -135,6 +135,7 @@ fn candidate_node_matches(candidate: &SemanticCandidateNode, published: &Semanti
         && candidate.disabled == published.state.disabled
         && candidate.inert == published.state.inert
         && candidate.read_only == published.state.read_only
+        && candidate.checked == published.state.checked
         && candidate.supported_actions == published.supported_actions
         && candidate.bounds == published.bounds
         && candidate.text == published.text
@@ -170,6 +171,7 @@ fn publication_from_candidate(
                 disabled: node.disabled,
                 inert: node.inert,
                 read_only: node.read_only,
+                checked: node.checked,
             },
             supported_actions: node.supported_actions,
             relationships: node
@@ -240,7 +242,8 @@ mod tests {
     use core::num::NonZeroU64;
 
     use runenui_core::{
-        __runtime::RuntimeNamespace, LogicalPoint, LogicalRect, LogicalSize, SemanticRole,
+        __runtime::RuntimeNamespace, LogicalPoint, LogicalRect, LogicalSize, SemanticCheckedState,
+        SemanticRole,
     };
 
     use crate::semantic_compositor::{
@@ -279,6 +282,7 @@ mod tests {
                 disabled: false,
                 inert: false,
                 read_only: false,
+                checked: None,
                 supported_actions: Vec::new(),
                 relationships: Vec::new(),
                 bounds: rect(width),
@@ -409,6 +413,47 @@ mod tests {
         assert_eq!(
             current.diagnostics.diagnostics(),
             &[SemanticDiagnostic::FocusedOwnerMissingVisiblePrimary]
+        );
+    }
+
+    #[test]
+    fn checked_state_change_advances_revision_and_is_present_in_delta() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let surface = namespace.__runtime_surface_id(0, 1);
+        let mut state = SemanticPublicationState::default();
+        let mut initial_candidate = candidate(&namespace, 10.0, Vec::new());
+        initial_candidate.nodes[0].role = SemanticRole::Checkbox;
+        initial_candidate.nodes[0].checked = Some(SemanticCheckedState::Unchecked);
+        let initial = state
+            .plan(&surface, Some(planned(initial_candidate)))
+            .unwrap_or_else(|_| unreachable!("first semantic revision is available"));
+        state.commit(initial);
+
+        let mut changed_candidate = candidate(&namespace, 10.0, Vec::new());
+        changed_candidate.nodes[0].role = SemanticRole::Checkbox;
+        changed_candidate.nodes[0].checked = Some(SemanticCheckedState::Checked);
+        let changed = state
+            .plan(&surface, Some(planned(changed_candidate)))
+            .unwrap_or_else(|_| unreachable!("second semantic revision is available"));
+        state.commit(changed);
+
+        let current = state
+            .current
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("changed semantic products committed"));
+        assert_eq!(current.publication.snapshot().revision().get(), 2);
+        assert_eq!(
+            current.publication.snapshot().nodes()[0].state().checked(),
+            Some(SemanticCheckedState::Checked)
+        );
+        let update = current
+            .publication
+            .update()
+            .unwrap_or_else(|| unreachable!("checked-state change retains one delta"));
+        assert_eq!(update.changed().len(), 1);
+        assert_eq!(
+            update.changed()[0].state().checked(),
+            Some(SemanticCheckedState::Checked)
         );
     }
 
