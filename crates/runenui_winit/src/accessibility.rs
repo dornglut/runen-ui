@@ -590,10 +590,10 @@ impl SurfaceProjection {
         if semantic.state().read_only() {
             node.set_read_only();
         }
-        if let Some(checked) = semantic.state().checked() {
-            if let Some(toggled) = map_checked_state(checked, semantic.id(), &mut diagnostics) {
-                node.set_toggled(toggled);
-            }
+        if let Some(checked) = semantic.state().checked()
+            && let Some(toggled) = map_checked_state(checked, semantic.id(), &mut diagnostics)
+        {
+            node.set_toggled(toggled);
         }
         if let Some(name) = semantic.name() {
             let is_duplicate_text = matches!(role, Role::Label)
