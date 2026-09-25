@@ -76,7 +76,6 @@ fn typed_builders_use_the_open_widget_protocol() {
     );
 }
 
-
 #[test]
 fn binary_control_builders_use_the_open_widget_protocol() {
     assert_eq!(
