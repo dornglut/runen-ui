@@ -9,6 +9,7 @@ use app::{Counter, CounterAction, CounterApp};
 use runenui_core::{
     Brush, Color, ElementId, LogicalDelta, LogicalLength, LogicalPoint, PointerButton,
     PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticCommand,
+    SemanticRole,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, SurfacePublication,
@@ -180,6 +181,18 @@ fn counter_centers_with_free_height_and_scrolls_from_top_when_height_is_tight() 
     pump_all(&mut runtime);
 
     let normal = publish(&mut runtime, &environment);
+    let semantic_group_count = normal
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .iter()
+        .filter(|node| node.role() == SemanticRole::Group)
+        .count();
+    assert_eq!(
+        semantic_group_count, 4,
+        "layout-only centering spacers must not publish accessibility groups"
+    );
+
     let content = frame_node(&normal, "counter.content").bounds();
     let normal_center = content.y() + content.height() / 2.0;
     assert!(
