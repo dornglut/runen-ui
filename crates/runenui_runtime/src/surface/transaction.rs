@@ -130,6 +130,20 @@ pub(crate) struct SurfacePublicationCommit {
     semantic_commit: Option<SemanticMountedCommit>,
 }
 
+fn project_editable_semantics(
+    map: &TextCaretMap,
+    projected: &crate::editing::EditingSemanticProjection,
+) -> Option<(Arc<str>, runenui_core::TextSelection, Arc<[usize]>)> {
+    let selection = TextDisplaySelection::from_document(projected.selection);
+    map.validate_position(selection.anchor()).ok()?;
+    map.validate_position(selection.active()).ok()?;
+    Some((
+        Arc::clone(&projected.source),
+        projected.selection,
+        map.__runtime_legal_byte_offsets(),
+    ))
+}
+
 impl<'a> PlannedSurfacePublication<'a> {
     pub(super) const fn new(
         cache: SurfaceCache,
@@ -335,15 +349,7 @@ impl<'a> PlannedSurfacePublication<'a> {
                         .get(position)?
                         .caret_map_for_source(projected.snapshot, &projected.source)
                         .ok()?;
-                    let selection = TextDisplaySelection::from_document(projected.selection);
-                    map.validate_position(selection.anchor()).ok()?;
-                    map.validate_position(selection.active()).ok()?;
-                    let offsets = map.legal_byte_offsets();
-                    Some((
-                        Arc::clone(&projected.source),
-                        projected.selection,
-                        Arc::<[usize]>::from(offsets),
-                    ))
+                    project_editable_semantics(&map, projected)
                 })
                 .map_or((None, None, None), |(source, selection, offsets)| {
                     (Some(source), Some(selection), Some(offsets))
@@ -442,16 +448,54 @@ impl SurfacePublicationCommit {
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{StyleEnvironment, View, text};
+    use std::sync::Arc;
+
+    use runenui_core::{
+        StyleEnvironment, TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
+        TextPosition, TextSelection, TextSensitivity, View, text,
+    };
 
     use super::super::{
         SurfaceBuildContext, SurfaceInteractionProjection, SurfaceMotionStore,
         plan_mounted_surface_cached,
     };
+    use super::project_editable_semantics;
     use crate::{
         LayoutConstraints,
+        editing::EditingSemanticProjection,
         mounted::{DirtyPhases, MountedTree},
     };
+
+    #[test]
+    fn semantic_editable_projection_reuses_retained_legal_offset_allocation() {
+        let (mut tree, _) = MountedTree::<()>::mount(text("abc").key("root").into_element());
+        let environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
+        let interaction = SurfaceInteractionProjection::default();
+        let planned = plan_mounted_surface_cached(&mut tree, &context, &interaction, None)
+            .unwrap_or_else(|_| unreachable!("controlled text surface plan"));
+
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(266), TextDocumentRevision::new(1));
+        let source = Arc::<str>::from("abc");
+        let position = TextPosition::new(snapshot, &source, 1, TextAffinity::Downstream)
+            .unwrap_or_else(|_| unreachable!("ASCII fixture position is valid"));
+        let projected = EditingSemanticProjection {
+            snapshot,
+            source,
+            selection: TextSelection::collapsed(position),
+            sensitivity: TextSensitivity::Public,
+        };
+        let map = planned.cache.layout.text_layouts[0]
+            .caret_map_for_source(snapshot, &projected.source)
+            .unwrap_or_else(|_| unreachable!("planned text layout matches editable source"));
+        let retained = map.__runtime_legal_byte_offsets();
+        let (_, selection, published) = project_editable_semantics(&map, &projected)
+            .unwrap_or_else(|| unreachable!("controlled editable projection is valid"));
+
+        assert_eq!(selection, projected.selection);
+        assert!(Arc::ptr_eq(&retained, &published));
+    }
 
     #[test]
     fn planning_keeps_surface_cache_motion_and_dirty_completion_uncommitted() {

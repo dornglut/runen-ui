@@ -392,11 +392,13 @@ impl TextCaretMap {
         positions
     }
 
-    /// Returns the ordered UTF-8 offsets that have at least one shaping-valid caret affinity.
+    /// Returns the ordered UTF-8 offsets that are legal compact caret stops.
     ///
-    /// This is the compact projection needed by semantic text ranges. Unlike
-    /// [`Self::legal_positions`], it does not allocate a public position for each affinity or
-    /// retain duplicate offsets when both affinities are legal at one boundary.
+    /// The retained Parley representation used by `RunenUI` defines grapheme edges as caret,
+    /// selection, and hit-testing edges. `RunenUI` already retains the exact UAX #29 grapheme
+    /// boundaries for this layout, so this compact projection does not need to repeat
+    /// affinity-sensitive cursor validation for every boundary. Affinity-sensitive position
+    /// validation and navigation remain Parley-backed through the ordinary caret APIs.
     #[must_use]
     #[allow(
         clippy::let_and_return,
@@ -405,19 +407,37 @@ impl TextCaretMap {
     pub fn legal_byte_offsets(&self) -> Vec<usize> {
         #[cfg(any(test, feature = "internal-test-seams"))]
         let profile_started = std::time::Instant::now();
-        let offsets = self
-            .grapheme_boundaries
-            .iter()
-            .copied()
-            .filter(|&byte_offset| {
-                [TextAffinity::Upstream, TextAffinity::Downstream]
-                    .into_iter()
-                    .any(|affinity| self.cursor_at(byte_offset, affinity).is_ok())
-            })
-            .collect::<Vec<_>>();
+        let offsets = self.legal_byte_offsets_vec_unprofiled();
         #[cfg(any(test, feature = "internal-test-seams"))]
         crate::test_profile::record_legal_offsets(profile_started.elapsed(), offsets.len());
         offsets
+    }
+
+    /// Returns the exact retained legal-offset allocation for runtime semantic publication.
+    ///
+    /// This is hidden runtime plumbing rather than a user-facing storage contract. The returned
+    /// allocation is the same immutable boundary allocation retained by this caret map.
+    #[doc(hidden)]
+    #[must_use]
+    #[allow(
+        clippy::let_and_return,
+        reason = "test-only profiling observes shared offsets before returning them"
+    )]
+    pub fn __runtime_legal_byte_offsets(&self) -> Arc<[usize]> {
+        #[cfg(any(test, feature = "internal-test-seams"))]
+        let profile_started = std::time::Instant::now();
+        let offsets = self.legal_byte_offsets_shared_unprofiled();
+        #[cfg(any(test, feature = "internal-test-seams"))]
+        crate::test_profile::record_legal_offsets(profile_started.elapsed(), offsets.len());
+        offsets
+    }
+
+    fn legal_byte_offsets_vec_unprofiled(&self) -> Vec<usize> {
+        self.grapheme_boundaries.to_vec()
+    }
+
+    fn legal_byte_offsets_shared_unprofiled(&self) -> Arc<[usize]> {
+        Arc::clone(&self.grapheme_boundaries)
     }
 
     #[cfg(test)]
@@ -445,13 +465,13 @@ impl TextCaretMap {
     }
 
     #[cfg(test)]
-    pub(crate) fn legal_byte_offsets_grapheme_candidate_for_test(&self) -> Vec<usize> {
-        self.grapheme_boundaries.to_vec()
+    pub(crate) fn legal_byte_offsets_vec_unprofiled_for_test(&self) -> Vec<usize> {
+        self.legal_byte_offsets_vec_unprofiled()
     }
 
     #[cfg(test)]
-    pub(crate) fn legal_byte_offsets_shared_candidate_for_test(&self) -> Arc<[usize]> {
-        Arc::clone(&self.grapheme_boundaries)
+    pub(crate) fn legal_byte_offsets_shared_unprofiled_for_test(&self) -> Arc<[usize]> {
+        self.legal_byte_offsets_shared_unprofiled()
     }
 
     /// Converts a displayed surface point into a shaping-valid position.
