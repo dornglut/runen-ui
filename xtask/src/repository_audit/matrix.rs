@@ -843,9 +843,18 @@ mod tests {
         assert_eq!(parse_schema_errors, 0);
         assert_eq!(rows.len(), 10);
 
-        let m11a = rows.iter().filter(|row| row.cells[5] == "M11A").collect::<Vec<_>>();
-        let m11b = rows.iter().filter(|row| row.cells[5] == "M11B").collect::<Vec<_>>();
-        let m11c = rows.iter().filter(|row| row.cells[5] == "M11C").collect::<Vec<_>>();
+        let m11a = rows
+            .iter()
+            .filter(|row| row.cells[5] == "M11A")
+            .collect::<Vec<_>>();
+        let m11b = rows
+            .iter()
+            .filter(|row| row.cells[5] == "M11B")
+            .collect::<Vec<_>>();
+        let m11c = rows
+            .iter()
+            .filter(|row| row.cells[5] == "M11C")
+            .collect::<Vec<_>>();
 
         assert_eq!(m11a.len(), 5);
         assert!(m11a.iter().all(|row| {
