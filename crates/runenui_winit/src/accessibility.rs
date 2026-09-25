@@ -42,6 +42,7 @@ pub enum AdapterDiagnostic {
     WrongTreeId,
     UnknownNodeId,
     RetiredNodeId,
+    NodeIdSpaceExhausted,
     WrongCustomActionId(i32),
     CustomActionDataMissing,
     UnexpectedActionData(Action),
@@ -122,9 +123,11 @@ impl SemanticAdapter {
 
     pub fn update(&mut self, publication: &SemanticPublication) -> AccessibilityUpdate {
         let (mode, tree_update, diagnostics) = self.projection.update(publication);
-        let full_tree = self.projection.full_tree_update();
-        if let Ok(mut latest) = self.latest_tree.write() {
-            *latest = Some(full_tree);
+        if self.projection.current_snapshot.is_some() {
+            let full_tree = self.projection.full_tree_update();
+            if let Ok(mut latest) = self.latest_tree.write() {
+                *latest = Some(full_tree);
+            }
         }
         AccessibilityUpdate {
             mode,
@@ -171,7 +174,7 @@ struct SurfaceProjection {
     retired_accesskit: HashSet<NodeId>,
     current_nodes: BTreeMap<NodeId, Node>,
     synthetic_root: Option<NodeId>,
-    next_node_id: u64,
+    next_node_id: Option<u64>,
 }
 
 impl SurfaceProjection {
@@ -188,7 +191,7 @@ impl SurfaceProjection {
             retired_accesskit: HashSet::new(),
             current_nodes: BTreeMap::new(),
             synthetic_root: None,
-            next_node_id: 1,
+            next_node_id: Some(1),
         }
     }
 
@@ -219,8 +222,14 @@ impl SurfaceProjection {
                             .any(|node| node.editable().is_some())
                     })
                 {
+                    if !self.has_node_id_capacity(self.full_resync_allocation_count(snapshot)) {
+                        return self.node_id_exhausted_update();
+                    }
                     let (tree_update, diagnostics) = self.full_resync(snapshot);
                     return (UpdateMode::FullResync, tree_update, diagnostics);
+                }
+                if !self.has_node_id_capacity(self.delta_allocation_count(snapshot, delta)) {
+                    return self.node_id_exhausted_update();
                 }
                 let (tree_update, diagnostics) =
                     self.apply_delta(snapshot, previous_snapshot.as_ref(), delta);
@@ -236,6 +245,9 @@ impl SurfaceProjection {
                 (UpdateMode::Unchanged, tree_update, Vec::new())
             }
             SemanticUpdateResult::FullResync(snapshot) => {
+                if !self.has_node_id_capacity(self.full_resync_allocation_count(snapshot)) {
+                    return self.node_id_exhausted_update();
+                }
                 let (tree_update, diagnostics) = self.full_resync(snapshot);
                 let mode = if previous_snapshot.is_some() {
                     UpdateMode::FullResync
@@ -247,13 +259,92 @@ impl SurfaceProjection {
         }
     }
 
+    fn semantic_node_requires_id(&self, semantic: &SemanticNodeId) -> bool {
+        self.retired_semantic.contains(semantic)
+            || !self.semantic_to_accesskit.contains_key(semantic)
+    }
+
+    fn full_resync_allocation_count(&self, snapshot: &SemanticSnapshot) -> Option<usize> {
+        let semantic_ids = snapshot
+            .nodes()
+            .iter()
+            .filter(|node| self.semantic_node_requires_id(node.id()))
+            .count();
+        let editable_text_runs = snapshot
+            .nodes()
+            .iter()
+            .filter(|node| {
+                supports_editable_text_run(node) && !self.editable_text_runs.contains_key(node.id())
+            })
+            .count();
+        let surface_changed = self
+            .current_surface
+            .as_ref()
+            .is_some_and(|surface| surface != snapshot.surface_id());
+        let synthetic_root = usize::from(
+            snapshot.roots().len() != 1 && (surface_changed || self.synthetic_root.is_none()),
+        );
+        semantic_ids
+            .checked_add(editable_text_runs)?
+            .checked_add(synthetic_root)
+    }
+
+    fn delta_allocation_count(
+        &self,
+        snapshot: &SemanticSnapshot,
+        delta: &runenui_runtime::SemanticUpdate,
+    ) -> Option<usize> {
+        let semantic_ids = delta
+            .added()
+            .iter()
+            .filter(|node| self.semantic_node_requires_id(node.id()))
+            .count();
+        let synthetic_root =
+            usize::from(snapshot.roots().len() != 1 && self.synthetic_root.is_none());
+        semantic_ids.checked_add(synthetic_root)
+    }
+
+    fn has_node_id_capacity(&self, required: Option<usize>) -> bool {
+        let Some(required) = required else {
+            return false;
+        };
+        let Ok(required) = u64::try_from(required) else {
+            return false;
+        };
+        if required == 0 {
+            return true;
+        }
+        let Some(next_node_id) = self.next_node_id else {
+            return false;
+        };
+        next_node_id.checked_add(required - 1).is_some()
+    }
+
+    fn node_id_exhausted_update(&self) -> (UpdateMode, TreeUpdate, Vec<AdapterDiagnostic>) {
+        let focus = self
+            .current_snapshot
+            .as_ref()
+            .map_or(NodeId(0), |snapshot| {
+                self.focus_id_without_mutation(snapshot)
+            });
+        (
+            UpdateMode::Unchanged,
+            TreeUpdate {
+                nodes: Vec::new(),
+                tree: None,
+                tree_id: self.tree_id,
+                focus,
+            },
+            vec![AdapterDiagnostic::NodeIdSpaceExhausted],
+        )
+    }
+
     fn allocate_node_id(&mut self) -> NodeId {
-        let id = NodeId(self.next_node_id);
-        self.next_node_id = self
+        let value = self
             .next_node_id
-            .checked_add(1)
-            .unwrap_or_else(|| unreachable!("adapter-owned AccessKit node ID space exhausted"));
-        id
+            .unwrap_or_else(|| unreachable!("AccessKit node ID capacity is preflighted"));
+        self.next_node_id = value.checked_add(1);
+        NodeId(value)
     }
 
     fn ensure_node_id(&mut self, semantic: &SemanticNodeId) -> NodeId {
@@ -1091,6 +1182,164 @@ mod tests {
                 .iter()
                 .any(|diagnostic| matches!(diagnostic, AdapterDiagnostic::UnsupportedValueType(_)))
         );
+    }
+
+    #[test]
+    fn exhausted_initial_projection_diagnoses_without_publishing_partial_state() {
+        let mut runtime = AppRuntime::<FixtureApp>::mount(0);
+        let publication = publication(&mut runtime);
+        let mut adapter = SemanticAdapter::new();
+        adapter.projection.next_node_id = None;
+        let mut activation = adapter.activation_handler();
+
+        let update = adapter.update(&publication);
+
+        assert_eq!(update.mode, UpdateMode::Unchanged);
+        assert_eq!(
+            update.diagnostics,
+            vec![AdapterDiagnostic::NodeIdSpaceExhausted]
+        );
+        assert!(update.tree_update.nodes.is_empty());
+        assert!(update.tree_update.tree.is_none());
+        assert!(adapter.projection.current_surface.is_none());
+        assert!(adapter.projection.current_revision.is_none());
+        assert!(adapter.projection.current_snapshot.is_none());
+        assert!(adapter.projection.semantic_to_accesskit.is_empty());
+        assert!(adapter.projection.accesskit_to_semantic.is_empty());
+        assert!(adapter.projection.current_nodes.is_empty());
+        assert!(activation.request_initial_tree().is_none());
+    }
+
+    #[test]
+    fn node_id_capacity_preflight_reaches_exact_boundary_without_wrap() {
+        let mut runtime = AppRuntime::<FixtureApp>::mount(2);
+        let publication = publication(&mut runtime);
+        let mut adapter = SemanticAdapter::new();
+        adapter.projection.next_node_id = Some(u64::MAX - 2);
+
+        let update = adapter.update(&publication);
+
+        assert_eq!(update.mode, UpdateMode::InitialFull);
+        assert!(
+            !update
+                .diagnostics
+                .contains(&AdapterDiagnostic::NodeIdSpaceExhausted)
+        );
+        assert!(adapter.projection.next_node_id.is_none());
+        assert_eq!(adapter.projection.synthetic_root, Some(NodeId(u64::MAX)));
+        let mut semantic_ids = adapter
+            .projection
+            .semantic_to_accesskit
+            .values()
+            .map(|id| id.0)
+            .collect::<Vec<_>>();
+        semantic_ids.sort_unstable();
+        assert_eq!(semantic_ids, vec![u64::MAX - 2, u64::MAX - 1]);
+    }
+
+    #[test]
+    fn node_id_exhaustion_preserves_the_last_coherent_projection() {
+        let mut runtime = AppRuntime::<FixtureApp>::mount(0);
+        let first_publication = publication(&mut runtime);
+        let mut adapter = SemanticAdapter::new();
+        adapter.update(&first_publication);
+        adapter.projection.next_node_id = None;
+
+        let _ = runtime.submit_action(FixtureAction);
+        runtime.pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64));
+        let second_publication = publication(&mut runtime);
+        let second = adapter.update(&second_publication);
+        assert_eq!(second.mode, UpdateMode::Delta);
+        assert!(
+            !second
+                .diagnostics
+                .contains(&AdapterDiagnostic::NodeIdSpaceExhausted)
+        );
+        assert!(adapter.projection.next_node_id.is_none());
+
+        let surface = second_publication.snapshot().surface_id().clone();
+        let button = second_publication.snapshot().roots()[0].clone();
+        let button_id = adapter.active_id(&surface, &button).unwrap();
+        let before_semantic_to_accesskit = adapter.projection.semantic_to_accesskit.clone();
+        let before_accesskit_to_semantic = adapter.projection.accesskit_to_semantic.clone();
+        let before_retired_semantic = adapter.projection.retired_semantic.clone();
+        let before_retired_accesskit = adapter.projection.retired_accesskit.clone();
+        let before_synthetic_root = adapter.projection.synthetic_root;
+        let before_revision = adapter.projection.current_revision;
+        let before_node_ids = adapter
+            .projection
+            .current_nodes
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+        let mut activation = adapter.activation_handler();
+        let before_tree = activation.request_initial_tree().unwrap();
+
+        let _ = runtime.submit_action(FixtureAction);
+        runtime.pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64));
+        let third_publication = publication(&mut runtime);
+        let rejected = adapter.update(&third_publication);
+
+        assert_eq!(rejected.mode, UpdateMode::Unchanged);
+        assert_eq!(
+            rejected.diagnostics,
+            vec![AdapterDiagnostic::NodeIdSpaceExhausted]
+        );
+        assert!(adapter.projection.next_node_id.is_none());
+        assert_eq!(
+            adapter.projection.semantic_to_accesskit,
+            before_semantic_to_accesskit
+        );
+        assert_eq!(
+            adapter.projection.accesskit_to_semantic,
+            before_accesskit_to_semantic
+        );
+        assert_eq!(adapter.projection.retired_semantic, before_retired_semantic);
+        assert_eq!(
+            adapter.projection.retired_accesskit,
+            before_retired_accesskit
+        );
+        assert_eq!(adapter.projection.synthetic_root, before_synthetic_root);
+        assert_eq!(adapter.projection.current_revision, before_revision);
+        assert_eq!(
+            adapter
+                .projection
+                .current_nodes
+                .keys()
+                .copied()
+                .collect::<Vec<_>>(),
+            before_node_ids
+        );
+        assert_eq!(rejected.tree_update.tree_id, before_tree.tree_id);
+        assert_eq!(rejected.tree_update.focus, before_tree.focus);
+        assert!(rejected.tree_update.nodes.is_empty());
+        assert!(rejected.tree_update.tree.is_none());
+        let after_tree = activation.request_initial_tree().unwrap();
+        assert_eq!(after_tree.tree_id, before_tree.tree_id);
+        assert_eq!(after_tree.focus, before_tree.focus);
+        assert_eq!(
+            after_tree
+                .nodes
+                .iter()
+                .map(|(id, _)| *id)
+                .collect::<Vec<_>>(),
+            before_tree
+                .nodes
+                .iter()
+                .map(|(id, _)| *id)
+                .collect::<Vec<_>>()
+        );
+
+        let request = ActionRequest {
+            action: Action::Click,
+            target_tree: rejected.tree_update.tree_id,
+            target_node: button_id,
+            data: None,
+        };
+        let translated = adapter.action_request(&request).unwrap();
+        assert_eq!(translated.surface_id(), &surface);
+        assert_eq!(translated.target(), &button);
+        assert_eq!(translated.action(), &SemanticAction::Activate);
     }
 
     #[test]
