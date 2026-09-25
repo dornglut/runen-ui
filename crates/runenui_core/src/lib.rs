@@ -263,8 +263,8 @@ mod visual;
 mod visual_style;
 mod widget_context;
 mod widget_erasure;
-mod widget_protocol;
 mod widget_mapping;
+mod widget_protocol;
 mod work;
 
 include!("element_macros.rs");
@@ -284,11 +284,6 @@ pub use editing::{
 };
 pub use effects::{Effects, IntoEffects};
 pub use element::{AuthoringDiagnostic, Element, View, Views};
-pub use widget_protocol::{
-    ChildBearingWidget, Widget, WidgetActivation, WidgetActivationOutput, WidgetAvailableSpace,
-    WidgetDiagnostic, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId,
-    WidgetTextInput, WidgetTypeId,
-};
 pub use event::{
     CommandDerivation, CommandOrigin, DragDropEvent, EventPhase, EventSource, SemanticCommand,
     SemanticCommandEvent, UiEvent, WidgetEventOutput,
@@ -322,6 +317,11 @@ pub use paint::{
 };
 pub use paint_group::{PaintContributionEntry, PaintContributionGroup};
 pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
+pub use widget_protocol::{
+    ChildBearingWidget, Widget, WidgetActivation, WidgetActivationOutput, WidgetAvailableSpace,
+    WidgetDiagnostic, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId,
+    WidgetTextInput, WidgetTypeId,
+};
 /// Unstable safe bridge from transient core elements to the mounted runtime.
 ///
 /// This namespace is public only because core and runtime are separate Rust
