@@ -9,6 +9,7 @@ The first public `0.1.0` is reserved for feature-complete supported product prof
 ## Sequencing principles
 
 - Establish extensibility, persistent identity, canonical interaction, semantics, and public testing before broad controls.
+- Resolve interaction, semantic, layout, and presentation contracts shared by multiple standard controls once through public downstream-achievable primitives rather than reimplementing control-private runtimes.
 - Establish renderer-neutral paint/hit contracts before concrete renderer backends.
 - After the renderer-neutral kernel, establish a thin real vertical production spine before broadening abstract subsystems in isolation.
 - Treat style, layout, and text measurement as a coupled foundation with deliberate feedback loops rather than a strict waterfall.
@@ -107,7 +108,7 @@ These milestones remain durable inputs to successor work. Historical delivery ch
 
 **Depends on:** M2–M10 foundations.
 
-**Required outcome:** label/text, button, checkbox, radio, toggle, slider, progress, text field, scroll container, tabs, menus, popovers, tooltips, dialogs, and ordinary collection-facing controls with coherent lifecycle state, semantics/accessibility actions, style states, animation/transitions, layout, keyboard/controller behavior, focus/navigation, and deterministic plus real-renderer tests.
+**Required outcome:** label/text, button, checkbox, radio, toggle, slider, progress, text field, scroll container, tabs, menus, popovers, tooltips, dialogs, ordinary collection-facing controls, and the additional ordinary choice/navigation/tool controls required by the declared 0.1 profiles; coherent lifecycle state, semantics/accessibility actions, style states, animation/transitions, layout, keyboard/controller behavior, focus/navigation, deterministic plus real-renderer tests, generic composite-focus/selection behavior, scoped command/shortcut/access-key integration where controls expose commands, anchored presentation placement/dismissal/focus restoration for popup surfaces, and exact selected/expanded/pressed/range/popup semantic state where required.
 
 **Non-goals:** advanced virtualized tree/data-grid/editor controls, full docking/workspace products, or product-specific navigation frameworks.
 
@@ -131,7 +132,7 @@ These milestones remain durable inputs to successor work. Historical delivery ch
 
 **Depends on:** M7–M12 production behavior and reviewed platform/backend decisions.
 
-**Required outcome:** supported Windows/macOS/Linux desktop integrations; Linux/SteamOS-compatible real-time profile where the supported stack permits it; complete DPI/scale, resize, cursor, clipboard, IME, accessibility, drag/drop, activation/focus, multi-window/multi-surface, resource-provider/realization, shutdown, renderer recovery/device-loss, and raw-controller translation behavior; external embedded-host proof; engine-owned main-loop/render/resource proof with RunenUI retaining only UI runtime/behavior authority.
+**Required outcome:** supported Windows/macOS/Linux desktop integrations; Linux/SteamOS-compatible real-time profile where the supported stack permits it; complete DPI/raster-scale, resize, cursor, clipboard, IME, accessibility, drag/drop, activation/focus, multi-window/multi-surface, resource-provider/realization, shutdown, renderer recovery/device-loss, and raw-controller translation behavior; host-neutral environment projection for locale/language, logical layout direction, user accessibility/text/UI scale distinct from raster scale, and accepted appearance/input-capability facts; live-region/announcement and broader supported-platform accessibility mapping; external embedded-host proof; engine-owned main-loop/render/resource proof with RunenUI retaining only UI runtime/behavior authority.
 
 **Non-goals:** assuming Runenwerk/ECS ownership, putting native types into core/runtime behavior, mandatory mobile/web profiles, or requiring one renderer to be the only supported future renderer architecture.
 
@@ -155,7 +156,7 @@ These milestones remain durable inputs to successor work. Historical delivery ch
 
 **Depends on:** M0–M14.
 
-**Required outcome:** cross-platform CI; MSRV/platform policy enforcement; complete docs/examples; feature-combination and publish-dry-run checks; dependency/license/security enforcement; API/semver checks appropriate to pre-1.0 evolution; property/fuzz/stress testing; relevant Miri/sanitizer coverage; packaging/release automation; no unresolved release-blocking correctness or budget defects; representative dogfood applications covering desktop/settings UI, real-time/game UI, tool/editor UI, and text-heavy/editing UI using public contracts; final review that no foundational capability required by the declared 0.1 profiles remains intentionally deferred.
+**Required outcome:** cross-platform CI; MSRV/platform policy enforcement; complete docs/examples; feature-combination and publish-dry-run checks; dependency/license/security enforcement; API/semver checks appropriate to pre-1.0 evolution; property/fuzz/stress testing; relevant Miri/sanitizer coverage; packaging/release automation; no unresolved release-blocking correctness or budget defects; representative dogfood applications covering desktop/settings UI, real-time/game UI, tool/editor UI, and text-heavy/editing UI using public contracts; representative qualification under applicable non-default environment/accessibility conditions such as locale/RTL layout direction, user accessibility scale, high contrast, and reduced motion; final review that no foundational capability required by the declared 0.1 profiles remains intentionally deferred.
 
 **Non-goals:** stabilizing every public API permanently, requiring specialist products such as advanced data grids/docking suites/visual designers, or adding optional mobile/web profiles merely to increase breadth.
 
@@ -187,8 +188,10 @@ These milestones remain durable inputs to successor work. Historical delivery ch
 | Visual composition and deterministic animation | M9 |
 | Editable text and reusable interaction services | M10 |
 | Standard production controls | M11 |
+| Scoped commands/accelerators and standard-control composite/presentation infrastructure | M11 |
 | Virtualization/scalable collections | M12 |
 | Production desktop/embedded/real-time platform profiles | M13 |
+| Locale/direction/user-scale environment and production platform accessibility breadth | M13 |
 | Inspection/profiling/performance tooling | M14 |
 | Feature-complete public 0.1 qualification/release | M15 |
 | Stable API/support commitment | 1.0 |
