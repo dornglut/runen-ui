@@ -1,10 +1,14 @@
+use std::time::Duration;
+
 use runenui_core::{
-    Element, ElementId, ElementKey, FlexContainerStyle, FlexDirection, FontFamily, GenericFontFamily, LayoutContainer,
-    LayoutDimension, LayoutStyle, LogicalLength, MotionTarget, PresentationOrigin,
-    PresentationRotation, PresentationScale, PresentationTransform, PresentationTranslation,
-    PresentationValue, StyleRecipeId, StyleVariantId, TransitionPolicy, Typography,
-    TypographyToken, TypographyValue, UnitInterval, View, Widget, button, children, column, row,
-    text,
+    AnimationId, Brush, Color, DropShadow, EdgeInsets, Element, ElementId, ElementKey,
+    ExplicitTimeline, FlexContainerStyle, FlexDirection, FontFamily, GenericFontFamily,
+    LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, MotionEasing, MotionKeyframe,
+    MotionRepeat, MotionTarget, MotionValue, PresentationOrigin, PresentationRotation,
+    PresentationScale, PresentationTransform, PresentationTranslation, PresentationValue, Radius,
+    ReducedMotionStrategy, SceneOpacity, StrokeStyle, StyleRecipeId, StyleVariantId, TimelineSpec,
+    TransitionPolicy, TransitionSpec, Typography, TypographyToken, TypographyValue, UnitInterval,
+    View, Widget, button, children, column, row, text,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -166,31 +170,139 @@ fn presentation_transform() -> PresentationTransform {
     )
 }
 
+
+fn common_transition() -> TransitionSpec {
+    TransitionSpec::new(
+        Duration::from_millis(120),
+        Duration::ZERO,
+        MotionEasing::Linear,
+        Some(ReducedMotionStrategy::PreserveEssential),
+    )
+    .unwrap_or_else(|_| unreachable!("controlled transition is valid"))
+}
+
+fn common_timeline() -> ExplicitTimeline {
+    let spec = TimelineSpec::new(
+        vec![
+            MotionKeyframe::new(
+                UnitInterval::ZERO,
+                MotionValue::Opacity(SceneOpacity::TRANSPARENT),
+            ),
+            MotionKeyframe::new(
+                UnitInterval::ONE,
+                MotionValue::Opacity(SceneOpacity::OPAQUE),
+            ),
+        ],
+        vec![MotionEasing::Linear],
+        Duration::from_millis(200),
+        Duration::ZERO,
+        MotionRepeat::ONCE,
+        Some(ReducedMotionStrategy::PreserveEssential),
+    )
+    .unwrap_or_else(|_| unreachable!("controlled timeline is valid"));
+    ExplicitTimeline::new(
+        AnimationId::from_static("common-authoring")
+            .unwrap_or_else(|_| unreachable!("controlled animation id is valid")),
+        spec,
+    )
+}
+
+fn authored_outline() -> runenui_core::Outline {
+    runenui_core::Outline::new(
+        Brush::solid(Color::WHITE),
+        StrokeStyle::new(LogicalLength::from(2_u16)),
+    )
+}
+
+fn authored_shadows() -> Vec<DropShadow> {
+    vec![
+        DropShadow::new(
+            1.0,
+            2.0,
+            LogicalLength::from(3_u16),
+            4.0,
+            Color::BLACK,
+        )
+        .unwrap_or_else(|_| unreachable!("controlled shadow is finite")),
+    ]
+}
+
 #[test]
-fn common_presentation_and_transition_authoring_has_element_builtin_parity()
+fn common_node_authoring_has_element_builtin_parity()
 -> Result<(), Box<dyn std::error::Error>> {
+    let layout = LayoutStyle::default()
+        .with_width(LayoutDimension::length(LogicalLength::from(120_u16)));
+    let recipe = StyleRecipeId::from_static("common.authoring")?;
+    let variant = StyleVariantId::from_static("compact")?;
+    let typography = Typography::new(
+        FontFamily::generic(GenericFontFamily::SansSerif),
+        LogicalLength::from(18_u8),
+    );
+    let padding = EdgeInsets::all(LogicalLength::from(4_u16));
+    let radius = Radius::all(LogicalLength::from(6_u16));
+    let outline = authored_outline();
+    let shadows = authored_shadows();
+    let opacity = SceneOpacity::new(0.75)?;
     let presentation = presentation_transform();
+    let transition = common_transition();
+    let timeline = common_timeline();
+
     let custom: Element<Action> = Element::new(Probe)
-        .id("custom")
-        .key("custom-key")
+        .id("common")
+        .key("common-key")
+        .with_layout(layout.clone())
+        .recipe(recipe.clone())
+        .variant(variant.clone())
+        .foreground(Color::WHITE)
+        .background(Color::BLACK)
+        .padding(padding)
+        .radius(radius)
+        .typography(typography.clone())
+        .outline(outline.clone())
+        .shadows(shadows.clone())
+        .opacity(opacity)
         .presentation(presentation)
-        .transition_disabled(MotionTarget::Opacity);
+        .transition(MotionTarget::Opacity, transition.clone())
+        .transition_disabled(MotionTarget::Foreground)
+        .timeline(timeline.clone());
+
     let builtin: Element<Action> = text("Title")
-        .id("builtin")
-        .key("builtin-key")
+        .id("common")
+        .key("common-key")
+        .with_layout(layout.clone())
+        .recipe(recipe)
+        .variant(variant)
+        .foreground(Color::WHITE)
+        .background(Color::BLACK)
+        .padding(padding)
+        .radius(radius)
+        .typography(typography)
+        .outline(outline)
+        .shadows(shadows)
+        .opacity(opacity)
         .presentation(presentation)
-        .transition_disabled(MotionTarget::Opacity)
+        .transition(MotionTarget::Opacity, transition)
+        .transition_disabled(MotionTarget::Foreground)
+        .timeline(timeline)
         .into_element();
 
-    assert_eq!(custom.element_id(), Some(&ElementId::from_static("custom")?));
+    assert_eq!(custom.element_id(), Some(&ElementId::from_static("common")?));
     assert_eq!(
         custom.element_key(),
-        Some(&ElementKey::from_static("custom-key")?)
+        Some(&ElementKey::from_static("common-key")?)
     );
-    assert_eq!(builtin.element_id(), Some(&ElementId::from_static("builtin")?));
+    assert_eq!(custom.element_id(), builtin.element_id());
+    assert_eq!(custom.element_key(), builtin.element_key());
+    assert_eq!(custom.layout(), builtin.layout());
+    assert_eq!(custom.style(), builtin.style());
+    assert_eq!(custom.timelines(), builtin.timelines());
+    assert!(matches!(
+        custom.style().transition_policy(MotionTarget::Opacity),
+        Some(TransitionPolicy::Enabled(_))
+    ));
     assert_eq!(
-        builtin.element_key(),
-        Some(&ElementKey::from_static("builtin-key")?)
+        custom.style().transition_policy(MotionTarget::Foreground),
+        Some(&TransitionPolicy::Disabled)
     );
     assert_eq!(
         custom
@@ -198,21 +310,6 @@ fn common_presentation_and_transition_authoring_has_element_builtin_parity()
             .presentation()
             .and_then(PresentationValue::as_literal),
         Some(presentation)
-    );
-    assert_eq!(
-        builtin
-            .style()
-            .presentation()
-            .and_then(PresentationValue::as_literal),
-        Some(presentation)
-    );
-    assert_eq!(
-        custom.style().transition_policy(MotionTarget::Opacity),
-        Some(&TransitionPolicy::Disabled)
-    );
-    assert_eq!(
-        builtin.style().transition_policy(MotionTarget::Opacity),
-        Some(&TransitionPolicy::Disabled)
     );
     Ok(())
 }
