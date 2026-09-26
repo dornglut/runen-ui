@@ -378,6 +378,46 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    fn apply_focus_group_default(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        command: SemanticCommand,
+    ) -> Result<(), TraceRoutedIntegrityFailure> {
+        let forward = command == SemanticCommand::FocusGroupNext;
+        let Some(selection) = select_focus_group_member(
+            &mut self.tree,
+            &self.focus,
+            &transaction.target,
+            forward,
+        ) else {
+            return Ok(());
+        };
+        let Some(target) = selection.target else {
+            return Ok(());
+        };
+        let activate_target =
+            selection.activation == runenui_core::FocusGroupActivationPolicy::ActivateTarget;
+        if activate_target {
+            transaction.consume_mandatory_default_command()?;
+        }
+        self.commit_focus_transition(
+            transaction,
+            Some(target.clone()),
+            FocusReason::GroupNavigation,
+        )?;
+        if activate_target {
+            transaction
+                .default_outputs
+                .push(CollectedRoutedOutput::Command {
+                    target,
+                    command: SemanticCommand::Activate,
+                    origin: CommandOrigin::__runtime_delegated(transaction.origin.source()),
+                    causal_parent: transaction.parent,
+                });
+        }
+        Ok(())
+    }
+
     pub(in crate::runtime) fn apply_focus_default(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
@@ -398,39 +438,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             command,
             SemanticCommand::FocusGroupNext | SemanticCommand::FocusGroupPrevious
         ) {
-            let forward = command == SemanticCommand::FocusGroupNext;
-            let Some(selection) = select_focus_group_member(
-                &mut self.tree,
-                &self.focus,
-                &transaction.target,
-                forward,
-            ) else {
-                return Ok(());
-            };
-            let Some(target) = selection.target else {
-                return Ok(());
-            };
-            let activate_target =
-                selection.activation == runenui_core::FocusGroupActivationPolicy::ActivateTarget;
-            if activate_target {
-                transaction.consume_mandatory_default_command()?;
-            }
-            self.commit_focus_transition(
-                transaction,
-                Some(target.clone()),
-                FocusReason::GroupNavigation,
-            )?;
-            if activate_target {
-                transaction
-                    .default_outputs
-                    .push(CollectedRoutedOutput::Command {
-                        target,
-                        command: SemanticCommand::Activate,
-                        origin: CommandOrigin::__runtime_delegated(transaction.origin.source()),
-                        causal_parent: transaction.parent,
-                    });
-            }
-            return Ok(());
+            return self.apply_focus_group_default(transaction, command);
         }
         let (navigation, reason) = match command {
             SemanticCommand::FocusNext => (FocusNavigation::Next, FocusReason::LinearNavigation),
