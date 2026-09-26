@@ -469,16 +469,14 @@ pub fn select_focus_group_member<Action>(
             activation: config.activation(),
         });
     }
-    let target = match config.boundary() {
-        FocusGroupBoundaryPolicy::Wrap => {
-            if forward {
-                members.first().map(|member| member.target.clone())
-            } else {
-                members.last().map(|member| member.target.clone())
-            }
+    let target = if config.boundary() == FocusGroupBoundaryPolicy::Wrap {
+        if forward {
+            members.first().map(|member| member.target.clone())
+        } else {
+            members.last().map(|member| member.target.clone())
         }
-        FocusGroupBoundaryPolicy::Stop => None,
-        _ => None,
+    } else {
+        None
     };
     Some(FocusGroupSelection {
         target,
