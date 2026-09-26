@@ -1,6 +1,6 @@
 //! Runtime-owned focus state, scope membership, and candidate selection.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use runenui_core::{
     FocusBoundaryPolicy, FocusDirection, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy,
@@ -203,11 +203,15 @@ pub fn is_focus_eligible<Action>(tree: &mut MountedTree<Action>, id: &MountedNod
 }
 
 fn nearest_group<Action>(tree: &MountedTree<Action>, id: &MountedNodeId) -> Option<MountedNodeId> {
+    let scope = nearest_scope(tree, id)?;
     let mut current = tree.node(id)?.parent.clone()?;
     loop {
         let node = tree.node(&current)?;
         if node.focus_group.is_some() {
             return Some(current);
+        }
+        if current == scope {
+            return None;
         }
         current = node.parent.clone()?;
     }
@@ -250,8 +254,13 @@ fn collect_focus_group_members<Action>(
         return;
     };
     let nested_group = node.focus_group.is_some();
+    let nested_scope = node.focus_scope.is_some();
     let entry = node.focus_group_entry;
     let children = node.children.clone();
+
+    if nested_scope {
+        return;
+    }
 
     if entry == FocusGroupEntry::Preferred {
         if preferred.is_some() {
@@ -343,48 +352,16 @@ fn candidates<Action>(
     geometry: &[(MountedNodeId, LogicalRect)],
 ) -> Vec<Candidate> {
     let ids = tree.publication_preorder_ids();
-    let mut seen_groups = HashSet::new();
     let mut output = Vec::new();
-    for (order, id) in ids.iter().cloned().enumerate() {
+    for (order, id) in ids.into_iter().enumerate() {
         if nearest_scope(tree, &id).as_ref() != Some(scope) {
             continue;
         }
-        if let Some(group) = nearest_group(tree, &id) {
-            let outermost_group = {
-                let mut current = group.clone();
-                loop {
-                    let Some(parent_group) = nearest_group(tree, &current) else {
-                        break current;
-                    };
-                    current = parent_group;
-                }
-            };
-            if !seen_groups.insert(outermost_group.clone()) {
-                continue;
-            }
-            let Some(target) = focus_group_entry_target(tree, &outermost_group) else {
-                continue;
-            };
-            let group_order = ids
-                .iter()
-                .position(|candidate| candidate == &outermost_group)
-                .unwrap_or(order);
-            let rect = geometry
-                .iter()
-                .find_map(|(geometry_id, rect)| (geometry_id == &outermost_group).then_some(*rect));
-            output.push(Candidate {
-                id: target,
-                order: group_order,
-                rect,
-                group: Some(outermost_group),
-            });
-            continue;
-        }
-        if tree
+        let is_group = tree
             .node(&id)
-            .is_some_and(|node| node.focus_group.is_some())
-        {
-            if !seen_groups.insert(id.clone()) {
+            .is_some_and(|node| node.focus_group.is_some());
+        if is_group {
+            if nearest_group(tree, &id).is_some() {
                 continue;
             }
             let Some(target) = focus_group_entry_target(tree, &id) else {
@@ -399,6 +376,9 @@ fn candidates<Action>(
                 rect,
                 group: Some(id),
             });
+            continue;
+        }
+        if nearest_group(tree, &id).is_some() {
             continue;
         }
         if is_focus_eligible(tree, &id) {
