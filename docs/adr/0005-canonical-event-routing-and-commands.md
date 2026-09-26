@@ -113,8 +113,10 @@ Public host ingress is not an unscoped `(position, MountedNodeId)` pair. Every
 publication exposes an opaque `SurfaceInputContext` identifying its runtime
 namespace, logical `SurfaceId`, coordinate-space revision, and exact published
 hit-test generation. In M4 there is one mounted root and one logical surface,
-but `SurfaceId` is present now so M10 can add surface lifetimes without replacing
-every event family. Hosts map platform coordinates into RunenUI logical
+but `SurfaceId` is present now so later production multi-surface lifetimes can be
+added without replacing every event family. Durable milestone ownership follows
+the roadmap; the current production platform/multi-surface owner is M13. Hosts
+map platform coordinates into RunenUI logical
 coordinates for the supplied context; core/runtime ingress exposes no physical
 pixel, DPI, monitor, or native-window types.
 
@@ -165,7 +167,9 @@ pointer owned by this runtime/surface, even if its `PointerId` value resembles a
 local stream.
 
 M4 does not create multi-window lifecycle, independent surface roots, or
-cross-surface focus. Those remain M10 concerns.
+cross-surface focus. Those remain outside M4; durable milestone ownership follows
+the roadmap, which currently assigns production multi-window/multi-surface
+integration to M13.
 
 ### Event families
 
