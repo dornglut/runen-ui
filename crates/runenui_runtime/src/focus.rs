@@ -434,8 +434,10 @@ pub fn select_focus_group_member<Action>(
             return None;
         }
         command_target.clone()
+    } else if state.focused_node().is_some() {
+        nearest_group(tree, current)?
     } else {
-        nearest_group(tree, current).or_else(|| nearest_group(tree, command_target))?
+        nearest_group(tree, command_target)?
     };
     let config = tree.node(&group)?.focus_group?;
     let resolved = focus_group_members(tree, &group)?;
