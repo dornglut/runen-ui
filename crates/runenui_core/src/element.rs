@@ -7,8 +7,8 @@ use crate::widget_erasure::{ElementParts, ErasedWidget, MountedWidget, WidgetAda
 use crate::widget_mapping::MappedWidget;
 use crate::widget_protocol::Widget;
 use crate::{
-    ElementId, ElementKey, ExplicitTimeline, FocusScope, Focusability, IdentifierError,
-    IntoElementId, IntoElementKey, LayoutStyle, StyleIntent,
+    ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope, Focusability,
+    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, StyleIntent,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -204,6 +204,8 @@ pub struct Element<Action> {
     common: CommonNodeAuthoring,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
+    focus_group: Option<FocusGroup>,
+    focus_group_entry: FocusGroupEntry,
     widget: Box<dyn ErasedWidget<Action>>,
     children: Vec<Self>,
 }
@@ -251,6 +253,8 @@ impl<Action> fmt::Debug for Element<Action> {
             .field("timelines", &self.common.timelines)
             .field("focusability", &self.focusability)
             .field("focus_scope", &self.focus_scope)
+            .field("focus_group", &self.focus_group)
+            .field("focus_group_entry", &self.focus_group_entry)
             .field("widget_type", &self.widget.widget_type_name())
             .field("children", &self.children)
             .field("authoring_diagnostics", &self.common.diagnostics)
@@ -273,6 +277,8 @@ impl<Action> Element<Action> {
             common: CommonNodeAuthoring::default(),
             focusability: Focusability::Automatic,
             focus_scope: None,
+            focus_group: None,
+            focus_group_entry: FocusGroupEntry::Automatic,
             widget,
             children,
         }
@@ -290,6 +296,8 @@ impl<Action> Element<Action> {
             common,
             focusability,
             focus_scope,
+            focus_group: None,
+            focus_group_entry: FocusGroupEntry::Automatic,
             widget,
             children,
         }
@@ -328,6 +336,24 @@ impl<Action> Element<Action> {
         self
     }
 
+    /// Declares this mounted node as the boundary of one composite focus group.
+    #[must_use]
+    pub const fn focus_group(mut self, group: FocusGroup) -> Self {
+        self.focus_group = Some(group);
+        self
+    }
+
+    /// Marks this node as the preferred external entry member of its nearest focus group.
+    #[must_use]
+    pub const fn focus_group_preferred(mut self, preferred: bool) -> Self {
+        self.focus_group_entry = if preferred {
+            FocusGroupEntry::Preferred
+        } else {
+            FocusGroupEntry::Automatic
+        };
+        self
+    }
+
     /// Maps every typed widget action in this subtree into a parent action.
     #[must_use]
     pub fn map_action<ParentAction>(
@@ -354,6 +380,8 @@ impl<Action> Element<Action> {
             common: self.common,
             focusability: self.focusability,
             focus_scope: self.focus_scope,
+            focus_group: self.focus_group,
+            focus_group_entry: self.focus_group_entry,
             widget: Box::new(MappedWidget {
                 child: self.widget,
                 mapper: Rc::clone(mapper),
@@ -395,6 +423,14 @@ impl<Action> Element<Action> {
         self.focus_scope
     }
     #[must_use]
+    pub const fn focus_group_config(&self) -> Option<FocusGroup> {
+        self.focus_group
+    }
+    #[must_use]
+    pub const fn focus_group_entry(&self) -> FocusGroupEntry {
+        self.focus_group_entry
+    }
+    #[must_use]
     pub const fn children(&self) -> &[Self] {
         self.children.as_slice()
     }
@@ -411,6 +447,8 @@ impl<Action> Element<Action> {
             .into_authored_fields(self.focusability, self.focus_scope);
         ElementParts::new(
             fields,
+            self.focus_group,
+            self.focus_group_entry,
             MountedWidget::from_erased(self.widget),
             self.children,
             diagnostics,

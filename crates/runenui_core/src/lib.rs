@@ -293,7 +293,8 @@ pub use event::{
 };
 pub use event_context::EventContext;
 pub use focus::{
-    FocusBoundaryPolicy, FocusDirection, FocusEvent, FocusEventKind, FocusReason, FocusScope,
+    FocusBoundaryPolicy, FocusDirection, FocusEvent, FocusEventKind, FocusGroup,
+    FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, FocusGroupEntry, FocusReason, FocusScope,
     FocusScopePolicy, Focusability, InputModality,
 };
 pub use framework_service::{

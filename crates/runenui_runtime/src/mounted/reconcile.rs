@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use runenui_core::{
-    __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusScope,
-    Focusability, LayoutStyle, StyleIntent, WidgetInvalidation, WidgetMountContext,
-    WidgetUnmountReason, WidgetUpdateContext,
+    __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusGroup,
+    FocusGroupEntry, FocusScope, Focusability, LayoutStyle, StyleIntent, WidgetInvalidation,
+    WidgetMountContext, WidgetUnmountReason, WidgetUpdateContext,
 };
 
 use crate::ReconciliationDiagnostic;
@@ -70,6 +70,8 @@ pub(super) struct IncomingNode<Action> {
     timelines: Vec<ExplicitTimeline>,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
+    focus_group: Option<FocusGroup>,
+    focus_group_entry: FocusGroupEntry,
     authoring_diagnostics: Vec<runenui_core::AuthoringDiagnostic>,
     widget: MountedWidget<Action>,
     children: Vec<Self>,
@@ -77,6 +79,9 @@ pub(super) struct IncomingNode<Action> {
 
 impl<Action> IncomingNode<Action> {
     pub(super) fn from_element(element: Element<Action>) -> Self {
+        let parts = element.into_runtime_parts();
+        let focus_group = parts.focus_group();
+        let focus_group_entry = parts.focus_group_entry();
         let (
             authored_id,
             key,
@@ -88,7 +93,7 @@ impl<Action> IncomingNode<Action> {
             authoring_diagnostics,
             widget,
             children,
-        ) = element.into_runtime_parts().into_parts();
+        ) = parts.into_parts();
         Self {
             authored_id,
             key,
@@ -97,6 +102,8 @@ impl<Action> IncomingNode<Action> {
             timelines,
             focusability,
             focus_scope,
+            focus_group,
+            focus_group_entry,
             authoring_diagnostics,
             widget,
             children: children.into_iter().map(Self::from_element).collect(),
@@ -165,6 +172,7 @@ impl<Action> MountedTree<Action> {
             diagnostics: Vec::new(),
             moved: 0,
         };
+        collect_focus_group_diagnostics(&root, "root", &mut planning.diagnostics);
         let root = self.plan_existing(Some(old_root), None, root, "root".to_owned(), &mut planning);
         Ok(ReconciliationPlan {
             root,
@@ -216,6 +224,8 @@ impl<Action> MountedTree<Action> {
             timelines,
             focusability,
             focus_scope,
+            focus_group,
+            focus_group_entry,
             authoring_diagnostics,
             widget,
             children,
@@ -233,6 +243,8 @@ impl<Action> MountedTree<Action> {
                 timelines,
                 focusability,
                 focus_scope,
+                focus_group,
+                focus_group_entry,
                 authoring_diagnostics,
                 widget,
                 children: Vec::new(),
@@ -468,6 +480,8 @@ impl<Action> MountedTree<Action> {
             timelines,
             focusability,
             focus_scope,
+            focus_group,
+            focus_group_entry,
             authoring_diagnostics,
             widget,
             children: _,
@@ -500,12 +514,16 @@ impl<Action> MountedTree<Action> {
             let timelines_changed = node.timelines != timelines;
             common_invalidation = common_field_invalidation(
                 node,
-                authored_id.as_ref(),
-                &layout,
-                &style,
-                focusability,
-                focus_scope,
-                &authoring_diagnostics,
+                CommonFieldRefs {
+                    authored_id: authored_id.as_ref(),
+                    layout: &layout,
+                    style: &style,
+                    focusability,
+                    focus_scope,
+                    focus_group,
+                    focus_group_entry,
+                    diagnostics: &authoring_diagnostics,
+                },
             );
             node.authored_id = authored_id;
             node.key = key;
@@ -514,6 +532,8 @@ impl<Action> MountedTree<Action> {
             node.timelines = timelines;
             node.focusability = focusability;
             node.focus_scope = focus_scope;
+            node.focus_group = focus_group;
+            node.focus_group_entry = focus_group_entry;
             node.authoring_diagnostics = authoring_diagnostics;
             node.widget = widget;
             // Input capability declarations belong to the incoming widget instance,
@@ -560,6 +580,8 @@ impl<Action> MountedTree<Action> {
             timelines,
             focusability,
             focus_scope,
+            focus_group,
+            focus_group_entry,
             authoring_diagnostics,
             widget,
             children,
@@ -584,6 +606,8 @@ impl<Action> MountedTree<Action> {
                     timelines,
                     focusability,
                     focus_scope,
+                    focus_group,
+                    focus_group_entry,
                     authoring_diagnostics,
                     widget,
                     state: widget_state,
@@ -621,6 +645,48 @@ impl<Action> MountedTree<Action> {
             .unwrap_or_else(|| unreachable!("new mounted node remains live"))
             .children = mounted_children;
         id
+    }
+}
+
+pub(super) fn collect_focus_group_diagnostics<Action>(
+    node: &IncomingNode<Action>,
+    path: &str,
+    diagnostics: &mut Vec<ReconciliationDiagnostic>,
+) {
+    if node.focus_group.is_some() {
+        let mut preferred_member_paths = Vec::new();
+        collect_nearest_group_preferred_members(node, path, &mut preferred_member_paths);
+        if preferred_member_paths.len() > 1 {
+            diagnostics.push(
+                ReconciliationDiagnostic::MultiplePreferredFocusGroupMembers {
+                    group_path: path.to_owned(),
+                    preferred_member_paths,
+                },
+            );
+        }
+    }
+    for (position, child) in node.children.iter().enumerate() {
+        let child_path = format!("{path}/{position}");
+        collect_focus_group_diagnostics(child, &child_path, diagnostics);
+    }
+}
+
+fn collect_nearest_group_preferred_members<Action>(
+    group: &IncomingNode<Action>,
+    group_path: &str,
+    preferred_member_paths: &mut Vec<String>,
+) {
+    for (position, child) in group.children.iter().enumerate() {
+        let child_path = format!("{group_path}/{position}");
+        if child.focus_scope.is_some() {
+            continue;
+        }
+        if child.focus_group_entry == FocusGroupEntry::Preferred {
+            preferred_member_paths.push(child_path.clone());
+        }
+        if child.focus_group.is_none() {
+            collect_nearest_group_preferred_members(child, &child_path, preferred_member_paths);
+        }
     }
 }
 
@@ -680,29 +746,41 @@ fn analyze_sibling_keys<Action>(
     }
 }
 
-fn common_field_invalidation<Action>(
-    node: &MountedNode<Action>,
-    authored_id: Option<&ElementId>,
-    layout: &LayoutStyle,
-    style: &StyleIntent,
+struct CommonFieldRefs<'a> {
+    authored_id: Option<&'a ElementId>,
+    layout: &'a LayoutStyle,
+    style: &'a StyleIntent,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
-    diagnostics: &[runenui_core::AuthoringDiagnostic],
+    focus_group: Option<FocusGroup>,
+    focus_group_entry: FocusGroupEntry,
+    diagnostics: &'a [runenui_core::AuthoringDiagnostic],
+}
+
+fn common_field_invalidation<Action>(
+    node: &MountedNode<Action>,
+    incoming: CommonFieldRefs<'_>,
 ) -> WidgetInvalidation {
     let mut invalidation = WidgetInvalidation::NONE;
-    if &node.layout != layout || node.style.padding() != style.padding() {
+    if &node.layout != incoming.layout || node.style.padding() != incoming.style.padding() {
         invalidation |= WidgetInvalidation::LAYOUT;
     }
-    if node.style.foreground() != style.foreground()
-        || node.style.background() != style.background()
-        || node.style.radius() != style.radius()
+    if node.style.foreground() != incoming.style.foreground()
+        || node.style.background() != incoming.style.background()
+        || node.style.radius() != incoming.style.radius()
     {
         invalidation |= WidgetInvalidation::PAINT;
     }
-    if node.authored_id.as_ref() != authored_id || node.authoring_diagnostics != diagnostics {
+    if node.authored_id.as_ref() != incoming.authored_id
+        || node.authoring_diagnostics != incoming.diagnostics
+    {
         invalidation |= WidgetInvalidation::DIAGNOSTICS;
     }
-    if node.focusability != focusability || node.focus_scope != focus_scope {
+    if node.focusability != incoming.focusability
+        || node.focus_scope != incoming.focus_scope
+        || node.focus_group != incoming.focus_group
+        || node.focus_group_entry != incoming.focus_group_entry
+    {
         invalidation |= WidgetInvalidation::INTERACTION;
     }
     invalidation

@@ -5,11 +5,11 @@ use crate::widget_protocol::{
 };
 use crate::{
     CommandOrigin, EditableContribution, ElementId, ElementKey, EventContext, EventPhase,
-    ExplicitTimeline, FocusScope, Focusability, HitContribution, HitContributionContext,
-    LayoutStyle, MonotonicInstant, MountedNodeId, PaintContribution, PaintContributionContext,
-    PointerId, SemanticContribution, SemanticContributionContext, StyleIntent, SubscriptionSet,
-    UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetMountContext, WidgetUnmountContext,
-    WidgetUpdateContext, WorkSequence,
+    ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope, Focusability, HitContribution,
+    HitContributionContext, LayoutStyle, MonotonicInstant, MountedNodeId, PaintContribution,
+    PaintContributionContext, PointerId, SemanticContribution, SemanticContributionContext,
+    StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext, WidgetEventOutput,
+    WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
 };
 use core::{any::Any, fmt};
 
@@ -502,6 +502,8 @@ pub struct ElementParts<Action> {
     timelines: Vec<ExplicitTimeline>,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
+    focus_group: Option<FocusGroup>,
+    focus_group_entry: FocusGroupEntry,
     widget: MountedWidget<Action>,
     children: Vec<Element<Action>>,
     authoring_diagnostics: Vec<AuthoringDiagnostic>,
@@ -524,6 +526,8 @@ pub type ElementRuntimeParts<Action> = (
 impl<Action> ElementParts<Action> {
     pub(crate) fn new(
         fields: AuthoredElementFields,
+        focus_group: Option<FocusGroup>,
+        focus_group_entry: FocusGroupEntry,
         widget: MountedWidget<Action>,
         children: Vec<Element<Action>>,
         authoring_diagnostics: Vec<AuthoringDiagnostic>,
@@ -536,6 +540,8 @@ impl<Action> ElementParts<Action> {
             timelines: fields.timelines,
             focusability: fields.focusability,
             focus_scope: fields.focus_scope,
+            focus_group,
+            focus_group_entry,
             widget,
             children,
             authoring_diagnostics,
@@ -568,6 +574,14 @@ impl<Action> ElementParts<Action> {
     #[must_use]
     pub const fn focus_scope(&self) -> Option<FocusScope> {
         self.focus_scope
+    }
+    #[must_use]
+    pub const fn focus_group(&self) -> Option<FocusGroup> {
+        self.focus_group
+    }
+    #[must_use]
+    pub const fn focus_group_entry(&self) -> FocusGroupEntry {
+        self.focus_group_entry
     }
     #[must_use]
     pub const fn authoring_diagnostics(&self) -> &[AuthoringDiagnostic] {

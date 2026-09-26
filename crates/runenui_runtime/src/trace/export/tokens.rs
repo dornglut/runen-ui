@@ -71,6 +71,7 @@ pub(super) const fn focus_reason(value: FocusReason) -> &'static str {
         FocusReason::Pointer => "pointer",
         FocusReason::LinearNavigation => "linear_navigation",
         FocusReason::DirectionalNavigation => "directional_navigation",
+        FocusReason::GroupNavigation => "group_navigation",
         FocusReason::ProgrammaticRequest => "programmatic_request",
         FocusReason::Removal => "removal",
         FocusReason::Disablement => "disablement",
@@ -510,5 +511,19 @@ pub(super) const fn surface_phase(value: SurfacePhase) -> &'static str {
         SurfacePhase::Semantics => "semantics",
         SurfacePhase::Diagnostics => "diagnostics",
         SurfacePhase::FocusValidation => "focus_validation",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::focus_reason;
+    use runenui_core::FocusReason;
+
+    #[test]
+    fn group_navigation_focus_reason_has_stable_trace_token() {
+        assert_eq!(
+            focus_reason(FocusReason::GroupNavigation),
+            "group_navigation"
+        );
     }
 }
