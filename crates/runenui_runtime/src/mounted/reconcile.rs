@@ -514,14 +514,16 @@ impl<Action> MountedTree<Action> {
             let timelines_changed = node.timelines != timelines;
             common_invalidation = common_field_invalidation(
                 node,
-                authored_id.as_ref(),
-                &layout,
-                &style,
-                focusability,
-                focus_scope,
-                focus_group,
-                focus_group_entry,
-                &authoring_diagnostics,
+                CommonFieldRefs {
+                    authored_id: authored_id.as_ref(),
+                    layout: &layout,
+                    style: &style,
+                    focusability,
+                    focus_scope,
+                    focus_group,
+                    focus_group_entry,
+                    diagnostics: &authoring_diagnostics,
+                },
             );
             node.authored_id = authored_id;
             node.key = key;
@@ -744,34 +746,40 @@ fn analyze_sibling_keys<Action>(
     }
 }
 
-fn common_field_invalidation<Action>(
-    node: &MountedNode<Action>,
-    authored_id: Option<&ElementId>,
-    layout: &LayoutStyle,
-    style: &StyleIntent,
+struct CommonFieldRefs<'a> {
+    authored_id: Option<&'a ElementId>,
+    layout: &'a LayoutStyle,
+    style: &'a StyleIntent,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
-    diagnostics: &[runenui_core::AuthoringDiagnostic],
+    diagnostics: &'a [runenui_core::AuthoringDiagnostic],
+}
+
+fn common_field_invalidation<Action>(
+    node: &MountedNode<Action>,
+    incoming: CommonFieldRefs<'_>,
 ) -> WidgetInvalidation {
     let mut invalidation = WidgetInvalidation::NONE;
-    if &node.layout != layout || node.style.padding() != style.padding() {
+    if &node.layout != incoming.layout || node.style.padding() != incoming.style.padding() {
         invalidation |= WidgetInvalidation::LAYOUT;
     }
-    if node.style.foreground() != style.foreground()
-        || node.style.background() != style.background()
-        || node.style.radius() != style.radius()
+    if node.style.foreground() != incoming.style.foreground()
+        || node.style.background() != incoming.style.background()
+        || node.style.radius() != incoming.style.radius()
     {
         invalidation |= WidgetInvalidation::PAINT;
     }
-    if node.authored_id.as_ref() != authored_id || node.authoring_diagnostics != diagnostics {
+    if node.authored_id.as_ref() != incoming.authored_id
+        || node.authoring_diagnostics != incoming.diagnostics
+    {
         invalidation |= WidgetInvalidation::DIAGNOSTICS;
     }
-    if node.focusability != focusability
-        || node.focus_scope != focus_scope
-        || node.focus_group != focus_group
-        || node.focus_group_entry != focus_group_entry
+    if node.focusability != incoming.focusability
+        || node.focus_scope != incoming.focus_scope
+        || node.focus_group != incoming.focus_group
+        || node.focus_group_entry != incoming.focus_group_entry
     {
         invalidation |= WidgetInvalidation::INTERACTION;
     }
