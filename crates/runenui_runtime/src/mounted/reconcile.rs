@@ -646,7 +646,7 @@ impl<Action> MountedTree<Action> {
     }
 }
 
-fn collect_focus_group_diagnostics<Action>(
+pub(super) fn collect_focus_group_diagnostics<Action>(
     node: &IncomingNode<Action>,
     path: &str,
     diagnostics: &mut Vec<ReconciliationDiagnostic>,
