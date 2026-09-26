@@ -71,6 +71,7 @@ pub(super) const fn focus_reason(value: FocusReason) -> &'static str {
         FocusReason::Pointer => "pointer",
         FocusReason::LinearNavigation => "linear_navigation",
         FocusReason::DirectionalNavigation => "directional_navigation",
+        FocusReason::GroupNavigation => "group_navigation",
         FocusReason::ProgrammaticRequest => "programmatic_request",
         FocusReason::Removal => "removal",
         FocusReason::Disablement => "disablement",
