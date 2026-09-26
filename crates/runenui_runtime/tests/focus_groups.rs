@@ -475,7 +475,7 @@ impl UiApp for ScopeBoundaryApp {
 
     fn root(_: &State) -> Element<Action> {
         let inner_scope = column(vec![
-            nested_member("scope.x", false),
+            nested_member("scope.x", true),
             nested_member("scope.y", false),
         ])
         .id("scope.inner")
@@ -486,7 +486,7 @@ impl UiApp for ScopeBoundaryApp {
             FocusBoundaryPolicy::Trap,
         )));
         let outer_group = column(vec![
-            nested_member("scope.a", false),
+            nested_member("scope.a", true),
             inner_scope,
             nested_member("scope.c", false),
         ])
@@ -552,6 +552,16 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
         .unwrap_or_else(|_| unreachable!("outer group navigation is accepted"));
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.focus().focused_node(), Some(&c));
+    assert!(
+        !runtime
+            .reconciliation_report()
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| matches!(
+                diagnostic,
+                ReconciliationDiagnostic::MultiplePreferredFocusGroupMembers { .. }
+            ))
+    );
 
     runtime
         .submit_command(
