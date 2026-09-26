@@ -2,10 +2,10 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    ChildBearingWidget, CommandOrigin, Element, EventContext, EventPhase, FocusGroup,
-    FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, FocusReason, NoHostProtocol,
-    SemanticCommand, StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetEventOutput, button,
-    column, container,
+    ChildBearingWidget, CommandOrigin, Element, EventContext, EventPhase, FocusBoundaryPolicy,
+    FocusGroup, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, FocusReason, FocusScope,
+    FocusScopePolicy, NoHostProtocol, SemanticCommand, StyleEnvironment, UiApp, UiEvent, View,
+    Widget, WidgetEventOutput, button, column, container,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, ReconciliationDiagnostic,
@@ -449,6 +449,115 @@ fn invalid_multiple_preferred_members_diagnose_and_fail_closed() {
     assert_eq!(runtime.focus().focused_node(), Some(&after));
 }
 
+
+struct ScopeBoundaryApp;
+
+impl UiApp for ScopeBoundaryApp {
+    type State = State;
+    type Action = Action;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &State) -> Element<Action> {
+        let inner_scope = column(vec![
+            nested_member("scope.x", false),
+            nested_member("scope.y", false),
+        ])
+        .id("scope.inner")
+        .key("scope.inner")
+        .into_element()
+        .focus_scope(FocusScope::new().with_policy(FocusScopePolicy::new(
+            FocusBoundaryPolicy::Trap,
+            FocusBoundaryPolicy::Trap,
+        )));
+        let outer_group = column(vec![
+            nested_member("scope.a", false),
+            inner_scope,
+            nested_member("scope.c", false),
+        ])
+        .id("scope.outer")
+        .key("scope.outer")
+        .into_element()
+        .focus_group(
+            FocusGroup::new()
+                .with_boundary(FocusGroupBoundaryPolicy::Wrap)
+                .with_activation(FocusGroupActivationPolicy::Manual),
+        );
+        column(vec![outer_group])
+            .key("scope.root")
+            .into_element()
+    }
+
+    fn update(state: &mut State, action: Action) {
+        let Action::Activated(name) = action;
+        state.activations.push(name);
+    }
+}
+
+fn scope_boundary_id(runtime: &mut AppRuntime<ScopeBoundaryApp>, name: &str) -> MountedNodeId {
+    let authored = runenui_core::ElementId::new(name).unwrap_or_else(|_| unreachable!());
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("named scope-boundary node is mounted"))
+        .id()
+        .clone()
+}
+
+#[test]
+fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() {
+    let mut runtime = AppRuntime::<ScopeBoundaryApp>::mount(State::default());
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+
+    let a = scope_boundary_id(&mut runtime, "scope.a");
+    let c = scope_boundary_id(&mut runtime, "scope.c");
+    let x = scope_boundary_id(&mut runtime, "scope.x");
+
+    runtime
+        .submit_command(
+            a.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("outer member focus request is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime
+        .submit_command(
+            a,
+            SemanticCommand::FocusGroupNext,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("outer group navigation is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.focus().focused_node(), Some(&c));
+
+    runtime
+        .submit_command(
+            x.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("inner-scope focus request is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.focus().focused_node(), Some(&x));
+
+    runtime
+        .submit_command(
+            x.clone(),
+            SemanticCommand::FocusGroupNext,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("inner-scope group command routes normally"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.focus().focused_node(), Some(&x));
+}
 
 #[derive(Debug)]
 struct OutputPressureGroup;
