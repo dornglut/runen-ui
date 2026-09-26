@@ -514,7 +514,6 @@ pub(super) const fn surface_phase(value: SurfacePhase) -> &'static str {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::focus_reason;
