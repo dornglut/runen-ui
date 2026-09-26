@@ -79,7 +79,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 | runenui_core::SemanticCommand::Paste
         ));
         let Some(mut transaction) = (if is_focus_command(command) {
-            self.begin_focus_routed_transaction(facts)
+            self.begin_focus_routed_transaction(facts, command)
         } else if default_outputs != 0 {
             self.try_begin_routed_transaction_with_trace_and_default_commands(
                 facts,
@@ -277,8 +277,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     fn begin_focus_routed_transaction(
         &mut self,
         facts: RoutedIngressFacts,
+        command: runenui_core::SemanticCommand,
     ) -> Option<RoutedTransaction<Action>> {
-        let (route, admission) = self.prepare_focus_routed_route(&facts)?;
+        let mandatory_default_commands = usize::from(matches!(
+            command,
+            runenui_core::SemanticCommand::FocusGroupNext
+                | runenui_core::SemanticCommand::FocusGroupPrevious
+        ));
+        let (route, admission) =
+            self.prepare_focus_routed_route(&facts, mandatory_default_commands)?;
         let pointer_callback_targets = route.clone();
         Some(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
     }
