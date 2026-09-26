@@ -203,6 +203,9 @@ pub fn is_focus_eligible<Action>(tree: &mut MountedTree<Action>, id: &MountedNod
 }
 
 fn nearest_group<Action>(tree: &MountedTree<Action>, id: &MountedNodeId) -> Option<MountedNodeId> {
+    if tree.node(id)?.focus_scope.is_some() {
+        return None;
+    }
     let scope = nearest_scope(tree, id)?;
     let mut current = tree.node(id)?.parent.clone()?;
     loop {
