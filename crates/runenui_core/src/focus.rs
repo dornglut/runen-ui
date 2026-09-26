@@ -171,6 +171,7 @@ pub enum FocusGroupActivationPolicy {
 /// A focus group is distinct from a focus scope: scopes own nested traversal
 /// boundaries, while groups collapse multiple real focus targets into one
 /// external traversal stop and provide ordered internal member navigation.
+/// Group membership never crosses a nested focus-scope boundary.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct FocusGroup {
     boundary: FocusGroupBoundaryPolicy,
