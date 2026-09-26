@@ -594,6 +594,17 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.focus().focused_node(), Some(&x));
+
+    runtime
+        .submit_command(
+            c,
+            SemanticCommand::FocusGroupNext,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("unrelated outer member command routes normally"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.focus().focused_node(), Some(&x));
 }
 
 #[derive(Debug)]
