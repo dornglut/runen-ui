@@ -2,12 +2,14 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    CommandOrigin, Element, FocusGroup, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy,
-    FocusReason, NoHostProtocol, SemanticCommand, StyleEnvironment, UiApp, View, button, column,
+    ChildBearingWidget, CommandOrigin, Element, EventContext, EventPhase, FocusGroup,
+    FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, FocusReason, NoHostProtocol,
+    SemanticCommand, StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetEventOutput, button,
+    column, container,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, ReconciliationDiagnostic,
-    SurfaceBuildContext, TraceRecordKind,
+    RuntimeConfig, RuntimeLimits, RuntimeStatus, SurfaceBuildContext, TraceRecordKind,
 };
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -445,4 +447,146 @@ fn invalid_multiple_preferred_members_diagnose_and_fail_closed() {
     command(&mut runtime, before.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, before, SemanticCommand::FocusNext);
     assert_eq!(runtime.focus().focused_node(), Some(&after));
+}
+
+
+#[derive(Debug)]
+struct OutputPressureGroup;
+
+impl Widget<Action> for OutputPressureGroup {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        if context.phase() == EventPhase::Bubble
+            && event.as_semantic_command().is_some_and(|command| {
+                matches!(
+                    command.command(),
+                    SemanticCommand::FocusGroupNext | SemanticCommand::FocusGroupPrevious
+                )
+            })
+        {
+            context.emit(Action::Activated("routed"));
+        }
+        WidgetEventOutput::none()
+    }
+}
+
+impl ChildBearingWidget<Action> for OutputPressureGroup {}
+
+struct OutputPressureApp;
+
+impl UiApp for OutputPressureApp {
+    type State = State;
+    type Action = Action;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &State) -> Element<Action> {
+        let group = container(
+            OutputPressureGroup,
+            vec![
+                button("a")
+                    .id("pressure.a")
+                    .key("pressure.a")
+                    .on_activate(|| Action::Activated("a"))
+                    .into_element(),
+                button("b")
+                    .id("pressure.b")
+                    .key("pressure.b")
+                    .on_activate(|| Action::Activated("b"))
+                    .into_element(),
+            ],
+        )
+        .id("pressure.group")
+        .key("pressure.group")
+        .into_element()
+        .focus_group(
+            FocusGroup::new()
+                .with_boundary(FocusGroupBoundaryPolicy::Wrap)
+                .with_activation(FocusGroupActivationPolicy::ActivateTarget),
+        );
+        column(vec![group]).key("pressure.root").into_element()
+    }
+
+    fn update(state: &mut State, action: Action) {
+        let Action::Activated(name) = action;
+        state.activations.push(name);
+    }
+}
+
+fn pressure_id(runtime: &mut AppRuntime<OutputPressureApp>, name: &str) -> MountedNodeId {
+    let authored = runenui_core::ElementId::new(name).unwrap_or_else(|_| unreachable!());
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("named output-pressure node is mounted"))
+        .id()
+        .clone()
+}
+
+#[test]
+fn activate_target_reserves_default_command_capacity_beyond_routed_callback_outputs() {
+    let config = RuntimeConfig::default().with_limits(
+        RuntimeLimits::default().with_transaction_outputs(1),
+    );
+    let mut runtime =
+        AppRuntime::<OutputPressureApp>::mount_with_config(State::default(), config);
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+
+    let a = pressure_id(&mut runtime, "pressure.a");
+    let b = pressure_id(&mut runtime, "pressure.b");
+
+    runtime
+        .submit_command(
+            a.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("pressure focus request is accepted"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+
+    runtime
+        .submit_command(
+            a,
+            SemanticCommand::FocusGroupNext,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("pressure group navigation is accepted"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.focus().focused_node(), Some(&b));
+    assert!(runtime.state().activations.is_empty());
+
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.state().activations, vec!["routed", "b"]);
 }
