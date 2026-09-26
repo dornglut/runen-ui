@@ -75,7 +75,9 @@ fn member(state: &State, name: &'static str) -> Element<Action> {
         .id(name)
         .key(name)
         .on_activate(move || Action::Activated(name));
-    if state.disable_all || (state.disable_preferred && name == "b") {
+    if (state.disable_all && matches!(name, "a" | "b" | "c"))
+        || (state.disable_preferred && name == "b")
+    {
         control = control.disabled();
     }
     let mut element = control.into_element();
