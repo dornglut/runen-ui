@@ -137,7 +137,7 @@ struct Candidate {
 }
 
 pub fn root_scope<Action>(tree: &MountedTree<Action>) -> Option<MountedNodeId> {
-    tree.publication_preorder_ids().into_iter().next()
+    tree.root_id().cloned()
 }
 
 pub fn nearest_scope<Action>(
