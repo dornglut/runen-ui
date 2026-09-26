@@ -531,6 +531,7 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
     ));
 
     let a = scope_boundary_id(&mut runtime, "scope.a");
+    let outer = scope_boundary_id(&mut runtime, "scope.outer");
     let c = scope_boundary_id(&mut runtime, "scope.c");
     let x = scope_boundary_id(&mut runtime, "scope.x");
 
@@ -579,6 +580,17 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("inner-scope group command routes normally"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.focus().focused_node(), Some(&x));
+
+    runtime
+        .submit_command(
+            outer,
+            SemanticCommand::FocusGroupNext,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("ancestor-group command routes normally"));
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.focus().focused_node(), Some(&x));
