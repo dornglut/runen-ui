@@ -513,3 +513,18 @@ pub(super) const fn surface_phase(value: SurfacePhase) -> &'static str {
         SurfacePhase::FocusValidation => "focus_validation",
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::focus_reason;
+    use runenui_core::FocusReason;
+
+    #[test]
+    fn group_navigation_focus_reason_has_stable_trace_token() {
+        assert_eq!(
+            focus_reason(FocusReason::GroupNavigation),
+            "group_navigation"
+        );
+    }
+}
