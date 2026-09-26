@@ -427,6 +427,12 @@ pub fn select_focus_group_member<Action>(
         .node(command_target)
         .is_some_and(|node| node.focus_group.is_some())
     {
+        if let Some(focused) = state.focused_node()
+            && (!is_within_group(tree, focused, command_target)
+                || nearest_scope(tree, focused) != nearest_scope(tree, command_target))
+        {
+            return None;
+        }
         command_target.clone()
     } else {
         nearest_group(tree, current).or_else(|| nearest_group(tree, command_target))?
