@@ -465,7 +465,6 @@ fn invalid_multiple_preferred_members_diagnose_and_fail_closed() {
     assert_eq!(runtime.focus().focused_node(), Some(&after));
 }
 
-
 struct ScopeBoundaryApp;
 
 impl UiApp for ScopeBoundaryApp {
@@ -498,9 +497,7 @@ impl UiApp for ScopeBoundaryApp {
                 .with_boundary(FocusGroupBoundaryPolicy::Wrap)
                 .with_activation(FocusGroupActivationPolicy::Manual),
         );
-        column(vec![outer_group])
-            .key("scope.root")
-            .into_element()
+        column(vec![outer_group]).key("scope.root").into_element()
     }
 
     fn update(state: &mut State, action: Action) {
@@ -669,11 +666,9 @@ fn pressure_id(runtime: &mut AppRuntime<OutputPressureApp>, name: &str) -> Mount
 
 #[test]
 fn activate_target_reserves_default_command_capacity_beyond_routed_callback_outputs() {
-    let config = RuntimeConfig::default().with_limits(
-        RuntimeLimits::default().with_transaction_outputs(1),
-    );
-    let mut runtime =
-        AppRuntime::<OutputPressureApp>::mount_with_config(State::default(), config);
+    let config =
+        RuntimeConfig::default().with_limits(RuntimeLimits::default().with_transaction_outputs(1));
+    let mut runtime = AppRuntime::<OutputPressureApp>::mount_with_config(State::default(), config);
     runtime.pump(PumpBudget::new(
         usize::MAX,
         usize::MAX,
