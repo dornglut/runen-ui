@@ -384,12 +384,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         command: SemanticCommand,
     ) -> Result<(), TraceRoutedIntegrityFailure> {
         let forward = command == SemanticCommand::FocusGroupNext;
-        let Some(selection) = select_focus_group_member(
-            &mut self.tree,
-            &self.focus,
-            &transaction.target,
-            forward,
-        ) else {
+        let Some(selection) =
+            select_focus_group_member(&mut self.tree, &self.focus, &transaction.target, forward)
+        else {
             return Ok(());
         };
         let Some(target) = selection.target else {
