@@ -676,6 +676,9 @@ fn collect_nearest_group_preferred_members<Action>(
 ) {
     for (position, child) in group.children.iter().enumerate() {
         let child_path = format!("{group_path}/{position}");
+        if child.focus_scope.is_some() {
+            continue;
+        }
         if child.focus_group_entry == FocusGroupEntry::Preferred {
             preferred_member_paths.push(child_path.clone());
         }
