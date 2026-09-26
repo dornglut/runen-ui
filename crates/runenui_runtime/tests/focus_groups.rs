@@ -15,6 +15,7 @@ use runenui_runtime::{
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct State {
     disable_preferred: bool,
+    disable_all: bool,
     hide_preferred: bool,
     duplicate_preferred: bool,
     manual_activation: bool,
@@ -74,7 +75,7 @@ fn member(state: &State, name: &'static str) -> Element<Action> {
         .id(name)
         .key(name)
         .on_activate(move || Action::Activated(name));
-    if state.disable_preferred && name == "b" {
+    if state.disable_all || (state.disable_preferred && name == "b") {
         control = control.disabled();
     }
     let mut element = control.into_element();
@@ -182,6 +183,21 @@ fn preferred_entry_falls_back_when_preferred_member_is_disabled() {
     command(&mut runtime, before.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, before, SemanticCommand::FocusNext);
     assert_eq!(runtime.focus().focused_node(), Some(&fallback));
+}
+
+#[test]
+fn zero_eligible_group_contributes_no_external_focus_stop() {
+    let mut runtime = AppRuntime::<App>::mount(State {
+        disable_all: true,
+        ..State::default()
+    });
+    settle(&mut runtime);
+
+    let before = id(&mut runtime, "before");
+    let after = id(&mut runtime, "after");
+    command(&mut runtime, before.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, before, SemanticCommand::FocusNext);
+    assert_eq!(runtime.focus().focused_node(), Some(&after));
 }
 
 #[test]
