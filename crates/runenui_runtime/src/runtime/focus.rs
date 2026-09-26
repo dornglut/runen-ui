@@ -412,8 +412,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             };
             let activate_target =
                 selection.activation == runenui_core::FocusGroupActivationPolicy::ActivateTarget;
-            if activate_target && transaction.remaining_outputs == 0 {
-                return Err(TraceRoutedIntegrityFailure::OutputAllowanceExceeded);
+            if activate_target {
+                transaction.consume_mandatory_default_command()?;
             }
             self.commit_focus_transition(
                 transaction,
@@ -421,7 +421,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 FocusReason::GroupNavigation,
             )?;
             if activate_target {
-                transaction.remaining_outputs -= 1;
                 transaction
                     .default_outputs
                     .push(CollectedRoutedOutput::Command {
