@@ -3,11 +3,12 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::{
-    CommandOrigin, ElementId, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
-    KeyboardPhase, LogicalKey, LogicalPoint, NoHostProtocol, PhysicalKey, PointerButton,
-    PointerButtons, PointerDeviceKind, PointerId, PointerPhase, SemanticAction,
-    SemanticCheckedState, SemanticCommand, SemanticRole, UiApp, View, button, children, column,
-    radio_button, radio_group,
+    ChildBearingWidget, CommandOrigin, ElementId, EventContext, EventPhase, KeyLocation,
+    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, LogicalPoint,
+    NoHostProtocol, PhysicalKey, PointerButton, PointerButtons, PointerDeviceKind, PointerId,
+    PointerPhase, SemanticAction, SemanticCheckedState, SemanticCommand, SemanticRole, UiApp,
+    UiEvent, View, Widget, WidgetEventOutput, button, children, column, container, radio_button,
+    radio_group,
 };
 use runenui_runtime::{PumpBudget, ReconciliationDiagnostic};
 use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
@@ -93,6 +94,67 @@ impl UiApp for ExternallyManagedRadioApp {
         ])
         .id("managed.group")
         .standalone_navigation(false)
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        if let Action::Select(value) = action {
+            state.selected = value;
+            state.activations.push(value);
+        }
+    }
+}
+
+#[derive(Debug)]
+struct PreventDirectionalNavigation;
+
+impl Widget<Action> for PreventDirectionalNavigation {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        if context.phase() == EventPhase::Capture
+            && event.as_semantic_command().is_some_and(|event| {
+                matches!(
+                    event.command(),
+                    SemanticCommand::FocusLeft
+                        | SemanticCommand::FocusRight
+                        | SemanticCommand::FocusUp
+                        | SemanticCommand::FocusDown
+                )
+            })
+        {
+            context.prevent_default();
+        }
+        WidgetEventOutput::none()
+    }
+}
+
+impl ChildBearingWidget<Action> for PreventDirectionalNavigation {}
+
+struct PreventedRadioNavigationApp;
+
+impl UiApp for PreventedRadioNavigationApp {
+    type State = ExternallyManagedState;
+    type Action = Action;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        let group = radio_group([
+            radio_button("One", state.selected == 1)
+                .id("prevented.one")
+                .on_activate(|| Action::Select(1)),
+            radio_button("Two", state.selected == 2)
+                .id("prevented.two")
+                .on_activate(|| Action::Select(2)),
+        ])
+        .id("prevented.group");
+        container(PreventDirectionalNavigation, [group]).id("prevented.parent")
     }
 
     fn update(state: &mut Self::State, action: Self::Action) {
@@ -600,6 +662,34 @@ fn externally_managed_radio_group_leaves_directional_command_unclaimed() {
     harness
         .submit_automation_command(element_id("managed.one"), SemanticCommand::FocusRight)
         .unwrap_or_else(|error| unreachable!("managed directional command is accepted: {error:?}"));
+    assert_eq!(
+        harness.run_until_idle(settle_budget()).outcome(),
+        SettleOutcome::Idle
+    );
+
+    assert_eq!(harness.state().selected, 1);
+    assert!(harness.state().activations.is_empty());
+}
+
+#[test]
+fn prevented_directional_command_does_not_trigger_radio_group_navigation() {
+    let mut harness = TestHarness::<PreventedRadioNavigationApp>::mount(ExternallyManagedState {
+        selected: 1,
+        activations: Vec::new(),
+    });
+    assert!(harness.publish().is_ok());
+
+    harness
+        .submit_automation_command(element_id("prevented.one"), SemanticCommand::RequestFocus)
+        .unwrap_or_else(|error| unreachable!("prevented radio focus is accepted: {error:?}"));
+    assert_eq!(
+        harness.run_until_idle(settle_budget()).outcome(),
+        SettleOutcome::Idle
+    );
+
+    harness
+        .submit_automation_command(element_id("prevented.one"), SemanticCommand::FocusRight)
+        .unwrap_or_else(|error| unreachable!("prevented directional command is accepted: {error:?}"));
     assert_eq!(
         harness.run_until_idle(settle_budget()).outcome(),
         SettleOutcome::Idle
