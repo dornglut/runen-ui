@@ -594,6 +594,16 @@ fn externally_managed_radio_group_leaves_directional_command_unclaimed() {
 fn invalid_multiple_checked_group_fails_closed_without_rewriting_children() {
     let mut harness = TestHarness::<InvalidRadioApp>::mount(());
     assert!(harness.publish().is_ok());
+    assert!(
+        harness
+            .publication()
+            .unwrap_or_else(|| unreachable!("publication exists"))
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| {
+                diagnostic.code() == "runenui.control.radio-group.multiple-checked"
+            })
+    );
 
     let groups = harness
         .query_semantics(&SemanticQuery::new().with_role(SemanticRole::RadioGroup))
