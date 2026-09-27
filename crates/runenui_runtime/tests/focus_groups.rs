@@ -12,15 +12,49 @@ use runenui_runtime::{
     RuntimeConfig, RuntimeLimits, RuntimeStatus, SurfaceBuildContext, TraceRecordKind,
 };
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum PreferredMemberState {
+    #[default]
+    Enabled,
+    Disabled,
+    Hidden,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum GroupMemberState {
+    #[default]
+    Enabled,
+    Disabled,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum GroupAuthoringState {
+    #[default]
+    Valid,
+    DuplicatePreferred,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct State {
-    disable_preferred: bool,
-    disable_all: bool,
-    hide_preferred: bool,
-    duplicate_preferred: bool,
-    manual_activation: bool,
-    stop_boundary: bool,
+    preferred_member: PreferredMemberState,
+    group_members: GroupMemberState,
+    group_authoring: GroupAuthoringState,
+    activation: FocusGroupActivationPolicy,
+    boundary: FocusGroupBoundaryPolicy,
     activations: Vec<&'static str>,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            preferred_member: PreferredMemberState::Enabled,
+            group_members: GroupMemberState::Enabled,
+            group_authoring: GroupAuthoringState::Valid,
+            activation: FocusGroupActivationPolicy::ActivateTarget,
+            boundary: FocusGroupBoundaryPolicy::Wrap,
+            activations: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -36,16 +70,6 @@ impl UiApp for App {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &State) -> Element<Action> {
-        let boundary = if state.stop_boundary {
-            FocusGroupBoundaryPolicy::Stop
-        } else {
-            FocusGroupBoundaryPolicy::Wrap
-        };
-        let activation = if state.manual_activation {
-            FocusGroupActivationPolicy::Manual
-        } else {
-            FocusGroupActivationPolicy::ActivateTarget
-        };
         let group = column(vec![
             member(state, "a"),
             member(state, "b"),
@@ -56,8 +80,8 @@ impl UiApp for App {
         .into_element()
         .focus_group(
             FocusGroup::new()
-                .with_boundary(boundary)
-                .with_activation(activation),
+                .with_boundary(state.boundary)
+                .with_activation(state.activation),
         );
         column(vec![member(state, "before"), group, member(state, "after")])
             .key("root")
@@ -75,16 +99,18 @@ fn member(state: &State, name: &'static str) -> Element<Action> {
         .id(name)
         .key(name)
         .on_activate(move || Action::Activated(name));
-    if (state.disable_all && matches!(name, "a" | "b" | "c"))
-        || (state.disable_preferred && name == "b")
+    if (state.group_members == GroupMemberState::Disabled && matches!(name, "a" | "b" | "c"))
+        || (state.preferred_member == PreferredMemberState::Disabled && name == "b")
     {
         control = control.disabled();
     }
     let mut element = control.into_element();
-    if name == "b" || (state.duplicate_preferred && name == "a") {
+    if name == "b"
+        || (state.group_authoring == GroupAuthoringState::DuplicatePreferred && name == "a")
+    {
         element = element.focus_group_preferred(true);
     }
-    if state.hide_preferred && name == "b" {
+    if state.preferred_member == PreferredMemberState::Hidden && name == "b" {
         element = element.focus_hidden(true);
     }
     element
@@ -191,7 +217,7 @@ fn external_traversal_collapses_group_and_uses_preferred_entry() {
 #[test]
 fn preferred_entry_falls_back_when_preferred_member_is_disabled() {
     let mut runtime = AppRuntime::<App>::mount(State {
-        disable_preferred: true,
+        preferred_member: PreferredMemberState::Disabled,
         ..State::default()
     });
     settle(&mut runtime);
@@ -205,7 +231,7 @@ fn preferred_entry_falls_back_when_preferred_member_is_disabled() {
 #[test]
 fn zero_eligible_group_contributes_no_external_focus_stop() {
     let mut runtime = AppRuntime::<App>::mount(State {
-        disable_all: true,
+        group_members: GroupMemberState::Disabled,
         ..State::default()
     });
     settle(&mut runtime);
@@ -268,7 +294,7 @@ fn internal_navigation_wraps_and_activation_is_deferred_until_after_focus() {
 #[test]
 fn hidden_preferred_entry_falls_back_and_internal_navigation_skips_ineligible_members() {
     let mut runtime = AppRuntime::<App>::mount(State {
-        hide_preferred: true,
+        preferred_member: PreferredMemberState::Hidden,
         ..State::default()
     });
     settle(&mut runtime);
@@ -280,11 +306,11 @@ fn hidden_preferred_entry_falls_back_and_internal_navigation_skips_ineligible_me
     command(&mut runtime, before, SemanticCommand::FocusNext);
     assert_eq!(runtime.focus().focused_node(), Some(&a));
 
-    command(&mut runtime, a.clone(), SemanticCommand::FocusGroupNext);
+    command(&mut runtime, a, SemanticCommand::FocusGroupNext);
     assert_eq!(runtime.focus().focused_node(), Some(&c));
 
     let mut runtime = AppRuntime::<App>::mount(State {
-        disable_preferred: true,
+        preferred_member: PreferredMemberState::Disabled,
         ..State::default()
     });
     settle(&mut runtime);
@@ -298,8 +324,8 @@ fn hidden_preferred_entry_falls_back_and_internal_navigation_skips_ineligible_me
 #[test]
 fn manual_stop_policy_moves_without_activation_and_stops_at_boundary() {
     let mut runtime = AppRuntime::<App>::mount(State {
-        manual_activation: true,
-        stop_boundary: true,
+        activation: FocusGroupActivationPolicy::Manual,
+        boundary: FocusGroupBoundaryPolicy::Stop,
         ..State::default()
     });
     settle(&mut runtime);
@@ -438,7 +464,7 @@ fn nested_groups_use_nearest_ownership_and_outer_group_treats_inner_as_one_membe
     nested_command(&mut runtime, before, SemanticCommand::FocusNext);
     assert_eq!(runtime.focus().focused_node(), Some(&a));
 
-    nested_command(&mut runtime, a.clone(), SemanticCommand::RequestFocus);
+    nested_command(&mut runtime, a, SemanticCommand::RequestFocus);
     nested_command(&mut runtime, outer.clone(), SemanticCommand::FocusGroupNext);
     assert_eq!(runtime.focus().focused_node(), Some(&y));
 
@@ -455,7 +481,7 @@ fn nested_groups_use_nearest_ownership_and_outer_group_treats_inner_as_one_membe
 #[test]
 fn invalid_multiple_preferred_members_diagnose_and_fail_closed() {
     let mut runtime = AppRuntime::<App>::mount(State {
-        duplicate_preferred: true,
+        group_authoring: GroupAuthoringState::DuplicatePreferred,
         ..State::default()
     });
     settle(&mut runtime);
