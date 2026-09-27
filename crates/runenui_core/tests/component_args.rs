@@ -216,7 +216,7 @@ fn radio_controls_use_public_semantics_and_typed_group_authoring() {
         group_node
             .children()
             .iter()
-            .any(|item| item.is_mounted_children())
+            .any(runenui_core::SemanticItem::is_mounted_children)
     );
     assert!(
         group_widget
