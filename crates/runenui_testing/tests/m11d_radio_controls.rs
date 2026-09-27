@@ -1,8 +1,9 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::{
-    CommandOrigin, ElementId, NoHostProtocol, SemanticAction, SemanticCheckedState, SemanticCommand,
-    SemanticRole, UiApp, View, button, children, column, radio_button, radio_group,
+    CommandOrigin, ElementId, LogicalPoint, NoHostProtocol, PointerButton, PointerButtons,
+    PointerDeviceKind, PointerId, PointerPhase, SemanticAction, SemanticCheckedState,
+    SemanticCommand, SemanticRole, UiApp, View, button, children, column, radio_button, radio_group,
 };
 use runenui_runtime::{PumpBudget, ReconciliationDiagnostic};
 use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
@@ -342,6 +343,103 @@ fn semantic_activation_updates_application_selection_before_checked_republicatio
         harness
             .unique_semantic_target(&radio_query("Two", SemanticCheckedState::Checked))
             .is_ok()
+    );
+}
+
+fn semantic_center(harness: &TestHarness<RadioApp>, query: &SemanticQuery) -> LogicalPoint {
+    let target = harness
+        .unique_semantic_target(query)
+        .unwrap_or_else(|error| unreachable!("point target is unique: {error:?}"));
+    let snapshot = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("publication exists"));
+    let bounds = snapshot
+        .node(target.node_id())
+        .unwrap_or_else(|| unreachable!("target belongs to snapshot"))
+        .bounds();
+    LogicalPoint::new(
+        bounds.x() + bounds.width() / 2.0,
+        bounds.y() + bounds.height() / 2.0,
+    )
+    .unwrap_or_else(|_| unreachable!("semantic bounds have a finite center"))
+}
+
+#[test]
+fn programmatic_surface_focus_targets_one_radio_without_selecting_it() {
+    let mut harness = TestHarness::<RadioApp>::mount(State {
+        selected: Some(1),
+        disable_two: false,
+        hide_two_from_focus: false,
+        activations: Vec::new(),
+    });
+    assert!(harness.publish().is_ok());
+
+    let three = radio_query("Three", SemanticCheckedState::Unchecked);
+    let point = semantic_center(&harness, &three);
+    harness
+        .submit_surface_command(
+            point,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|error| unreachable!("programmatic focus is accepted: {error:?}"));
+    settle(&mut harness);
+    assert_eq!(harness.state().selected, Some(1));
+    assert!(harness.state().activations.is_empty());
+
+    assert!(harness.publish().is_ok());
+    assert_focus(&harness, &three);
+}
+
+#[test]
+fn pointer_activation_converges_through_ordinary_application_selection() {
+    let mut harness = TestHarness::<RadioApp>::mount(State {
+        selected: Some(1),
+        disable_two: false,
+        hide_two_from_focus: false,
+        activations: Vec::new(),
+    });
+    assert!(harness.publish().is_ok());
+
+    let two = radio_query("Two", SemanticCheckedState::Unchecked);
+    let point = semantic_center(&harness, &two);
+    let pointer_id = PointerId::new(1).unwrap_or_else(|| unreachable!("pointer ID is non-zero"));
+
+    let down = harness
+        .pointer_event(
+            pointer_id,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Down,
+            point,
+        )
+        .unwrap_or_else(|_| unreachable!("published radio accepts pointer context"))
+        .with_buttons(PointerButtons::new([PointerButton::Primary]))
+        .with_changed_button(PointerButton::Primary);
+    harness
+        .submit_pointer(down)
+        .unwrap_or_else(|error| unreachable!("radio pointer down is accepted: {error:?}"));
+    settle(&mut harness);
+
+    let up = harness
+        .pointer_event(
+            pointer_id,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Up,
+            point,
+        )
+        .unwrap_or_else(|_| unreachable!("published radio accepts pointer context"))
+        .with_changed_button(PointerButton::Primary);
+    harness
+        .submit_pointer(up)
+        .unwrap_or_else(|error| unreachable!("radio pointer up is accepted: {error:?}"));
+    settle(&mut harness);
+
+    assert_eq!(harness.state().selected, Some(2));
+    assert_eq!(harness.state().activations, vec![2]);
+    assert!(harness.publish().is_ok());
+    assert_focus(
+        &harness,
+        &radio_query("Two", SemanticCheckedState::Checked),
     );
 }
 
