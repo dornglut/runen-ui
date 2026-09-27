@@ -434,7 +434,7 @@ pub fn focus_group_activation_policy<Action>(
     command_target: &MountedNodeId,
 ) -> Option<FocusGroupActivationPolicy> {
     let group = focus_group_for_command(tree, state, command_target)?;
-    tree.node(&group)?.focus_group.map(FocusGroup::activation)
+    tree.node(&group)?.focus_group.map(|group| group.activation())
 }
 
 fn focus_group_member_contains<Action>(
