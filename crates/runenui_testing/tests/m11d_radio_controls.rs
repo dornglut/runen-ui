@@ -3,7 +3,8 @@ use core::num::NonZeroUsize;
 use runenui_core::{
     CommandOrigin, ElementId, LogicalPoint, NoHostProtocol, PointerButton, PointerButtons,
     PointerDeviceKind, PointerId, PointerPhase, SemanticAction, SemanticCheckedState,
-    SemanticCommand, SemanticRole, UiApp, View, button, children, column, radio_button, radio_group,
+    SemanticCommand, SemanticRole, UiApp, View, button, children, column, radio_button,
+    radio_group,
 };
 use runenui_runtime::{PumpBudget, ReconciliationDiagnostic};
 use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
@@ -48,9 +49,7 @@ impl UiApp for RadioApp {
 
         let group = radio_group([one, two, three]).id("radio.group");
         column(children![
-            button("Before")
-                .id("before")
-                .on_activate(|| Action::Noop),
+            button("Before").id("before").on_activate(|| Action::Noop),
             group,
             button("After").id("after").on_activate(|| Action::Noop),
         ])
@@ -160,10 +159,7 @@ fn radio_semantics_form_one_group_with_exact_application_checked_state() {
 
     assert!(
         harness
-            .unique_semantic_target(&radio_query(
-                "One",
-                SemanticCheckedState::Unchecked,
-            ))
+            .unique_semantic_target(&radio_query("One", SemanticCheckedState::Unchecked,))
             .is_ok()
     );
     assert!(
@@ -173,10 +169,7 @@ fn radio_semantics_form_one_group_with_exact_application_checked_state() {
     );
     assert!(
         harness
-            .unique_semantic_target(&radio_query(
-                "Three",
-                SemanticCheckedState::Unchecked,
-            ))
+            .unique_semantic_target(&radio_query("Three", SemanticCheckedState::Unchecked,))
             .is_ok()
     );
 }
@@ -194,10 +187,7 @@ fn external_entry_prefers_checked_and_no_selection_falls_back_without_selecting(
     command(&mut harness, "before", SemanticCommand::RequestFocus);
     command(&mut harness, "before", SemanticCommand::FocusNext);
     assert!(harness.publish().is_ok());
-    assert_focus(
-        &harness,
-        &radio_query("Two", SemanticCheckedState::Checked),
-    );
+    assert_focus(&harness, &radio_query("Two", SemanticCheckedState::Checked));
     assert_eq!(harness.state().selected, Some(2));
     assert!(harness.state().activations.is_empty());
 
@@ -256,10 +246,7 @@ fn directional_radio_navigation_wraps_focus_then_activates_application_state() {
             3 => "Three",
             _ => unreachable!("radio fixture has three values"),
         };
-        assert_focus(
-            &harness,
-            &radio_query(name, SemanticCheckedState::Checked),
-        );
+        assert_focus(&harness, &radio_query(name, SemanticCheckedState::Checked));
     }
     assert_eq!(harness.state().activations, vec![2, 3, 1, 3, 2]);
 }
@@ -326,10 +313,7 @@ fn semantic_activation_updates_application_selection_before_checked_republicatio
     assert!(harness.publish().is_ok());
 
     let two = harness
-        .unique_semantic_target(&radio_query(
-            "Two",
-            SemanticCheckedState::Unchecked,
-        ))
+        .unique_semantic_target(&radio_query("Two", SemanticCheckedState::Unchecked))
         .unwrap_or_else(|error| unreachable!("unchecked second radio is unique: {error:?}"));
     harness
         .submit_semantic_action(&two, SemanticAction::Activate)
@@ -437,10 +421,7 @@ fn pointer_activation_converges_through_ordinary_application_selection() {
     assert_eq!(harness.state().selected, Some(2));
     assert_eq!(harness.state().activations, vec![2]);
     assert!(harness.publish().is_ok());
-    assert_focus(
-        &harness,
-        &radio_query("Two", SemanticCheckedState::Checked),
-    );
+    assert_focus(&harness, &radio_query("Two", SemanticCheckedState::Checked));
 }
 
 #[test]
