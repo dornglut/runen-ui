@@ -61,13 +61,11 @@ impl Widget<Action> for DownstreamRadio {
         SemanticContribution::single(
             SemanticNodeContribution::primary(SemanticRole::RadioButton)
                 .with_name(self.label)
-                .with_state(
-                    SemanticState::ENABLED.with_checked(if *state {
-                        SemanticCheckedState::Checked
-                    } else {
-                        SemanticCheckedState::Unchecked
-                    }),
-                )
+                .with_state(SemanticState::ENABLED.with_checked(if *state {
+                    SemanticCheckedState::Checked
+                } else {
+                    SemanticCheckedState::Unchecked
+                }))
                 .with_action(SemanticAction::Activate),
         )
     }
