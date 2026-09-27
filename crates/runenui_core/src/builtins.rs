@@ -772,7 +772,10 @@ impl<Action> Widget<Action> for RadioGroupWidget {
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
-        if !self.standalone_navigation || context.phase() != EventPhase::Bubble {
+        if !self.standalone_navigation
+            || context.phase() != EventPhase::Bubble
+            || context.default_is_prevented()
+        {
             return WidgetEventOutput::none();
         }
         let Some(command) = event.as_semantic_command().map(|event| event.command()) else {
