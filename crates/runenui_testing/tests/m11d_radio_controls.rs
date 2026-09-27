@@ -167,6 +167,19 @@ const fn space_down() -> KeyboardEvent {
     )
 }
 
+const fn space_up() -> KeyboardEvent {
+    KeyboardEvent::new(
+        KeyboardPhase::Up,
+        PhysicalKey::Space,
+        LogicalKey::Space,
+        KeyModifiers::NONE,
+        false,
+        KeyLocation::Standard,
+        KeyboardCompositionState::Inactive,
+        None,
+    )
+}
+
 fn command(harness: &mut TestHarness<RadioApp>, target: &str, command: SemanticCommand) {
     harness
         .submit_automation_command(element_id(target), command)
@@ -398,7 +411,14 @@ fn raw_keyboard_arrow_and_space_use_the_same_radio_authority() {
     assert_eq!(harness.state().selected, Some(2));
     harness
         .submit_keyboard(space_down())
-        .unwrap_or_else(|error| unreachable!("radio Space is accepted: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("radio Space down is accepted: {error:?}"));
+    settle(&mut harness);
+    assert_eq!(harness.state().selected, Some(2));
+    assert_eq!(harness.state().activations, vec![2]);
+
+    harness
+        .submit_keyboard(space_up())
+        .unwrap_or_else(|error| unreachable!("radio Space up is accepted: {error:?}"));
     settle(&mut harness);
     assert_eq!(harness.state().selected, Some(3));
     assert_eq!(harness.state().activations, vec![2, 3]);
