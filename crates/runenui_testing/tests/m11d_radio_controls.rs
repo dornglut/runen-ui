@@ -1,3 +1,5 @@
+#![allow(refining_impl_trait)]
+
 use core::num::NonZeroUsize;
 
 use runenui_core::{
@@ -615,8 +617,10 @@ fn invalid_multiple_checked_group_fails_closed_without_rewriting_children() {
         harness
             .publication()
             .unwrap_or_else(|| unreachable!("publication exists"))
-            .diagnostics()
+            .frame()
+            .nodes()
             .iter()
+            .flat_map(|node| node.diagnostics())
             .any(|diagnostic| {
                 diagnostic.code() == "runenui.control.radio-group.multiple-checked"
             })
