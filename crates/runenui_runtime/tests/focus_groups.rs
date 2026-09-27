@@ -165,7 +165,7 @@ fn external_traversal_collapses_group_and_uses_preferred_entry() {
     assert_eq!(runtime.focus().focused_node(), Some(&after));
 
     command(&mut runtime, before.clone(), SemanticCommand::RequestFocus);
-    command(&mut runtime, before, SemanticCommand::FocusRight);
+    command(&mut runtime, before.clone(), SemanticCommand::FocusRight);
     assert_eq!(runtime.focus().focused_node(), Some(&preferred));
     assert_eq!(
         runtime.focus().reason(),
@@ -181,7 +181,7 @@ fn external_traversal_collapses_group_and_uses_preferred_entry() {
         preferred.clone(),
         SemanticCommand::FocusPrevious,
     );
-    assert_eq!(runtime.focus().focused_node(), Some(&id(&mut runtime, "before")));
+    assert_eq!(runtime.focus().focused_node(), Some(&before));
 
     command(&mut runtime, after.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, after, SemanticCommand::FocusLeft);
