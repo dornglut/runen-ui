@@ -600,7 +600,7 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     runtime
         .submit_command(
-            a,
+            a.clone(),
             SemanticCommand::FocusGroupNext,
             CommandOrigin::programmatic(),
         )
