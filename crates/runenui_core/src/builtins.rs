@@ -108,7 +108,6 @@ impl<Action> fmt::Debug for Button<Action> {
             .field("key", &self.common.key)
             .field("layout", &self.common.layout)
             .field("enabled", &self.enabled)
-            .field("focus_hidden", &self.focus_hidden)
             .field("actionable", &self.actionable)
             .field("has_callback", &self.activation_factory.is_some())
             .field("style", &self.common.style)
@@ -125,7 +124,6 @@ impl<Action> Button<Action> {
             label: label.into(),
             common: CommonNodeAuthoring::default(),
             enabled: true,
-            focus_hidden: false,
             activation_factory: None,
             actionable: false,
         }
@@ -139,12 +137,6 @@ impl<Action> Button<Action> {
     #[must_use]
     pub const fn disabled(self) -> Self {
         self.enabled(false)
-    }
-    /// Excludes this radio from focus selection while retaining its authored control state.
-    #[must_use]
-    pub const fn focus_hidden(mut self, hidden: bool) -> Self {
-        self.focus_hidden = hidden;
-        self
     }
     #[must_use]
     pub fn on_activate(mut self, callback: impl FnMut() -> Action + 'static) -> Self {
@@ -366,6 +358,7 @@ impl<Action> fmt::Debug for RadioButton<Action> {
             .field("key", &self.common.key)
             .field("layout", &self.common.layout)
             .field("enabled", &self.enabled)
+            .field("focus_hidden", &self.focus_hidden)
             .field("actionable", &self.actionable)
             .field("has_callback", &self.activation_factory.is_some())
             .field("style", &self.common.style)
@@ -383,6 +376,7 @@ impl<Action> RadioButton<Action> {
             checked,
             common: CommonNodeAuthoring::default(),
             enabled: true,
+            focus_hidden: false,
             activation_factory: None,
             actionable: false,
         }
@@ -396,6 +390,12 @@ impl<Action> RadioButton<Action> {
     #[must_use]
     pub const fn disabled(self) -> Self {
         self.enabled(false)
+    }
+    /// Excludes this radio from focus selection while retaining its authored control state.
+    #[must_use]
+    pub const fn focus_hidden(mut self, hidden: bool) -> Self {
+        self.focus_hidden = hidden;
+        self
     }
     #[must_use]
     pub fn on_activate(mut self, callback: impl FnMut() -> Action + 'static) -> Self {
