@@ -343,10 +343,10 @@ fn candidate_contains<Action>(
     id: &MountedNodeId,
 ) -> bool {
     candidate.id == *id
-        || candidate
-            .group
-            .as_ref()
-            .is_some_and(|group| is_within_group(tree, id, group))
+        || candidate.group.as_ref().is_some_and(|group| {
+            nearest_scope(tree, id) == nearest_scope(tree, group)
+                && is_within_group(tree, id, group)
+        })
 }
 
 fn candidates<Action>(
