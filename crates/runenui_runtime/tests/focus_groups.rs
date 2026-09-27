@@ -150,6 +150,22 @@ fn command(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: Semant
     );
 }
 
+fn runtime_submit_group_command_without_assuming_processing_success(
+    runtime: &mut AppRuntime<App>,
+    target: MountedNodeId,
+    command: SemanticCommand,
+) {
+    runtime
+        .submit_command(target, command, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("live focus-group command submission is accepted"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+}
+
 fn publish_geometry(runtime: &mut AppRuntime<App>) {
     let style_environment = StyleEnvironment::default();
     let _ = runtime.publish_surface(&SurfaceBuildContext::new(
@@ -689,49 +705,40 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
 
 #[test]
 fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
-    let manual_config = RuntimeConfig::default().with_limits(
-        RuntimeLimits::default()
-            .with_waiting_envelopes(2)
-            .with_transaction_outputs(1),
-    );
+    let limits = RuntimeLimits::default()
+        .with_waiting_envelopes(2)
+        .with_transaction_outputs(1);
+
     let mut manual = AppRuntime::<App>::mount_with_config(
         State {
             activation: FocusGroupActivationPolicy::Manual,
             ..State::default()
         },
-        manual_config,
+        RuntimeConfig::default().with_limits(limits),
     );
     settle(&mut manual);
 
+    let manual_group = id(&mut manual, "group");
     let manual_b = id(&mut manual, "b");
-    let manual_c = id(&mut manual, "c");
-    command(&mut manual, manual_b.clone(), SemanticCommand::RequestFocus);
-    settle(&mut manual);
-    command(&mut manual, manual_b, SemanticCommand::FocusGroupNext);
-    assert_eq!(manual.focus().focused_node(), Some(&manual_c));
-    assert_eq!(manual.status(), RuntimeStatus::Running);
-
-    let activate_config = RuntimeConfig::default().with_limits(
-        RuntimeLimits::default()
-            .with_waiting_envelopes(2)
-            .with_transaction_outputs(1),
-    );
-    let mut activate = AppRuntime::<App>::mount_with_config(State::default(), activate_config);
-    settle(&mut activate);
-
-    let activate_b = id(&mut activate, "b");
     command(
-        &mut activate,
-        activate_b.clone(),
-        SemanticCommand::RequestFocus,
-    );
-    settle(&mut activate);
-    command(
-        &mut activate,
-        activate_b.clone(),
+        &mut manual,
+        manual_group,
         SemanticCommand::FocusGroupNext,
     );
-    assert_eq!(activate.focus().focused_node(), Some(&activate_b));
+    assert_eq!(manual.focus().focused_node(), Some(&manual_b));
+    assert_eq!(manual.status(), RuntimeStatus::Running);
+
+    let mut activate =
+        AppRuntime::<App>::mount_with_config(State::default(), RuntimeConfig::default().with_limits(limits));
+    settle(&mut activate);
+
+    let activate_group = id(&mut activate, "group");
+    runtime_submit_group_command_without_assuming_processing_success(
+        &mut activate,
+        activate_group,
+        SemanticCommand::FocusGroupNext,
+    );
+    assert_eq!(activate.focus().focused_node(), None);
     assert_eq!(activate.status(), RuntimeStatus::Running);
     assert!(activate.trace().kinds().any(|kind| matches!(
         kind,
