@@ -3,7 +3,8 @@
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, Element, EventContext, EventPhase, FocusGroup,
     FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, NoHostProtocol, SemanticAction,
-    SemanticCheckedState, SemanticCommand, SemanticContribution, SemanticContributionContext,
+    SemanticCheckedState, SemanticCommand, SemanticCommandEvent, SemanticContribution,
+    SemanticContributionContext,
     SemanticNodeContribution, SemanticRole, SemanticState, UiApp, UiEvent, View, Widget,
     WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput,
     WidgetInvalidation, WidgetUpdateContext, column, container,
@@ -88,7 +89,7 @@ impl Widget<Action> for DownstreamRadioGroup {
         if context.phase() != EventPhase::Bubble || context.default_is_prevented() {
             return WidgetEventOutput::none();
         }
-        let Some(command) = event.as_semantic_command().map(|event| event.command()) else {
+        let Some(command) = event.as_semantic_command().map(SemanticCommandEvent::command) else {
             return WidgetEventOutput::none();
         };
         let group_command = match command {
