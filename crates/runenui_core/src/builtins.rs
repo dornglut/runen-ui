@@ -6,9 +6,8 @@ use crate::{
     HitContributionContext, LayoutContainer, LayoutStyle, LogicalLength, LogicalRect, LogicalSize,
     SemanticAction, SemanticCheckedState, SemanticCommand, SemanticCommandEvent,
     SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
-    SemanticState, SemanticText, UiEvent,
-    WidgetActivationContext, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation,
-    WidgetUpdateContext,
+    SemanticState, SemanticText, UiEvent, WidgetActivationContext, WidgetDiagnostic,
+    WidgetEventOutput, WidgetInvalidation, WidgetUpdateContext,
     element::{CommonNodeAuthoring, Element, View, Views, common_node_builder_methods},
     widget_erasure::{ErasedWidget, WidgetAdapter},
     widget_protocol::{
@@ -649,9 +648,7 @@ impl<Action: 'static> View<Action> for Checkbox<Action> {
 
 impl<Action: 'static> View<Action> for RadioButton<Action> {
     fn into_element(self) -> Element<Action> {
-        let (fields, diagnostics) = self
-            .common
-            .into_authored_fields(self.focusability, None);
+        let (fields, diagnostics) = self.common.into_authored_fields(self.focusability, None);
         Element::from_authored_parts(
             fields,
             Box::new(WidgetAdapter(BinaryControlWidget {
@@ -781,7 +778,10 @@ impl<Action> Widget<Action> for RadioGroupWidget {
         {
             return WidgetEventOutput::none();
         }
-        let Some(command) = event.as_semantic_command().map(SemanticCommandEvent::command) else {
+        let Some(command) = event
+            .as_semantic_command()
+            .map(SemanticCommandEvent::command)
+        else {
             return WidgetEventOutput::none();
         };
         let delegated = match command {
