@@ -617,7 +617,6 @@ fn pointer_activation_converges_through_ordinary_application_selection() {
     });
     assert!(harness.publish().is_ok());
 
-    let two = radio_query("Two", SemanticCheckedState::Unchecked);
     let point = published_hit_point(&harness, "radio.two");
     let pointer_id = PointerId::new(1).unwrap_or_else(|| unreachable!("pointer ID is non-zero"));
 
@@ -725,7 +724,7 @@ fn invalid_multiple_checked_group_fails_closed_without_rewriting_children() {
             .frame()
             .nodes()
             .iter()
-            .flat_map(|node| node.diagnostics())
+            .flat_map(runenui_runtime::SurfaceNode::diagnostics)
             .any(|diagnostic| {
                 diagnostic.code() == "runenui.control.radio-group.multiple-checked"
             })
