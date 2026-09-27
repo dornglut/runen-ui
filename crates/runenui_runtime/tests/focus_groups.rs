@@ -150,7 +150,6 @@ fn command(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: Semant
     );
 }
 
-
 fn publish_geometry(runtime: &mut AppRuntime<App>) {
     let style_environment = StyleEnvironment::default();
     let _ = runtime.publish_surface(&SurfaceBuildContext::new(
@@ -705,11 +704,7 @@ fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
 
     let manual_group = id(&mut manual, "group");
     let manual_a = id(&mut manual, "a");
-    command(
-        &mut manual,
-        manual_group,
-        SemanticCommand::FocusGroupNext,
-    );
+    command(&mut manual, manual_group, SemanticCommand::FocusGroupNext);
     assert_eq!(manual.focus().focused_node(), Some(&manual_a));
     assert_eq!(manual.status(), RuntimeStatus::Running);
 
