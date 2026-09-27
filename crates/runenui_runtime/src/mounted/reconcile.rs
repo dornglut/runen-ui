@@ -514,7 +514,7 @@ impl<Action> MountedTree<Action> {
             let timelines_changed = node.timelines != timelines;
             common_invalidation = common_field_invalidation(
                 node,
-                CommonFieldRefs {
+                &CommonFieldRefs {
                     authored_id: authored_id.as_ref(),
                     layout: &layout,
                     style: &style,
@@ -759,7 +759,7 @@ struct CommonFieldRefs<'a> {
 
 fn common_field_invalidation<Action>(
     node: &MountedNode<Action>,
-    incoming: CommonFieldRefs<'_>,
+    incoming: &CommonFieldRefs<'_>,
 ) -> WidgetInvalidation {
     let mut invalidation = WidgetInvalidation::NONE;
     if &node.layout != incoming.layout || node.style.padding() != incoming.style.padding() {
