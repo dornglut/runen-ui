@@ -443,11 +443,7 @@ fn nested_groups_use_nearest_ownership_and_outer_group_treats_inner_as_one_membe
     let x = nested_id(&mut runtime, "x");
     let c = nested_id(&mut runtime, "c");
 
-    nested_command(
-        &mut runtime,
-        before.clone(),
-        SemanticCommand::RequestFocus,
-    );
+    nested_command(&mut runtime, before.clone(), SemanticCommand::RequestFocus);
     nested_command(&mut runtime, before, SemanticCommand::FocusNext);
     assert_eq!(runtime.focus().focused_node(), Some(&a));
 
