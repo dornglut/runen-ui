@@ -1,7 +1,7 @@
 use runenui_core::{
     HitContributionContext, LogicalSize, SemanticCheckedState, SemanticContributionContext,
     SemanticRole, View, WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput, button, checkbox,
-    children, column, switch, text,
+    children, column, radio_button, radio_group, switch, text,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -168,5 +168,87 @@ fn binary_control_builders_use_the_open_widget_protocol() {
             )
             .unwrap_or_else(|_| unreachable!("actionable switch hit contribution is inspectable"))
             .is_empty()
+    );
+}
+
+
+#[test]
+fn radio_controls_use_public_semantics_and_typed_group_authoring() {
+    let radio_element: runenui_core::Element<Action> = radio_button("One", true)
+        .id("radio.one")
+        .on_activate(|| Action::Save)
+        .into_element();
+    let (_, _, _, _, _, _, _, _, radio_widget, _) =
+        radio_element.into_runtime_parts().into_parts();
+    let radio_state = radio_widget.create_state();
+    let radio_semantics = radio_widget
+        .semantics(&radio_state, SemanticContributionContext::default())
+        .unwrap_or_else(|_| unreachable!("radio semantics are valid"));
+    let radio_node = radio_semantics.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("radio contributes one semantic node"));
+    assert_eq!(radio_node.role(), SemanticRole::RadioButton);
+    assert_eq!(
+        radio_node.state().checked(),
+        Some(SemanticCheckedState::Checked)
+    );
+
+    let group = radio_group([
+        radio_button("One", true).id("radio.one"),
+        radio_button("Two", false).id("radio.two"),
+    ])
+    .id("radio.group")
+    .gap(6_u16)
+    .into_element();
+    assert_eq!(group.children().len(), 2);
+    assert!(matches!(
+        group.layout().container(),
+        runenui_core::LayoutContainer::Flex(_)
+    ));
+    let (_, _, _, _, _, _, _, _, group_widget, _) = group.into_runtime_parts().into_parts();
+    let group_state = group_widget.create_state();
+    let group_semantics = group_widget
+        .semantics(
+            &group_state,
+            SemanticContributionContext::__runtime_new(2),
+        )
+        .unwrap_or_else(|_| unreachable!("radio group semantics are valid"));
+    let group_node = group_semantics.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("radio group contributes one semantic node"));
+    assert_eq!(group_node.role(), SemanticRole::RadioGroup);
+    assert!(group_node.children().iter().any(|item| item.is_mounted_children()));
+    assert!(
+        group_widget
+            .diagnostics(&group_state)
+            .unwrap_or_else(|_| unreachable!("radio group diagnostics are inspectable"))
+            .is_empty()
+    );
+
+    let invalid_group = radio_group([
+        radio_button("One", true),
+        radio_button("Two", true),
+    ])
+    .into_element();
+    let (_, _, _, _, _, _, _, _, invalid_widget, _) =
+        invalid_group.into_runtime_parts().into_parts();
+    let invalid_state = invalid_widget.create_state();
+    assert!(
+        invalid_widget
+            .semantics(
+                &invalid_state,
+                SemanticContributionContext::__runtime_new(2),
+            )
+            .unwrap_or_else(|_| unreachable!("invalid group semantics are inspectable"))
+            .roots()
+            .is_empty()
+    );
+    let diagnostics = invalid_widget
+        .diagnostics(&invalid_state)
+        .unwrap_or_else(|_| unreachable!("invalid group diagnostics are inspectable"));
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].code(),
+        "runenui.control.radio-group.multiple-checked"
     );
 }
