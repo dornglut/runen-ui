@@ -13,6 +13,7 @@ use super::{Runtime, ingress::trace_semantic_action_rejection};
 use crate::{
     MountedNodeId, TraceContext, TraceEventContext, TraceEventFamily, TraceRecordKind,
     TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
+    focus::focus_group_activation_policy,
     queue::SemanticCommandEnvelope,
     trace::{MandatoryTracePlan, TraceRecordDraft},
 };
@@ -279,11 +280,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         facts: RoutedIngressFacts,
         command: runenui_core::SemanticCommand,
     ) -> Option<RoutedTransaction<Action>> {
-        let mandatory_default_commands = usize::from(matches!(
-            command,
-            runenui_core::SemanticCommand::FocusGroupNext
-                | runenui_core::SemanticCommand::FocusGroupPrevious
-        ));
+        let mandatory_default_commands = usize::from(
+            matches!(
+                command,
+                runenui_core::SemanticCommand::FocusGroupNext
+                    | runenui_core::SemanticCommand::FocusGroupPrevious
+            ) && focus_group_activation_policy(&self.tree, &self.focus, &facts.target)
+                == Some(runenui_core::FocusGroupActivationPolicy::ActivateTarget),
+        );
         let (route, admission) =
             self.prepare_focus_routed_route(&facts, mandatory_default_commands)?;
         let pointer_callback_targets = route.clone();
