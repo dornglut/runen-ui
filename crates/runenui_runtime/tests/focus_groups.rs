@@ -10,6 +10,7 @@ use runenui_core::{
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, ReconciliationDiagnostic,
     RuntimeConfig, RuntimeLimits, RuntimeStatus, SurfaceBuildContext, TraceRecordKind,
+    TraceRoutedAdmissionRejection,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -684,6 +685,67 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.focus().focused_node(), Some(&x));
+}
+
+#[test]
+fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
+    let manual_config = RuntimeConfig::default().with_limits(
+        RuntimeLimits::default()
+            .with_waiting_envelopes(2)
+            .with_transaction_outputs(1),
+    );
+    let mut manual = AppRuntime::<App>::mount_with_config(
+        State {
+            activation: FocusGroupActivationPolicy::Manual,
+            ..State::default()
+        },
+        manual_config,
+    );
+    settle(&mut manual);
+
+    let manual_b = id(&mut manual, "b");
+    let manual_c = id(&mut manual, "c");
+    command(
+        &mut manual,
+        manual_b.clone(),
+        SemanticCommand::RequestFocus,
+    );
+    command(
+        &mut manual,
+        manual_b,
+        SemanticCommand::FocusGroupNext,
+    );
+    assert_eq!(manual.focus().focused_node(), Some(&manual_c));
+    assert_eq!(manual.status(), RuntimeStatus::Running);
+
+    let activate_config = RuntimeConfig::default().with_limits(
+        RuntimeLimits::default()
+            .with_waiting_envelopes(2)
+            .with_transaction_outputs(1),
+    );
+    let mut activate =
+        AppRuntime::<App>::mount_with_config(State::default(), activate_config);
+    settle(&mut activate);
+
+    let activate_b = id(&mut activate, "b");
+    command(
+        &mut activate,
+        activate_b.clone(),
+        SemanticCommand::RequestFocus,
+    );
+    command(
+        &mut activate,
+        activate_b.clone(),
+        SemanticCommand::FocusGroupNext,
+    );
+    assert_eq!(activate.focus().focused_node(), Some(&activate_b));
+    assert_eq!(activate.status(), RuntimeStatus::Running);
+    assert!(activate.trace().kinds().any(|kind| matches!(
+        kind,
+        TraceRecordKind::RoutedEventAdmissionRejected {
+            capacity: TraceRoutedAdmissionRejection::WaitingEnvelopes
+        }
+    )));
 }
 
 #[derive(Debug)]
