@@ -353,10 +353,10 @@ fn candidates<Action>(
     tree: &mut MountedTree<Action>,
     scope: &MountedNodeId,
     geometry: &[(MountedNodeId, LogicalRect)],
+    publication_order: &[MountedNodeId],
 ) -> Vec<Candidate> {
-    let ids = tree.publication_preorder_ids();
     let mut output = Vec::new();
-    for (order, id) in ids.into_iter().enumerate() {
+    for (order, id) in publication_order.iter().cloned().enumerate() {
         if nearest_scope(tree, &id).as_ref() != Some(scope) {
             continue;
         }
@@ -498,12 +498,14 @@ pub fn select_focus<Action>(
             .and_then(|focused| nearest_scope(tree, focused))
             .or_else(|| nearest_scope(tree, command_target))?,
     };
+    let publication_order = tree.publication_preorder_ids();
     select_in_scope(
         tree,
         state,
         command_target,
         navigation,
         geometry,
+        &publication_order,
         initial_scope,
     )
 }
@@ -514,18 +516,33 @@ fn select_in_scope<Action>(
     command_target: &MountedNodeId,
     navigation: FocusNavigation,
     geometry: &[(MountedNodeId, LogicalRect)],
+    publication_order: &[MountedNodeId],
     scope: MountedNodeId,
 ) -> Option<FocusSelection> {
     let policy = scope_policy(tree, &scope);
-    let candidates = candidates(tree, &scope, geometry);
+    let candidates = candidates(tree, &scope, geometry, publication_order);
     if navigation == FocusNavigation::Restore {
         return Some(restore_selection(tree, state, scope, policy, &candidates));
     }
 
     let current = state.focused_node().unwrap_or(command_target);
     let selected = match navigation {
-        FocusNavigation::Next => linear_candidate(tree, &candidates, current, true),
-        FocusNavigation::Previous => linear_candidate(tree, &candidates, current, false),
+        FocusNavigation::Next => linear_candidate(
+            tree,
+            &candidates,
+            current,
+            true,
+            &scope,
+            publication_order,
+        ),
+        FocusNavigation::Previous => linear_candidate(
+            tree,
+            &candidates,
+            current,
+            false,
+            &scope,
+            publication_order,
+        ),
         FocusNavigation::Direction(direction) => {
             directional_candidate(tree, &candidates, current, direction, geometry)
         }
@@ -549,8 +566,15 @@ fn select_in_scope<Action>(
     match boundary {
         FocusBoundaryPolicy::Delegate => {
             if let Some(parent) = parent_scope(tree, &scope) {
-                let mut delegated =
-                    select_in_scope(tree, state, command_target, navigation, geometry, parent)?;
+                let mut delegated = select_in_scope(
+                    tree,
+                    state,
+                    command_target,
+                    navigation,
+                    geometry,
+                    publication_order,
+                    parent,
+                )?;
                 if delegated.target.is_some() {
                     delegated.outcome = FocusBoundaryOutcome::Delegate;
                 }
@@ -652,11 +676,19 @@ fn linear_candidate<Action>(
     candidates: &[Candidate],
     current: &MountedNodeId,
     forward: bool,
+    scope: &MountedNodeId,
+    publication_order: &[MountedNodeId],
 ) -> Option<MountedNodeId> {
     let current_order = candidates
         .iter()
         .find(|candidate| candidate_contains(tree, candidate, current))
-        .map(|candidate| candidate.order);
+        .map(|candidate| candidate.order)
+        .or_else(|| {
+            (nearest_scope(tree, current).as_ref() == Some(scope)
+                && nearest_group(tree, current).is_some())
+            .then(|| publication_order.iter().position(|id| id == current))
+            .flatten()
+        });
     if forward {
         candidates
             .iter()
