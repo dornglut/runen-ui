@@ -4,11 +4,11 @@ use core::num::NonZeroUsize;
 
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, ElementId, EventContext, EventPhase, KeyLocation,
-    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, LogicalPoint,
-    NoHostProtocol, PhysicalKey, PointerButton, PointerButtons, PointerDeviceKind, PointerId,
-    PointerPhase, SemanticAction, SemanticCheckedState, SemanticCommand, SemanticRole, UiApp,
-    UiEvent, View, Widget, WidgetEventOutput, button, children, column, container, radio_button,
-    radio_group,
+    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LayoutDimension,
+    LayoutStyle, LogicalKey, LogicalLength, LogicalPoint, NoHostProtocol, PhysicalKey,
+    PointerButton, PointerButtons, PointerDeviceKind, PointerId, PointerPhase, SemanticAction,
+    SemanticCheckedState, SemanticCommand, SemanticRole, UiApp, UiEvent, View, Widget,
+    WidgetEventOutput, button, children, column, container, radio_button, radio_group,
 };
 use runenui_runtime::{PumpBudget, ReconciliationDiagnostic};
 use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
@@ -37,9 +37,11 @@ impl UiApp for RadioApp {
     fn root(state: &Self::State) -> impl View<Self::Action> {
         let one = radio_button("One", state.selected == Some(1))
             .id("radio.one")
+            .with_layout(radio_layout())
             .on_activate(|| Action::Select(1));
         let mut two = radio_button("Two", state.selected == Some(2))
             .id("radio.two")
+            .with_layout(radio_layout())
             .on_activate(|| Action::Select(2));
         if state.disable_two {
             two = two.disabled();
@@ -49,6 +51,7 @@ impl UiApp for RadioApp {
         }
         let three = radio_button("Three", state.selected == Some(3))
             .id("radio.three")
+            .with_layout(radio_layout())
             .on_activate(|| Action::Select(3));
 
         let group = radio_group([one, two, three]).id("radio.group");
@@ -185,6 +188,12 @@ impl UiApp for InvalidRadioApp {
     }
 
     fn update((): &mut Self::State, (): Self::Action) {}
+}
+
+fn radio_layout() -> LayoutStyle {
+    LayoutStyle::default()
+        .with_width(LayoutDimension::Length(LogicalLength::from(120_u16)))
+        .with_height(LayoutDimension::Length(LogicalLength::from(24_u16)))
 }
 
 fn settle_budget() -> SettleBudget {
