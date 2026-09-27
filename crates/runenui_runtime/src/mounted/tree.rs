@@ -14,7 +14,7 @@ use super::{
     DirtyPhases, MountedNodeId,
     arena::{ArenaCapacityError, GenerationalArena},
     node::MountedNode,
-    reconcile::IncomingNode,
+    reconcile::{IncomingNode, collect_focus_group_diagnostics},
     semantic::SemanticStore,
 };
 use crate::ReconciliationDiagnostic;
@@ -142,6 +142,7 @@ impl<Action> MountedTree<Action> {
         tree.arena
             .preflight_live_count(root.node_count()?, public_slot_limit)?;
         let mut stats = ReconcileStats::default();
+        collect_focus_group_diagnostics(&root, "root", &mut stats.diagnostics);
         let root_id = tree.mount_incoming(None, root, &mut stats);
         tree.root = Some(root_id);
         Ok((tree, stats))

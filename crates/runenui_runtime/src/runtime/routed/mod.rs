@@ -13,6 +13,7 @@ use super::{Runtime, ingress::trace_semantic_action_rejection};
 use crate::{
     MountedNodeId, TraceContext, TraceEventContext, TraceEventFamily, TraceRecordKind,
     TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
+    focus::focus_group_activation_policy,
     queue::SemanticCommandEnvelope,
     trace::{MandatoryTracePlan, TraceRecordDraft},
 };
@@ -79,7 +80,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 | runenui_core::SemanticCommand::Paste
         ));
         let Some(mut transaction) = (if is_focus_command(command) {
-            self.begin_focus_routed_transaction(facts)
+            self.begin_focus_routed_transaction(facts, command)
         } else if default_outputs != 0 {
             self.try_begin_routed_transaction_with_trace_and_default_commands(
                 facts,
@@ -277,8 +278,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     fn begin_focus_routed_transaction(
         &mut self,
         facts: RoutedIngressFacts,
+        command: runenui_core::SemanticCommand,
     ) -> Option<RoutedTransaction<Action>> {
-        let (route, admission) = self.prepare_focus_routed_route(&facts)?;
+        let mandatory_default_commands = usize::from(
+            matches!(
+                command,
+                runenui_core::SemanticCommand::FocusGroupNext
+                    | runenui_core::SemanticCommand::FocusGroupPrevious
+            ) && focus_group_activation_policy(&self.tree, &self.focus, &facts.target)
+                == Some(runenui_core::FocusGroupActivationPolicy::ActivateTarget),
+        );
+        let (route, admission) =
+            self.prepare_focus_routed_route(&facts, mandatory_default_commands)?;
         let pointer_callback_targets = route.clone();
         Some(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
     }
@@ -313,6 +324,8 @@ const fn is_focus_command(command: runenui_core::SemanticCommand) -> bool {
         command,
         runenui_core::SemanticCommand::FocusNext
             | runenui_core::SemanticCommand::FocusPrevious
+            | runenui_core::SemanticCommand::FocusGroupNext
+            | runenui_core::SemanticCommand::FocusGroupPrevious
             | runenui_core::SemanticCommand::FocusLeft
             | runenui_core::SemanticCommand::FocusRight
             | runenui_core::SemanticCommand::FocusUp

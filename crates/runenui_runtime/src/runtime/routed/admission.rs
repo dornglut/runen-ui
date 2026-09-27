@@ -185,6 +185,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(super) fn prepare_focus_routed_route(
         &mut self,
         facts: &RoutedIngressFacts,
+        mandatory_default_commands: usize,
     ) -> Option<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan)> {
         let targets = self.tree.publication_preorder_ids();
         let Some(deferred_invocations) = focus_notification_invocations(targets.len()) else {
@@ -201,7 +202,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &targets,
             deferred_invocations,
             MandatoryTracePlan::focus_commit(),
-            0,
+            mandatory_default_commands,
         )
         .ok()
     }
