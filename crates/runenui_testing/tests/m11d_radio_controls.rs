@@ -441,10 +441,7 @@ fn controller_origin_directional_command_uses_radio_group_navigation() {
     assert!(harness.publish().is_ok());
 
     command(&mut harness, "radio.one", SemanticCommand::RequestFocus);
-    let point = semantic_center(
-        &harness,
-        &radio_query("One", SemanticCheckedState::Checked),
-    );
+    let point = semantic_center(&harness, &radio_query("One", SemanticCheckedState::Checked));
     harness
         .submit_surface_command(
             point,
