@@ -713,8 +713,10 @@ fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
     assert_eq!(manual.focus().focused_node(), Some(&manual_a));
     assert_eq!(manual.status(), RuntimeStatus::Running);
 
-    let mut activate =
-        AppRuntime::<App>::mount_with_config(State::default(), RuntimeConfig::default().with_limits(limits));
+    let mut activate = AppRuntime::<App>::mount_with_config(
+        State::default(),
+        RuntimeConfig::default().with_limits(limits),
+    );
     settle(&mut activate);
 
     let activate_group = id(&mut activate, "group");
