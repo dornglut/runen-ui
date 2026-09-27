@@ -67,6 +67,40 @@ impl UiApp for RadioApp {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ExternallyManagedState {
+    selected: u8,
+    activations: Vec<u8>,
+}
+
+struct ExternallyManagedRadioApp;
+
+impl UiApp for ExternallyManagedRadioApp {
+    type State = ExternallyManagedState;
+    type Action = Action;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        radio_group([
+            radio_button("One", state.selected == 1)
+                .id("managed.one")
+                .on_activate(|| Action::Select(1)),
+            radio_button("Two", state.selected == 2)
+                .id("managed.two")
+                .on_activate(|| Action::Select(2)),
+        ])
+        .id("managed.group")
+        .standalone_navigation(false)
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        if let Action::Select(value) = action {
+            state.selected = value;
+            state.activations.push(value);
+        }
+    }
+}
+
 struct InvalidRadioApp;
 
 impl UiApp for InvalidRadioApp {
@@ -526,6 +560,34 @@ fn pointer_activation_converges_through_ordinary_application_selection() {
     assert_eq!(harness.state().activations, vec![2]);
     assert!(harness.publish().is_ok());
     assert_focus(&harness, &radio_query("Two", SemanticCheckedState::Checked));
+}
+
+#[test]
+fn externally_managed_radio_group_leaves_directional_command_unclaimed() {
+    let mut harness = TestHarness::<ExternallyManagedRadioApp>::mount(ExternallyManagedState {
+        selected: 1,
+        activations: Vec::new(),
+    });
+    assert!(harness.publish().is_ok());
+
+    harness
+        .submit_automation_command(element_id("managed.one"), SemanticCommand::RequestFocus)
+        .unwrap_or_else(|error| unreachable!("managed radio focus is accepted: {error:?}"));
+    assert_eq!(
+        harness.run_until_idle(settle_budget()).outcome(),
+        SettleOutcome::Idle
+    );
+
+    harness
+        .submit_automation_command(element_id("managed.one"), SemanticCommand::FocusRight)
+        .unwrap_or_else(|error| unreachable!("managed directional command is accepted: {error:?}"));
+    assert_eq!(
+        harness.run_until_idle(settle_budget()).outcome(),
+        SettleOutcome::Idle
+    );
+
+    assert_eq!(harness.state().selected, 1);
+    assert!(harness.state().activations.is_empty());
 }
 
 #[test]
