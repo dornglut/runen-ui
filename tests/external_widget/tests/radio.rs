@@ -5,9 +5,8 @@ use runenui_core::{
     FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, NoHostProtocol, SemanticAction,
     SemanticCheckedState, SemanticCommand, SemanticCommandEvent, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState, UiApp,
-    UiEvent, View, Widget,
-    WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput,
-    WidgetInvalidation, WidgetUpdateContext, column, container,
+    UiEvent, View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
+    WidgetEventOutput, WidgetInvalidation, WidgetUpdateContext, column, container,
 };
 use runenui_runtime::{AppRuntime, MountedNodeId, PumpBudget};
 
@@ -89,7 +88,10 @@ impl Widget<Action> for DownstreamRadioGroup {
         if context.phase() != EventPhase::Bubble || context.default_is_prevented() {
             return WidgetEventOutput::none();
         }
-        let Some(command) = event.as_semantic_command().map(SemanticCommandEvent::command) else {
+        let Some(command) = event
+            .as_semantic_command()
+            .map(SemanticCommandEvent::command)
+        else {
             return WidgetEventOutput::none();
         };
         let group_command = match command {
