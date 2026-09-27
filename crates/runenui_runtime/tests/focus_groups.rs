@@ -689,8 +689,10 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
 
 #[test]
 fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
+    const QUEUE_CAPACITY: usize = 16;
+    const FILLER_ENVELOPES: usize = QUEUE_CAPACITY - 3;
     let limits = RuntimeLimits::default()
-        .with_waiting_envelopes(2)
+        .with_waiting_envelopes(QUEUE_CAPACITY)
         .with_transaction_outputs(1);
 
     let mut manual = AppRuntime::<App>::mount_with_config(
@@ -701,10 +703,28 @@ fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
         RuntimeConfig::default().with_limits(limits),
     );
     settle(&mut manual);
+    assert_eq!(manual.status(), RuntimeStatus::Running);
 
     let manual_group = id(&mut manual, "group");
     let manual_a = id(&mut manual, "a");
-    command(&mut manual, manual_group, SemanticCommand::FocusGroupNext);
+    manual
+        .submit_command(
+            manual_group,
+            SemanticCommand::FocusGroupNext,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("manual group command submission is accepted"));
+    for _ in 0..FILLER_ENVELOPES {
+        manual
+            .submit_action(Action::Activated("filler"))
+            .unwrap_or_else(|_| unreachable!("manual filler action is accepted"));
+    }
+    assert_eq!(
+        manual
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
     assert_eq!(manual.focus().focused_node(), Some(&manual_a));
     assert_eq!(manual.status(), RuntimeStatus::Running);
 
@@ -713,12 +733,26 @@ fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
         RuntimeConfig::default().with_limits(limits),
     );
     settle(&mut activate);
+    assert_eq!(activate.status(), RuntimeStatus::Running);
 
     let activate_group = id(&mut activate, "group");
-    command(
-        &mut activate,
-        activate_group,
-        SemanticCommand::FocusGroupNext,
+    activate
+        .submit_command(
+            activate_group,
+            SemanticCommand::FocusGroupNext,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("activate-target group command submission is accepted"));
+    for _ in 0..FILLER_ENVELOPES {
+        activate
+            .submit_action(Action::Activated("filler"))
+            .unwrap_or_else(|_| unreachable!("activate-target filler action is accepted"));
+    }
+    assert_eq!(
+        activate
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
     );
     assert_eq!(activate.focus().focused_node(), None);
     assert_eq!(activate.status(), RuntimeStatus::Running);
