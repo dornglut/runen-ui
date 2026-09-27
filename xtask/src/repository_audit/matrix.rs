@@ -842,7 +842,7 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 10);
+        assert_eq!(rows.len(), 13);
 
         let baseline_rows = rows
             .iter()
@@ -855,6 +855,10 @@ mod tests {
         let binary_control_rows = rows
             .iter()
             .filter(|row| row.cells[5] == "M11C")
+            .collect::<Vec<_>>();
+        let radio_rows = rows
+            .iter()
+            .filter(|row| row.cells[5] == "M11D2")
             .collect::<Vec<_>>();
 
         assert_eq!(baseline_rows.len(), 5);
@@ -875,6 +879,15 @@ mod tests {
         assert!(binary_control_rows.iter().all(|row| {
             matches!(row.cells[0].as_str(), "M11CTRL-09" | "M11CTRL-10")
                 && row.cells[6] == "owner-accepted"
+                && row.cells[7] == "Required"
+        }));
+
+        assert_eq!(radio_rows.len(), 3);
+        assert!(radio_rows.iter().all(|row| {
+            matches!(
+                row.cells[0].as_str(),
+                "M11CTRL-11" | "M11CTRL-12" | "M11CTRL-13"
+            ) && row.cells[6] == "implementation-complete"
                 && row.cells[7] == "Required"
         }));
 
@@ -968,7 +981,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 446);
+        assert_eq!(total, 449);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }
