@@ -4,8 +4,8 @@ use runenui_core::{
     ChildBearingWidget, CommandOrigin, Element, EventContext, EventPhase, FocusGroup,
     FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, NoHostProtocol, SemanticAction,
     SemanticCheckedState, SemanticCommand, SemanticCommandEvent, SemanticContribution,
-    SemanticContributionContext,
-    SemanticNodeContribution, SemanticRole, SemanticState, UiApp, UiEvent, View, Widget,
+    SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState, UiApp,
+    UiEvent, View, Widget,
     WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput,
     WidgetInvalidation, WidgetUpdateContext, column, container,
 };
