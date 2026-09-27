@@ -23,7 +23,7 @@ const M7_DELIVERY_SLICES: &[&str] = &["M7A", "M7B", "M7C", "M7D"];
 const M8_DELIVERY_SLICES: &[&str] = &["M8A", "M8B", "M8C", "M8D"];
 const M9_DELIVERY_SLICES: &[&str] = &["M9A", "M9B", "M9C"];
 const M10_DELIVERY_SLICES: &[&str] = &["M10B", "M10C", "M10D", "M10E", "M10F"];
-const M11_DELIVERY_SLICES: &[&str] = &["M11A", "M11B", "M11C"];
+const M11_DELIVERY_SLICES: &[&str] = &["M11A", "M11B", "M11C", "M11D2"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum GatePolicy {
@@ -890,6 +890,12 @@ mod tests {
             ) && row.cells[6] == "implementation-complete"
                 && row.cells[7] == "Required"
         }));
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.cells[5].as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["M11A", "M11B", "M11C", "M11D2"])
+        );
 
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
