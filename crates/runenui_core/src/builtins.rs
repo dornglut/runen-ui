@@ -2,10 +2,11 @@ use core::fmt;
 
 use crate::{
     EventContext, EventPhase, FlexContainerStyle, FlexDirection, FocusGroup,
-    FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, HitContribution, HitContributionContext,
-    LayoutContainer, LayoutStyle, LogicalLength, LogicalRect, LogicalSize, SemanticAction,
-    SemanticCheckedState, SemanticCommand, SemanticContribution, SemanticContributionContext,
-    SemanticNodeContribution, SemanticRole, SemanticState, SemanticText, UiEvent,
+    FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, Focusability, HitContribution,
+    HitContributionContext, LayoutContainer, LayoutStyle, LogicalLength, LogicalRect, LogicalSize,
+    SemanticAction, SemanticCheckedState, SemanticCommand, SemanticCommandEvent,
+    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
+    SemanticState, SemanticText, UiEvent,
     WidgetActivationContext, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation,
     WidgetUpdateContext,
     element::{CommonNodeAuthoring, Element, View, Views, common_node_builder_methods},
@@ -343,7 +344,7 @@ pub struct RadioButton<Action> {
     checked: bool,
     common: CommonNodeAuthoring,
     enabled: bool,
-    focus_hidden: bool,
+    focusability: Focusability,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
 }
@@ -358,7 +359,7 @@ impl<Action> fmt::Debug for RadioButton<Action> {
             .field("key", &self.common.key)
             .field("layout", &self.common.layout)
             .field("enabled", &self.enabled)
-            .field("focus_hidden", &self.focus_hidden)
+            .field("focusability", &self.focusability)
             .field("actionable", &self.actionable)
             .field("has_callback", &self.activation_factory.is_some())
             .field("style", &self.common.style)
@@ -376,7 +377,7 @@ impl<Action> RadioButton<Action> {
             checked,
             common: CommonNodeAuthoring::default(),
             enabled: true,
-            focus_hidden: false,
+            focusability: Focusability::Automatic,
             activation_factory: None,
             actionable: false,
         }
@@ -394,7 +395,11 @@ impl<Action> RadioButton<Action> {
     /// Excludes this radio from focus selection while retaining its authored control state.
     #[must_use]
     pub const fn focus_hidden(mut self, hidden: bool) -> Self {
-        self.focus_hidden = hidden;
+        self.focusability = if hidden {
+            Focusability::Hidden
+        } else {
+            Focusability::Automatic
+        };
         self
     }
     #[must_use]
@@ -644,12 +649,9 @@ impl<Action: 'static> View<Action> for Checkbox<Action> {
 
 impl<Action: 'static> View<Action> for RadioButton<Action> {
     fn into_element(self) -> Element<Action> {
-        let focusability = if self.focus_hidden {
-            crate::Focusability::Hidden
-        } else {
-            crate::Focusability::Automatic
-        };
-        let (fields, diagnostics) = self.common.into_authored_fields(focusability, None);
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(self.focusability, None);
         Element::from_authored_parts(
             fields,
             Box::new(WidgetAdapter(BinaryControlWidget {
@@ -712,13 +714,14 @@ impl<Action> fmt::Debug for RadioGroup<Action> {
 impl<Action> RadioGroup<Action> {
     #[must_use]
     pub fn new(children: impl IntoIterator<Item = RadioButton<Action>>) -> Self {
-        let mut common = CommonNodeAuthoring::default();
-        common.layout = LayoutStyle::default().with_container(LayoutContainer::Flex(
-            FlexContainerStyle::default().with_direction(FlexDirection::Column),
-        ));
         Self {
             children: children.into_iter().collect(),
-            common,
+            common: CommonNodeAuthoring {
+                layout: LayoutStyle::default().with_container(LayoutContainer::Flex(
+                    FlexContainerStyle::default().with_direction(FlexDirection::Column),
+                )),
+                ..CommonNodeAuthoring::default()
+            },
             standalone_navigation: true,
         }
     }
@@ -778,7 +781,7 @@ impl<Action> Widget<Action> for RadioGroupWidget {
         {
             return WidgetEventOutput::none();
         }
-        let Some(command) = event.as_semantic_command().map(|event| event.command()) else {
+        let Some(command) = event.as_semantic_command().map(SemanticCommandEvent::command) else {
             return WidgetEventOutput::none();
         };
         let delegated = match command {
