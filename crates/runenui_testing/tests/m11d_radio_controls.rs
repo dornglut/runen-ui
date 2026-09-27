@@ -17,6 +17,7 @@ enum Action {
 struct State {
     selected: Option<u8>,
     disable_two: bool,
+    hide_two_from_focus: bool,
     activations: Vec<u8>,
 }
 
@@ -36,6 +37,9 @@ impl UiApp for RadioApp {
             .on_activate(|| Action::Select(2));
         if state.disable_two {
             two = two.disabled();
+        }
+        if state.hide_two_from_focus {
+            two = two.focus_hidden(true);
         }
         let three = radio_button("Three", state.selected == Some(3))
             .id("radio.three")
@@ -132,6 +136,7 @@ fn radio_semantics_form_one_group_with_exact_application_checked_state() {
     let mut harness = TestHarness::<RadioApp>::mount(State {
         selected: Some(2),
         disable_two: false,
+        hide_two_from_focus: false,
         activations: Vec::new(),
     });
     assert!(harness.publish().is_ok());
@@ -180,6 +185,7 @@ fn external_entry_prefers_checked_and_no_selection_falls_back_without_selecting(
     let mut harness = TestHarness::<RadioApp>::mount(State {
         selected: Some(2),
         disable_two: false,
+        hide_two_from_focus: false,
         activations: Vec::new(),
     });
     assert!(harness.publish().is_ok());
@@ -206,6 +212,7 @@ fn external_entry_prefers_checked_and_no_selection_falls_back_without_selecting(
     let mut harness = TestHarness::<RadioApp>::mount(State {
         selected: None,
         disable_two: false,
+        hide_two_from_focus: false,
         activations: Vec::new(),
     });
     assert!(harness.publish().is_ok());
@@ -225,6 +232,7 @@ fn directional_radio_navigation_wraps_focus_then_activates_application_state() {
     let mut harness = TestHarness::<RadioApp>::mount(State {
         selected: Some(1),
         disable_two: false,
+        hide_two_from_focus: false,
         activations: Vec::new(),
     });
     assert!(harness.publish().is_ok());
@@ -260,6 +268,7 @@ fn disabled_radio_is_skipped_and_rejects_semantic_activation() {
     let mut harness = TestHarness::<RadioApp>::mount(State {
         selected: Some(1),
         disable_two: true,
+        hide_two_from_focus: false,
         activations: Vec::new(),
     });
     assert!(harness.publish().is_ok());
@@ -286,6 +295,23 @@ fn disabled_radio_is_skipped_and_rejects_semantic_activation() {
     settle(&mut harness);
     assert_eq!(harness.state().selected, Some(3));
     assert_eq!(harness.state().activations, vec![3]);
+
+    let mut harness = TestHarness::<RadioApp>::mount(State {
+        selected: Some(1),
+        disable_two: false,
+        hide_two_from_focus: true,
+        activations: Vec::new(),
+    });
+    assert!(harness.publish().is_ok());
+    command(&mut harness, "radio.one", SemanticCommand::RequestFocus);
+    command(&mut harness, "radio.one", SemanticCommand::FocusRight);
+    assert_eq!(harness.state().selected, Some(3));
+    assert_eq!(harness.state().activations, vec![3]);
+    assert!(harness.publish().is_ok());
+    assert_focus(
+        &harness,
+        &radio_query("Three", SemanticCheckedState::Checked),
+    );
 }
 
 #[test]
@@ -293,6 +319,7 @@ fn semantic_activation_updates_application_selection_before_checked_republicatio
     let mut harness = TestHarness::<RadioApp>::mount(State {
         selected: Some(1),
         disable_two: false,
+        hide_two_from_focus: false,
         activations: Vec::new(),
     });
     assert!(harness.publish().is_ok());
