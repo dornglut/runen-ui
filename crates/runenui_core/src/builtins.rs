@@ -108,6 +108,7 @@ impl<Action> fmt::Debug for Button<Action> {
             .field("key", &self.common.key)
             .field("layout", &self.common.layout)
             .field("enabled", &self.enabled)
+            .field("focus_hidden", &self.focus_hidden)
             .field("actionable", &self.actionable)
             .field("has_callback", &self.activation_factory.is_some())
             .field("style", &self.common.style)
@@ -124,6 +125,7 @@ impl<Action> Button<Action> {
             label: label.into(),
             common: CommonNodeAuthoring::default(),
             enabled: true,
+            focus_hidden: false,
             activation_factory: None,
             actionable: false,
         }
@@ -137,6 +139,12 @@ impl<Action> Button<Action> {
     #[must_use]
     pub const fn disabled(self) -> Self {
         self.enabled(false)
+    }
+    /// Excludes this radio from focus selection while retaining its authored control state.
+    #[must_use]
+    pub const fn focus_hidden(mut self, hidden: bool) -> Self {
+        self.focus_hidden = hidden;
+        self
     }
     #[must_use]
     pub fn on_activate(mut self, callback: impl FnMut() -> Action + 'static) -> Self {
@@ -343,6 +351,7 @@ pub struct RadioButton<Action> {
     checked: bool,
     common: CommonNodeAuthoring,
     enabled: bool,
+    focus_hidden: bool,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
 }
@@ -635,9 +644,12 @@ impl<Action: 'static> View<Action> for Checkbox<Action> {
 
 impl<Action: 'static> View<Action> for RadioButton<Action> {
     fn into_element(self) -> Element<Action> {
-        let (fields, diagnostics) = self
-            .common
-            .into_authored_fields(crate::Focusability::Automatic, None);
+        let focusability = if self.focus_hidden {
+            crate::Focusability::Hidden
+        } else {
+            crate::Focusability::Automatic
+        };
+        let (fields, diagnostics) = self.common.into_authored_fields(focusability, None);
         Element::from_authored_parts(
             fields,
             Box::new(WidgetAdapter(BinaryControlWidget {
