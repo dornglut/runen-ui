@@ -1,10 +1,11 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::{
-    CommandOrigin, ElementId, LogicalPoint, NoHostProtocol, PointerButton, PointerButtons,
-    PointerDeviceKind, PointerId, PointerPhase, SemanticAction, SemanticCheckedState,
-    SemanticCommand, SemanticRole, UiApp, View, button, children, column, radio_button,
-    radio_group,
+    CommandOrigin, ElementId, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
+    KeyboardPhase, LogicalKey, LogicalPoint, NoHostProtocol, PhysicalKey, PointerButton,
+    PointerButtons, PointerDeviceKind, PointerId, PointerPhase, SemanticAction,
+    SemanticCheckedState, SemanticCommand, SemanticRole, UiApp, View, button, children, column,
+    radio_button, radio_group,
 };
 use runenui_runtime::{PumpBudget, ReconciliationDiagnostic};
 use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
@@ -106,6 +107,32 @@ fn element_id(value: &str) -> ElementId {
     ElementId::new(value).unwrap_or_else(|_| unreachable!("test IDs are valid"))
 }
 
+const fn arrow_right_down() -> KeyboardEvent {
+    KeyboardEvent::new(
+        KeyboardPhase::Down,
+        PhysicalKey::ArrowRight,
+        LogicalKey::ArrowRight,
+        KeyModifiers::NONE,
+        false,
+        KeyLocation::Standard,
+        KeyboardCompositionState::Inactive,
+        None,
+    )
+}
+
+const fn space_down() -> KeyboardEvent {
+    KeyboardEvent::new(
+        KeyboardPhase::Down,
+        PhysicalKey::Space,
+        LogicalKey::Space,
+        KeyModifiers::NONE,
+        false,
+        KeyLocation::Standard,
+        KeyboardCompositionState::Inactive,
+        None,
+    )
+}
+
 fn command(harness: &mut TestHarness<RadioApp>, target: &str, command: SemanticCommand) {
     harness
         .submit_automation_command(element_id(target), command)
@@ -198,6 +225,19 @@ fn external_entry_prefers_checked_and_no_selection_falls_back_without_selecting(
         &SemanticQuery::new()
             .with_role(SemanticRole::Button)
             .with_name("After"),
+    );
+
+    command(&mut harness, "after", SemanticCommand::FocusPrevious);
+    assert!(harness.publish().is_ok());
+    assert_focus(&harness, &radio_query("Two", SemanticCheckedState::Checked));
+
+    command(&mut harness, "radio.two", SemanticCommand::FocusPrevious);
+    assert!(harness.publish().is_ok());
+    assert_focus(
+        &harness,
+        &SemanticQuery::new()
+            .with_role(SemanticRole::Button)
+            .with_name("Before"),
     );
 
     let mut harness = TestHarness::<RadioApp>::mount(State {
@@ -300,6 +340,70 @@ fn disabled_radio_is_skipped_and_rejects_semantic_activation() {
         &harness,
         &radio_query("Three", SemanticCheckedState::Checked),
     );
+}
+
+#[test]
+fn raw_keyboard_arrow_and_space_use_the_same_radio_authority() {
+    let mut harness = TestHarness::<RadioApp>::mount(State {
+        selected: Some(1),
+        disable_two: false,
+        hide_two_from_focus: false,
+        activations: Vec::new(),
+    });
+    assert!(harness.publish().is_ok());
+
+    command(&mut harness, "radio.one", SemanticCommand::RequestFocus);
+    harness
+        .submit_keyboard(arrow_right_down())
+        .unwrap_or_else(|error| unreachable!("radio ArrowRight is accepted: {error:?}"));
+    settle(&mut harness);
+    assert_eq!(harness.state().selected, Some(2));
+    assert_eq!(harness.state().activations, vec![2]);
+
+    command(&mut harness, "radio.three", SemanticCommand::RequestFocus);
+    assert_eq!(harness.state().selected, Some(2));
+    harness
+        .submit_keyboard(space_down())
+        .unwrap_or_else(|error| unreachable!("radio Space is accepted: {error:?}"));
+    settle(&mut harness);
+    assert_eq!(harness.state().selected, Some(3));
+    assert_eq!(harness.state().activations, vec![2, 3]);
+
+    assert!(harness.publish().is_ok());
+    assert_focus(
+        &harness,
+        &radio_query("Three", SemanticCheckedState::Checked),
+    );
+}
+
+#[test]
+fn controller_origin_directional_command_uses_radio_group_navigation() {
+    let mut harness = TestHarness::<RadioApp>::mount(State {
+        selected: Some(1),
+        disable_two: false,
+        hide_two_from_focus: false,
+        activations: Vec::new(),
+    });
+    assert!(harness.publish().is_ok());
+
+    command(&mut harness, "radio.one", SemanticCommand::RequestFocus);
+    let point = semantic_center(
+        &harness,
+        &radio_query("One", SemanticCheckedState::Checked),
+    );
+    harness
+        .submit_surface_command(
+            point,
+            SemanticCommand::FocusRight,
+            CommandOrigin::controller(),
+        )
+        .unwrap_or_else(|error| unreachable!("controller radio navigation is accepted: {error:?}"));
+    settle(&mut harness);
+
+    assert_eq!(harness.state().selected, Some(2));
+    assert_eq!(harness.state().activations, vec![2]);
+    assert!(harness.publish().is_ok());
+    assert_focus(&harness, &radio_query("Two", SemanticCheckedState::Checked));
 }
 
 #[test]
