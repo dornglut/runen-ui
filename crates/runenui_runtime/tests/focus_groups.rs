@@ -171,6 +171,21 @@ fn external_traversal_collapses_group_and_uses_preferred_entry() {
         runtime.focus().reason(),
         Some(FocusReason::DirectionalNavigation)
     );
+
+    command(&mut runtime, after.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, after.clone(), SemanticCommand::FocusPrevious);
+    assert_eq!(runtime.focus().focused_node(), Some(&preferred));
+
+    command(
+        &mut runtime,
+        preferred.clone(),
+        SemanticCommand::FocusPrevious,
+    );
+    assert_eq!(runtime.focus().focused_node(), Some(&id(&mut runtime, "before")));
+
+    command(&mut runtime, after.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, after, SemanticCommand::FocusLeft);
+    assert_eq!(runtime.focus().focused_node(), Some(&preferred));
 }
 
 #[test]
@@ -411,12 +426,21 @@ fn nested_groups_use_nearest_ownership_and_outer_group_treats_inner_as_one_membe
         usize::MAX,
     ));
 
+    let before = nested_id(&mut runtime, "before");
     let a = nested_id(&mut runtime, "a");
     let outer = nested_id(&mut runtime, "outer");
     let inner = nested_id(&mut runtime, "inner");
     let y = nested_id(&mut runtime, "y");
     let x = nested_id(&mut runtime, "x");
     let c = nested_id(&mut runtime, "c");
+
+    nested_command(
+        &mut runtime,
+        before.clone(),
+        SemanticCommand::RequestFocus,
+    );
+    nested_command(&mut runtime, before, SemanticCommand::FocusNext);
+    assert_eq!(runtime.focus().focused_node(), Some(&a));
 
     nested_command(&mut runtime, a.clone(), SemanticCommand::RequestFocus);
     nested_command(&mut runtime, outer.clone(), SemanticCommand::FocusGroupNext);
