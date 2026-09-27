@@ -211,10 +211,19 @@ fn zero_eligible_group_contributes_no_external_focus_stop() {
     settle(&mut runtime);
 
     let before = id(&mut runtime, "before");
+    let a = id(&mut runtime, "a");
     let after = id(&mut runtime, "after");
     command(&mut runtime, before.clone(), SemanticCommand::RequestFocus);
-    command(&mut runtime, before, SemanticCommand::FocusNext);
+    command(&mut runtime, before.clone(), SemanticCommand::FocusNext);
     assert_eq!(runtime.focus().focused_node(), Some(&after));
+
+    command(&mut runtime, a.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, a.clone(), SemanticCommand::FocusNext);
+    assert_eq!(runtime.focus().focused_node(), Some(&after));
+
+    command(&mut runtime, a.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, a, SemanticCommand::FocusPrevious);
+    assert_eq!(runtime.focus().focused_node(), Some(&before));
 }
 
 #[test]
