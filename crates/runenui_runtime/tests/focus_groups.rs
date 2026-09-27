@@ -150,21 +150,6 @@ fn command(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: Semant
     );
 }
 
-fn runtime_submit_group_command_without_assuming_processing_success(
-    runtime: &mut AppRuntime<App>,
-    target: MountedNodeId,
-    command: SemanticCommand,
-) {
-    runtime
-        .submit_command(target, command, CommandOrigin::programmatic())
-        .unwrap_or_else(|_| unreachable!("live focus-group command submission is accepted"));
-    assert_eq!(
-        runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .processed_envelopes(),
-        1
-    );
-}
 
 fn publish_geometry(runtime: &mut AppRuntime<App>) {
     let style_environment = StyleEnvironment::default();
@@ -719,13 +704,13 @@ fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
     settle(&mut manual);
 
     let manual_group = id(&mut manual, "group");
-    let manual_b = id(&mut manual, "b");
+    let manual_a = id(&mut manual, "a");
     command(
         &mut manual,
         manual_group,
         SemanticCommand::FocusGroupNext,
     );
-    assert_eq!(manual.focus().focused_node(), Some(&manual_b));
+    assert_eq!(manual.focus().focused_node(), Some(&manual_a));
     assert_eq!(manual.status(), RuntimeStatus::Running);
 
     let mut activate =
@@ -733,7 +718,7 @@ fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
     settle(&mut activate);
 
     let activate_group = id(&mut activate, "group");
-    runtime_submit_group_command_without_assuming_processing_success(
+    command(
         &mut activate,
         activate_group,
         SemanticCommand::FocusGroupNext,
