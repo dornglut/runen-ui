@@ -675,7 +675,6 @@ impl<Action: 'static> View<Action> for Switch<Action> {
     }
 }
 
-
 pub struct RadioGroup<Action> {
     children: Vec<RadioButton<Action>>,
     common: CommonNodeAuthoring,
@@ -750,9 +749,7 @@ impl<Action> Widget<Action> for RadioGroupWidget {
 
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         if state.multiple_checked != self.multiple_checked {
-            context.invalidate(
-                WidgetInvalidation::SEMANTICS | WidgetInvalidation::DIAGNOSTICS,
-            );
+            context.invalidate(WidgetInvalidation::SEMANTICS | WidgetInvalidation::DIAGNOSTICS);
         }
         state.multiple_checked = self.multiple_checked;
     }
