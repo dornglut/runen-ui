@@ -527,22 +527,12 @@ fn select_in_scope<Action>(
 
     let current = state.focused_node().unwrap_or(command_target);
     let selected = match navigation {
-        FocusNavigation::Next => linear_candidate(
-            tree,
-            &candidates,
-            current,
-            true,
-            &scope,
-            publication_order,
-        ),
-        FocusNavigation::Previous => linear_candidate(
-            tree,
-            &candidates,
-            current,
-            false,
-            &scope,
-            publication_order,
-        ),
+        FocusNavigation::Next => {
+            linear_candidate(tree, &candidates, current, true, &scope, publication_order)
+        }
+        FocusNavigation::Previous => {
+            linear_candidate(tree, &candidates, current, false, &scope, publication_order)
+        }
         FocusNavigation::Direction(direction) => {
             directional_candidate(tree, &candidates, current, direction, geometry)
         }
