@@ -630,6 +630,30 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
 
     runtime
         .submit_command(
+            outer.clone(),
+            SemanticCommand::RestoreFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("outer-scope restoration is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&a),
+        "remembered focus inside a nested scope must not be absorbed by the ancestor group"
+    );
+
+    runtime
+        .submit_command(
+            x.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("inner-scope refocus request is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.focus().focused_node(), Some(&x));
+
+    runtime
+        .submit_command(
             x.clone(),
             SemanticCommand::FocusGroupNext,
             CommandOrigin::programmatic(),
