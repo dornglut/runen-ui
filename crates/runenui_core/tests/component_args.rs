@@ -191,7 +191,7 @@ fn radio_controls_use_public_semantics_and_typed_group_authoring() {
         Some(SemanticCheckedState::Checked)
     );
 
-    let group = radio_group([
+    let group: runenui_core::Element<Action> = radio_group([
         radio_button("One", true).id("radio.one"),
         radio_button("Two", false).id("radio.two"),
     ])
@@ -225,7 +225,7 @@ fn radio_controls_use_public_semantics_and_typed_group_authoring() {
             .is_empty()
     );
 
-    let invalid_group =
+    let invalid_group: runenui_core::Element<Action> =
         radio_group([radio_button("One", true), radio_button("Two", true)]).into_element();
     let (_, _, _, _, _, _, _, _, invalid_widget, _) =
         invalid_group.into_runtime_parts().into_parts();
