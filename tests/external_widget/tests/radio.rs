@@ -85,7 +85,7 @@ impl Widget<Action> for DownstreamRadioGroup {
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
-        if context.phase() != EventPhase::Bubble {
+        if context.phase() != EventPhase::Bubble || context.default_is_prevented() {
             return WidgetEventOutput::none();
         }
         let Some(command) = event.as_semantic_command().map(|event| event.command()) else {
