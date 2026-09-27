@@ -403,6 +403,40 @@ pub struct FocusGroupSelection {
     pub activation: FocusGroupActivationPolicy,
 }
 
+fn focus_group_for_command<Action>(
+    tree: &MountedTree<Action>,
+    state: &FocusState,
+    command_target: &MountedNodeId,
+) -> Option<MountedNodeId> {
+    let current = state.focused_node().unwrap_or(command_target);
+    if tree
+        .node(command_target)
+        .is_some_and(|node| node.focus_group.is_some())
+    {
+        if let Some(focused) = state.focused_node()
+            && (!is_within_group(tree, focused, command_target)
+                || nearest_scope(tree, focused) != nearest_scope(tree, command_target))
+        {
+            return None;
+        }
+        return Some(command_target.clone());
+    }
+    if state.focused_node().is_some() {
+        nearest_group(tree, current)
+    } else {
+        nearest_group(tree, command_target)
+    }
+}
+
+pub fn focus_group_activation_policy<Action>(
+    tree: &MountedTree<Action>,
+    state: &FocusState,
+    command_target: &MountedNodeId,
+) -> Option<FocusGroupActivationPolicy> {
+    let group = focus_group_for_command(tree, state, command_target)?;
+    tree.node(&group)?.focus_group.map(FocusGroup::activation)
+}
+
 fn focus_group_member_contains<Action>(
     tree: &MountedTree<Action>,
     member: &FocusGroupMember,
@@ -423,22 +457,7 @@ pub fn select_focus_group_member<Action>(
     forward: bool,
 ) -> Option<FocusGroupSelection> {
     let current = state.focused_node().unwrap_or(command_target);
-    let group = if tree
-        .node(command_target)
-        .is_some_and(|node| node.focus_group.is_some())
-    {
-        if let Some(focused) = state.focused_node()
-            && (!is_within_group(tree, focused, command_target)
-                || nearest_scope(tree, focused) != nearest_scope(tree, command_target))
-        {
-            return None;
-        }
-        command_target.clone()
-    } else if state.focused_node().is_some() {
-        nearest_group(tree, current)?
-    } else {
-        nearest_group(tree, command_target)?
-    };
+    let group = focus_group_for_command(tree, state, command_target)?;
     let config = tree.node(&group)?.focus_group?;
     let resolved = focus_group_members(tree, &group)?;
     let members = resolved.members;
