@@ -706,6 +706,7 @@ fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
     let manual_b = id(&mut manual, "b");
     let manual_c = id(&mut manual, "c");
     command(&mut manual, manual_b.clone(), SemanticCommand::RequestFocus);
+    settle(&mut manual);
     command(&mut manual, manual_b, SemanticCommand::FocusGroupNext);
     assert_eq!(manual.focus().focused_node(), Some(&manual_c));
     assert_eq!(manual.status(), RuntimeStatus::Running);
@@ -724,6 +725,7 @@ fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
         activate_b.clone(),
         SemanticCommand::RequestFocus,
     );
+    settle(&mut activate);
     command(
         &mut activate,
         activate_b.clone(),
