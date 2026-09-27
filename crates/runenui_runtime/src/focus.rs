@@ -684,10 +684,13 @@ fn linear_candidate<Action>(
         .find(|candidate| candidate_contains(tree, candidate, current))
         .map(|candidate| candidate.order)
         .or_else(|| {
-            (nearest_scope(tree, current).as_ref() == Some(scope)
-                && nearest_group(tree, current).is_some())
-            .then(|| publication_order.iter().position(|id| id == current))
-            .flatten()
+            if nearest_scope(tree, current).as_ref() == Some(scope)
+                && nearest_group(tree, current).is_some()
+            {
+                publication_order.iter().position(|id| id == current)
+            } else {
+                None
+            }
         });
     if forward {
         candidates
