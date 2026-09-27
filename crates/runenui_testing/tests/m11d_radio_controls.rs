@@ -689,7 +689,9 @@ fn prevented_directional_command_does_not_trigger_radio_group_navigation() {
 
     harness
         .submit_automation_command(element_id("prevented.one"), SemanticCommand::FocusRight)
-        .unwrap_or_else(|error| unreachable!("prevented directional command is accepted: {error:?}"));
+        .unwrap_or_else(|error| {
+            unreachable!("prevented directional command is accepted: {error:?}")
+        });
     assert_eq!(
         harness.run_until_idle(settle_budget()).outcome(),
         SettleOutcome::Idle
