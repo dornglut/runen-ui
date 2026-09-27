@@ -505,7 +505,7 @@ fn controller_origin_directional_command_uses_radio_group_navigation() {
     assert!(harness.publish().is_ok());
 
     command(&mut harness, "radio.one", SemanticCommand::RequestFocus);
-    let point = semantic_center(&harness, &radio_query("One", SemanticCheckedState::Checked));
+    let point = published_hit_point(&harness, "radio.one");
     harness
         .submit_surface_command(
             point,
@@ -549,22 +549,26 @@ fn semantic_activation_updates_application_selection_before_checked_republicatio
     );
 }
 
-fn semantic_center(harness: &TestHarness<RadioApp>, query: &SemanticQuery) -> LogicalPoint {
-    let target = harness
-        .unique_semantic_target(query)
-        .unwrap_or_else(|error| unreachable!("point target is unique: {error:?}"));
-    let snapshot = harness
-        .semantic_snapshot()
-        .unwrap_or_else(|_| unreachable!("publication exists"));
-    let bounds = snapshot
-        .node(target.node_id())
-        .unwrap_or_else(|| unreachable!("target belongs to snapshot"))
-        .bounds();
-    LogicalPoint::new(
-        bounds.x() + bounds.width() / 2.0,
-        bounds.y() + bounds.height() / 2.0,
-    )
-    .unwrap_or_else(|_| unreachable!("semantic bounds have a finite center"))
+fn published_hit_point(harness: &TestHarness<RadioApp>, authored: &str) -> LogicalPoint {
+    let publication = harness
+        .publication()
+        .unwrap_or_else(|| unreachable!("publication exists"));
+    let authored = element_id(authored);
+    let node = publication
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("authored radio is present in the public frame"));
+    let bounds = node.bounds();
+    let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
+        .unwrap_or_else(|_| unreachable!("published radio bounds contain a finite point"));
+    assert_eq!(
+        publication.hit_test_scene().target_at(point),
+        Some(node.id()),
+        "published frame and hit-test scene must agree on the radio target"
+    );
+    point
 }
 
 #[test]
@@ -578,7 +582,7 @@ fn programmatic_surface_focus_targets_one_radio_without_selecting_it() {
     assert!(harness.publish().is_ok());
 
     let three = radio_query("Three", SemanticCheckedState::Unchecked);
-    let point = semantic_center(&harness, &three);
+    let point = published_hit_point(&harness, "radio.three");
     harness
         .submit_surface_command(
             point,
@@ -605,7 +609,7 @@ fn pointer_activation_converges_through_ordinary_application_selection() {
     assert!(harness.publish().is_ok());
 
     let two = radio_query("Two", SemanticCheckedState::Unchecked);
-    let point = semantic_center(&harness, &two);
+    let point = published_hit_point(&harness, "radio.two");
     let pointer_id = PointerId::new(1).unwrap_or_else(|| unreachable!("pointer ID is non-zero"));
 
     let down = harness
