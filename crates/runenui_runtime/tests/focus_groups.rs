@@ -705,16 +705,8 @@ fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
 
     let manual_b = id(&mut manual, "b");
     let manual_c = id(&mut manual, "c");
-    command(
-        &mut manual,
-        manual_b.clone(),
-        SemanticCommand::RequestFocus,
-    );
-    command(
-        &mut manual,
-        manual_b,
-        SemanticCommand::FocusGroupNext,
-    );
+    command(&mut manual, manual_b.clone(), SemanticCommand::RequestFocus);
+    command(&mut manual, manual_b, SemanticCommand::FocusGroupNext);
     assert_eq!(manual.focus().focused_node(), Some(&manual_c));
     assert_eq!(manual.status(), RuntimeStatus::Running);
 
@@ -723,8 +715,7 @@ fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
             .with_waiting_envelopes(2)
             .with_transaction_outputs(1),
     );
-    let mut activate =
-        AppRuntime::<App>::mount_with_config(State::default(), activate_config);
+    let mut activate = AppRuntime::<App>::mount_with_config(State::default(), activate_config);
     settle(&mut activate);
 
     let activate_b = id(&mut activate, "b");
