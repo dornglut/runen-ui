@@ -750,7 +750,9 @@ impl<Action> Widget<Action> for RadioGroupWidget {
 
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         if state.multiple_checked != self.multiple_checked {
-            context.invalidate(WidgetInvalidation::SEMANTICS);
+            context.invalidate(
+                WidgetInvalidation::SEMANTICS | WidgetInvalidation::DIAGNOSTICS,
+            );
         }
         state.multiple_checked = self.multiple_checked;
     }
