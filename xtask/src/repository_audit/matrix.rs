@@ -887,7 +887,7 @@ mod tests {
             matches!(
                 row.cells[0].as_str(),
                 "M11CTRL-11" | "M11CTRL-12" | "M11CTRL-13"
-            ) && row.cells[6] == "proof-complete"
+            ) && row.cells[6] == "owner-accepted"
                 && row.cells[7] == "Required"
         }));
         assert_eq!(
