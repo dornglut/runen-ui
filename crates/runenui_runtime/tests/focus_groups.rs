@@ -797,7 +797,7 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
 
     runtime
         .submit_command(
-            outer.clone(),
+            outer,
             SemanticCommand::FocusGroupNext,
             CommandOrigin::programmatic(),
         )
