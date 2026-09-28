@@ -1650,11 +1650,13 @@ fn validate_role_state_contract(items: &[SemanticItem]) -> Result<(), SemanticCo
             }
         }
         if let Some(editable) = node.editable() {
+            let secret_incompatible = editable.sensitivity() == TextSensitivity::Secret
+                && (node.editable_mode() == Some(SemanticEditableMode::Multiline)
+                    || matches!(role, SemanticRole::ComboBox | SemanticRole::SpinButton));
             if !matches!(
                 role,
                 SemanticRole::EditableText | SemanticRole::ComboBox | SemanticRole::SpinButton
-            ) || (editable.sensitivity() == TextSensitivity::Secret
-                && node.editable_mode() == Some(SemanticEditableMode::Multiline))
+            ) || secret_incompatible
             {
                 return Err(SemanticContributionError::EditableCombinationNotSupported {
                     key: node.key().clone(),
