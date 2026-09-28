@@ -1514,7 +1514,7 @@ fn validate_checked_contract(
     }
 }
 
-fn is_input_state_role(role: SemanticRole) -> bool {
+const fn is_input_state_role(role: SemanticRole) -> bool {
     matches!(
         role,
         SemanticRole::EditableText
