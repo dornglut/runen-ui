@@ -390,7 +390,9 @@ impl fmt::Display for SemanticCollectionPositionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::EmptyKnownSet => "known semantic collection size must be non-zero",
-            Self::PositionOutsideKnownSet => "semantic collection position is outside the known set",
+            Self::PositionOutsideKnownSet => {
+                "semantic collection position is outside the known set"
+            }
         })
     }
 }
@@ -1474,30 +1476,30 @@ fn validate_role_state_contract(items: &[SemanticItem]) -> Result<(), SemanticCo
                     });
                 }
             },
-            SemanticRole::RadioButton
-            | SemanticRole::Switch
-            | SemanticRole::MenuItemRadio => match checked {
-                None => {
-                    return Err(SemanticContributionError::MissingRequiredCheckedState {
-                        key: node.key().clone(),
-                        role,
-                    });
+            SemanticRole::RadioButton | SemanticRole::Switch | SemanticRole::MenuItemRadio => {
+                match checked {
+                    None => {
+                        return Err(SemanticContributionError::MissingRequiredCheckedState {
+                            key: node.key().clone(),
+                            role,
+                        });
+                    }
+                    Some(SemanticCheckedState::Mixed) => {
+                        return Err(SemanticContributionError::MixedCheckedStateNotSupported {
+                            key: node.key().clone(),
+                            role,
+                        });
+                    }
+                    Some(SemanticCheckedState::Unchecked | SemanticCheckedState::Checked) => {}
+                    #[allow(unreachable_patterns)]
+                    Some(_) => {
+                        return Err(SemanticContributionError::CheckedStateNotSupported {
+                            key: node.key().clone(),
+                            role,
+                        });
+                    }
                 }
-                Some(SemanticCheckedState::Mixed) => {
-                    return Err(SemanticContributionError::MixedCheckedStateNotSupported {
-                        key: node.key().clone(),
-                        role,
-                    });
-                }
-                Some(SemanticCheckedState::Unchecked | SemanticCheckedState::Checked) => {}
-                #[allow(unreachable_patterns)]
-                Some(_) => {
-                    return Err(SemanticContributionError::CheckedStateNotSupported {
-                        key: node.key().clone(),
-                        role,
-                    });
-                }
-            },
+            }
             _ if checked.is_some() => {
                 return Err(SemanticContributionError::CheckedStateNotSupported {
                     key: node.key().clone(),
@@ -1693,9 +1695,11 @@ fn validate_role_state_contract(items: &[SemanticItem]) -> Result<(), SemanticCo
             });
         }
         if active_descendant_count == 1 && !has_controls {
-            return Err(SemanticContributionError::ActiveDescendantRequiresControls {
-                key: node.key().clone(),
-            });
+            return Err(
+                SemanticContributionError::ActiveDescendantRequiresControls {
+                    key: node.key().clone(),
+                },
+            );
         }
 
         validate_role_state_contract(node.children())?;
@@ -1728,11 +1732,12 @@ fn missing_property(
 fn required_range(
     node: &SemanticNodeContribution,
 ) -> Result<&SemanticRange, SemanticContributionError> {
-    node.range().ok_or_else(|| SemanticContributionError::MissingRequiredProperty {
-        key: node.key().clone(),
-        role: node.role(),
-        property: "range",
-    })
+    node.range()
+        .ok_or_else(|| SemanticContributionError::MissingRequiredProperty {
+            key: node.key().clone(),
+            role: node.role(),
+            property: "range",
+        })
 }
 
 fn validate_local_references(
