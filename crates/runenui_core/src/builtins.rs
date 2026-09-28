@@ -1,10 +1,13 @@
 use core::fmt;
 
 use crate::{
-    FlexContainerStyle, FlexDirection, HitContribution, HitContributionContext, LayoutContainer,
-    LayoutStyle, LogicalLength, LogicalRect, LogicalSize, SemanticAction, SemanticCheckedState,
+    EventContext, EventPhase, FlexContainerStyle, FlexDirection, FocusGroup,
+    FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, Focusability, HitContribution,
+    HitContributionContext, LayoutContainer, LayoutStyle, LogicalLength, LogicalRect, LogicalSize,
+    SemanticAction, SemanticCheckedState, SemanticCommand, SemanticCommandEvent,
     SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
-    SemanticState, SemanticText, WidgetActivationContext, WidgetInvalidation, WidgetUpdateContext,
+    SemanticState, SemanticText, UiEvent, WidgetActivationContext, WidgetDiagnostic,
+    WidgetEventOutput, WidgetInvalidation, WidgetUpdateContext,
     element::{CommonNodeAuthoring, Element, View, Views, common_node_builder_methods},
     widget_erasure::{ErasedWidget, WidgetAdapter},
     widget_protocol::{
@@ -335,6 +338,81 @@ impl<Action> Checkbox<Action> {
     }
 }
 
+pub struct RadioButton<Action> {
+    label: String,
+    checked: bool,
+    common: CommonNodeAuthoring,
+    enabled: bool,
+    focusability: Focusability,
+    activation_factory: Option<Box<dyn FnMut() -> Action>>,
+    actionable: bool,
+}
+
+impl<Action> fmt::Debug for RadioButton<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RadioButton")
+            .field("label", &self.label)
+            .field("checked", &self.checked)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("layout", &self.common.layout)
+            .field("enabled", &self.enabled)
+            .field("focusability", &self.focusability)
+            .field("actionable", &self.actionable)
+            .field("has_callback", &self.activation_factory.is_some())
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
+            .field("diagnostics", &self.common.diagnostics)
+            .finish()
+    }
+}
+
+impl<Action> RadioButton<Action> {
+    #[must_use]
+    pub fn new(label: impl Into<String>, checked: bool) -> Self {
+        Self {
+            label: label.into(),
+            checked,
+            common: CommonNodeAuthoring::default(),
+            enabled: true,
+            focusability: Focusability::Automatic,
+            activation_factory: None,
+            actionable: false,
+        }
+    }
+    common_node_builder_methods!();
+    #[must_use]
+    pub const fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+    #[must_use]
+    pub const fn disabled(self) -> Self {
+        self.enabled(false)
+    }
+    /// Excludes this radio from focus selection while retaining its authored control state.
+    #[must_use]
+    pub const fn focus_hidden(mut self, hidden: bool) -> Self {
+        self.focusability = if hidden {
+            Focusability::Hidden
+        } else {
+            Focusability::Automatic
+        };
+        self
+    }
+    #[must_use]
+    pub fn on_activate(mut self, callback: impl FnMut() -> Action + 'static) -> Self {
+        self.activation_factory = Some(Box::new(callback));
+        self.actionable = true;
+        self
+    }
+    #[must_use]
+    pub const fn checked(&self) -> bool {
+        self.checked
+    }
+}
+
 pub struct Switch<Action> {
     label: String,
     checked: bool,
@@ -396,6 +474,7 @@ impl<Action> Switch<Action> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BinaryControlKind {
     Checkbox,
+    RadioButton,
     Switch,
 }
 
@@ -403,6 +482,7 @@ impl BinaryControlKind {
     const fn role(self) -> SemanticRole {
         match self {
             Self::Checkbox => SemanticRole::Checkbox,
+            Self::RadioButton => SemanticRole::RadioButton,
             Self::Switch => SemanticRole::Switch,
         }
     }
@@ -566,6 +646,25 @@ impl<Action: 'static> View<Action> for Checkbox<Action> {
     }
 }
 
+impl<Action: 'static> View<Action> for RadioButton<Action> {
+    fn into_element(self) -> Element<Action> {
+        let (fields, diagnostics) = self.common.into_authored_fields(self.focusability, None);
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(BinaryControlWidget {
+                kind: BinaryControlKind::RadioButton,
+                label: self.label,
+                checked: self.checked.into(),
+                enabled: self.enabled,
+                activation_factory: self.activation_factory,
+                actionable: self.actionable,
+            })),
+            Vec::new(),
+            diagnostics,
+        )
+    }
+}
+
 impl<Action: 'static> View<Action> for Switch<Action> {
     fn into_element(self) -> Element<Action> {
         let (fields, diagnostics) = self
@@ -583,6 +682,181 @@ impl<Action: 'static> View<Action> for Switch<Action> {
             })),
             Vec::new(),
             diagnostics,
+        )
+    }
+}
+
+pub struct RadioGroup<Action> {
+    children: Vec<RadioButton<Action>>,
+    common: CommonNodeAuthoring,
+    standalone_navigation: bool,
+}
+
+impl<Action> fmt::Debug for RadioGroup<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RadioGroup")
+            .field("children", &self.children)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("layout", &self.common.layout)
+            .field("standalone_navigation", &self.standalone_navigation)
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
+            .field("diagnostics", &self.common.diagnostics)
+            .finish()
+    }
+}
+
+impl<Action> RadioGroup<Action> {
+    #[must_use]
+    pub fn new(children: impl IntoIterator<Item = RadioButton<Action>>) -> Self {
+        Self {
+            children: children.into_iter().collect(),
+            common: CommonNodeAuthoring {
+                layout: LayoutStyle::default().with_container(LayoutContainer::Flex(
+                    FlexContainerStyle::default().with_direction(FlexDirection::Column),
+                )),
+                ..CommonNodeAuthoring::default()
+            },
+            standalone_navigation: true,
+        }
+    }
+    common_node_builder_methods!();
+    #[must_use]
+    pub fn gap(mut self, gap: impl Into<LogicalLength>) -> Self {
+        self.common.layout = self.common.layout.with_gap(gap);
+        self
+    }
+    /// Enables or suppresses standalone arrow-key/controller remapping.
+    ///
+    /// Disable this when an enclosing composite such as a future toolbar owns
+    /// directional navigation.
+    #[must_use]
+    pub const fn standalone_navigation(mut self, enabled: bool) -> Self {
+        self.standalone_navigation = enabled;
+        self
+    }
+}
+
+#[derive(Debug)]
+struct RadioGroupWidget {
+    multiple_checked: bool,
+    standalone_navigation: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RadioGroupWidgetState {
+    multiple_checked: bool,
+}
+
+impl<Action> Widget<Action> for RadioGroupWidget {
+    type State = RadioGroupWidgetState;
+
+    fn create_state(&self) -> Self::State {
+        RadioGroupWidgetState {
+            multiple_checked: self.multiple_checked,
+        }
+    }
+
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
+        if state.multiple_checked != self.multiple_checked {
+            context.invalidate(WidgetInvalidation::SEMANTICS | WidgetInvalidation::DIAGNOSTICS);
+        }
+        state.multiple_checked = self.multiple_checked;
+    }
+
+    fn event(
+        &mut self,
+        _: &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        if !self.standalone_navigation
+            || context.phase() != EventPhase::Bubble
+            || context.default_is_prevented()
+        {
+            return WidgetEventOutput::none();
+        }
+        let Some(command) = event
+            .as_semantic_command()
+            .map(SemanticCommandEvent::command)
+        else {
+            return WidgetEventOutput::none();
+        };
+        let delegated = match command {
+            SemanticCommand::FocusLeft | SemanticCommand::FocusUp => {
+                Some(SemanticCommand::FocusGroupPrevious)
+            }
+            SemanticCommand::FocusRight | SemanticCommand::FocusDown => {
+                Some(SemanticCommand::FocusGroupNext)
+            }
+            _ => None,
+        };
+        if let Some(delegated) = delegated {
+            context.prevent_default();
+            context.stop_propagation();
+            context.emit_command(delegated);
+        }
+        WidgetEventOutput::none()
+    }
+
+    fn semantics(
+        &self,
+        state: &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        if state.multiple_checked {
+            return SemanticContribution::empty();
+        }
+        let mut node = SemanticNodeContribution::primary(SemanticRole::RadioGroup);
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
+        SemanticContribution::single(node)
+    }
+
+    fn diagnostics(&self, state: &Self::State) -> Vec<WidgetDiagnostic> {
+        if state.multiple_checked {
+            vec![WidgetDiagnostic::new(
+                "runenui.control.radio-group.multiple-checked",
+                "RadioGroup requires at most one checked RadioButton",
+            )]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+impl<Action> ChildBearingWidget<Action> for RadioGroupWidget {}
+
+impl<Action: 'static> View<Action> for RadioGroup<Action> {
+    fn into_element(self) -> Element<Action> {
+        let multiple_checked = self.children.iter().filter(|child| child.checked()).count() > 1;
+        let children = self
+            .children
+            .into_iter()
+            .map(|child| {
+                let preferred = child.checked();
+                child.into_element().focus_group_preferred(preferred)
+            })
+            .collect();
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(crate::Focusability::Automatic, None);
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(RadioGroupWidget {
+                multiple_checked,
+                standalone_navigation: self.standalone_navigation,
+            })),
+            children,
+            diagnostics,
+        )
+        .focus_group(
+            FocusGroup::new()
+                .with_boundary(FocusGroupBoundaryPolicy::Wrap)
+                .with_activation(FocusGroupActivationPolicy::ActivateTarget),
         )
     }
 }
@@ -669,6 +943,16 @@ pub fn checkbox<Action>(
 #[must_use]
 pub fn switch<Action>(label: impl Into<String>, checked: bool) -> Switch<Action> {
     Switch::new(label, checked)
+}
+#[must_use]
+pub fn radio_button<Action>(label: impl Into<String>, checked: bool) -> RadioButton<Action> {
+    RadioButton::new(label, checked)
+}
+#[must_use]
+pub fn radio_group<Action>(
+    children: impl IntoIterator<Item = RadioButton<Action>>,
+) -> RadioGroup<Action> {
+    RadioGroup::new(children)
 }
 #[must_use]
 pub fn text(content: impl Into<String>) -> Text {

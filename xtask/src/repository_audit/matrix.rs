@@ -23,7 +23,7 @@ const M7_DELIVERY_SLICES: &[&str] = &["M7A", "M7B", "M7C", "M7D"];
 const M8_DELIVERY_SLICES: &[&str] = &["M8A", "M8B", "M8C", "M8D"];
 const M9_DELIVERY_SLICES: &[&str] = &["M9A", "M9B", "M9C"];
 const M10_DELIVERY_SLICES: &[&str] = &["M10B", "M10C", "M10D", "M10E", "M10F"];
-const M11_DELIVERY_SLICES: &[&str] = &["M11A", "M11B", "M11C"];
+const M11_DELIVERY_SLICES: &[&str] = &["M11A", "M11B", "M11C", "M11D2"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum GatePolicy {
@@ -842,7 +842,7 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 10);
+        assert_eq!(rows.len(), 13);
 
         let baseline_rows = rows
             .iter()
@@ -855,6 +855,10 @@ mod tests {
         let binary_control_rows = rows
             .iter()
             .filter(|row| row.cells[5] == "M11C")
+            .collect::<Vec<_>>();
+        let radio_rows = rows
+            .iter()
+            .filter(|row| row.cells[5] == "M11D2")
             .collect::<Vec<_>>();
 
         assert_eq!(baseline_rows.len(), 5);
@@ -877,6 +881,21 @@ mod tests {
                 && row.cells[6] == "owner-accepted"
                 && row.cells[7] == "Required"
         }));
+
+        assert_eq!(radio_rows.len(), 3);
+        assert!(radio_rows.iter().all(|row| {
+            matches!(
+                row.cells[0].as_str(),
+                "M11CTRL-11" | "M11CTRL-12" | "M11CTRL-13"
+            ) && row.cells[6] == "proof-complete"
+                && row.cells[7] == "Required"
+        }));
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.cells[5].as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["M11A", "M11B", "M11C", "M11D2"])
+        );
 
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
@@ -968,7 +987,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 446);
+        assert_eq!(total, 449);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }
