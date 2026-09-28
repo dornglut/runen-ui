@@ -1350,6 +1350,9 @@ pub enum SemanticContributionError {
     ActiveDescendantRequiresControls {
         key: SemanticKey,
     },
+    ActiveDescendantNotSupportedForDialogPopup {
+        key: SemanticKey,
+    },
     EditableCombinationNotSupported {
         key: SemanticKey,
         role: SemanticRole,
@@ -1412,6 +1415,10 @@ impl fmt::Display for SemanticContributionError {
             Self::ActiveDescendantRequiresControls { key } => write!(
                 formatter,
                 "semantic ComboBox node `{key}` with ActiveDescendant must also control its popup"
+            ),
+            Self::ActiveDescendantNotSupportedForDialogPopup { key } => write!(
+                formatter,
+                "semantic ComboBox node `{key}` cannot expose ActiveDescendant for a dialog popup"
             ),
             Self::EditableCombinationNotSupported { key, role } => write!(
                 formatter,
@@ -1727,6 +1734,13 @@ fn validate_relationship_contract(
             key: node.key().clone(),
             kind: SemanticRelationshipKind::ActiveDescendant,
         });
+    }
+    if active_descendant_count == 1 && node.popup() == Some(SemanticPopupKind::Dialog) {
+        return Err(
+            SemanticContributionError::ActiveDescendantNotSupportedForDialogPopup {
+                key: node.key().clone(),
+            },
+        );
     }
     if active_descendant_count == 1 && !has_controls {
         return Err(
@@ -2084,6 +2098,31 @@ mod tests {
             SemanticContribution::single(missing_controls).validate(context),
             Err(
                 SemanticContributionError::ActiveDescendantRequiresControls {
+                    key: SemanticKey::PRIMARY,
+                }
+            )
+        );
+
+        let dialog_option = SemanticKey::from_static("dialog-option")
+            .unwrap_or_else(|_| unreachable!("static test key is valid"));
+        let dialog_popup = SemanticNodeContribution::primary(SemanticRole::ComboBox)
+            .with_popup(SemanticPopupKind::Dialog)
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::Controls,
+                SemanticReference::Local(dialog_option.clone()),
+            ))
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::ActiveDescendant,
+                SemanticReference::Local(dialog_option.clone()),
+            ))
+            .with_child(SemanticNodeContribution::new(
+                dialog_option,
+                SemanticRole::Option,
+            ));
+        assert_eq!(
+            SemanticContribution::single(dialog_popup).validate(context),
+            Err(
+                SemanticContributionError::ActiveDescendantNotSupportedForDialogPopup {
                     key: SemanticKey::PRIMARY,
                 }
             )
