@@ -1569,7 +1569,9 @@ fn validate_authored_state_contract(
     Ok(())
 }
 
-fn validate_range_contract(node: &SemanticNodeContribution) -> Result<(), SemanticContributionError> {
+fn validate_range_contract(
+    node: &SemanticNodeContribution,
+) -> Result<(), SemanticContributionError> {
     match node.role() {
         SemanticRole::Slider | SemanticRole::Splitter => {
             let range = required_range(node)?;
