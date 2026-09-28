@@ -589,14 +589,22 @@ fn nested_groups_use_nearest_ownership_and_outer_group_treats_inner_as_one_membe
     nested_command(&mut runtime, y.clone(), SemanticCommand::FocusGroupNext);
     assert_eq!(runtime.focus().focused_node(), Some(&x));
 
-    nested_command(&mut runtime, inner.clone(), SemanticCommand::FocusGroupFirst);
+    nested_command(
+        &mut runtime,
+        inner.clone(),
+        SemanticCommand::FocusGroupFirst,
+    );
     assert_eq!(runtime.focus().focused_node(), Some(&x));
     nested_command(&mut runtime, inner, SemanticCommand::FocusGroupLast);
     assert_eq!(runtime.focus().focused_node(), Some(&y));
 
     nested_command(&mut runtime, outer.clone(), SemanticCommand::FocusGroupNext);
     assert_eq!(runtime.focus().focused_node(), Some(&c));
-    nested_command(&mut runtime, outer.clone(), SemanticCommand::FocusGroupFirst);
+    nested_command(
+        &mut runtime,
+        outer.clone(),
+        SemanticCommand::FocusGroupFirst,
+    );
     assert_eq!(runtime.focus().focused_node(), Some(&a));
     nested_command(&mut runtime, outer, SemanticCommand::FocusGroupLast);
     assert_eq!(runtime.focus().focused_node(), Some(&c));
