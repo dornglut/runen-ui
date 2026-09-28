@@ -1908,8 +1908,8 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("controlled maximum is finite"));
         let current = SemanticNumber::new(5.0)
             .unwrap_or_else(|_| unreachable!("controlled current is finite"));
-        let step = SemanticNumber::new(1.0)
-            .unwrap_or_else(|_| unreachable!("controlled step is finite"));
+        let step =
+            SemanticNumber::new(1.0).unwrap_or_else(|_| unreachable!("controlled step is finite"));
 
         let range = SemanticRange::new(Some(minimum), Some(maximum), Some(current))
             .and_then(|range| range.with_small_step(step))
@@ -1944,7 +1944,11 @@ mod tests {
 
         let pressed = SemanticNodeContribution::primary(SemanticRole::Button)
             .with_state(SemanticState::ENABLED.with_pressed(SemanticPressedState::Pressed));
-        assert!(SemanticContribution::single(pressed).validate(context).is_ok());
+        assert!(
+            SemanticContribution::single(pressed)
+                .validate(context)
+                .is_ok()
+        );
 
         let invalid_pressed = SemanticNodeContribution::primary(SemanticRole::Generic)
             .with_state(SemanticState::ENABLED.with_pressed(SemanticPressedState::Pressed));
@@ -1959,7 +1963,11 @@ mod tests {
 
         let selected = SemanticNodeContribution::primary(SemanticRole::Option)
             .with_state(SemanticState::ENABLED.with_selected(false));
-        assert!(SemanticContribution::single(selected).validate(context).is_ok());
+        assert!(
+            SemanticContribution::single(selected)
+                .validate(context)
+                .is_ok()
+        );
 
         let missing_range = SemanticNodeContribution::primary(SemanticRole::Slider);
         assert_eq!(
@@ -1981,11 +1989,19 @@ mod tests {
             SemanticRange::new(Some(minimum), Some(maximum), Some(current))
                 .unwrap_or_else(|_| unreachable!("controlled slider range is valid")),
         );
-        assert!(SemanticContribution::single(slider).validate(context).is_ok());
+        assert!(
+            SemanticContribution::single(slider)
+                .validate(context)
+                .is_ok()
+        );
 
         let listbox = SemanticNodeContribution::primary(SemanticRole::ListBox)
             .with_selection_mode(SemanticSelectionMode::Multiple);
-        assert!(SemanticContribution::single(listbox).validate(context).is_ok());
+        assert!(
+            SemanticContribution::single(listbox)
+                .validate(context)
+                .is_ok()
+        );
 
         let invalid_selection_mode = SemanticNodeContribution::primary(SemanticRole::TabList)
             .with_selection_mode(SemanticSelectionMode::Multiple);
@@ -2013,7 +2029,11 @@ mod tests {
                 option_key,
                 SemanticRole::Option,
             ));
-        assert!(SemanticContribution::single(combobox).validate(context).is_ok());
+        assert!(
+            SemanticContribution::single(combobox)
+                .validate(context)
+                .is_ok()
+        );
 
         let missing_controls_key = SemanticKey::from_static("missing-controls-option")
             .unwrap_or_else(|_| unreachable!("static test key is valid"));
@@ -2028,9 +2048,11 @@ mod tests {
             ));
         assert_eq!(
             SemanticContribution::single(missing_controls).validate(context),
-            Err(SemanticContributionError::ActiveDescendantRequiresControls {
-                key: SemanticKey::PRIMARY,
-            })
+            Err(
+                SemanticContributionError::ActiveDescendantRequiresControls {
+                    key: SemanticKey::PRIMARY,
+                }
+            )
         );
     }
 
