@@ -92,6 +92,29 @@ pub enum SemanticRole {
     RadioButton,
     RadioGroup,
     Switch,
+    Link,
+    Image,
+    ComboBox,
+    Slider,
+    Progress,
+    SpinButton,
+    ListBox,
+    Option,
+    TabList,
+    Tab,
+    TabPanel,
+    Toolbar,
+    Menu,
+    MenuBar,
+    MenuItem,
+    MenuItemCheckbox,
+    MenuItemRadio,
+    Dialog,
+    Tooltip,
+    Separator,
+    Splitter,
+    Tree,
+    TreeItem,
 }
 
 /// Platform-neutral checked state for stateful binary controls.
@@ -115,6 +138,336 @@ impl From<bool> for SemanticCheckedState {
         }
     }
 }
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticPressedState {
+    Unpressed,
+    Pressed,
+    Mixed,
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticInvalidState {
+    Invalid,
+    Grammar,
+    Spelling,
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticPopupKind {
+    Menu,
+    ListBox,
+    Dialog,
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticOrientation {
+    Horizontal,
+    Vertical,
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticSelectionMode {
+    Single,
+    Multiple,
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticAutocomplete {
+    None,
+    Inline,
+    List,
+    Both,
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticEditableMode {
+    SingleLine,
+    Multiline,
+}
+
+/// Finite semantic numeric value with deterministic equality and hashing.
+///
+/// Negative zero is canonicalized to positive zero. NaN and infinities are rejected.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct SemanticNumber(u64);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SemanticNumberError;
+
+impl SemanticNumber {
+    /// Creates a finite semantic number.
+    ///
+    /// # Errors
+    ///
+    /// Returns SemanticNumberError for NaN or either infinity.
+    pub fn new(value: f64) -> Result<Self, SemanticNumberError> {
+        if !value.is_finite() {
+            return Err(SemanticNumberError);
+        }
+        let value = if value == 0.0 { 0.0 } else { value };
+        Ok(Self(value.to_bits()))
+    }
+
+    #[must_use]
+    pub const fn get(self) -> f64 {
+        f64::from_bits(self.0)
+    }
+}
+
+impl fmt::Debug for SemanticNumber {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.get().fmt(formatter)
+    }
+}
+
+impl fmt::Display for SemanticNumberError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("semantic number must be finite")
+    }
+}
+
+impl std::error::Error for SemanticNumberError {}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SemanticRangeError {
+    ReversedBounds,
+    CurrentBelowMinimum,
+    CurrentAboveMaximum,
+    NonPositiveSmallStep,
+    NonPositiveLargeStep,
+    ValueTextWithoutCurrent,
+}
+
+impl fmt::Display for SemanticRangeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::ReversedBounds => "semantic range minimum exceeds maximum",
+            Self::CurrentBelowMinimum => "semantic range current value is below minimum",
+            Self::CurrentAboveMaximum => "semantic range current value is above maximum",
+            Self::NonPositiveSmallStep => "semantic range small step must be positive",
+            Self::NonPositiveLargeStep => "semantic range large step must be positive",
+            Self::ValueTextWithoutCurrent => "semantic range value text requires a current value",
+        })
+    }
+}
+
+impl std::error::Error for SemanticRangeError {}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SemanticRange {
+    minimum: Option<SemanticNumber>,
+    maximum: Option<SemanticNumber>,
+    current: Option<SemanticNumber>,
+    small_step: Option<SemanticNumber>,
+    large_step: Option<SemanticNumber>,
+    value_text: Option<String>,
+}
+
+impl SemanticRange {
+    /// Creates a checked semantic range.
+    ///
+    /// # Errors
+    ///
+    /// Rejects reversed bounds or a current value outside authored bounds.
+    pub fn new(
+        minimum: Option<SemanticNumber>,
+        maximum: Option<SemanticNumber>,
+        current: Option<SemanticNumber>,
+    ) -> Result<Self, SemanticRangeError> {
+        if minimum
+            .zip(maximum)
+            .is_some_and(|(minimum, maximum)| minimum.get() > maximum.get())
+        {
+            return Err(SemanticRangeError::ReversedBounds);
+        }
+        if current
+            .zip(minimum)
+            .is_some_and(|(current, minimum)| current.get() < minimum.get())
+        {
+            return Err(SemanticRangeError::CurrentBelowMinimum);
+        }
+        if current
+            .zip(maximum)
+            .is_some_and(|(current, maximum)| current.get() > maximum.get())
+        {
+            return Err(SemanticRangeError::CurrentAboveMaximum);
+        }
+        Ok(Self {
+            minimum,
+            maximum,
+            current,
+            small_step: None,
+            large_step: None,
+            value_text: None,
+        })
+    }
+
+    /// Adds a positive small increment.
+    ///
+    /// # Errors
+    ///
+    /// Rejects zero or negative steps.
+    pub fn with_small_step(mut self, step: SemanticNumber) -> Result<Self, SemanticRangeError> {
+        if step.get() <= 0.0 {
+            return Err(SemanticRangeError::NonPositiveSmallStep);
+        }
+        self.small_step = Some(step);
+        Ok(self)
+    }
+
+    /// Adds a positive larger/page increment.
+    ///
+    /// # Errors
+    ///
+    /// Rejects zero or negative steps.
+    pub fn with_large_step(mut self, step: SemanticNumber) -> Result<Self, SemanticRangeError> {
+        if step.get() <= 0.0 {
+            return Err(SemanticRangeError::NonPositiveLargeStep);
+        }
+        self.large_step = Some(step);
+        Ok(self)
+    }
+
+    /// Adds human-readable value text for a determinate current value.
+    ///
+    /// # Errors
+    ///
+    /// Rejects value text when the range has no current value.
+    pub fn with_value_text(
+        mut self,
+        value_text: impl Into<String>,
+    ) -> Result<Self, SemanticRangeError> {
+        if self.current.is_none() {
+            return Err(SemanticRangeError::ValueTextWithoutCurrent);
+        }
+        self.value_text = Some(value_text.into());
+        Ok(self)
+    }
+
+    #[must_use]
+    pub const fn minimum(&self) -> Option<SemanticNumber> {
+        self.minimum
+    }
+    #[must_use]
+    pub const fn maximum(&self) -> Option<SemanticNumber> {
+        self.maximum
+    }
+    #[must_use]
+    pub const fn current(&self) -> Option<SemanticNumber> {
+        self.current
+    }
+    #[must_use]
+    pub const fn small_step(&self) -> Option<SemanticNumber> {
+        self.small_step
+    }
+    #[must_use]
+    pub const fn large_step(&self) -> Option<SemanticNumber> {
+        self.large_step
+    }
+    #[must_use]
+    pub fn value_text(&self) -> Option<&str> {
+        self.value_text.as_deref()
+    }
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SemanticCollectionPositionError {
+    EmptyKnownSet,
+    PositionOutsideKnownSet,
+}
+
+impl fmt::Display for SemanticCollectionPositionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::EmptyKnownSet => "known semantic collection size must be non-zero",
+            Self::PositionOutsideKnownSet => "semantic collection position is outside the known set",
+        })
+    }
+}
+
+impl std::error::Error for SemanticCollectionPositionError {}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct SemanticCollectionPosition {
+    index: u64,
+    known_size: Option<u64>,
+}
+
+impl SemanticCollectionPosition {
+    /// Creates zero-based collection position metadata.
+    ///
+    /// # Errors
+    ///
+    /// Rejects zero known size and positions outside a known set.
+    pub const fn new(
+        index: u64,
+        known_size: Option<u64>,
+    ) -> Result<Self, SemanticCollectionPositionError> {
+        if let Some(known_size) = known_size {
+            if known_size == 0 {
+                return Err(SemanticCollectionPositionError::EmptyKnownSet);
+            }
+            if index >= known_size {
+                return Err(SemanticCollectionPositionError::PositionOutsideKnownSet);
+            }
+        }
+        Ok(Self { index, known_size })
+    }
+
+    #[must_use]
+    pub const fn index(self) -> u64 {
+        self.index
+    }
+
+    #[must_use]
+    pub const fn known_size(self) -> Option<u64> {
+        self.known_size
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct SemanticHierarchyLevel(u32);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SemanticHierarchyLevelError;
+
+impl SemanticHierarchyLevel {
+    /// Creates a positive one-based hierarchy level.
+    ///
+    /// # Errors
+    ///
+    /// Rejects level zero.
+    pub const fn new(level: u32) -> Result<Self, SemanticHierarchyLevelError> {
+        if level == 0 {
+            Err(SemanticHierarchyLevelError)
+        } else {
+            Ok(Self(level))
+        }
+    }
+
+    #[must_use]
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl fmt::Display for SemanticHierarchyLevelError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("semantic hierarchy level must be positive")
+    }
+}
+
+impl std::error::Error for SemanticHierarchyLevelError {}
 
 /// Revision-scoped editable text facts projected through the neutral semantic tree.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -256,7 +609,14 @@ pub struct SemanticState {
     hidden: bool,
     inert: bool,
     read_only: bool,
+    read_only_authored: bool,
     checked: Option<SemanticCheckedState>,
+    pressed: Option<SemanticPressedState>,
+    selected: Option<bool>,
+    expanded: Option<bool>,
+    required: Option<bool>,
+    invalid: Option<SemanticInvalidState>,
+    modal: Option<bool>,
 }
 
 impl SemanticState {
@@ -265,7 +625,14 @@ impl SemanticState {
         hidden: false,
         inert: false,
         read_only: false,
+        read_only_authored: false,
         checked: None,
+        pressed: None,
+        selected: None,
+        expanded: None,
+        required: None,
+        invalid: None,
+        modal: None,
     };
 
     #[must_use]
@@ -289,6 +656,7 @@ impl SemanticState {
     #[must_use]
     pub const fn with_read_only(mut self, read_only: bool) -> Self {
         self.read_only = read_only;
+        self.read_only_authored = true;
         self
     }
 
@@ -296,6 +664,42 @@ impl SemanticState {
     #[must_use]
     pub const fn with_checked(mut self, checked: SemanticCheckedState) -> Self {
         self.checked = Some(checked);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_pressed(mut self, pressed: SemanticPressedState) -> Self {
+        self.pressed = Some(pressed);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_selected(mut self, selected: bool) -> Self {
+        self.selected = Some(selected);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_expanded(mut self, expanded: bool) -> Self {
+        self.expanded = Some(expanded);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_required(mut self, required: bool) -> Self {
+        self.required = Some(required);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_invalid(mut self, invalid: SemanticInvalidState) -> Self {
+        self.invalid = Some(invalid);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_modal(mut self, modal: bool) -> Self {
+        self.modal = Some(modal);
         self
     }
 
@@ -323,6 +727,41 @@ impl SemanticState {
     #[must_use]
     pub const fn checked(self) -> Option<SemanticCheckedState> {
         self.checked
+    }
+
+    #[must_use]
+    pub const fn read_only_is_authored(self) -> bool {
+        self.read_only_authored
+    }
+
+    #[must_use]
+    pub const fn pressed(self) -> Option<SemanticPressedState> {
+        self.pressed
+    }
+
+    #[must_use]
+    pub const fn selected(self) -> Option<bool> {
+        self.selected
+    }
+
+    #[must_use]
+    pub const fn expanded(self) -> Option<bool> {
+        self.expanded
+    }
+
+    #[must_use]
+    pub const fn required(self) -> Option<bool> {
+        self.required
+    }
+
+    #[must_use]
+    pub const fn invalid(self) -> Option<SemanticInvalidState> {
+        self.invalid
+    }
+
+    #[must_use]
+    pub const fn modal(self) -> Option<bool> {
+        self.modal
     }
 }
 
@@ -357,6 +796,8 @@ pub enum SemanticRelationshipKind {
     LabelledBy,
     DescribedBy,
     Controls,
+    ErrorMessage,
+    ActiveDescendant,
 }
 
 /// Stable authored target for a semantic relationship.
@@ -460,6 +901,15 @@ struct SemanticNodeData {
     bounds: SemanticBounds,
     text: Option<SemanticText>,
     editable: Option<SemanticEditable>,
+    range: Option<SemanticRange>,
+    orientation: Option<SemanticOrientation>,
+    popup: Option<SemanticPopupKind>,
+    selection_mode: Option<SemanticSelectionMode>,
+    collection_position: Option<SemanticCollectionPosition>,
+    hierarchy_level: Option<SemanticHierarchyLevel>,
+    placeholder: Option<String>,
+    autocomplete: Option<SemanticAutocomplete>,
+    editable_mode: Option<SemanticEditableMode>,
     children: Vec<SemanticItem>,
 }
 
@@ -478,6 +928,15 @@ impl SemanticNodeContribution {
             bounds: SemanticBounds::Owner,
             text: None,
             editable: None,
+            range: None,
+            orientation: None,
+            popup: None,
+            selection_mode: None,
+            collection_position: None,
+            hierarchy_level: None,
+            placeholder: None,
+            autocomplete: None,
+            editable_mode: None,
             children: Vec::new(),
         }))
     }
@@ -543,6 +1002,63 @@ impl SemanticNodeContribution {
     #[must_use]
     pub fn with_editable(mut self, editable: SemanticEditable) -> Self {
         self.0.editable = Some(editable);
+        self
+    }
+
+    #[must_use]
+    pub fn with_range(mut self, range: SemanticRange) -> Self {
+        self.0.range = Some(range);
+        self
+    }
+
+    #[must_use]
+    pub fn with_orientation(mut self, orientation: SemanticOrientation) -> Self {
+        self.0.orientation = Some(orientation);
+        self
+    }
+
+    #[must_use]
+    pub fn with_popup(mut self, popup: SemanticPopupKind) -> Self {
+        self.0.popup = Some(popup);
+        self
+    }
+
+    #[must_use]
+    pub fn with_selection_mode(mut self, selection_mode: SemanticSelectionMode) -> Self {
+        self.0.selection_mode = Some(selection_mode);
+        self
+    }
+
+    #[must_use]
+    pub fn with_collection_position(
+        mut self,
+        collection_position: SemanticCollectionPosition,
+    ) -> Self {
+        self.0.collection_position = Some(collection_position);
+        self
+    }
+
+    #[must_use]
+    pub fn with_hierarchy_level(mut self, hierarchy_level: SemanticHierarchyLevel) -> Self {
+        self.0.hierarchy_level = Some(hierarchy_level);
+        self
+    }
+
+    #[must_use]
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.0.placeholder = Some(placeholder.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_autocomplete(mut self, autocomplete: SemanticAutocomplete) -> Self {
+        self.0.autocomplete = Some(autocomplete);
+        self
+    }
+
+    #[must_use]
+    pub fn with_editable_mode(mut self, editable_mode: SemanticEditableMode) -> Self {
+        self.0.editable_mode = Some(editable_mode);
         self
     }
 
@@ -617,6 +1133,51 @@ impl SemanticNodeContribution {
     #[must_use]
     pub const fn editable(&self) -> Option<&SemanticEditable> {
         self.0.editable.as_ref()
+    }
+
+    #[must_use]
+    pub const fn range(&self) -> Option<&SemanticRange> {
+        self.0.range.as_ref()
+    }
+
+    #[must_use]
+    pub const fn orientation(&self) -> Option<SemanticOrientation> {
+        self.0.orientation
+    }
+
+    #[must_use]
+    pub const fn popup(&self) -> Option<SemanticPopupKind> {
+        self.0.popup
+    }
+
+    #[must_use]
+    pub const fn selection_mode(&self) -> Option<SemanticSelectionMode> {
+        self.0.selection_mode
+    }
+
+    #[must_use]
+    pub const fn collection_position(&self) -> Option<SemanticCollectionPosition> {
+        self.0.collection_position
+    }
+
+    #[must_use]
+    pub const fn hierarchy_level(&self) -> Option<SemanticHierarchyLevel> {
+        self.0.hierarchy_level
+    }
+
+    #[must_use]
+    pub fn placeholder(&self) -> Option<&str> {
+        self.0.placeholder.as_deref()
+    }
+
+    #[must_use]
+    pub const fn autocomplete(&self) -> Option<SemanticAutocomplete> {
+        self.0.autocomplete
+    }
+
+    #[must_use]
+    pub const fn editable_mode(&self) -> Option<SemanticEditableMode> {
+        self.0.editable_mode
     }
 
     #[must_use]
