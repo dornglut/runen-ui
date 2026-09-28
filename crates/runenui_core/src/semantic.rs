@@ -1338,6 +1338,11 @@ pub enum SemanticContributionError {
         role: SemanticRole,
         property: &'static str,
     },
+    PopupKindNotSupported {
+        key: SemanticKey,
+        role: SemanticRole,
+        popup: SemanticPopupKind,
+    },
     RelationshipNotSupported {
         key: SemanticKey,
         role: SemanticRole,
@@ -1403,6 +1408,10 @@ impl fmt::Display for SemanticContributionError {
             } => write!(
                 formatter,
                 "semantic node `{key}` with role {role:?} does not support semantic property `{property}`"
+            ),
+            Self::PopupKindNotSupported { key, role, popup } => write!(
+                formatter,
+                "semantic node `{key}` with role {role:?} does not support popup kind {popup:?}"
             ),
             Self::RelationshipNotSupported { key, role, kind } => write!(
                 formatter,
@@ -1629,17 +1638,35 @@ fn validate_node_property_contract(
     {
         return property_not_supported(node, "orientation");
     }
-    if node.popup().is_some()
-        && !matches!(
+    if let Some(popup) = node.popup() {
+        let role_supports_popup = matches!(
             role,
             SemanticRole::Button
                 | SemanticRole::ComboBox
                 | SemanticRole::MenuItem
                 | SemanticRole::MenuItemCheckbox
                 | SemanticRole::MenuItemRadio
-        )
-    {
-        return property_not_supported(node, "popup");
+        );
+        if !role_supports_popup {
+            return property_not_supported(node, "popup");
+        }
+        let kind_supported = match role {
+            SemanticRole::Button => true,
+            SemanticRole::ComboBox => {
+                matches!(popup, SemanticPopupKind::ListBox | SemanticPopupKind::Dialog)
+            }
+            SemanticRole::MenuItem
+            | SemanticRole::MenuItemCheckbox
+            | SemanticRole::MenuItemRadio => popup == SemanticPopupKind::Menu,
+            _ => false,
+        };
+        if !kind_supported {
+            return Err(SemanticContributionError::PopupKindNotSupported {
+                key: node.key().clone(),
+                role,
+                popup,
+            });
+        }
     }
     if node.selection_mode().is_some()
         && !matches!(role, SemanticRole::ListBox | SemanticRole::Tree)
@@ -2061,6 +2088,46 @@ mod tests {
                 property: "selection_mode",
             })
         );
+    }
+
+    #[test]
+    fn popup_kind_contract_is_role_aware_and_fail_closed() {
+        let context = SemanticContributionContext::default();
+
+        let combo_menu = SemanticNodeContribution::primary(SemanticRole::ComboBox)
+            .with_popup(SemanticPopupKind::Menu);
+        assert_eq!(
+            SemanticContribution::single(combo_menu).validate(context),
+            Err(SemanticContributionError::PopupKindNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::ComboBox,
+                popup: SemanticPopupKind::Menu,
+            })
+        );
+
+        let menu_item_listbox = SemanticNodeContribution::primary(SemanticRole::MenuItem)
+            .with_popup(SemanticPopupKind::ListBox);
+        assert_eq!(
+            SemanticContribution::single(menu_item_listbox).validate(context),
+            Err(SemanticContributionError::PopupKindNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::MenuItem,
+                popup: SemanticPopupKind::ListBox,
+            })
+        );
+
+        for popup in [
+            SemanticPopupKind::Menu,
+            SemanticPopupKind::ListBox,
+            SemanticPopupKind::Dialog,
+        ] {
+            let button = SemanticNodeContribution::primary(SemanticRole::Button).with_popup(popup);
+            assert!(
+                SemanticContribution::single(button)
+                    .validate(context)
+                    .is_ok()
+            );
+        }
     }
 
     #[test]
