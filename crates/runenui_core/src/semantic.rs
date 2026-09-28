@@ -1326,6 +1326,32 @@ pub enum SemanticContributionError {
         key: SemanticKey,
         role: SemanticRole,
     },
+    MissingRequiredProperty {
+        key: SemanticKey,
+        role: SemanticRole,
+        property: &'static str,
+    },
+    PropertyNotSupported {
+        key: SemanticKey,
+        role: SemanticRole,
+        property: &'static str,
+    },
+    RelationshipNotSupported {
+        key: SemanticKey,
+        role: SemanticRole,
+        kind: SemanticRelationshipKind,
+    },
+    DuplicateSingularRelationship {
+        key: SemanticKey,
+        kind: SemanticRelationshipKind,
+    },
+    ActiveDescendantRequiresControls {
+        key: SemanticKey,
+    },
+    EditableCombinationNotSupported {
+        key: SemanticKey,
+        role: SemanticRole,
+    },
 }
 
 impl fmt::Display for SemanticContributionError {
@@ -1356,6 +1382,38 @@ impl fmt::Display for SemanticContributionError {
             Self::MixedCheckedStateNotSupported { key, role } => write!(
                 formatter,
                 "semantic node `{key}` with role {role:?} does not support mixed checked state"
+            ),
+            Self::MissingRequiredProperty {
+                key,
+                role,
+                property,
+            } => write!(
+                formatter,
+                "semantic node `{key}` with role {role:?} requires semantic property `{property}`"
+            ),
+            Self::PropertyNotSupported {
+                key,
+                role,
+                property,
+            } => write!(
+                formatter,
+                "semantic node `{key}` with role {role:?} does not support semantic property `{property}`"
+            ),
+            Self::RelationshipNotSupported { key, role, kind } => write!(
+                formatter,
+                "semantic node `{key}` with role {role:?} does not support relationship {kind:?}"
+            ),
+            Self::DuplicateSingularRelationship { key, kind } => write!(
+                formatter,
+                "semantic node `{key}` has more than one singular relationship {kind:?}"
+            ),
+            Self::ActiveDescendantRequiresControls { key } => write!(
+                formatter,
+                "semantic ComboBox node `{key}` with ActiveDescendant must also control its popup"
+            ),
+            Self::EditableCombinationNotSupported { key, role } => write!(
+                formatter,
+                "semantic node `{key}` with role {role:?} has an unsupported editable role/mode/sensitivity combination"
             ),
         }
     }
@@ -1392,13 +1450,15 @@ fn validate_role_state_contract(items: &[SemanticItem]) -> Result<(), SemanticCo
         let SemanticItem::Node(node) = item else {
             continue;
         };
-        let checked = node.state().checked();
-        match node.role() {
-            SemanticRole::Checkbox => match checked {
+        let role = node.role();
+        let state = node.state();
+        let checked = state.checked();
+        match role {
+            SemanticRole::Checkbox | SemanticRole::MenuItemCheckbox => match checked {
                 None => {
                     return Err(SemanticContributionError::MissingRequiredCheckedState {
                         key: node.key().clone(),
-                        role: node.role(),
+                        role,
                     });
                 }
                 Some(
@@ -1410,21 +1470,23 @@ fn validate_role_state_contract(items: &[SemanticItem]) -> Result<(), SemanticCo
                 Some(_) => {
                     return Err(SemanticContributionError::CheckedStateNotSupported {
                         key: node.key().clone(),
-                        role: node.role(),
+                        role,
                     });
                 }
             },
-            SemanticRole::RadioButton | SemanticRole::Switch => match checked {
+            SemanticRole::RadioButton
+            | SemanticRole::Switch
+            | SemanticRole::MenuItemRadio => match checked {
                 None => {
                     return Err(SemanticContributionError::MissingRequiredCheckedState {
                         key: node.key().clone(),
-                        role: node.role(),
+                        role,
                     });
                 }
                 Some(SemanticCheckedState::Mixed) => {
                     return Err(SemanticContributionError::MixedCheckedStateNotSupported {
                         key: node.key().clone(),
-                        role: node.role(),
+                        role,
                     });
                 }
                 Some(SemanticCheckedState::Unchecked | SemanticCheckedState::Checked) => {}
@@ -1432,21 +1494,245 @@ fn validate_role_state_contract(items: &[SemanticItem]) -> Result<(), SemanticCo
                 Some(_) => {
                     return Err(SemanticContributionError::CheckedStateNotSupported {
                         key: node.key().clone(),
-                        role: node.role(),
+                        role,
                     });
                 }
             },
             _ if checked.is_some() => {
                 return Err(SemanticContributionError::CheckedStateNotSupported {
                     key: node.key().clone(),
-                    role: node.role(),
+                    role,
                 });
             }
             _ => {}
         }
+
+        if state.pressed().is_some() && role != SemanticRole::Button {
+            return property_not_supported(node, "pressed");
+        }
+        if state.selected().is_some()
+            && !matches!(
+                role,
+                SemanticRole::Option | SemanticRole::Tab | SemanticRole::TreeItem
+            )
+        {
+            return property_not_supported(node, "selected");
+        }
+        if state.expanded().is_some()
+            && !matches!(
+                role,
+                SemanticRole::Button
+                    | SemanticRole::ComboBox
+                    | SemanticRole::MenuItem
+                    | SemanticRole::MenuItemCheckbox
+                    | SemanticRole::MenuItemRadio
+                    | SemanticRole::TreeItem
+            )
+        {
+            return property_not_supported(node, "expanded");
+        }
+
+        let input_state_role = matches!(
+            role,
+            SemanticRole::EditableText
+                | SemanticRole::ComboBox
+                | SemanticRole::SpinButton
+                | SemanticRole::ListBox
+        );
+        if state.required().is_some() && !input_state_role {
+            return property_not_supported(node, "required");
+        }
+        if state.invalid().is_some() && !input_state_role {
+            return property_not_supported(node, "invalid");
+        }
+        if state.read_only_is_authored() && !input_state_role {
+            return property_not_supported(node, "read_only");
+        }
+        if state.modal().is_some() && role != SemanticRole::Dialog {
+            return property_not_supported(node, "modal");
+        }
+
+        match role {
+            SemanticRole::Slider | SemanticRole::Splitter => {
+                let range = required_range(node)?;
+                if range.minimum().is_none() {
+                    return missing_property(node, "range.minimum");
+                }
+                if range.maximum().is_none() {
+                    return missing_property(node, "range.maximum");
+                }
+                if range.current().is_none() {
+                    return missing_property(node, "range.current");
+                }
+            }
+            SemanticRole::Progress => {
+                let range = required_range(node)?;
+                if range.minimum().is_none() {
+                    return missing_property(node, "range.minimum");
+                }
+                if range.maximum().is_none() {
+                    return missing_property(node, "range.maximum");
+                }
+            }
+            SemanticRole::SpinButton => {
+                let _ = required_range(node)?;
+            }
+            _ if node.range().is_some() => return property_not_supported(node, "range"),
+            _ => {}
+        }
+
+        if node.orientation().is_some()
+            && !matches!(
+                role,
+                SemanticRole::Slider
+                    | SemanticRole::ListBox
+                    | SemanticRole::TabList
+                    | SemanticRole::Toolbar
+                    | SemanticRole::Menu
+                    | SemanticRole::MenuBar
+                    | SemanticRole::Separator
+                    | SemanticRole::Splitter
+            )
+        {
+            return property_not_supported(node, "orientation");
+        }
+        if node.popup().is_some()
+            && !matches!(
+                role,
+                SemanticRole::Button
+                    | SemanticRole::ComboBox
+                    | SemanticRole::MenuItem
+                    | SemanticRole::MenuItemCheckbox
+                    | SemanticRole::MenuItemRadio
+            )
+        {
+            return property_not_supported(node, "popup");
+        }
+        if node.selection_mode().is_some()
+            && !matches!(role, SemanticRole::ListBox | SemanticRole::Tree)
+        {
+            return property_not_supported(node, "selection_mode");
+        }
+        if node.collection_position().is_some()
+            && !matches!(role, SemanticRole::Option | SemanticRole::TreeItem)
+        {
+            return property_not_supported(node, "collection_position");
+        }
+        if node.hierarchy_level().is_some() && role != SemanticRole::TreeItem {
+            return property_not_supported(node, "hierarchy_level");
+        }
+        if node.placeholder().is_some()
+            && !matches!(
+                role,
+                SemanticRole::EditableText | SemanticRole::ComboBox | SemanticRole::SpinButton
+            )
+        {
+            return property_not_supported(node, "placeholder");
+        }
+        if node.autocomplete().is_some() && role != SemanticRole::ComboBox {
+            return property_not_supported(node, "autocomplete");
+        }
+
+        if let Some(mode) = node.editable_mode() {
+            if node.editable().is_none()
+                || !matches!(
+                    role,
+                    SemanticRole::EditableText | SemanticRole::ComboBox | SemanticRole::SpinButton
+                )
+                || (mode == SemanticEditableMode::Multiline && role != SemanticRole::EditableText)
+            {
+                return Err(SemanticContributionError::EditableCombinationNotSupported {
+                    key: node.key().clone(),
+                    role,
+                });
+            }
+        }
+        if let Some(editable) = node.editable() {
+            if !matches!(
+                role,
+                SemanticRole::EditableText | SemanticRole::ComboBox | SemanticRole::SpinButton
+            ) || (editable.sensitivity() == TextSensitivity::Secret
+                && node.editable_mode() == Some(SemanticEditableMode::Multiline))
+            {
+                return Err(SemanticContributionError::EditableCombinationNotSupported {
+                    key: node.key().clone(),
+                    role,
+                });
+            }
+        }
+
+        let mut active_descendant_count = 0usize;
+        let mut has_controls = false;
+        for relationship in node.relationships() {
+            match relationship.kind() {
+                SemanticRelationshipKind::ErrorMessage if !input_state_role => {
+                    return Err(SemanticContributionError::RelationshipNotSupported {
+                        key: node.key().clone(),
+                        role,
+                        kind: relationship.kind(),
+                    });
+                }
+                SemanticRelationshipKind::ActiveDescendant => {
+                    if role != SemanticRole::ComboBox {
+                        return Err(SemanticContributionError::RelationshipNotSupported {
+                            key: node.key().clone(),
+                            role,
+                            kind: relationship.kind(),
+                        });
+                    }
+                    active_descendant_count = active_descendant_count.saturating_add(1);
+                }
+                SemanticRelationshipKind::Controls => has_controls = true,
+                _ => {}
+            }
+        }
+        if active_descendant_count > 1 {
+            return Err(SemanticContributionError::DuplicateSingularRelationship {
+                key: node.key().clone(),
+                kind: SemanticRelationshipKind::ActiveDescendant,
+            });
+        }
+        if active_descendant_count == 1 && !has_controls {
+            return Err(SemanticContributionError::ActiveDescendantRequiresControls {
+                key: node.key().clone(),
+            });
+        }
+
         validate_role_state_contract(node.children())?;
     }
     Ok(())
+}
+
+fn property_not_supported(
+    node: &SemanticNodeContribution,
+    property: &'static str,
+) -> Result<(), SemanticContributionError> {
+    Err(SemanticContributionError::PropertyNotSupported {
+        key: node.key().clone(),
+        role: node.role(),
+        property,
+    })
+}
+
+fn missing_property(
+    node: &SemanticNodeContribution,
+    property: &'static str,
+) -> Result<(), SemanticContributionError> {
+    Err(SemanticContributionError::MissingRequiredProperty {
+        key: node.key().clone(),
+        role: node.role(),
+        property,
+    })
+}
+
+fn required_range(
+    node: &SemanticNodeContribution,
+) -> Result<&SemanticRange, SemanticContributionError> {
+    node.range().ok_or_else(|| SemanticContributionError::MissingRequiredProperty {
+        key: node.key().clone(),
+        role: node.role(),
+        property: "range",
+    })
 }
 
 fn validate_local_references(
