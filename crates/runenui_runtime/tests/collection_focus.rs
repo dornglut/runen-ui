@@ -374,7 +374,7 @@ fn disabled_discoverable_policy_participates_while_ordinary_focusable_skips() {
         discoverable
             .index()
             .node(&disabled)
-            .is_some_and(|node| node.is_focusable())
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
     );
 
     let mut ordinary = AppRuntime::<App>::mount(State {
