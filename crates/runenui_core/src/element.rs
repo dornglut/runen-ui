@@ -316,6 +316,13 @@ impl<Action> Element<Action> {
         self
     }
 
+    /// Authors the exact mounted focus-participation policy.
+    #[must_use]
+    pub const fn with_focusability(mut self, focusability: Focusability) -> Self {
+        self.focusability = focusability;
+        self
+    }
+
     /// Excludes this mounted node from focus selection as focus-hidden.
     ///
     /// This is a focus eligibility fact, not a renderer visibility contract.

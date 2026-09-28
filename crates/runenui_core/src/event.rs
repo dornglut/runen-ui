@@ -178,6 +178,8 @@ pub enum SemanticCommand {
     FocusPrevious,
     FocusGroupNext,
     FocusGroupPrevious,
+    FocusGroupFirst,
+    FocusGroupLast,
     FocusLeft,
     FocusRight,
     FocusUp,

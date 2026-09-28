@@ -115,13 +115,15 @@ impl<'a, Action> MountedNodeRef<'a, Action> {
     }
     #[must_use]
     pub fn is_focusable(&self) -> bool {
-        let a = self.activation();
-        a.enabled()
-            && match self.node.focusability {
-                Focusability::Automatic => a.is_actionable(),
-                Focusability::Focusable => true,
-                _ => false,
-            }
+        let Some(activation) = self.node.caches.activation.ready() else {
+            return false;
+        };
+        match self.node.focusability {
+            Focusability::Automatic => activation.enabled() && activation.is_actionable(),
+            Focusability::Focusable => activation.enabled(),
+            Focusability::FocusableWhenDisabled => true,
+            _ => false,
+        }
     }
     #[must_use]
     pub const fn focusability(&self) -> Focusability {

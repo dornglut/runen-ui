@@ -9,8 +9,8 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, ReconciliationDiagnostic,
-    RuntimeConfig, RuntimeLimits, RuntimeStatus, SurfaceBuildContext, TraceRecordKind,
-    TraceRoutedAdmissionRejection,
+    RuntimeConfig, RuntimeLimits, RuntimeStatus, SurfaceBuildContext, TraceConfig, TraceRecordKind,
+    TraceReplay, TraceRoutedAdmissionRejection,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -242,6 +242,123 @@ fn zero_eligible_group_contributes_no_external_focus_stop() {
     command(&mut runtime, before.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, before, SemanticCommand::FocusNext);
     assert_eq!(runtime.focus().focused_node(), Some(&after));
+}
+
+#[test]
+fn absolute_group_navigation_selects_first_and_last_eligible_members() {
+    let mut runtime = AppRuntime::<App>::mount(State {
+        activation: FocusGroupActivationPolicy::Manual,
+        boundary: FocusGroupBoundaryPolicy::Stop,
+        preferred_member: PreferredMemberState::Disabled,
+        ..State::default()
+    });
+    settle(&mut runtime);
+
+    let group = id(&mut runtime, "group");
+    let a = id(&mut runtime, "a");
+    let c = id(&mut runtime, "c");
+
+    command(&mut runtime, group, SemanticCommand::FocusGroupLast);
+    assert_eq!(runtime.focus().focused_node(), Some(&c));
+    assert_eq!(runtime.focus().reason(), Some(FocusReason::GroupNavigation));
+    assert!(runtime.state().activations.is_empty());
+
+    command(&mut runtime, c.clone(), SemanticCommand::FocusGroupFirst);
+    assert_eq!(runtime.focus().focused_node(), Some(&a));
+    assert_eq!(runtime.focus().reason(), Some(FocusReason::GroupNavigation));
+    assert!(runtime.state().activations.is_empty());
+
+    command(&mut runtime, a, SemanticCommand::FocusGroupLast);
+    assert_eq!(runtime.focus().focused_node(), Some(&c));
+    assert!(runtime.state().activations.is_empty());
+}
+
+#[test]
+fn absolute_group_navigation_activates_only_after_focus_commit() {
+    let mut runtime = AppRuntime::<App>::mount(State::default());
+    settle(&mut runtime);
+    let c = id(&mut runtime, "c");
+    let a = id(&mut runtime, "a");
+
+    command(&mut runtime, c.clone(), SemanticCommand::RequestFocus);
+    let trace_start = runtime.trace().len();
+    command(&mut runtime, c, SemanticCommand::FocusGroupFirst);
+    assert_eq!(runtime.focus().focused_node(), Some(&a));
+    assert_eq!(runtime.focus().reason(), Some(FocusReason::GroupNavigation));
+    assert!(runtime.state().activations.is_empty());
+
+    let records = runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .collect::<Vec<_>>();
+    let transition = records
+        .iter()
+        .position(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusTransitionCommitted {
+                    reason: FocusReason::GroupNavigation,
+                }
+            )
+        })
+        .unwrap_or_else(|| unreachable!("absolute group focus transition is traced"));
+    let delegated_activation = records
+        .iter()
+        .position(|record| {
+            matches!(record.kind(), TraceRecordKind::CommandSubmissionAccepted)
+                && record.original_target() == Some(&a)
+        })
+        .unwrap_or_else(|| {
+            unreachable!("absolute navigation delegates activation to the focused member")
+        });
+    assert!(transition < delegated_activation);
+
+    settle(&mut runtime);
+    assert_eq!(runtime.state().activations, vec!["a"]);
+}
+
+#[test]
+fn absolute_group_navigation_is_idempotent_at_the_requested_boundary() {
+    let mut runtime = AppRuntime::<App>::mount(State::default());
+    settle(&mut runtime);
+    let a = id(&mut runtime, "a");
+
+    command(&mut runtime, a.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, a.clone(), SemanticCommand::FocusGroupFirst);
+    assert_eq!(runtime.focus().focused_node(), Some(&a));
+    assert!(runtime.state().activations.is_empty());
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        0
+    );
+    assert!(runtime.state().activations.is_empty());
+}
+
+#[test]
+fn absolute_group_navigation_trace_exports_and_replays_stable_tokens() {
+    let mut runtime = AppRuntime::<App>::mount_with_config(
+        State {
+            activation: FocusGroupActivationPolicy::Manual,
+            ..State::default()
+        },
+        RuntimeConfig::default().with_trace_config(TraceConfig::new(512)),
+    );
+    settle(&mut runtime);
+
+    let group = id(&mut runtime, "group");
+    let c = id(&mut runtime, "c");
+    command(&mut runtime, group, SemanticCommand::FocusGroupLast);
+    command(&mut runtime, c, SemanticCommand::FocusGroupFirst);
+
+    let jsonl = runtime.trace().export_jsonl();
+    assert!(jsonl.contains("\"focus_group_first\""));
+    assert!(jsonl.contains("\"focus_group_last\""));
+    let replay = TraceReplay::parse_jsonl(&jsonl)
+        .unwrap_or_else(|error| unreachable!("complete focus-group trace replays: {error}"));
+    assert!(replay.is_complete());
 }
 
 #[test]
@@ -782,7 +899,10 @@ impl Widget<Action> for OutputPressureGroup {
             && event.as_semantic_command().is_some_and(|command| {
                 matches!(
                     command.command(),
-                    SemanticCommand::FocusGroupNext | SemanticCommand::FocusGroupPrevious
+                    SemanticCommand::FocusGroupNext
+                        | SemanticCommand::FocusGroupPrevious
+                        | SemanticCommand::FocusGroupFirst
+                        | SemanticCommand::FocusGroupLast
                 )
             })
         {
@@ -844,6 +964,63 @@ fn pressure_id(runtime: &mut AppRuntime<OutputPressureApp>, name: &str) -> Mount
         .unwrap_or_else(|| unreachable!("named output-pressure node is mounted"))
         .id()
         .clone()
+}
+
+#[test]
+fn absolute_group_navigation_reserves_activation_capacity_before_focus_commit() {
+    let config =
+        RuntimeConfig::default().with_limits(RuntimeLimits::default().with_transaction_outputs(1));
+    let mut runtime = AppRuntime::<OutputPressureApp>::mount_with_config(State::default(), config);
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+
+    let a = pressure_id(&mut runtime, "pressure.a");
+    let b = pressure_id(&mut runtime, "pressure.b");
+
+    runtime
+        .submit_command(
+            a.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("pressure focus request is accepted"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+
+    runtime
+        .submit_command(
+            a,
+            SemanticCommand::FocusGroupLast,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("absolute pressure navigation is accepted"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.focus().focused_node(), Some(&b));
+    assert!(runtime.state().activations.is_empty());
+
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.state().activations, vec!["routed", "b"]);
 }
 
 #[test]

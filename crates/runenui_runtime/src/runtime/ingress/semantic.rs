@@ -120,7 +120,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
         }
         let state = node.state();
-        if state.disabled() || state.inert() {
+        let disabled_focus_request = *action == SemanticAction::RequestFocus
+            && authority.key() == &SemanticKey::PRIMARY
+            && authority.focusability() == Focusability::FocusableWhenDisabled;
+        if state.inert() || (state.disabled() && !disabled_focus_request) {
             return Err(SubmitSemanticActionErrorKind::UnavailableAction);
         }
         if let Some(editable) = node.editable() {
@@ -168,6 +171,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
 fn semantic_action_is_ready(authority: &SemanticActionAuthority, action: &SemanticAction) -> bool {
     let activation = authority.activation();
+    if *action == SemanticAction::RequestFocus {
+        return authority.key() == &SemanticKey::PRIMARY
+            && match authority.focusability() {
+                Focusability::Automatic => activation.enabled() && activation.is_actionable(),
+                Focusability::Focusable => activation.enabled(),
+                Focusability::FocusableWhenDisabled => true,
+                _ => false,
+            };
+    }
     if !activation.enabled() {
         return false;
     }
@@ -175,14 +187,7 @@ fn semantic_action_is_ready(authority: &SemanticActionAuthority, action: &Semant
         SemanticAction::Activate => {
             authority.key() != &SemanticKey::PRIMARY || activation.is_actionable()
         }
-        SemanticAction::RequestFocus => {
-            authority.key() == &SemanticKey::PRIMARY
-                && match authority.focusability() {
-                    Focusability::Focusable => true,
-                    Focusability::Automatic => activation.is_actionable(),
-                    _ => false,
-                }
-        }
+        SemanticAction::RequestFocus => unreachable!("focus readiness returned above"),
         SemanticAction::OpenMenu | SemanticAction::OpenContextMenu => true,
         SemanticAction::MoveBackward
         | SemanticAction::MoveForward

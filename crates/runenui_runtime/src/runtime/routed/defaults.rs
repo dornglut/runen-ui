@@ -8,7 +8,9 @@ use super::{
     super::{CollectedRoutedOutput, Runtime, ingress::trace_semantic_action_rejection},
     transaction::RoutedTransaction,
 };
-use crate::{TraceRecordKind, TraceRoutedIntegrityFailure, TraceSemanticActionRejection};
+use crate::{
+    MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
+};
 
 const MAX_CLIPBOARD_BYTES: usize = 1_048_576;
 
@@ -299,8 +301,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     fn apply_scroll_into_view_default(&self, transaction: &mut RoutedTransaction<Action>) {
-        let target = &transaction.target;
-        for owner in transaction.route.iter().rev() {
+        let target = transaction.target.clone();
+        let route = transaction.route.clone();
+        self.apply_scroll_into_view_target(transaction, &target, &route);
+    }
+
+    pub(in crate::runtime) fn apply_scroll_into_view_target(
+        &self,
+        transaction: &mut RoutedTransaction<Action>,
+        target: &MountedNodeId,
+        route: &[MountedNodeId],
+    ) {
+        for owner in route.iter().rev() {
             let Some(metrics) = self.surface_publication.current_scroll_metrics(owner) else {
                 continue;
             };

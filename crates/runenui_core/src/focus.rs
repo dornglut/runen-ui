@@ -228,6 +228,11 @@ pub enum Focusability {
     Automatic,
     /// Participate while the widget remains enabled, even when not actionable.
     Focusable,
+    /// Participate even while the widget's ordinary activation capability is disabled.
+    ///
+    /// This is an explicit discoverability policy for composite controls. It does
+    /// not make disabled activation or other unavailable semantic actions executable.
+    FocusableWhenDisabled,
     /// Do not participate in focus selection.
     NotFocusable,
     /// Exclude this node as hidden from focus selection.

@@ -1,9 +1,9 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Element, NoHostProtocol, SemanticAction, SemanticActionRequest, SemanticContribution,
-    SemanticContributionContext, SemanticKey, SemanticNodeContribution, SemanticRole,
-    SemanticState, StyleEnvironment, UiApp, Widget, WidgetActivation,
+    Element, Focusability, NoHostProtocol, SemanticAction, SemanticActionRequest,
+    SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeContribution,
+    SemanticRole, SemanticState, StyleEnvironment, UiApp, Widget, WidgetActivation,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, SubmitSemanticActionError,
@@ -13,6 +13,7 @@ use runenui_runtime::{
 #[derive(Clone, Copy, Debug)]
 enum Case {
     FocusOwnerDisabled,
+    FocusOwnerDisabledDiscoverable,
     MenuNodeDisabled,
     MenuNodeInert,
 }
@@ -30,6 +31,7 @@ impl Widget<()> for ProbeWidget {
     fn activation(&self, (): &Self::State) -> WidgetActivation {
         match self.case {
             Case::FocusOwnerDisabled => WidgetActivation::disabled(),
+            Case::FocusOwnerDisabledDiscoverable => WidgetActivation::actionable(false),
             Case::MenuNodeDisabled | Case::MenuNodeInert => WidgetActivation::NONE,
         }
     }
@@ -41,13 +43,21 @@ impl Widget<()> for ProbeWidget {
                     .with_name("primary")
                     .with_action(SemanticAction::RequestFocus),
             ),
+            Case::FocusOwnerDisabledDiscoverable => SemanticContribution::single(
+                SemanticNodeContribution::primary(SemanticRole::Button)
+                    .with_name("primary")
+                    .with_action(SemanticAction::RequestFocus)
+                    .with_action(SemanticAction::Activate),
+            ),
             Case::MenuNodeDisabled | Case::MenuNodeInert => {
                 let named = SemanticKey::from_static("named")
                     .unwrap_or_else(|_| unreachable!("static semantic key is valid"));
                 let state = match self.case {
                     Case::MenuNodeDisabled => SemanticState::ENABLED.with_disabled(true),
                     Case::MenuNodeInert => SemanticState::ENABLED.with_inert(true),
-                    Case::FocusOwnerDisabled => unreachable!("focus case handled above"),
+                    Case::FocusOwnerDisabled | Case::FocusOwnerDisabledDiscoverable => {
+                        unreachable!("focus case handled above")
+                    }
                 };
                 SemanticContribution::single(
                     SemanticNodeContribution::primary(SemanticRole::Group).with_child(
@@ -81,6 +91,9 @@ impl UiApp for App {
             .key("probe");
         match state.case {
             Case::FocusOwnerDisabled => element.focusable(true),
+            Case::FocusOwnerDisabledDiscoverable => {
+                element.with_focusability(Focusability::FocusableWhenDisabled)
+            }
             Case::MenuNodeDisabled | Case::MenuNodeInert => element,
         }
     }
@@ -138,6 +151,64 @@ fn explicitly_focusable_disabled_owner_retains_focus_support_but_is_unavailable(
     );
     assert_eq!(error.into_request(), expected);
     assert_eq!(runtime.focus().focused_node(), None);
+}
+
+#[test]
+fn disabled_discoverable_owner_accepts_focus_but_not_activation() {
+    let mut runtime = runtime(Case::FocusOwnerDisabledDiscoverable);
+    runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0));
+    let style_environment = StyleEnvironment::default();
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::new(
+            &style_environment,
+            LayoutConstraints::unbounded(),
+        ))
+        .unwrap_or_else(|_| unreachable!("semantic publication is admitted"));
+    let snapshot = publication.semantic_publication().snapshot();
+    let target = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.name() == Some("primary"))
+        .unwrap_or_else(|| unreachable!("primary semantic node is published"));
+    assert!(target.state().disabled());
+    assert!(
+        target
+            .supported_actions()
+            .contains(&SemanticAction::RequestFocus)
+    );
+    assert!(
+        target
+            .supported_actions()
+            .contains(&SemanticAction::Activate)
+    );
+
+    let request = SemanticActionRequest::new(
+        snapshot.surface_id().clone(),
+        target.id().clone(),
+        SemanticAction::Activate,
+    );
+    let expected = request.clone();
+    let error = expect_rejection(runtime.submit_semantic_action(request));
+    assert_eq!(
+        error.kind(),
+        SubmitSemanticActionErrorKind::UnavailableAction
+    );
+    assert_eq!(error.into_request(), expected);
+
+    runtime
+        .submit_semantic_action(SemanticActionRequest::new(
+            snapshot.surface_id().clone(),
+            target.id().clone(),
+            SemanticAction::RequestFocus,
+        ))
+        .unwrap_or_else(|error| unreachable!("discoverable disabled focus is accepted: {error:?}"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+    assert!(runtime.focus().focused_node().is_some());
 }
 
 #[test]

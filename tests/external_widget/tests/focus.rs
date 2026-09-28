@@ -5,7 +5,7 @@ use std::{cell::RefCell, rc::Rc};
 use runenui_core::{
     CommandOrigin, Element, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusGroup,
     FocusGroupBoundaryPolicy, FocusGroupEntry, FocusReason, FocusScope, FocusScopePolicy,
-    NoHostProtocol, SemanticCommand, UiApp, View, column, container,
+    Focusability, NoHostProtocol, SemanticCommand, UiApp, View, column, container,
 };
 use runenui_external_widget_conformance::{
     ExternalFocusFact, ExternalFocusWidget, external_focus_panel,
@@ -329,6 +329,9 @@ impl UiApp for ExternalGroupApp {
                     .id("group.b")
                     .focusable(true)
                     .focus_group_preferred(true),
+                Element::new(ExternalFocusWidget::new("c", Rc::clone(state), false))
+                    .id("group.c")
+                    .with_focusability(Focusability::FocusableWhenDisabled),
             ],
         )
         .id("group.root")
@@ -370,6 +373,7 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
     let group = group_id(&mut runtime, "group.root");
     let a = group_id(&mut runtime, "group.a");
     let b = group_id(&mut runtime, "group.b");
+    let c = group_id(&mut runtime, "group.c");
 
     assert_eq!(
         runtime
@@ -406,13 +410,39 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.focus().focused_node(), Some(&b));
 
+    assert!(
+        runtime
+            .index()
+            .node(&c)
+            .unwrap_or_else(|| unreachable!("disabled discoverable member is public"))
+            .is_focusable()
+    );
+    assert!(
+        !runtime
+            .index()
+            .node(&c)
+            .unwrap_or_else(|| unreachable!("disabled discoverable member is public"))
+            .activation()
+            .enabled()
+    );
+
     runtime
         .submit_command(
             b,
-            SemanticCommand::FocusGroupNext,
+            SemanticCommand::FocusGroupLast,
             CommandOrigin::programmatic(),
         )
-        .unwrap_or_else(|_| unreachable!("external group navigation is accepted"));
+        .unwrap_or_else(|_| unreachable!("external absolute group navigation is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.focus().focused_node(), Some(&c));
+
+    runtime
+        .submit_command(
+            c,
+            SemanticCommand::FocusGroupFirst,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("external first-member navigation is accepted"));
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.focus().focused_node(), Some(&a));
 }
