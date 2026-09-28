@@ -452,7 +452,7 @@ fn supported_actions(
                 authored.key().is_primary()
                     && match owner.focusability {
                         Focusability::Automatic => owner.activation.is_actionable(),
-                        Focusability::Focusable => true,
+                        Focusability::Focusable | Focusability::FocusableWhenDisabled => true,
                         _ => false,
                     }
             }

@@ -13,8 +13,8 @@ use crate::{
     TraceRecordKind, TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSequence,
     TraceSpaceCleanupReason, TraceSurfaceContext, TraceTarget, TraceTargetTransition, WorkSequence,
     focus::{
-        FocusBoundaryOutcome, FocusNavigation, FocusSelection, is_focus_eligible, nearest_scope,
-        select_focus, select_focus_group_member,
+        FocusBoundaryOutcome, FocusGroupNavigation, FocusNavigation, FocusSelection,
+        is_focus_eligible, nearest_scope, select_focus, select_focus_group_member,
     },
     mounted::{PlannedInvalidation, PlannedLifetimeReason, RouteBuildError, TargetStatus},
     trace::{MandatoryTracePlan, TraceRecordDraft, TraceReservation},
@@ -383,15 +383,25 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         transaction: &mut RoutedTransaction<Action>,
         command: SemanticCommand,
     ) -> Result<(), TraceRoutedIntegrityFailure> {
-        let forward = command == SemanticCommand::FocusGroupNext;
+        let navigation = match command {
+            SemanticCommand::FocusGroupNext => FocusGroupNavigation::Next,
+            SemanticCommand::FocusGroupPrevious => FocusGroupNavigation::Previous,
+            SemanticCommand::FocusGroupFirst => FocusGroupNavigation::First,
+            SemanticCommand::FocusGroupLast => FocusGroupNavigation::Last,
+            _ => return Ok(()),
+        };
         let Some(selection) =
-            select_focus_group_member(&mut self.tree, &self.focus, &transaction.target, forward)
+            select_focus_group_member(&mut self.tree, &self.focus, &transaction.target, navigation)
         else {
             return Ok(());
         };
         let Some(target) = selection.target else {
             return Ok(());
         };
+        let moved = self.focus.focused_node() != Some(&target);
+        let reveal_route = moved
+            .then(|| self.checked_focus_route(&target))
+            .transpose()?;
         let activate_target =
             selection.activation == runenui_core::FocusGroupActivationPolicy::ActivateTarget;
         if activate_target {
@@ -402,6 +412,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Some(target.clone()),
             FocusReason::GroupNavigation,
         )?;
+        if let Some(route) = reveal_route.as_deref() {
+            self.apply_scroll_into_view_target(transaction, &target, route);
+        }
         if activate_target {
             transaction
                 .default_outputs
@@ -433,7 +446,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         if matches!(
             command,
-            SemanticCommand::FocusGroupNext | SemanticCommand::FocusGroupPrevious
+            SemanticCommand::FocusGroupNext
+                | SemanticCommand::FocusGroupPrevious
+                | SemanticCommand::FocusGroupFirst
+                | SemanticCommand::FocusGroupLast
         ) {
             return self.apply_focus_group_default(transaction, command);
         }

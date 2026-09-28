@@ -195,12 +195,12 @@ pub fn is_focus_eligible<Action>(tree: &mut MountedTree<Action>, id: &MountedNod
     let Ok(activation) = tree.activation(id) else {
         return false;
     };
-    activation.enabled()
-        && match focusability {
-            Focusability::Automatic => activation.is_actionable(),
-            Focusability::Focusable => true,
-            _ => false,
-        }
+    match focusability {
+        Focusability::Automatic => activation.enabled() && activation.is_actionable(),
+        Focusability::Focusable => activation.enabled(),
+        Focusability::FocusableWhenDisabled => true,
+        _ => false,
+    }
 }
 
 fn nearest_group<Action>(tree: &MountedTree<Action>, id: &MountedNodeId) -> Option<MountedNodeId> {
@@ -399,6 +399,14 @@ fn candidates<Action>(
     output
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FocusGroupNavigation {
+    Previous,
+    Next,
+    First,
+    Last,
+}
+
 pub struct FocusGroupSelection {
     pub target: Option<MountedNodeId>,
     pub activation: FocusGroupActivationPolicy,
@@ -455,7 +463,7 @@ pub fn select_focus_group_member<Action>(
     tree: &mut MountedTree<Action>,
     state: &FocusState,
     command_target: &MountedNodeId,
-    forward: bool,
+    navigation: FocusGroupNavigation,
 ) -> Option<FocusGroupSelection> {
     let current = state.focused_node().unwrap_or(command_target);
     let group = focus_group_for_command(tree, state, command_target)?;
@@ -468,19 +476,32 @@ pub fn select_focus_group_member<Action>(
             activation: config.activation(),
         });
     }
+    let absolute = match navigation {
+        FocusGroupNavigation::First => members.first(),
+        FocusGroupNavigation::Last => members.last(),
+        FocusGroupNavigation::Previous | FocusGroupNavigation::Next => None,
+    };
+    if let Some(member) = absolute {
+        return Some(FocusGroupSelection {
+            target: (!focus_group_member_contains(tree, member, current))
+                .then(|| member.target.clone()),
+            activation: config.activation(),
+        });
+    }
+
     let position = members
         .iter()
         .position(|member| focus_group_member_contains(tree, member, current));
-    let target = position.and_then(|position| {
-        if forward {
-            members
-                .get(position + 1)
-                .map(|member| member.target.clone())
-        } else {
-            position
-                .checked_sub(1)
-                .and_then(|previous| members.get(previous))
-                .map(|member| member.target.clone())
+    let target = position.and_then(|position| match navigation {
+        FocusGroupNavigation::Next => members
+            .get(position + 1)
+            .map(|member| member.target.clone()),
+        FocusGroupNavigation::Previous => position
+            .checked_sub(1)
+            .and_then(|previous| members.get(previous))
+            .map(|member| member.target.clone()),
+        FocusGroupNavigation::First | FocusGroupNavigation::Last => {
+            unreachable!("absolute group navigation returned above")
         }
     });
     if target.is_some() {
@@ -490,11 +511,14 @@ pub fn select_focus_group_member<Action>(
         });
     }
     let target = if config.boundary() == FocusGroupBoundaryPolicy::Wrap {
-        if forward {
-            members.first().map(|member| member.target.clone())
-        } else {
-            members.last().map(|member| member.target.clone())
+        match navigation {
+            FocusGroupNavigation::Next => members.first(),
+            FocusGroupNavigation::Previous => members.last(),
+            FocusGroupNavigation::First | FocusGroupNavigation::Last => {
+                unreachable!("absolute group navigation returned above")
+            }
         }
+        .map(|member| member.target.clone())
     } else {
         None
     };

@@ -168,6 +168,8 @@ pub(super) fn semantic_command(output: &mut String, command: SemanticCommand) {
         SemanticCommand::FocusPrevious => json::string(output, "focus_previous"),
         SemanticCommand::FocusGroupNext => json::string(output, "focus_group_next"),
         SemanticCommand::FocusGroupPrevious => json::string(output, "focus_group_previous"),
+        SemanticCommand::FocusGroupFirst => json::string(output, "focus_group_first"),
+        SemanticCommand::FocusGroupLast => json::string(output, "focus_group_last"),
         SemanticCommand::FocusLeft => json::string(output, "focus_left"),
         SemanticCommand::FocusRight => json::string(output, "focus_right"),
         SemanticCommand::FocusUp => json::string(output, "focus_up"),
