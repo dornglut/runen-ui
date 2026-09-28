@@ -11,8 +11,11 @@ use core::num::NonZeroU64;
 use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
-    LogicalRect, SemanticAction, SemanticCheckedState, SemanticEditable, SemanticRelationshipKind,
-    SemanticRole, SemanticText, SemanticValue, SurfaceId,
+    LogicalRect, SemanticAction, SemanticAutocomplete, SemanticCheckedState,
+    SemanticCollectionPosition, SemanticEditable, SemanticEditableMode, SemanticHierarchyLevel,
+    SemanticInvalidState, SemanticOrientation, SemanticPopupKind, SemanticPressedState,
+    SemanticRange, SemanticRelationshipKind, SemanticRole, SemanticSelectionMode, SemanticText,
+    SemanticValue, SurfaceId,
 };
 
 use crate::SemanticNodeId;
@@ -50,6 +53,12 @@ pub struct SemanticNodeState {
     inert: bool,
     read_only: bool,
     checked: Option<SemanticCheckedState>,
+    pressed: Option<SemanticPressedState>,
+    selected: Option<bool>,
+    expanded: Option<bool>,
+    required: Option<bool>,
+    invalid: Option<SemanticInvalidState>,
+    modal: Option<bool>,
 }
 
 impl SemanticNodeState {
@@ -75,6 +84,36 @@ impl SemanticNodeState {
     #[must_use]
     pub const fn checked(self) -> Option<SemanticCheckedState> {
         self.checked
+    }
+
+    #[must_use]
+    pub const fn pressed(self) -> Option<SemanticPressedState> {
+        self.pressed
+    }
+
+    #[must_use]
+    pub const fn selected(self) -> Option<bool> {
+        self.selected
+    }
+
+    #[must_use]
+    pub const fn expanded(self) -> Option<bool> {
+        self.expanded
+    }
+
+    #[must_use]
+    pub const fn required(self) -> Option<bool> {
+        self.required
+    }
+
+    #[must_use]
+    pub const fn invalid(self) -> Option<SemanticInvalidState> {
+        self.invalid
+    }
+
+    #[must_use]
+    pub const fn modal(self) -> Option<bool> {
+        self.modal
     }
 }
 
@@ -119,6 +158,15 @@ pub struct SemanticNode {
     bounds: LogicalRect,
     text: Option<SemanticText>,
     editable: Option<SemanticEditable>,
+    range: Option<SemanticRange>,
+    orientation: Option<SemanticOrientation>,
+    popup: Option<SemanticPopupKind>,
+    selection_mode: Option<SemanticSelectionMode>,
+    collection_position: Option<SemanticCollectionPosition>,
+    hierarchy_level: Option<SemanticHierarchyLevel>,
+    placeholder: Option<String>,
+    autocomplete: Option<SemanticAutocomplete>,
+    editable_mode: Option<SemanticEditableMode>,
 }
 
 impl SemanticNode {
@@ -201,6 +249,51 @@ impl SemanticNode {
     #[must_use]
     pub const fn editable(&self) -> Option<&SemanticEditable> {
         self.editable.as_ref()
+    }
+
+    #[must_use]
+    pub const fn range(&self) -> Option<&SemanticRange> {
+        self.range.as_ref()
+    }
+
+    #[must_use]
+    pub const fn orientation(&self) -> Option<SemanticOrientation> {
+        self.orientation
+    }
+
+    #[must_use]
+    pub const fn popup(&self) -> Option<SemanticPopupKind> {
+        self.popup
+    }
+
+    #[must_use]
+    pub const fn selection_mode(&self) -> Option<SemanticSelectionMode> {
+        self.selection_mode
+    }
+
+    #[must_use]
+    pub const fn collection_position(&self) -> Option<SemanticCollectionPosition> {
+        self.collection_position
+    }
+
+    #[must_use]
+    pub const fn hierarchy_level(&self) -> Option<SemanticHierarchyLevel> {
+        self.hierarchy_level
+    }
+
+    #[must_use]
+    pub fn placeholder(&self) -> Option<&str> {
+        self.placeholder.as_deref()
+    }
+
+    #[must_use]
+    pub const fn autocomplete(&self) -> Option<SemanticAutocomplete> {
+        self.autocomplete
+    }
+
+    #[must_use]
+    pub const fn editable_mode(&self) -> Option<SemanticEditableMode> {
+        self.editable_mode
     }
 }
 

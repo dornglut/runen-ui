@@ -2,9 +2,12 @@ use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
     __runtime::transform_rect_aabb, ElementId, Focusability, LogicalRect, LogicalTransform,
-    MountedNodeId, SemanticAction, SemanticBounds, SemanticCheckedState, SemanticContribution,
-    SemanticEditable, SemanticItem, SemanticKey, SemanticNodeContribution, SemanticReference,
-    SemanticRelationshipKind, SemanticRole, SemanticText, SemanticValue, WidgetActivation,
+    MountedNodeId, SemanticAction, SemanticAutocomplete, SemanticBounds, SemanticCheckedState,
+    SemanticCollectionPosition, SemanticContribution, SemanticEditable, SemanticEditableMode,
+    SemanticHierarchyLevel, SemanticInvalidState, SemanticItem, SemanticKey,
+    SemanticNodeContribution, SemanticOrientation, SemanticPopupKind, SemanticPressedState,
+    SemanticRange, SemanticReference, SemanticRelationshipKind, SemanticRole,
+    SemanticSelectionMode, SemanticText, SemanticValue, WidgetActivation,
 };
 
 use crate::SemanticNodeId;
@@ -43,11 +46,26 @@ pub struct SemanticCandidateNode {
     pub inert: bool,
     pub read_only: bool,
     pub checked: Option<SemanticCheckedState>,
+    pub pressed: Option<SemanticPressedState>,
+    pub selected: Option<bool>,
+    pub expanded: Option<bool>,
+    pub required: Option<bool>,
+    pub invalid: Option<SemanticInvalidState>,
+    pub modal: Option<bool>,
     pub supported_actions: Vec<SemanticAction>,
     pub relationships: Vec<ResolvedSemanticRelationship>,
     pub bounds: LogicalRect,
     pub text: Option<SemanticText>,
     pub editable: Option<SemanticEditable>,
+    pub range: Option<SemanticRange>,
+    pub orientation: Option<SemanticOrientation>,
+    pub popup: Option<SemanticPopupKind>,
+    pub selection_mode: Option<SemanticSelectionMode>,
+    pub collection_position: Option<SemanticCollectionPosition>,
+    pub hierarchy_level: Option<SemanticHierarchyLevel>,
+    pub placeholder: Option<String>,
+    pub autocomplete: Option<SemanticAutocomplete>,
+    pub editable_mode: Option<SemanticEditableMode>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -290,6 +308,12 @@ impl<'a> SemanticCompositor<'a> {
             read_only: authored.state().read_only()
                 || authored.editable().is_some_and(SemanticEditable::read_only),
             checked: authored.state().checked(),
+            pressed: authored.state().pressed(),
+            selected: authored.state().selected(),
+            expanded: authored.state().expanded(),
+            required: authored.state().required(),
+            invalid: authored.state().invalid(),
+            modal: authored.state().modal(),
             supported_actions: supported_actions(authored, owner, editable.as_ref()),
             relationships: Vec::new(),
             bounds,
@@ -297,6 +321,15 @@ impl<'a> SemanticCompositor<'a> {
                 .then(|| authored.text().cloned())
                 .flatten(),
             editable,
+            range: authored.range().cloned(),
+            orientation: authored.orientation(),
+            popup: authored.popup(),
+            selection_mode: authored.selection_mode(),
+            collection_position: authored.collection_position(),
+            hierarchy_level: authored.hierarchy_level(),
+            placeholder: authored.placeholder().map(str::to_owned),
+            autocomplete: authored.autocomplete(),
+            editable_mode: authored.editable_mode(),
         };
         if self
             .visible_ids

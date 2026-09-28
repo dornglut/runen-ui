@@ -136,10 +136,25 @@ fn candidate_node_matches(candidate: &SemanticCandidateNode, published: &Semanti
         && candidate.inert == published.state.inert
         && candidate.read_only == published.state.read_only
         && candidate.checked == published.state.checked
+        && candidate.pressed == published.state.pressed
+        && candidate.selected == published.state.selected
+        && candidate.expanded == published.state.expanded
+        && candidate.required == published.state.required
+        && candidate.invalid == published.state.invalid
+        && candidate.modal == published.state.modal
         && candidate.supported_actions == published.supported_actions
         && candidate.bounds == published.bounds
         && candidate.text == published.text
         && candidate.editable == published.editable
+        && candidate.range == published.range
+        && candidate.orientation == published.orientation
+        && candidate.popup == published.popup
+        && candidate.selection_mode == published.selection_mode
+        && candidate.collection_position == published.collection_position
+        && candidate.hierarchy_level == published.hierarchy_level
+        && candidate.placeholder == published.placeholder
+        && candidate.autocomplete == published.autocomplete
+        && candidate.editable_mode == published.editable_mode
         && candidate.relationships.len() == published.relationships.len()
         && candidate
             .relationships
@@ -172,6 +187,12 @@ fn publication_from_candidate(
                 inert: node.inert,
                 read_only: node.read_only,
                 checked: node.checked,
+                pressed: node.pressed,
+                selected: node.selected,
+                expanded: node.expanded,
+                required: node.required,
+                invalid: node.invalid,
+                modal: node.modal,
             },
             supported_actions: node.supported_actions,
             relationships: node
@@ -185,6 +206,15 @@ fn publication_from_candidate(
             bounds: node.bounds,
             text: node.text,
             editable: node.editable,
+            range: node.range,
+            orientation: node.orientation,
+            popup: node.popup,
+            selection_mode: node.selection_mode,
+            collection_position: node.collection_position,
+            hierarchy_level: node.hierarchy_level,
+            placeholder: node.placeholder,
+            autocomplete: node.autocomplete,
+            editable_mode: node.editable_mode,
         })
         .collect::<Vec<_>>();
     let index = nodes
@@ -243,7 +273,7 @@ mod tests {
 
     use runenui_core::{
         __runtime::RuntimeNamespace, LogicalPoint, LogicalRect, LogicalSize, SemanticCheckedState,
-        SemanticRole,
+        SemanticNumber, SemanticOrientation, SemanticRange, SemanticRole,
     };
 
     use crate::semantic_compositor::{
@@ -283,11 +313,26 @@ mod tests {
                 inert: false,
                 read_only: false,
                 checked: None,
+                pressed: None,
+                selected: None,
+                expanded: None,
+                required: None,
+                invalid: None,
+                modal: None,
                 supported_actions: Vec::new(),
                 relationships: Vec::new(),
                 bounds: rect(width),
                 text: None,
                 editable: None,
+                range: None,
+                orientation: None,
+                popup: None,
+                selection_mode: None,
+                collection_position: None,
+                hierarchy_level: None,
+                placeholder: None,
+                autocomplete: None,
+                editable_mode: None,
             }],
             focused: Some(id),
             diagnostics,
@@ -454,6 +499,115 @@ mod tests {
         assert_eq!(
             update.changed()[0].state().checked(),
             Some(SemanticCheckedState::Checked)
+        );
+    }
+
+    #[test]
+    fn selected_state_change_advances_revision_and_is_present_in_delta() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let surface = namespace.__runtime_surface_id(0, 1);
+        let mut state = SemanticPublicationState::default();
+
+        let mut initial_candidate = candidate(&namespace, 10.0, Vec::new());
+        initial_candidate.nodes[0].role = SemanticRole::Option;
+        initial_candidate.nodes[0].selected = Some(false);
+        let initial = state
+            .plan(&surface, Some(planned(initial_candidate)))
+            .unwrap_or_else(|_| unreachable!("first semantic revision is available"));
+        state.commit(initial);
+
+        let mut changed_candidate = candidate(&namespace, 10.0, Vec::new());
+        changed_candidate.nodes[0].role = SemanticRole::Option;
+        changed_candidate.nodes[0].selected = Some(true);
+        let changed = state
+            .plan(&surface, Some(planned(changed_candidate)))
+            .unwrap_or_else(|_| unreachable!("second semantic revision is available"));
+        state.commit(changed);
+
+        let current = state
+            .current
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("changed semantic products committed"));
+        assert_eq!(current.publication.snapshot().revision().get(), 2);
+        assert_eq!(
+            current.publication.snapshot().nodes()[0].state().selected(),
+            Some(true)
+        );
+        let update = current
+            .publication
+            .update()
+            .unwrap_or_else(|| unreachable!("selected-state change retains one delta"));
+        assert_eq!(update.changed().len(), 1);
+        assert_eq!(update.changed()[0].state().selected(), Some(true));
+    }
+
+    #[test]
+    fn range_and_orientation_changes_advance_revision_and_are_present_in_delta() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let surface = namespace.__runtime_surface_id(0, 1);
+        let mut state = SemanticPublicationState::default();
+        let minimum = SemanticNumber::new(0.0)
+            .unwrap_or_else(|_| unreachable!("controlled minimum is finite"));
+        let maximum = SemanticNumber::new(100.0)
+            .unwrap_or_else(|_| unreachable!("controlled maximum is finite"));
+
+        let mut initial_candidate = candidate(&namespace, 10.0, Vec::new());
+        initial_candidate.nodes[0].role = SemanticRole::Slider;
+        initial_candidate.nodes[0].orientation = Some(SemanticOrientation::Horizontal);
+        initial_candidate.nodes[0].range = Some(
+            SemanticRange::new(
+                Some(minimum),
+                Some(maximum),
+                Some(
+                    SemanticNumber::new(25.0)
+                        .unwrap_or_else(|_| unreachable!("controlled current is finite")),
+                ),
+            )
+            .unwrap_or_else(|_| unreachable!("controlled range is valid")),
+        );
+        let initial = state
+            .plan(&surface, Some(planned(initial_candidate)))
+            .unwrap_or_else(|_| unreachable!("first semantic revision is available"));
+        state.commit(initial);
+
+        let mut changed_candidate = candidate(&namespace, 10.0, Vec::new());
+        changed_candidate.nodes[0].role = SemanticRole::Slider;
+        changed_candidate.nodes[0].orientation = Some(SemanticOrientation::Vertical);
+        changed_candidate.nodes[0].range = Some(
+            SemanticRange::new(
+                Some(minimum),
+                Some(maximum),
+                Some(
+                    SemanticNumber::new(50.0)
+                        .unwrap_or_else(|_| unreachable!("controlled current is finite")),
+                ),
+            )
+            .unwrap_or_else(|_| unreachable!("controlled range is valid")),
+        );
+        let changed = state
+            .plan(&surface, Some(planned(changed_candidate)))
+            .unwrap_or_else(|_| unreachable!("second semantic revision is available"));
+        state.commit(changed);
+
+        let current = state
+            .current
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("changed semantic products committed"));
+        assert_eq!(current.publication.snapshot().revision().get(), 2);
+        let node = &current.publication.snapshot().nodes()[0];
+        assert_eq!(node.orientation(), Some(SemanticOrientation::Vertical));
+        assert_eq!(
+            node.range().and_then(SemanticRange::current),
+            SemanticNumber::new(50.0).ok()
+        );
+        let update = current
+            .publication
+            .update()
+            .unwrap_or_else(|| unreachable!("range/orientation change retains one delta"));
+        assert_eq!(update.changed().len(), 1);
+        assert_eq!(
+            update.changed()[0].orientation(),
+            Some(SemanticOrientation::Vertical)
         );
     }
 
