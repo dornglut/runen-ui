@@ -126,8 +126,8 @@ Current M5 matrix summary, including the later M11 collection-focus readiness ex
 ```text
 54 total unique rows
 53 owner-accepted
-1 implementation-complete
 0 proof-complete
+1 proof-complete
 0 blocked
 0 duplicate IDs
 0 invalid statuses
