@@ -806,6 +806,40 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.focus().focused_node(), Some(&x));
 
+    runtime
+        .submit_command(
+            c,
+            SemanticCommand::FocusGroupNext,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("unrelated outer member command routes normally"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.focus().focused_node(), Some(&x));
+}
+
+#[test]
+fn absolute_group_navigation_does_not_escape_a_nested_focus_scope() {
+    let mut runtime = AppRuntime::<ScopeBoundaryApp>::mount(State::default());
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+
+    let outer = scope_boundary_id(&mut runtime, "scope.outer");
+    let x = scope_boundary_id(&mut runtime, "scope.x");
+    runtime
+        .submit_command(
+            x.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("inner-scope focus request is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.focus().focused_node(), Some(&x));
+
     for command in [
         SemanticCommand::FocusGroupFirst,
         SemanticCommand::FocusGroupLast,
@@ -821,17 +855,6 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             "absolute ancestor-group navigation must not escape the nested focus scope"
         );
     }
-
-    runtime
-        .submit_command(
-            c,
-            SemanticCommand::FocusGroupNext,
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("unrelated outer member command routes normally"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
-    assert_eq!(runtime.status(), RuntimeStatus::Running);
-    assert_eq!(runtime.focus().focused_node(), Some(&x));
 }
 
 #[test]
