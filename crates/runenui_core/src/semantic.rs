@@ -1653,7 +1653,10 @@ fn validate_node_property_contract(
         let kind_supported = match role {
             SemanticRole::Button => true,
             SemanticRole::ComboBox => {
-                matches!(popup, SemanticPopupKind::ListBox | SemanticPopupKind::Dialog)
+                matches!(
+                    popup,
+                    SemanticPopupKind::ListBox | SemanticPopupKind::Dialog
+                )
             }
             SemanticRole::MenuItem
             | SemanticRole::MenuItemCheckbox
