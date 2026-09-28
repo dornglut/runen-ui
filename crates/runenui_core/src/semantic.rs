@@ -2061,6 +2061,11 @@ mod tests {
                 property: "selection_mode",
             })
         );
+    }
+
+    #[test]
+    fn active_descendant_relationship_is_validated() {
+        let context = SemanticContributionContext::default();
 
         let option_key = SemanticKey::from_static("active-option")
             .unwrap_or_else(|_| unreachable!("static test key is valid"));
