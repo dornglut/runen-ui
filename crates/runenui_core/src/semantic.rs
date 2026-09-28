@@ -1771,9 +1771,11 @@ mod tests {
 
     use super::{
         SemanticCheckedState, SemanticContribution, SemanticContributionContext,
-        SemanticContributionError, SemanticEditable, SemanticItem, SemanticKey,
-        SemanticNodeContribution, SemanticReference, SemanticRelationship,
-        SemanticRelationshipKind, SemanticRole, SemanticState,
+        SemanticContributionError, SemanticEditable, SemanticEditableMode, SemanticItem,
+        SemanticKey, SemanticNodeContribution, SemanticNumber, SemanticNumberError,
+        SemanticPressedState, SemanticRange, SemanticRangeError, SemanticReference,
+        SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticSelectionMode,
+        SemanticState,
     };
     use crate::{
         TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,
@@ -1888,6 +1890,210 @@ mod tests {
                 })
             );
         }
+    }
+
+    #[test]
+    fn semantic_numbers_and_ranges_are_checked_and_deterministic() {
+        let zero = SemanticNumber::new(0.0)
+            .unwrap_or_else(|_| unreachable!("finite zero is a valid semantic number"));
+        let negative_zero = SemanticNumber::new(-0.0)
+            .unwrap_or_else(|_| unreachable!("finite negative zero is canonicalized"));
+        assert_eq!(zero, negative_zero);
+        assert_eq!(SemanticNumber::new(f64::NAN), Err(SemanticNumberError));
+        assert_eq!(SemanticNumber::new(f64::INFINITY), Err(SemanticNumberError));
+
+        let minimum = SemanticNumber::new(0.0)
+            .unwrap_or_else(|_| unreachable!("controlled minimum is finite"));
+        let maximum = SemanticNumber::new(10.0)
+            .unwrap_or_else(|_| unreachable!("controlled maximum is finite"));
+        let current = SemanticNumber::new(5.0)
+            .unwrap_or_else(|_| unreachable!("controlled current is finite"));
+        let step = SemanticNumber::new(1.0)
+            .unwrap_or_else(|_| unreachable!("controlled step is finite"));
+
+        let range = SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+            .and_then(|range| range.with_small_step(step))
+            .and_then(|range| range.with_value_text("five"))
+            .unwrap_or_else(|_| unreachable!("controlled range is valid"));
+        assert_eq!(range.minimum(), Some(minimum));
+        assert_eq!(range.maximum(), Some(maximum));
+        assert_eq!(range.current(), Some(current));
+        assert_eq!(range.value_text(), Some("five"));
+
+        assert_eq!(
+            SemanticRange::new(Some(maximum), Some(minimum), Some(current)),
+            Err(SemanticRangeError::ReversedBounds)
+        );
+        assert_eq!(
+            SemanticRange::new(Some(minimum), Some(maximum), None)
+                .and_then(|range| range.with_value_text("unknown")),
+            Err(SemanticRangeError::ValueTextWithoutCurrent)
+        );
+        let negative_step = SemanticNumber::new(-1.0)
+            .unwrap_or_else(|_| unreachable!("finite negative value is representable"));
+        assert_eq!(
+            SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+                .and_then(|range| range.with_small_step(negative_step)),
+            Err(SemanticRangeError::NonPositiveSmallStep)
+        );
+    }
+
+    #[test]
+    fn standard_control_properties_are_role_aware_and_fail_closed() {
+        let context = SemanticContributionContext::default();
+
+        let pressed = SemanticNodeContribution::primary(SemanticRole::Button)
+            .with_state(SemanticState::ENABLED.with_pressed(SemanticPressedState::Pressed));
+        assert!(SemanticContribution::single(pressed).validate(context).is_ok());
+
+        let invalid_pressed = SemanticNodeContribution::primary(SemanticRole::Generic)
+            .with_state(SemanticState::ENABLED.with_pressed(SemanticPressedState::Pressed));
+        assert_eq!(
+            SemanticContribution::single(invalid_pressed).validate(context),
+            Err(SemanticContributionError::PropertyNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::Generic,
+                property: "pressed",
+            })
+        );
+
+        let selected = SemanticNodeContribution::primary(SemanticRole::Option)
+            .with_state(SemanticState::ENABLED.with_selected(false));
+        assert!(SemanticContribution::single(selected).validate(context).is_ok());
+
+        let missing_range = SemanticNodeContribution::primary(SemanticRole::Slider);
+        assert_eq!(
+            SemanticContribution::single(missing_range).validate(context),
+            Err(SemanticContributionError::MissingRequiredProperty {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::Slider,
+                property: "range",
+            })
+        );
+
+        let minimum = SemanticNumber::new(0.0)
+            .unwrap_or_else(|_| unreachable!("controlled minimum is finite"));
+        let maximum = SemanticNumber::new(100.0)
+            .unwrap_or_else(|_| unreachable!("controlled maximum is finite"));
+        let current = SemanticNumber::new(25.0)
+            .unwrap_or_else(|_| unreachable!("controlled current is finite"));
+        let slider = SemanticNodeContribution::primary(SemanticRole::Slider).with_range(
+            SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+                .unwrap_or_else(|_| unreachable!("controlled slider range is valid")),
+        );
+        assert!(SemanticContribution::single(slider).validate(context).is_ok());
+
+        let listbox = SemanticNodeContribution::primary(SemanticRole::ListBox)
+            .with_selection_mode(SemanticSelectionMode::Multiple);
+        assert!(SemanticContribution::single(listbox).validate(context).is_ok());
+
+        let invalid_selection_mode = SemanticNodeContribution::primary(SemanticRole::TabList)
+            .with_selection_mode(SemanticSelectionMode::Multiple);
+        assert_eq!(
+            SemanticContribution::single(invalid_selection_mode).validate(context),
+            Err(SemanticContributionError::PropertyNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::TabList,
+                property: "selection_mode",
+            })
+        );
+
+        let option_key = SemanticKey::from_static("active-option")
+            .unwrap_or_else(|_| unreachable!("static test key is valid"));
+        let combobox = SemanticNodeContribution::primary(SemanticRole::ComboBox)
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::Controls,
+                SemanticReference::Local(option_key.clone()),
+            ))
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::ActiveDescendant,
+                SemanticReference::Local(option_key.clone()),
+            ))
+            .with_child(SemanticNodeContribution::new(
+                option_key,
+                SemanticRole::Option,
+            ));
+        assert!(SemanticContribution::single(combobox).validate(context).is_ok());
+
+        let missing_controls_key = SemanticKey::from_static("missing-controls-option")
+            .unwrap_or_else(|_| unreachable!("static test key is valid"));
+        let missing_controls = SemanticNodeContribution::primary(SemanticRole::ComboBox)
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::ActiveDescendant,
+                SemanticReference::Local(missing_controls_key.clone()),
+            ))
+            .with_child(SemanticNodeContribution::new(
+                missing_controls_key,
+                SemanticRole::Option,
+            ));
+        assert_eq!(
+            SemanticContribution::single(missing_controls).validate(context),
+            Err(SemanticContributionError::ActiveDescendantRequiresControls {
+                key: SemanticKey::PRIMARY,
+            })
+        );
+    }
+
+    #[test]
+    fn editable_composite_roles_reject_secret_and_multiline_incompatibilities() {
+        let source = "secret";
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(267), TextDocumentRevision::new(1));
+        let position = TextPosition::new(snapshot, source, 0, TextAffinity::Downstream)
+            .unwrap_or_else(|_| unreachable!("controlled position is valid"));
+        let editable = SemanticEditable::new(
+            snapshot,
+            source,
+            TextSelection::collapsed(position),
+            TextSensitivity::Secret,
+            false,
+        )
+        .unwrap_or_else(|| unreachable!("controlled secret editable is structurally valid"));
+
+        let ordinary = SemanticNodeContribution::primary(SemanticRole::EditableText)
+            .with_editable(editable.clone());
+        assert!(
+            SemanticContribution::single(ordinary)
+                .validate(SemanticContributionContext::default())
+                .is_ok()
+        );
+
+        let multiline_secret = SemanticNodeContribution::primary(SemanticRole::EditableText)
+            .with_editable(editable.clone())
+            .with_editable_mode(SemanticEditableMode::Multiline);
+        assert_eq!(
+            SemanticContribution::single(multiline_secret)
+                .validate(SemanticContributionContext::default()),
+            Err(SemanticContributionError::EditableCombinationNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::EditableText,
+            })
+        );
+
+        let secret_combobox = SemanticNodeContribution::primary(SemanticRole::ComboBox)
+            .with_editable(editable.clone());
+        assert_eq!(
+            SemanticContribution::single(secret_combobox)
+                .validate(SemanticContributionContext::default()),
+            Err(SemanticContributionError::EditableCombinationNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::ComboBox,
+            })
+        );
+
+        let empty_range = SemanticRange::new(None, None, None)
+            .unwrap_or_else(|_| unreachable!("open spin range is valid"));
+        let secret_spin = SemanticNodeContribution::primary(SemanticRole::SpinButton)
+            .with_range(empty_range)
+            .with_editable(editable);
+        assert_eq!(
+            SemanticContribution::single(secret_spin)
+                .validate(SemanticContributionContext::default()),
+            Err(SemanticContributionError::EditableCombinationNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::SpinButton,
+            })
+        );
     }
 
     #[test]
