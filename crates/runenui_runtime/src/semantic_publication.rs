@@ -571,6 +571,15 @@ mod tests {
             bounds: rect(),
             text: None,
             editable: None,
+            range: None,
+            orientation: None,
+            popup: None,
+            selection_mode: None,
+            collection_position: None,
+            hierarchy_level: None,
+            placeholder: None,
+            autocomplete: None,
+            editable_mode: None,
         };
         SemanticSnapshot {
             surface,
