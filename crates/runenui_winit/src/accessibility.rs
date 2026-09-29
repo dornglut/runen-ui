@@ -571,7 +571,7 @@ impl SurfaceProjection {
         }
         for semantic in snapshot.nodes() {
             let accesskit_id = self.semantic_to_accesskit[semantic.id()];
-            let (node, node_diagnostics) = self.project_node(semantic);
+            let (node, node_diagnostics) = self.project_node(snapshot, semantic);
             diagnostics.extend(node_diagnostics);
             result.push((accesskit_id, node));
             if let Some(text_run_id) = self.editable_text_runs.get(semantic.id()).copied()
@@ -590,10 +590,11 @@ impl SurfaceProjection {
         semantic: &SemanticNode,
     ) -> (Node, Vec<AdapterDiagnostic>) {
         let mut diagnostics = Vec::new();
-        let role = semantic.editable().map_or_else(
-            || map_role(semantic.role(), semantic.id(), &mut diagnostics),
-            |editable| map_editable_role(semantic, editable.sensitivity(), &mut diagnostics),
-        );
+        let role = if let Some(editable) = semantic.editable() {
+            map_editable_role(semantic, editable.sensitivity(), &mut diagnostics)
+        } else {
+            map_role(semantic.role(), semantic.id(), &mut diagnostics)
+        };
         let mut node = Node::new(role);
         if semantic.state().disabled() {
             node.set_disabled();
