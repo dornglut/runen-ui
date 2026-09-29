@@ -59,6 +59,11 @@ pub(super) fn f32_value(output: &mut String, value: f32) {
     write!(output, "{value}").unwrap_or_else(|_| unreachable!("writing to String cannot fail"));
 }
 
+pub(super) fn f64_value(output: &mut String, value: f64) {
+    debug_assert!(value.is_finite());
+    write!(output, "{value}").unwrap_or_else(|_| unreachable!("writing to String cannot fail"));
+}
+
 #[cfg(test)]
 mod tests {
     use super::string;
