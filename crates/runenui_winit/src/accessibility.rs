@@ -2369,6 +2369,7 @@ mod tests {
         revision: u64,
         sensitivity: TextSensitivity,
         read_only: bool,
+        role: SemanticRole,
     }
 
     enum EditableAction {
@@ -2381,6 +2382,7 @@ mod tests {
         text: String,
         sensitivity: TextSensitivity,
         read_only: bool,
+        role: SemanticRole,
     }
 
     impl Widget<EditableAction> for EditableFixture {
@@ -2442,13 +2444,28 @@ mod tests {
                 self.read_only,
             )
             .unwrap();
-            SemanticContribution::single(
-                SemanticNodeContribution::primary(SemanticRole::EditableText)
-                    .with_state(SemanticState::ENABLED.with_read_only(self.read_only))
-                    .with_editable(editable)
-                    .with_action(SemanticAction::SetSelection)
-                    .with_action(SemanticAction::ReplaceSelection),
-            )
+            let mut node = SemanticNodeContribution::primary(self.role)
+                .with_state(SemanticState::ENABLED.with_read_only(self.read_only))
+                .with_editable(editable)
+                .with_action(SemanticAction::SetSelection)
+                .with_action(SemanticAction::ReplaceSelection);
+            if self.role == SemanticRole::ComboBox {
+                node = node.with_popup(SemanticPopupKind::ListBox);
+            }
+            if self.role == SemanticRole::SpinButton {
+                node = node.with_range(
+                    SemanticRange::new(
+                        None,
+                        None,
+                        Some(
+                            SemanticNumber::new(0.0)
+                                .unwrap_or_else(|_| unreachable!("spin value is finite")),
+                        ),
+                    )
+                    .unwrap_or_else(|_| unreachable!("spin range is valid")),
+                );
+            }
+            SemanticContribution::single(node)
         }
     }
 
@@ -2468,6 +2485,7 @@ mod tests {
                 text: state.text.clone(),
                 sensitivity: state.sensitivity,
                 read_only: state.read_only,
+                role: state.role,
             })
             .id("editable")
             .key("editable")
@@ -2497,6 +2515,14 @@ mod tests {
         sensitivity: TextSensitivity,
         read_only: bool,
     ) -> (SemanticPublication, SemanticAdapter) {
+        editable_publication_for_role(SemanticRole::EditableText, sensitivity, read_only)
+    }
+
+    fn editable_publication_for_role(
+        role: SemanticRole,
+        sensitivity: TextSensitivity,
+        read_only: bool,
+    ) -> (SemanticPublication, SemanticAdapter) {
         const FONT: &[u8] = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../runenui_text/tests/fixtures/Cantarell-Regular.ttf"
@@ -2506,6 +2532,7 @@ mod tests {
             revision: 0,
             sensitivity,
             read_only,
+            role,
         });
         assert!(runtime.register_text_font_bytes(FONT.to_vec()).unwrap() > 0);
         assert!(
@@ -2575,6 +2602,23 @@ mod tests {
             .unwrap();
         assert_eq!(replacement.action(), &SemanticAction::ReplaceSelection);
         assert!(!format!("{replacement:?}").contains("sensitive replacement"));
+    }
+
+    #[test]
+    fn composite_editable_roles_project_exact_native_roles() {
+        for (semantic_role, native_role) in [
+            (SemanticRole::ComboBox, Role::EditableComboBox),
+            (SemanticRole::SpinButton, Role::SpinButton),
+        ] {
+            let (publication, adapter) =
+                editable_publication_for_role(semantic_role, TextSensitivity::Public, false);
+            let semantic = &publication.snapshot().nodes()[0];
+            assert_eq!(semantic.role(), semantic_role);
+            let parent = adapter
+                .active_id(publication.snapshot().surface_id(), semantic.id())
+                .unwrap_or_else(|| unreachable!("editable semantic node is projected"));
+            assert_eq!(adapter.projection.current_nodes[&parent].role(), native_role);
+        }
     }
 
     #[test]
