@@ -71,6 +71,40 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         data: Option<&SemanticActionData>,
         expected_key: Option<&SemanticKey>,
     ) -> Result<SemanticActionAuthority, SubmitSemanticActionErrorKind> {
+        let authority = self.semantic_action_authority(surface, target, expected_key)?;
+        let publication = self
+            .surface_publication
+            .current_semantic_publication()
+            .ok_or(SubmitSemanticActionErrorKind::StaleAuthority)?;
+        let node = publication
+            .snapshot()
+            .node(target)
+            .ok_or(SubmitSemanticActionErrorKind::TargetNotInSurface)?;
+        validate_semantic_action_data(action, data)?;
+        if !node.supported_actions().contains(action) {
+            return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+        }
+        let state = node.state();
+        let disabled_focus_request = *action == SemanticAction::RequestFocus
+            && authority.key() == &SemanticKey::PRIMARY
+            && authority.focusability() == Focusability::FocusableWhenDisabled;
+        if state.inert() || (state.disabled() && !disabled_focus_request) {
+            return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+        }
+        validate_m11_semantic_action(node, action, data)?;
+        validate_editable_semantic_action(node, action, data)?;
+        if !semantic_action_is_ready(&authority, action) {
+            return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+        }
+        Ok(authority)
+    }
+
+    fn semantic_action_authority(
+        &self,
+        surface: &SurfaceId,
+        target: &SemanticNodeId,
+        expected_key: Option<&SemanticKey>,
+    ) -> Result<SemanticActionAuthority, SubmitSemanticActionErrorKind> {
         match self.status {
             RuntimeStatus::Running => {}
             RuntimeStatus::Closed => return Err(SubmitSemanticActionErrorKind::Closed),
@@ -94,143 +128,144 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if self.tree.pending_phases().contains(DirtyPhases::SEMANTICS) {
             return Err(SubmitSemanticActionErrorKind::StaleAuthority);
         }
-        let publication = self
-            .surface_publication
-            .current_semantic_publication()
-            .ok_or(SubmitSemanticActionErrorKind::StaleAuthority)?;
-        let node = publication
-            .snapshot()
-            .node(target)
-            .ok_or(SubmitSemanticActionErrorKind::TargetNotInSurface)?;
-        let data_matches = matches!(
-            (action, data),
-            (
-                SemanticAction::SetSelection,
-                Some(SemanticActionData::Selection(_))
-            ) | (
-                SemanticAction::ReplaceSelection,
-                Some(SemanticActionData::ReplacementText(_))
-            ) | (
-                SemanticAction::SetValue,
-                Some(SemanticActionData::NumericValue(_))
-            )
-        ) || (!matches!(
-            action,
-            SemanticAction::SetSelection
-                | SemanticAction::ReplaceSelection
-                | SemanticAction::SetValue
-        ) && data.is_none());
-        if !data_matches {
-            return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
-        }
-        if !node.supported_actions().contains(action) {
-            return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
-        }
-        let state = node.state();
-        let disabled_focus_request = *action == SemanticAction::RequestFocus
-            && authority.key() == &SemanticKey::PRIMARY
-            && authority.focusability() == Focusability::FocusableWhenDisabled;
-        if state.inert() || (state.disabled() && !disabled_focus_request) {
-            return Err(SubmitSemanticActionErrorKind::UnavailableAction);
-        }
-        match action {
-            SemanticAction::Increment | SemanticAction::Decrement => {
-                if !is_mutable_range_role(node.role()) || node.range().is_none() {
-                    return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
-                }
-                if state.read_only() {
-                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
-                }
-                if node
+        Ok(authority)
+    }
+}
+
+fn validate_semantic_action_data(
+    action: &SemanticAction,
+    data: Option<&SemanticActionData>,
+) -> Result<(), SubmitSemanticActionErrorKind> {
+    let valid = matches!(
+        (action, data),
+        (
+            SemanticAction::SetSelection,
+            Some(SemanticActionData::Selection(_))
+        ) | (
+            SemanticAction::ReplaceSelection,
+            Some(SemanticActionData::ReplacementText(_))
+        ) | (
+            SemanticAction::SetValue,
+            Some(SemanticActionData::NumericValue(_))
+        )
+    ) || (!matches!(
+        action,
+        SemanticAction::SetSelection
+            | SemanticAction::ReplaceSelection
+            | SemanticAction::SetValue
+    ) && data.is_none());
+    valid
+        .then_some(())
+        .ok_or(SubmitSemanticActionErrorKind::UnsupportedAction)
+}
+
+fn validate_m11_semantic_action(
+    node: &crate::SemanticNode,
+    action: &SemanticAction,
+    data: Option<&SemanticActionData>,
+) -> Result<(), SubmitSemanticActionErrorKind> {
+    let state = node.state();
+    match action {
+        SemanticAction::Increment | SemanticAction::Decrement => {
+            if !is_mutable_range_role(node.role()) || node.range().is_none() {
+                return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+            }
+            if state.read_only()
+                || node
                     .range()
                     .and_then(runenui_core::SemanticRange::current)
                     .is_none()
-                {
-                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
-                }
-            }
-            SemanticAction::SetValue => {
-                if !is_mutable_range_role(node.role()) || node.range().is_none() {
-                    return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
-                }
-                if state.read_only() {
-                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
-                }
-                let Some(SemanticActionData::NumericValue(value)) = data else {
-                    return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
-                };
-                let range = node
-                    .range()
-                    .unwrap_or_else(|| unreachable!("mutable SetValue support requires a range"));
-                if range
-                    .minimum()
-                    .is_some_and(|minimum| value.get() < minimum.get())
-                    || range
-                        .maximum()
-                        .is_some_and(|maximum| value.get() > maximum.get())
-                {
-                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
-                }
-            }
-            SemanticAction::Expand => {
-                if !is_expandable_role(node.role()) {
-                    return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
-                }
-                if state.expanded() != Some(false) {
-                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
-                }
-            }
-            SemanticAction::Collapse => {
-                if !is_expandable_role(node.role()) {
-                    return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
-                }
-                if state.expanded() != Some(true) {
-                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
-                }
-            }
-            _ => {}
-        }
-        if let Some(editable) = node.editable() {
-            if let Some(SemanticActionData::Selection(selection)) = data {
-                let offsets = editable
-                    .caret_offsets()
-                    .ok_or(SubmitSemanticActionErrorKind::UnavailableAction)?;
-                if selection.anchor().snapshot() != editable.snapshot()
-                    || selection.active().snapshot() != editable.snapshot()
-                    || offsets
-                        .binary_search(&selection.anchor().byte_offset())
-                        .is_err()
-                    || offsets
-                        .binary_search(&selection.active().byte_offset())
-                        .is_err()
-                {
-                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
-                }
-            }
-            let modifying = matches!(
-                action,
-                SemanticAction::DeleteBackward
-                    | SemanticAction::DeleteForward
-                    | SemanticAction::Undo
-                    | SemanticAction::Redo
-                    | SemanticAction::Cut
-                    | SemanticAction::Paste
-                    | SemanticAction::ReplaceSelection
-            );
-            if modifying && (state.read_only() || editable.read_only()) {
-                return Err(SubmitSemanticActionErrorKind::UnavailableAction);
-            }
-            if editable.sensitivity() == TextSensitivity::Secret
-                && matches!(action, SemanticAction::Copy | SemanticAction::Cut)
             {
                 return Err(SubmitSemanticActionErrorKind::UnavailableAction);
             }
         }
-        if !semantic_action_is_ready(&authority, action) {
+        SemanticAction::SetValue => {
+            if !is_mutable_range_role(node.role()) {
+                return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+            }
+            if state.read_only() {
+                return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+            }
+            let Some(range) = node.range() else {
+                return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+            };
+            let Some(SemanticActionData::NumericValue(value)) = data else {
+                return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+            };
+            if range
+                .minimum()
+                .is_some_and(|minimum| value.get() < minimum.get())
+                || range
+                    .maximum()
+                    .is_some_and(|maximum| value.get() > maximum.get())
+            {
+                return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+            }
+        }
+        SemanticAction::Expand => {
+            if !is_expandable_role(node.role()) {
+                return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+            }
+            if state.expanded() != Some(false) {
+                return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+            }
+        }
+        SemanticAction::Collapse => {
+            if !is_expandable_role(node.role()) {
+                return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+            }
+            if state.expanded() != Some(true) {
+                return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn validate_editable_semantic_action(
+    node: &crate::SemanticNode,
+    action: &SemanticAction,
+    data: Option<&SemanticActionData>,
+) -> Result<(), SubmitSemanticActionErrorKind> {
+    let Some(editable) = node.editable() else {
+        return Ok(());
+    };
+    if let Some(SemanticActionData::Selection(selection)) = data {
+        let offsets = editable
+            .caret_offsets()
+            .ok_or(SubmitSemanticActionErrorKind::UnavailableAction)?;
+        if selection.anchor().snapshot() != editable.snapshot()
+            || selection.active().snapshot() != editable.snapshot()
+            || offsets
+                .binary_search(&selection.anchor().byte_offset())
+                .is_err()
+            || offsets
+                .binary_search(&selection.active().byte_offset())
+                .is_err()
+        {
             return Err(SubmitSemanticActionErrorKind::UnavailableAction);
         }
-        Ok(authority)
     }
+    let modifying = matches!(
+        action,
+        SemanticAction::DeleteBackward
+            | SemanticAction::DeleteForward
+            | SemanticAction::Undo
+            | SemanticAction::Redo
+            | SemanticAction::Cut
+            | SemanticAction::Paste
+            | SemanticAction::ReplaceSelection
+    );
+    if modifying && (node.state().read_only() || editable.read_only()) {
+        return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+    }
+    if editable.sensitivity() == TextSensitivity::Secret
+        && matches!(action, SemanticAction::Copy | SemanticAction::Cut)
+    {
+        return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+    }
+    Ok(())
 }
 
 fn semantic_action_is_ready(authority: &SemanticActionAuthority, action: &SemanticAction) -> bool {
@@ -277,7 +312,7 @@ fn semantic_action_is_ready(authority: &SemanticActionAuthority, action: &Semant
     }
 }
 
-fn semantic_command(
+const fn semantic_command(
     action: &SemanticAction,
     data: Option<&SemanticActionData>,
 ) -> Option<SemanticCommand> {
