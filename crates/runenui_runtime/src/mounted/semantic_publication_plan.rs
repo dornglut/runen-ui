@@ -496,13 +496,18 @@ fn editable_semantics_match<Action>(
             let Some(projected) = primary.editable() else {
                 return false;
             };
+            let authoritative_snapshot = authoritative.snapshot();
+            let authoritative_selection = authoritative.initial_selection();
+            let authoritative_sensitivity = authoritative.sensitivity();
+            let authoritative_read_only = authoritative.read_only();
+            let authoritative_disabled = authoritative.disabled();
             if !is_editable_semantic_role(primary.role())
-                || projected.snapshot() != authoritative.snapshot()
-                || projected.selection() != authoritative.initial_selection()
-                || projected.sensitivity() != authoritative.sensitivity()
-                || projected.read_only() != authoritative.read_only()
-                || primary.state().read_only() != authoritative.read_only()
-                || primary.state().disabled() != authoritative.disabled()
+                || projected.snapshot() != authoritative_snapshot
+                || projected.selection() != authoritative_selection
+                || projected.sensitivity() != authoritative_sensitivity
+                || projected.read_only() != authoritative_read_only
+                || primary.state().read_only() != authoritative_read_only
+                || primary.state().disabled() != authoritative_disabled
             {
                 return false;
             }
