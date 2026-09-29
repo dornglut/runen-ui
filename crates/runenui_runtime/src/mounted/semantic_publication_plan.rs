@@ -634,9 +634,7 @@ mod tests {
         (surface, semantics)
     }
 
-    fn editable_fixture(
-        role: SemanticRole,
-    ) -> (SemanticContribution, EditableContribution<()>) {
+    fn editable_fixture(role: SemanticRole) -> (SemanticContribution, EditableContribution<()>) {
         let text = "abc";
         let snapshot =
             TextDocumentSnapshot::new(TextDocumentId::new(901), TextDocumentRevision::new(1));
