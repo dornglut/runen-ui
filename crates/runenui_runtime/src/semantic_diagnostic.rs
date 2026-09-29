@@ -1,6 +1,6 @@
 //! Surface-scoped semantic publication diagnostics.
 
-use runenui_core::{ElementId, SemanticContributionError, SemanticKey, SurfaceId};
+use runenui_core::{ElementId, SemanticContributionError, SemanticKey, SemanticRole, SurfaceId};
 
 use crate::{SemanticNodeId, semantic_compositor::SemanticCompositionDiagnostic};
 
@@ -67,6 +67,15 @@ pub enum SemanticDiagnostic {
         element_id: ElementId,
         key: SemanticKey,
     },
+    InvalidActiveDescendantTargetRole {
+        source: SemanticNodeId,
+        target: SemanticNodeId,
+        role: SemanticRole,
+    },
+    ActiveDescendantOutsideControlledSubtree {
+        source: SemanticNodeId,
+        target: SemanticNodeId,
+    },
     FocusedOwnerMissingVisiblePrimary,
     OwnerWithdrawn {
         authored_id: Option<ElementId>,
@@ -111,6 +120,19 @@ impl From<SemanticCompositionDiagnostic> for SemanticDiagnostic {
                 element_id,
                 key,
             },
+            SemanticCompositionDiagnostic::InvalidActiveDescendantTargetRole {
+                source,
+                target,
+                role,
+            } => Self::InvalidActiveDescendantTargetRole {
+                source,
+                target,
+                role,
+            },
+            SemanticCompositionDiagnostic::ActiveDescendantOutsideControlledSubtree {
+                source,
+                target,
+            } => Self::ActiveDescendantOutsideControlledSubtree { source, target },
             SemanticCompositionDiagnostic::FocusedOwnerMissingVisiblePrimary => {
                 Self::FocusedOwnerMissingVisiblePrimary
             }
