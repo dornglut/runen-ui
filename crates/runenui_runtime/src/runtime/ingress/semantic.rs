@@ -150,9 +150,7 @@ fn validate_semantic_action_data(
         )
     ) || (!matches!(
         action,
-        SemanticAction::SetSelection
-            | SemanticAction::ReplaceSelection
-            | SemanticAction::SetValue
+        SemanticAction::SetSelection | SemanticAction::ReplaceSelection | SemanticAction::SetValue
     ) && data.is_none());
     valid
         .then_some(())
