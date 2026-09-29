@@ -3,7 +3,9 @@
 use core::fmt;
 use std::sync::Arc;
 
-use crate::{SemanticAction, SemanticKey, SemanticNodeId, SemanticNumber, SurfaceId, TextSelection};
+use crate::{
+    SemanticAction, SemanticKey, SemanticNodeId, SemanticNumber, SurfaceId, TextSelection,
+};
 
 /// Checked neutral payload for semantic editing actions.
 #[non_exhaustive]
@@ -24,7 +26,9 @@ impl fmt::Debug for SemanticActionData {
                 .debug_struct("ReplacementText")
                 .field("bytes", &text.len())
                 .finish(),
-            Self::NumericValue(value) => formatter.debug_tuple("NumericValue").field(value).finish(),
+            Self::NumericValue(value) => {
+                formatter.debug_tuple("NumericValue").field(value).finish()
+            }
         }
     }
 }
