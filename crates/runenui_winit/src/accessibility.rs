@@ -712,8 +712,7 @@ impl SurfaceProjection {
             }
         }
         if let Some(orientation) = semantic.orientation()
-            && let Some(orientation) =
-                map_orientation(orientation, semantic.id(), &mut diagnostics)
+            && let Some(orientation) = map_orientation(orientation, semantic.id(), &mut diagnostics)
         {
             node.set_orientation(orientation);
         }
@@ -728,17 +727,17 @@ impl SurfaceProjection {
         if let Some(position) = semantic.collection_position() {
             match usize::try_from(position.index()) {
                 Ok(index) => node.set_position_in_set(index),
-                Err(_) => diagnostics.push(
-                    AdapterDiagnostic::UnrepresentableCollectionMetadata(semantic.id().clone()),
-                ),
+                Err(_) => diagnostics.push(AdapterDiagnostic::UnrepresentableCollectionMetadata(
+                    semantic.id().clone(),
+                )),
             }
         }
         match collection_size_for_parent(snapshot, semantic) {
             Ok(Some(size)) => node.set_size_of_set(size),
             Ok(None) => {}
-            Err(()) => diagnostics.push(
-                AdapterDiagnostic::UnrepresentableCollectionMetadata(semantic.id().clone()),
-            ),
+            Err(()) => diagnostics.push(AdapterDiagnostic::UnrepresentableCollectionMetadata(
+                semantic.id().clone(),
+            )),
         }
         if let Some(level) = semantic.hierarchy_level() {
             let zero_based = level
