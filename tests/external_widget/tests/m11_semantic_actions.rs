@@ -136,7 +136,7 @@ fn number(value: f64) -> SemanticNumber {
     SemanticNumber::new(value).unwrap_or_else(|_| unreachable!("controlled value is finite"))
 }
 
-fn runtime(read_only: bool) -> AppRuntime<App> {
+fn app_runtime(read_only: bool) -> AppRuntime<App> {
     AppRuntime::mount(State {
         value: number(5.0),
         expanded: false,
@@ -198,7 +198,7 @@ fn pump_one(runtime: &mut AppRuntime<App>) {
 
 #[test]
 fn set_value_routes_exact_payload_before_application_update_and_direct_command_converges() {
-    let mut runtime = runtime(false);
+    let mut runtime = app_runtime(false);
     let (surface, range, _) = publish(&mut runtime);
     let value = number(7.0);
     runtime
@@ -263,7 +263,7 @@ fn set_value_rejects_missing_payload_out_of_range_and_read_only_state() {
         SubmitSemanticActionErrorKind::UnavailableAction
     );
 
-    let mut read_only = runtime(true);
+    let mut read_only = app_runtime(true);
     let (surface, range, _) = publish(&mut read_only);
     let rejected = expect_rejection(read_only.submit_semantic_action(
         SemanticActionRequest::set_value(surface, range, number(6.0)),
