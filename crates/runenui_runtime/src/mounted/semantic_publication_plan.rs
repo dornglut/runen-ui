@@ -496,24 +496,29 @@ fn editable_semantics_match<Action>(
             let Some(projected) = primary.editable() else {
                 return false;
             };
-            is_editable_semantic_role(primary.role())
-                && projected.snapshot() == authoritative.snapshot()
-                && projected.selection() == authoritative.initial_selection()
-                && projected.sensitivity() == authoritative.sensitivity()
-                && projected.read_only() == authoritative.read_only()
-                && primary.state().read_only() == authoritative.read_only()
-                && primary.state().disabled() == authoritative.disabled()
-                && match authoritative.sensitivity() {
-                    TextSensitivity::Public => projected.value() == Some(authoritative.text()),
-                    TextSensitivity::Secret => projected.value().is_none(),
-                    _ => false,
-                }
-                && !contains_editable(primary.children())
-                && !semantics.roots().iter().any(|item| {
-                    item.as_node().is_some_and(|node| {
-                        node.key() != &SemanticKey::PRIMARY && node_contains_editable(node)
-                    })
+            if !is_editable_semantic_role(primary.role())
+                || projected.snapshot() != authoritative.snapshot()
+                || projected.selection() != authoritative.initial_selection()
+                || projected.sensitivity() != authoritative.sensitivity()
+                || projected.read_only() != authoritative.read_only()
+                || primary.state().read_only() != authoritative.read_only()
+                || primary.state().disabled() != authoritative.disabled()
+            {
+                return false;
+            }
+            let value_matches = match authoritative.sensitivity() {
+                TextSensitivity::Public => projected.value() == Some(authoritative.text()),
+                TextSensitivity::Secret => projected.value().is_none(),
+                _ => false,
+            };
+            if !value_matches || contains_editable(primary.children()) {
+                return false;
+            }
+            !semantics.roots().iter().any(|item| {
+                item.as_node().is_some_and(|node| {
+                    node.key() != &SemanticKey::PRIMARY && node_contains_editable(node)
                 })
+            })
         }
     }
 }
