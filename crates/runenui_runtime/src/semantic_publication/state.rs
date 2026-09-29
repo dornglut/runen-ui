@@ -272,8 +272,11 @@ mod tests {
     use core::num::NonZeroU64;
 
     use runenui_core::{
-        __runtime::RuntimeNamespace, LogicalPoint, LogicalRect, LogicalSize, SemanticCheckedState,
-        SemanticNumber, SemanticOrientation, SemanticRange, SemanticRole,
+        __runtime::RuntimeNamespace, LogicalPoint, LogicalRect, LogicalSize, SemanticAutocomplete,
+        SemanticCheckedState, SemanticCollectionPosition, SemanticEditableMode,
+        SemanticHierarchyLevel, SemanticInvalidState, SemanticNumber, SemanticOrientation,
+        SemanticPopupKind, SemanticPressedState, SemanticRange, SemanticRole,
+        SemanticSelectionMode,
     };
 
     use crate::semantic_compositor::{
@@ -608,6 +611,83 @@ mod tests {
         assert_eq!(
             update.changed()[0].orientation(),
             Some(SemanticOrientation::Vertical)
+        );
+    }
+
+    #[test]
+    fn remaining_typed_property_families_advance_revision_and_are_present_in_delta() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let surface = namespace.__runtime_surface_id(0, 1);
+        let mut state = SemanticPublicationState::default();
+
+        let initial = state
+            .plan(
+                &surface,
+                Some(planned(candidate(&namespace, 10.0, Vec::new()))),
+            )
+            .unwrap_or_else(|_| unreachable!("first semantic revision is available"));
+        state.commit(initial);
+
+        let mut changed_candidate = candidate(&namespace, 10.0, Vec::new());
+        let changed_node = &mut changed_candidate.nodes[0];
+        changed_node.pressed = Some(SemanticPressedState::Pressed);
+        changed_node.expanded = Some(true);
+        changed_node.required = Some(true);
+        changed_node.invalid = Some(SemanticInvalidState::Grammar);
+        changed_node.modal = Some(true);
+        changed_node.popup = Some(SemanticPopupKind::ListBox);
+        changed_node.selection_mode = Some(SemanticSelectionMode::Multiple);
+        changed_node.collection_position = Some(
+            SemanticCollectionPosition::new(2, Some(4))
+                .unwrap_or_else(|_| unreachable!("controlled collection position is valid")),
+        );
+        changed_node.hierarchy_level = Some(
+            SemanticHierarchyLevel::new(3)
+                .unwrap_or_else(|_| unreachable!("controlled hierarchy level is valid")),
+        );
+        changed_node.placeholder = Some("Filter".to_owned());
+        changed_node.autocomplete = Some(SemanticAutocomplete::Both);
+        changed_node.editable_mode = Some(SemanticEditableMode::SingleLine);
+
+        let changed = state
+            .plan(&surface, Some(planned(changed_candidate)))
+            .unwrap_or_else(|_| unreachable!("second semantic revision is available"));
+        state.commit(changed);
+
+        let current = state
+            .current
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("changed semantic products committed"));
+        assert_eq!(current.publication.snapshot().revision().get(), 2);
+        let update = current
+            .publication
+            .update()
+            .unwrap_or_else(|| unreachable!("typed property change retains one delta"));
+        assert_eq!(update.changed().len(), 1);
+        let node = &update.changed()[0];
+        assert_eq!(node.state().pressed(), Some(SemanticPressedState::Pressed));
+        assert_eq!(node.state().expanded(), Some(true));
+        assert_eq!(node.state().required(), Some(true));
+        assert_eq!(node.state().invalid(), Some(SemanticInvalidState::Grammar));
+        assert_eq!(node.state().modal(), Some(true));
+        assert_eq!(node.popup(), Some(SemanticPopupKind::ListBox));
+        assert_eq!(
+            node.selection_mode(),
+            Some(SemanticSelectionMode::Multiple)
+        );
+        assert_eq!(
+            node.collection_position().map(SemanticCollectionPosition::index),
+            Some(2)
+        );
+        assert_eq!(
+            node.hierarchy_level().map(SemanticHierarchyLevel::get),
+            Some(3)
+        );
+        assert_eq!(node.placeholder(), Some("Filter"));
+        assert_eq!(node.autocomplete(), Some(SemanticAutocomplete::Both));
+        assert_eq!(
+            node.editable_mode(),
+            Some(SemanticEditableMode::SingleLine)
         );
     }
 
