@@ -75,14 +75,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Some(semantic_target) = semantic_target else {
             return true;
         };
-        let outcome = if !semantic_command_matches_target(command, semantic_target) {
-            Some(TraceSemanticActionRejection::Integrity)
-        } else {
+        let outcome = if semantic_command_matches_target(command, semantic_target) {
             match self.revalidate_semantic_action_target(semantic_target) {
                 Ok(owner) if owner == *target => None,
                 Ok(_) => Some(TraceSemanticActionRejection::OwnerChanged),
                 Err(kind) => Some(trace_semantic_action_rejection(kind)),
             }
+        } else {
+            Some(TraceSemanticActionRejection::Integrity)
         };
         let Some(outcome) = outcome else {
             return true;
