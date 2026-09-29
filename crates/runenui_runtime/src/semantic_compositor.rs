@@ -663,6 +663,29 @@ mod tests {
         compose_semantics(owners, &transforms, root, focused_owner)
     }
 
+    fn semantic_owner(
+        id: runenui_core::MountedNodeId,
+        authored_id: Option<ElementId>,
+        mounted_children: Vec<runenui_core::MountedNodeId>,
+        contribution: SemanticContribution,
+        bindings: Vec<(SemanticKey, runenui_core::SemanticNodeId)>,
+        bounds: LogicalRect,
+    ) -> SemanticOwnerFacts {
+        SemanticOwnerFacts {
+            id,
+            authored_id,
+            mounted_children,
+            contribution,
+            bindings,
+            bounds,
+            activation: WidgetActivation::NONE,
+            focusability: Focusability::NotFocusable,
+            editable_source: None,
+            editable_selection: None,
+            editable_caret_offsets: None,
+        }
+    }
+
     #[test]
     fn transparent_owner_and_marker_preserve_exact_semantic_order() {
         let runtime = RuntimeNamespace::__runtime_new();
@@ -1298,63 +1321,45 @@ mod tests {
                     },
                 )),
         );
+        let mut combo_owner = semantic_owner(
+            combo,
+            Some(element_id("combo")),
+            Vec::new(),
+            combo_contribution,
+            vec![(SemanticKey::PRIMARY, combo_id.clone())],
+            rect(0.0, 0.0, 20.0, 20.0),
+        );
+        combo_owner.focusability = Focusability::Focusable;
         let owners = vec![
-            SemanticOwnerFacts {
-                id: root.clone(),
-                authored_id: None,
-                mounted_children: vec![combo.clone(), popup.clone(), outside.clone()],
-                contribution: SemanticContribution::empty(),
-                bindings: Vec::new(),
-                bounds: rect(0.0, 0.0, 100.0, 100.0),
-                activation: WidgetActivation::NONE,
-                focusability: Focusability::NotFocusable,
-                editable_source: None,
-                editable_selection: None,
-                editable_caret_offsets: None,
-            },
-            SemanticOwnerFacts {
-                id: combo,
-                authored_id: Some(element_id("combo")),
-                mounted_children: Vec::new(),
-                contribution: combo_contribution,
-                bindings: vec![(SemanticKey::PRIMARY, combo_id.clone())],
-                bounds: rect(0.0, 0.0, 20.0, 20.0),
-                activation: WidgetActivation::NONE,
-                focusability: Focusability::Focusable,
-                editable_source: None,
-                editable_selection: None,
-                editable_caret_offsets: None,
-            },
-            SemanticOwnerFacts {
-                id: popup,
-                authored_id: Some(popup_element),
-                mounted_children: Vec::new(),
-                contribution: SemanticContribution::single(SemanticNodeContribution::primary(
+            semantic_owner(
+                root.clone(),
+                None,
+                vec![combo_owner.id.clone(), popup.clone(), outside.clone()],
+                SemanticContribution::empty(),
+                Vec::new(),
+                rect(0.0, 0.0, 100.0, 100.0),
+            ),
+            combo_owner,
+            semantic_owner(
+                popup,
+                Some(popup_element),
+                Vec::new(),
+                SemanticContribution::single(SemanticNodeContribution::primary(
                     SemanticRole::ListBox,
                 )),
-                bindings: vec![(SemanticKey::PRIMARY, listbox_id.clone())],
-                bounds: rect(0.0, 30.0, 60.0, 60.0),
-                activation: WidgetActivation::NONE,
-                focusability: Focusability::NotFocusable,
-                editable_source: None,
-                editable_selection: None,
-                editable_caret_offsets: None,
-            },
-            SemanticOwnerFacts {
-                id: outside,
-                authored_id: Some(outside_element),
-                mounted_children: Vec::new(),
-                contribution: SemanticContribution::single(SemanticNodeContribution::primary(
+                vec![(SemanticKey::PRIMARY, listbox_id.clone())],
+                rect(0.0, 30.0, 60.0, 60.0),
+            ),
+            semantic_owner(
+                outside,
+                Some(outside_element),
+                Vec::new(),
+                SemanticContribution::single(SemanticNodeContribution::primary(
                     SemanticRole::Option,
                 )),
-                bindings: vec![(SemanticKey::PRIMARY, outside_option_id.clone())],
-                bounds: rect(70.0, 30.0, 20.0, 20.0),
-                activation: WidgetActivation::NONE,
-                focusability: Focusability::NotFocusable,
-                editable_source: None,
-                editable_selection: None,
-                editable_caret_offsets: None,
-            },
+                vec![(SemanticKey::PRIMARY, outside_option_id.clone())],
+                rect(70.0, 30.0, 20.0, 20.0),
+            ),
         ];
 
         let candidate = compose(&owners, Some(&root), None);
