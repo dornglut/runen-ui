@@ -19,7 +19,7 @@ use accesskit::{
 };
 use runenui_core::{
     SemanticAction, SemanticAutocomplete, SemanticCheckedState, SemanticEditableMode,
-    SemanticInvalidState, SemanticNodeId, SemanticOrientation, SemanticPopupKind,
+    SemanticInvalidState, SemanticNodeId, SemanticNumber, SemanticOrientation, SemanticPopupKind,
     SemanticPressedState, SemanticRelationshipKind, SemanticRole, SemanticSelectionMode,
     SemanticText, SemanticValue, SurfaceId, TextAffinity, TextPosition, TextSensitivity,
 };
@@ -838,6 +838,11 @@ impl SurfaceProjection {
                 SemanticAction::RequestFocus => node.add_action(Action::Focus),
                 SemanticAction::OpenContextMenu => node.add_action(Action::ShowContextMenu),
                 SemanticAction::OpenMenu => node.add_action(Action::CustomAction),
+                SemanticAction::Increment => node.add_action(Action::Increment),
+                SemanticAction::Decrement => node.add_action(Action::Decrement),
+                SemanticAction::SetValue => node.add_action(Action::SetValue),
+                SemanticAction::Expand => node.add_action(Action::Expand),
+                SemanticAction::Collapse => node.add_action(Action::Collapse),
                 SemanticAction::SetSelection
                     if self.editable_text_runs.contains_key(semantic.id()) =>
                 {
@@ -1021,10 +1026,32 @@ impl SurfaceProjection {
                 value.as_ref(),
             ));
         }
+        if request.action == Action::SetValue {
+            let Some(ActionData::NumericValue(value)) = request.data.as_ref() else {
+                return Err(AdapterDiagnostic::UnexpectedActionData(request.action));
+            };
+            if !node.supported_actions().contains(&SemanticAction::SetValue) {
+                return Err(AdapterDiagnostic::UnsupportedSemanticAction {
+                    target: semantic.clone(),
+                    action: SemanticAction::SetValue,
+                });
+            }
+            let value = SemanticNumber::new(*value)
+                .map_err(|_| AdapterDiagnostic::UnexpectedActionData(request.action))?;
+            return Ok(runenui_core::SemanticActionRequest::set_value(
+                snapshot.surface_id().clone(),
+                semantic.clone(),
+                value,
+            ));
+        }
         let action = match request.action {
             Action::Click => SemanticAction::Activate,
             Action::Focus => SemanticAction::RequestFocus,
             Action::ShowContextMenu => SemanticAction::OpenContextMenu,
+            Action::Increment => SemanticAction::Increment,
+            Action::Decrement => SemanticAction::Decrement,
+            Action::Expand => SemanticAction::Expand,
+            Action::Collapse => SemanticAction::Collapse,
             Action::CustomAction => match request.data {
                 Some(ActionData::CustomAction(id)) if id == OPEN_MENU_CUSTOM_ACTION_ID => {
                     SemanticAction::OpenMenu
