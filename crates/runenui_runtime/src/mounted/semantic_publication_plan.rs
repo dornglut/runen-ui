@@ -475,6 +475,13 @@ fn stage_semantic_capability<Action>(node: &MountedNode<Action>) -> StagedSemant
     }
 }
 
+const fn is_editable_semantic_role(role: SemanticRole) -> bool {
+    matches!(
+        role,
+        SemanticRole::EditableText | SemanticRole::ComboBox | SemanticRole::SpinButton
+    )
+}
+
 fn editable_semantics_match<Action>(
     semantics: &SemanticContribution,
     editable: Option<&EditableContribution<Action>>,
@@ -489,10 +496,8 @@ fn editable_semantics_match<Action>(
             let Some(projected) = primary.editable() else {
                 return false;
             };
-            matches!(
-                primary.role(),
-                SemanticRole::EditableText | SemanticRole::ComboBox | SemanticRole::SpinButton
-            ) && projected.snapshot() == authoritative.snapshot()
+            is_editable_semantic_role(primary.role())
+                && projected.snapshot() == authoritative.snapshot()
                 && projected.selection() == authoritative.initial_selection()
                 && projected.sensitivity() == authoritative.sensitivity()
                 && projected.read_only() == authoritative.read_only()
