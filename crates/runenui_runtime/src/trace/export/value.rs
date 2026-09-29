@@ -107,6 +107,11 @@ fn semantic_action(output: &mut String, action: &SemanticAction) {
             SemanticAction::RequestFocus => "request_focus",
             SemanticAction::OpenMenu => "open_menu",
             SemanticAction::OpenContextMenu => "open_context_menu",
+            SemanticAction::Increment => "increment",
+            SemanticAction::Decrement => "decrement",
+            SemanticAction::SetValue => "set_value",
+            SemanticAction::Expand => "expand",
+            SemanticAction::Collapse => "collapse",
             _ => "unknown",
         },
     );
@@ -183,6 +188,16 @@ pub(super) fn semantic_command(output: &mut String, command: SemanticCommand) {
             json::string(output, tokens::focus_direction(direction));
         }
         SemanticCommand::ScrollIntoView => json::string(output, "scroll_into_view"),
+        SemanticCommand::Increment => json::string(output, "increment"),
+        SemanticCommand::Decrement => json::string(output, "decrement"),
+        SemanticCommand::SetValue(value) => {
+            json::string(output, "set_value");
+            output.push(',');
+            json::name(output, "value");
+            json::f64_value(output, value.get());
+        }
+        SemanticCommand::Expand => json::string(output, "expand"),
+        SemanticCommand::Collapse => json::string(output, "collapse"),
         SemanticCommand::MoveUp => json::string(output, "move_up"),
         SemanticCommand::MoveDown => json::string(output, "move_down"),
         SemanticCommand::ExtendUp => json::string(output, "extend_up"),
