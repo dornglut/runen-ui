@@ -12,12 +12,15 @@ use std::{
 };
 
 use accesskit::{
-    Action, ActionData, ActionRequest, ActivationHandler, CustomAction, Node, NodeId, Rect, Role,
-    TextPosition as AccessTextPosition, TextSelection as AccessTextSelection, Toggled, Tree,
-    TreeId, TreeUpdate,
+    Action, ActionData, ActionRequest, ActivationHandler, AutoComplete as AccessAutoComplete,
+    CustomAction, HasPopup, Invalid as AccessInvalid, Node, NodeId,
+    Orientation as AccessOrientation, Rect, Role, TextPosition as AccessTextPosition,
+    TextSelection as AccessTextSelection, Toggled, Tree, TreeId, TreeUpdate,
 };
 use runenui_core::{
-    SemanticAction, SemanticCheckedState, SemanticNodeId, SemanticRelationshipKind, SemanticRole,
+    SemanticAction, SemanticAutocomplete, SemanticCheckedState, SemanticEditableMode,
+    SemanticInvalidState, SemanticNodeId, SemanticOrientation, SemanticPopupKind,
+    SemanticPressedState, SemanticRelationshipKind, SemanticRole, SemanticSelectionMode,
     SemanticText, SemanticValue, SurfaceId, TextAffinity, TextPosition, TextSensitivity,
 };
 use runenui_runtime::{SemanticNode, SemanticPublication, SemanticSnapshot, SemanticUpdateResult};
@@ -36,6 +39,8 @@ pub enum AdapterDiagnostic {
         target: SemanticNodeId,
     },
     UnsupportedRelationship(SemanticNodeId),
+    MultipleErrorMessages(SemanticNodeId),
+    UnrepresentableCollectionMetadata(SemanticNodeId),
     UnsupportedSemanticAction {
         target: SemanticNodeId,
         action: SemanticAction,
@@ -480,6 +485,12 @@ impl SurfaceProjection {
             if !changed.contains(node.id()) {
                 changed.push(node.id().clone());
             }
+            if node.collection_position().is_some()
+                && let Some(parent) = node.parent()
+                && !changed.contains(parent)
+            {
+                changed.push(parent.clone());
+            }
         }
         if let Some(previous) = previous_snapshot {
             for removed_id in delta.removed() {
@@ -510,7 +521,7 @@ impl SurfaceProjection {
             for id in &changed {
                 if let Some(node) = snapshot.node(id) {
                     let accesskit_id = self.semantic_to_accesskit[id];
-                    let (node, node_diagnostics) = self.project_node(node);
+                    let (node, node_diagnostics) = self.project_node(snapshot, node);
                     diagnostics.extend(node_diagnostics);
                     projected.push((accesskit_id, node));
                 }
@@ -568,15 +579,15 @@ impl SurfaceProjection {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn project_node(&self, semantic: &SemanticNode) -> (Node, Vec<AdapterDiagnostic>) {
+    fn project_node(
+        &self,
+        snapshot: &SemanticSnapshot,
+        semantic: &SemanticNode,
+    ) -> (Node, Vec<AdapterDiagnostic>) {
         let mut diagnostics = Vec::new();
         let role = semantic.editable().map_or_else(
             || map_role(semantic.role(), semantic.id(), &mut diagnostics),
-            |editable| match editable.sensitivity() {
-                TextSensitivity::Public => Role::TextInput,
-                TextSensitivity::Secret => Role::PasswordInput,
-                _ => Role::Unknown,
-            },
+            |editable| map_editable_role(semantic, editable.sensitivity(), &mut diagnostics),
         );
         let mut node = Node::new(role);
         if semantic.state().disabled() {
@@ -594,6 +605,24 @@ impl SurfaceProjection {
             && let Some(toggled) = map_checked_state(checked, semantic.id(), &mut diagnostics)
         {
             node.set_toggled(toggled);
+        }
+        if let Some(pressed) = semantic.state().pressed() {
+            node.set_toggled(map_pressed_state(pressed));
+        }
+        if let Some(selected) = semantic.state().selected() {
+            node.set_selected(selected);
+        }
+        if let Some(expanded) = semantic.state().expanded() {
+            node.set_expanded(expanded);
+        }
+        if semantic.state().required() == Some(true) {
+            node.set_required();
+        }
+        if let Some(invalid) = semantic.state().invalid() {
+            node.set_invalid(map_invalid_state(invalid));
+        }
+        if semantic.state().modal() == Some(true) {
+            node.set_modal();
         }
         if let Some(name) = semantic.name() {
             let is_duplicate_text = matches!(role, Role::Label)
@@ -653,9 +682,67 @@ impl SurfaceProjection {
                 )),
             }
         }
+        if let Some(range) = semantic.range() {
+            if let Some(value) = range.minimum() {
+                node.set_min_numeric_value(value.get());
+            }
+            if let Some(value) = range.maximum() {
+                node.set_max_numeric_value(value.get());
+            }
+            if let Some(value) = range.current() {
+                node.set_numeric_value(value.get());
+            }
+            if let Some(value) = range.small_step() {
+                node.set_numeric_value_step(value.get());
+            }
+            if let Some(value) = range.large_step() {
+                node.set_numeric_value_jump(value.get());
+            }
+            if let Some(value_text) = range.value_text() {
+                node.set_value(value_text);
+            }
+        }
+        if let Some(orientation) = semantic.orientation() {
+            node.set_orientation(map_orientation(orientation));
+        }
+        if let Some(popup) = semantic.popup() {
+            node.set_has_popup(map_popup(popup));
+        }
+        if semantic.selection_mode() == Some(SemanticSelectionMode::Multiple) {
+            node.set_multiselectable();
+        }
+        if let Some(position) = semantic.collection_position() {
+            match usize::try_from(position.index()) {
+                Ok(index) => node.set_position_in_set(index),
+                Err(_) => diagnostics.push(
+                    AdapterDiagnostic::UnrepresentableCollectionMetadata(semantic.id().clone()),
+                ),
+            }
+        }
+        match collection_size_for_parent(snapshot, semantic) {
+            Ok(Some(size)) => node.set_size_of_set(size),
+            Ok(None) => {}
+            Err(()) => diagnostics.push(
+                AdapterDiagnostic::UnrepresentableCollectionMetadata(semantic.id().clone()),
+            ),
+        }
+        if let Some(level) = semantic.hierarchy_level() {
+            node.set_level(level.get() as usize);
+        }
+        if let Some(placeholder) = semantic.placeholder() {
+            node.set_placeholder(placeholder);
+        }
+        if let Some(autocomplete) = semantic.autocomplete()
+            && let Some(autocomplete) = map_autocomplete(autocomplete)
+        {
+            node.set_auto_complete(autocomplete);
+        }
+
         let mut controls = Vec::new();
         let mut described_by = Vec::new();
         let mut labelled_by = Vec::new();
+        let mut error_messages = Vec::new();
+        let mut active_descendants = Vec::new();
         for relationship in semantic.relationships() {
             let Some(target) = self
                 .semantic_to_accesskit
@@ -672,6 +759,8 @@ impl SurfaceProjection {
                 SemanticRelationshipKind::LabelledBy => labelled_by.push(target),
                 SemanticRelationshipKind::DescribedBy => described_by.push(target),
                 SemanticRelationshipKind::Controls => controls.push(target),
+                SemanticRelationshipKind::ErrorMessage => error_messages.push(target),
+                SemanticRelationshipKind::ActiveDescendant => active_descendants.push(target),
                 #[allow(unreachable_patterns)]
                 _ => diagnostics.push(AdapterDiagnostic::UnsupportedRelationship(
                     semantic.id().clone(),
@@ -686,6 +775,20 @@ impl SurfaceProjection {
         }
         if !controls.is_empty() {
             node.set_controls(controls);
+        }
+        match error_messages.as_slice() {
+            [] => {}
+            [target] => node.set_error_message(*target),
+            _ => diagnostics.push(AdapterDiagnostic::MultipleErrorMessages(
+                semantic.id().clone(),
+            )),
+        }
+        match active_descendants.as_slice() {
+            [] => {}
+            [target] => node.set_active_descendant(*target),
+            _ => diagnostics.push(AdapterDiagnostic::UnsupportedRelationship(
+                semantic.id().clone(),
+            )),
         }
         for action in semantic.supported_actions() {
             match action {
@@ -923,6 +1026,28 @@ fn map_role(
         SemanticRole::RadioButton => Role::RadioButton,
         SemanticRole::RadioGroup => Role::RadioGroup,
         SemanticRole::Switch => Role::Switch,
+        SemanticRole::Link => Role::Link,
+        SemanticRole::Image => Role::Image,
+        SemanticRole::ComboBox => Role::ComboBox,
+        SemanticRole::Slider => Role::Slider,
+        SemanticRole::Progress => Role::ProgressIndicator,
+        SemanticRole::SpinButton => Role::SpinButton,
+        SemanticRole::ListBox => Role::ListBox,
+        SemanticRole::Option => Role::ListBoxOption,
+        SemanticRole::TabList => Role::TabList,
+        SemanticRole::Tab => Role::Tab,
+        SemanticRole::TabPanel => Role::TabPanel,
+        SemanticRole::Toolbar => Role::Toolbar,
+        SemanticRole::Menu => Role::Menu,
+        SemanticRole::MenuBar => Role::MenuBar,
+        SemanticRole::MenuItem => Role::MenuItem,
+        SemanticRole::MenuItemCheckbox => Role::MenuItemCheckBox,
+        SemanticRole::MenuItemRadio => Role::MenuItemRadio,
+        SemanticRole::Dialog => Role::Dialog,
+        SemanticRole::Tooltip => Role::Tooltip,
+        SemanticRole::Separator | SemanticRole::Splitter => Role::Splitter,
+        SemanticRole::Tree => Role::Tree,
+        SemanticRole::TreeItem => Role::TreeItem,
         #[allow(unreachable_patterns)]
         _ => {
             diagnostics.push(AdapterDiagnostic::UnsupportedRole(id.clone()));
@@ -946,6 +1071,94 @@ fn map_checked_state(
             None
         }
     }
+}
+
+fn map_editable_role(
+    semantic: &SemanticNode,
+    sensitivity: TextSensitivity,
+    diagnostics: &mut Vec<AdapterDiagnostic>,
+) -> Role {
+    match (semantic.role(), sensitivity) {
+        (SemanticRole::EditableText, TextSensitivity::Public) => {
+            if semantic.editable_mode() == Some(SemanticEditableMode::Multiline) {
+                Role::MultilineTextInput
+            } else {
+                Role::TextInput
+            }
+        }
+        (SemanticRole::EditableText, TextSensitivity::Secret) => Role::PasswordInput,
+        (SemanticRole::ComboBox, TextSensitivity::Public) => Role::EditableComboBox,
+        (SemanticRole::SpinButton, TextSensitivity::Public) => Role::SpinButton,
+        _ => {
+            diagnostics.push(AdapterDiagnostic::UnsupportedRole(semantic.id().clone()));
+            Role::Unknown
+        }
+    }
+}
+
+const fn map_pressed_state(pressed: SemanticPressedState) -> Toggled {
+    match pressed {
+        SemanticPressedState::Unpressed => Toggled::False,
+        SemanticPressedState::Pressed => Toggled::True,
+        SemanticPressedState::Mixed => Toggled::Mixed,
+    }
+}
+
+const fn map_invalid_state(invalid: SemanticInvalidState) -> AccessInvalid {
+    match invalid {
+        SemanticInvalidState::Invalid => AccessInvalid::True,
+        SemanticInvalidState::Grammar => AccessInvalid::Grammar,
+        SemanticInvalidState::Spelling => AccessInvalid::Spelling,
+    }
+}
+
+const fn map_orientation(orientation: SemanticOrientation) -> AccessOrientation {
+    match orientation {
+        SemanticOrientation::Horizontal => AccessOrientation::Horizontal,
+        SemanticOrientation::Vertical => AccessOrientation::Vertical,
+    }
+}
+
+const fn map_popup(popup: SemanticPopupKind) -> HasPopup {
+    match popup {
+        SemanticPopupKind::Menu => HasPopup::Menu,
+        SemanticPopupKind::ListBox => HasPopup::Listbox,
+        SemanticPopupKind::Dialog => HasPopup::Dialog,
+    }
+}
+
+const fn map_autocomplete(autocomplete: SemanticAutocomplete) -> Option<AccessAutoComplete> {
+    match autocomplete {
+        SemanticAutocomplete::None => None,
+        SemanticAutocomplete::Inline => Some(AccessAutoComplete::Inline),
+        SemanticAutocomplete::List => Some(AccessAutoComplete::List),
+        SemanticAutocomplete::Both => Some(AccessAutoComplete::Both),
+    }
+}
+
+fn collection_size_for_parent(
+    snapshot: &SemanticSnapshot,
+    semantic: &SemanticNode,
+) -> Result<Option<usize>, ()> {
+    let mut known_size = None;
+    for child in semantic.children() {
+        let Some(position) = snapshot
+            .node(child)
+            .and_then(SemanticNode::collection_position)
+        else {
+            continue;
+        };
+        let Some(size) = position.known_size() else {
+            continue;
+        };
+        let size = usize::try_from(size).map_err(|_| ())?;
+        match known_size {
+            None => known_size = Some(size),
+            Some(existing) if existing == size => {}
+            Some(_) => return Err(()),
+        }
+    }
+    Ok(known_size)
 }
 
 fn project_editable_text_run(semantic: &SemanticNode) -> Option<Node> {
