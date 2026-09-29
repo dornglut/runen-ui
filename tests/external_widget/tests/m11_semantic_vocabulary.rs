@@ -155,13 +155,13 @@ fn downstream_widget_publishes_selected_m11_typed_semantics_through_public_apis(
     assert_eq!(
         option
             .collection_position()
-            .map(|position| position.index()),
+            .map(runenui_core::SemanticCollectionPosition::index),
         Some(0)
     );
     assert_eq!(
         option
             .collection_position()
-            .and_then(|position| position.known_size()),
+            .and_then(runenui_core::SemanticCollectionPosition::known_size),
         Some(1)
     );
 
