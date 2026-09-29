@@ -28,10 +28,10 @@ exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, and accepted-main push CI
 #1171 / `31903354382` passed at that exact squash:
 
 ```text
-243 total unique rows
+244 total unique rows
 243 owner-accepted
 0 implementation-complete
-0 proof-complete
+1 proof-complete
 0 blocked
 0 duplicate IDs
 0 invalid statuses
@@ -355,3 +355,4 @@ not imply routed-event or M4D support.
 | M4-CLOSE-03 | Every Required row is owner-accepted on stable and Rust 1.93.0 at one exact head. | `cargo validate` and matrix audit | Duplicate/missing row, failed validation, and dirty-head proof | Exact-head trace fixtures | M4D3 | owner-accepted | Required |
 | M4-CLOSE-04 | Exact-head GitHub CI passes, current API/status/support documents are truthful, and M4 is explicitly owner-accepted and merged. | CI and owner review | Stale claim/link/diff audit | Exact-head CI artifacts | M4D3 | owner-accepted | Required |
 | M4-CLOSE-05 | Only after M4 closure may M5 implementation become unblocked; M5 ordering and scope remain unchanged. | Roadmap/status audit | Premature M5 work proof | Milestone acceptance record | M4D3 | owner-accepted | Required |
+| CMD-15 | M11S2 Increment/Decrement/SetValue/Expand/Collapse remain ordinary canonical SemanticCommands: semantic-origin work routes through the existing capture/target/bubble transaction, SetValue keeps its checked finite payload in the command, widgets may emit ordinary application actions, and unhandled commands have no runtime-owned value/expanded default or second queue. | `tests/external_widget/tests/m11_semantic_actions.rs::set_value_routes_exact_payload_before_application_update_and_direct_command_converges`; `unhandled_increment_has_no_runtime_or_application_default_mutation` | Processing-time target/payload integrity rejection and existing routed cancellation/capacity/no-partial-commit corpus | Stable command trace tokens plus exact SetValue numeric trace value and ordinary routed/application causal lineage | M11S2 | proof-complete | Required |
