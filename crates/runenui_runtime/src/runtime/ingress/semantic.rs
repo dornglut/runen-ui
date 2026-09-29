@@ -1,6 +1,6 @@
 use runenui_core::{
     Focusability, SemanticAction, SemanticActionData, SemanticActionRequest, SemanticActionTarget,
-    SemanticCommand, SemanticKey, SemanticNodeId, SurfaceId, TextSensitivity,
+    SemanticCommand, SemanticKey, SemanticNodeId, SemanticRole, SurfaceId, TextSensitivity,
 };
 
 use crate::{
@@ -29,9 +29,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let owner = authority.owner().clone();
         let key = authority.key().clone();
+        let command = semantic_command(request.action(), request.data())
+            .unwrap_or_else(|| unreachable!("semantic preflight validates action/data normalization"));
         let rejected_request = request.clone();
         let (surface, target, action, data) = request.into_parts();
-        let command = semantic_command(&action);
         let semantic_target =
             SemanticActionTarget::__runtime_new(surface, target, key, action, data);
         match self.submit_semantic_action_command(&owner, command, semantic_target) {
@@ -108,10 +109,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             ) | (
                 SemanticAction::ReplaceSelection,
                 Some(SemanticActionData::ReplacementText(_))
+            ) | (
+                SemanticAction::SetValue,
+                Some(SemanticActionData::NumericValue(_))
             )
         ) || (!matches!(
             action,
-            SemanticAction::SetSelection | SemanticAction::ReplaceSelection
+            SemanticAction::SetSelection
+                | SemanticAction::ReplaceSelection
+                | SemanticAction::SetValue
         ) && data.is_none());
         if !data_matches {
             return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
@@ -125,6 +131,53 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             && authority.focusability() == Focusability::FocusableWhenDisabled;
         if state.inert() || (state.disabled() && !disabled_focus_request) {
             return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+        }
+        match action {
+            SemanticAction::Increment | SemanticAction::Decrement => {
+                if !is_mutable_range_role(node.role()) || node.range().is_none() {
+                    return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+                }
+                if node.range().and_then(runenui_core::SemanticRange::current).is_none() {
+                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+                }
+            }
+            SemanticAction::SetValue => {
+                if !is_mutable_range_role(node.role()) || node.range().is_none() {
+                    return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+                }
+                let Some(SemanticActionData::NumericValue(value)) = data else {
+                    return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+                };
+                let range = node
+                    .range()
+                    .unwrap_or_else(|| unreachable!("mutable SetValue support requires a range"));
+                if range
+                    .minimum()
+                    .is_some_and(|minimum| value.get() < minimum.get())
+                    || range
+                        .maximum()
+                        .is_some_and(|maximum| value.get() > maximum.get())
+                {
+                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+                }
+            }
+            SemanticAction::Expand => {
+                if !is_expandable_role(node.role()) {
+                    return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+                }
+                if state.expanded() != Some(false) {
+                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+                }
+            }
+            SemanticAction::Collapse => {
+                if !is_expandable_role(node.role()) {
+                    return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+                }
+                if state.expanded() != Some(true) {
+                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+                }
+            }
+            _ => {}
         }
         if let Some(editable) = node.editable() {
             if let Some(SemanticActionData::Selection(selection)) = data {
@@ -188,7 +241,13 @@ fn semantic_action_is_ready(authority: &SemanticActionAuthority, action: &Semant
             authority.key() != &SemanticKey::PRIMARY || activation.is_actionable()
         }
         SemanticAction::RequestFocus => unreachable!("focus readiness returned above"),
-        SemanticAction::OpenMenu | SemanticAction::OpenContextMenu => true,
+        SemanticAction::OpenMenu
+        | SemanticAction::OpenContextMenu
+        | SemanticAction::Increment
+        | SemanticAction::Decrement
+        | SemanticAction::SetValue
+        | SemanticAction::Expand
+        | SemanticAction::Collapse => true,
         SemanticAction::MoveBackward
         | SemanticAction::MoveForward
         | SemanticAction::ExtendBackward
@@ -207,28 +266,58 @@ fn semantic_action_is_ready(authority: &SemanticActionAuthority, action: &Semant
     }
 }
 
-fn semantic_command(action: &SemanticAction) -> SemanticCommand {
+fn semantic_command(
+    action: &SemanticAction,
+    data: Option<&SemanticActionData>,
+) -> Option<SemanticCommand> {
     match action {
-        SemanticAction::Activate => SemanticCommand::Activate,
-        SemanticAction::RequestFocus => SemanticCommand::RequestFocus,
-        SemanticAction::OpenMenu => SemanticCommand::OpenMenu,
-        SemanticAction::OpenContextMenu => SemanticCommand::OpenContextMenu,
-        SemanticAction::MoveBackward => SemanticCommand::MoveBackward,
-        SemanticAction::MoveForward => SemanticCommand::MoveForward,
-        SemanticAction::ExtendBackward => SemanticCommand::ExtendBackward,
-        SemanticAction::ExtendForward => SemanticCommand::ExtendForward,
-        SemanticAction::SelectAll => SemanticCommand::SelectAll,
-        SemanticAction::DeleteBackward => SemanticCommand::DeleteBackward,
-        SemanticAction::DeleteForward => SemanticCommand::DeleteForward,
-        SemanticAction::Undo => SemanticCommand::Undo,
-        SemanticAction::Redo => SemanticCommand::Redo,
-        SemanticAction::Copy => SemanticCommand::Copy,
-        SemanticAction::Cut => SemanticCommand::Cut,
-        SemanticAction::Paste => SemanticCommand::Paste,
-        SemanticAction::SetSelection => SemanticCommand::SetSelection,
-        SemanticAction::ReplaceSelection => SemanticCommand::ReplaceSelection,
-        _ => unreachable!("M5 semantic action vocabulary is closed by accepted authority"),
+        SemanticAction::Activate => Some(SemanticCommand::Activate),
+        SemanticAction::RequestFocus => Some(SemanticCommand::RequestFocus),
+        SemanticAction::OpenMenu => Some(SemanticCommand::OpenMenu),
+        SemanticAction::OpenContextMenu => Some(SemanticCommand::OpenContextMenu),
+        SemanticAction::MoveBackward => Some(SemanticCommand::MoveBackward),
+        SemanticAction::MoveForward => Some(SemanticCommand::MoveForward),
+        SemanticAction::ExtendBackward => Some(SemanticCommand::ExtendBackward),
+        SemanticAction::ExtendForward => Some(SemanticCommand::ExtendForward),
+        SemanticAction::SelectAll => Some(SemanticCommand::SelectAll),
+        SemanticAction::DeleteBackward => Some(SemanticCommand::DeleteBackward),
+        SemanticAction::DeleteForward => Some(SemanticCommand::DeleteForward),
+        SemanticAction::Undo => Some(SemanticCommand::Undo),
+        SemanticAction::Redo => Some(SemanticCommand::Redo),
+        SemanticAction::Copy => Some(SemanticCommand::Copy),
+        SemanticAction::Cut => Some(SemanticCommand::Cut),
+        SemanticAction::Paste => Some(SemanticCommand::Paste),
+        SemanticAction::SetSelection => Some(SemanticCommand::SetSelection),
+        SemanticAction::ReplaceSelection => Some(SemanticCommand::ReplaceSelection),
+        SemanticAction::Increment => Some(SemanticCommand::Increment),
+        SemanticAction::Decrement => Some(SemanticCommand::Decrement),
+        SemanticAction::SetValue => match data {
+            Some(SemanticActionData::NumericValue(value)) => Some(SemanticCommand::SetValue(*value)),
+            _ => None,
+        },
+        SemanticAction::Expand => Some(SemanticCommand::Expand),
+        SemanticAction::Collapse => Some(SemanticCommand::Collapse),
+        _ => None,
     }
+}
+
+const fn is_mutable_range_role(role: SemanticRole) -> bool {
+    matches!(
+        role,
+        SemanticRole::Slider | SemanticRole::SpinButton | SemanticRole::Splitter
+    )
+}
+
+const fn is_expandable_role(role: SemanticRole) -> bool {
+    matches!(
+        role,
+        SemanticRole::Button
+            | SemanticRole::ComboBox
+            | SemanticRole::MenuItem
+            | SemanticRole::MenuItemCheckbox
+            | SemanticRole::MenuItemRadio
+            | SemanticRole::TreeItem
+    )
 }
 
 const fn map_authority_error(error: SemanticActionAuthorityError) -> SubmitSemanticActionErrorKind {
