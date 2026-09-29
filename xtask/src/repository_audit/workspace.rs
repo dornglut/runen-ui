@@ -19,6 +19,8 @@ const REFERENCE_WINIT_PACKAGE: &str = "reference_winit";
 const EXTERNAL_HOST_PACKAGE: &str = "runenui_external_host_conformance";
 const EXTERNAL_WIDGET_PACKAGE: &str = "runenui_external_widget_conformance";
 const XTASK_PACKAGE: &str = "xtask";
+const NEUTRAL_ACCESSIBILITY_FORBIDDEN_DEPENDENCIES: &[&str] =
+    &["accesskit", "accesskit_winit"];
 const TEXT_FORBIDDEN_DEPENDENCIES: &[&str] = &[
     "wgpu",
     "winit",
@@ -341,6 +343,15 @@ fn validate_external_dependency_boundaries(
     dev_dependencies: &BTreeSet<String>,
     findings: &mut Vec<Finding>,
 ) {
+    if matches!(package, CORE_PACKAGE | RUNTIME_PACKAGE) {
+        validate_neutral_accessibility_dependencies(
+            relative,
+            package,
+            dependencies,
+            dev_dependencies,
+            findings,
+        );
+    }
     if package == TEXT_PACKAGE {
         validate_text_external_dependencies(relative, dependencies, dev_dependencies, findings);
     }
@@ -498,6 +509,26 @@ fn validate_required_workspace_dependencies(
             Some(path_text(&member.relative.join("Cargo.toml"))),
             "reference_winit must consume runenui_render_wgpu as the standalone M7 native host",
         ));
+    }
+}
+
+fn validate_neutral_accessibility_dependencies(
+    relative: &Path,
+    package: &str,
+    dependencies: &BTreeSet<String>,
+    dev_dependencies: &BTreeSet<String>,
+    findings: &mut Vec<Finding>,
+) {
+    for forbidden in NEUTRAL_ACCESSIBILITY_FORBIDDEN_DEPENDENCIES {
+        if dependencies.contains(*forbidden) || dev_dependencies.contains(*forbidden) {
+            findings.push(Finding::fatal(
+                "workspace.neutral_accessibility_dependency",
+                Some(path_text(&relative.join("Cargo.toml"))),
+                format!(
+                    "{package} must not depend directly on native accessibility package `{forbidden}`"
+                ),
+            ));
+        }
     }
 }
 
@@ -856,8 +887,9 @@ mod tests {
         WorkspaceMember, documented_package_names, external_host_forbidden_source_pattern,
         is_public_consumer, parse_dependency_names, parse_feature_names, parse_package_name,
         parse_workspace_members, private_feature_names, validate_dependency_direction,
-        validate_external_host_dependencies, validate_renderer_external_dependencies,
-        validate_text_external_dependencies, validate_winit_external_dependencies,
+        validate_external_host_dependencies, validate_neutral_accessibility_dependencies,
+        validate_renderer_external_dependencies, validate_text_external_dependencies,
+        validate_winit_external_dependencies,
     };
 
     fn member(
@@ -965,6 +997,40 @@ mod tests {
                 .iter()
                 .any(|finding| finding.code == "workspace.forbidden_dependency_direction")
         );
+    }
+
+    #[test]
+    fn neutral_core_and_runtime_reject_native_accessibility_dependencies() {
+        for (relative, package) in [
+            ("crates/runenui_core", CORE_PACKAGE),
+            ("crates/runenui_runtime", RUNTIME_PACKAGE),
+        ] {
+            let mut clean = Vec::new();
+            validate_neutral_accessibility_dependencies(
+                Path::new(relative),
+                package,
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                &mut clean,
+            );
+            assert!(clean.is_empty());
+
+            let mut findings = Vec::new();
+            validate_neutral_accessibility_dependencies(
+                Path::new(relative),
+                package,
+                &BTreeSet::from(["accesskit".to_owned()]),
+                &BTreeSet::from(["accesskit_winit".to_owned()]),
+                &mut findings,
+            );
+            assert_eq!(
+                findings
+                    .iter()
+                    .filter(|finding| finding.code == "workspace.neutral_accessibility_dependency")
+                    .count(),
+                2
+            );
+        }
     }
 
     #[test]
