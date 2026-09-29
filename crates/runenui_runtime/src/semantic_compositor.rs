@@ -599,9 +599,7 @@ fn supported_actions(
             | SemanticAction::Undo
             | SemanticAction::Redo
             | SemanticAction::ReplaceSelection => editable.is_some() && !read_only,
-            SemanticAction::Increment
-            | SemanticAction::Decrement
-            | SemanticAction::SetValue => {
+            SemanticAction::Increment | SemanticAction::Decrement | SemanticAction::SetValue => {
                 matches!(
                     authored.role(),
                     SemanticRole::Slider | SemanticRole::SpinButton | SemanticRole::Splitter
