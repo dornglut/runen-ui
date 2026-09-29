@@ -91,6 +91,15 @@ pub enum SemanticCompositionDiagnostic {
         element_id: ElementId,
         key: SemanticKey,
     },
+    InvalidActiveDescendantTargetRole {
+        source: SemanticNodeId,
+        target: SemanticNodeId,
+        role: SemanticRole,
+    },
+    ActiveDescendantOutsideControlledSubtree {
+        source: SemanticNodeId,
+        target: SemanticNodeId,
+    },
     UnrepresentableBounds {
         source: SemanticNodeId,
     },
@@ -123,6 +132,7 @@ pub fn compose_semantics(
         None => Vec::new(),
     };
     compositor.resolve_relationships();
+    compositor.validate_active_descendants();
     let focused = focused_owner.and_then(|owner| {
         let focused = compositor.visible_id(owner, &SemanticKey::PRIMARY).cloned();
         if focused.is_none() {
@@ -416,6 +426,73 @@ impl<'a> SemanticCompositor<'a> {
         }
     }
 
+    fn validate_active_descendants(&mut self) {
+        let topology = self
+            .drafts
+            .iter()
+            .map(|draft| {
+                (
+                    draft.node.id.clone(),
+                    (draft.node.role, draft.node.parent.clone()),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+
+        for index in 0..self.drafts.len() {
+            let source = self.drafts[index].node.id.clone();
+            let controlled_listboxes = self.drafts[index]
+                .node
+                .relationships
+                .iter()
+                .filter(|relationship| {
+                    relationship.kind == SemanticRelationshipKind::Controls
+                        && topology
+                            .get(&relationship.target)
+                            .is_some_and(|(role, _)| *role == SemanticRole::ListBox)
+                })
+                .map(|relationship| relationship.target.clone())
+                .collect::<Vec<_>>();
+
+            let relationships = core::mem::take(&mut self.drafts[index].node.relationships);
+            let mut retained = Vec::with_capacity(relationships.len());
+            for relationship in relationships {
+                if relationship.kind != SemanticRelationshipKind::ActiveDescendant {
+                    retained.push(relationship);
+                    continue;
+                }
+
+                let Some((role, _)) = topology.get(&relationship.target) else {
+                    unreachable!("resolved semantic relationship targets are current draft nodes");
+                };
+                if *role != SemanticRole::Option {
+                    self.diagnostics.push(
+                        SemanticCompositionDiagnostic::InvalidActiveDescendantTargetRole {
+                            source: source.clone(),
+                            target: relationship.target,
+                            role: *role,
+                        },
+                    );
+                    continue;
+                }
+
+                if !controlled_listboxes.iter().any(|controlled| {
+                    semantic_is_strict_descendant(&relationship.target, controlled, &topology)
+                }) {
+                    self.diagnostics.push(
+                        SemanticCompositionDiagnostic::ActiveDescendantOutsideControlledSubtree {
+                            source: source.clone(),
+                            target: relationship.target,
+                        },
+                    );
+                    continue;
+                }
+
+                retained.push(relationship);
+            }
+            self.drafts[index].node.relationships = retained;
+        }
+    }
+
     fn resolve_authored_relationship_target(
         &mut self,
         source: &SemanticNodeId,
@@ -458,6 +535,27 @@ impl<'a> SemanticCompositor<'a> {
             None
         }
     }
+}
+
+fn semantic_is_strict_descendant(
+    target: &SemanticNodeId,
+    ancestor: &SemanticNodeId,
+    topology: &HashMap<SemanticNodeId, (SemanticRole, Option<SemanticNodeId>)>,
+) -> bool {
+    let mut current = target.clone();
+    for _ in 0..topology.len() {
+        let Some(parent) = topology
+            .get(&current)
+            .and_then(|(_, parent)| parent.as_ref())
+        else {
+            return false;
+        };
+        if parent == ancestor {
+            return true;
+        }
+        current = parent.clone();
+    }
+    false
 }
 
 fn contains_semantic_node(items: &[SemanticItem]) -> bool {
@@ -524,8 +622,9 @@ mod tests {
     use runenui_core::{
         __runtime::RuntimeNamespace, ElementId, Focusability, LogicalPoint, LogicalRect,
         LogicalSize, LogicalTransform, SemanticAction, SemanticBounds, SemanticContribution,
-        SemanticItem, SemanticKey, SemanticNodeContribution, SemanticReference,
-        SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
+        SemanticItem, SemanticKey, SemanticNodeContribution, SemanticPopupKind,
+        SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole,
+        SemanticState,
         WidgetActivation,
     };
 
@@ -965,6 +1064,317 @@ mod tests {
         assert_eq!(candidate.nodes[0].relationships.len(), 2);
         assert_eq!(candidate.nodes[0].relationships[0].target, source_shared);
         assert_eq!(candidate.nodes[0].relationships[1].target, target_shared);
+    }
+
+    #[test]
+    fn active_descendant_requires_option_inside_controlled_listbox() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let root = runtime.__runtime_mounted_id(0, 1);
+        let combo = runtime.__runtime_mounted_id(1, 1);
+        let popup = runtime.__runtime_mounted_id(2, 1);
+        let combo_id = runtime.__runtime_semantic_id(0, 1);
+        let listbox_id = runtime.__runtime_semantic_id(1, 1);
+        let option_id = runtime.__runtime_semantic_id(2, 1);
+        let option_key = key("active-option");
+        let popup_element = element_id("popup");
+
+        let combo_contribution = SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::ComboBox)
+                .with_popup(SemanticPopupKind::ListBox)
+                .with_relationship(SemanticRelationship::new(
+                    SemanticRelationshipKind::Controls,
+                    SemanticReference::Authored {
+                        element_id: popup_element.clone(),
+                        semantic_key: None,
+                    },
+                ))
+                .with_relationship(SemanticRelationship::new(
+                    SemanticRelationshipKind::ActiveDescendant,
+                    SemanticReference::Authored {
+                        element_id: popup_element.clone(),
+                        semantic_key: Some(option_key.clone()),
+                    },
+                )),
+        );
+        let popup_contribution = SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::ListBox).with_child(
+                SemanticNodeContribution::new(option_key.clone(), SemanticRole::Option),
+            ),
+        );
+        let owners = vec![
+            SemanticOwnerFacts {
+                id: root.clone(),
+                authored_id: None,
+                mounted_children: vec![combo.clone(), popup.clone()],
+                contribution: SemanticContribution::empty(),
+                bindings: Vec::new(),
+                bounds: rect(0.0, 0.0, 100.0, 100.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
+            },
+            SemanticOwnerFacts {
+                id: combo,
+                authored_id: Some(element_id("combo")),
+                mounted_children: Vec::new(),
+                contribution: combo_contribution,
+                bindings: vec![(SemanticKey::PRIMARY, combo_id.clone())],
+                bounds: rect(0.0, 0.0, 20.0, 20.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::Focusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
+            },
+            SemanticOwnerFacts {
+                id: popup,
+                authored_id: Some(popup_element),
+                mounted_children: Vec::new(),
+                contribution: popup_contribution,
+                bindings: vec![
+                    (SemanticKey::PRIMARY, listbox_id.clone()),
+                    (option_key, option_id.clone()),
+                ],
+                bounds: rect(0.0, 30.0, 60.0, 60.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
+            },
+        ];
+
+        let candidate = compose(&owners, Some(&root), None);
+        assert!(candidate.diagnostics.is_empty());
+        assert_eq!(candidate.nodes[0].id, combo_id);
+        assert_eq!(candidate.nodes[0].relationships.len(), 2);
+        assert_eq!(
+            candidate.nodes[0].relationships[0],
+            ResolvedSemanticRelationship {
+                kind: SemanticRelationshipKind::Controls,
+                target: listbox_id,
+            }
+        );
+        assert_eq!(
+            candidate.nodes[0].relationships[1],
+            ResolvedSemanticRelationship {
+                kind: SemanticRelationshipKind::ActiveDescendant,
+                target: option_id,
+            }
+        );
+    }
+
+    #[test]
+    fn active_descendant_wrong_role_is_diagnosed_and_withheld() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let root = runtime.__runtime_mounted_id(0, 1);
+        let combo = runtime.__runtime_mounted_id(1, 1);
+        let popup = runtime.__runtime_mounted_id(2, 1);
+        let combo_id = runtime.__runtime_semantic_id(0, 1);
+        let listbox_id = runtime.__runtime_semantic_id(1, 1);
+        let target_id = runtime.__runtime_semantic_id(2, 1);
+        let target_key = key("not-an-option");
+        let popup_element = element_id("popup");
+
+        let combo_contribution = SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::ComboBox)
+                .with_popup(SemanticPopupKind::ListBox)
+                .with_relationship(SemanticRelationship::new(
+                    SemanticRelationshipKind::Controls,
+                    SemanticReference::Authored {
+                        element_id: popup_element.clone(),
+                        semantic_key: None,
+                    },
+                ))
+                .with_relationship(SemanticRelationship::new(
+                    SemanticRelationshipKind::ActiveDescendant,
+                    SemanticReference::Authored {
+                        element_id: popup_element.clone(),
+                        semantic_key: Some(target_key.clone()),
+                    },
+                )),
+        );
+        let popup_contribution = SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::ListBox).with_child(
+                SemanticNodeContribution::new(target_key.clone(), SemanticRole::Text),
+            ),
+        );
+        let owners = vec![
+            SemanticOwnerFacts {
+                id: root.clone(),
+                authored_id: None,
+                mounted_children: vec![combo.clone(), popup.clone()],
+                contribution: SemanticContribution::empty(),
+                bindings: Vec::new(),
+                bounds: rect(0.0, 0.0, 100.0, 100.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
+            },
+            SemanticOwnerFacts {
+                id: combo,
+                authored_id: Some(element_id("combo")),
+                mounted_children: Vec::new(),
+                contribution: combo_contribution,
+                bindings: vec![(SemanticKey::PRIMARY, combo_id.clone())],
+                bounds: rect(0.0, 0.0, 20.0, 20.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::Focusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
+            },
+            SemanticOwnerFacts {
+                id: popup,
+                authored_id: Some(popup_element),
+                mounted_children: Vec::new(),
+                contribution: popup_contribution,
+                bindings: vec![
+                    (SemanticKey::PRIMARY, listbox_id.clone()),
+                    (target_key, target_id.clone()),
+                ],
+                bounds: rect(0.0, 30.0, 60.0, 60.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
+            },
+        ];
+
+        let candidate = compose(&owners, Some(&root), None);
+        assert_eq!(candidate.nodes[0].relationships.len(), 1);
+        assert_eq!(
+            candidate.nodes[0].relationships[0],
+            ResolvedSemanticRelationship {
+                kind: SemanticRelationshipKind::Controls,
+                target: listbox_id,
+            }
+        );
+        assert_eq!(
+            candidate.diagnostics,
+            vec![
+                SemanticCompositionDiagnostic::InvalidActiveDescendantTargetRole {
+                    source: combo_id,
+                    target: target_id,
+                    role: SemanticRole::Text,
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn active_descendant_outside_controlled_listbox_is_diagnosed_and_withheld() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let root = runtime.__runtime_mounted_id(0, 1);
+        let combo = runtime.__runtime_mounted_id(1, 1);
+        let popup = runtime.__runtime_mounted_id(2, 1);
+        let outside = runtime.__runtime_mounted_id(3, 1);
+        let combo_id = runtime.__runtime_semantic_id(0, 1);
+        let listbox_id = runtime.__runtime_semantic_id(1, 1);
+        let outside_option_id = runtime.__runtime_semantic_id(2, 1);
+        let popup_element = element_id("popup");
+        let outside_element = element_id("outside-option");
+
+        let combo_contribution = SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::ComboBox)
+                .with_popup(SemanticPopupKind::ListBox)
+                .with_relationship(SemanticRelationship::new(
+                    SemanticRelationshipKind::Controls,
+                    SemanticReference::Authored {
+                        element_id: popup_element.clone(),
+                        semantic_key: None,
+                    },
+                ))
+                .with_relationship(SemanticRelationship::new(
+                    SemanticRelationshipKind::ActiveDescendant,
+                    SemanticReference::Authored {
+                        element_id: outside_element.clone(),
+                        semantic_key: None,
+                    },
+                )),
+        );
+        let owners = vec![
+            SemanticOwnerFacts {
+                id: root.clone(),
+                authored_id: None,
+                mounted_children: vec![combo.clone(), popup.clone(), outside.clone()],
+                contribution: SemanticContribution::empty(),
+                bindings: Vec::new(),
+                bounds: rect(0.0, 0.0, 100.0, 100.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
+            },
+            SemanticOwnerFacts {
+                id: combo,
+                authored_id: Some(element_id("combo")),
+                mounted_children: Vec::new(),
+                contribution: combo_contribution,
+                bindings: vec![(SemanticKey::PRIMARY, combo_id.clone())],
+                bounds: rect(0.0, 0.0, 20.0, 20.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::Focusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
+            },
+            SemanticOwnerFacts {
+                id: popup,
+                authored_id: Some(popup_element),
+                mounted_children: Vec::new(),
+                contribution: SemanticContribution::single(SemanticNodeContribution::primary(
+                    SemanticRole::ListBox,
+                )),
+                bindings: vec![(SemanticKey::PRIMARY, listbox_id.clone())],
+                bounds: rect(0.0, 30.0, 60.0, 60.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
+            },
+            SemanticOwnerFacts {
+                id: outside,
+                authored_id: Some(outside_element),
+                mounted_children: Vec::new(),
+                contribution: SemanticContribution::single(SemanticNodeContribution::primary(
+                    SemanticRole::Option,
+                )),
+                bindings: vec![(SemanticKey::PRIMARY, outside_option_id.clone())],
+                bounds: rect(70.0, 30.0, 20.0, 20.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
+            },
+        ];
+
+        let candidate = compose(&owners, Some(&root), None);
+        assert_eq!(candidate.nodes[0].relationships.len(), 1);
+        assert_eq!(
+            candidate.nodes[0].relationships[0],
+            ResolvedSemanticRelationship {
+                kind: SemanticRelationshipKind::Controls,
+                target: listbox_id,
+            }
+        );
+        assert_eq!(
+            candidate.diagnostics,
+            vec![
+                SemanticCompositionDiagnostic::ActiveDescendantOutsideControlledSubtree {
+                    source: combo_id,
+                    target: outside_option_id,
+                }
+            ]
+        );
     }
 
     #[test]
