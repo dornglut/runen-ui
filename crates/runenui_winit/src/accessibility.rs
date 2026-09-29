@@ -1819,10 +1819,10 @@ mod tests {
             .nodes
             .iter()
             .find(|(id, _)| id == listbox_id)
-            .map(|(_, node)| node)
-            .unwrap_or_else(|| {
-                unreachable!("derived collection size change reprojects the native parent")
-            });
+            .map_or_else(
+                || unreachable!("derived collection size change reprojects the native parent"),
+                |(_, node)| node,
+            );
         assert_eq!(changed_listbox.size_of_set(), Some(2));
         assert_ne!(combo_id, listbox_id);
     }
