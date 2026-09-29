@@ -1380,12 +1380,9 @@ mod tests {
             .with_name("Choice error node")
             .with_text(SemanticText::plain("Choice error"));
 
-        let minimum =
-            SemanticNumber::new(0.0).unwrap_or_else(|_| unreachable!("finite minimum"));
-        let maximum =
-            SemanticNumber::new(10.0).unwrap_or_else(|_| unreachable!("finite maximum"));
-        let current =
-            SemanticNumber::new(5.0).unwrap_or_else(|_| unreachable!("finite current"));
+        let minimum = SemanticNumber::new(0.0).unwrap_or_else(|_| unreachable!("finite minimum"));
+        let maximum = SemanticNumber::new(10.0).unwrap_or_else(|_| unreachable!("finite maximum"));
+        let current = SemanticNumber::new(5.0).unwrap_or_else(|_| unreachable!("finite current"));
         let small_step =
             SemanticNumber::new(1.0).unwrap_or_else(|_| unreachable!("finite small step"));
         let large_step =
