@@ -1470,9 +1470,7 @@ mod tests {
             SemanticRole::ComboBox,
         )
         .with_name("Invalid choice")
-        .with_state(
-            SemanticState::ENABLED.with_invalid(SemanticInvalidState::Invalid),
-        )
+        .with_state(SemanticState::ENABLED.with_invalid(SemanticInvalidState::Invalid))
         .with_popup(SemanticPopupKind::ListBox)
         .with_relationship(SemanticRelationship::new(
             SemanticRelationshipKind::Controls,
@@ -1488,8 +1486,8 @@ mod tests {
         ));
         let listbox =
             SemanticNodeContribution::new(listbox_key, SemanticRole::ListBox).with_name("Errors");
-        let first_error =
-            SemanticNodeContribution::new(first_error_key, SemanticRole::Text).with_name("First error");
+        let first_error = SemanticNodeContribution::new(first_error_key, SemanticRole::Text)
+            .with_name("First error");
         let second_error = SemanticNodeContribution::new(second_error_key, SemanticRole::Text)
             .with_name("Second error");
         SemanticContribution::single(
