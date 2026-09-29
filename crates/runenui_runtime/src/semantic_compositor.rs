@@ -629,7 +629,8 @@ mod tests {
     };
 
     use super::{
-        SemanticCandidate, SemanticCompositionDiagnostic, SemanticOwnerFacts, compose_semantics,
+        ResolvedSemanticRelationship, SemanticCandidate, SemanticCompositionDiagnostic,
+        SemanticOwnerFacts, compose_semantics,
     };
 
     fn rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
