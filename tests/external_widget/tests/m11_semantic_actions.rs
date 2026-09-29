@@ -316,7 +316,6 @@ fn expand_and_collapse_follow_current_authored_expanded_state() {
     assert!(runtime.state().expanded);
 }
 
-
 #[test]
 fn processing_time_revalidation_uses_republished_current_range_state_before_callback() {
     let mut runtime = app_runtime(false);
@@ -365,15 +364,23 @@ fn progress_cannot_advertise_or_execute_range_mutation() {
         .iter()
         .find(|node| node.name() == Some("Progress"))
         .unwrap_or_else(|| unreachable!("progress node is published"));
-    assert!(!progress.supported_actions().contains(&SemanticAction::SetValue));
+    assert!(
+        !progress
+            .supported_actions()
+            .contains(&SemanticAction::SetValue)
+    );
 
-    let rejected = expect_rejection(runtime.submit_semantic_action(
-        SemanticActionRequest::set_value(
-            publication.semantic_publication().snapshot().surface_id().clone(),
+    let rejected = expect_rejection(
+        runtime.submit_semantic_action(SemanticActionRequest::set_value(
+            publication
+                .semantic_publication()
+                .snapshot()
+                .surface_id()
+                .clone(),
             progress.id().clone(),
             number(7.0),
-        ),
-    ));
+        )),
+    );
     assert_eq!(
         rejected.kind(),
         SubmitSemanticActionErrorKind::UnsupportedAction
