@@ -238,7 +238,6 @@ pub(super) fn invalidation(output: &mut String, invalidation: WidgetInvalidation
     output.push(']');
 }
 
-
 #[cfg(test)]
 mod tests {
     use runenui_core::{SemanticAction, SemanticCommand, SemanticNumber};
