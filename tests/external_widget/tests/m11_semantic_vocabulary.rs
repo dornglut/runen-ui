@@ -141,7 +141,10 @@ fn downstream_widget_publishes_selected_m11_typed_semantics_through_public_apis(
         .find(|node| node.role() == SemanticRole::ListBox)
         .unwrap_or_else(|| unreachable!("downstream ListBox semantics are published"));
     assert_eq!(listbox.orientation(), Some(SemanticOrientation::Vertical));
-    assert_eq!(\n        listbox.selection_mode(),\n        Some(SemanticSelectionMode::Single)\n    );
+    assert_eq!(
+        listbox.selection_mode(),
+        Some(SemanticSelectionMode::Single)
+    );
 
     let option = snapshot
         .nodes()
@@ -150,7 +153,9 @@ fn downstream_widget_publishes_selected_m11_typed_semantics_through_public_apis(
         .unwrap_or_else(|| unreachable!("downstream Option semantics are published"));
     assert_eq!(option.state().selected(), Some(true));
     assert_eq!(
-        option\n            .collection_position()\n            .map(|position| position.index()),
+        option
+            .collection_position()
+            .map(|position| position.index()),
         Some(0)
     );
     assert_eq!(
