@@ -11,8 +11,9 @@ use runenui_core::{
 
 use super::{Runtime, ingress::trace_semantic_action_rejection};
 use crate::{
-    MountedNodeId, TraceContext, TraceEventContext, TraceEventFamily, TraceRecordKind,
-    TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
+    MonotonicInstant, MountedNodeId, TraceContext, TraceEventContext, TraceEventFamily,
+    TraceRecordKind, TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
+    TraceSequence,
     focus::focus_group_activation_policy,
     queue::SemanticCommandEnvelope,
     trace::{MandatoryTracePlan, TraceRecordDraft},
@@ -67,8 +68,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         command: runenui_core::SemanticCommand,
         origin: runenui_core::CommandOrigin,
         semantic_target: Option<&runenui_core::SemanticActionTarget>,
-        instant: runenui_core::RuntimeInstant,
-        causal_parent: Option<crate::WorkSequence>,
+        instant: MonotonicInstant,
+        causal_parent: Option<TraceSequence>,
         trace_reservation: crate::trace::TraceReservation,
     ) -> bool {
         let Some(semantic_target) = semantic_target else {
@@ -108,8 +109,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         command: runenui_core::SemanticCommand,
         origin: runenui_core::CommandOrigin,
         semantic_target: Option<runenui_core::SemanticActionTarget>,
-        instant: runenui_core::RuntimeInstant,
-        causal_parent: Option<crate::WorkSequence>,
+        instant: MonotonicInstant,
+        causal_parent: Option<TraceSequence>,
         trace_reservation: crate::trace::TraceReservation,
     ) {
         let mut facts = RoutedIngressFacts::new(
