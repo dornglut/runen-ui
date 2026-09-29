@@ -1429,6 +1429,78 @@ mod tests {
         )
     }
 
+    fn conflicting_collection_semantics() -> SemanticContribution {
+        let first = SemanticNodeContribution::new(
+            SemanticKey::from_static("conflicting-first").unwrap(),
+            SemanticRole::Option,
+        )
+        .with_name("First conflicting")
+        .with_collection_position(
+            SemanticCollectionPosition::new(0, Some(1))
+                .unwrap_or_else(|_| unreachable!("first collection position is valid")),
+        );
+        let second = SemanticNodeContribution::new(
+            SemanticKey::from_static("conflicting-second").unwrap(),
+            SemanticRole::Option,
+        )
+        .with_name("Second conflicting")
+        .with_collection_position(
+            SemanticCollectionPosition::new(1, Some(2))
+                .unwrap_or_else(|_| unreachable!("second collection position is valid")),
+        );
+        SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::Group).with_child(
+                SemanticNodeContribution::new(
+                    SemanticKey::from_static("conflicting-listbox").unwrap(),
+                    SemanticRole::ListBox,
+                )
+                .with_name("Conflicting choices")
+                .with_child(first)
+                .with_child(second),
+            ),
+        )
+    }
+
+    fn multiple_error_message_semantics() -> SemanticContribution {
+        let listbox_key = SemanticKey::from_static("error-listbox").unwrap();
+        let first_error_key = SemanticKey::from_static("first-error").unwrap();
+        let second_error_key = SemanticKey::from_static("second-error").unwrap();
+        let combo = SemanticNodeContribution::new(
+            SemanticKey::from_static("error-combo").unwrap(),
+            SemanticRole::ComboBox,
+        )
+        .with_name("Invalid choice")
+        .with_state(
+            SemanticState::ENABLED.with_invalid(SemanticInvalidState::Invalid),
+        )
+        .with_popup(SemanticPopupKind::ListBox)
+        .with_relationship(SemanticRelationship::new(
+            SemanticRelationshipKind::Controls,
+            SemanticReference::Local(listbox_key.clone()),
+        ))
+        .with_relationship(SemanticRelationship::new(
+            SemanticRelationshipKind::ErrorMessage,
+            SemanticReference::Local(first_error_key.clone()),
+        ))
+        .with_relationship(SemanticRelationship::new(
+            SemanticRelationshipKind::ErrorMessage,
+            SemanticReference::Local(second_error_key.clone()),
+        ));
+        let listbox =
+            SemanticNodeContribution::new(listbox_key, SemanticRole::ListBox).with_name("Errors");
+        let first_error =
+            SemanticNodeContribution::new(first_error_key, SemanticRole::Text).with_name("First error");
+        let second_error = SemanticNodeContribution::new(second_error_key, SemanticRole::Text)
+            .with_name("Second error");
+        SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::Group)
+                .with_child(combo)
+                .with_child(listbox)
+                .with_child(first_error)
+                .with_child(second_error),
+        )
+    }
+
     impl Widget<FixtureAction> for Fixture {
         type State = ();
         fn create_state(&self) -> Self::State {}
@@ -1448,6 +1520,12 @@ mod tests {
             (): &Self::State,
             _: SemanticContributionContext,
         ) -> SemanticContribution {
+            if self.phase == 5 {
+                return conflicting_collection_semantics();
+            }
+            if self.phase == 6 {
+                return multiple_error_message_semantics();
+            }
             if self.phase >= 3 {
                 return typed_semantics(u64::from(self.phase - 2));
             }
@@ -1825,6 +1903,68 @@ mod tests {
             );
         assert_eq!(changed_listbox.size_of_set(), Some(2));
         assert_ne!(combo_id, listbox_id);
+    }
+
+    #[test]
+    fn conflicting_collection_sizes_diagnose_and_withhold_native_set_size() {
+        let mut runtime = AppRuntime::<FixtureApp>::mount(5);
+        let publication = publication(&mut runtime);
+        let mut adapter = SemanticAdapter::new();
+        let update = adapter.update(&publication);
+
+        assert_eq!(update.mode, UpdateMode::InitialFull);
+        let listbox = update
+            .tree_update
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some("Conflicting choices"))
+            .map_or_else(
+                || unreachable!("conflicting ListBox is projected"),
+                |(_, node)| node,
+            );
+        assert_eq!(listbox.size_of_set(), None);
+        assert_eq!(
+            update
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| matches!(
+                    diagnostic,
+                    AdapterDiagnostic::UnrepresentableCollectionMetadata(_)
+                ))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn multiple_error_messages_diagnose_and_withhold_native_error_target() {
+        let mut runtime = AppRuntime::<FixtureApp>::mount(6);
+        let publication = publication(&mut runtime);
+        let mut adapter = SemanticAdapter::new();
+        let update = adapter.update(&publication);
+
+        assert_eq!(update.mode, UpdateMode::InitialFull);
+        let combo = update
+            .tree_update
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some("Invalid choice"))
+            .map_or_else(
+                || unreachable!("invalid ComboBox is projected"),
+                |(_, node)| node,
+            );
+        assert_eq!(combo.error_message(), None);
+        assert_eq!(
+            update
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| matches!(
+                    diagnostic,
+                    AdapterDiagnostic::MultipleErrorMessages(_)
+                ))
+                .count(),
+            1
+        );
     }
 
     #[test]
