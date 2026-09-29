@@ -671,12 +671,10 @@ mod tests {
         assert_eq!(node.state().invalid(), Some(SemanticInvalidState::Grammar));
         assert_eq!(node.state().modal(), Some(true));
         assert_eq!(node.popup(), Some(SemanticPopupKind::ListBox));
+        assert_eq!(node.selection_mode(), Some(SemanticSelectionMode::Multiple));
         assert_eq!(
-            node.selection_mode(),
-            Some(SemanticSelectionMode::Multiple)
-        );
-        assert_eq!(
-            node.collection_position().map(SemanticCollectionPosition::index),
+            node.collection_position()
+                .map(SemanticCollectionPosition::index),
             Some(2)
         );
         assert_eq!(
@@ -685,10 +683,7 @@ mod tests {
         );
         assert_eq!(node.placeholder(), Some("Filter"));
         assert_eq!(node.autocomplete(), Some(SemanticAutocomplete::Both));
-        assert_eq!(
-            node.editable_mode(),
-            Some(SemanticEditableMode::SingleLine)
-        );
+        assert_eq!(node.editable_mode(), Some(SemanticEditableMode::SingleLine));
     }
 
     #[test]
