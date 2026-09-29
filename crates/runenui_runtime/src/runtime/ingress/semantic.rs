@@ -29,8 +29,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let owner = authority.owner().clone();
         let key = authority.key().clone();
-        let command = semantic_command(request.action(), request.data())
-            .unwrap_or_else(|| unreachable!("semantic preflight validates action/data normalization"));
+        let command = semantic_command(request.action(), request.data()).unwrap_or_else(|| {
+            unreachable!("semantic preflight validates action/data normalization")
+        });
         let rejected_request = request.clone();
         let (surface, target, action, data) = request.into_parts();
         let semantic_target =
@@ -140,7 +141,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 if state.read_only() {
                     return Err(SubmitSemanticActionErrorKind::UnavailableAction);
                 }
-                if node.range().and_then(runenui_core::SemanticRange::current).is_none() {
+                if node
+                    .range()
+                    .and_then(runenui_core::SemanticRange::current)
+                    .is_none()
+                {
                     return Err(SubmitSemanticActionErrorKind::UnavailableAction);
                 }
             }
@@ -298,7 +303,9 @@ fn semantic_command(
         SemanticAction::Increment => Some(SemanticCommand::Increment),
         SemanticAction::Decrement => Some(SemanticCommand::Decrement),
         SemanticAction::SetValue => match data {
-            Some(SemanticActionData::NumericValue(value)) => Some(SemanticCommand::SetValue(*value)),
+            Some(SemanticActionData::NumericValue(value)) => {
+                Some(SemanticCommand::SetValue(*value))
+            }
             _ => None,
         },
         SemanticAction::Expand => Some(SemanticCommand::Expand),
