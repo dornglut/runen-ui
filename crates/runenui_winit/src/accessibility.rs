@@ -580,8 +580,7 @@ impl SurfaceProjection {
         let collection_sizes = collection_sizes(snapshot);
         for semantic in snapshot.nodes() {
             let accesskit_id = self.semantic_to_accesskit[semantic.id()];
-            let (node, node_diagnostics) =
-                self.project_node(snapshot, semantic, &collection_sizes);
+            let (node, node_diagnostics) = self.project_node(snapshot, semantic, &collection_sizes);
             diagnostics.extend(node_diagnostics);
             result.push((accesskit_id, node));
             if let Some(text_run_id) = self.editable_text_runs.get(semantic.id()).copied()
@@ -1246,9 +1245,7 @@ fn collection_parent<'a>(
     None
 }
 
-fn collection_sizes(
-    snapshot: &SemanticSnapshot,
-) -> HashMap<SemanticNodeId, Result<usize, ()>> {
+fn collection_sizes(snapshot: &SemanticSnapshot) -> HashMap<SemanticNodeId, Result<usize, ()>> {
     let mut sizes = HashMap::new();
     for item in snapshot.nodes() {
         let Some(position) = item.collection_position() else {
