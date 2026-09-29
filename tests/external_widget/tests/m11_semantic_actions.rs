@@ -242,7 +242,7 @@ fn set_value_routes_exact_payload_before_application_update_and_direct_command_c
 
 #[test]
 fn set_value_rejects_missing_payload_out_of_range_and_read_only_state() {
-    let mut runtime = runtime(false);
+    let mut runtime = app_runtime(false);
     let (surface, range, _) = publish(&mut runtime);
 
     let missing = expect_rejection(runtime.submit_semantic_action(SemanticActionRequest::new(
@@ -276,7 +276,7 @@ fn set_value_rejects_missing_payload_out_of_range_and_read_only_state() {
 
 #[test]
 fn expand_and_collapse_follow_current_authored_expanded_state() {
-    let mut runtime = runtime(false);
+    let mut runtime = app_runtime(false);
     let (surface, _, expander) = publish(&mut runtime);
 
     let collapse = expect_rejection(runtime.submit_semantic_action(SemanticActionRequest::new(
