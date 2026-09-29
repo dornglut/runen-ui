@@ -485,16 +485,12 @@ impl SurfaceProjection {
             self.retire_synthetic_root();
         }
         let root = self.root_id(snapshot);
+        let current_collection_sizes = collection_sizes(snapshot);
+        let previous_collection_sizes = previous_snapshot.map(collection_sizes).unwrap_or_default();
         let mut changed = Vec::new();
         for node in delta.added().iter().chain(delta.changed()) {
             if !changed.contains(node.id()) {
                 changed.push(node.id().clone());
-            }
-            if node.collection_position().is_some()
-                && let Some(parent) = node.parent()
-                && !changed.contains(parent)
-            {
-                changed.push(parent.clone());
             }
         }
         if let Some(previous) = previous_snapshot {
@@ -504,6 +500,17 @@ impl SurfaceProjection {
                 {
                     changed.push(parent.clone());
                 }
+            }
+        }
+        for collection in previous_collection_sizes
+            .keys()
+            .chain(current_collection_sizes.keys())
+        {
+            if previous_collection_sizes.get(collection) != current_collection_sizes.get(collection)
+                && snapshot.node(collection).is_some()
+                && !changed.contains(collection)
+            {
+                changed.push(collection.clone());
             }
         }
         if delta.roots().is_some() {
@@ -526,7 +533,8 @@ impl SurfaceProjection {
             for id in &changed {
                 if let Some(node) = snapshot.node(id) {
                     let accesskit_id = self.semantic_to_accesskit[id];
-                    let (node, node_diagnostics) = self.project_node(snapshot, node);
+                    let (node, node_diagnostics) =
+                        self.project_node(snapshot, node, &current_collection_sizes);
                     diagnostics.extend(node_diagnostics);
                     projected.push((accesskit_id, node));
                 }
@@ -569,9 +577,11 @@ impl SurfaceProjection {
             );
             result.push((root, synthetic));
         }
+        let collection_sizes = collection_sizes(snapshot);
         for semantic in snapshot.nodes() {
             let accesskit_id = self.semantic_to_accesskit[semantic.id()];
-            let (node, node_diagnostics) = self.project_node(snapshot, semantic);
+            let (node, node_diagnostics) =
+                self.project_node(snapshot, semantic, &collection_sizes);
             diagnostics.extend(node_diagnostics);
             result.push((accesskit_id, node));
             if let Some(text_run_id) = self.editable_text_runs.get(semantic.id()).copied()
@@ -588,6 +598,7 @@ impl SurfaceProjection {
         &self,
         snapshot: &SemanticSnapshot,
         semantic: &SemanticNode,
+        collection_sizes: &HashMap<SemanticNodeId, Result<usize, ()>>,
     ) -> (Node, Vec<AdapterDiagnostic>) {
         let mut diagnostics = Vec::new();
         let role = if let Some(editable) = semantic.editable() {
@@ -733,12 +744,22 @@ impl SurfaceProjection {
                 )),
             }
         }
-        match collection_size_for_parent(snapshot, semantic) {
-            Ok(Some(size)) => node.set_size_of_set(size),
-            Ok(None) => {}
-            Err(()) => diagnostics.push(AdapterDiagnostic::UnrepresentableCollectionMetadata(
+        match collection_sizes.get(semantic.id()).copied() {
+            Some(Ok(size)) => node.set_size_of_set(size),
+            Some(Err(())) => diagnostics.push(
+                AdapterDiagnostic::UnrepresentableCollectionMetadata(semantic.id().clone()),
+            ),
+            None => {}
+        }
+        if semantic
+            .collection_position()
+            .and_then(|position| position.known_size())
+            .is_some()
+            && collection_parent(snapshot, semantic).is_none()
+        {
+            diagnostics.push(AdapterDiagnostic::UnrepresentableCollectionMetadata(
                 semantic.id().clone(),
-            )),
+            ));
         }
         if let Some(level) = semantic.hierarchy_level() {
             let zero_based = level
@@ -1203,29 +1224,52 @@ fn map_autocomplete(
     }
 }
 
-fn collection_size_for_parent(
-    snapshot: &SemanticSnapshot,
+fn collection_parent<'a>(
+    snapshot: &'a SemanticSnapshot,
     semantic: &SemanticNode,
-) -> Result<Option<usize>, ()> {
-    let mut known_size = None;
-    for child in semantic.children() {
-        let Some(position) = snapshot
-            .node(child)
-            .and_then(SemanticNode::collection_position)
-        else {
+) -> Option<&'a SemanticNode> {
+    let mut parent = semantic.parent().cloned();
+    for _ in 0..snapshot.nodes().len() {
+        let current = snapshot.node(parent.as_ref()?)?;
+        let is_collection = match semantic.role() {
+            SemanticRole::Option => current.role() == SemanticRole::ListBox,
+            SemanticRole::TreeItem => {
+                matches!(current.role(), SemanticRole::Tree | SemanticRole::TreeItem)
+            }
+            _ => false,
+        };
+        if is_collection {
+            return Some(current);
+        }
+        parent = current.parent().cloned();
+    }
+    None
+}
+
+fn collection_sizes(
+    snapshot: &SemanticSnapshot,
+) -> HashMap<SemanticNodeId, Result<usize, ()>> {
+    let mut sizes = HashMap::new();
+    for item in snapshot.nodes() {
+        let Some(position) = item.collection_position() else {
             continue;
         };
-        let Some(size) = position.known_size() else {
+        let Some(known_size) = position.known_size() else {
             continue;
         };
-        let size = usize::try_from(size).map_err(|_| ())?;
-        match known_size {
-            None => known_size = Some(size),
-            Some(existing) if existing == size => {}
-            Some(_) => return Err(()),
+        let Some(parent) = collection_parent(snapshot, item) else {
+            continue;
+        };
+        let size = usize::try_from(known_size).map_err(|_| ());
+        match sizes.get_mut(parent.id()) {
+            Some(existing) if *existing != size => *existing = Err(()),
+            Some(_) => {}
+            None => {
+                sizes.insert(parent.id().clone(), size);
+            }
         }
     }
-    Ok(known_size)
+    sizes
 }
 
 fn project_editable_text_run(semantic: &SemanticNode) -> Option<Node> {
