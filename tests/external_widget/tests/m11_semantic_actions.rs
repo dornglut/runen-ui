@@ -24,6 +24,7 @@ struct Observation {
 enum Action {
     SetValue(SemanticNumber),
     Expand,
+    SetReadOnly(bool),
 }
 
 #[derive(Debug)]
@@ -97,10 +98,22 @@ impl Widget<Action> for Probe {
             .with_state(SemanticState::ENABLED.with_expanded(self.expanded))
             .with_action(SemanticAction::Expand)
             .with_action(SemanticAction::Collapse);
+        let progress = SemanticNodeContribution::new(
+            SemanticKey::from_static("progress")
+                .unwrap_or_else(|_| unreachable!("static semantic key is valid")),
+            SemanticRole::Progress,
+        )
+        .with_name("Progress")
+        .with_range(
+            SemanticRange::new(Some(minimum), Some(maximum), Some(self.value))
+                .unwrap_or_else(|_| unreachable!("controlled range is valid")),
+        )
+        .with_action(SemanticAction::SetValue);
         SemanticContribution::single(
             SemanticNodeContribution::primary(SemanticRole::Group).with_children(vec![
                 SemanticItem::node(range),
                 SemanticItem::node(expander),
+                SemanticItem::node(progress),
             ]),
         )
     }
@@ -128,6 +141,7 @@ impl UiApp for App {
         match action {
             Action::SetValue(value) => state.value = value,
             Action::Expand => state.expanded = true,
+            Action::SetReadOnly(read_only) => state.read_only = read_only,
         }
     }
 }
@@ -300,4 +314,100 @@ fn expand_and_collapse_follow_current_authored_expanded_state() {
     assert!(!runtime.state().expanded);
     pump_one(&mut runtime);
     assert!(runtime.state().expanded);
+}
+
+
+#[test]
+fn processing_time_revalidation_uses_republished_current_range_state_before_callback() {
+    let mut runtime = app_runtime(false);
+    let (surface, range, _) = publish(&mut runtime);
+    runtime
+        .submit_action(Action::SetReadOnly(true))
+        .unwrap_or_else(|_| unreachable!("reconfiguration enters the FIFO"));
+    runtime
+        .submit_semantic_action(SemanticActionRequest::set_value(
+            surface,
+            range,
+            number(7.0),
+        ))
+        .unwrap_or_else(|_| unreachable!("request is admitted against current writable semantics"));
+
+    pump_one(&mut runtime);
+    assert!(runtime.state().read_only);
+    let style = StyleEnvironment::default();
+    runtime
+        .publish_surface(&SurfaceBuildContext::new(
+            &style,
+            runenui_runtime::LayoutConstraints::unbounded(),
+        ))
+        .unwrap_or_else(|_| unreachable!("updated read-only semantics republish"));
+
+    pump_one(&mut runtime);
+    assert_eq!(runtime.state().value, number(5.0));
+    assert!(runtime.state().observations.borrow().is_empty());
+}
+
+#[test]
+fn progress_cannot_advertise_or_execute_range_mutation() {
+    let mut runtime = app_runtime(false);
+    publish(&mut runtime);
+    let style = StyleEnvironment::default();
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::new(
+            &style,
+            runenui_runtime::LayoutConstraints::unbounded(),
+        ))
+        .unwrap_or_else(|_| unreachable!("current semantic surface republishes"));
+    let progress = publication
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .iter()
+        .find(|node| node.name() == Some("Progress"))
+        .unwrap_or_else(|| unreachable!("progress node is published"));
+    assert!(!progress.supported_actions().contains(&SemanticAction::SetValue));
+
+    let rejected = expect_rejection(runtime.submit_semantic_action(
+        SemanticActionRequest::set_value(
+            publication.semantic_publication().snapshot().surface_id().clone(),
+            progress.id().clone(),
+            number(7.0),
+        ),
+    ));
+    assert_eq!(
+        rejected.kind(),
+        SubmitSemanticActionErrorKind::UnsupportedAction
+    );
+}
+
+#[test]
+fn unhandled_increment_has_no_runtime_or_application_default_mutation() {
+    let mut runtime = app_runtime(false);
+    publish(&mut runtime);
+    let owner = runtime.index().nodes()[0].id().clone();
+    runtime.state().observations.borrow_mut().clear();
+    runtime
+        .submit_command(
+            owner,
+            SemanticCommand::Increment,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("direct Increment command is admitted"));
+    pump_one(&mut runtime);
+
+    assert_eq!(runtime.state().value, number(5.0));
+    assert!(!runtime.state().expanded);
+    assert_eq!(
+        runtime.state().observations.borrow().as_slice(),
+        &[Observation {
+            command: SemanticCommand::Increment,
+            semantic_data: None,
+        }]
+    );
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        0
+    );
 }
