@@ -107,6 +107,11 @@ fn semantic_action(output: &mut String, action: &SemanticAction) {
             SemanticAction::RequestFocus => "request_focus",
             SemanticAction::OpenMenu => "open_menu",
             SemanticAction::OpenContextMenu => "open_context_menu",
+            SemanticAction::Increment => "increment",
+            SemanticAction::Decrement => "decrement",
+            SemanticAction::SetValue => "set_value",
+            SemanticAction::Expand => "expand",
+            SemanticAction::Collapse => "collapse",
             _ => "unknown",
         },
     );
@@ -183,6 +188,16 @@ pub(super) fn semantic_command(output: &mut String, command: SemanticCommand) {
             json::string(output, tokens::focus_direction(direction));
         }
         SemanticCommand::ScrollIntoView => json::string(output, "scroll_into_view"),
+        SemanticCommand::Increment => json::string(output, "increment"),
+        SemanticCommand::Decrement => json::string(output, "decrement"),
+        SemanticCommand::SetValue(value) => {
+            json::string(output, "set_value");
+            output.push(',');
+            json::name(output, "value");
+            json::f64_value(output, value.get());
+        }
+        SemanticCommand::Expand => json::string(output, "expand"),
+        SemanticCommand::Collapse => json::string(output, "collapse"),
         SemanticCommand::MoveUp => json::string(output, "move_up"),
         SemanticCommand::MoveDown => json::string(output, "move_down"),
         SemanticCommand::ExtendUp => json::string(output, "extend_up"),
@@ -221,4 +236,36 @@ pub(super) fn invalidation(output: &mut String, invalidation: WidgetInvalidation
         }
     }
     output.push(']');
+}
+
+#[cfg(test)]
+mod tests {
+    use runenui_core::{SemanticAction, SemanticCommand, SemanticNumber};
+
+    use super::{semantic_action, semantic_command};
+
+    #[test]
+    fn range_and_expansion_trace_tokens_are_stable_and_set_value_keeps_numeric_value() {
+        let mut command = String::new();
+        semantic_command(
+            &mut command,
+            SemanticCommand::SetValue(
+                SemanticNumber::new(7.5)
+                    .unwrap_or_else(|_| unreachable!("controlled value is finite")),
+            ),
+        );
+        assert_eq!(command, r#"{"kind":"set_value","value":7.5}"#);
+
+        for (action, expected) in [
+            (SemanticAction::Increment, r#""increment""#),
+            (SemanticAction::Decrement, r#""decrement""#),
+            (SemanticAction::SetValue, r#""set_value""#),
+            (SemanticAction::Expand, r#""expand""#),
+            (SemanticAction::Collapse, r#""collapse""#),
+        ] {
+            let mut encoded = String::new();
+            semantic_action(&mut encoded, &action);
+            assert_eq!(encoded, expected);
+        }
+    }
 }

@@ -15,15 +15,17 @@ const ALLOWED_STATUSES: &[&str] = &[
 
 const M4_DELIVERY_SLICES: &[&str] = &[
     "M4A", "M4B", "M4C0", "M4C1", "M4C2", "M4C3", "M4C4", "M4C5", "M4D1", "M4D2", "M4D3", "M5",
-    "M11D1", "M11COLL1",
+    "M11D1", "M11COLL1", "M11S2",
 ];
-const M5_DELIVERY_SLICES: &[&str] = &["M5A0", "M5A", "M5B", "M5C", "M5D", "M5E", "M11COLL1"];
+const M5_DELIVERY_SLICES: &[&str] = &[
+    "M5A0", "M5A", "M5B", "M5C", "M5D", "M5E", "M11COLL1", "M11S2",
+];
 const M6_DELIVERY_SLICES: &[&str] = &["M6A", "M6B", "M6C", "M6D"];
 const M7_DELIVERY_SLICES: &[&str] = &["M7A", "M7B", "M7C", "M7D"];
 const M8_DELIVERY_SLICES: &[&str] = &["M8A", "M8B", "M8C", "M8D"];
 const M9_DELIVERY_SLICES: &[&str] = &["M9A", "M9B", "M9C"];
 const M10_DELIVERY_SLICES: &[&str] = &["M10B", "M10C", "M10D", "M10E", "M10F"];
-const M11_DELIVERY_SLICES: &[&str] = &["M11A", "M11B", "M11C", "M11D2", "M11SEM1"];
+const M11_DELIVERY_SLICES: &[&str] = &["M11A", "M11B", "M11C", "M11D2", "M11SEM1", "M11S2"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum GatePolicy {
@@ -842,7 +844,7 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 16);
+        assert_eq!(rows.len(), 19);
 
         let baseline_rows = rows
             .iter()
@@ -863,6 +865,10 @@ mod tests {
         let extended_semantic_rows = rows
             .iter()
             .filter(|row| row.cells[5] == "M11SEM1")
+            .collect::<Vec<_>>();
+        let semantic_action_rows = rows
+            .iter()
+            .filter(|row| row.cells[5] == "M11S2")
             .collect::<Vec<_>>();
 
         assert_eq!(baseline_rows.len(), 5);
@@ -899,6 +905,14 @@ mod tests {
             matches!(
                 row.cells[0].as_str(),
                 "M11CTRL-14" | "M11CTRL-15" | "M11CTRL-16"
+            ) && row.cells[6] == "owner-accepted"
+                && row.cells[7] == "Required"
+        }));
+        assert_eq!(semantic_action_rows.len(), 3);
+        assert!(semantic_action_rows.iter().all(|row| {
+            matches!(
+                row.cells[0].as_str(),
+                "M11CTRL-17" | "M11CTRL-18" | "M11CTRL-19"
             ) && row.cells[6] == "proof-complete"
                 && row.cells[7] == "Required"
         }));
@@ -906,7 +920,7 @@ mod tests {
             rows.iter()
                 .map(|row| row.cells[5].as_str())
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["M11A", "M11B", "M11C", "M11D2", "M11SEM1"])
+            BTreeSet::from(["M11A", "M11B", "M11C", "M11D2", "M11SEM1", "M11S2"])
         );
 
         assert!(findings.is_empty(), "{findings:?}");
@@ -999,7 +1013,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 455);
+        assert_eq!(total, 460);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }

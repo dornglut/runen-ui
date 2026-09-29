@@ -11,8 +11,9 @@ use runenui_core::{
 
 use super::{Runtime, ingress::trace_semantic_action_rejection};
 use crate::{
-    MountedNodeId, TraceContext, TraceEventContext, TraceEventFamily, TraceRecordKind,
-    TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
+    MonotonicInstant, MountedNodeId, TraceContext, TraceEventContext, TraceEventFamily,
+    TraceRecordKind, TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
+    TraceSequence,
     focus::focus_group_activation_policy,
     queue::SemanticCommandEnvelope,
     trace::{MandatoryTracePlan, TraceRecordDraft},
@@ -35,27 +36,83 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             causal_parent,
             trace_reservation,
         } = envelope;
-        if let Some(semantic_target) = semantic_target.as_ref() {
-            let rejection = match self.revalidate_semantic_action_target(semantic_target) {
-                Ok(owner) if owner == target => None,
+        if !self.semantic_command_origin_is_current(
+            sequence,
+            &target,
+            command,
+            origin,
+            semantic_target.as_ref(),
+            instant,
+            causal_parent,
+            trace_reservation,
+        ) {
+            return;
+        }
+        self.process_current_semantic_command(
+            sequence,
+            target,
+            command,
+            origin,
+            semantic_target,
+            instant,
+            causal_parent,
+            trace_reservation,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn semantic_command_origin_is_current(
+        &mut self,
+        sequence: crate::WorkSequence,
+        target: &MountedNodeId,
+        command: runenui_core::SemanticCommand,
+        origin: runenui_core::CommandOrigin,
+        semantic_target: Option<&runenui_core::SemanticActionTarget>,
+        instant: MonotonicInstant,
+        causal_parent: Option<TraceSequence>,
+        trace_reservation: crate::trace::TraceReservation,
+    ) -> bool {
+        let Some(semantic_target) = semantic_target else {
+            return true;
+        };
+        let outcome = if semantic_command_matches_target(command, semantic_target) {
+            match self.revalidate_semantic_action_target(semantic_target) {
+                Ok(owner) if owner == *target => None,
                 Ok(_) => Some(TraceSemanticActionRejection::OwnerChanged),
                 Err(kind) => Some(trace_semantic_action_rejection(kind)),
-            };
-            if let Some(outcome) = rejection {
-                self.trace.record_reserved_event(
-                    trace_reservation,
-                    TraceRecordKind::SemanticActionProcessingRejected { outcome },
-                    sequence,
-                    causal_parent,
-                    Some(self.tree.trace_target(&target)),
-                    instant,
-                    &target,
-                    None,
-                    origin,
-                );
-                return;
             }
-        }
+        } else {
+            Some(TraceSemanticActionRejection::Integrity)
+        };
+        let Some(outcome) = outcome else {
+            return true;
+        };
+        self.trace.record_reserved_event(
+            trace_reservation,
+            TraceRecordKind::SemanticActionProcessingRejected { outcome },
+            sequence,
+            causal_parent,
+            Some(self.tree.trace_target(target)),
+            instant,
+            target,
+            None,
+            origin,
+        );
+        false
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn process_current_semantic_command(
+        &mut self,
+        sequence: crate::WorkSequence,
+        target: MountedNodeId,
+        command: runenui_core::SemanticCommand,
+        origin: runenui_core::CommandOrigin,
+        semantic_target: Option<runenui_core::SemanticActionTarget>,
+        instant: MonotonicInstant,
+        causal_parent: Option<TraceSequence>,
+        trace_reservation: crate::trace::TraceReservation,
+    ) {
         let mut facts = RoutedIngressFacts::new(
             sequence,
             target,
@@ -294,6 +351,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.prepare_focus_routed_route(&facts, mandatory_default_commands)?;
         let pointer_callback_targets = route.clone();
         Some(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
+    }
+}
+
+fn semantic_command_matches_target(
+    command: runenui_core::SemanticCommand,
+    target: &runenui_core::SemanticActionTarget,
+) -> bool {
+    match (command, target.action(), target.data()) {
+        (
+            runenui_core::SemanticCommand::SetValue(command_value),
+            runenui_core::SemanticAction::SetValue,
+            Some(runenui_core::SemanticActionData::NumericValue(target_value)),
+        ) => command_value == *target_value,
+        (runenui_core::SemanticCommand::SetValue(_), _, _)
+        | (_, runenui_core::SemanticAction::SetValue, _) => false,
+        _ => true,
     }
 }
 

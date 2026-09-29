@@ -599,6 +599,23 @@ fn supported_actions(
             | SemanticAction::Undo
             | SemanticAction::Redo
             | SemanticAction::ReplaceSelection => editable.is_some() && !read_only,
+            SemanticAction::Increment | SemanticAction::Decrement | SemanticAction::SetValue => {
+                matches!(
+                    authored.role(),
+                    SemanticRole::Slider | SemanticRole::SpinButton | SemanticRole::Splitter
+                ) && authored.range().is_some()
+            }
+            SemanticAction::Expand | SemanticAction::Collapse => {
+                matches!(
+                    authored.role(),
+                    SemanticRole::Button
+                        | SemanticRole::ComboBox
+                        | SemanticRole::MenuItem
+                        | SemanticRole::MenuItemCheckbox
+                        | SemanticRole::MenuItemRadio
+                        | SemanticRole::TreeItem
+                ) && authored.state().expanded().is_some()
+            }
             // Clipboard commands remain unadvertised until M10D supplies service authority.
             _ => false,
         })

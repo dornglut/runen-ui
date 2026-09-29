@@ -19,7 +19,7 @@ use accesskit::{
 };
 use runenui_core::{
     SemanticAction, SemanticAutocomplete, SemanticCheckedState, SemanticEditableMode,
-    SemanticInvalidState, SemanticNodeId, SemanticOrientation, SemanticPopupKind,
+    SemanticInvalidState, SemanticNodeId, SemanticNumber, SemanticOrientation, SemanticPopupKind,
     SemanticPressedState, SemanticRelationshipKind, SemanticRole, SemanticSelectionMode,
     SemanticText, SemanticValue, SurfaceId, TextAffinity, TextPosition, TextSensitivity,
 };
@@ -838,6 +838,11 @@ impl SurfaceProjection {
                 SemanticAction::RequestFocus => node.add_action(Action::Focus),
                 SemanticAction::OpenContextMenu => node.add_action(Action::ShowContextMenu),
                 SemanticAction::OpenMenu => node.add_action(Action::CustomAction),
+                SemanticAction::Increment => node.add_action(Action::Increment),
+                SemanticAction::Decrement => node.add_action(Action::Decrement),
+                SemanticAction::SetValue => node.add_action(Action::SetValue),
+                SemanticAction::Expand => node.add_action(Action::Expand),
+                SemanticAction::Collapse => node.add_action(Action::Collapse),
                 SemanticAction::SetSelection
                     if self.editable_text_runs.contains_key(semantic.id()) =>
                 {
@@ -1021,10 +1026,32 @@ impl SurfaceProjection {
                 value.as_ref(),
             ));
         }
+        if request.action == Action::SetValue {
+            let Some(ActionData::NumericValue(value)) = request.data.as_ref() else {
+                return Err(AdapterDiagnostic::UnexpectedActionData(request.action));
+            };
+            if !node.supported_actions().contains(&SemanticAction::SetValue) {
+                return Err(AdapterDiagnostic::UnsupportedSemanticAction {
+                    target: semantic.clone(),
+                    action: SemanticAction::SetValue,
+                });
+            }
+            let value = SemanticNumber::new(*value)
+                .map_err(|_| AdapterDiagnostic::UnexpectedActionData(request.action))?;
+            return Ok(runenui_core::SemanticActionRequest::set_value(
+                snapshot.surface_id().clone(),
+                semantic.clone(),
+                value,
+            ));
+        }
         let action = match request.action {
             Action::Click => SemanticAction::Activate,
             Action::Focus => SemanticAction::RequestFocus,
             Action::ShowContextMenu => SemanticAction::OpenContextMenu,
+            Action::Increment => SemanticAction::Increment,
+            Action::Decrement => SemanticAction::Decrement,
+            Action::Expand => SemanticAction::Expand,
+            Action::Collapse => SemanticAction::Collapse,
             Action::CustomAction => match request.data {
                 Some(ActionData::CustomAction(id)) if id == OPEN_MENU_CUSTOM_ACTION_ID => {
                     SemanticAction::OpenMenu
@@ -1362,7 +1389,8 @@ mod tests {
             .with_relationship(SemanticRelationship::new(
                 SemanticRelationshipKind::ErrorMessage,
                 SemanticReference::Local(error_key.clone()),
-            ));
+            ))
+            .with_action(SemanticAction::Collapse);
         let option = SemanticNodeContribution::new(option_key, SemanticRole::Option)
             .with_name("One")
             .with_state(SemanticState::ENABLED.with_selected(true))
@@ -1394,7 +1422,10 @@ mod tests {
         let slider = SemanticNodeContribution::new(slider_key, SemanticRole::Slider)
             .with_name("Volume")
             .with_range(range)
-            .with_orientation(SemanticOrientation::Horizontal);
+            .with_orientation(SemanticOrientation::Horizontal)
+            .with_action(SemanticAction::Increment)
+            .with_action(SemanticAction::Decrement)
+            .with_action(SemanticAction::SetValue);
 
         let toggle = SemanticNodeContribution::new(toggle_key, SemanticRole::Button)
             .with_name("Toggle")
@@ -1904,6 +1935,113 @@ mod tests {
     }
 
     #[test]
+    fn range_and_expansion_actions_project_and_round_trip_exact_native_requests() {
+        let mut runtime = AppRuntime::<FixtureApp>::mount(3);
+        let publication = publication(&mut runtime);
+        let surface = publication.snapshot().surface_id().clone();
+        let mut adapter = SemanticAdapter::new();
+        let update = adapter.update(&publication);
+        assert_eq!(update.mode, UpdateMode::InitialFull);
+        assert!(update.diagnostics.is_empty());
+
+        let slider_semantic = publication
+            .snapshot()
+            .nodes()
+            .iter()
+            .find(|node| node.name() == Some("Volume"))
+            .unwrap_or_else(|| unreachable!("slider semantic node is published"));
+        let combo_semantic = publication
+            .snapshot()
+            .nodes()
+            .iter()
+            .find(|node| node.name() == Some("Choice"))
+            .unwrap_or_else(|| unreachable!("combo semantic node is published"));
+        let slider = adapter
+            .active_id(&surface, slider_semantic.id())
+            .unwrap_or_else(|| unreachable!("slider has native identity"));
+        let combo = adapter
+            .active_id(&surface, combo_semantic.id())
+            .unwrap_or_else(|| unreachable!("combo has native identity"));
+        let tree_id = update.tree_update.tree_id;
+        let projected_slider = &adapter.projection.current_nodes[&slider];
+        let projected_combo = &adapter.projection.current_nodes[&combo];
+
+        assert!(projected_slider.supports_action(Action::Increment));
+        assert!(projected_slider.supports_action(Action::Decrement));
+        assert!(projected_slider.supports_action(Action::SetValue));
+        assert!(projected_combo.supports_action(Action::Collapse));
+
+        for (native, expected) in [
+            (Action::Increment, SemanticAction::Increment),
+            (Action::Decrement, SemanticAction::Decrement),
+        ] {
+            let request = ActionRequest {
+                action: native,
+                target_tree: tree_id,
+                target_node: slider,
+                data: None,
+            };
+            let translated = adapter
+                .action_request(&request)
+                .unwrap_or_else(|_| unreachable!("advertised range action translates"));
+            assert_eq!(translated.action(), &expected);
+            assert!(translated.data().is_none());
+        }
+
+        let value = 7.5;
+        let set_value = ActionRequest {
+            action: Action::SetValue,
+            target_tree: tree_id,
+            target_node: slider,
+            data: Some(ActionData::NumericValue(value)),
+        };
+        let translated = adapter
+            .action_request(&set_value)
+            .unwrap_or_else(|_| unreachable!("finite native SetValue translates"));
+        assert_eq!(translated.action(), &SemanticAction::SetValue);
+        assert_eq!(
+            translated.data(),
+            Some(&SemanticActionData::NumericValue(
+                SemanticNumber::new(value)
+                    .unwrap_or_else(|_| unreachable!("controlled value is finite"))
+            ))
+        );
+
+        let collapse = ActionRequest {
+            action: Action::Collapse,
+            target_tree: tree_id,
+            target_node: combo,
+            data: None,
+        };
+        assert_eq!(
+            adapter
+                .action_request(&collapse)
+                .unwrap_or_else(|_| unreachable!("advertised collapse translates"))
+                .action(),
+            &SemanticAction::Collapse
+        );
+
+        let missing_value = ActionRequest {
+            action: Action::SetValue,
+            target_tree: tree_id,
+            target_node: slider,
+            data: None,
+        };
+        assert_eq!(
+            adapter.action_request(&missing_value),
+            Err(AdapterDiagnostic::UnexpectedActionData(Action::SetValue))
+        );
+        let non_finite = ActionRequest {
+            data: Some(ActionData::NumericValue(f64::NAN)),
+            ..set_value
+        };
+        assert_eq!(
+            adapter.action_request(&non_finite),
+            Err(AdapterDiagnostic::UnexpectedActionData(Action::SetValue))
+        );
+    }
+
+    #[test]
     fn conflicting_collection_sizes_diagnose_and_withhold_native_set_size() {
         let mut runtime = AppRuntime::<FixtureApp>::mount(5);
         let publication = publication(&mut runtime);
@@ -2327,10 +2465,13 @@ mod tests {
             target_node: button_id,
             data: None,
         };
-        assert_eq!(
+        assert!(matches!(
             adapter.action_request(&unsupported),
-            Err(AdapterDiagnostic::UnexpectedActionData(Action::Expand))
-        );
+            Err(AdapterDiagnostic::UnsupportedSemanticAction {
+                action: SemanticAction::Expand,
+                ..
+            })
+        ));
         let missing_custom_data = ActionRequest {
             action: Action::CustomAction,
             target_tree: tree_id,

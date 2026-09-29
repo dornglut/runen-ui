@@ -789,6 +789,11 @@ pub enum SemanticAction {
     Paste,
     SetSelection,
     ReplaceSelection,
+    Increment,
+    Decrement,
+    SetValue,
+    Expand,
+    Collapse,
 }
 
 /// Relationship category expressed without platform-adapter vocabulary.
