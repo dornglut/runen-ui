@@ -19,8 +19,7 @@ const REFERENCE_WINIT_PACKAGE: &str = "reference_winit";
 const EXTERNAL_HOST_PACKAGE: &str = "runenui_external_host_conformance";
 const EXTERNAL_WIDGET_PACKAGE: &str = "runenui_external_widget_conformance";
 const XTASK_PACKAGE: &str = "xtask";
-const NEUTRAL_ACCESSIBILITY_FORBIDDEN_DEPENDENCIES: &[&str] =
-    &["accesskit", "accesskit_winit"];
+const NEUTRAL_ACCESSIBILITY_FORBIDDEN_DEPENDENCIES: &[&str] = &["accesskit", "accesskit_winit"];
 const TEXT_FORBIDDEN_DEPENDENCIES: &[&str] = &[
     "wgpu",
     "winit",
