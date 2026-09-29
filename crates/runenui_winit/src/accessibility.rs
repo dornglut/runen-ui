@@ -741,7 +741,14 @@ impl SurfaceProjection {
             ),
         }
         if let Some(level) = semantic.hierarchy_level() {
-            node.set_level(level.get() as usize);
+            let zero_based = level
+                .get()
+                .checked_sub(1)
+                .unwrap_or_else(|| unreachable!("semantic hierarchy level is positive"));
+            node.set_level(
+                usize::try_from(zero_based)
+                    .unwrap_or_else(|_| unreachable!("u32 hierarchy level fits target usize")),
+            );
         }
         if let Some(placeholder) = semantic.placeholder() {
             node.set_placeholder(placeholder);
