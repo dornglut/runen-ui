@@ -475,6 +475,13 @@ fn stage_semantic_capability<Action>(node: &MountedNode<Action>) -> StagedSemant
     }
 }
 
+const fn is_editable_semantic_role(role: SemanticRole) -> bool {
+    matches!(
+        role,
+        SemanticRole::EditableText | SemanticRole::ComboBox | SemanticRole::SpinButton
+    )
+}
+
 fn editable_semantics_match<Action>(
     semantics: &SemanticContribution,
     editable: Option<&EditableContribution<Action>>,
@@ -489,24 +496,34 @@ fn editable_semantics_match<Action>(
             let Some(projected) = primary.editable() else {
                 return false;
             };
-            primary.role() == SemanticRole::EditableText
-                && projected.snapshot() == authoritative.snapshot()
-                && projected.selection() == authoritative.initial_selection()
-                && projected.sensitivity() == authoritative.sensitivity()
-                && projected.read_only() == authoritative.read_only()
-                && primary.state().read_only() == authoritative.read_only()
-                && primary.state().disabled() == authoritative.disabled()
-                && match authoritative.sensitivity() {
-                    TextSensitivity::Public => projected.value() == Some(authoritative.text()),
-                    TextSensitivity::Secret => projected.value().is_none(),
-                    _ => false,
-                }
-                && !contains_editable(primary.children())
-                && !semantics.roots().iter().any(|item| {
-                    item.as_node().is_some_and(|node| {
-                        node.key() != &SemanticKey::PRIMARY && node_contains_editable(node)
-                    })
+            let authoritative_snapshot = authoritative.snapshot();
+            let authoritative_selection = authoritative.initial_selection();
+            let authoritative_sensitivity = authoritative.sensitivity();
+            let authoritative_read_only = authoritative.read_only();
+            let authoritative_disabled = authoritative.disabled();
+            if !is_editable_semantic_role(primary.role())
+                || projected.snapshot() != authoritative_snapshot
+                || projected.selection() != authoritative_selection
+                || projected.sensitivity() != authoritative_sensitivity
+                || projected.read_only() != authoritative_read_only
+                || primary.state().read_only() != authoritative_read_only
+                || primary.state().disabled() != authoritative_disabled
+            {
+                return false;
+            }
+            let value_matches = match authoritative.sensitivity() {
+                TextSensitivity::Public => projected.value() == Some(authoritative.text()),
+                TextSensitivity::Secret => projected.value().is_none(),
+                _ => false,
+            };
+            if !value_matches || contains_editable(primary.children()) {
+                return false;
+            }
+            !semantics.roots().iter().any(|item| {
+                item.as_node().is_some_and(|node| {
+                    node.key() != &SemanticKey::PRIMARY && node_contains_editable(node)
                 })
+            })
         }
     }
 }
@@ -537,8 +554,11 @@ mod tests {
     use std::sync::Arc;
 
     use runenui_core::{
-        Element, SemanticContribution, SemanticContributionContext, SemanticItem,
-        SemanticNodeContribution, SemanticRole, Widget, WidgetActivation,
+        EditIntent, EditableContribution, EditingSessionPolicy, Element, SemanticContribution,
+        SemanticContributionContext, SemanticEditable, SemanticItem, SemanticNodeContribution,
+        SemanticRole, SemanticState, TextAffinity, TextDocumentId, TextDocumentRevision,
+        TextDocumentSnapshot, TextPosition, TextSelection, TextSensitivity, Widget,
+        WidgetActivation,
     };
 
     use crate::mounted::DirtyPhases;
@@ -627,6 +647,56 @@ mod tests {
         let surface = tree.plan_surface_publication_capabilities(DirtyPhases::SEMANTICS);
         let semantics = tree.plan_semantic_publication_capabilities(&surface);
         (surface, semantics)
+    }
+
+    fn editable_fixture(role: SemanticRole) -> (SemanticContribution, EditableContribution<()>) {
+        let text = "abc";
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(901), TextDocumentRevision::new(1));
+        let position = TextPosition::new(snapshot, text, text.len(), TextAffinity::Downstream)
+            .unwrap_or_else(|_| unreachable!("controlled editable position is valid"));
+        let selection = TextSelection::collapsed(position);
+        let projected =
+            SemanticEditable::new(snapshot, text, selection, TextSensitivity::Public, false)
+                .unwrap_or_else(|| unreachable!("controlled semantic editable is valid"));
+        let semantics = SemanticContribution::single(
+            SemanticNodeContribution::primary(role)
+                .with_state(SemanticState::ENABLED)
+                .with_editable(projected),
+        );
+        let authoritative = EditableContribution::new(
+            snapshot,
+            text,
+            selection,
+            TextSensitivity::Public,
+            false,
+            false,
+            EditingSessionPolicy::PreserveExact,
+            |_intent: EditIntent| (),
+        )
+        .unwrap_or_else(|_| unreachable!("controlled editable contribution is valid"));
+        (semantics, authoritative)
+    }
+
+    #[test]
+    fn editable_semantic_authority_accepts_selected_composite_roles_only() {
+        for role in [
+            SemanticRole::EditableText,
+            SemanticRole::ComboBox,
+            SemanticRole::SpinButton,
+        ] {
+            let (semantics, editable) = editable_fixture(role);
+            assert!(
+                editable_semantics_match(&semantics, Some(&editable)),
+                "{role:?} must reuse the authoritative M10 editable contribution"
+            );
+        }
+
+        let (semantics, editable) = editable_fixture(SemanticRole::Group);
+        assert!(
+            !editable_semantics_match(&semantics, Some(&editable)),
+            "non-editable semantic roles must remain fail closed"
+        );
     }
 
     #[test]

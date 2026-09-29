@@ -125,9 +125,9 @@ Current M5 matrix summary, including the later M11 collection-focus readiness ex
 
 ```text
 54 total unique rows
-53 owner-accepted
+54 owner-accepted
 0 implementation-complete
-1 proof-complete
+0 proof-complete
 0 blocked
 0 duplicate IDs
 0 invalid statuses
@@ -186,7 +186,7 @@ Current M5 matrix summary, including the later M11 collection-focus readiness ex
 | SEM-ACT-05 | Mounted-owner integrity/status plus queue/runtime/work/trace capacity remain fail-closed and transactional; rejection returns the exact owned request and introduces no partial callback, mutation, accepted semantic trace lineage, or extra wake. | Successful canonical FIFO submission proof | `semantic_m5c_integrity` same-runtime identity, full-queue, work/trace exhaustion, terminal, sequence/reservation, callback/mutation, and wake-atomicity corpus + downstream Full/Closed proof | Canonical `RuntimeTerminal` lifecycle proof where applicable and zero `SemanticActionBound` on rejected admission | M5C | owner-accepted | Required |
 | SEM-ACT-06 | Semantic action acceptance/rejection/default outcomes extend the same bounded/redacted canonical trace and exported schema, preserve exact work/causal lineage, and remain replay observation only rather than a second behavior engine. | `semantic_trace_exports_and_replays_as_inert_canonical_observation` | Trace exhaustion/reservation integrity proof + existing M4 redaction/unknown-kind replay policy | Semantic binding/rejection/default export tokens + inert `TraceReplay` correlation | M5C | owner-accepted | Required |
 | SEM-ACT-07 | After routed callbacks but before semantic Activate or RequestFocus default mutation, runtime revalidates exact accepted semantic owner/key/action/current-authority facts without synchronous refresh; callback-caused invalidation suppresses the default deterministically under the accepted `WorkSequence` and is distinguishable from explicit `prevent_default`. | `callback_invalidated_activate_and_prevent_default_have_distinct_trace_outcomes` + `callback_invalidated_request_focus_suppresses_focus_default_without_refresh` | No-refresh/default-mutation assertions in downstream corpus | Distinct `SemanticDefaultTargetInvalidated` versus `SemanticDefaultSuppressed` trace proof | M5C | owner-accepted | Required |
-| SEM-ACT-08 | PRIMARY `RequestFocus` readiness follows the extended M4 authored focusability contract: a disabled owner explicitly authored `FocusableWhenDisabled` may retain/publish RequestFocus support and accept exact semantic focus requests, while disabled Activate and other unavailable actions still reject. Existing disabled `Focusable` behavior remains support-visible but unavailable; inert/hidden/stale/foreign targets remain fail-closed. | `semantic_m5c_action_readiness::disabled_discoverable_owner_accepts_focus_but_not_activation` | `explicitly_focusable_disabled_owner_retains_focus_support_but_is_unavailable`; existing disabled/inert/stale rejection corpus | Typed UnsupportedAction/UnavailableAction outcomes plus canonical semantic binding/routed RequestFocus trace | M11COLL1 | proof-complete | Required |
+| SEM-ACT-08 | PRIMARY `RequestFocus` readiness follows the extended M4 authored focusability contract: a disabled owner explicitly authored `FocusableWhenDisabled` may retain/publish RequestFocus support and accept exact semantic focus requests, while disabled Activate and other unavailable actions still reject. Existing disabled `Focusable` behavior remains support-visible but unavailable; inert/hidden/stale/foreign targets remain fail-closed. | `semantic_m5c_action_readiness::disabled_discoverable_owner_accepts_focus_but_not_activation` | `explicitly_focusable_disabled_owner_retains_focus_support_but_is_unavailable`; existing disabled/inert/stale rejection corpus | Typed UnsupportedAction/UnavailableAction outcomes plus canonical semantic binding/routed RequestFocus trace | M11COLL1 | owner-accepted | Required |
 
 ## M5D — public deterministic headless testing harness
 

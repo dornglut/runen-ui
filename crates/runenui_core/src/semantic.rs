@@ -92,6 +92,29 @@ pub enum SemanticRole {
     RadioButton,
     RadioGroup,
     Switch,
+    Link,
+    Image,
+    ComboBox,
+    Slider,
+    Progress,
+    SpinButton,
+    ListBox,
+    Option,
+    TabList,
+    Tab,
+    TabPanel,
+    Toolbar,
+    Menu,
+    MenuBar,
+    MenuItem,
+    MenuItemCheckbox,
+    MenuItemRadio,
+    Dialog,
+    Tooltip,
+    Separator,
+    Splitter,
+    Tree,
+    TreeItem,
 }
 
 /// Platform-neutral checked state for stateful binary controls.
@@ -115,6 +138,338 @@ impl From<bool> for SemanticCheckedState {
         }
     }
 }
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticPressedState {
+    Unpressed,
+    Pressed,
+    Mixed,
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticInvalidState {
+    Invalid,
+    Grammar,
+    Spelling,
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticPopupKind {
+    Menu,
+    ListBox,
+    Dialog,
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticOrientation {
+    Horizontal,
+    Vertical,
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticSelectionMode {
+    Single,
+    Multiple,
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticAutocomplete {
+    None,
+    Inline,
+    List,
+    Both,
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SemanticEditableMode {
+    SingleLine,
+    Multiline,
+}
+
+/// Finite semantic numeric value with deterministic equality and hashing.
+///
+/// Negative zero is canonicalized to positive zero. NaN and infinities are rejected.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct SemanticNumber(u64);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SemanticNumberError;
+
+impl SemanticNumber {
+    /// Creates a finite semantic number.
+    ///
+    /// # Errors
+    ///
+    /// Returns `SemanticNumberError` for NaN or either infinity.
+    pub fn new(value: f64) -> Result<Self, SemanticNumberError> {
+        if !value.is_finite() {
+            return Err(SemanticNumberError);
+        }
+        let value = if value == 0.0 { 0.0 } else { value };
+        Ok(Self(value.to_bits()))
+    }
+
+    #[must_use]
+    pub const fn get(self) -> f64 {
+        f64::from_bits(self.0)
+    }
+}
+
+impl fmt::Debug for SemanticNumber {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.get().fmt(formatter)
+    }
+}
+
+impl fmt::Display for SemanticNumberError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("semantic number must be finite")
+    }
+}
+
+impl std::error::Error for SemanticNumberError {}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SemanticRangeError {
+    ReversedBounds,
+    CurrentBelowMinimum,
+    CurrentAboveMaximum,
+    NonPositiveSmallStep,
+    NonPositiveLargeStep,
+    ValueTextWithoutCurrent,
+}
+
+impl fmt::Display for SemanticRangeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::ReversedBounds => "semantic range minimum exceeds maximum",
+            Self::CurrentBelowMinimum => "semantic range current value is below minimum",
+            Self::CurrentAboveMaximum => "semantic range current value is above maximum",
+            Self::NonPositiveSmallStep => "semantic range small step must be positive",
+            Self::NonPositiveLargeStep => "semantic range large step must be positive",
+            Self::ValueTextWithoutCurrent => "semantic range value text requires a current value",
+        })
+    }
+}
+
+impl std::error::Error for SemanticRangeError {}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SemanticRange {
+    minimum: Option<SemanticNumber>,
+    maximum: Option<SemanticNumber>,
+    current: Option<SemanticNumber>,
+    small_step: Option<SemanticNumber>,
+    large_step: Option<SemanticNumber>,
+    value_text: Option<String>,
+}
+
+impl SemanticRange {
+    /// Creates a checked semantic range.
+    ///
+    /// # Errors
+    ///
+    /// Rejects reversed bounds or a current value outside authored bounds.
+    pub fn new(
+        minimum: Option<SemanticNumber>,
+        maximum: Option<SemanticNumber>,
+        current: Option<SemanticNumber>,
+    ) -> Result<Self, SemanticRangeError> {
+        if minimum
+            .zip(maximum)
+            .is_some_and(|(minimum, maximum)| minimum.get() > maximum.get())
+        {
+            return Err(SemanticRangeError::ReversedBounds);
+        }
+        if current
+            .zip(minimum)
+            .is_some_and(|(current, minimum)| current.get() < minimum.get())
+        {
+            return Err(SemanticRangeError::CurrentBelowMinimum);
+        }
+        if current
+            .zip(maximum)
+            .is_some_and(|(current, maximum)| current.get() > maximum.get())
+        {
+            return Err(SemanticRangeError::CurrentAboveMaximum);
+        }
+        Ok(Self {
+            minimum,
+            maximum,
+            current,
+            small_step: None,
+            large_step: None,
+            value_text: None,
+        })
+    }
+
+    /// Adds a positive small increment.
+    ///
+    /// # Errors
+    ///
+    /// Rejects zero or negative steps.
+    pub fn with_small_step(mut self, step: SemanticNumber) -> Result<Self, SemanticRangeError> {
+        if step.get() <= 0.0 {
+            return Err(SemanticRangeError::NonPositiveSmallStep);
+        }
+        self.small_step = Some(step);
+        Ok(self)
+    }
+
+    /// Adds a positive larger/page increment.
+    ///
+    /// # Errors
+    ///
+    /// Rejects zero or negative steps.
+    pub fn with_large_step(mut self, step: SemanticNumber) -> Result<Self, SemanticRangeError> {
+        if step.get() <= 0.0 {
+            return Err(SemanticRangeError::NonPositiveLargeStep);
+        }
+        self.large_step = Some(step);
+        Ok(self)
+    }
+
+    /// Adds human-readable value text for a determinate current value.
+    ///
+    /// # Errors
+    ///
+    /// Rejects value text when the range has no current value.
+    pub fn with_value_text(
+        mut self,
+        value_text: impl Into<String>,
+    ) -> Result<Self, SemanticRangeError> {
+        if self.current.is_none() {
+            return Err(SemanticRangeError::ValueTextWithoutCurrent);
+        }
+        self.value_text = Some(value_text.into());
+        Ok(self)
+    }
+
+    #[must_use]
+    pub const fn minimum(&self) -> Option<SemanticNumber> {
+        self.minimum
+    }
+    #[must_use]
+    pub const fn maximum(&self) -> Option<SemanticNumber> {
+        self.maximum
+    }
+    #[must_use]
+    pub const fn current(&self) -> Option<SemanticNumber> {
+        self.current
+    }
+    #[must_use]
+    pub const fn small_step(&self) -> Option<SemanticNumber> {
+        self.small_step
+    }
+    #[must_use]
+    pub const fn large_step(&self) -> Option<SemanticNumber> {
+        self.large_step
+    }
+    #[must_use]
+    pub fn value_text(&self) -> Option<&str> {
+        self.value_text.as_deref()
+    }
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SemanticCollectionPositionError {
+    EmptyKnownSet,
+    PositionOutsideKnownSet,
+}
+
+impl fmt::Display for SemanticCollectionPositionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::EmptyKnownSet => "known semantic collection size must be non-zero",
+            Self::PositionOutsideKnownSet => {
+                "semantic collection position is outside the known set"
+            }
+        })
+    }
+}
+
+impl std::error::Error for SemanticCollectionPositionError {}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct SemanticCollectionPosition {
+    index: u64,
+    known_size: Option<u64>,
+}
+
+impl SemanticCollectionPosition {
+    /// Creates zero-based collection position metadata.
+    ///
+    /// # Errors
+    ///
+    /// Rejects zero known size and positions outside a known set.
+    pub const fn new(
+        index: u64,
+        known_size: Option<u64>,
+    ) -> Result<Self, SemanticCollectionPositionError> {
+        if let Some(known_size) = known_size {
+            if known_size == 0 {
+                return Err(SemanticCollectionPositionError::EmptyKnownSet);
+            }
+            if index >= known_size {
+                return Err(SemanticCollectionPositionError::PositionOutsideKnownSet);
+            }
+        }
+        Ok(Self { index, known_size })
+    }
+
+    #[must_use]
+    pub const fn index(self) -> u64 {
+        self.index
+    }
+
+    #[must_use]
+    pub const fn known_size(self) -> Option<u64> {
+        self.known_size
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct SemanticHierarchyLevel(u32);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SemanticHierarchyLevelError;
+
+impl SemanticHierarchyLevel {
+    /// Creates a positive one-based hierarchy level.
+    ///
+    /// # Errors
+    ///
+    /// Rejects level zero.
+    pub const fn new(level: u32) -> Result<Self, SemanticHierarchyLevelError> {
+        if level == 0 {
+            Err(SemanticHierarchyLevelError)
+        } else {
+            Ok(Self(level))
+        }
+    }
+
+    #[must_use]
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl fmt::Display for SemanticHierarchyLevelError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("semantic hierarchy level must be positive")
+    }
+}
+
+impl std::error::Error for SemanticHierarchyLevelError {}
 
 /// Revision-scoped editable text facts projected through the neutral semantic tree.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -256,7 +611,14 @@ pub struct SemanticState {
     hidden: bool,
     inert: bool,
     read_only: bool,
+    read_only_authored: bool,
     checked: Option<SemanticCheckedState>,
+    pressed: Option<SemanticPressedState>,
+    selected: Option<bool>,
+    expanded: Option<bool>,
+    required: Option<bool>,
+    invalid: Option<SemanticInvalidState>,
+    modal: Option<bool>,
 }
 
 impl SemanticState {
@@ -265,7 +627,14 @@ impl SemanticState {
         hidden: false,
         inert: false,
         read_only: false,
+        read_only_authored: false,
         checked: None,
+        pressed: None,
+        selected: None,
+        expanded: None,
+        required: None,
+        invalid: None,
+        modal: None,
     };
 
     #[must_use]
@@ -289,6 +658,7 @@ impl SemanticState {
     #[must_use]
     pub const fn with_read_only(mut self, read_only: bool) -> Self {
         self.read_only = read_only;
+        self.read_only_authored = true;
         self
     }
 
@@ -296,6 +666,42 @@ impl SemanticState {
     #[must_use]
     pub const fn with_checked(mut self, checked: SemanticCheckedState) -> Self {
         self.checked = Some(checked);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_pressed(mut self, pressed: SemanticPressedState) -> Self {
+        self.pressed = Some(pressed);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_selected(mut self, selected: bool) -> Self {
+        self.selected = Some(selected);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_expanded(mut self, expanded: bool) -> Self {
+        self.expanded = Some(expanded);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_required(mut self, required: bool) -> Self {
+        self.required = Some(required);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_invalid(mut self, invalid: SemanticInvalidState) -> Self {
+        self.invalid = Some(invalid);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_modal(mut self, modal: bool) -> Self {
+        self.modal = Some(modal);
         self
     }
 
@@ -323,6 +729,41 @@ impl SemanticState {
     #[must_use]
     pub const fn checked(self) -> Option<SemanticCheckedState> {
         self.checked
+    }
+
+    #[must_use]
+    pub const fn read_only_is_authored(self) -> bool {
+        self.read_only_authored
+    }
+
+    #[must_use]
+    pub const fn pressed(self) -> Option<SemanticPressedState> {
+        self.pressed
+    }
+
+    #[must_use]
+    pub const fn selected(self) -> Option<bool> {
+        self.selected
+    }
+
+    #[must_use]
+    pub const fn expanded(self) -> Option<bool> {
+        self.expanded
+    }
+
+    #[must_use]
+    pub const fn required(self) -> Option<bool> {
+        self.required
+    }
+
+    #[must_use]
+    pub const fn invalid(self) -> Option<SemanticInvalidState> {
+        self.invalid
+    }
+
+    #[must_use]
+    pub const fn modal(self) -> Option<bool> {
+        self.modal
     }
 }
 
@@ -357,6 +798,8 @@ pub enum SemanticRelationshipKind {
     LabelledBy,
     DescribedBy,
     Controls,
+    ErrorMessage,
+    ActiveDescendant,
 }
 
 /// Stable authored target for a semantic relationship.
@@ -460,6 +903,15 @@ struct SemanticNodeData {
     bounds: SemanticBounds,
     text: Option<SemanticText>,
     editable: Option<SemanticEditable>,
+    range: Option<SemanticRange>,
+    orientation: Option<SemanticOrientation>,
+    popup: Option<SemanticPopupKind>,
+    selection_mode: Option<SemanticSelectionMode>,
+    collection_position: Option<SemanticCollectionPosition>,
+    hierarchy_level: Option<SemanticHierarchyLevel>,
+    placeholder: Option<String>,
+    autocomplete: Option<SemanticAutocomplete>,
+    editable_mode: Option<SemanticEditableMode>,
     children: Vec<SemanticItem>,
 }
 
@@ -478,6 +930,15 @@ impl SemanticNodeContribution {
             bounds: SemanticBounds::Owner,
             text: None,
             editable: None,
+            range: None,
+            orientation: None,
+            popup: None,
+            selection_mode: None,
+            collection_position: None,
+            hierarchy_level: None,
+            placeholder: None,
+            autocomplete: None,
+            editable_mode: None,
             children: Vec::new(),
         }))
     }
@@ -543,6 +1004,63 @@ impl SemanticNodeContribution {
     #[must_use]
     pub fn with_editable(mut self, editable: SemanticEditable) -> Self {
         self.0.editable = Some(editable);
+        self
+    }
+
+    #[must_use]
+    pub fn with_range(mut self, range: SemanticRange) -> Self {
+        self.0.range = Some(range);
+        self
+    }
+
+    #[must_use]
+    pub fn with_orientation(mut self, orientation: SemanticOrientation) -> Self {
+        self.0.orientation = Some(orientation);
+        self
+    }
+
+    #[must_use]
+    pub fn with_popup(mut self, popup: SemanticPopupKind) -> Self {
+        self.0.popup = Some(popup);
+        self
+    }
+
+    #[must_use]
+    pub fn with_selection_mode(mut self, selection_mode: SemanticSelectionMode) -> Self {
+        self.0.selection_mode = Some(selection_mode);
+        self
+    }
+
+    #[must_use]
+    pub fn with_collection_position(
+        mut self,
+        collection_position: SemanticCollectionPosition,
+    ) -> Self {
+        self.0.collection_position = Some(collection_position);
+        self
+    }
+
+    #[must_use]
+    pub fn with_hierarchy_level(mut self, hierarchy_level: SemanticHierarchyLevel) -> Self {
+        self.0.hierarchy_level = Some(hierarchy_level);
+        self
+    }
+
+    #[must_use]
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.0.placeholder = Some(placeholder.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_autocomplete(mut self, autocomplete: SemanticAutocomplete) -> Self {
+        self.0.autocomplete = Some(autocomplete);
+        self
+    }
+
+    #[must_use]
+    pub fn with_editable_mode(mut self, editable_mode: SemanticEditableMode) -> Self {
+        self.0.editable_mode = Some(editable_mode);
         self
     }
 
@@ -617,6 +1135,51 @@ impl SemanticNodeContribution {
     #[must_use]
     pub const fn editable(&self) -> Option<&SemanticEditable> {
         self.0.editable.as_ref()
+    }
+
+    #[must_use]
+    pub const fn range(&self) -> Option<&SemanticRange> {
+        self.0.range.as_ref()
+    }
+
+    #[must_use]
+    pub const fn orientation(&self) -> Option<SemanticOrientation> {
+        self.0.orientation
+    }
+
+    #[must_use]
+    pub const fn popup(&self) -> Option<SemanticPopupKind> {
+        self.0.popup
+    }
+
+    #[must_use]
+    pub const fn selection_mode(&self) -> Option<SemanticSelectionMode> {
+        self.0.selection_mode
+    }
+
+    #[must_use]
+    pub const fn collection_position(&self) -> Option<SemanticCollectionPosition> {
+        self.0.collection_position
+    }
+
+    #[must_use]
+    pub const fn hierarchy_level(&self) -> Option<SemanticHierarchyLevel> {
+        self.0.hierarchy_level
+    }
+
+    #[must_use]
+    pub fn placeholder(&self) -> Option<&str> {
+        self.0.placeholder.as_deref()
+    }
+
+    #[must_use]
+    pub const fn autocomplete(&self) -> Option<SemanticAutocomplete> {
+        self.0.autocomplete
+    }
+
+    #[must_use]
+    pub const fn editable_mode(&self) -> Option<SemanticEditableMode> {
+        self.0.editable_mode
     }
 
     #[must_use]
@@ -765,6 +1328,40 @@ pub enum SemanticContributionError {
         key: SemanticKey,
         role: SemanticRole,
     },
+    MissingRequiredProperty {
+        key: SemanticKey,
+        role: SemanticRole,
+        property: &'static str,
+    },
+    PropertyNotSupported {
+        key: SemanticKey,
+        role: SemanticRole,
+        property: &'static str,
+    },
+    PopupKindNotSupported {
+        key: SemanticKey,
+        role: SemanticRole,
+        popup: SemanticPopupKind,
+    },
+    RelationshipNotSupported {
+        key: SemanticKey,
+        role: SemanticRole,
+        kind: SemanticRelationshipKind,
+    },
+    DuplicateSingularRelationship {
+        key: SemanticKey,
+        kind: SemanticRelationshipKind,
+    },
+    ActiveDescendantRequiresControls {
+        key: SemanticKey,
+    },
+    ActiveDescendantNotSupportedForDialogPopup {
+        key: SemanticKey,
+    },
+    EditableCombinationNotSupported {
+        key: SemanticKey,
+        role: SemanticRole,
+    },
 }
 
 impl fmt::Display for SemanticContributionError {
@@ -795,6 +1392,46 @@ impl fmt::Display for SemanticContributionError {
             Self::MixedCheckedStateNotSupported { key, role } => write!(
                 formatter,
                 "semantic node `{key}` with role {role:?} does not support mixed checked state"
+            ),
+            Self::MissingRequiredProperty {
+                key,
+                role,
+                property,
+            } => write!(
+                formatter,
+                "semantic node `{key}` with role {role:?} requires semantic property `{property}`"
+            ),
+            Self::PropertyNotSupported {
+                key,
+                role,
+                property,
+            } => write!(
+                formatter,
+                "semantic node `{key}` with role {role:?} does not support semantic property `{property}`"
+            ),
+            Self::PopupKindNotSupported { key, role, popup } => write!(
+                formatter,
+                "semantic node `{key}` with role {role:?} does not support popup kind {popup:?}"
+            ),
+            Self::RelationshipNotSupported { key, role, kind } => write!(
+                formatter,
+                "semantic node `{key}` with role {role:?} does not support relationship {kind:?}"
+            ),
+            Self::DuplicateSingularRelationship { key, kind } => write!(
+                formatter,
+                "semantic node `{key}` has more than one singular relationship {kind:?}"
+            ),
+            Self::ActiveDescendantRequiresControls { key } => write!(
+                formatter,
+                "semantic ComboBox node `{key}` with ActiveDescendant must also control its popup"
+            ),
+            Self::ActiveDescendantNotSupportedForDialogPopup { key } => write!(
+                formatter,
+                "semantic ComboBox node `{key}` cannot expose ActiveDescendant for a dialog popup"
+            ),
+            Self::EditableCombinationNotSupported { key, role } => write!(
+                formatter,
+                "semantic node `{key}` with role {role:?} has an unsupported editable role/mode/sensitivity combination"
             ),
         }
     }
@@ -831,61 +1468,351 @@ fn validate_role_state_contract(items: &[SemanticItem]) -> Result<(), SemanticCo
         let SemanticItem::Node(node) = item else {
             continue;
         };
-        let checked = node.state().checked();
-        match node.role() {
-            SemanticRole::Checkbox => match checked {
-                None => {
-                    return Err(SemanticContributionError::MissingRequiredCheckedState {
-                        key: node.key().clone(),
-                        role: node.role(),
-                    });
-                }
-                Some(
-                    SemanticCheckedState::Unchecked
-                    | SemanticCheckedState::Checked
-                    | SemanticCheckedState::Mixed,
-                ) => {}
-                #[allow(unreachable_patterns)]
-                Some(_) => {
-                    return Err(SemanticContributionError::CheckedStateNotSupported {
-                        key: node.key().clone(),
-                        role: node.role(),
-                    });
-                }
-            },
-            SemanticRole::RadioButton | SemanticRole::Switch => match checked {
-                None => {
-                    return Err(SemanticContributionError::MissingRequiredCheckedState {
-                        key: node.key().clone(),
-                        role: node.role(),
-                    });
-                }
-                Some(SemanticCheckedState::Mixed) => {
-                    return Err(SemanticContributionError::MixedCheckedStateNotSupported {
-                        key: node.key().clone(),
-                        role: node.role(),
-                    });
-                }
-                Some(SemanticCheckedState::Unchecked | SemanticCheckedState::Checked) => {}
-                #[allow(unreachable_patterns)]
-                Some(_) => {
-                    return Err(SemanticContributionError::CheckedStateNotSupported {
-                        key: node.key().clone(),
-                        role: node.role(),
-                    });
-                }
-            },
-            _ if checked.is_some() => {
-                return Err(SemanticContributionError::CheckedStateNotSupported {
-                    key: node.key().clone(),
-                    role: node.role(),
-                });
-            }
-            _ => {}
-        }
+        validate_checked_contract(node)?;
+        validate_authored_state_contract(node)?;
+        validate_range_contract(node)?;
+        validate_node_property_contract(node)?;
+        validate_editable_contract(node)?;
+        validate_relationship_contract(node)?;
         validate_role_state_contract(node.children())?;
     }
     Ok(())
+}
+
+fn validate_checked_contract(
+    node: &SemanticNodeContribution,
+) -> Result<(), SemanticContributionError> {
+    let role = node.role();
+    match role {
+        SemanticRole::Checkbox | SemanticRole::MenuItemCheckbox => match node.state().checked() {
+            None => Err(SemanticContributionError::MissingRequiredCheckedState {
+                key: node.key().clone(),
+                role,
+            }),
+            Some(
+                SemanticCheckedState::Unchecked
+                | SemanticCheckedState::Checked
+                | SemanticCheckedState::Mixed,
+            ) => Ok(()),
+            #[allow(unreachable_patterns)]
+            Some(_) => Err(SemanticContributionError::CheckedStateNotSupported {
+                key: node.key().clone(),
+                role,
+            }),
+        },
+        SemanticRole::RadioButton | SemanticRole::Switch | SemanticRole::MenuItemRadio => {
+            match node.state().checked() {
+                None => Err(SemanticContributionError::MissingRequiredCheckedState {
+                    key: node.key().clone(),
+                    role,
+                }),
+                Some(SemanticCheckedState::Mixed) => {
+                    Err(SemanticContributionError::MixedCheckedStateNotSupported {
+                        key: node.key().clone(),
+                        role,
+                    })
+                }
+                Some(SemanticCheckedState::Unchecked | SemanticCheckedState::Checked) => Ok(()),
+                #[allow(unreachable_patterns)]
+                Some(_) => Err(SemanticContributionError::CheckedStateNotSupported {
+                    key: node.key().clone(),
+                    role,
+                }),
+            }
+        }
+        _ if node.state().checked().is_some() => {
+            Err(SemanticContributionError::CheckedStateNotSupported {
+                key: node.key().clone(),
+                role,
+            })
+        }
+        _ => Ok(()),
+    }
+}
+
+const fn is_input_state_role(role: SemanticRole) -> bool {
+    matches!(
+        role,
+        SemanticRole::EditableText
+            | SemanticRole::ComboBox
+            | SemanticRole::SpinButton
+            | SemanticRole::ListBox
+    )
+}
+
+fn validate_authored_state_contract(
+    node: &SemanticNodeContribution,
+) -> Result<(), SemanticContributionError> {
+    let role = node.role();
+    let state = node.state();
+    if state.pressed().is_some() && role != SemanticRole::Button {
+        return property_not_supported(node, "pressed");
+    }
+    if state.selected().is_some()
+        && !matches!(
+            role,
+            SemanticRole::Option | SemanticRole::Tab | SemanticRole::TreeItem
+        )
+    {
+        return property_not_supported(node, "selected");
+    }
+    if state.expanded().is_some()
+        && !matches!(
+            role,
+            SemanticRole::Button
+                | SemanticRole::ComboBox
+                | SemanticRole::MenuItem
+                | SemanticRole::MenuItemCheckbox
+                | SemanticRole::MenuItemRadio
+                | SemanticRole::TreeItem
+        )
+    {
+        return property_not_supported(node, "expanded");
+    }
+    let input_state_role = is_input_state_role(role);
+    if state.required().is_some() && !input_state_role {
+        return property_not_supported(node, "required");
+    }
+    if state.invalid().is_some() && !input_state_role {
+        return property_not_supported(node, "invalid");
+    }
+    if state.read_only_is_authored() && !input_state_role {
+        return property_not_supported(node, "read_only");
+    }
+    if state.modal().is_some() && role != SemanticRole::Dialog {
+        return property_not_supported(node, "modal");
+    }
+    Ok(())
+}
+
+fn validate_range_contract(
+    node: &SemanticNodeContribution,
+) -> Result<(), SemanticContributionError> {
+    match node.role() {
+        SemanticRole::Slider | SemanticRole::Splitter => {
+            let range = required_range(node)?;
+            if range.minimum().is_none() {
+                return missing_property(node, "range.minimum");
+            }
+            if range.maximum().is_none() {
+                return missing_property(node, "range.maximum");
+            }
+            if range.current().is_none() {
+                return missing_property(node, "range.current");
+            }
+        }
+        SemanticRole::Progress => {
+            let range = required_range(node)?;
+            if range.minimum().is_none() {
+                return missing_property(node, "range.minimum");
+            }
+            if range.maximum().is_none() {
+                return missing_property(node, "range.maximum");
+            }
+        }
+        SemanticRole::SpinButton => {
+            let _ = required_range(node)?;
+        }
+        _ if node.range().is_some() => return property_not_supported(node, "range"),
+        _ => {}
+    }
+    Ok(())
+}
+
+fn validate_node_property_contract(
+    node: &SemanticNodeContribution,
+) -> Result<(), SemanticContributionError> {
+    let role = node.role();
+    if node.orientation().is_some()
+        && !matches!(
+            role,
+            SemanticRole::Slider
+                | SemanticRole::ListBox
+                | SemanticRole::TabList
+                | SemanticRole::Toolbar
+                | SemanticRole::Menu
+                | SemanticRole::MenuBar
+                | SemanticRole::Separator
+                | SemanticRole::Splitter
+        )
+    {
+        return property_not_supported(node, "orientation");
+    }
+    if let Some(popup) = node.popup() {
+        let role_supports_popup = matches!(
+            role,
+            SemanticRole::Button
+                | SemanticRole::ComboBox
+                | SemanticRole::MenuItem
+                | SemanticRole::MenuItemCheckbox
+                | SemanticRole::MenuItemRadio
+        );
+        if !role_supports_popup {
+            return property_not_supported(node, "popup");
+        }
+        let kind_supported = match role {
+            SemanticRole::Button => true,
+            SemanticRole::ComboBox => {
+                matches!(
+                    popup,
+                    SemanticPopupKind::ListBox | SemanticPopupKind::Dialog
+                )
+            }
+            SemanticRole::MenuItem
+            | SemanticRole::MenuItemCheckbox
+            | SemanticRole::MenuItemRadio => popup == SemanticPopupKind::Menu,
+            _ => false,
+        };
+        if !kind_supported {
+            return Err(SemanticContributionError::PopupKindNotSupported {
+                key: node.key().clone(),
+                role,
+                popup,
+            });
+        }
+    }
+    if node.selection_mode().is_some()
+        && !matches!(role, SemanticRole::ListBox | SemanticRole::Tree)
+    {
+        return property_not_supported(node, "selection_mode");
+    }
+    if node.collection_position().is_some()
+        && !matches!(role, SemanticRole::Option | SemanticRole::TreeItem)
+    {
+        return property_not_supported(node, "collection_position");
+    }
+    if node.hierarchy_level().is_some() && role != SemanticRole::TreeItem {
+        return property_not_supported(node, "hierarchy_level");
+    }
+    if node.placeholder().is_some()
+        && !matches!(
+            role,
+            SemanticRole::EditableText | SemanticRole::ComboBox | SemanticRole::SpinButton
+        )
+    {
+        return property_not_supported(node, "placeholder");
+    }
+    if node.autocomplete().is_some() && role != SemanticRole::ComboBox {
+        return property_not_supported(node, "autocomplete");
+    }
+    Ok(())
+}
+
+fn validate_editable_contract(
+    node: &SemanticNodeContribution,
+) -> Result<(), SemanticContributionError> {
+    let role = node.role();
+    let compatible_role = matches!(
+        role,
+        SemanticRole::EditableText | SemanticRole::ComboBox | SemanticRole::SpinButton
+    );
+    if let Some(mode) = node.editable_mode()
+        && (node.editable().is_none()
+            || !compatible_role
+            || (mode == SemanticEditableMode::Multiline && role != SemanticRole::EditableText))
+    {
+        return Err(SemanticContributionError::EditableCombinationNotSupported {
+            key: node.key().clone(),
+            role,
+        });
+    }
+    if let Some(editable) = node.editable() {
+        let secret_incompatible = editable.sensitivity() == TextSensitivity::Secret
+            && (node.editable_mode() == Some(SemanticEditableMode::Multiline)
+                || matches!(role, SemanticRole::ComboBox | SemanticRole::SpinButton));
+        if !compatible_role || secret_incompatible {
+            return Err(SemanticContributionError::EditableCombinationNotSupported {
+                key: node.key().clone(),
+                role,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn validate_relationship_contract(
+    node: &SemanticNodeContribution,
+) -> Result<(), SemanticContributionError> {
+    let role = node.role();
+    let mut active_descendant_count = 0usize;
+    let mut has_controls = false;
+    for relationship in node.relationships() {
+        match relationship.kind() {
+            SemanticRelationshipKind::ErrorMessage if !is_input_state_role(role) => {
+                return Err(SemanticContributionError::RelationshipNotSupported {
+                    key: node.key().clone(),
+                    role,
+                    kind: relationship.kind(),
+                });
+            }
+            SemanticRelationshipKind::ActiveDescendant => {
+                if role != SemanticRole::ComboBox {
+                    return Err(SemanticContributionError::RelationshipNotSupported {
+                        key: node.key().clone(),
+                        role,
+                        kind: relationship.kind(),
+                    });
+                }
+                active_descendant_count = active_descendant_count.saturating_add(1);
+            }
+            SemanticRelationshipKind::Controls => has_controls = true,
+            _ => {}
+        }
+    }
+    if active_descendant_count > 1 {
+        return Err(SemanticContributionError::DuplicateSingularRelationship {
+            key: node.key().clone(),
+            kind: SemanticRelationshipKind::ActiveDescendant,
+        });
+    }
+    if active_descendant_count == 1 && node.popup() == Some(SemanticPopupKind::Dialog) {
+        return Err(
+            SemanticContributionError::ActiveDescendantNotSupportedForDialogPopup {
+                key: node.key().clone(),
+            },
+        );
+    }
+    if active_descendant_count == 1 && !has_controls {
+        return Err(
+            SemanticContributionError::ActiveDescendantRequiresControls {
+                key: node.key().clone(),
+            },
+        );
+    }
+    Ok(())
+}
+
+fn property_not_supported(
+    node: &SemanticNodeContribution,
+    property: &'static str,
+) -> Result<(), SemanticContributionError> {
+    Err(SemanticContributionError::PropertyNotSupported {
+        key: node.key().clone(),
+        role: node.role(),
+        property,
+    })
+}
+
+fn missing_property(
+    node: &SemanticNodeContribution,
+    property: &'static str,
+) -> Result<(), SemanticContributionError> {
+    Err(SemanticContributionError::MissingRequiredProperty {
+        key: node.key().clone(),
+        role: node.role(),
+        property,
+    })
+}
+
+fn required_range(
+    node: &SemanticNodeContribution,
+) -> Result<&SemanticRange, SemanticContributionError> {
+    node.range()
+        .ok_or_else(|| SemanticContributionError::MissingRequiredProperty {
+            key: node.key().clone(),
+            role: node.role(),
+            property: "range",
+        })
 }
 
 fn validate_local_references(
@@ -917,9 +1844,11 @@ mod tests {
 
     use super::{
         SemanticCheckedState, SemanticContribution, SemanticContributionContext,
-        SemanticContributionError, SemanticEditable, SemanticItem, SemanticKey,
-        SemanticNodeContribution, SemanticReference, SemanticRelationship,
-        SemanticRelationshipKind, SemanticRole, SemanticState,
+        SemanticContributionError, SemanticEditable, SemanticEditableMode, SemanticItem,
+        SemanticKey, SemanticNodeContribution, SemanticNumber, SemanticNumberError,
+        SemanticPopupKind, SemanticPressedState, SemanticRange, SemanticRangeError,
+        SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole,
+        SemanticSelectionMode, SemanticState,
     };
     use crate::{
         TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,
@@ -1034,6 +1963,307 @@ mod tests {
                 })
             );
         }
+    }
+
+    #[test]
+    fn semantic_numbers_and_ranges_are_checked_and_deterministic() {
+        let zero = SemanticNumber::new(0.0)
+            .unwrap_or_else(|_| unreachable!("finite zero is a valid semantic number"));
+        let negative_zero = SemanticNumber::new(-0.0)
+            .unwrap_or_else(|_| unreachable!("finite negative zero is canonicalized"));
+        assert_eq!(zero, negative_zero);
+        assert_eq!(SemanticNumber::new(f64::NAN), Err(SemanticNumberError));
+        assert_eq!(SemanticNumber::new(f64::INFINITY), Err(SemanticNumberError));
+
+        let minimum = SemanticNumber::new(0.0)
+            .unwrap_or_else(|_| unreachable!("controlled minimum is finite"));
+        let maximum = SemanticNumber::new(10.0)
+            .unwrap_or_else(|_| unreachable!("controlled maximum is finite"));
+        let current = SemanticNumber::new(5.0)
+            .unwrap_or_else(|_| unreachable!("controlled current is finite"));
+        let step =
+            SemanticNumber::new(1.0).unwrap_or_else(|_| unreachable!("controlled step is finite"));
+
+        let range = SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+            .and_then(|range| range.with_small_step(step))
+            .and_then(|range| range.with_value_text("five"))
+            .unwrap_or_else(|_| unreachable!("controlled range is valid"));
+        assert_eq!(range.minimum(), Some(minimum));
+        assert_eq!(range.maximum(), Some(maximum));
+        assert_eq!(range.current(), Some(current));
+        assert_eq!(range.value_text(), Some("five"));
+
+        assert_eq!(
+            SemanticRange::new(Some(maximum), Some(minimum), Some(current)),
+            Err(SemanticRangeError::ReversedBounds)
+        );
+        assert_eq!(
+            SemanticRange::new(Some(minimum), Some(maximum), None)
+                .and_then(|range| range.with_value_text("unknown")),
+            Err(SemanticRangeError::ValueTextWithoutCurrent)
+        );
+        let negative_step = SemanticNumber::new(-1.0)
+            .unwrap_or_else(|_| unreachable!("finite negative value is representable"));
+        assert_eq!(
+            SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+                .and_then(|range| range.with_small_step(negative_step)),
+            Err(SemanticRangeError::NonPositiveSmallStep)
+        );
+    }
+
+    #[test]
+    fn standard_control_state_properties_are_role_aware_and_fail_closed() {
+        let context = SemanticContributionContext::default();
+
+        let pressed = SemanticNodeContribution::primary(SemanticRole::Button)
+            .with_state(SemanticState::ENABLED.with_pressed(SemanticPressedState::Pressed));
+        assert!(
+            SemanticContribution::single(pressed)
+                .validate(context)
+                .is_ok()
+        );
+
+        let invalid_pressed = SemanticNodeContribution::primary(SemanticRole::Generic)
+            .with_state(SemanticState::ENABLED.with_pressed(SemanticPressedState::Pressed));
+        assert_eq!(
+            SemanticContribution::single(invalid_pressed).validate(context),
+            Err(SemanticContributionError::PropertyNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::Generic,
+                property: "pressed",
+            })
+        );
+
+        let selected = SemanticNodeContribution::primary(SemanticRole::Option)
+            .with_state(SemanticState::ENABLED.with_selected(false));
+        assert!(
+            SemanticContribution::single(selected)
+                .validate(context)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn standard_control_range_collection_and_relationship_properties_are_validated() {
+        let context = SemanticContributionContext::default();
+
+        let missing_range = SemanticNodeContribution::primary(SemanticRole::Slider);
+        assert_eq!(
+            SemanticContribution::single(missing_range).validate(context),
+            Err(SemanticContributionError::MissingRequiredProperty {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::Slider,
+                property: "range",
+            })
+        );
+
+        let minimum = SemanticNumber::new(0.0)
+            .unwrap_or_else(|_| unreachable!("controlled minimum is finite"));
+        let maximum = SemanticNumber::new(100.0)
+            .unwrap_or_else(|_| unreachable!("controlled maximum is finite"));
+        let current = SemanticNumber::new(25.0)
+            .unwrap_or_else(|_| unreachable!("controlled current is finite"));
+        let slider = SemanticNodeContribution::primary(SemanticRole::Slider).with_range(
+            SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+                .unwrap_or_else(|_| unreachable!("controlled slider range is valid")),
+        );
+        assert!(
+            SemanticContribution::single(slider)
+                .validate(context)
+                .is_ok()
+        );
+
+        let listbox = SemanticNodeContribution::primary(SemanticRole::ListBox)
+            .with_selection_mode(SemanticSelectionMode::Multiple);
+        assert!(
+            SemanticContribution::single(listbox)
+                .validate(context)
+                .is_ok()
+        );
+
+        let invalid_selection_mode = SemanticNodeContribution::primary(SemanticRole::TabList)
+            .with_selection_mode(SemanticSelectionMode::Multiple);
+        assert_eq!(
+            SemanticContribution::single(invalid_selection_mode).validate(context),
+            Err(SemanticContributionError::PropertyNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::TabList,
+                property: "selection_mode",
+            })
+        );
+    }
+
+    #[test]
+    fn popup_kind_contract_is_role_aware_and_fail_closed() {
+        let context = SemanticContributionContext::default();
+
+        let combo_menu = SemanticNodeContribution::primary(SemanticRole::ComboBox)
+            .with_popup(SemanticPopupKind::Menu);
+        assert_eq!(
+            SemanticContribution::single(combo_menu).validate(context),
+            Err(SemanticContributionError::PopupKindNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::ComboBox,
+                popup: SemanticPopupKind::Menu,
+            })
+        );
+
+        let menu_item_listbox = SemanticNodeContribution::primary(SemanticRole::MenuItem)
+            .with_popup(SemanticPopupKind::ListBox);
+        assert_eq!(
+            SemanticContribution::single(menu_item_listbox).validate(context),
+            Err(SemanticContributionError::PopupKindNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::MenuItem,
+                popup: SemanticPopupKind::ListBox,
+            })
+        );
+
+        for popup in [
+            SemanticPopupKind::Menu,
+            SemanticPopupKind::ListBox,
+            SemanticPopupKind::Dialog,
+        ] {
+            let button = SemanticNodeContribution::primary(SemanticRole::Button).with_popup(popup);
+            assert!(
+                SemanticContribution::single(button)
+                    .validate(context)
+                    .is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn active_descendant_relationship_is_validated() {
+        let context = SemanticContributionContext::default();
+
+        let option_key = SemanticKey::from_static("active-option")
+            .unwrap_or_else(|_| unreachable!("static test key is valid"));
+        let combobox = SemanticNodeContribution::primary(SemanticRole::ComboBox)
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::Controls,
+                SemanticReference::Local(option_key.clone()),
+            ))
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::ActiveDescendant,
+                SemanticReference::Local(option_key.clone()),
+            ))
+            .with_child(SemanticNodeContribution::new(
+                option_key,
+                SemanticRole::Option,
+            ));
+        assert!(
+            SemanticContribution::single(combobox)
+                .validate(context)
+                .is_ok()
+        );
+
+        let missing_controls_key = SemanticKey::from_static("missing-controls-option")
+            .unwrap_or_else(|_| unreachable!("static test key is valid"));
+        let missing_controls = SemanticNodeContribution::primary(SemanticRole::ComboBox)
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::ActiveDescendant,
+                SemanticReference::Local(missing_controls_key.clone()),
+            ))
+            .with_child(SemanticNodeContribution::new(
+                missing_controls_key,
+                SemanticRole::Option,
+            ));
+        assert_eq!(
+            SemanticContribution::single(missing_controls).validate(context),
+            Err(
+                SemanticContributionError::ActiveDescendantRequiresControls {
+                    key: SemanticKey::PRIMARY,
+                }
+            )
+        );
+
+        let dialog_option = SemanticKey::from_static("dialog-option")
+            .unwrap_or_else(|_| unreachable!("static test key is valid"));
+        let dialog_popup = SemanticNodeContribution::primary(SemanticRole::ComboBox)
+            .with_popup(SemanticPopupKind::Dialog)
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::Controls,
+                SemanticReference::Local(dialog_option.clone()),
+            ))
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::ActiveDescendant,
+                SemanticReference::Local(dialog_option.clone()),
+            ))
+            .with_child(SemanticNodeContribution::new(
+                dialog_option,
+                SemanticRole::Option,
+            ));
+        assert_eq!(
+            SemanticContribution::single(dialog_popup).validate(context),
+            Err(
+                SemanticContributionError::ActiveDescendantNotSupportedForDialogPopup {
+                    key: SemanticKey::PRIMARY,
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn editable_composite_roles_reject_secret_and_multiline_incompatibilities() {
+        let source = "secret";
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(267), TextDocumentRevision::new(1));
+        let position = TextPosition::new(snapshot, source, 0, TextAffinity::Downstream)
+            .unwrap_or_else(|_| unreachable!("controlled position is valid"));
+        let editable = SemanticEditable::new(
+            snapshot,
+            source,
+            TextSelection::collapsed(position),
+            TextSensitivity::Secret,
+            false,
+        )
+        .unwrap_or_else(|| unreachable!("controlled secret editable is structurally valid"));
+
+        let ordinary = SemanticNodeContribution::primary(SemanticRole::EditableText)
+            .with_editable(editable.clone());
+        assert!(
+            SemanticContribution::single(ordinary)
+                .validate(SemanticContributionContext::default())
+                .is_ok()
+        );
+
+        let multiline_secret = SemanticNodeContribution::primary(SemanticRole::EditableText)
+            .with_editable(editable.clone())
+            .with_editable_mode(SemanticEditableMode::Multiline);
+        assert_eq!(
+            SemanticContribution::single(multiline_secret)
+                .validate(SemanticContributionContext::default()),
+            Err(SemanticContributionError::EditableCombinationNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::EditableText,
+            })
+        );
+
+        let secret_combobox = SemanticNodeContribution::primary(SemanticRole::ComboBox)
+            .with_editable(editable.clone());
+        assert_eq!(
+            SemanticContribution::single(secret_combobox)
+                .validate(SemanticContributionContext::default()),
+            Err(SemanticContributionError::EditableCombinationNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::ComboBox,
+            })
+        );
+
+        let empty_range = SemanticRange::new(None, None, None)
+            .unwrap_or_else(|_| unreachable!("open spin range is valid"));
+        let secret_spin = SemanticNodeContribution::primary(SemanticRole::SpinButton)
+            .with_range(empty_range)
+            .with_editable(editable);
+        assert_eq!(
+            SemanticContribution::single(secret_spin)
+                .validate(SemanticContributionContext::default()),
+            Err(SemanticContributionError::EditableCombinationNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::SpinButton,
+            })
+        );
     }
 
     #[test]

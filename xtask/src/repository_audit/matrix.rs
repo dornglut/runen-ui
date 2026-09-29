@@ -23,7 +23,7 @@ const M7_DELIVERY_SLICES: &[&str] = &["M7A", "M7B", "M7C", "M7D"];
 const M8_DELIVERY_SLICES: &[&str] = &["M8A", "M8B", "M8C", "M8D"];
 const M9_DELIVERY_SLICES: &[&str] = &["M9A", "M9B", "M9C"];
 const M10_DELIVERY_SLICES: &[&str] = &["M10B", "M10C", "M10D", "M10E", "M10F"];
-const M11_DELIVERY_SLICES: &[&str] = &["M11A", "M11B", "M11C", "M11D2"];
+const M11_DELIVERY_SLICES: &[&str] = &["M11A", "M11B", "M11C", "M11D2", "M11SEM1"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum GatePolicy {
@@ -842,7 +842,7 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 13);
+        assert_eq!(rows.len(), 16);
 
         let baseline_rows = rows
             .iter()
@@ -859,6 +859,10 @@ mod tests {
         let radio_rows = rows
             .iter()
             .filter(|row| row.cells[5] == "M11D2")
+            .collect::<Vec<_>>();
+        let extended_semantic_rows = rows
+            .iter()
+            .filter(|row| row.cells[5] == "M11SEM1")
             .collect::<Vec<_>>();
 
         assert_eq!(baseline_rows.len(), 5);
@@ -890,11 +894,19 @@ mod tests {
             ) && row.cells[6] == "owner-accepted"
                 && row.cells[7] == "Required"
         }));
+        assert_eq!(extended_semantic_rows.len(), 3);
+        assert!(extended_semantic_rows.iter().all(|row| {
+            matches!(
+                row.cells[0].as_str(),
+                "M11CTRL-14" | "M11CTRL-15" | "M11CTRL-16"
+            ) && row.cells[6] == "proof-complete"
+                && row.cells[7] == "Required"
+        }));
         assert_eq!(
             rows.iter()
                 .map(|row| row.cells[5].as_str())
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["M11A", "M11B", "M11C", "M11D2"])
+            BTreeSet::from(["M11A", "M11B", "M11C", "M11D2", "M11SEM1"])
         );
 
         assert!(findings.is_empty(), "{findings:?}");
@@ -987,7 +999,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 452);
+        assert_eq!(total, 455);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }

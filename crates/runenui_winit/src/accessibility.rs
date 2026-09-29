@@ -12,12 +12,15 @@ use std::{
 };
 
 use accesskit::{
-    Action, ActionData, ActionRequest, ActivationHandler, CustomAction, Node, NodeId, Rect, Role,
-    TextPosition as AccessTextPosition, TextSelection as AccessTextSelection, Toggled, Tree,
-    TreeId, TreeUpdate,
+    Action, ActionData, ActionRequest, ActivationHandler, AutoComplete as AccessAutoComplete,
+    CustomAction, HasPopup, Invalid as AccessInvalid, Node, NodeId,
+    Orientation as AccessOrientation, Rect, Role, TextPosition as AccessTextPosition,
+    TextSelection as AccessTextSelection, Toggled, Tree, TreeId, TreeUpdate,
 };
 use runenui_core::{
-    SemanticAction, SemanticCheckedState, SemanticNodeId, SemanticRelationshipKind, SemanticRole,
+    SemanticAction, SemanticAutocomplete, SemanticCheckedState, SemanticEditableMode,
+    SemanticInvalidState, SemanticNodeId, SemanticOrientation, SemanticPopupKind,
+    SemanticPressedState, SemanticRelationshipKind, SemanticRole, SemanticSelectionMode,
     SemanticText, SemanticValue, SurfaceId, TextAffinity, TextPosition, TextSensitivity,
 };
 use runenui_runtime::{SemanticNode, SemanticPublication, SemanticSnapshot, SemanticUpdateResult};
@@ -28,6 +31,11 @@ pub const OPEN_MENU_CUSTOM_ACTION_ID: i32 = 1;
 pub enum AdapterDiagnostic {
     UnsupportedInertState(SemanticNodeId),
     UnsupportedCheckedState(SemanticNodeId),
+    UnsupportedPressedState(SemanticNodeId),
+    UnsupportedInvalidState(SemanticNodeId),
+    UnsupportedOrientation(SemanticNodeId),
+    UnsupportedPopupKind(SemanticNodeId),
+    UnsupportedAutocomplete(SemanticNodeId),
     UnsupportedValueType(SemanticNodeId),
     UnsupportedTextShape(SemanticNodeId),
     UnsupportedRole(SemanticNodeId),
@@ -36,6 +44,8 @@ pub enum AdapterDiagnostic {
         target: SemanticNodeId,
     },
     UnsupportedRelationship(SemanticNodeId),
+    MultipleErrorMessages(SemanticNodeId),
+    UnrepresentableCollectionMetadata(SemanticNodeId),
     UnsupportedSemanticAction {
         target: SemanticNodeId,
         action: SemanticAction,
@@ -475,6 +485,8 @@ impl SurfaceProjection {
             self.retire_synthetic_root();
         }
         let root = self.root_id(snapshot);
+        let current_collection_sizes = collection_sizes(snapshot);
+        let previous_collection_sizes = previous_snapshot.map(collection_sizes).unwrap_or_default();
         let mut changed = Vec::new();
         for node in delta.added().iter().chain(delta.changed()) {
             if !changed.contains(node.id()) {
@@ -488,6 +500,17 @@ impl SurfaceProjection {
                 {
                     changed.push(parent.clone());
                 }
+            }
+        }
+        for collection in previous_collection_sizes
+            .keys()
+            .chain(current_collection_sizes.keys())
+        {
+            if previous_collection_sizes.get(collection) != current_collection_sizes.get(collection)
+                && snapshot.node(collection).is_some()
+                && !changed.contains(collection)
+            {
+                changed.push(collection.clone());
             }
         }
         if delta.roots().is_some() {
@@ -510,7 +533,8 @@ impl SurfaceProjection {
             for id in &changed {
                 if let Some(node) = snapshot.node(id) {
                     let accesskit_id = self.semantic_to_accesskit[id];
-                    let (node, node_diagnostics) = self.project_node(node);
+                    let (node, node_diagnostics) =
+                        self.project_node(snapshot, node, &current_collection_sizes);
                     diagnostics.extend(node_diagnostics);
                     projected.push((accesskit_id, node));
                 }
@@ -553,9 +577,10 @@ impl SurfaceProjection {
             );
             result.push((root, synthetic));
         }
+        let collection_sizes = collection_sizes(snapshot);
         for semantic in snapshot.nodes() {
             let accesskit_id = self.semantic_to_accesskit[semantic.id()];
-            let (node, node_diagnostics) = self.project_node(semantic);
+            let (node, node_diagnostics) = self.project_node(snapshot, semantic, &collection_sizes);
             diagnostics.extend(node_diagnostics);
             result.push((accesskit_id, node));
             if let Some(text_run_id) = self.editable_text_runs.get(semantic.id()).copied()
@@ -568,16 +593,18 @@ impl SurfaceProjection {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn project_node(&self, semantic: &SemanticNode) -> (Node, Vec<AdapterDiagnostic>) {
+    fn project_node(
+        &self,
+        snapshot: &SemanticSnapshot,
+        semantic: &SemanticNode,
+        collection_sizes: &HashMap<SemanticNodeId, Result<usize, ()>>,
+    ) -> (Node, Vec<AdapterDiagnostic>) {
         let mut diagnostics = Vec::new();
-        let role = semantic.editable().map_or_else(
-            || map_role(semantic.role(), semantic.id(), &mut diagnostics),
-            |editable| match editable.sensitivity() {
-                TextSensitivity::Public => Role::TextInput,
-                TextSensitivity::Secret => Role::PasswordInput,
-                _ => Role::Unknown,
-            },
-        );
+        let role = if let Some(editable) = semantic.editable() {
+            map_editable_role(semantic, editable.sensitivity(), &mut diagnostics)
+        } else {
+            map_role(semantic.role(), semantic.id(), &mut diagnostics)
+        };
         let mut node = Node::new(role);
         if semantic.state().disabled() {
             node.set_disabled();
@@ -594,6 +621,28 @@ impl SurfaceProjection {
             && let Some(toggled) = map_checked_state(checked, semantic.id(), &mut diagnostics)
         {
             node.set_toggled(toggled);
+        }
+        if let Some(pressed) = semantic.state().pressed()
+            && let Some(toggled) = map_pressed_state(pressed, semantic.id(), &mut diagnostics)
+        {
+            node.set_toggled(toggled);
+        }
+        if let Some(selected) = semantic.state().selected() {
+            node.set_selected(selected);
+        }
+        if let Some(expanded) = semantic.state().expanded() {
+            node.set_expanded(expanded);
+        }
+        if semantic.state().required() == Some(true) {
+            node.set_required();
+        }
+        if let Some(invalid) = semantic.state().invalid()
+            && let Some(invalid) = map_invalid_state(invalid, semantic.id(), &mut diagnostics)
+        {
+            node.set_invalid(invalid);
+        }
+        if semantic.state().modal() == Some(true) {
+            node.set_modal();
         }
         if let Some(name) = semantic.name() {
             let is_duplicate_text = matches!(role, Role::Label)
@@ -653,9 +702,89 @@ impl SurfaceProjection {
                 )),
             }
         }
+        if let Some(range) = semantic.range() {
+            if let Some(value) = range.minimum() {
+                node.set_min_numeric_value(value.get());
+            }
+            if let Some(value) = range.maximum() {
+                node.set_max_numeric_value(value.get());
+            }
+            if let Some(value) = range.current() {
+                node.set_numeric_value(value.get());
+            }
+            if let Some(value) = range.small_step() {
+                node.set_numeric_value_step(value.get());
+            }
+            if let Some(value) = range.large_step() {
+                node.set_numeric_value_jump(value.get());
+            }
+            if let Some(value_text) = range.value_text() {
+                node.set_value(value_text);
+            }
+        }
+        if let Some(orientation) = semantic.orientation()
+            && let Some(orientation) = map_orientation(orientation, semantic.id(), &mut diagnostics)
+        {
+            node.set_orientation(orientation);
+        }
+        if let Some(popup) = semantic.popup()
+            && let Some(popup) = map_popup(popup, semantic.id(), &mut diagnostics)
+        {
+            node.set_has_popup(popup);
+        }
+        if semantic.selection_mode() == Some(SemanticSelectionMode::Multiple) {
+            node.set_multiselectable();
+        }
+        if let Some(position) = semantic.collection_position() {
+            match usize::try_from(position.index()) {
+                Ok(index) => node.set_position_in_set(index),
+                Err(_) => diagnostics.push(AdapterDiagnostic::UnrepresentableCollectionMetadata(
+                    semantic.id().clone(),
+                )),
+            }
+        }
+        match collection_sizes.get(semantic.id()).copied() {
+            Some(Ok(size)) => node.set_size_of_set(size),
+            Some(Err(())) => diagnostics.push(
+                AdapterDiagnostic::UnrepresentableCollectionMetadata(semantic.id().clone()),
+            ),
+            None => {}
+        }
+        if semantic
+            .collection_position()
+            .and_then(runenui_core::SemanticCollectionPosition::known_size)
+            .is_some()
+            && collection_parent(snapshot, semantic).is_none()
+        {
+            diagnostics.push(AdapterDiagnostic::UnrepresentableCollectionMetadata(
+                semantic.id().clone(),
+            ));
+        }
+        if let Some(level) = semantic.hierarchy_level() {
+            let zero_based = level
+                .get()
+                .checked_sub(1)
+                .unwrap_or_else(|| unreachable!("semantic hierarchy level is positive"));
+            node.set_level(
+                usize::try_from(zero_based)
+                    .unwrap_or_else(|_| unreachable!("u32 hierarchy level fits target usize")),
+            );
+        }
+        if let Some(placeholder) = semantic.placeholder() {
+            node.set_placeholder(placeholder);
+        }
+        if let Some(autocomplete) = semantic.autocomplete()
+            && let Some(autocomplete) =
+                map_autocomplete(autocomplete, semantic.id(), &mut diagnostics)
+        {
+            node.set_auto_complete(autocomplete);
+        }
+
         let mut controls = Vec::new();
         let mut described_by = Vec::new();
         let mut labelled_by = Vec::new();
+        let mut error_messages = Vec::new();
+        let mut active_descendants = Vec::new();
         for relationship in semantic.relationships() {
             let Some(target) = self
                 .semantic_to_accesskit
@@ -672,6 +801,8 @@ impl SurfaceProjection {
                 SemanticRelationshipKind::LabelledBy => labelled_by.push(target),
                 SemanticRelationshipKind::DescribedBy => described_by.push(target),
                 SemanticRelationshipKind::Controls => controls.push(target),
+                SemanticRelationshipKind::ErrorMessage => error_messages.push(target),
+                SemanticRelationshipKind::ActiveDescendant => active_descendants.push(target),
                 #[allow(unreachable_patterns)]
                 _ => diagnostics.push(AdapterDiagnostic::UnsupportedRelationship(
                     semantic.id().clone(),
@@ -686,6 +817,20 @@ impl SurfaceProjection {
         }
         if !controls.is_empty() {
             node.set_controls(controls);
+        }
+        match error_messages.as_slice() {
+            [] => {}
+            [target] => node.set_error_message(*target),
+            _ => diagnostics.push(AdapterDiagnostic::MultipleErrorMessages(
+                semantic.id().clone(),
+            )),
+        }
+        match active_descendants.as_slice() {
+            [] => {}
+            [target] => node.set_active_descendant(*target),
+            _ => diagnostics.push(AdapterDiagnostic::UnsupportedRelationship(
+                semantic.id().clone(),
+            )),
         }
         for action in semantic.supported_actions() {
             match action {
@@ -923,6 +1068,28 @@ fn map_role(
         SemanticRole::RadioButton => Role::RadioButton,
         SemanticRole::RadioGroup => Role::RadioGroup,
         SemanticRole::Switch => Role::Switch,
+        SemanticRole::Link => Role::Link,
+        SemanticRole::Image => Role::Image,
+        SemanticRole::ComboBox => Role::ComboBox,
+        SemanticRole::Slider => Role::Slider,
+        SemanticRole::Progress => Role::ProgressIndicator,
+        SemanticRole::SpinButton => Role::SpinButton,
+        SemanticRole::ListBox => Role::ListBox,
+        SemanticRole::Option => Role::ListBoxOption,
+        SemanticRole::TabList => Role::TabList,
+        SemanticRole::Tab => Role::Tab,
+        SemanticRole::TabPanel => Role::TabPanel,
+        SemanticRole::Toolbar => Role::Toolbar,
+        SemanticRole::Menu => Role::Menu,
+        SemanticRole::MenuBar => Role::MenuBar,
+        SemanticRole::MenuItem => Role::MenuItem,
+        SemanticRole::MenuItemCheckbox => Role::MenuItemCheckBox,
+        SemanticRole::MenuItemRadio => Role::MenuItemRadio,
+        SemanticRole::Dialog => Role::Dialog,
+        SemanticRole::Tooltip => Role::Tooltip,
+        SemanticRole::Separator | SemanticRole::Splitter => Role::Splitter,
+        SemanticRole::Tree => Role::Tree,
+        SemanticRole::TreeItem => Role::TreeItem,
         #[allow(unreachable_patterns)]
         _ => {
             diagnostics.push(AdapterDiagnostic::UnsupportedRole(id.clone()));
@@ -946,6 +1113,160 @@ fn map_checked_state(
             None
         }
     }
+}
+
+fn map_editable_role(
+    semantic: &SemanticNode,
+    sensitivity: TextSensitivity,
+    diagnostics: &mut Vec<AdapterDiagnostic>,
+) -> Role {
+    match (semantic.role(), sensitivity) {
+        (SemanticRole::EditableText, TextSensitivity::Public) => {
+            if semantic.editable_mode() == Some(SemanticEditableMode::Multiline) {
+                Role::MultilineTextInput
+            } else {
+                Role::TextInput
+            }
+        }
+        (SemanticRole::EditableText, TextSensitivity::Secret) => Role::PasswordInput,
+        (SemanticRole::ComboBox, TextSensitivity::Public) => Role::EditableComboBox,
+        (SemanticRole::SpinButton, TextSensitivity::Public) => Role::SpinButton,
+        _ => {
+            diagnostics.push(AdapterDiagnostic::UnsupportedRole(semantic.id().clone()));
+            Role::Unknown
+        }
+    }
+}
+
+fn map_pressed_state(
+    pressed: SemanticPressedState,
+    id: &SemanticNodeId,
+    diagnostics: &mut Vec<AdapterDiagnostic>,
+) -> Option<Toggled> {
+    match pressed {
+        SemanticPressedState::Unpressed => Some(Toggled::False),
+        SemanticPressedState::Pressed => Some(Toggled::True),
+        SemanticPressedState::Mixed => Some(Toggled::Mixed),
+        #[allow(unreachable_patterns)]
+        _ => {
+            diagnostics.push(AdapterDiagnostic::UnsupportedPressedState(id.clone()));
+            None
+        }
+    }
+}
+
+fn map_invalid_state(
+    invalid: SemanticInvalidState,
+    id: &SemanticNodeId,
+    diagnostics: &mut Vec<AdapterDiagnostic>,
+) -> Option<AccessInvalid> {
+    match invalid {
+        SemanticInvalidState::Invalid => Some(AccessInvalid::True),
+        SemanticInvalidState::Grammar => Some(AccessInvalid::Grammar),
+        SemanticInvalidState::Spelling => Some(AccessInvalid::Spelling),
+        #[allow(unreachable_patterns)]
+        _ => {
+            diagnostics.push(AdapterDiagnostic::UnsupportedInvalidState(id.clone()));
+            None
+        }
+    }
+}
+
+fn map_orientation(
+    orientation: SemanticOrientation,
+    id: &SemanticNodeId,
+    diagnostics: &mut Vec<AdapterDiagnostic>,
+) -> Option<AccessOrientation> {
+    match orientation {
+        SemanticOrientation::Horizontal => Some(AccessOrientation::Horizontal),
+        SemanticOrientation::Vertical => Some(AccessOrientation::Vertical),
+        #[allow(unreachable_patterns)]
+        _ => {
+            diagnostics.push(AdapterDiagnostic::UnsupportedOrientation(id.clone()));
+            None
+        }
+    }
+}
+
+fn map_popup(
+    popup: SemanticPopupKind,
+    id: &SemanticNodeId,
+    diagnostics: &mut Vec<AdapterDiagnostic>,
+) -> Option<HasPopup> {
+    match popup {
+        SemanticPopupKind::Menu => Some(HasPopup::Menu),
+        SemanticPopupKind::ListBox => Some(HasPopup::Listbox),
+        SemanticPopupKind::Dialog => Some(HasPopup::Dialog),
+        #[allow(unreachable_patterns)]
+        _ => {
+            diagnostics.push(AdapterDiagnostic::UnsupportedPopupKind(id.clone()));
+            None
+        }
+    }
+}
+
+fn map_autocomplete(
+    autocomplete: SemanticAutocomplete,
+    id: &SemanticNodeId,
+    diagnostics: &mut Vec<AdapterDiagnostic>,
+) -> Option<AccessAutoComplete> {
+    match autocomplete {
+        SemanticAutocomplete::None => None,
+        SemanticAutocomplete::Inline => Some(AccessAutoComplete::Inline),
+        SemanticAutocomplete::List => Some(AccessAutoComplete::List),
+        SemanticAutocomplete::Both => Some(AccessAutoComplete::Both),
+        #[allow(unreachable_patterns)]
+        _ => {
+            diagnostics.push(AdapterDiagnostic::UnsupportedAutocomplete(id.clone()));
+            None
+        }
+    }
+}
+
+fn collection_parent<'a>(
+    snapshot: &'a SemanticSnapshot,
+    semantic: &SemanticNode,
+) -> Option<&'a SemanticNode> {
+    let mut parent = semantic.parent().cloned();
+    for _ in 0..snapshot.nodes().len() {
+        let current = snapshot.node(parent.as_ref()?)?;
+        let is_collection = match semantic.role() {
+            SemanticRole::Option => current.role() == SemanticRole::ListBox,
+            SemanticRole::TreeItem => {
+                matches!(current.role(), SemanticRole::Tree | SemanticRole::TreeItem)
+            }
+            _ => false,
+        };
+        if is_collection {
+            return Some(current);
+        }
+        parent = current.parent().cloned();
+    }
+    None
+}
+
+fn collection_sizes(snapshot: &SemanticSnapshot) -> HashMap<SemanticNodeId, Result<usize, ()>> {
+    let mut sizes = HashMap::new();
+    for item in snapshot.nodes() {
+        let Some(position) = item.collection_position() else {
+            continue;
+        };
+        let Some(known_size) = position.known_size() else {
+            continue;
+        };
+        let Some(parent) = collection_parent(snapshot, item) else {
+            continue;
+        };
+        let size = usize::try_from(known_size).map_err(|_| ());
+        match sizes.get_mut(parent.id()) {
+            Some(existing) if *existing != size => *existing = Err(()),
+            Some(_) => {}
+            None => {
+                sizes.insert(parent.id().clone(), size);
+            }
+        }
+    }
+    sizes
 }
 
 fn project_editable_text_run(semantic: &SemanticNode) -> Option<Node> {
@@ -987,14 +1308,16 @@ mod tests {
     use runenui_core::{
         __runtime::RuntimeNamespace, EditIntent, EditResolution, EditableContribution,
         EditingSessionPolicy, Element, LogicalSize, NoHostProtocol, SemanticAction,
-        SemanticActionData, SemanticCheckedState, SemanticContribution,
-        SemanticContributionContext, SemanticEditable, SemanticItem, SemanticKey,
-        SemanticNodeContribution, SemanticReference, SemanticRelationship,
-        SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText, SemanticValue,
-        StyleEnvironment, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
-        TextSelection, TextSensitivity, UiApp, UpdateOutput, View, Widget, WidgetActivation,
-        WidgetActivationContext, WidgetActivationOutput, WidgetInvalidation, WidgetMeasure,
-        WidgetMeasureInput,
+        SemanticActionData, SemanticAutocomplete, SemanticCheckedState, SemanticCollectionPosition,
+        SemanticContribution, SemanticContributionContext, SemanticEditable,
+        SemanticHierarchyLevel, SemanticInvalidState, SemanticItem, SemanticKey,
+        SemanticNodeContribution, SemanticNumber, SemanticOrientation, SemanticPopupKind,
+        SemanticPressedState, SemanticRange, SemanticReference, SemanticRelationship,
+        SemanticRelationshipKind, SemanticRole, SemanticSelectionMode, SemanticState, SemanticText,
+        SemanticValue, StyleEnvironment, TextDocumentId, TextDocumentRevision,
+        TextDocumentSnapshot, TextSelection, TextSensitivity, UiApp, UpdateOutput, View, Widget,
+        WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetInvalidation,
+        WidgetMeasure, WidgetMeasureInput,
     };
     use runenui_runtime::{AppRuntime, FontFamilyName, GenericFontFamily, SurfaceBuildContext};
 
@@ -1004,6 +1327,176 @@ mod tests {
     #[derive(Debug)]
     struct Fixture {
         phase: u8,
+    }
+
+    fn typed_semantics(known_size: u64) -> SemanticContribution {
+        let combo_key = SemanticKey::from_static("combo").unwrap();
+        let listbox_key = SemanticKey::from_static("listbox").unwrap();
+        let option_key = SemanticKey::from_static("option").unwrap();
+        let error_key = SemanticKey::from_static("error").unwrap();
+        let slider_key = SemanticKey::from_static("slider").unwrap();
+        let toggle_key = SemanticKey::from_static("toggle").unwrap();
+        let dialog_key = SemanticKey::from_static("dialog").unwrap();
+        let tree_key = SemanticKey::from_static("tree").unwrap();
+        let tree_item_key = SemanticKey::from_static("tree-item").unwrap();
+
+        let combo = SemanticNodeContribution::new(combo_key, SemanticRole::ComboBox)
+            .with_name("Choice")
+            .with_state(
+                SemanticState::ENABLED
+                    .with_expanded(true)
+                    .with_required(true)
+                    .with_invalid(SemanticInvalidState::Invalid),
+            )
+            .with_popup(SemanticPopupKind::ListBox)
+            .with_placeholder("Filter choices")
+            .with_autocomplete(SemanticAutocomplete::List)
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::Controls,
+                SemanticReference::Local(listbox_key.clone()),
+            ))
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::ActiveDescendant,
+                SemanticReference::Local(option_key.clone()),
+            ))
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::ErrorMessage,
+                SemanticReference::Local(error_key.clone()),
+            ));
+        let option = SemanticNodeContribution::new(option_key, SemanticRole::Option)
+            .with_name("One")
+            .with_state(SemanticState::ENABLED.with_selected(true))
+            .with_collection_position(
+                SemanticCollectionPosition::new(0, Some(known_size))
+                    .unwrap_or_else(|_| unreachable!("controlled collection position is valid")),
+            );
+        let listbox = SemanticNodeContribution::new(listbox_key, SemanticRole::ListBox)
+            .with_name("Choices")
+            .with_orientation(SemanticOrientation::Vertical)
+            .with_selection_mode(SemanticSelectionMode::Multiple)
+            .with_child(option);
+        let error = SemanticNodeContribution::new(error_key, SemanticRole::Text)
+            .with_name("Choice error node")
+            .with_text(SemanticText::plain("Choice error"));
+
+        let minimum = SemanticNumber::new(0.0).unwrap_or_else(|_| unreachable!("finite minimum"));
+        let maximum = SemanticNumber::new(10.0).unwrap_or_else(|_| unreachable!("finite maximum"));
+        let current = SemanticNumber::new(5.0).unwrap_or_else(|_| unreachable!("finite current"));
+        let small_step =
+            SemanticNumber::new(1.0).unwrap_or_else(|_| unreachable!("finite small step"));
+        let large_step =
+            SemanticNumber::new(5.0).unwrap_or_else(|_| unreachable!("finite large step"));
+        let range = SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+            .and_then(|range| range.with_small_step(small_step))
+            .and_then(|range| range.with_large_step(large_step))
+            .and_then(|range| range.with_value_text("half"))
+            .unwrap_or_else(|_| unreachable!("controlled range is valid"));
+        let slider = SemanticNodeContribution::new(slider_key, SemanticRole::Slider)
+            .with_name("Volume")
+            .with_range(range)
+            .with_orientation(SemanticOrientation::Horizontal);
+
+        let toggle = SemanticNodeContribution::new(toggle_key, SemanticRole::Button)
+            .with_name("Toggle")
+            .with_state(SemanticState::ENABLED.with_pressed(SemanticPressedState::Pressed));
+        let dialog = SemanticNodeContribution::new(dialog_key, SemanticRole::Dialog)
+            .with_name("Settings dialog")
+            .with_state(SemanticState::ENABLED.with_modal(true));
+
+        let tree_item = SemanticNodeContribution::new(tree_item_key, SemanticRole::TreeItem)
+            .with_name("Root item")
+            .with_collection_position(
+                SemanticCollectionPosition::new(0, Some(1))
+                    .unwrap_or_else(|_| unreachable!("tree position is valid")),
+            )
+            .with_hierarchy_level(
+                SemanticHierarchyLevel::new(1)
+                    .unwrap_or_else(|_| unreachable!("tree level is positive")),
+            );
+        let tree = SemanticNodeContribution::new(tree_key, SemanticRole::Tree)
+            .with_name("Navigation tree")
+            .with_child(tree_item);
+
+        SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::Group)
+                .with_child(combo)
+                .with_child(listbox)
+                .with_child(error)
+                .with_child(slider)
+                .with_child(toggle)
+                .with_child(dialog)
+                .with_child(tree),
+        )
+    }
+
+    fn conflicting_collection_semantics() -> SemanticContribution {
+        let first = SemanticNodeContribution::new(
+            SemanticKey::from_static("conflicting-first").unwrap(),
+            SemanticRole::Option,
+        )
+        .with_name("First conflicting")
+        .with_collection_position(
+            SemanticCollectionPosition::new(0, Some(1))
+                .unwrap_or_else(|_| unreachable!("first collection position is valid")),
+        );
+        let second = SemanticNodeContribution::new(
+            SemanticKey::from_static("conflicting-second").unwrap(),
+            SemanticRole::Option,
+        )
+        .with_name("Second conflicting")
+        .with_collection_position(
+            SemanticCollectionPosition::new(1, Some(2))
+                .unwrap_or_else(|_| unreachable!("second collection position is valid")),
+        );
+        SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::Group).with_child(
+                SemanticNodeContribution::new(
+                    SemanticKey::from_static("conflicting-listbox").unwrap(),
+                    SemanticRole::ListBox,
+                )
+                .with_name("Conflicting choices")
+                .with_child(first)
+                .with_child(second),
+            ),
+        )
+    }
+
+    fn multiple_error_message_semantics() -> SemanticContribution {
+        let listbox_key = SemanticKey::from_static("error-listbox").unwrap();
+        let first_error_key = SemanticKey::from_static("first-error").unwrap();
+        let second_error_key = SemanticKey::from_static("second-error").unwrap();
+        let combo = SemanticNodeContribution::new(
+            SemanticKey::from_static("error-combo").unwrap(),
+            SemanticRole::ComboBox,
+        )
+        .with_name("Invalid choice")
+        .with_state(SemanticState::ENABLED.with_invalid(SemanticInvalidState::Invalid))
+        .with_popup(SemanticPopupKind::ListBox)
+        .with_relationship(SemanticRelationship::new(
+            SemanticRelationshipKind::Controls,
+            SemanticReference::Local(listbox_key.clone()),
+        ))
+        .with_relationship(SemanticRelationship::new(
+            SemanticRelationshipKind::ErrorMessage,
+            SemanticReference::Local(first_error_key.clone()),
+        ))
+        .with_relationship(SemanticRelationship::new(
+            SemanticRelationshipKind::ErrorMessage,
+            SemanticReference::Local(second_error_key.clone()),
+        ));
+        let listbox =
+            SemanticNodeContribution::new(listbox_key, SemanticRole::ListBox).with_name("Errors");
+        let first_error = SemanticNodeContribution::new(first_error_key, SemanticRole::Text)
+            .with_name("First error");
+        let second_error = SemanticNodeContribution::new(second_error_key, SemanticRole::Text)
+            .with_name("Second error");
+        SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::Group)
+                .with_child(combo)
+                .with_child(listbox)
+                .with_child(first_error)
+                .with_child(second_error),
+        )
     }
 
     impl Widget<FixtureAction> for Fixture {
@@ -1025,6 +1518,15 @@ mod tests {
             (): &Self::State,
             _: SemanticContributionContext,
         ) -> SemanticContribution {
+            if self.phase == 5 {
+                return conflicting_collection_semantics();
+            }
+            if self.phase == 6 {
+                return multiple_error_message_semantics();
+            }
+            if self.phase >= 3 {
+                return typed_semantics(u64::from(self.phase - 2));
+            }
             if self.phase == 2 {
                 return SemanticContribution::new(vec![
                     SemanticItem::node(SemanticNodeContribution::new(
@@ -1268,6 +1770,33 @@ mod tests {
             map_role(SemanticRole::Switch, &id, &mut diagnostics),
             Role::Switch
         );
+        for (semantic, accesskit) in [
+            (SemanticRole::Link, Role::Link),
+            (SemanticRole::Image, Role::Image),
+            (SemanticRole::ComboBox, Role::ComboBox),
+            (SemanticRole::Slider, Role::Slider),
+            (SemanticRole::Progress, Role::ProgressIndicator),
+            (SemanticRole::SpinButton, Role::SpinButton),
+            (SemanticRole::ListBox, Role::ListBox),
+            (SemanticRole::Option, Role::ListBoxOption),
+            (SemanticRole::TabList, Role::TabList),
+            (SemanticRole::Tab, Role::Tab),
+            (SemanticRole::TabPanel, Role::TabPanel),
+            (SemanticRole::Toolbar, Role::Toolbar),
+            (SemanticRole::Menu, Role::Menu),
+            (SemanticRole::MenuBar, Role::MenuBar),
+            (SemanticRole::MenuItem, Role::MenuItem),
+            (SemanticRole::MenuItemCheckbox, Role::MenuItemCheckBox),
+            (SemanticRole::MenuItemRadio, Role::MenuItemRadio),
+            (SemanticRole::Dialog, Role::Dialog),
+            (SemanticRole::Tooltip, Role::Tooltip),
+            (SemanticRole::Separator, Role::Splitter),
+            (SemanticRole::Splitter, Role::Splitter),
+            (SemanticRole::Tree, Role::Tree),
+            (SemanticRole::TreeItem, Role::TreeItem),
+        ] {
+            assert_eq!(map_role(semantic, &id, &mut diagnostics), accesskit);
+        }
         assert_eq!(
             map_checked_state(SemanticCheckedState::Unchecked, &id, &mut diagnostics),
             Some(Toggled::False)
@@ -1289,6 +1818,150 @@ mod tests {
                 .diagnostics
                 .iter()
                 .any(|diagnostic| matches!(diagnostic, AdapterDiagnostic::UnsupportedValueType(_)))
+        );
+    }
+
+    #[test]
+    fn typed_standard_semantics_project_exact_native_properties_and_collection_delta() {
+        let mut runtime = AppRuntime::<FixtureApp>::mount(3);
+        let first_publication = publication(&mut runtime);
+        let mut adapter = SemanticAdapter::new();
+        let first = adapter.update(&first_publication);
+        assert_eq!(first.mode, UpdateMode::InitialFull);
+        assert!(first.diagnostics.is_empty());
+
+        let find = |label: &str| {
+            first
+                .tree_update
+                .nodes
+                .iter()
+                .find(|(_, node)| node.label() == Some(label))
+                .unwrap_or_else(|| unreachable!("typed semantic node is projected"))
+        };
+        let (combo_id, combo) = find("Choice");
+        let (listbox_id, listbox) = find("Choices");
+        let (option_id, option) = find("One");
+        let (error_id, _) = find("Choice error node");
+        let (_, slider) = find("Volume");
+        let (_, toggle) = find("Toggle");
+        let (_, dialog) = find("Settings dialog");
+        let (_, tree) = find("Navigation tree");
+        let (_, tree_item) = find("Root item");
+
+        assert_eq!(combo.role(), Role::ComboBox);
+        assert_eq!(combo.is_expanded(), Some(true));
+        assert!(combo.is_required());
+        assert_eq!(combo.invalid(), Some(AccessInvalid::True));
+        assert_eq!(combo.has_popup(), Some(HasPopup::Listbox));
+        assert_eq!(combo.placeholder(), Some("Filter choices"));
+        assert_eq!(combo.auto_complete(), Some(AccessAutoComplete::List));
+        assert_eq!(combo.controls(), &[*listbox_id]);
+        assert_eq!(combo.active_descendant(), Some(*option_id));
+        assert_eq!(combo.error_message(), Some(*error_id));
+
+        assert_eq!(listbox.role(), Role::ListBox);
+        assert_eq!(listbox.orientation(), Some(AccessOrientation::Vertical));
+        assert!(listbox.is_multiselectable());
+        assert_eq!(listbox.size_of_set(), Some(1));
+        assert_eq!(option.role(), Role::ListBoxOption);
+        assert_eq!(option.is_selected(), Some(true));
+        assert_eq!(option.position_in_set(), Some(0));
+
+        assert_eq!(slider.role(), Role::Slider);
+        assert_eq!(slider.min_numeric_value(), Some(0.0));
+        assert_eq!(slider.max_numeric_value(), Some(10.0));
+        assert_eq!(slider.numeric_value(), Some(5.0));
+        assert_eq!(slider.numeric_value_step(), Some(1.0));
+        assert_eq!(slider.numeric_value_jump(), Some(5.0));
+        assert_eq!(slider.value(), Some("half"));
+        assert_eq!(slider.orientation(), Some(AccessOrientation::Horizontal));
+        assert_eq!(toggle.toggled(), Some(Toggled::True));
+        assert!(dialog.is_modal());
+        assert_eq!(tree.size_of_set(), Some(1));
+        assert_eq!(tree_item.level(), Some(0));
+        assert_eq!(tree_item.position_in_set(), Some(0));
+
+        runtime
+            .submit_action(FixtureAction)
+            .unwrap_or_else(|_| unreachable!("fixture phase transition is admitted"));
+        runtime.pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64));
+        let second_publication = publication(&mut runtime);
+        let second = adapter.update(&second_publication);
+        assert_eq!(second.mode, UpdateMode::Delta);
+        assert!(second.diagnostics.is_empty());
+
+        let changed_listbox = second
+            .tree_update
+            .nodes
+            .iter()
+            .find(|(id, _)| id == listbox_id)
+            .map_or_else(
+                || unreachable!("derived collection size change reprojects the native parent"),
+                |(_, node)| node,
+            );
+        assert_eq!(changed_listbox.size_of_set(), Some(2));
+        assert_ne!(combo_id, listbox_id);
+    }
+
+    #[test]
+    fn conflicting_collection_sizes_diagnose_and_withhold_native_set_size() {
+        let mut runtime = AppRuntime::<FixtureApp>::mount(5);
+        let publication = publication(&mut runtime);
+        let mut adapter = SemanticAdapter::new();
+        let update = adapter.update(&publication);
+
+        assert_eq!(update.mode, UpdateMode::InitialFull);
+        let listbox = update
+            .tree_update
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some("Conflicting choices"))
+            .map_or_else(
+                || unreachable!("conflicting ListBox is projected"),
+                |(_, node)| node,
+            );
+        assert_eq!(listbox.size_of_set(), None);
+        assert_eq!(
+            update
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| matches!(
+                    diagnostic,
+                    AdapterDiagnostic::UnrepresentableCollectionMetadata(_)
+                ))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn multiple_error_messages_diagnose_and_withhold_native_error_target() {
+        let mut runtime = AppRuntime::<FixtureApp>::mount(6);
+        let publication = publication(&mut runtime);
+        let mut adapter = SemanticAdapter::new();
+        let update = adapter.update(&publication);
+
+        assert_eq!(update.mode, UpdateMode::InitialFull);
+        let combo = update
+            .tree_update
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some("Invalid choice"))
+            .map_or_else(
+                || unreachable!("invalid ComboBox is projected"),
+                |(_, node)| node,
+            );
+        assert_eq!(combo.error_message(), None);
+        assert_eq!(
+            update
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| matches!(
+                    diagnostic,
+                    AdapterDiagnostic::MultipleErrorMessages(_)
+                ))
+                .count(),
+            1
         );
     }
 
@@ -1696,6 +2369,7 @@ mod tests {
         revision: u64,
         sensitivity: TextSensitivity,
         read_only: bool,
+        role: SemanticRole,
     }
 
     enum EditableAction {
@@ -1708,6 +2382,7 @@ mod tests {
         text: String,
         sensitivity: TextSensitivity,
         read_only: bool,
+        role: SemanticRole,
     }
 
     impl Widget<EditableAction> for EditableFixture {
@@ -1769,13 +2444,28 @@ mod tests {
                 self.read_only,
             )
             .unwrap();
-            SemanticContribution::single(
-                SemanticNodeContribution::primary(SemanticRole::EditableText)
-                    .with_state(SemanticState::ENABLED.with_read_only(self.read_only))
-                    .with_editable(editable)
-                    .with_action(SemanticAction::SetSelection)
-                    .with_action(SemanticAction::ReplaceSelection),
-            )
+            let mut node = SemanticNodeContribution::primary(self.role)
+                .with_state(SemanticState::ENABLED.with_read_only(self.read_only))
+                .with_editable(editable)
+                .with_action(SemanticAction::SetSelection)
+                .with_action(SemanticAction::ReplaceSelection);
+            if self.role == SemanticRole::ComboBox {
+                node = node.with_popup(SemanticPopupKind::ListBox);
+            }
+            if self.role == SemanticRole::SpinButton {
+                node = node.with_range(
+                    SemanticRange::new(
+                        None,
+                        None,
+                        Some(
+                            SemanticNumber::new(0.0)
+                                .unwrap_or_else(|_| unreachable!("spin value is finite")),
+                        ),
+                    )
+                    .unwrap_or_else(|_| unreachable!("spin range is valid")),
+                );
+            }
+            SemanticContribution::single(node)
         }
     }
 
@@ -1795,6 +2485,7 @@ mod tests {
                 text: state.text.clone(),
                 sensitivity: state.sensitivity,
                 read_only: state.read_only,
+                role: state.role,
             })
             .id("editable")
             .key("editable")
@@ -1824,6 +2515,14 @@ mod tests {
         sensitivity: TextSensitivity,
         read_only: bool,
     ) -> (SemanticPublication, SemanticAdapter) {
+        editable_publication_for_role(SemanticRole::EditableText, sensitivity, read_only)
+    }
+
+    fn editable_publication_for_role(
+        role: SemanticRole,
+        sensitivity: TextSensitivity,
+        read_only: bool,
+    ) -> (SemanticPublication, SemanticAdapter) {
         const FONT: &[u8] = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../runenui_text/tests/fixtures/Cantarell-Regular.ttf"
@@ -1833,6 +2532,7 @@ mod tests {
             revision: 0,
             sensitivity,
             read_only,
+            role,
         });
         assert!(runtime.register_text_font_bytes(FONT.to_vec()).unwrap() > 0);
         assert!(
@@ -1902,6 +2602,26 @@ mod tests {
             .unwrap();
         assert_eq!(replacement.action(), &SemanticAction::ReplaceSelection);
         assert!(!format!("{replacement:?}").contains("sensitive replacement"));
+    }
+
+    #[test]
+    fn composite_editable_roles_project_exact_native_roles() {
+        for (semantic_role, native_role) in [
+            (SemanticRole::ComboBox, Role::EditableComboBox),
+            (SemanticRole::SpinButton, Role::SpinButton),
+        ] {
+            let (publication, adapter) =
+                editable_publication_for_role(semantic_role, TextSensitivity::Public, false);
+            let semantic = &publication.snapshot().nodes()[0];
+            assert_eq!(semantic.role(), semantic_role);
+            let parent = adapter
+                .active_id(publication.snapshot().surface_id(), semantic.id())
+                .unwrap_or_else(|| unreachable!("editable semantic node is projected"));
+            assert_eq!(
+                adapter.projection.current_nodes[&parent].role(),
+                native_role
+            );
+        }
     }
 
     #[test]
