@@ -1190,6 +1190,85 @@ mod tests {
     }
 
     #[test]
+    fn active_descendant_missing_current_target_is_diagnosed_and_withheld() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let root = runtime.__runtime_mounted_id(0, 1);
+        let combo = runtime.__runtime_mounted_id(1, 1);
+        let popup = runtime.__runtime_mounted_id(2, 1);
+        let combo_id = runtime.__runtime_semantic_id(0, 1);
+        let listbox_id = runtime.__runtime_semantic_id(1, 1);
+        let popup_element = element_id("popup");
+        let missing_option = element_id("removed-option");
+
+        let combo_contribution = SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::ComboBox)
+                .with_popup(SemanticPopupKind::ListBox)
+                .with_relationship(SemanticRelationship::new(
+                    SemanticRelationshipKind::Controls,
+                    SemanticReference::Authored {
+                        element_id: popup_element.clone(),
+                        semantic_key: None,
+                    },
+                ))
+                .with_relationship(SemanticRelationship::new(
+                    SemanticRelationshipKind::ActiveDescendant,
+                    SemanticReference::Authored {
+                        element_id: missing_option.clone(),
+                        semantic_key: None,
+                    },
+                )),
+        );
+        let mut combo_owner = semantic_owner(
+            combo,
+            Some(element_id("combo")),
+            Vec::new(),
+            combo_contribution,
+            vec![(SemanticKey::PRIMARY, combo_id.clone())],
+            rect(0.0, 0.0, 20.0, 20.0),
+        );
+        combo_owner.focusability = Focusability::Focusable;
+        let owners = vec![
+            semantic_owner(
+                root.clone(),
+                None,
+                vec![combo_owner.id.clone(), popup.clone()],
+                SemanticContribution::empty(),
+                Vec::new(),
+                rect(0.0, 0.0, 100.0, 100.0),
+            ),
+            combo_owner,
+            semantic_owner(
+                popup,
+                Some(popup_element),
+                Vec::new(),
+                SemanticContribution::single(SemanticNodeContribution::primary(
+                    SemanticRole::ListBox,
+                )),
+                vec![(SemanticKey::PRIMARY, listbox_id.clone())],
+                rect(0.0, 30.0, 60.0, 60.0),
+            ),
+        ];
+
+        let candidate = compose(&owners, Some(&root), None);
+        assert_eq!(
+            candidate.nodes[0].relationships,
+            vec![ResolvedSemanticRelationship {
+                kind: SemanticRelationshipKind::Controls,
+                target: listbox_id,
+            }]
+        );
+        assert_eq!(
+            candidate.diagnostics,
+            vec![
+                SemanticCompositionDiagnostic::MissingAuthoredRelationshipOwner {
+                    source: combo_id,
+                    element_id: missing_option,
+                }
+            ]
+        );
+    }
+
+    #[test]
     fn active_descendant_wrong_role_is_diagnosed_and_withheld() {
         let runtime = RuntimeNamespace::__runtime_new();
         let root = runtime.__runtime_mounted_id(0, 1);
