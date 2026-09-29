@@ -2022,8 +2022,10 @@ mod tests {
         );
 
         let missing_value = ActionRequest {
+            action: Action::SetValue,
+            target_tree: tree_id,
+            target_node: slider,
             data: None,
-            ..set_value.clone()
         };
         assert_eq!(
             adapter.action_request(&missing_value),
