@@ -3,7 +3,7 @@
 use core::fmt;
 use std::sync::Arc;
 
-use crate::{SemanticAction, SemanticKey, SemanticNodeId, SurfaceId, TextSelection};
+use crate::{SemanticAction, SemanticKey, SemanticNodeId, SemanticNumber, SurfaceId, TextSelection};
 
 /// Checked neutral payload for semantic editing actions.
 #[non_exhaustive]
@@ -11,6 +11,7 @@ use crate::{SemanticAction, SemanticKey, SemanticNodeId, SurfaceId, TextSelectio
 pub enum SemanticActionData {
     Selection(TextSelection),
     ReplacementText(Arc<str>),
+    NumericValue(SemanticNumber),
 }
 
 impl fmt::Debug for SemanticActionData {
@@ -23,6 +24,7 @@ impl fmt::Debug for SemanticActionData {
                 .debug_struct("ReplacementText")
                 .field("bytes", &text.len())
                 .finish(),
+            Self::NumericValue(value) => formatter.debug_tuple("NumericValue").field(value).finish(),
         }
     }
 }
@@ -76,6 +78,20 @@ impl SemanticActionRequest {
             target,
             action: SemanticAction::ReplaceSelection,
             data: Some(SemanticActionData::ReplacementText(text.into())),
+        }
+    }
+
+    /// Creates one exact numeric value-setting request.
+    pub const fn set_value(
+        surface: SurfaceId,
+        target: SemanticNodeId,
+        value: SemanticNumber,
+    ) -> Self {
+        Self {
+            surface,
+            target,
+            action: SemanticAction::SetValue,
+            data: Some(SemanticActionData::NumericValue(value)),
         }
     }
 
@@ -187,8 +203,8 @@ impl SemanticActionTarget {
 #[cfg(test)]
 mod tests {
     use crate::{
-        __runtime::RuntimeNamespace, SemanticAction, SemanticActionRequest, SemanticActionTarget,
-        SemanticKey,
+        __runtime::RuntimeNamespace, SemanticAction, SemanticActionData, SemanticActionRequest,
+        SemanticActionTarget, SemanticKey, SemanticNumber,
     };
 
     #[test]
@@ -215,5 +231,14 @@ mod tests {
         assert_eq!(target.target(), &node);
         assert_eq!(target.semantic_key(), &key);
         assert_eq!(target.action(), &SemanticAction::Activate);
+
+        let value = SemanticNumber::new(42.5)
+            .unwrap_or_else(|_| unreachable!("controlled semantic value is finite"));
+        let request = SemanticActionRequest::set_value(surface, node, value);
+        assert_eq!(request.action(), &SemanticAction::SetValue);
+        assert_eq!(
+            request.data(),
+            Some(&SemanticActionData::NumericValue(value))
+        );
     }
 }
