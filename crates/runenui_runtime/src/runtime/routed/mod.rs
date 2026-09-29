@@ -36,6 +36,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             trace_reservation,
         } = envelope;
         if let Some(semantic_target) = semantic_target.as_ref() {
+            if !semantic_command_matches_target(command, semantic_target) {
+                self.trace.record_reserved_event(
+                    trace_reservation,
+                    TraceRecordKind::SemanticActionProcessingRejected {
+                        outcome: TraceSemanticActionRejection::Integrity,
+                    },
+                    sequence,
+                    causal_parent,
+                    Some(self.tree.trace_target(&target)),
+                    instant,
+                    &target,
+                    None,
+                    origin,
+                );
+                return;
+            }
             let rejection = match self.revalidate_semantic_action_target(semantic_target) {
                 Ok(owner) if owner == target => None,
                 Ok(_) => Some(TraceSemanticActionRejection::OwnerChanged),
@@ -294,6 +310,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.prepare_focus_routed_route(&facts, mandatory_default_commands)?;
         let pointer_callback_targets = route.clone();
         Some(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
+    }
+}
+
+fn semantic_command_matches_target(
+    command: runenui_core::SemanticCommand,
+    target: &runenui_core::SemanticActionTarget,
+) -> bool {
+    match (command, target.action(), target.data()) {
+        (
+            runenui_core::SemanticCommand::SetValue(command_value),
+            runenui_core::SemanticAction::SetValue,
+            Some(runenui_core::SemanticActionData::NumericValue(target_value)),
+        ) => command_value == *target_value,
+        (runenui_core::SemanticCommand::SetValue(_), _, _)
+        | (_, runenui_core::SemanticAction::SetValue, _) => false,
+        _ => true,
     }
 }
 
