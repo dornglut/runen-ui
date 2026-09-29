@@ -31,6 +31,11 @@ pub const OPEN_MENU_CUSTOM_ACTION_ID: i32 = 1;
 pub enum AdapterDiagnostic {
     UnsupportedInertState(SemanticNodeId),
     UnsupportedCheckedState(SemanticNodeId),
+    UnsupportedPressedState(SemanticNodeId),
+    UnsupportedInvalidState(SemanticNodeId),
+    UnsupportedOrientation(SemanticNodeId),
+    UnsupportedPopupKind(SemanticNodeId),
+    UnsupportedAutocomplete(SemanticNodeId),
     UnsupportedValueType(SemanticNodeId),
     UnsupportedTextShape(SemanticNodeId),
     UnsupportedRole(SemanticNodeId),
@@ -606,8 +611,10 @@ impl SurfaceProjection {
         {
             node.set_toggled(toggled);
         }
-        if let Some(pressed) = semantic.state().pressed() {
-            node.set_toggled(map_pressed_state(pressed));
+        if let Some(pressed) = semantic.state().pressed()
+            && let Some(toggled) = map_pressed_state(pressed, semantic.id(), &mut diagnostics)
+        {
+            node.set_toggled(toggled);
         }
         if let Some(selected) = semantic.state().selected() {
             node.set_selected(selected);
@@ -618,8 +625,10 @@ impl SurfaceProjection {
         if semantic.state().required() == Some(true) {
             node.set_required();
         }
-        if let Some(invalid) = semantic.state().invalid() {
-            node.set_invalid(map_invalid_state(invalid));
+        if let Some(invalid) = semantic.state().invalid()
+            && let Some(invalid) = map_invalid_state(invalid, semantic.id(), &mut diagnostics)
+        {
+            node.set_invalid(invalid);
         }
         if semantic.state().modal() == Some(true) {
             node.set_modal();
@@ -702,11 +711,16 @@ impl SurfaceProjection {
                 node.set_value(value_text);
             }
         }
-        if let Some(orientation) = semantic.orientation() {
-            node.set_orientation(map_orientation(orientation));
+        if let Some(orientation) = semantic.orientation()
+            && let Some(orientation) =
+                map_orientation(orientation, semantic.id(), &mut diagnostics)
+        {
+            node.set_orientation(orientation);
         }
-        if let Some(popup) = semantic.popup() {
-            node.set_has_popup(map_popup(popup));
+        if let Some(popup) = semantic.popup()
+            && let Some(popup) = map_popup(popup, semantic.id(), &mut diagnostics)
+        {
+            node.set_has_popup(popup);
         }
         if semantic.selection_mode() == Some(SemanticSelectionMode::Multiple) {
             node.set_multiselectable();
@@ -733,7 +747,8 @@ impl SurfaceProjection {
             node.set_placeholder(placeholder);
         }
         if let Some(autocomplete) = semantic.autocomplete()
-            && let Some(autocomplete) = map_autocomplete(autocomplete)
+            && let Some(autocomplete) =
+                map_autocomplete(autocomplete, semantic.id(), &mut diagnostics)
         {
             node.set_auto_complete(autocomplete);
         }
@@ -1096,43 +1111,88 @@ fn map_editable_role(
     }
 }
 
-const fn map_pressed_state(pressed: SemanticPressedState) -> Toggled {
+fn map_pressed_state(
+    pressed: SemanticPressedState,
+    id: &SemanticNodeId,
+    diagnostics: &mut Vec<AdapterDiagnostic>,
+) -> Option<Toggled> {
     match pressed {
-        SemanticPressedState::Unpressed => Toggled::False,
-        SemanticPressedState::Pressed => Toggled::True,
-        SemanticPressedState::Mixed => Toggled::Mixed,
+        SemanticPressedState::Unpressed => Some(Toggled::False),
+        SemanticPressedState::Pressed => Some(Toggled::True),
+        SemanticPressedState::Mixed => Some(Toggled::Mixed),
+        #[allow(unreachable_patterns)]
+        _ => {
+            diagnostics.push(AdapterDiagnostic::UnsupportedPressedState(id.clone()));
+            None
+        }
     }
 }
 
-const fn map_invalid_state(invalid: SemanticInvalidState) -> AccessInvalid {
+fn map_invalid_state(
+    invalid: SemanticInvalidState,
+    id: &SemanticNodeId,
+    diagnostics: &mut Vec<AdapterDiagnostic>,
+) -> Option<AccessInvalid> {
     match invalid {
-        SemanticInvalidState::Invalid => AccessInvalid::True,
-        SemanticInvalidState::Grammar => AccessInvalid::Grammar,
-        SemanticInvalidState::Spelling => AccessInvalid::Spelling,
+        SemanticInvalidState::Invalid => Some(AccessInvalid::True),
+        SemanticInvalidState::Grammar => Some(AccessInvalid::Grammar),
+        SemanticInvalidState::Spelling => Some(AccessInvalid::Spelling),
+        #[allow(unreachable_patterns)]
+        _ => {
+            diagnostics.push(AdapterDiagnostic::UnsupportedInvalidState(id.clone()));
+            None
+        }
     }
 }
 
-const fn map_orientation(orientation: SemanticOrientation) -> AccessOrientation {
+fn map_orientation(
+    orientation: SemanticOrientation,
+    id: &SemanticNodeId,
+    diagnostics: &mut Vec<AdapterDiagnostic>,
+) -> Option<AccessOrientation> {
     match orientation {
-        SemanticOrientation::Horizontal => AccessOrientation::Horizontal,
-        SemanticOrientation::Vertical => AccessOrientation::Vertical,
+        SemanticOrientation::Horizontal => Some(AccessOrientation::Horizontal),
+        SemanticOrientation::Vertical => Some(AccessOrientation::Vertical),
+        #[allow(unreachable_patterns)]
+        _ => {
+            diagnostics.push(AdapterDiagnostic::UnsupportedOrientation(id.clone()));
+            None
+        }
     }
 }
 
-const fn map_popup(popup: SemanticPopupKind) -> HasPopup {
+fn map_popup(
+    popup: SemanticPopupKind,
+    id: &SemanticNodeId,
+    diagnostics: &mut Vec<AdapterDiagnostic>,
+) -> Option<HasPopup> {
     match popup {
-        SemanticPopupKind::Menu => HasPopup::Menu,
-        SemanticPopupKind::ListBox => HasPopup::Listbox,
-        SemanticPopupKind::Dialog => HasPopup::Dialog,
+        SemanticPopupKind::Menu => Some(HasPopup::Menu),
+        SemanticPopupKind::ListBox => Some(HasPopup::Listbox),
+        SemanticPopupKind::Dialog => Some(HasPopup::Dialog),
+        #[allow(unreachable_patterns)]
+        _ => {
+            diagnostics.push(AdapterDiagnostic::UnsupportedPopupKind(id.clone()));
+            None
+        }
     }
 }
 
-const fn map_autocomplete(autocomplete: SemanticAutocomplete) -> Option<AccessAutoComplete> {
+fn map_autocomplete(
+    autocomplete: SemanticAutocomplete,
+    id: &SemanticNodeId,
+    diagnostics: &mut Vec<AdapterDiagnostic>,
+) -> Option<AccessAutoComplete> {
     match autocomplete {
         SemanticAutocomplete::None => None,
         SemanticAutocomplete::Inline => Some(AccessAutoComplete::Inline),
         SemanticAutocomplete::List => Some(AccessAutoComplete::List),
         SemanticAutocomplete::Both => Some(AccessAutoComplete::Both),
+        #[allow(unreachable_patterns)]
+        _ => {
+            diagnostics.push(AdapterDiagnostic::UnsupportedAutocomplete(id.clone()));
+            None
+        }
     }
 }
 
