@@ -137,6 +137,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 if !is_mutable_range_role(node.role()) || node.range().is_none() {
                     return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
                 }
+                if state.read_only() {
+                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+                }
                 if node.range().and_then(runenui_core::SemanticRange::current).is_none() {
                     return Err(SubmitSemanticActionErrorKind::UnavailableAction);
                 }
@@ -144,6 +147,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             SemanticAction::SetValue => {
                 if !is_mutable_range_role(node.role()) || node.range().is_none() {
                     return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+                }
+                if state.read_only() {
+                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
                 }
                 let Some(SemanticActionData::NumericValue(value)) = data else {
                     return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
