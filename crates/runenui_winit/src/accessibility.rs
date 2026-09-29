@@ -2617,7 +2617,10 @@ mod tests {
             let parent = adapter
                 .active_id(publication.snapshot().surface_id(), semantic.id())
                 .unwrap_or_else(|| unreachable!("editable semantic node is projected"));
-            assert_eq!(adapter.projection.current_nodes[&parent].role(), native_role);
+            assert_eq!(
+                adapter.projection.current_nodes[&parent].role(),
+                native_role
+            );
         }
     }
 
