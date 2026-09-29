@@ -1308,17 +1308,16 @@ mod tests {
     use runenui_core::{
         __runtime::RuntimeNamespace, EditIntent, EditResolution, EditableContribution,
         EditingSessionPolicy, Element, LogicalSize, NoHostProtocol, SemanticAction,
-        SemanticActionData, SemanticAutocomplete, SemanticCheckedState,
-        SemanticCollectionPosition, SemanticContribution, SemanticContributionContext,
-        SemanticEditable, SemanticHierarchyLevel, SemanticInvalidState, SemanticItem, SemanticKey,
+        SemanticActionData, SemanticAutocomplete, SemanticCheckedState, SemanticCollectionPosition,
+        SemanticContribution, SemanticContributionContext, SemanticEditable,
+        SemanticHierarchyLevel, SemanticInvalidState, SemanticItem, SemanticKey,
         SemanticNodeContribution, SemanticNumber, SemanticOrientation, SemanticPopupKind,
         SemanticPressedState, SemanticRange, SemanticReference, SemanticRelationship,
-        SemanticRelationshipKind, SemanticRole, SemanticSelectionMode, SemanticState,
-        SemanticText, SemanticValue, StyleEnvironment, TextDocumentId, TextDocumentRevision,
+        SemanticRelationshipKind, SemanticRole, SemanticSelectionMode, SemanticState, SemanticText,
+        SemanticValue, StyleEnvironment, TextDocumentId, TextDocumentRevision,
         TextDocumentSnapshot, TextSelection, TextSensitivity, UiApp, UpdateOutput, View, Widget,
-        WidgetActivation,
-        WidgetActivationContext, WidgetActivationOutput, WidgetInvalidation, WidgetMeasure,
-        WidgetMeasureInput,
+        WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetInvalidation,
+        WidgetMeasure, WidgetMeasureInput,
     };
     use runenui_runtime::{AppRuntime, FontFamilyName, GenericFontFamily, SurfaceBuildContext};
 
