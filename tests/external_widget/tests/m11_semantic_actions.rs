@@ -98,8 +98,10 @@ impl Widget<Action> for Probe {
             .with_action(SemanticAction::Expand)
             .with_action(SemanticAction::Collapse);
         SemanticContribution::single(
-            SemanticNodeContribution::primary(SemanticRole::Group)
-                .with_children(vec![SemanticItem::node(range), SemanticItem::node(expander)]),
+            SemanticNodeContribution::primary(SemanticRole::Group).with_children(vec![
+                SemanticItem::node(range),
+                SemanticItem::node(expander),
+            ]),
         )
     }
 }
@@ -200,11 +202,7 @@ fn set_value_routes_exact_payload_before_application_update_and_direct_command_c
     let (surface, range, _) = publish(&mut runtime);
     let value = number(7.0);
     runtime
-        .submit_semantic_action(SemanticActionRequest::set_value(
-            surface,
-            range,
-            value,
-        ))
+        .submit_semantic_action(SemanticActionRequest::set_value(surface, range, value))
         .unwrap_or_else(|_| unreachable!("in-range SetValue is admitted"));
 
     pump_one(&mut runtime);
