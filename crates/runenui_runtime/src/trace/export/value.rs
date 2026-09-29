@@ -237,3 +237,36 @@ pub(super) fn invalidation(output: &mut String, invalidation: WidgetInvalidation
     }
     output.push(']');
 }
+
+
+#[cfg(test)]
+mod tests {
+    use runenui_core::{SemanticAction, SemanticCommand, SemanticNumber};
+
+    use super::{semantic_action, semantic_command};
+
+    #[test]
+    fn range_and_expansion_trace_tokens_are_stable_and_set_value_keeps_numeric_value() {
+        let mut command = String::new();
+        semantic_command(
+            &mut command,
+            SemanticCommand::SetValue(
+                SemanticNumber::new(7.5)
+                    .unwrap_or_else(|_| unreachable!("controlled value is finite")),
+            ),
+        );
+        assert_eq!(command, r#"{"kind":"set_value","value":7.5}"#);
+
+        for (action, expected) in [
+            (SemanticAction::Increment, r#""increment""#),
+            (SemanticAction::Decrement, r#""decrement""#),
+            (SemanticAction::SetValue, r#""set_value""#),
+            (SemanticAction::Expand, r#""expand""#),
+            (SemanticAction::Collapse, r#""collapse""#),
+        ] {
+            let mut encoded = String::new();
+            semantic_action(&mut encoded, &action);
+            assert_eq!(encoded, expected);
+        }
+    }
+}
