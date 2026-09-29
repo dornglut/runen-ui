@@ -489,8 +489,10 @@ fn editable_semantics_match<Action>(
             let Some(projected) = primary.editable() else {
                 return false;
             };
-            primary.role() == SemanticRole::EditableText
-                && projected.snapshot() == authoritative.snapshot()
+            matches!(
+                primary.role(),
+                SemanticRole::EditableText | SemanticRole::ComboBox | SemanticRole::SpinButton
+            ) && projected.snapshot() == authoritative.snapshot()
                 && projected.selection() == authoritative.initial_selection()
                 && projected.sensitivity() == authoritative.sensitivity()
                 && projected.read_only() == authoritative.read_only()
@@ -537,8 +539,11 @@ mod tests {
     use std::sync::Arc;
 
     use runenui_core::{
-        Element, SemanticContribution, SemanticContributionContext, SemanticItem,
-        SemanticNodeContribution, SemanticRole, Widget, WidgetActivation,
+        EditIntent, EditableContribution, EditingSessionPolicy, Element, SemanticContribution,
+        SemanticContributionContext, SemanticEditable, SemanticItem, SemanticNodeContribution,
+        SemanticRole, SemanticState, TextAffinity, TextDocumentId, TextDocumentRevision,
+        TextDocumentSnapshot, TextPosition, TextSelection, TextSensitivity, Widget,
+        WidgetActivation,
     };
 
     use crate::mounted::DirtyPhases;
@@ -627,6 +632,58 @@ mod tests {
         let surface = tree.plan_surface_publication_capabilities(DirtyPhases::SEMANTICS);
         let semantics = tree.plan_semantic_publication_capabilities(&surface);
         (surface, semantics)
+    }
+
+    fn editable_fixture(
+        role: SemanticRole,
+    ) -> (SemanticContribution, EditableContribution<()>) {
+        let text = "abc";
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(901), TextDocumentRevision::new(1));
+        let position = TextPosition::new(snapshot, text, text.len(), TextAffinity::Downstream)
+            .unwrap_or_else(|_| unreachable!("controlled editable position is valid"));
+        let selection = TextSelection::collapsed(position);
+        let projected =
+            SemanticEditable::new(snapshot, text, selection, TextSensitivity::Public, false)
+                .unwrap_or_else(|| unreachable!("controlled semantic editable is valid"));
+        let semantics = SemanticContribution::single(
+            SemanticNodeContribution::primary(role)
+                .with_state(SemanticState::ENABLED)
+                .with_editable(projected),
+        );
+        let authoritative = EditableContribution::new(
+            snapshot,
+            text,
+            selection,
+            TextSensitivity::Public,
+            false,
+            false,
+            EditingSessionPolicy::PreserveExact,
+            |_intent: EditIntent| (),
+        )
+        .unwrap_or_else(|_| unreachable!("controlled editable contribution is valid"));
+        (semantics, authoritative)
+    }
+
+    #[test]
+    fn editable_semantic_authority_accepts_selected_composite_roles_only() {
+        for role in [
+            SemanticRole::EditableText,
+            SemanticRole::ComboBox,
+            SemanticRole::SpinButton,
+        ] {
+            let (semantics, editable) = editable_fixture(role);
+            assert!(
+                editable_semantics_match(&semantics, Some(&editable)),
+                "{role:?} must reuse the authoritative M10 editable contribution"
+            );
+        }
+
+        let (semantics, editable) = editable_fixture(SemanticRole::Group);
+        assert!(
+            !editable_semantics_match(&semantics, Some(&editable)),
+            "non-editable semantic roles must remain fail closed"
+        );
     }
 
     #[test]
