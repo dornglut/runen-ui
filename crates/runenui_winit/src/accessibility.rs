@@ -1377,7 +1377,7 @@ mod tests {
             .with_selection_mode(SemanticSelectionMode::Multiple)
             .with_child(option);
         let error = SemanticNodeContribution::new(error_key, SemanticRole::Text)
-            .with_name("Choice error")
+            .with_name("Choice error node")
             .with_text(SemanticText::plain("Choice error"));
 
         let minimum =
@@ -1769,7 +1769,7 @@ mod tests {
         let (combo_id, combo) = find("Choice");
         let (listbox_id, listbox) = find("Choices");
         let (option_id, option) = find("One");
-        let (error_id, _) = find("Choice error");
+        let (error_id, _) = find("Choice error node");
         let (_, slider) = find("Volume");
         let (_, toggle) = find("Toggle");
         let (_, dialog) = find("Settings dialog");
