@@ -374,10 +374,12 @@ fn capacity_rejection_clears_existing_prefix_and_preserves_focus() {
     let oversized = "x".repeat(65);
     type_character(&mut runtime, &oversized);
     assert_eq!(runtime.focus().focused_node(), Some(&beta));
-    assert!(runtime.trace().kinds().any(|kind| matches!(
-        kind,
-        TraceRecordKind::FocusGroupTypeAheadCapacityRejected
-    )));
+    assert!(
+        runtime
+            .trace()
+            .kinds()
+            .any(|kind| matches!(kind, TraceRecordKind::FocusGroupTypeAheadCapacityRejected))
+    );
     assert!(
         runtime
             .trace()
