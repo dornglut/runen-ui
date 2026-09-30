@@ -4,13 +4,14 @@ use std::time::Duration;
 
 use runenui_core::{
     CommandOrigin, Element, EventContext, EventPhase, FocusGroup, FocusGroupActivationPolicy,
-    FocusGroupBoundaryPolicy, FocusGroupTypeAhead, FocusReason, Focusability, KeyLocation,
+    FocusGroupBoundaryPolicy, FocusGroupTypeAhead, FocusReason, FocusScope, Focusability,
+    KeyLocation,
     KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
     NoHostProtocol, PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetEventOutput,
     button, column,
 };
 use runenui_runtime::{
-    AppRuntime, ManualClock, MountedNodeId, PumpBudget, RuntimeConfig, TraceConfig,
+    AppRuntime, ManualClock, MountedNodeId, PumpBudget, RuntimeConfig, TraceConfig, TraceReplay,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -326,7 +327,7 @@ fn activate_target_remains_deferred_until_after_focus_transition() {
 }
 
 #[test]
-fn trace_exports_only_bounded_type_ahead_observation_not_search_text() {
+fn trace_export_remains_redacted_and_replay_compatible() {
     let mut runtime = AppRuntime::<App>::mount_with_config(
         State::manual(),
         RuntimeConfig::default().with_trace_config(TraceConfig::new(1024)),
@@ -339,6 +340,388 @@ fn trace_exports_only_bounded_type_ahead_observation_not_search_text() {
     for secret in ["alpha", "alpine", "beta", "bravo", "delta"] {
         assert!(!jsonl.contains(secret));
     }
+    let replay = TraceReplay::parse_jsonl(&jsonl)
+        .unwrap_or_else(|error| unreachable!("redacted type-ahead trace replays: {error}"));
+    assert!(replay.is_complete());
+}
+
+
+#[test]
+fn fresh_prefix_no_match_keeps_focus_stable_until_a_later_character_recovers() {
+    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    settle(&mut runtime);
+    focus(&mut runtime, "three");
+    let beta = id(&mut runtime, "three");
+
+    type_character(&mut runtime, "z");
+    assert_eq!(runtime.focus().focused_node(), Some(&beta));
+
+    type_character(&mut runtime, "a");
+    assert_focus(&mut runtime, "one");
+}
+
+#[test]
+fn repeated_keyboard_events_participate_in_same_character_cycling() {
+    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    settle(&mut runtime);
+    focus(&mut runtime, "three");
+
+    type_character(&mut runtime, "a");
+    assert_focus(&mut runtime, "one");
+
+    runtime
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("KeyA")),
+            LogicalKey::Character(String::from("a")),
+            KeyModifiers::NONE,
+            true,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        ))
+        .unwrap_or_else(|_| unreachable!("repeat character is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_focus(&mut runtime, "two");
+}
+
+fn unit_member(id: &'static str, search: &'static str) -> Element<()> {
+    button(id)
+        .id(id)
+        .key(id)
+        .into_element()
+        .with_focusability(Focusability::Focusable)
+        .focus_group_search_text(search)
+}
+
+fn unit_group(id: &'static str, prefix: &'static str) -> Element<()> {
+    column(vec![
+        unit_member(
+            match prefix {
+                "a" => "a.zulu",
+                "b" => "b.zulu",
+                _ => unreachable!("fixture prefix is fixed"),
+            },
+            "zulu",
+        ),
+        unit_member(
+            match prefix {
+                "a" => "a.alpha",
+                "b" => "b.alpha",
+                _ => unreachable!("fixture prefix is fixed"),
+            },
+            "alpha",
+        ),
+        unit_member(
+            match prefix {
+                "a" => "a.alpine",
+                "b" => "b.alpine",
+                _ => unreachable!("fixture prefix is fixed"),
+            },
+            "alpine",
+        ),
+        unit_member(
+            match prefix {
+                "a" => "a.lima",
+                "b" => "b.lima",
+                _ => unreachable!("fixture prefix is fixed"),
+            },
+            "lima",
+        ),
+    ])
+    .id(id)
+    .key(id)
+    .into_element()
+    .focus_group(FocusGroup::new().with_type_ahead(type_ahead()))
+}
+
+struct ResetBoundaryApp;
+
+impl UiApp for ResetBoundaryApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &()) -> Element<()> {
+        column(vec![
+            unit_group("group.a", "a"),
+            unit_group("group.b", "b"),
+            unit_member("outside", "outside"),
+        ])
+        .into_element()
+    }
+
+    fn update(_: &mut (), _: ()) {}
+}
+
+fn reset_id(runtime: &mut AppRuntime<ResetBoundaryApp>, authored: &str) -> MountedNodeId {
+    let authored = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("reset-boundary fixture node is mounted"))
+        .id()
+        .clone()
+}
+
+fn reset_focus(runtime: &mut AppRuntime<ResetBoundaryApp>, authored: &str) {
+    let target = reset_id(runtime, authored);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("reset-boundary focus is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+}
+
+fn reset_character(runtime: &mut AppRuntime<ResetBoundaryApp>, character: &str) {
+    runtime
+        .submit_keyboard(key(character))
+        .unwrap_or_else(|_| unreachable!("reset-boundary keyboard input is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+}
+
+#[test]
+fn group_transfer_and_focus_departure_clear_the_exact_group_buffer() {
+    let mut runtime = AppRuntime::<ResetBoundaryApp>::mount(());
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+
+    reset_focus(&mut runtime, "a.zulu");
+    reset_character(&mut runtime, "a");
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&reset_id(&mut runtime, "a.alpha"))
+    );
+
+    reset_focus(&mut runtime, "b.zulu");
+    reset_character(&mut runtime, "l");
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&reset_id(&mut runtime, "b.lima"))
+    );
+
+    reset_focus(&mut runtime, "a.zulu");
+    reset_character(&mut runtime, "a");
+    reset_focus(&mut runtime, "outside");
+    reset_focus(&mut runtime, "a.zulu");
+    reset_character(&mut runtime, "l");
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&reset_id(&mut runtime, "a.lima"))
+    );
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReplacementAction {
+    Replace,
+}
+
+struct ReplacementApp;
+
+impl UiApp for ReplacementApp {
+    type State = bool;
+    type Action = ReplacementAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(replaced: &bool) -> Element<ReplacementAction> {
+        let member = |id: &'static str, search: &'static str| {
+            button(id)
+                .id(id)
+                .key(id)
+                .into_element()
+                .with_focusability(Focusability::Focusable)
+                .focus_group_search_text(search)
+        };
+        column(vec![
+            member("replace.zulu", "zulu"),
+            member("replace.alpha", "alpha"),
+            member("replace.alpine", "alpine"),
+            member("replace.lima", "lima"),
+        ])
+        .id("replace.group")
+        .key(if *replaced {
+            "replace.group.v2"
+        } else {
+            "replace.group.v1"
+        })
+        .into_element()
+        .focus_group(FocusGroup::new().with_type_ahead(type_ahead()))
+    }
+
+    fn update(state: &mut bool, ReplacementAction::Replace: ReplacementAction) {
+        *state = true;
+    }
+}
+
+fn replacement_id(
+    runtime: &mut AppRuntime<ReplacementApp>,
+    authored: &str,
+) -> MountedNodeId {
+    let authored = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("replacement fixture node is mounted"))
+        .id()
+        .clone()
+}
+
+fn replacement_focus(runtime: &mut AppRuntime<ReplacementApp>, authored: &str) {
+    let target = replacement_id(runtime, authored);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("replacement focus is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+}
+
+fn replacement_character(runtime: &mut AppRuntime<ReplacementApp>, character: &str) {
+    runtime
+        .submit_keyboard(key(character))
+        .unwrap_or_else(|_| unreachable!("replacement keyboard input is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+}
+
+#[test]
+fn owner_replacement_retires_buffer_with_the_old_exact_group_lifetime() {
+    let mut runtime = AppRuntime::<ReplacementApp>::mount(false);
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    replacement_focus(&mut runtime, "replace.zulu");
+    replacement_character(&mut runtime, "a");
+
+    runtime
+        .submit_action(ReplacementAction::Replace)
+        .unwrap_or_else(|_| unreachable!("replacement action is admitted"));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+
+    replacement_focus(&mut runtime, "replace.zulu");
+    replacement_character(&mut runtime, "l");
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&replacement_id(&mut runtime, "replace.lima"))
+    );
+}
+
+struct NestedBoundaryApp;
+
+impl UiApp for NestedBoundaryApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &()) -> Element<()> {
+        let nested = column(vec![
+            unit_member("nested.first", "inner"),
+            unit_member("nested.second", "second"),
+        ])
+        .id("nested.group")
+        .key("nested.group")
+        .into_element()
+        .focus_group_search_text("nested")
+        .focus_group(FocusGroup::new());
+
+        let scoped = column(vec![unit_member("scoped.member", "scope")])
+            .id("nested.scope")
+            .key("nested.scope")
+            .into_element()
+            .focus_scope(FocusScope::new());
+
+        column(vec![
+            unit_member("outer.current", "zulu"),
+            nested,
+            scoped,
+            unit_member("outer.after", "after"),
+        ])
+        .id("outer.group")
+        .key("outer.group")
+        .into_element()
+        .focus_group(FocusGroup::new().with_type_ahead(type_ahead()))
+    }
+
+    fn update(_: &mut (), _: ()) {}
+}
+
+fn nested_id(runtime: &mut AppRuntime<NestedBoundaryApp>, authored: &str) -> MountedNodeId {
+    let authored = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("nested fixture node is mounted"))
+        .id()
+        .clone()
+}
+
+fn nested_focus(runtime: &mut AppRuntime<NestedBoundaryApp>, authored: &str) {
+    let target = nested_id(runtime, authored);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("nested fixture focus is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+}
+
+#[test]
+fn nested_group_search_enters_existing_target_and_nested_scope_is_not_searchable() {
+    let mut nested = AppRuntime::<NestedBoundaryApp>::mount(());
+    nested.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    nested_focus(&mut nested, "outer.current");
+    nested
+        .submit_keyboard(key("n"))
+        .unwrap_or_else(|_| unreachable!("nested-group search is admitted"));
+    nested.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(
+        nested.focus().focused_node(),
+        Some(&nested_id(&mut nested, "nested.first"))
+    );
+
+    let mut scoped = AppRuntime::<NestedBoundaryApp>::mount(());
+    scoped.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    nested_focus(&mut scoped, "outer.current");
+    let current = nested_id(&mut scoped, "outer.current");
+    scoped
+        .submit_keyboard(key("s"))
+        .unwrap_or_else(|_| unreachable!("scope-boundary search is admitted"));
+    scoped.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(scoped.focus().focused_node(), Some(&current));
 }
 
 struct PreventingMember {
