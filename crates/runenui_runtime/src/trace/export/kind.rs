@@ -23,6 +23,9 @@ macro_rules! trace_kind_name {
             TraceRecordKind::KeyboardSubmissionRejected => "keyboard_submission_rejected",
             TraceRecordKind::KeyboardProcessingValidated => "keyboard_processing_validated",
             TraceRecordKind::KeyboardDefaultPrevented => "keyboard_default_prevented",
+            TraceRecordKind::FocusGroupTypeAheadEvaluated { .. } => {
+                "focus_group_type_ahead_evaluated"
+            }
             TraceRecordKind::KeyboardEnterActivationDerived => "keyboard_enter_activation_derived",
             TraceRecordKind::KeyboardSpaceOwnershipEstablished => {
                 "keyboard_space_ownership_established"
@@ -709,6 +712,17 @@ fn encode_routed_focus_data(output: &mut String, kind: &TraceRecordKind) -> bool
         }
         TraceRecordKind::FocusCandidateSelected { outcome } => {
             field_str(output, "outcome", tokens::focus_boundary_outcome(*outcome));
+        }
+        TraceRecordKind::FocusGroupTypeAheadEvaluated {
+            buffer_scalars,
+            matched,
+            capacity_rejected,
+        } => {
+            field_usize(output, "buffer_scalars", *buffer_scalars);
+            output.push(',');
+            field_bool(output, "matched", *matched);
+            output.push(',');
+            field_bool(output, "capacity_rejected", *capacity_rejected);
         }
         TraceRecordKind::FocusTransitionCommitted { reason } => {
             field_str(output, "reason", tokens::focus_reason(*reason));
