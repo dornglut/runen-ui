@@ -206,6 +206,7 @@ pub struct Element<Action> {
     focus_scope: Option<FocusScope>,
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
+    focus_group_search_text: Option<String>,
     widget: Box<dyn ErasedWidget<Action>>,
     children: Vec<Self>,
 }
@@ -279,6 +280,7 @@ impl<Action> Element<Action> {
             focus_scope: None,
             focus_group: None,
             focus_group_entry: FocusGroupEntry::Automatic,
+            focus_group_search_text: None,
             widget,
             children,
         }
@@ -298,6 +300,7 @@ impl<Action> Element<Action> {
             focus_scope,
             focus_group: None,
             focus_group_entry: FocusGroupEntry::Automatic,
+            focus_group_search_text: None,
             widget,
             children,
         }
@@ -361,6 +364,20 @@ impl<Action> Element<Action> {
         self
     }
 
+    /// Authors neutral type-ahead search text for this logical focus-group member.
+    #[must_use]
+    pub fn focus_group_search_text(mut self, search_text: impl Into<String>) -> Self {
+        self.focus_group_search_text = Some(search_text.into());
+        self
+    }
+
+    /// Removes authored type-ahead search text from this member.
+    #[must_use]
+    pub fn without_focus_group_search_text(mut self) -> Self {
+        self.focus_group_search_text = None;
+        self
+    }
+
     /// Maps every typed widget action in this subtree into a parent action.
     #[must_use]
     pub fn map_action<ParentAction>(
@@ -389,6 +406,7 @@ impl<Action> Element<Action> {
             focus_scope: self.focus_scope,
             focus_group: self.focus_group,
             focus_group_entry: self.focus_group_entry,
+            focus_group_search_text: self.focus_group_search_text,
             widget: Box::new(MappedWidget {
                 child: self.widget,
                 mapper: Rc::clone(mapper),
@@ -438,6 +456,10 @@ impl<Action> Element<Action> {
         self.focus_group_entry
     }
     #[must_use]
+    pub fn focus_group_search_text(&self) -> Option<&str> {
+        self.focus_group_search_text.as_deref()
+    }
+    #[must_use]
     pub const fn children(&self) -> &[Self] {
         self.children.as_slice()
     }
@@ -456,6 +478,7 @@ impl<Action> Element<Action> {
             fields,
             self.focus_group,
             self.focus_group_entry,
+            self.focus_group_search_text,
             MountedWidget::from_erased(self.widget),
             self.children,
             diagnostics,
