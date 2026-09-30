@@ -224,6 +224,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .iter()
             .any(|timer| self.work.is_running(timer.generation) && timer.is_due(now))
             || self.surface_publication.motion_deadline_is_due(now)
+            || self
+                .focus_group_type_ahead_deadline()
+                .is_some_and(|deadline| now >= deadline)
         {
             let _ = self.wake.handle().request();
         }

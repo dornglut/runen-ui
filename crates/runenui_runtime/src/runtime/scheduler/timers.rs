@@ -54,12 +54,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .map(|timer| timer.deadline)
             .min();
         let motion_deadline = self.surface_publication.motion_deadline();
-        let next_deadline = match (timer_deadline, motion_deadline) {
-            (Some(timer), Some(motion)) => Some(timer.min(motion)),
-            (Some(timer), None) => Some(timer),
-            (None, Some(motion)) => Some(motion),
-            (None, None) => None,
-        };
+        let type_ahead_deadline = self.focus_group_type_ahead_deadline();
+        let next_deadline = [timer_deadline, motion_deadline, type_ahead_deadline]
+            .into_iter()
+            .flatten()
+            .min();
         SchedulerObservation {
             completion_imports_pending: self.completion_ingress.len() > 0,
             due_timers_pending: self

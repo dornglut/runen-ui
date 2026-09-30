@@ -14,6 +14,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         max_local_polls: usize,
         max_timer_promotions: usize,
     ) -> ReadinessCheckpointReport {
+        let now = self.now();
+        self.expire_focus_group_type_ahead_if_due(now);
         let imported_completions = self.import_send_completions(max_completion_imports);
         let promoted_timers = self.promote_due_timers(max_timer_promotions);
         let polled_local_work = self.poll_local_work(max_local_polls);

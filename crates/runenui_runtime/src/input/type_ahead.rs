@@ -42,6 +42,24 @@ impl FocusGroupTypeAheadState {
         self.group.is_some()
     }
 
+    #[must_use]
+    pub(crate) fn deadline(&self) -> Option<MonotonicInstant> {
+        if self.buffer.is_empty() || self.group.is_none() {
+            return None;
+        }
+        let policy = self.policy?;
+        let last_input = self.last_input?;
+        last_input.checked_add(policy.timeout()).ok()
+    }
+
+    pub(crate) fn expire_if_due(&mut self, instant: MonotonicInstant) -> bool {
+        let expired = self.deadline().is_some_and(|deadline| instant >= deadline);
+        if expired {
+            self.clear();
+        }
+        expired
+    }
+
     pub(crate) fn clear(&mut self) {
         self.group = None;
         self.policy = None;
@@ -117,6 +135,18 @@ fn lowercase_type_ahead_fragment(text: &str) -> Result<Option<(String, usize)>, 
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    #[must_use]
+    pub(crate) fn focus_group_type_ahead_deadline(&self) -> Option<MonotonicInstant> {
+        self.focus_group_type_ahead.deadline()
+    }
+
+    pub(crate) fn expire_focus_group_type_ahead_if_due(
+        &mut self,
+        instant: MonotonicInstant,
+    ) -> bool {
+        self.focus_group_type_ahead.expire_if_due(instant)
+    }
+
     pub(crate) fn apply_focus_group_type_ahead_update(
         &mut self,
         update: FocusGroupTypeAheadUpdate,

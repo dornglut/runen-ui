@@ -12,8 +12,9 @@ use runenui_core::{
     UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetTextInput, button, column,
 };
 use runenui_runtime::{
-    AppRuntime, ManualClock, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits,
-    RuntimeStatus, TraceConfig, TraceRecordKind, TraceReplay, TraceRoutedAdmissionRejection,
+    AppRuntime, ManualClock, MonotonicInstant, MountedNodeId, PumpBudget, RuntimeConfig,
+    RuntimeLimits, RuntimeStatus, TraceConfig, TraceRecordKind, TraceReplay,
+    TraceRoutedAdmissionRejection,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -313,11 +314,40 @@ fn timeout_expires_at_the_exact_deadline_before_the_next_character() {
 
     type_character(&mut runtime, "a");
     assert_focus(&mut runtime, "one");
+    let deadline = MonotonicInstant::ZERO
+        .checked_add(Duration::from_millis(500))
+        .unwrap_or_else(|_| unreachable!("fixture timeout deadline is representable"));
+    let before = runtime.pump(PumpBudget::new(0, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(before.next_deadline(), Some(deadline));
+
     clock
         .advance(Duration::from_millis(500))
         .unwrap_or_else(|_| unreachable!("fixture time remains representable"));
+    let expired = runtime.pump(PumpBudget::new(0, usize::MAX, usize::MAX, usize::MAX));
+    assert_ne!(expired.next_deadline(), Some(deadline));
+
     type_character(&mut runtime, "l");
     assert_focus(&mut runtime, "one");
+}
+
+#[cfg(feature = "internal-test-seams")]
+#[test]
+fn timeout_retires_private_buffer_without_requiring_another_key() {
+    let clock = ManualClock::new();
+    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    runtime.set_monotonic_clock(clock.clone());
+    settle(&mut runtime);
+    focus(&mut runtime, "three");
+
+    type_character(&mut runtime, "a");
+    assert!(runtime.__focus_group_type_ahead_active_for_test());
+
+    clock
+        .advance(Duration::from_millis(500))
+        .unwrap_or_else(|_| unreachable!("fixture time remains representable"));
+    runtime.pump(PumpBudget::new(0, usize::MAX, usize::MAX, usize::MAX));
+
+    assert!(!runtime.__focus_group_type_ahead_active_for_test());
 }
 
 #[test]
