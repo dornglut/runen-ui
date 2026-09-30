@@ -375,6 +375,30 @@ fn timeout_retires_private_buffer_without_requiring_another_key() {
     assert!(!runtime.__focus_group_type_ahead_active_for_test());
 }
 
+#[cfg(feature = "internal-test-seams")]
+#[test]
+fn timeout_cleanup_does_not_wait_for_unrelated_queue_to_empty() {
+    let clock = ManualClock::new();
+    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    runtime.set_monotonic_clock(clock.clone());
+    settle(&mut runtime);
+    focus(&mut runtime, "three");
+
+    type_character(&mut runtime, "a");
+    assert!(runtime.__focus_group_type_ahead_active_for_test());
+
+    runtime
+        .submit_action(Action::Activated("filler"))
+        .unwrap_or_else(|_| unreachable!("unrelated queued action is admitted"));
+    clock
+        .advance(Duration::from_millis(500))
+        .unwrap_or_else(|_| unreachable!("fixture time remains representable"));
+
+    let report = runtime.pump(PumpBudget::new(0, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(report.remaining_queued_envelopes(), 1);
+    assert!(!runtime.__focus_group_type_ahead_active_for_test());
+}
+
 #[test]
 fn queued_predeadline_character_keeps_ingress_time_order_across_timeout_wake() {
     let clock = ManualClock::new();

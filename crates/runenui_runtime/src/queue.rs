@@ -477,6 +477,19 @@ impl<Action> WorkQueue<Action> {
         self.waiting.is_empty()
     }
 
+    pub(crate) fn has_keyboard_input_before(&self, deadline: MonotonicInstant) -> bool {
+        self.waiting.iter().any(|envelope| {
+            matches!(
+                envelope,
+                WorkEnvelope::Input(InputEnvelope {
+                    payload: InputEnvelopePayload::Keyboard(_),
+                    instant,
+                    ..
+                }) if *instant < deadline
+            )
+        })
+    }
+
     pub(crate) fn has_pointer_envelopes(&self) -> bool {
         self.waiting
             .iter()
