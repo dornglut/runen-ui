@@ -6,7 +6,8 @@ use runenui_core::{
     CommandOrigin, Element, FocusGroup, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy,
     FocusGroupTypeAhead, FocusReason, Focusability, KeyLocation, KeyModifiers,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
-    PhysicalKey, SemanticCommand, UiApp, View, button, column,
+    EventContext, EventPhase, PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget,
+    WidgetEventOutput, button, column,
 };
 use runenui_runtime::{
     AppRuntime, ManualClock, MountedNodeId, PumpBudget, RuntimeConfig, TraceConfig,
@@ -345,4 +346,111 @@ fn trace_exports_only_bounded_type_ahead_observation_not_search_text() {
     for secret in ["alpha", "alpine", "beta", "bravo", "delta"] {
         assert!(!jsonl.contains(secret));
     }
+}
+
+
+struct PreventingMember {
+    prevent: bool,
+}
+
+impl Widget<()> for PreventingMember {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ()>,
+    ) -> WidgetEventOutput {
+        if self.prevent
+            && context.phase() == EventPhase::Target
+            && event.as_keyboard().is_some()
+        {
+            context.prevent_default();
+        }
+        WidgetEventOutput::none()
+    }
+}
+
+struct PreventApp;
+
+impl UiApp for PreventApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &()) -> Element<()> {
+        column(vec![
+            Element::new(PreventingMember { prevent: true })
+                .id("prevent.a")
+                .with_focusability(Focusability::FocusableWhenDisabled)
+                .focus_group_search_text("alpha"),
+            Element::new(PreventingMember { prevent: false })
+                .id("prevent.b")
+                .with_focusability(Focusability::FocusableWhenDisabled)
+                .focus_group_search_text("beta"),
+        ])
+        .id("prevent.group")
+        .into_element()
+        .focus_group(
+            FocusGroup::new().with_type_ahead(
+                FocusGroupTypeAhead::new(Duration::from_millis(500))
+                    .unwrap_or_else(|_| unreachable!("fixture timeout is bounded")),
+            ),
+        )
+    }
+
+    fn update(_: &mut (), (): ()) {}
+}
+
+fn prevent_id(runtime: &mut AppRuntime<PreventApp>, authored: &str) -> MountedNodeId {
+    let authored = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("prevent-default fixture node is mounted"))
+        .id()
+        .clone()
+}
+
+#[test]
+fn routed_prevent_default_suppresses_type_ahead_before_buffer_or_focus_change() {
+    let mut runtime = AppRuntime::<PreventApp>::mount(());
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let a = prevent_id(&mut runtime, "prevent.a");
+    let b = prevent_id(&mut runtime, "prevent.b");
+    runtime
+        .submit_command(
+            a.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("fixture focus is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+
+    runtime
+        .submit_keyboard(key("b"))
+        .unwrap_or_else(|_| unreachable!("keyboard input is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+
+    assert_eq!(runtime.focus().focused_node(), Some(&a));
+    assert_ne!(runtime.focus().focused_node(), Some(&b));
+    assert!(runtime.trace().records().any(|record| {
+        matches!(record.kind(), TraceRecordKind::KeyboardDefaultPrevented)
+    }));
+    assert!(!runtime.trace().records().any(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::FocusGroupTypeAheadEvaluated { .. }
+        )
+    }));
 }
