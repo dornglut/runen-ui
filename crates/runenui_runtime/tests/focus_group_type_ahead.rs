@@ -52,6 +52,7 @@ impl UiApp for App {
             member("one", "alpha", true, false),
             member("two", "alpine", true, false),
             member("three", "beta", true, false),
+            member("six", "beacon", true, false),
             member("four", "bravo", true, false),
             member("five", "delta", false, true),
         ])
@@ -212,6 +213,18 @@ fn rapid_multi_character_prefix_narrows_and_miss_retries_current_character() {
 }
 
 #[test]
+fn multi_character_extension_prefers_the_current_matching_member() {
+    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    settle(&mut runtime);
+    focus(&mut runtime, "two");
+
+    type_character(&mut runtime, "b");
+    assert_focus(&mut runtime, "three");
+    type_character(&mut runtime, "e");
+    assert_focus(&mut runtime, "three");
+}
+
+#[test]
 fn disabled_discoverable_member_uses_canonical_focus_eligibility() {
     let mut runtime = AppRuntime::<App>::mount(State::manual());
     settle(&mut runtime);
@@ -292,7 +305,7 @@ fn composition_and_command_modifiers_suppress_type_ahead_but_shift_is_permitted(
 }
 
 #[test]
-fn capacity_rejection_preserves_existing_prefix_and_focus() {
+fn capacity_rejection_clears_existing_prefix_and_preserves_focus() {
     let mut runtime = AppRuntime::<App>::mount_with_config(
         State::manual(),
         RuntimeConfig::default().with_trace_config(TraceConfig::new(1024)),
@@ -307,8 +320,9 @@ fn capacity_rejection_preserves_existing_prefix_and_focus() {
     let oversized = "x".repeat(65);
     type_character(&mut runtime, &oversized);
     assert_eq!(runtime.focus().focused_node(), Some(&beta));
+
     type_character(&mut runtime, "r");
-    assert_focus(&mut runtime, "four");
+    assert_eq!(runtime.focus().focused_node(), Some(&beta));
 }
 
 #[test]
@@ -336,7 +350,7 @@ fn trace_export_remains_redacted_and_replay_compatible() {
     type_character(&mut runtime, "a");
 
     let jsonl = runtime.trace().export_jsonl();
-    for secret in ["alpha", "alpine", "beta", "bravo", "delta"] {
+    for secret in ["alpha", "alpine", "beta", "beacon", "bravo", "delta"] {
         assert!(!jsonl.contains(secret));
     }
     let replay = TraceReplay::parse_jsonl(&jsonl)
