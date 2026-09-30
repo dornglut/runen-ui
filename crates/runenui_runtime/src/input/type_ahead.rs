@@ -4,7 +4,7 @@ use runenui_core::{
 };
 
 use crate::{
-    TraceRecordKind, TraceRoutedIntegrityFailure,
+    TraceRecordKind,
     focus::{
         FocusGroupTypeAheadContext, focus_group_type_ahead_context,
         select_focus_group_type_ahead_match,
