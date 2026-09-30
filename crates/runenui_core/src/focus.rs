@@ -178,8 +178,11 @@ pub enum FocusGroupTypeAheadError {
 impl fmt::Display for FocusGroupTypeAheadError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ZeroTimeout => formatter.write_str("focus-group type-ahead timeout must be positive"),
-            Self::TimeoutOverflow => formatter.write_str("focus-group type-ahead timeout exceeds the monotonic-time domain"),
+            Self::ZeroTimeout => {
+                formatter.write_str("focus-group type-ahead timeout must be positive")
+            }
+            Self::TimeoutOverflow => formatter
+                .write_str("focus-group type-ahead timeout exceeds the monotonic-time domain"),
         }
     }
 }
