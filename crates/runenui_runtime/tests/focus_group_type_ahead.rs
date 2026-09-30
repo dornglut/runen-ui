@@ -610,10 +610,7 @@ fn owner_replacement_retires_buffer_with_the_old_exact_group_lifetime() {
     replacement_focus(&mut runtime, "replace.zulu");
     replacement_character(&mut runtime, "l");
     let replacement_lima = replacement_id(&mut runtime, "replace.lima");
-    assert_eq!(
-        runtime.focus().focused_node(),
-        Some(&replacement_lima)
-    );
+    assert_eq!(runtime.focus().focused_node(), Some(&replacement_lima));
 }
 
 struct NestedBoundaryApp;
