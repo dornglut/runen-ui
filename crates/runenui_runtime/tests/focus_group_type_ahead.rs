@@ -420,11 +420,7 @@ fn composition_control_and_meta_suppress_while_shift_and_alt_characters_particip
 
     for modifiers in [KeyModifiers::CONTROL, KeyModifiers::META] {
         runtime
-            .submit_keyboard(keyboard(
-                "a",
-                modifiers,
-                KeyboardCompositionState::Inactive,
-            ))
+            .submit_keyboard(keyboard("a", modifiers, KeyboardCompositionState::Inactive))
             .unwrap_or_else(|_| unreachable!("command-modified key is routed"));
         settle(&mut runtime);
         assert_eq!(runtime.focus().focused_node(), Some(&beta));
