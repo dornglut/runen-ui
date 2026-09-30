@@ -202,6 +202,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         event: &KeyboardEvent,
         target: &MountedNodeId,
     ) -> Option<FocusGroupTypeAheadContext> {
+        if self.focus.focused_node() != Some(target) {
+            return None;
+        }
         if event.phase() != KeyboardPhase::Down
             || event.composition_state() != KeyboardCompositionState::Inactive
         {

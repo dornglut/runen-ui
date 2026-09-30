@@ -970,6 +970,41 @@ fn group_transfer_and_focus_departure_clear_the_exact_group_buffer() {
     assert_eq!(runtime.focus().focused_node(), Some(&a_lima));
 }
 
+#[test]
+fn queued_keyboard_type_ahead_does_not_retarget_after_earlier_focus_move() {
+    let mut runtime = AppRuntime::<ResetBoundaryApp>::mount(());
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+
+    reset_focus(&mut runtime, "a.zulu");
+    let b_zulu = reset_id(&mut runtime, "b.zulu");
+    let b_alpha = reset_id(&mut runtime, "b.alpha");
+
+    runtime
+        .submit_command(
+            b_zulu.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("queued focus transfer is admitted"));
+    runtime
+        .submit_keyboard(key("a"))
+        .unwrap_or_else(|_| unreachable!("keyboard input against the old focus is admitted"));
+
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        2
+    );
+    assert_eq!(runtime.focus().focused_node(), Some(&b_zulu));
+    assert_ne!(runtime.focus().focused_node(), Some(&b_alpha));
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ReplacementAction {
     Replace,
