@@ -202,7 +202,7 @@ fn first_character_prefix_repeated_character_and_wrap_share_group_order() {
 }
 
 #[test]
-fn rapid_multi_character_prefix_narrows_and_miss_retries_current_character() {
+fn rapid_multi_character_prefix_narrows_only_when_unique_and_miss_retries_current_character() {
     let mut runtime = AppRuntime::<App>::mount(State::manual());
     settle(&mut runtime);
     focus(&mut runtime, "three");
@@ -210,6 +210,10 @@ fn rapid_multi_character_prefix_narrows_and_miss_retries_current_character() {
     type_character(&mut runtime, "a");
     assert_focus(&mut runtime, "one");
     type_character(&mut runtime, "l");
+    assert_focus(&mut runtime, "one");
+    type_character(&mut runtime, "p");
+    assert_focus(&mut runtime, "one");
+    type_character(&mut runtime, "i");
     assert_focus(&mut runtime, "two");
 
     type_character(&mut runtime, "b");
