@@ -227,9 +227,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         additional_trace: MandatoryTracePlan,
         mandatory_default_commands: usize,
     ) -> Result<RoutedTransaction<Action>, RoutedFailureLineage> {
-        let (route, admission) = self
-            .prepare_focus_routed_route(&facts, additional_trace, mandatory_default_commands)
-            .ok_or_else(|| RoutedFailureLineage::new(facts.causal_parent))?;
+        let (route, admission) =
+            self.prepare_focus_routed_route(&facts, additional_trace, mandatory_default_commands)?;
         let pointer_callback_targets = route.clone();
         Ok(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
     }
@@ -360,11 +359,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             ) && focus_group_activation_policy(&self.tree, &self.focus, &facts.target)
                 == Some(runenui_core::FocusGroupActivationPolicy::ActivateTarget),
         );
-        let (route, admission) = self.prepare_focus_routed_route(
-            &facts,
-            MandatoryTracePlan::none(),
-            mandatory_default_commands,
-        )?;
+        let (route, admission) = self
+            .prepare_focus_routed_route(
+                &facts,
+                MandatoryTracePlan::none(),
+                mandatory_default_commands,
+            )
+            .ok()?;
         let pointer_callback_targets = route.clone();
         Some(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
     }
