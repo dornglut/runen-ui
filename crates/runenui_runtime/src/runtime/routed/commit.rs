@@ -158,6 +158,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 self.tree.mark_runtime_semantic_product_dirty();
             }
         }
+        if let Some(update) = transaction.focus_group_type_ahead_update.take() {
+            self.apply_focus_group_type_ahead_update(update);
+        }
         if let Some(transition) = transaction.pointer_selection_transition {
             let pointer_id = transaction
                 .pointer_id
