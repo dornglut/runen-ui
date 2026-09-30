@@ -305,7 +305,7 @@ fn matching_uses_locale_neutral_lowercase_without_canonical_normalization() {
 }
 
 #[test]
-fn timeout_resets_prefix_before_the_next_character() {
+fn timeout_expires_at_the_exact_deadline_before_the_next_character() {
     let clock = ManualClock::new();
     let mut runtime = AppRuntime::<App>::mount(State::manual());
     runtime.set_monotonic_clock(clock.clone());
@@ -315,7 +315,7 @@ fn timeout_resets_prefix_before_the_next_character() {
     type_character(&mut runtime, "a");
     assert_focus(&mut runtime, "one");
     clock
-        .advance(Duration::from_millis(501))
+        .advance(Duration::from_millis(500))
         .unwrap_or_else(|_| unreachable!("fixture time remains representable"));
     type_character(&mut runtime, "l");
     assert_focus(&mut runtime, "one");
