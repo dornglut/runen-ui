@@ -453,7 +453,7 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
 
     runtime
         .submit_command(
-            b,
+            b.clone(),
             SemanticCommand::FocusGroupLast,
             CommandOrigin::programmatic(),
         )
