@@ -187,6 +187,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let LogicalKey::Character(character) = event.logical_key() else {
             return Ok(false);
         };
+        self.commit_pending_modality(transaction);
         let (fragment, fragment_scalars) = match lowercase_type_ahead_fragment(character) {
             Ok(Some(fragment)) => fragment,
             Ok(None) => return Ok(true),
