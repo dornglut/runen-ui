@@ -95,19 +95,21 @@ impl FocusGroupTypeAheadUpdate {
     }
 }
 
-fn lowercase_type_ahead_fragment(text: &str) -> Option<(String, usize)> {
+fn lowercase_type_ahead_fragment(
+    text: &str,
+) -> Result<Option<(String, usize)>, ()> {
     let mut output = String::new();
     let mut scalars = 0usize;
     for scalar in text.chars().flat_map(char::to_lowercase) {
-        let next_scalars = scalars.checked_add(1)?;
-        let next_bytes = output.len().checked_add(scalar.len_utf8())?;
+        let next_scalars = scalars.checked_add(1).ok_or(())?;
+        let next_bytes = output.len().checked_add(scalar.len_utf8()).ok_or(())?;
         if next_scalars > TYPE_AHEAD_MAX_SCALARS || next_bytes > TYPE_AHEAD_MAX_BYTES {
-            return None;
+            return Err(());
         }
         output.push(scalar);
         scalars = next_scalars;
     }
-    (!output.is_empty()).then_some((output, scalars))
+    Ok((!output.is_empty()).then_some((output, scalars)))
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -174,8 +176,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let LogicalKey::Character(character) = event.logical_key() else {
             return Ok(false);
         };
-        let Some((fragment, fragment_scalars)) = lowercase_type_ahead_fragment(character) else {
-            return Ok(true);
+        let (fragment, fragment_scalars) = match lowercase_type_ahead_fragment(character) {
+            Ok(Some(fragment)) => fragment,
+            Ok(None) => return Ok(true),
+            Err(()) => {
+                transaction.focus_group_type_ahead_update = Some(FocusGroupTypeAheadUpdate::new(
+                    &context,
+                    String::new(),
+                    0,
+                    transaction.instant,
+                ));
+                return Ok(true);
+            }
         };
 
         let session_current = self
@@ -191,16 +203,35 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let repeated_single = base_scalars == 1 && fragment_scalars == 1 && base == fragment;
         let had_base = !base.is_empty();
-        let (query, query_scalars) = if repeated_single || !had_base {
+        let extending = had_base && !repeated_single;
+        let (query, query_scalars) = if !extending {
             (fragment.clone(), fragment_scalars)
         } else {
             let Some(query_scalars) = base_scalars.checked_add(fragment_scalars) else {
+                transaction.focus_group_type_ahead_update = Some(FocusGroupTypeAheadUpdate::new(
+                    &context,
+                    String::new(),
+                    0,
+                    transaction.instant,
+                ));
                 return Ok(true);
             };
             let Some(query_bytes) = base.len().checked_add(fragment.len()) else {
+                transaction.focus_group_type_ahead_update = Some(FocusGroupTypeAheadUpdate::new(
+                    &context,
+                    String::new(),
+                    0,
+                    transaction.instant,
+                ));
                 return Ok(true);
             };
             if query_scalars > TYPE_AHEAD_MAX_SCALARS || query_bytes > TYPE_AHEAD_MAX_BYTES {
+                transaction.focus_group_type_ahead_update = Some(FocusGroupTypeAheadUpdate::new(
+                    &context,
+                    String::new(),
+                    0,
+                    transaction.instant,
+                ));
                 return Ok(true);
             }
             let mut combined = base;
@@ -213,16 +244,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &self.focus,
             &context.group,
             &query,
+            extending,
         );
         let (retained_query, retained_scalars, destination) =
-            if matched.is_none() && !repeated_single && had_base {
+            if matched.is_none() && extending {
                 let fresh_match = select_focus_group_type_ahead_match(
                     &mut self.tree,
                     &self.focus,
                     &context.group,
                     &fragment,
+                    false,
                 );
-                (fragment, fragment_scalars, fresh_match)
+                if fresh_match.is_some() {
+                    (fragment, fragment_scalars, fresh_match)
+                } else {
+                    (String::new(), 0, None)
+                }
             } else {
                 (query, query_scalars, matched)
             };
