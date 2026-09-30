@@ -402,7 +402,7 @@ fn queued_predeadline_character_keeps_ingress_time_order_across_timeout_wake() {
 }
 
 #[test]
-fn composition_and_command_modifiers_suppress_type_ahead_but_shift_is_permitted() {
+fn composition_control_and_meta_suppress_while_shift_and_alt_characters_participate() {
     let mut runtime = AppRuntime::<App>::mount(State::manual());
     settle(&mut runtime);
     focus(&mut runtime, "three");
@@ -418,25 +418,40 @@ fn composition_and_command_modifiers_suppress_type_ahead_but_shift_is_permitted(
     settle(&mut runtime);
     assert_eq!(runtime.focus().focused_node(), Some(&beta));
 
-    runtime
-        .submit_keyboard(keyboard(
-            "a",
-            KeyModifiers::CONTROL,
-            KeyboardCompositionState::Inactive,
-        ))
-        .unwrap_or_else(|_| unreachable!("modified key is routed"));
-    settle(&mut runtime);
-    assert_eq!(runtime.focus().focused_node(), Some(&beta));
+    for modifiers in [KeyModifiers::CONTROL, KeyModifiers::META] {
+        runtime
+            .submit_keyboard(keyboard(
+                "a",
+                modifiers,
+                KeyboardCompositionState::Inactive,
+            ))
+            .unwrap_or_else(|_| unreachable!("command-modified key is routed"));
+        settle(&mut runtime);
+        assert_eq!(runtime.focus().focused_node(), Some(&beta));
+    }
 
     runtime
+        .submit_keyboard(keyboard(
+            "ä",
+            KeyModifiers::ALT,
+            KeyboardCompositionState::Inactive,
+        ))
+        .unwrap_or_else(|_| unreachable!("Alt-produced character is routed"));
+    settle(&mut runtime);
+    assert_focus(&mut runtime, "unicode");
+
+    let mut shifted = AppRuntime::<App>::mount(State::manual());
+    settle(&mut shifted);
+    focus(&mut shifted, "three");
+    shifted
         .submit_keyboard(keyboard(
             "A",
             KeyModifiers::SHIFT,
             KeyboardCompositionState::Inactive,
         ))
         .unwrap_or_else(|_| unreachable!("shifted character is routed"));
-    settle(&mut runtime);
-    assert_focus(&mut runtime, "one");
+    settle(&mut shifted);
+    assert_focus(&mut shifted, "one");
 }
 
 #[test]

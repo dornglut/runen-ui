@@ -214,11 +214,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return None;
         }
         let modifiers = event.modifiers();
-        if modifiers.control()
-            || modifiers.alt()
-            || modifiers.meta()
-            || self.editing.has_owner(target)
-        {
+        if modifiers.control() || modifiers.meta() || self.editing.has_owner(target) {
             return None;
         }
         focus_group_type_ahead_context(&self.tree, &self.focus, target)
