@@ -3,17 +3,17 @@
 use std::time::Duration;
 
 use runenui_core::{
-    CommandOrigin, Element, EventContext, EventPhase, FocusGroup, FocusGroupActivationPolicy,
-    FocusGroupBoundaryPolicy, FocusGroupTypeAhead, FocusReason, FocusScope, Focusability,
-    EditIntent, EditableContribution, EditingSessionPolicy, KeyLocation, KeyModifiers,
-    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey,
-    SemanticCommand, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,
-    TextSelection, TextSensitivity, UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetTextInput,
-    button, column,
+    CommandOrigin, EditIntent, EditableContribution, EditingSessionPolicy, Element, EventContext,
+    EventPhase, FocusGroup, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy,
+    FocusGroupTypeAhead, FocusReason, FocusScope, Focusability, KeyLocation, KeyModifiers,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
+    PhysicalKey, SemanticCommand, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
+    TextPosition, TextSelection, TextSensitivity, UiApp, UiEvent, View, Widget, WidgetEventOutput,
+    WidgetTextInput, button, column,
 };
 use runenui_runtime::{
-    AppRuntime, ManualClock, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus,
-    TraceConfig, TraceRecordKind, TraceReplay, TraceRoutedAdmissionRejection,
+    AppRuntime, ManualClock, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits,
+    RuntimeStatus, TraceConfig, TraceRecordKind, TraceReplay, TraceRoutedAdmissionRejection,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -826,17 +826,10 @@ impl Widget<()> for EditableTypeAheadProbe {
     }
 
     fn editable(&self, (): &Self::State) -> Option<EditableContribution<()>> {
-        let snapshot = TextDocumentSnapshot::new(
-            TextDocumentId::new(1),
-            TextDocumentRevision::new(1),
-        );
-        let position = TextPosition::new(
-            snapshot,
-            "ab",
-            2,
-            runenui_core::TextAffinity::Downstream,
-        )
-        .ok()?;
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(1), TextDocumentRevision::new(1));
+        let position =
+            TextPosition::new(snapshot, "ab", 2, runenui_core::TextAffinity::Downstream).ok()?;
         EditableContribution::new(
             snapshot,
             "ab",
@@ -876,10 +869,7 @@ impl UiApp for EditableTypeAheadApp {
     fn update(_: &mut (), _: ()) {}
 }
 
-fn editable_id(
-    runtime: &mut AppRuntime<EditableTypeAheadApp>,
-    authored: &str,
-) -> MountedNodeId {
+fn editable_id(runtime: &mut AppRuntime<EditableTypeAheadApp>, authored: &str) -> MountedNodeId {
     let authored = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
     runtime
         .index()
