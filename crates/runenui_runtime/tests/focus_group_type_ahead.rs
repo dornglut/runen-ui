@@ -135,6 +135,11 @@ fn focus(runtime: &mut AppRuntime<App>, authored: &str) {
     );
 }
 
+fn assert_focus(runtime: &mut AppRuntime<App>, authored: &str) {
+    let expected = id(runtime, authored);
+    assert_eq!(runtime.focus().focused_node(), Some(&expected));
+}
+
 fn key(character: &str) -> KeyboardEvent {
     keyboard(character, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
 }
@@ -175,14 +180,14 @@ fn first_character_prefix_repeated_character_and_wrap_share_group_order() {
     focus(&mut runtime, "three");
 
     type_character(&mut runtime, "a");
-    assert_eq!(runtime.focus().focused_node(), Some(&id(&mut runtime, "one")));
+    assert_focus(&mut runtime, "one");
     assert_eq!(runtime.focus().reason(), Some(FocusReason::GroupNavigation));
 
     type_character(&mut runtime, "a");
-    assert_eq!(runtime.focus().focused_node(), Some(&id(&mut runtime, "two")));
+    assert_focus(&mut runtime, "two");
 
     type_character(&mut runtime, "a");
-    assert_eq!(runtime.focus().focused_node(), Some(&id(&mut runtime, "one")));
+    assert_focus(&mut runtime, "one");
 }
 
 #[test]
@@ -192,15 +197,12 @@ fn rapid_multi_character_prefix_narrows_and_combined_miss_retries_fresh_characte
     focus(&mut runtime, "three");
 
     type_character(&mut runtime, "a");
-    assert_eq!(runtime.focus().focused_node(), Some(&id(&mut runtime, "one")));
+    assert_focus(&mut runtime, "one");
     type_character(&mut runtime, "l");
-    assert_eq!(runtime.focus().focused_node(), Some(&id(&mut runtime, "two")));
+    assert_focus(&mut runtime, "two");
 
     type_character(&mut runtime, "b");
-    assert_eq!(
-        runtime.focus().focused_node(),
-        Some(&id(&mut runtime, "three"))
-    );
+    assert_focus(&mut runtime, "three");
 }
 
 #[test]
@@ -237,12 +239,12 @@ fn timeout_resets_prefix_before_the_next_character() {
     focus(&mut runtime, "three");
 
     type_character(&mut runtime, "a");
-    assert_eq!(runtime.focus().focused_node(), Some(&id(&mut runtime, "one")));
+    assert_focus(&mut runtime, "one");
     clock
         .advance(Duration::from_millis(501))
         .unwrap_or_else(|_| unreachable!("fixture time remains representable"));
     type_character(&mut runtime, "l");
-    assert_eq!(runtime.focus().focused_node(), Some(&id(&mut runtime, "one")));
+    assert_focus(&mut runtime, "one");
 }
 
 #[test]
@@ -280,7 +282,7 @@ fn composition_and_command_modifiers_suppress_type_ahead_but_shift_is_permitted(
         ))
         .unwrap_or_else(|_| unreachable!("shifted character is routed"));
     settle(&mut runtime);
-    assert_eq!(runtime.focus().focused_node(), Some(&id(&mut runtime, "one")));
+    assert_focus(&mut runtime, "one");
 }
 
 #[test]
@@ -310,7 +312,7 @@ fn capacity_rejection_preserves_existing_prefix_and_focus() {
     }));
 
     type_character(&mut runtime, "r");
-    assert_eq!(runtime.focus().focused_node(), Some(&id(&mut runtime, "four")));
+    assert_focus(&mut runtime, "four");
 }
 
 #[test]
@@ -320,7 +322,7 @@ fn activate_target_remains_deferred_until_after_focus_transition() {
     focus(&mut runtime, "three");
 
     type_character(&mut runtime, "a");
-    assert_eq!(runtime.focus().focused_node(), Some(&id(&mut runtime, "one")));
+    assert_focus(&mut runtime, "one");
     assert!(runtime.state().activations.is_empty());
 
     settle(&mut runtime);
