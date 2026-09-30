@@ -196,33 +196,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             (fragment.clone(), fragment_scalars)
         } else {
             let Some(query_scalars) = base_scalars.checked_add(fragment_scalars) else {
-                self.record_focus_group_type_ahead_evaluation(
-                    transaction,
-                    self.focus_group_type_ahead.scalar_count,
-                    false,
-                    true,
-                    &context.group,
-                );
                 return Ok(true);
             };
             let Some(query_bytes) = base.len().checked_add(fragment.len()) else {
-                self.record_focus_group_type_ahead_evaluation(
-                    transaction,
-                    self.focus_group_type_ahead.scalar_count,
-                    false,
-                    true,
-                    &context.group,
-                );
                 return Ok(true);
             };
             if query_scalars > TYPE_AHEAD_MAX_SCALARS || query_bytes > TYPE_AHEAD_MAX_BYTES {
-                self.record_focus_group_type_ahead_evaluation(
-                    transaction,
-                    self.focus_group_type_ahead.scalar_count,
-                    false,
-                    true,
-                    &context.group,
-                );
                 return Ok(true);
             }
             let mut combined = base;
@@ -236,14 +215,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &context.group,
             &query,
         );
+        let (retained_query, retained_scalars, destination) =
+            if matched.is_none() && !repeated_single && !base.is_empty() {
+                let fresh_match = select_focus_group_type_ahead_match(
+                    &mut self.tree,
+                    &self.focus,
+                    &context.group,
+                    &fragment,
+                );
+                (fragment, fragment_scalars, fresh_match)
+            } else {
+                (query, query_scalars, matched)
+            };
 
         transaction.focus_group_type_ahead_update = Some(FocusGroupTypeAheadUpdate::new(
             &context,
-            query,
-            query_scalars,
+            retained_query,
+            retained_scalars,
             transaction.instant,
         ));
-        if let Some(destination) = matched {
+        if let Some(destination) = destination {
             self.apply_focus_group_destination(transaction, destination, context.activation)?;
         }
         Ok(true)

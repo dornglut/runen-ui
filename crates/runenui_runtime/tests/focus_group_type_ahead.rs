@@ -191,7 +191,7 @@ fn first_character_prefix_repeated_character_and_wrap_share_group_order() {
 }
 
 #[test]
-fn rapid_multi_character_prefix_narrows_and_no_match_keeps_the_bounded_query() {
+fn rapid_multi_character_prefix_narrows_and_miss_retries_current_character() {
     let mut runtime = AppRuntime::<App>::mount(State::manual());
     settle(&mut runtime);
     focus(&mut runtime, "three");
@@ -202,7 +202,9 @@ fn rapid_multi_character_prefix_narrows_and_no_match_keeps_the_bounded_query() {
     assert_focus(&mut runtime, "two");
 
     type_character(&mut runtime, "b");
-    assert_focus(&mut runtime, "two");
+    assert_focus(&mut runtime, "three");
+    type_character(&mut runtime, "r");
+    assert_focus(&mut runtime, "four");
 }
 
 #[test]
