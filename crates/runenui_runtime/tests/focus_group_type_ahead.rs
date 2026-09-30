@@ -734,27 +734,21 @@ fn disabling_or_reauthoring_type_ahead_policy_clears_the_prefix() {
 
     policy_focus(&mut runtime, "policy.zulu");
     policy_character(&mut runtime, "a");
-    assert_eq!(
-        runtime.focus().focused_node(),
-        Some(&policy_id(&mut runtime, "policy.alpha"))
-    );
+    let alpha = policy_id(&mut runtime, "policy.alpha");
+    assert_eq!(runtime.focus().focused_node(), Some(&alpha));
 
     policy_action(&mut runtime, PolicyResetAction::Disable);
     policy_action(&mut runtime, PolicyResetAction::EnableDefault);
     policy_character(&mut runtime, "l");
-    assert_eq!(
-        runtime.focus().focused_node(),
-        Some(&policy_id(&mut runtime, "policy.lima"))
-    );
+    let lima = policy_id(&mut runtime, "policy.lima");
+    assert_eq!(runtime.focus().focused_node(), Some(&lima));
 
     policy_focus(&mut runtime, "policy.zulu");
     policy_character(&mut runtime, "a");
     policy_action(&mut runtime, PolicyResetAction::ChangeTimeout);
     policy_character(&mut runtime, "l");
-    assert_eq!(
-        runtime.focus().focused_node(),
-        Some(&policy_id(&mut runtime, "policy.lima"))
-    );
+    let lima = policy_id(&mut runtime, "policy.lima");
+    assert_eq!(runtime.focus().focused_node(), Some(&lima));
 }
 
 struct ResetBoundaryApp;
