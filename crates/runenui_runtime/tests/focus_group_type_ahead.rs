@@ -415,6 +415,28 @@ fn composition_and_command_modifiers_suppress_type_ahead_but_shift_is_permitted(
 }
 
 #[test]
+fn capacity_accepts_exact_64_scalar_256_byte_boundary() {
+    let mut runtime = AppRuntime::<App>::mount_with_config(
+        State::manual(),
+        RuntimeConfig::default().with_trace_config(TraceConfig::new(1024)),
+    );
+    settle(&mut runtime);
+    focus(&mut runtime, "one");
+    let alpha = id(&mut runtime, "one");
+
+    let exact_boundary = "😀".repeat(64);
+    assert_eq!(exact_boundary.chars().count(), 64);
+    assert_eq!(exact_boundary.len(), 256);
+    type_character(&mut runtime, &exact_boundary);
+
+    assert_eq!(runtime.focus().focused_node(), Some(&alpha));
+    assert!(!runtime.trace().kinds().any(|kind| matches!(
+        kind,
+        TraceRecordKind::FocusGroupTypeAheadCapacityRejected
+    )));
+}
+
+#[test]
 fn capacity_rejection_clears_existing_prefix_and_preserves_focus() {
     let mut runtime = AppRuntime::<App>::mount_with_config(
         State::manual(),
