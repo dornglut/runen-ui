@@ -398,12 +398,25 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Some(target) = selection.target else {
             return Ok(());
         };
-        let moved = self.focus.focused_node() != Some(&target);
-        let reveal_route = moved
-            .then(|| self.checked_focus_route(&target))
-            .transpose()?;
+        self.apply_focus_group_destination(
+            transaction,
+            target,
+            selection.activation,
+        )
+    }
+
+    pub(crate) fn apply_focus_group_destination(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        target: MountedNodeId,
+        activation: runenui_core::FocusGroupActivationPolicy,
+    ) -> Result<(), TraceRoutedIntegrityFailure> {
+        if self.focus.focused_node() == Some(&target) {
+            return Ok(());
+        }
+        let reveal_route = self.checked_focus_route(&target)?;
         let activate_target =
-            selection.activation == runenui_core::FocusGroupActivationPolicy::ActivateTarget;
+            activation == runenui_core::FocusGroupActivationPolicy::ActivateTarget;
         if activate_target {
             transaction.consume_mandatory_default_command()?;
         }
@@ -412,9 +425,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Some(target.clone()),
             FocusReason::GroupNavigation,
         )?;
-        if let Some(route) = reveal_route.as_deref() {
-            self.apply_scroll_into_view_target(transaction, &target, route);
-        }
+        self.apply_scroll_into_view_target(transaction, &target, &reveal_route);
         if activate_target {
             transaction
                 .default_outputs
