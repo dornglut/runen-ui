@@ -351,10 +351,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(())
     }
 
-    pub(crate) fn commit_pending_modality(
-        &mut self,
-        transaction: &mut RoutedTransaction<Action>,
-    ) {
+    pub(crate) fn commit_pending_modality(&mut self, transaction: &mut RoutedTransaction<Action>) {
         let modality = transaction.pending_modality;
         let previous = self.focus.modality();
         if self.focus.set_modality(modality).is_some() && self.trace.is_enabled() {
