@@ -371,13 +371,6 @@ impl<Action> Element<Action> {
         self
     }
 
-    /// Removes authored type-ahead search text from this member.
-    #[must_use]
-    pub fn without_focus_group_search_text(mut self) -> Self {
-        self.focus_group_search_text = None;
-        self
-    }
-
     /// Maps every typed widget action in this subtree into a parent action.
     #[must_use]
     pub fn map_action<ParentAction>(
