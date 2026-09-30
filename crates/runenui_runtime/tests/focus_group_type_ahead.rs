@@ -12,7 +12,8 @@ use runenui_core::{
     button, column,
 };
 use runenui_runtime::{
-    AppRuntime, ManualClock, MountedNodeId, PumpBudget, RuntimeConfig, TraceConfig, TraceReplay,
+    AppRuntime, ManualClock, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus,
+    TraceConfig, TraceRecordKind, TraceReplay, TraceRoutedAdmissionRejection,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -374,6 +375,48 @@ fn activate_target_remains_deferred_until_after_focus_transition() {
 
     settle(&mut runtime);
     assert_eq!(runtime.state().activations, vec!["one"]);
+}
+
+#[test]
+fn activate_target_type_ahead_reserves_capacity_before_focus_commit() {
+    const QUEUE_CAPACITY: usize = 16;
+    const FILLER_ENVELOPES: usize = QUEUE_CAPACITY - 3;
+    let limits = RuntimeLimits::default()
+        .with_waiting_envelopes(QUEUE_CAPACITY)
+        .with_transaction_outputs(1);
+    let mut runtime = AppRuntime::<App>::mount_with_config(
+        State::activating(),
+        RuntimeConfig::default()
+            .with_limits(limits)
+            .with_trace_config(TraceConfig::new(1024)),
+    );
+    settle(&mut runtime);
+    focus(&mut runtime, "three");
+    let beta = id(&mut runtime, "three");
+
+    runtime
+        .submit_keyboard(key("a"))
+        .unwrap_or_else(|_| unreachable!("type-ahead input is admitted"));
+    for _ in 0..FILLER_ENVELOPES {
+        runtime
+            .submit_action(Action::Activated("filler"))
+            .unwrap_or_else(|_| unreachable!("filler action is admitted"));
+    }
+
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+    assert_eq!(runtime.focus().focused_node(), Some(&beta));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert!(runtime.trace().kinds().any(|kind| matches!(
+        kind,
+        TraceRecordKind::RoutedEventAdmissionRejected {
+            capacity: TraceRoutedAdmissionRejection::WaitingEnvelopes
+        }
+    )));
 }
 
 #[test]
