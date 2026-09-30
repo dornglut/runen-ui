@@ -29,14 +29,14 @@ struct State {
 }
 
 impl State {
-    fn manual() -> Self {
+    const fn manual() -> Self {
         Self {
             activation: FocusGroupActivationPolicy::Manual,
             activations: Vec::new(),
         }
     }
 
-    fn activating() -> Self {
+    const fn activating() -> Self {
         Self {
             activation: FocusGroupActivationPolicy::ActivateTarget,
             activations: Vec::new(),
@@ -838,7 +838,7 @@ impl UiApp for ResetBoundaryApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &()) -> Element<()> {
+    fn root((): &()) -> Element<()> {
         column(vec![
             unit_group("group.a", "a"),
             unit_group("group.b", "b"),
@@ -847,7 +847,7 @@ impl UiApp for ResetBoundaryApp {
         .into_element()
     }
 
-    fn update(_: &mut (), _: ()) {}
+    fn update((): &mut (), (): ()) {}
 }
 
 fn reset_id(runtime: &mut AppRuntime<ResetBoundaryApp>, authored: &str) -> MountedNodeId {
@@ -1135,7 +1135,7 @@ impl UiApp for NestedBoundaryApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &()) -> Element<()> {
+    fn root((): &()) -> Element<()> {
         let nested = column(vec![
             unit_member("nested.first", "inner"),
             unit_member("nested.second", "second"),
@@ -1164,7 +1164,7 @@ impl UiApp for NestedBoundaryApp {
         .focus_group(FocusGroup::new().with_type_ahead(type_ahead()))
     }
 
-    fn update(_: &mut (), _: ()) {}
+    fn update((): &mut (), (): ()) {}
 }
 
 fn nested_id(runtime: &mut AppRuntime<NestedBoundaryApp>, authored: &str) -> MountedNodeId {
@@ -1262,7 +1262,7 @@ impl UiApp for EditableTypeAheadApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &()) -> Element<()> {
+    fn root((): &()) -> Element<()> {
         column(vec![
             Element::new(EditableTypeAheadProbe)
                 .id("editable.current")
@@ -1277,7 +1277,7 @@ impl UiApp for EditableTypeAheadApp {
         .focus_group(FocusGroup::new().with_type_ahead(type_ahead()))
     }
 
-    fn update(_: &mut (), _: ()) {}
+    fn update((): &mut (), (): ()) {}
 }
 
 fn editable_id(runtime: &mut AppRuntime<EditableTypeAheadApp>, authored: &str) -> MountedNodeId {
@@ -1351,7 +1351,7 @@ impl UiApp for PreventApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &()) -> Element<()> {
+    fn root((): &()) -> Element<()> {
         column(vec![
             Element::new(PreventingMember { prevent: true })
                 .id("prevent.a")
@@ -1372,7 +1372,7 @@ impl UiApp for PreventApp {
         )
     }
 
-    fn update(_: &mut (), (): ()) {}
+    fn update((): &mut (), (): ()) {}
 }
 
 fn prevent_id(runtime: &mut AppRuntime<PreventApp>, authored: &str) -> MountedNodeId {
