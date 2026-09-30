@@ -351,7 +351,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(())
     }
 
-    pub(in crate::runtime) fn commit_pending_modality(
+    pub(crate) fn commit_pending_modality(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
     ) {
