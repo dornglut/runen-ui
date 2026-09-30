@@ -134,6 +134,7 @@ pub(crate) struct RoutedTransaction<Action> {
     pub(crate) scroll_chain_remainder: Option<LogicalDelta>,
     pub(crate) pointer_selection_update: Option<PointerSelectionUpdate>,
     pub(crate) pointer_selection_transition: Option<PointerSelectionTransition>,
+    pub(crate) focus_group_type_ahead_update: Option<crate::input::FocusGroupTypeAheadUpdate>,
     pub(in crate::runtime) pending_modality: InputModality,
 }
 
