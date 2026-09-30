@@ -119,7 +119,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.focus_group_type_ahead.clear();
             return;
         };
-        let Some(context) = focus_group_type_ahead_context(&self.tree, &self.focus, &focused) else {
+        let Some(context) = focus_group_type_ahead_context(&self.tree, &self.focus, &focused)
+        else {
             self.focus_group_type_ahead.clear();
             return;
         };
