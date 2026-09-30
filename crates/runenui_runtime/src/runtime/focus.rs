@@ -398,11 +398,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Some(target) = selection.target else {
             return Ok(());
         };
-        self.apply_focus_group_destination(
-            transaction,
-            target,
-            selection.activation,
-        )
+        self.apply_focus_group_destination(transaction, target, selection.activation)
     }
 
     pub(crate) fn apply_focus_group_destination(

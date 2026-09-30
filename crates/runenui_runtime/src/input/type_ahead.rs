@@ -110,7 +110,6 @@ fn lowercase_type_ahead_fragment(text: &str) -> Option<(String, usize)> {
     (!output.is_empty()).then_some((output, scalars))
 }
 
-
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn apply_focus_group_type_ahead_update(
         &mut self,
@@ -124,7 +123,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.focus_group_type_ahead.clear();
             return;
         };
-        let Some(context) = focus_group_type_ahead_context(&self.tree, &self.focus, &focused) else {
+        let Some(context) = focus_group_type_ahead_context(&self.tree, &self.focus, &focused)
+        else {
             self.focus_group_type_ahead.clear();
             return;
         };
@@ -189,9 +189,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         } else {
             (String::new(), 0)
         };
-        let repeated_single = base_scalars == 1
-            && fragment_scalars == 1
-            && base == fragment;
+        let repeated_single = base_scalars == 1 && fragment_scalars == 1 && base == fragment;
         let had_base = !base.is_empty();
         let (query, query_scalars) = if repeated_single || !had_base {
             (fragment.clone(), fragment_scalars)
@@ -240,5 +238,4 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         Ok(true)
     }
-
 }

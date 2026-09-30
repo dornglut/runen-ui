@@ -5,8 +5,7 @@ use std::collections::HashMap;
 use runenui_core::{
     FocusBoundaryPolicy, FocusDirection, FocusGroup, FocusGroupActivationPolicy,
     FocusGroupBoundaryPolicy, FocusGroupEntry, FocusGroupTypeAhead, FocusReason, FocusScope,
-    FocusScopePolicy,
-    Focusability, InputModality,
+    FocusScopePolicy, Focusability, InputModality,
 };
 
 use crate::{LogicalRect, MountedNodeId, mounted::MountedTree};
@@ -483,7 +482,9 @@ fn focus_group_member_contains<Action>(
 
 fn locale_neutral_lowercase_prefix(text: &str, query: &str) -> bool {
     let mut lowered = text.chars().flat_map(char::to_lowercase);
-    query.chars().all(|expected| lowered.next() == Some(expected))
+    query
+        .chars()
+        .all(|expected| lowered.next() == Some(expected))
 }
 
 pub fn select_focus_group_type_ahead_match<Action>(

@@ -295,7 +295,8 @@ pub use event_context::EventContext;
 pub use focus::{
     FocusBoundaryPolicy, FocusDirection, FocusEvent, FocusEventKind, FocusGroup,
     FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, FocusGroupEntry, FocusGroupTypeAhead,
-    FocusGroupTypeAheadError, FocusReason, FocusScope, FocusScopePolicy, Focusability, InputModality,
+    FocusGroupTypeAheadError, FocusReason, FocusScope, FocusScopePolicy, Focusability,
+    InputModality,
 };
 pub use framework_service::{
     ClipboardClassification, ClipboardText, ClipboardWritePurpose, CursorShape,

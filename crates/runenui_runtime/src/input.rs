@@ -1055,15 +1055,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             InputEnvelopePayload::CommittedText(_) | InputEnvelopePayload::Composition(_) => None,
         };
         let mandatory_default_commands = match &payload {
-            InputEnvelopePayload::Keyboard(event) => usize::from(
-                Self::keyboard_default_command_is_possible(event),
-            )
-            .checked_add(usize::from(
-                type_ahead_context.as_ref().is_some_and(|context| {
-                    context.activation == FocusGroupActivationPolicy::ActivateTarget
-                }),
-            ))
-            .unwrap_or_else(|| unreachable!("keyboard defaults have a fixed bounded count")),
+            InputEnvelopePayload::Keyboard(event) => {
+                usize::from(Self::keyboard_default_command_is_possible(event))
+                    .checked_add(usize::from(type_ahead_context.as_ref().is_some_and(
+                        |context| context.activation == FocusGroupActivationPolicy::ActivateTarget,
+                    )))
+                    .unwrap_or_else(|| unreachable!("keyboard defaults have a fixed bounded count"))
+            }
             InputEnvelopePayload::CommittedText(_) => usize::from(self.editing.has_owner(&target)),
             InputEnvelopePayload::Composition(_) => 0,
         };

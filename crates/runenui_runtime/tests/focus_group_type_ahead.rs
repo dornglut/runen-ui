@@ -3,11 +3,11 @@
 use std::time::Duration;
 
 use runenui_core::{
-    CommandOrigin, Element, FocusGroup, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy,
-    FocusGroupTypeAhead, FocusReason, Focusability, KeyLocation, KeyModifiers,
-    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
-    EventContext, EventPhase, PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget,
-    WidgetEventOutput, button, column,
+    CommandOrigin, Element, EventContext, EventPhase, FocusGroup, FocusGroupActivationPolicy,
+    FocusGroupBoundaryPolicy, FocusGroupTypeAhead, FocusReason, Focusability, KeyLocation,
+    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
+    NoHostProtocol, PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetEventOutput,
+    button, column,
 };
 use runenui_runtime::{
     AppRuntime, ManualClock, MountedNodeId, PumpBudget, RuntimeConfig, TraceConfig,
@@ -141,7 +141,11 @@ fn assert_focus(runtime: &mut AppRuntime<App>, authored: &str) {
 }
 
 fn key(character: &str) -> KeyboardEvent {
-    keyboard(character, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
+    keyboard(
+        character,
+        KeyModifiers::NONE,
+        KeyboardCompositionState::Inactive,
+    )
 }
 
 fn keyboard(
@@ -337,7 +341,6 @@ fn trace_exports_only_bounded_type_ahead_observation_not_search_text() {
     }
 }
 
-
 struct PreventingMember {
     prevent: bool,
 }
@@ -353,10 +356,7 @@ impl Widget<()> for PreventingMember {
         event: &UiEvent,
         context: &mut EventContext<'_, ()>,
     ) -> WidgetEventOutput {
-        if self.prevent
-            && context.phase() == EventPhase::Target
-            && event.as_keyboard().is_some()
-        {
+        if self.prevent && context.phase() == EventPhase::Target && event.as_keyboard().is_some() {
             context.prevent_default();
         }
         WidgetEventOutput::none()
