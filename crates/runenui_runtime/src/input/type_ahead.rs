@@ -18,7 +18,7 @@ const TYPE_AHEAD_MAX_SCALARS: usize = 64;
 /// Private transient type-ahead state for one exact active focus group.
 ///
 /// The literal buffer deliberately has no public inspection or Debug surface.
-pub(crate) struct FocusGroupTypeAheadState {
+pub struct FocusGroupTypeAheadState {
     group: Option<MountedNodeId>,
     policy: Option<FocusGroupTypeAhead>,
     buffer: String,
@@ -98,7 +98,7 @@ impl FocusGroupTypeAheadState {
     }
 }
 
-pub(crate) struct FocusGroupTypeAheadUpdate {
+pub struct FocusGroupTypeAheadUpdate {
     group: MountedNodeId,
     policy: FocusGroupTypeAhead,
     buffer: String,
@@ -274,9 +274,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let repeated_single = base_scalars == 1 && fragment_scalars == 1 && base == fragment;
         let had_base = !base.is_empty();
         let extending = had_base && !repeated_single;
-        let (query, query_scalars) = if !extending {
-            (fragment.clone(), fragment_scalars)
-        } else {
+        let (query, query_scalars) = if extending {
             let Some(query_scalars) = base_scalars.checked_add(fragment_scalars) else {
                 self.reject_focus_group_type_ahead_capacity(transaction, &context);
                 return Ok(true);
@@ -292,6 +290,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             let mut combined = base;
             combined.push_str(&fragment);
             (combined, query_scalars)
+        } else {
+            (fragment.clone(), fragment_scalars)
         };
 
         let matched = select_focus_group_type_ahead_match(
