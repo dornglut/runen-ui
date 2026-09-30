@@ -913,7 +913,7 @@ mod tests {
             matches!(
                 row.cells[0].as_str(),
                 "M11CTRL-17" | "M11CTRL-18" | "M11CTRL-19"
-            ) && row.cells[6] == "proof-complete"
+            ) && row.cells[6] == "owner-accepted"
                 && row.cells[7] == "Required"
         }));
         assert_eq!(
@@ -1013,7 +1013,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 460);
+        assert_eq!(total, 461);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }
