@@ -619,6 +619,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
         self.focus
             .commit(new_target.clone(), new_route.clone(), reason);
+        self.reconcile_focus_group_type_ahead_state();
         if let Some(target) = new_target.as_ref() {
             for scope in new_route.iter().filter(|scope| {
                 self.tree.node(scope).is_some_and(|node| {
@@ -873,6 +874,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface,
         } = cleanup;
         self.focus.commit(None, Vec::new(), reason);
+        self.reconcile_focus_group_type_ahead_state();
         let Some(trace_target) = trace_target else {
             return;
         };
