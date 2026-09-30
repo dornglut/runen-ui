@@ -196,7 +196,7 @@ pub struct FocusGroupTypeAhead {
 }
 
 impl FocusGroupTypeAhead {
-    /// Creates a positive timeout representable by RunenUI's monotonic nanosecond clock.
+    /// Creates a positive timeout representable by `RunenUI`'s monotonic nanosecond clock.
     ///
     /// # Errors
     ///

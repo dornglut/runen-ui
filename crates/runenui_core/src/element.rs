@@ -259,7 +259,7 @@ impl<Action> fmt::Debug for Element<Action> {
             .field("widget_type", &self.widget.widget_type_name())
             .field("children", &self.children)
             .field("authoring_diagnostics", &self.common.diagnostics)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
