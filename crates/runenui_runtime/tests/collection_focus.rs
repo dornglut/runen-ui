@@ -248,18 +248,18 @@ impl UiApp for ScrollGroupApp {
             item("scroll.b", "beta"),
             item("scroll.c", "charlie"),
         ])
-            .id("scroll.group")
-            .key("scroll.group")
-            .into_element()
-            .focus_group(
-                FocusGroup::new()
-                    .with_boundary(FocusGroupBoundaryPolicy::Stop)
-                    .with_activation(FocusGroupActivationPolicy::Manual)
-                    .with_type_ahead(
-                        FocusGroupTypeAhead::new(Duration::from_millis(500))
-                            .unwrap_or_else(|_| unreachable!("fixture timeout is bounded")),
-                    ),
-            );
+        .id("scroll.group")
+        .key("scroll.group")
+        .into_element()
+        .focus_group(
+            FocusGroup::new()
+                .with_boundary(FocusGroupBoundaryPolicy::Stop)
+                .with_activation(FocusGroupActivationPolicy::Manual)
+                .with_type_ahead(
+                    FocusGroupTypeAhead::new(Duration::from_millis(500))
+                        .unwrap_or_else(|_| unreachable!("fixture timeout is bounded")),
+                ),
+        );
         row(children![group])
             .id("scroll.viewport")
             .key("scroll.viewport")
