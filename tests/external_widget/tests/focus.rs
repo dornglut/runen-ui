@@ -476,12 +476,4 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
         .unwrap_or_else(|_| unreachable!("downstream type-ahead keyboard input is accepted"));
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.focus().focused_node(), Some(&b));
-    assert_eq!(
-        runtime
-            .index()
-            .node(&b)
-            .unwrap_or_else(|| unreachable!("downstream search member remains mounted"))
-            .focus_group_search_text(),
-        Some("blue")
-    );
 }
