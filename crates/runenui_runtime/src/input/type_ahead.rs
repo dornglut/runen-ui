@@ -95,9 +95,7 @@ impl FocusGroupTypeAheadUpdate {
     }
 }
 
-fn lowercase_type_ahead_fragment(
-    text: &str,
-) -> Result<Option<(String, usize)>, ()> {
+fn lowercase_type_ahead_fragment(text: &str) -> Result<Option<(String, usize)>, ()> {
     let mut output = String::new();
     let mut scalars = 0usize;
     for scalar in text.chars().flat_map(char::to_lowercase) {
@@ -246,23 +244,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &query,
             extending,
         );
-        let (retained_query, retained_scalars, destination) =
-            if matched.is_none() && extending {
-                let fresh_match = select_focus_group_type_ahead_match(
-                    &mut self.tree,
-                    &self.focus,
-                    &context.group,
-                    &fragment,
-                    false,
-                );
-                if fresh_match.is_some() {
-                    (fragment, fragment_scalars, fresh_match)
-                } else {
-                    (String::new(), 0, None)
-                }
+        let (retained_query, retained_scalars, destination) = if matched.is_none() && extending {
+            let fresh_match = select_focus_group_type_ahead_match(
+                &mut self.tree,
+                &self.focus,
+                &context.group,
+                &fragment,
+                false,
+            );
+            if fresh_match.is_some() {
+                (fragment, fragment_scalars, fresh_match)
             } else {
-                (query, query_scalars, matched)
-            };
+                (String::new(), 0, None)
+            }
+        } else {
+            (query, query_scalars, matched)
+        };
 
         transaction.focus_group_type_ahead_update = Some(FocusGroupTypeAheadUpdate::new(
             &context,
