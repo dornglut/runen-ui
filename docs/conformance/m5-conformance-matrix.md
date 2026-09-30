@@ -125,9 +125,9 @@ Current M5 matrix summary, including the later M11 collection-focus readiness ex
 
 ```text
 55 total unique rows
-54 owner-accepted
+55 owner-accepted
 0 implementation-complete
-1 proof-complete
+0 proof-complete
 0 blocked
 0 duplicate IDs
 0 invalid statuses
@@ -240,4 +240,4 @@ guarded feature merge and exact accepted-main verification, this bounded final
 reconciliation promotes only `M5-INTEG-01..05`, aligns current authority, closes
 M5, and establishes the exact accepted base from which M6 may begin. No M6
 implementation belongs in the M5 reconciliation itself.
-| SEM-ACT-09 | M11S2 range/expansion semantic actions use exact current semantic authority: action/data pairing is validated, mutable-range and expandable role/property contracts are enforced, disabled/inert/read-only/out-of-range/current-expanded readiness rejects deterministically, and processing-time revalidation rechecks the same SetValue payload against the current republished range before any widget callback. | `tests/external_widget/tests/m11_semantic_actions.rs::set_value_rejects_missing_payload_out_of_range_and_read_only_state`; `processing_time_revalidation_uses_republished_current_range_state_before_callback`; `expand_and_collapse_follow_current_authored_expanded_state` | Progress mutation exclusion; malformed payload; current-state mismatch; stale/foreign/replaced target corpus | Existing UnsupportedAction/UnavailableAction taxonomy + SemanticActionProcessingRejected/semantic binding trace, with SetValue command/data integrity fail-closed | M11S2 | proof-complete | Required |
+| SEM-ACT-09 | M11S2 range/expansion semantic actions use exact current semantic authority: action/data pairing is validated, mutable-range and expandable role/property contracts are enforced, disabled/inert/read-only/out-of-range/current-expanded readiness rejects deterministically, and processing-time revalidation rechecks the same SetValue payload against the current republished range before any widget callback. | `tests/external_widget/tests/m11_semantic_actions.rs::set_value_rejects_missing_payload_out_of_range_and_read_only_state`; `processing_time_revalidation_uses_republished_current_range_state_before_callback`; `expand_and_collapse_follow_current_authored_expanded_state` | Progress mutation exclusion; malformed payload; current-state mismatch; stale/foreign/replaced target corpus | Existing UnsupportedAction/UnavailableAction taxonomy + SemanticActionProcessingRejected/semantic binding trace, with SetValue command/data integrity fail-closed | M11S2 | owner-accepted | Required |
