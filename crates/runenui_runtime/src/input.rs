@@ -529,6 +529,29 @@ impl AutomationSubmission {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    pub(crate) fn apply_focus_group_type_ahead_update(
+        &mut self,
+        update: FocusGroupTypeAheadUpdate,
+    ) {
+        self.focus_group_type_ahead.apply(update);
+    }
+
+    pub(crate) fn reconcile_focus_group_type_ahead_state(&mut self) {
+        let Some(focused) = self.focus.focused_node().cloned() else {
+            self.focus_group_type_ahead.clear();
+            return;
+        };
+        let Some(context) = focus_group_type_ahead_context(&self.tree, &self.focus, &focused) else {
+            self.focus_group_type_ahead.clear();
+            return;
+        };
+        if self.focus_group_type_ahead.group.as_ref() != Some(&context.group)
+            || self.focus_group_type_ahead.policy != Some(context.policy)
+        {
+            self.focus_group_type_ahead.clear();
+        }
+    }
+
     pub(crate) fn revoke_space_ownership(&mut self, reason: TraceSpaceCleanupReason) {
         let Some(ownership) = self.space_ownership.take() else {
             return;
