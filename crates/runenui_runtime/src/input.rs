@@ -15,7 +15,10 @@ use crate::{
     TraceRecordKind, TraceSpaceCleanupReason,
     mounted::{AutomationResolution, TargetStatus},
     queue::{InputEnvelope, InputEnvelopePayload},
-    focus::{FocusGroupTypeAheadContext, focus_group_type_ahead_context},
+    focus::{
+        FocusGroupTypeAheadContext, focus_group_type_ahead_context,
+        select_focus_group_type_ahead_match,
+    },
     runtime::{RoutedIngressFacts, Runtime},
     trace::{MandatoryTracePlan, TraceRecordDraft},
 };
@@ -1168,10 +1171,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             causal_parent,
             trace_reservation,
         );
-        let mandatory_default_commands = match &payload {
+        let type_ahead_context = match &payload {
             InputEnvelopePayload::Keyboard(event) => {
-                usize::from(Self::keyboard_default_command_is_possible(event))
+                self.keyboard_type_ahead_context(event, &target)
             }
+            InputEnvelopePayload::CommittedText(_) | InputEnvelopePayload::Composition(_) => None,
+        };
+        let mandatory_default_commands = match &payload {
+            InputEnvelopePayload::Keyboard(event) => usize::from(
+                Self::keyboard_default_command_is_possible(event),
+            )
+            .checked_add(usize::from(
+                type_ahead_context.as_ref().is_some_and(|context| {
+                    context.activation == FocusGroupActivationPolicy::ActivateTarget
+                }),
+            ))
+            .unwrap_or_else(|| unreachable!("keyboard defaults have a fixed bounded count")),
             InputEnvelopePayload::CommittedText(_) => usize::from(self.editing.has_owner(&target)),
             InputEnvelopePayload::Composition(_) => 0,
         };
@@ -1191,12 +1206,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
             return;
         }
-        let mut transaction = match self
-            .try_begin_routed_transaction_with_trace_and_default_commands(
+        let transaction_result = if type_ahead_context.is_some() {
+            let trace = MandatoryTracePlan::input_processing()
+                .checked_add(MandatoryTracePlan::one_fact())
+                .unwrap_or_else(|| unreachable!("type-ahead input trace plan is bounded"));
+            self.try_begin_focus_input_transaction(facts, trace, mandatory_default_commands)
+        } else {
+            self.try_begin_routed_transaction_with_trace_and_default_commands(
                 facts,
                 MandatoryTracePlan::input_processing(),
                 mandatory_default_commands,
-            ) {
+            )
+        };
+        let mut transaction = match transaction_result {
             Ok(transaction) => transaction,
             Err(failure) => {
                 self.retire_failed_composition(
@@ -1250,6 +1272,29 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             InputEnvelopePayload::Keyboard(_) | InputEnvelopePayload::CommittedText(_) => {}
         }
+    }
+
+    fn keyboard_type_ahead_context(
+        &self,
+        event: &KeyboardEvent,
+        target: &MountedNodeId,
+    ) -> Option<FocusGroupTypeAheadContext> {
+        if event.phase() != KeyboardPhase::Down
+            || event.composition_state() != KeyboardCompositionState::Inactive
+        {
+            return None;
+        }
+        let LogicalKey::Character(character) = event.logical_key() else {
+            return None;
+        };
+        if character.is_empty() {
+            return None;
+        }
+        let modifiers = event.modifiers();
+        if modifiers.control() || modifiers.alt() || modifiers.meta() {
+            return None;
+        }
+        focus_group_type_ahead_context(&self.tree, &self.focus, target)
     }
 
     const fn routed_input_event_context(payload: &InputEnvelopePayload) -> TraceEventContext {
@@ -1677,6 +1722,147 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.collect_non_space_keyboard_default(transaction, event, target)
     }
 
+    fn collect_focus_group_type_ahead_default(
+        &mut self,
+        transaction: &mut crate::runtime::RoutedTransaction<Action>,
+        event: &KeyboardEvent,
+        target: &MountedNodeId,
+    ) -> Result<bool, crate::TraceRoutedIntegrityFailure> {
+        let Some(context) = self.keyboard_type_ahead_context(event, target) else {
+            return Ok(false);
+        };
+        let LogicalKey::Character(character) = event.logical_key() else {
+            return Ok(false);
+        };
+        let Some((fragment, fragment_scalars)) = lowercase_type_ahead_fragment(character) else {
+            self.record_focus_group_type_ahead_evaluation(
+                transaction,
+                self.focus_group_type_ahead.scalar_count,
+                false,
+                true,
+                &context.group,
+            );
+            return Ok(true);
+        };
+
+        let session_current = self
+            .focus_group_type_ahead
+            .session_is_current(&context, transaction.instant);
+        let (base, base_scalars) = if session_current {
+            (
+                self.focus_group_type_ahead.buffer.clone(),
+                self.focus_group_type_ahead.scalar_count,
+            )
+        } else {
+            (String::new(), 0)
+        };
+        let repeated_single = base_scalars == 1
+            && fragment_scalars == 1
+            && base == fragment;
+        let (query, query_scalars) = if repeated_single || base.is_empty() {
+            (fragment.clone(), fragment_scalars)
+        } else {
+            let Some(query_scalars) = base_scalars.checked_add(fragment_scalars) else {
+                self.record_focus_group_type_ahead_evaluation(
+                    transaction,
+                    self.focus_group_type_ahead.scalar_count,
+                    false,
+                    true,
+                    &context.group,
+                );
+                return Ok(true);
+            };
+            let Some(query_bytes) = base.len().checked_add(fragment.len()) else {
+                self.record_focus_group_type_ahead_evaluation(
+                    transaction,
+                    self.focus_group_type_ahead.scalar_count,
+                    false,
+                    true,
+                    &context.group,
+                );
+                return Ok(true);
+            };
+            if query_scalars > TYPE_AHEAD_MAX_SCALARS || query_bytes > TYPE_AHEAD_MAX_BYTES {
+                self.record_focus_group_type_ahead_evaluation(
+                    transaction,
+                    self.focus_group_type_ahead.scalar_count,
+                    false,
+                    true,
+                    &context.group,
+                );
+                return Ok(true);
+            }
+            let mut combined = base;
+            combined.push_str(&fragment);
+            (combined, query_scalars)
+        };
+
+        let mut retained_query = query;
+        let mut retained_scalars = query_scalars;
+        let mut matched = select_focus_group_type_ahead_match(
+            &mut self.tree,
+            &self.focus,
+            &context.group,
+            &retained_query,
+        );
+        if matched.is_none()
+            && session_current
+            && retained_query != fragment
+        {
+            retained_query = fragment;
+            retained_scalars = fragment_scalars;
+            matched = select_focus_group_type_ahead_match(
+                &mut self.tree,
+                &self.focus,
+                &context.group,
+                &retained_query,
+            );
+        }
+
+        transaction.focus_group_type_ahead_update = Some(FocusGroupTypeAheadUpdate::new(
+            &context,
+            retained_query,
+            retained_scalars,
+            transaction.instant,
+        ));
+        let observation_target = matched.as_ref().unwrap_or(&context.group);
+        self.record_focus_group_type_ahead_evaluation(
+            transaction,
+            retained_scalars,
+            matched.is_some(),
+            false,
+            observation_target,
+        );
+        if let Some(destination) = matched {
+            self.apply_focus_group_destination(transaction, destination, context.activation)?;
+        }
+        Ok(true)
+    }
+
+    fn record_focus_group_type_ahead_evaluation(
+        &mut self,
+        transaction: &mut crate::runtime::RoutedTransaction<Action>,
+        buffer_scalars: usize,
+        matched: bool,
+        capacity_rejected: bool,
+        observation_target: &MountedNodeId,
+    ) {
+        transaction.parent = self.trace.record_event(
+            TraceRecordKind::FocusGroupTypeAheadEvaluated {
+                buffer_scalars,
+                matched,
+                capacity_rejected,
+            },
+            transaction.sequence,
+            transaction.parent,
+            Some(self.tree.trace_target(observation_target)),
+            transaction.instant,
+            &transaction.target,
+            Some(observation_target),
+            transaction.origin,
+        );
+    }
+
     fn collect_non_space_keyboard_default(
         &mut self,
         transaction: &mut crate::runtime::RoutedTransaction<Action>,
@@ -1684,6 +1870,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         target: crate::MountedNodeId,
     ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
         if event.phase() != KeyboardPhase::Down {
+            return Ok(());
+        }
+        if self.collect_focus_group_type_ahead_default(transaction, event, &target)? {
             return Ok(());
         }
         let editable = self.editing.has_owner(&target);
