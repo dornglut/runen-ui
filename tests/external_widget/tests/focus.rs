@@ -406,7 +406,14 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
             .node(&group)
             .unwrap_or_else(|| unreachable!("group root is public"))
             .focus_group(),
-        Some(FocusGroup::new().with_boundary(FocusGroupBoundaryPolicy::Wrap))
+        Some(
+            FocusGroup::new()
+                .with_boundary(FocusGroupBoundaryPolicy::Wrap)
+                .with_type_ahead(
+                    FocusGroupTypeAhead::new(Duration::from_millis(500))
+                        .unwrap_or_else(|_| unreachable!("downstream timeout is bounded")),
+                ),
+        )
     );
     assert_eq!(
         runtime
