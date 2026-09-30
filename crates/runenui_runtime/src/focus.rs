@@ -4,7 +4,8 @@ use std::collections::HashMap;
 
 use runenui_core::{
     FocusBoundaryPolicy, FocusDirection, FocusGroup, FocusGroupActivationPolicy,
-    FocusGroupBoundaryPolicy, FocusGroupEntry, FocusReason, FocusScope, FocusScopePolicy,
+    FocusGroupBoundaryPolicy, FocusGroupEntry, FocusGroupTypeAhead, FocusReason, FocusScope,
+    FocusScopePolicy,
     Focusability, InputModality,
 };
 
@@ -412,6 +413,13 @@ pub struct FocusGroupSelection {
     pub activation: FocusGroupActivationPolicy,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FocusGroupTypeAheadContext {
+    pub group: MountedNodeId,
+    pub policy: FocusGroupTypeAhead,
+    pub activation: FocusGroupActivationPolicy,
+}
+
 fn focus_group_for_command<Action>(
     tree: &MountedTree<Action>,
     state: &FocusState,
@@ -437,6 +445,20 @@ fn focus_group_for_command<Action>(
     }
 }
 
+pub fn focus_group_type_ahead_context<Action>(
+    tree: &MountedTree<Action>,
+    state: &FocusState,
+    command_target: &MountedNodeId,
+) -> Option<FocusGroupTypeAheadContext> {
+    let group = focus_group_for_command(tree, state, command_target)?;
+    let config = tree.node(&group)?.focus_group?;
+    Some(FocusGroupTypeAheadContext {
+        group,
+        policy: config.type_ahead()?,
+        activation: config.activation(),
+    })
+}
+
 pub fn focus_group_activation_policy<Action>(
     tree: &MountedTree<Action>,
     state: &FocusState,
@@ -457,6 +479,43 @@ fn focus_group_member_contains<Action>(
             .node(&member.anchor)
             .is_some_and(|node| node.focus_group.is_some())
             && is_within_group(tree, id, &member.anchor)
+}
+
+fn locale_neutral_lowercase_prefix(text: &str, query: &str) -> bool {
+    let mut lowered = text.chars().flat_map(char::to_lowercase);
+    query.chars().all(|expected| lowered.next() == Some(expected))
+}
+
+pub fn select_focus_group_type_ahead_match<Action>(
+    tree: &mut MountedTree<Action>,
+    state: &FocusState,
+    group: &MountedNodeId,
+    query: &str,
+) -> Option<MountedNodeId> {
+    if query.is_empty() {
+        return None;
+    }
+    let resolved = focus_group_members(tree, group)?;
+    let members = resolved.members;
+    if members.is_empty() {
+        return None;
+    }
+    let current = state.focused_node();
+    let start = current
+        .and_then(|current| {
+            members
+                .iter()
+                .position(|member| focus_group_member_contains(tree, member, current))
+        })
+        .map_or(0, |position| (position + 1) % members.len());
+
+    (0..members.len()).find_map(|offset| {
+        let member = &members[(start + offset) % members.len()];
+        let search_text = tree
+            .node(&member.anchor)
+            .and_then(|node| node.focus_group_search_text.as_deref())?;
+        locale_neutral_lowercase_prefix(search_text, query).then(|| member.target.clone())
+    })
 }
 
 pub fn select_focus_group_member<Action>(
