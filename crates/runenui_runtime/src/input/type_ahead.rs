@@ -115,7 +115,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         update: FocusGroupTypeAheadUpdate,
     ) {
-        self.focus_group_type_ahead.apply(update);
+        let Some(focused) = self.focus.focused_node().cloned() else {
+            self.focus_group_type_ahead.clear();
+            return;
+        };
+        let Some(context) = focus_group_type_ahead_context(&self.tree, &self.focus, &focused) else {
+            self.focus_group_type_ahead.clear();
+            return;
+        };
+        if context.group == update.group && context.policy == update.policy {
+            self.focus_group_type_ahead.apply(update);
+        } else {
+            self.focus_group_type_ahead.clear();
+        }
     }
 
     pub(crate) fn reconcile_focus_group_type_ahead_state(&mut self) {
