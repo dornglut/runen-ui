@@ -733,6 +733,123 @@ fn owner_replacement_retires_buffer_with_the_old_exact_group_lifetime() {
     assert_eq!(runtime.focus().focused_node(), Some(&replacement_lima));
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RemovalAction {
+    Remove,
+    Restore,
+}
+
+struct RemovalApp;
+
+impl UiApp for RemovalApp {
+    type State = bool;
+    type Action = RemovalAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(present: &bool) -> Element<RemovalAction> {
+        if !*present {
+            return button("outside")
+                .id("removal.outside")
+                .key("removal.outside")
+                .into_element()
+                .with_focusability(Focusability::Focusable);
+        }
+        let member = |id: &'static str, search: &'static str| {
+            button(id)
+                .id(id)
+                .key(id)
+                .into_element()
+                .with_focusability(Focusability::Focusable)
+                .focus_group_search_text(search)
+        };
+        column(vec![
+            member("removal.zulu", "zulu"),
+            member("removal.alpha", "alpha"),
+            member("removal.alpine", "alpine"),
+            member("removal.lima", "lima"),
+        ])
+        .id("removal.group")
+        .key("removal.group")
+        .into_element()
+        .focus_group(FocusGroup::new().with_type_ahead(type_ahead()))
+    }
+
+    fn update(state: &mut bool, action: RemovalAction) {
+        *state = matches!(action, RemovalAction::Restore);
+    }
+}
+
+fn removal_id(runtime: &mut AppRuntime<RemovalApp>, authored: &str) -> MountedNodeId {
+    let authored = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("removal fixture node is mounted"))
+        .id()
+        .clone()
+}
+
+fn removal_focus(runtime: &mut AppRuntime<RemovalApp>, authored: &str) {
+    let target = removal_id(runtime, authored);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("removal focus is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+}
+
+fn removal_character(runtime: &mut AppRuntime<RemovalApp>, character: &str) {
+    runtime
+        .submit_keyboard(key(character))
+        .unwrap_or_else(|_| unreachable!("removal keyboard input is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+}
+
+#[test]
+fn owner_removal_and_recreation_cannot_revive_the_old_group_prefix() {
+    let mut runtime = AppRuntime::<RemovalApp>::mount(true);
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    removal_focus(&mut runtime, "removal.zulu");
+    removal_character(&mut runtime, "a");
+    let alpha = removal_id(&mut runtime, "removal.alpha");
+    assert_eq!(runtime.focus().focused_node(), Some(&alpha));
+
+    runtime
+        .submit_action(RemovalAction::Remove)
+        .unwrap_or_else(|_| unreachable!("removal action is admitted"));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    assert_eq!(runtime.focus().focused_node(), None);
+
+    runtime
+        .submit_action(RemovalAction::Restore)
+        .unwrap_or_else(|_| unreachable!("restore action is admitted"));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    removal_focus(&mut runtime, "removal.zulu");
+    removal_character(&mut runtime, "l");
+    let lima = removal_id(&mut runtime, "removal.lima");
+    assert_eq!(runtime.focus().focused_node(), Some(&lima));
+}
+
 struct NestedBoundaryApp;
 
 impl UiApp for NestedBoundaryApp {
