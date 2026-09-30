@@ -5,8 +5,10 @@ use std::time::Duration;
 use runenui_core::{
     CommandOrigin, Element, EventContext, EventPhase, FocusGroup, FocusGroupActivationPolicy,
     FocusGroupBoundaryPolicy, FocusGroupTypeAhead, FocusReason, FocusScope, Focusability,
-    KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
-    NoHostProtocol, PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetEventOutput,
+    EditIntent, EditableContribution, EditingSessionPolicy, KeyLocation, KeyModifiers,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey,
+    SemanticCommand, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,
+    TextSelection, TextSensitivity, UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetTextInput,
     button, column,
 };
 use runenui_runtime::{
@@ -55,6 +57,9 @@ impl UiApp for App {
             member("six", "beacon", true, false),
             member("four", "bravo", true, false),
             member("five", "delta", false, true),
+            member("disabled", "echo", false, false),
+            member("unicode", "Äther", true, false),
+            member("composed", "éclair", true, false),
         ])
         .id("group")
         .key("group")
@@ -250,6 +255,38 @@ fn disabled_discoverable_member_uses_canonical_focus_eligibility() {
 }
 
 #[test]
+fn ordinary_disabled_member_is_skipped_while_discoverable_disabled_remains_searchable() {
+    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    settle(&mut runtime);
+    focus(&mut runtime, "three");
+    let beta = id(&mut runtime, "three");
+
+    type_character(&mut runtime, "e");
+    assert_eq!(runtime.focus().focused_node(), Some(&beta));
+
+    type_character(&mut runtime, "d");
+    assert_focus(&mut runtime, "five");
+}
+
+#[test]
+fn matching_uses_locale_neutral_lowercase_without_canonical_normalization() {
+    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    settle(&mut runtime);
+    focus(&mut runtime, "three");
+
+    type_character(&mut runtime, "ä");
+    assert_focus(&mut runtime, "unicode");
+
+    focus(&mut runtime, "three");
+    let beta = id(&mut runtime, "three");
+    type_character(&mut runtime, "e\u{301}");
+    assert_eq!(runtime.focus().focused_node(), Some(&beta));
+
+    type_character(&mut runtime, "é");
+    assert_focus(&mut runtime, "composed");
+}
+
+#[test]
 fn timeout_resets_prefix_before_the_next_character() {
     let clock = ManualClock::new();
     let mut runtime = AppRuntime::<App>::mount(State::manual());
@@ -350,9 +387,19 @@ fn trace_export_remains_redacted_and_replay_compatible() {
     type_character(&mut runtime, "a");
 
     let jsonl = runtime.trace().export_jsonl();
-    for secret in ["alpha", "alpine", "beta", "beacon", "bravo", "delta"] {
+    for secret in [
+        "alpha", "alpine", "beta", "beacon", "bravo", "delta", "echo", "Äther", "éclair",
+    ] {
         assert!(!jsonl.contains(secret));
     }
+
+    runtime
+        .submit_keyboard(key("QzxTypeAheadSecret"))
+        .unwrap_or_else(|_| unreachable!("private unmatched prefix is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let jsonl = runtime.trace().export_jsonl();
+    assert!(!jsonl.contains("QzxTypeAheadSecret"));
+    assert!(!jsonl.contains("qzxtypeaheadsecret"));
     let replay = TraceReplay::parse_jsonl(&jsonl)
         .unwrap_or_else(|error| unreachable!("redacted type-ahead trace replays: {error}"));
     assert!(replay.is_complete());
@@ -721,6 +768,113 @@ fn nested_group_search_enters_existing_target_and_nested_scope_is_not_searchable
         .unwrap_or_else(|_| unreachable!("scope-boundary search is admitted"));
     scoped.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(scoped.focus().focused_node(), Some(&current));
+}
+
+#[derive(Debug)]
+struct EditableTypeAheadProbe;
+
+impl Widget<()> for EditableTypeAheadProbe {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn text_input(&self, (): &Self::State) -> WidgetTextInput {
+        WidgetTextInput::new(true, true)
+    }
+
+    fn editable(&self, (): &Self::State) -> Option<EditableContribution<()>> {
+        let snapshot = TextDocumentSnapshot::new(
+            TextDocumentId::new(1),
+            TextDocumentRevision::new(1),
+        );
+        let position = TextPosition::new(
+            snapshot,
+            "ab",
+            2,
+            runenui_core::TextAffinity::Downstream,
+        )
+        .ok()?;
+        EditableContribution::new(
+            snapshot,
+            "ab",
+            TextSelection::collapsed(position),
+            TextSensitivity::Public,
+            false,
+            false,
+            EditingSessionPolicy::PreserveExact,
+            |_: EditIntent| (),
+        )
+        .ok()
+    }
+}
+
+struct EditableTypeAheadApp;
+
+impl UiApp for EditableTypeAheadApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &()) -> Element<()> {
+        column(vec![
+            Element::new(EditableTypeAheadProbe)
+                .id("editable.current")
+                .key("editable.current")
+                .with_focusability(Focusability::Focusable)
+                .focus_group_search_text("alpha"),
+            unit_member("editable.other", "beta"),
+        ])
+        .id("editable.group")
+        .key("editable.group")
+        .into_element()
+        .focus_group(FocusGroup::new().with_type_ahead(type_ahead()))
+    }
+
+    fn update(_: &mut (), _: ()) {}
+}
+
+fn editable_id(
+    runtime: &mut AppRuntime<EditableTypeAheadApp>,
+    authored: &str,
+) -> MountedNodeId {
+    let authored = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("editable type-ahead fixture node is mounted"))
+        .id()
+        .clone()
+}
+
+#[test]
+fn editable_owner_keeps_printable_keyboard_precedence_over_type_ahead() {
+    let mut runtime = AppRuntime::<EditableTypeAheadApp>::mount(());
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let current = editable_id(&mut runtime, "editable.current");
+    let other = editable_id(&mut runtime, "editable.other");
+    runtime
+        .submit_command(
+            current.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("editable owner focus is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+
+    runtime
+        .submit_keyboard(key("b"))
+        .unwrap_or_else(|_| unreachable!("editable keyboard input is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+
+    assert_eq!(runtime.focus().focused_node(), Some(&current));
+    assert_ne!(runtime.focus().focused_node(), Some(&other));
 }
 
 #[derive(Debug)]
