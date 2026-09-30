@@ -5,7 +5,8 @@ use std::time::Duration;
 use runenui_core::{
     CommandOrigin, EditIntent, EditableContribution, EditingSessionPolicy, Element, EventContext,
     EventPhase, FocusGroup, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy,
-    FocusGroupTypeAhead, FocusReason, FocusScope, Focusability, KeyLocation, KeyModifiers,
+    FocusGroupTypeAhead, FocusGroupTypeAheadError, FocusReason, FocusScope, Focusability,
+    KeyLocation, KeyModifiers,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
     PhysicalKey, SemanticCommand, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
     TextPosition, TextSelection, TextSensitivity, UiApp, UiEvent, View, Widget, WidgetEventOutput,
@@ -82,6 +83,18 @@ impl UiApp for App {
 fn type_ahead() -> FocusGroupTypeAhead {
     FocusGroupTypeAhead::new(Duration::from_millis(500))
         .unwrap_or_else(|_| unreachable!("fixture timeout is bounded"))
+}
+
+#[test]
+fn type_ahead_policy_rejects_zero_and_monotonic_domain_overflow() {
+    assert_eq!(
+        FocusGroupTypeAhead::new(Duration::ZERO),
+        Err(FocusGroupTypeAheadError::ZeroTimeout)
+    );
+    assert_eq!(
+        FocusGroupTypeAhead::new(Duration::from_secs(u64::MAX)),
+        Err(FocusGroupTypeAheadError::TimeoutOverflow)
+    );
 }
 
 fn member(
