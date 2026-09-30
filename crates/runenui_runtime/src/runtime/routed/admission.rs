@@ -187,16 +187,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         facts: &RoutedIngressFacts,
         additional_trace: MandatoryTracePlan,
         mandatory_default_commands: usize,
-    ) -> Option<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan)> {
+    ) -> Result<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan), RoutedFailureLineage> {
         let targets = self.tree.publication_preorder_ids();
         let Some(deferred_invocations) = focus_notification_invocations(targets.len()) else {
             self.handle_routed_admission_rejection(
                 TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
                 facts,
             );
-            return None;
+            return Err(self.handle_routed_admission_rejection(
+                TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
+                facts,
+            ));
         };
-        let trace = MandatoryTracePlan::focus_commit().checked_add(additional_trace)?;
+        let trace = MandatoryTracePlan::focus_commit()
+            .checked_add(additional_trace)
+            .ok_or_else(|| {
+                self.handle_routed_admission_rejection(
+                    TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
+                    facts,
+                )
+            })?;
         self.try_prepare_routed_invocations(
             facts,
             true,
@@ -206,7 +216,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             trace,
             mandatory_default_commands,
         )
-        .ok()
     }
 
     #[allow(clippy::too_many_arguments)]
