@@ -192,7 +192,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let repeated_single = base_scalars == 1
             && fragment_scalars == 1
             && base == fragment;
-        let (query, query_scalars) = if repeated_single || base.is_empty() {
+        let had_base = !base.is_empty();
+        let (query, query_scalars) = if repeated_single || !had_base {
             (fragment.clone(), fragment_scalars)
         } else {
             let Some(query_scalars) = base_scalars.checked_add(fragment_scalars) else {
@@ -216,7 +217,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &query,
         );
         let (retained_query, retained_scalars, destination) =
-            if matched.is_none() && !repeated_single && !base.is_empty() {
+            if matched.is_none() && !repeated_single && had_base {
                 let fresh_match = select_focus_group_type_ahead_match(
                     &mut self.tree,
                     &self.focus,
