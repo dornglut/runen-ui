@@ -53,6 +53,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // route; if that route or its bounded admission is irrecoverable, the
         // exact lifetime is retired without falsely claiming callback delivery.
         self.status = RuntimeStatus::Terminal(reason);
+        self.focus_group_type_ahead.clear();
         let cleanup_cause = InputLifetimeCleanupCause::new(
             None,
             causal_parent,
@@ -143,6 +144,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             };
         }
         let logical_time = self.now();
+        self.focus_group_type_ahead.clear();
         let initial_parent = if matches!(self.status, RuntimeStatus::Terminal(_)) {
             self.trace.latest_runtime_terminal_sequence()
         } else {
