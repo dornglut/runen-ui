@@ -335,18 +335,37 @@ impl FocusGroupTypeAheadState {
         u128::from(elapsed) <= context.policy.timeout().as_nanos()
     }
 
-    fn replace(
-        &mut self,
+    fn apply(&mut self, update: FocusGroupTypeAheadUpdate) {
+        self.group = Some(update.group);
+        self.policy = Some(update.policy);
+        self.buffer = update.buffer;
+        self.scalar_count = update.scalar_count;
+        self.last_input = Some(update.last_input);
+    }
+}
+
+pub(crate) struct FocusGroupTypeAheadUpdate {
+    group: MountedNodeId,
+    policy: FocusGroupTypeAhead,
+    buffer: String,
+    scalar_count: usize,
+    last_input: MonotonicInstant,
+}
+
+impl FocusGroupTypeAheadUpdate {
+    fn new(
         context: &FocusGroupTypeAheadContext,
         buffer: String,
         scalar_count: usize,
-        instant: MonotonicInstant,
-    ) {
-        self.group = Some(context.group.clone());
-        self.policy = Some(context.policy);
-        self.buffer = buffer;
-        self.scalar_count = scalar_count;
-        self.last_input = Some(instant);
+        last_input: MonotonicInstant,
+    ) -> Self {
+        Self {
+            group: context.group.clone(),
+            policy: context.policy,
+            buffer,
+            scalar_count,
+            last_input,
+        }
     }
 }
 
