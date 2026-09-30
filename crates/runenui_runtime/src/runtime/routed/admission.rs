@@ -190,10 +190,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) -> Result<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan), RoutedFailureLineage> {
         let targets = self.tree.publication_preorder_ids();
         let Some(deferred_invocations) = focus_notification_invocations(targets.len()) else {
-            self.handle_routed_admission_rejection(
-                TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
-                facts,
-            );
             return Err(self.handle_routed_admission_rejection(
                 TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
                 facts,
