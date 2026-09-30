@@ -113,6 +113,15 @@ impl FocusGroupTypeAheadUpdate {
         scalar_count: usize,
         last_input: MonotonicInstant,
     ) -> Self {
+        if !buffer.is_empty() && last_input.checked_add(context.policy.timeout()).is_err() {
+            return Self {
+                group: context.group.clone(),
+                policy: context.policy,
+                buffer: String::new(),
+                scalar_count: 0,
+                last_input,
+            };
+        }
         Self {
             group: context.group.clone(),
             policy: context.policy,

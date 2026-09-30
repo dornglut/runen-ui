@@ -330,6 +330,31 @@ fn timeout_expires_at_the_exact_deadline_before_the_next_character() {
     assert_focus(&mut runtime, "one");
 }
 
+#[test]
+fn unrepresentable_session_deadline_does_not_retain_the_prefix() {
+    let clock = ManualClock::new();
+    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    runtime.set_monotonic_clock(clock.clone());
+    settle(&mut runtime);
+    focus(&mut runtime, "three");
+
+    clock
+        .advance(Duration::from_nanos(u64::MAX - 250_000_000))
+        .unwrap_or_else(|_| unreachable!("near-boundary fixture time remains representable"));
+
+    type_character(&mut runtime, "b");
+    assert_focus(&mut runtime, "six");
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(0, usize::MAX, usize::MAX, usize::MAX))
+            .next_deadline(),
+        None
+    );
+
+    type_character(&mut runtime, "r");
+    assert_focus(&mut runtime, "six");
+}
+
 #[cfg(feature = "internal-test-seams")]
 #[test]
 fn timeout_retires_private_buffer_without_requiring_another_key() {
