@@ -1,7 +1,7 @@
 //! Public input receipts and canonical keyboard/text ingress.
 
 mod type_ahead;
-pub(crate) use type_ahead::{FocusGroupTypeAheadState, FocusGroupTypeAheadUpdate};
+pub use type_ahead::{FocusGroupTypeAheadState, FocusGroupTypeAheadUpdate};
 
 use core::fmt;
 use runenui_core::{
