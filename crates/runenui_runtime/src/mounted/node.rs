@@ -143,10 +143,6 @@ impl<'a, Action> MountedNodeRef<'a, Action> {
         self.node.focus_group_entry
     }
     #[must_use]
-    pub fn focus_group_search_text(&self) -> Option<&'a str> {
-        self.node.focus_group_search_text.as_deref()
-    }
-    #[must_use]
     pub const fn interaction(&self) -> InteractionStateRef<'a> {
         InteractionStateRef(&self.node.interaction)
     }
