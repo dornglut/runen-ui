@@ -492,6 +492,7 @@ pub fn select_focus_group_type_ahead_match<Action>(
     state: &FocusState,
     group: &MountedNodeId,
     query: &str,
+    include_current: bool,
 ) -> Option<MountedNodeId> {
     if query.is_empty() {
         return None;
@@ -508,7 +509,13 @@ pub fn select_focus_group_type_ahead_match<Action>(
                 .iter()
                 .position(|member| focus_group_member_contains(tree, member, current))
         })
-        .map_or(0, |position| (position + 1) % members.len());
+        .map_or(0, |position| {
+            if include_current {
+                position
+            } else {
+                (position + 1) % members.len()
+            }
+        });
 
     (0..members.len()).find_map(|offset| {
         let member = &members[(start + offset) % members.len()];
