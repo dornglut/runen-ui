@@ -351,6 +351,32 @@ fn timeout_retires_private_buffer_without_requiring_another_key() {
 }
 
 #[test]
+fn queued_predeadline_character_keeps_ingress_time_order_across_timeout_wake() {
+    let clock = ManualClock::new();
+    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    runtime.set_monotonic_clock(clock.clone());
+    settle(&mut runtime);
+    focus(&mut runtime, "three");
+
+    type_character(&mut runtime, "b");
+    assert_focus(&mut runtime, "six");
+
+    clock
+        .advance(Duration::from_millis(400))
+        .unwrap_or_else(|_| unreachable!("fixture time remains representable"));
+    runtime
+        .submit_keyboard(key("r"))
+        .unwrap_or_else(|_| unreachable!("predeadline key is admitted"));
+    clock
+        .advance(Duration::from_millis(100))
+        .unwrap_or_else(|_| unreachable!("fixture time remains representable"));
+
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+
+    assert_focus(&mut runtime, "four");
+}
+
+#[test]
 fn composition_and_command_modifiers_suppress_type_ahead_but_shift_is_permitted() {
     let mut runtime = AppRuntime::<App>::mount(State::manual());
     settle(&mut runtime);
