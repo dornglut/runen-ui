@@ -4,8 +4,9 @@ use core::fmt;
 use runenui_core::{
     CommandOrigin, CommittedTextEvent, CompositionCancel, CompositionCancelReason, CompositionEnd,
     CompositionEvent, CompositionGeneration, CompositionRange, CompositionStart, CompositionUpdate,
-    ElementId, HostProtocol, InputDeviceId, KeyboardEvent, KeyboardPhase, LogicalKey,
-    MonotonicInstant, PhysicalKey, SemanticCommand, UiEvent, WorkSequence,
+    ElementId, FocusGroupActivationPolicy, FocusGroupTypeAhead, HostProtocol, InputDeviceId,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, MonotonicInstant,
+    MountedNodeId, PhysicalKey, SemanticCommand, UiEvent, WorkSequence,
 };
 
 use crate::{
@@ -14,6 +15,7 @@ use crate::{
     TraceRecordKind, TraceSpaceCleanupReason,
     mounted::{AutomationResolution, TargetStatus},
     queue::{InputEnvelope, InputEnvelopePayload},
+    focus::{FocusGroupTypeAheadContext, focus_group_type_ahead_context},
     runtime::{RoutedIngressFacts, Runtime},
     trace::{MandatoryTracePlan, TraceRecordDraft},
 };
@@ -282,6 +284,86 @@ impl fmt::Display for SubmitCompositionStartError {
 }
 
 impl std::error::Error for SubmitCompositionStartError {}
+
+const TYPE_AHEAD_MAX_BYTES: usize = 64;
+const TYPE_AHEAD_MAX_SCALARS: usize = 32;
+
+/// Private transient type-ahead state for one exact active focus group.
+///
+/// The literal buffer deliberately has no public inspection or Debug surface.
+pub(crate) struct FocusGroupTypeAheadState {
+    group: Option<MountedNodeId>,
+    policy: Option<FocusGroupTypeAhead>,
+    buffer: String,
+    scalar_count: usize,
+    last_input: Option<MonotonicInstant>,
+}
+
+impl FocusGroupTypeAheadState {
+    pub(crate) const fn new() -> Self {
+        Self {
+            group: None,
+            policy: None,
+            buffer: String::new(),
+            scalar_count: 0,
+            last_input: None,
+        }
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.group = None;
+        self.policy = None;
+        self.buffer.clear();
+        self.scalar_count = 0;
+        self.last_input = None;
+    }
+
+    fn session_is_current(
+        &self,
+        context: &FocusGroupTypeAheadContext,
+        instant: MonotonicInstant,
+    ) -> bool {
+        if self.group.as_ref() != Some(&context.group) || self.policy != Some(context.policy) {
+            return false;
+        }
+        let Some(last_input) = self.last_input else {
+            return false;
+        };
+        let Some(elapsed) = instant.as_nanos().checked_sub(last_input.as_nanos()) else {
+            return false;
+        };
+        u128::from(elapsed) <= context.policy.timeout().as_nanos()
+    }
+
+    fn replace(
+        &mut self,
+        context: &FocusGroupTypeAheadContext,
+        buffer: String,
+        scalar_count: usize,
+        instant: MonotonicInstant,
+    ) {
+        self.group = Some(context.group.clone());
+        self.policy = Some(context.policy);
+        self.buffer = buffer;
+        self.scalar_count = scalar_count;
+        self.last_input = Some(instant);
+    }
+}
+
+fn lowercase_type_ahead_fragment(text: &str) -> Option<(String, usize)> {
+    let mut output = String::new();
+    let mut scalars = 0usize;
+    for scalar in text.chars().flat_map(char::to_lowercase) {
+        let next_scalars = scalars.checked_add(1)?;
+        let next_bytes = output.len().checked_add(scalar.len_utf8())?;
+        if next_scalars > TYPE_AHEAD_MAX_SCALARS || next_bytes > TYPE_AHEAD_MAX_BYTES {
+            return None;
+        }
+        output.push(scalar);
+        scalars = next_scalars;
+    }
+    (!output.is_empty()).then_some((output, scalars))
+}
 
 /// Runtime-owned pressed-Space authority for one exact focused lifetime.
 pub struct SpaceOwnership {
