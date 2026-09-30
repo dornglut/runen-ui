@@ -58,7 +58,7 @@ impl FocusGroupTypeAheadState {
         let Some(elapsed) = instant.as_nanos().checked_sub(last_input.as_nanos()) else {
             return false;
         };
-        u128::from(elapsed) <= context.policy.timeout().as_nanos()
+        u128::from(elapsed) < context.policy.timeout().as_nanos()
     }
 
     fn apply(&mut self, update: FocusGroupTypeAheadUpdate) {
