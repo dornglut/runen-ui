@@ -1,5 +1,7 @@
 //! Host-neutral focus authoring and routed notification protocol.
 
+use core::{error::Error, fmt, time::Duration};
+
 use crate::MountedNodeId;
 
 /// Retained source modality of the last accepted interaction.
@@ -166,6 +168,55 @@ pub enum FocusGroupActivationPolicy {
     ActivateTarget,
 }
 
+/// Invalid focus-group type-ahead timeout authoring.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FocusGroupTypeAheadError {
+    ZeroTimeout,
+    TimeoutTooLong,
+}
+
+impl fmt::Display for FocusGroupTypeAheadError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ZeroTimeout => formatter.write_str("focus-group type-ahead timeout must be positive"),
+            Self::TimeoutTooLong => formatter.write_str("focus-group type-ahead timeout exceeds the bounded maximum"),
+        }
+    }
+}
+
+impl Error for FocusGroupTypeAheadError {}
+
+/// Optional deterministic type-ahead policy for one composite focus group.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct FocusGroupTypeAhead {
+    timeout: Duration,
+}
+
+impl FocusGroupTypeAhead {
+    /// Maximum authored timeout retained by the M11 bounded type-ahead contract.
+    pub const MAX_TIMEOUT: Duration = Duration::from_secs(10);
+
+    /// Creates a positive, explicitly bounded type-ahead timeout.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for zero or values above the bounded maximum.
+    pub const fn new(timeout: Duration) -> Result<Self, FocusGroupTypeAheadError> {
+        if timeout.is_zero() {
+            return Err(FocusGroupTypeAheadError::ZeroTimeout);
+        }
+        if timeout.as_nanos() > Self::MAX_TIMEOUT.as_nanos() {
+            return Err(FocusGroupTypeAheadError::TimeoutTooLong);
+        }
+        Ok(Self { timeout })
+    }
+
+    #[must_use]
+    pub const fn timeout(self) -> Duration {
+        self.timeout
+    }
+}
+
 /// Host-neutral authored configuration for one composite focus group.
 ///
 /// A focus group is distinct from a focus scope: scopes own nested traversal
@@ -176,6 +227,7 @@ pub enum FocusGroupActivationPolicy {
 pub struct FocusGroup {
     boundary: FocusGroupBoundaryPolicy,
     activation: FocusGroupActivationPolicy,
+    type_ahead: Option<FocusGroupTypeAhead>,
 }
 
 impl FocusGroup {
@@ -184,6 +236,7 @@ impl FocusGroup {
         Self {
             boundary: FocusGroupBoundaryPolicy::Stop,
             activation: FocusGroupActivationPolicy::Manual,
+            type_ahead: None,
         }
     }
 
@@ -207,6 +260,25 @@ impl FocusGroup {
     #[must_use]
     pub const fn activation(self) -> FocusGroupActivationPolicy {
         self.activation
+    }
+
+    /// Enables bounded type-ahead navigation for this group.
+    #[must_use]
+    pub const fn with_type_ahead(mut self, policy: FocusGroupTypeAhead) -> Self {
+        self.type_ahead = Some(policy);
+        self
+    }
+
+    /// Disables type-ahead navigation for this group.
+    #[must_use]
+    pub const fn without_type_ahead(mut self) -> Self {
+        self.type_ahead = None;
+        self
+    }
+
+    #[must_use]
+    pub const fn type_ahead(self) -> Option<FocusGroupTypeAhead> {
+        self.type_ahead
     }
 }
 
