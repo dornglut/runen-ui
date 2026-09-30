@@ -340,6 +340,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             scroll_chain_remainder: None,
             pointer_selection_update: None,
             pointer_selection_transition: None,
+            focus_group_type_ahead_update: None,
             pending_modality: modality_for_source(facts.origin.source()),
         }
     }
