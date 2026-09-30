@@ -4,6 +4,7 @@ use runenui_core::{
 };
 
 use crate::{
+    TraceRecordKind,
     focus::{
         FocusGroupTypeAheadContext, focus_group_type_ahead_context,
         select_focus_group_type_ahead_match,
@@ -175,6 +176,29 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         focus_group_type_ahead_context(&self.tree, &self.focus, target)
     }
 
+    fn reject_focus_group_type_ahead_capacity(
+        &mut self,
+        transaction: &mut crate::runtime::RoutedTransaction<Action>,
+        context: &FocusGroupTypeAheadContext,
+    ) {
+        transaction.focus_group_type_ahead_update = Some(FocusGroupTypeAheadUpdate::new(
+            context,
+            String::new(),
+            0,
+            transaction.instant,
+        ));
+        transaction.parent = self.trace.record_event(
+            TraceRecordKind::FocusGroupTypeAheadCapacityRejected,
+            transaction.sequence,
+            transaction.parent,
+            Some(transaction.target_trace.clone()),
+            transaction.instant,
+            &transaction.target,
+            Some(&transaction.target),
+            transaction.origin,
+        );
+    }
+
     pub(super) fn collect_focus_group_type_ahead_default(
         &mut self,
         transaction: &mut crate::runtime::RoutedTransaction<Action>,
@@ -192,12 +216,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Ok(Some(fragment)) => fragment,
             Ok(None) => return Ok(true),
             Err(()) => {
-                transaction.focus_group_type_ahead_update = Some(FocusGroupTypeAheadUpdate::new(
-                    &context,
-                    String::new(),
-                    0,
-                    transaction.instant,
-                ));
+                self.reject_focus_group_type_ahead_capacity(transaction, &context);
                 return Ok(true);
             }
         };
@@ -220,30 +239,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             (fragment.clone(), fragment_scalars)
         } else {
             let Some(query_scalars) = base_scalars.checked_add(fragment_scalars) else {
-                transaction.focus_group_type_ahead_update = Some(FocusGroupTypeAheadUpdate::new(
-                    &context,
-                    String::new(),
-                    0,
-                    transaction.instant,
-                ));
+                self.reject_focus_group_type_ahead_capacity(transaction, &context);
                 return Ok(true);
             };
             let Some(query_bytes) = base.len().checked_add(fragment.len()) else {
-                transaction.focus_group_type_ahead_update = Some(FocusGroupTypeAheadUpdate::new(
-                    &context,
-                    String::new(),
-                    0,
-                    transaction.instant,
-                ));
+                self.reject_focus_group_type_ahead_capacity(transaction, &context);
                 return Ok(true);
             };
             if query_scalars > TYPE_AHEAD_MAX_SCALARS || query_bytes > TYPE_AHEAD_MAX_BYTES {
-                transaction.focus_group_type_ahead_update = Some(FocusGroupTypeAheadUpdate::new(
-                    &context,
-                    String::new(),
-                    0,
-                    transaction.instant,
-                ));
+                self.reject_focus_group_type_ahead_capacity(transaction, &context);
                 return Ok(true);
             }
             let mut combined = base;

@@ -23,6 +23,9 @@ macro_rules! trace_kind_name {
             TraceRecordKind::KeyboardSubmissionRejected => "keyboard_submission_rejected",
             TraceRecordKind::KeyboardProcessingValidated => "keyboard_processing_validated",
             TraceRecordKind::KeyboardDefaultPrevented => "keyboard_default_prevented",
+            TraceRecordKind::FocusGroupTypeAheadCapacityRejected => {
+                "focus_group_type_ahead_capacity_rejected"
+            }
             TraceRecordKind::KeyboardEnterActivationDerived => "keyboard_enter_activation_derived",
             TraceRecordKind::KeyboardSpaceOwnershipEstablished => {
                 "keyboard_space_ownership_established"
