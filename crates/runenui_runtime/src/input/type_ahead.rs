@@ -37,6 +37,11 @@ impl FocusGroupTypeAheadState {
         }
     }
 
+    #[must_use]
+    pub(crate) const fn is_active(&self) -> bool {
+        self.group.is_some()
+    }
+
     pub(crate) fn clear(&mut self) {
         self.group = None;
         self.policy = None;

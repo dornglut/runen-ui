@@ -219,7 +219,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     #[cfg(feature = "internal-test-seams")]
     pub(crate) const fn focus_group_type_ahead_active_for_test(&self) -> bool {
-        self.focus_group_type_ahead.is_some()
+        self.focus_group_type_ahead.is_active()
     }
 
     #[cfg(feature = "internal-test-seams")]
