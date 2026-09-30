@@ -218,6 +218,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn focus_group_type_ahead_active_for_test(&self) -> bool {
+        self.focus_group_type_ahead.is_some()
+    }
+
+    #[cfg(feature = "internal-test-seams")]
     pub(crate) fn routed_sequence_state_for_test(&self) -> (Option<u64>, Option<u64>) {
         (
             self.queue.next_sequence().map(WorkSequence::get),

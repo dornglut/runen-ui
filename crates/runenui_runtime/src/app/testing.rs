@@ -81,6 +81,13 @@ impl<App: UiApp> AppRuntime<App> {
 
     #[cfg(feature = "internal-test-seams")]
     #[doc(hidden)]
+    #[must_use]
+    pub const fn __focus_group_type_ahead_active_for_test(&self) -> bool {
+        self.runtime.focus_group_type_ahead_active_for_test()
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
     pub fn __routed_sequence_state_for_test(&self) -> (Option<u64>, Option<u64>) {
         self.runtime.routed_sequence_state_for_test()
     }

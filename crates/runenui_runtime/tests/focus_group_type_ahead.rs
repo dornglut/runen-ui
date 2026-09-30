@@ -490,6 +490,38 @@ fn fresh_prefix_no_match_keeps_focus_stable_until_a_later_character_recovers() {
     assert_focus(&mut runtime, "one");
 }
 
+#[cfg(feature = "internal-test-seams")]
+#[test]
+fn terminal_and_shutdown_clear_private_type_ahead_state() {
+    let mut terminal = AppRuntime::<App>::mount(State::manual());
+    settle(&mut terminal);
+    focus(&mut terminal, "three");
+    type_character(&mut terminal, "a");
+    assert!(terminal.__focus_group_type_ahead_active_for_test());
+
+    let target = id(&mut terminal, "one");
+    terminal.__seed_next_work_sequence_for_test(0);
+    assert!(
+        terminal
+            .submit_command(
+                target,
+                SemanticCommand::OpenContextMenu,
+                CommandOrigin::programmatic(),
+            )
+            .is_err()
+    );
+    assert!(matches!(terminal.status(), RuntimeStatus::Terminal(_)));
+    assert!(!terminal.__focus_group_type_ahead_active_for_test());
+
+    let mut shutdown = AppRuntime::<App>::mount(State::manual());
+    settle(&mut shutdown);
+    focus(&mut shutdown, "three");
+    type_character(&mut shutdown, "a");
+    assert!(shutdown.__focus_group_type_ahead_active_for_test());
+    shutdown.shutdown();
+    assert!(!shutdown.__focus_group_type_ahead_active_for_test());
+}
+
 #[test]
 fn type_ahead_attempt_commits_keyboard_modality_even_without_a_match() {
     let mut runtime = AppRuntime::<App>::mount(State::manual());
