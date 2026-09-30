@@ -6,7 +6,8 @@ use runenui_core::{
     CommandOrigin, EditIntent, EditableContribution, EditingSessionPolicy, Element, EventContext,
     EventPhase, FocusGroup, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy,
     FocusGroupTypeAhead, FocusGroupTypeAheadError, FocusReason, FocusScope, Focusability,
-    KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
+    InputModality, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
+    KeyboardPhase, LogicalKey,
     NoHostProtocol, PhysicalKey, SemanticCommand, TextDocumentId, TextDocumentRevision,
     TextDocumentSnapshot, TextPosition, TextSelection, TextSensitivity, UiApp, UiEvent, View,
     Widget, WidgetEventOutput, WidgetTextInput, button, column,
@@ -476,6 +477,19 @@ fn fresh_prefix_no_match_keeps_focus_stable_until_a_later_character_recovers() {
 
     type_character(&mut runtime, "a");
     assert_focus(&mut runtime, "one");
+}
+
+#[test]
+fn type_ahead_attempt_commits_keyboard_modality_even_without_a_match() {
+    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    settle(&mut runtime);
+    focus(&mut runtime, "three");
+    let beta = id(&mut runtime, "three");
+    assert_eq!(runtime.focus().modality(), Some(InputModality::Programmatic));
+
+    type_character(&mut runtime, "z");
+    assert_eq!(runtime.focus().focused_node(), Some(&beta));
+    assert_eq!(runtime.focus().modality(), Some(InputModality::Keyboard));
 }
 
 #[test]
