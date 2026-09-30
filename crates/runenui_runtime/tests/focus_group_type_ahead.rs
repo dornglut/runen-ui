@@ -613,6 +613,150 @@ fn unit_group(id: &'static str, prefix: &'static str) -> Element<()> {
     .focus_group(FocusGroup::new().with_type_ahead(type_ahead()))
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PolicyResetAction {
+    Disable,
+    EnableDefault,
+    ChangeTimeout,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PolicyResetState {
+    enabled: bool,
+    timeout_ms: u64,
+}
+
+struct PolicyResetApp;
+
+impl UiApp for PolicyResetApp {
+    type State = PolicyResetState;
+    type Action = PolicyResetAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &PolicyResetState) -> Element<PolicyResetAction> {
+        let member = |id: &'static str, search: &'static str| {
+            button(id)
+                .id(id)
+                .key(id)
+                .into_element()
+                .with_focusability(Focusability::Focusable)
+                .focus_group_search_text(search)
+        };
+        let mut group = FocusGroup::new();
+        if state.enabled {
+            group = group.with_type_ahead(
+                FocusGroupTypeAhead::new(Duration::from_millis(state.timeout_ms))
+                    .unwrap_or_else(|_| unreachable!("policy fixture timeout is bounded")),
+            );
+        }
+        column(vec![
+            member("policy.zulu", "zulu"),
+            member("policy.alpha", "alpha"),
+            member("policy.alpine", "alpine"),
+            member("policy.lima", "lima"),
+        ])
+        .id("policy.group")
+        .key("policy.group")
+        .into_element()
+        .focus_group(group)
+    }
+
+    fn update(state: &mut PolicyResetState, action: PolicyResetAction) {
+        match action {
+            PolicyResetAction::Disable => state.enabled = false,
+            PolicyResetAction::EnableDefault => {
+                state.enabled = true;
+                state.timeout_ms = 500;
+            }
+            PolicyResetAction::ChangeTimeout => {
+                state.enabled = true;
+                state.timeout_ms = 700;
+            }
+        }
+    }
+}
+
+fn policy_id(runtime: &mut AppRuntime<PolicyResetApp>, authored: &str) -> MountedNodeId {
+    let authored = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("policy-reset fixture node is mounted"))
+        .id()
+        .clone()
+}
+
+fn policy_focus(runtime: &mut AppRuntime<PolicyResetApp>, authored: &str) {
+    let target = policy_id(runtime, authored);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("policy-reset focus is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+}
+
+fn policy_character(runtime: &mut AppRuntime<PolicyResetApp>, character: &str) {
+    runtime
+        .submit_keyboard(key(character))
+        .unwrap_or_else(|_| unreachable!("policy-reset keyboard input is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+}
+
+fn policy_action(runtime: &mut AppRuntime<PolicyResetApp>, action: PolicyResetAction) {
+    runtime
+        .submit_action(action)
+        .unwrap_or_else(|_| unreachable!("policy-reset action is admitted"));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+}
+
+#[test]
+fn disabling_or_reauthoring_type_ahead_policy_clears_the_prefix() {
+    let mut runtime = AppRuntime::<PolicyResetApp>::mount(PolicyResetState {
+        enabled: true,
+        timeout_ms: 500,
+    });
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+
+    policy_focus(&mut runtime, "policy.zulu");
+    policy_character(&mut runtime, "a");
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&policy_id(&mut runtime, "policy.alpha"))
+    );
+
+    policy_action(&mut runtime, PolicyResetAction::Disable);
+    policy_action(&mut runtime, PolicyResetAction::EnableDefault);
+    policy_character(&mut runtime, "l");
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&policy_id(&mut runtime, "policy.lima"))
+    );
+
+    policy_focus(&mut runtime, "policy.zulu");
+    policy_character(&mut runtime, "a");
+    policy_action(&mut runtime, PolicyResetAction::ChangeTimeout);
+    policy_character(&mut runtime, "l");
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&policy_id(&mut runtime, "policy.lima"))
+    );
+}
+
 struct ResetBoundaryApp;
 
 impl UiApp for ResetBoundaryApp {
