@@ -5,8 +5,7 @@ use std::time::Duration;
 use runenui_core::{
     CommandOrigin, Element, EventContext, EventPhase, FocusGroup, FocusGroupActivationPolicy,
     FocusGroupBoundaryPolicy, FocusGroupTypeAhead, FocusReason, FocusScope, Focusability,
-    KeyLocation,
-    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
+    KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
     NoHostProtocol, PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetEventOutput,
     button, column,
 };
@@ -345,7 +344,6 @@ fn trace_export_remains_redacted_and_replay_compatible() {
     assert!(replay.is_complete());
 }
 
-
 #[test]
 fn fresh_prefix_no_match_keeps_focus_stable_until_a_later_character_recovers() {
     let mut runtime = AppRuntime::<App>::mount(State::manual());
@@ -562,10 +560,7 @@ impl UiApp for ReplacementApp {
     }
 }
 
-fn replacement_id(
-    runtime: &mut AppRuntime<ReplacementApp>,
-    authored: &str,
-) -> MountedNodeId {
+fn replacement_id(runtime: &mut AppRuntime<ReplacementApp>, authored: &str) -> MountedNodeId {
     let authored = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
     runtime
         .index()
