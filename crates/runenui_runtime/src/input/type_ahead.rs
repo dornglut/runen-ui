@@ -9,7 +9,7 @@ use crate::{
         FocusGroupTypeAheadContext, focus_group_type_ahead_context,
         select_focus_group_type_ahead_match,
     },
-    runtime::{RoutedTransaction, Runtime},
+    runtime::Runtime,
 };
 
 const TYPE_AHEAD_MAX_BYTES: usize = 64;
@@ -136,7 +136,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
-    fn keyboard_type_ahead_context(
+    pub(super) fn keyboard_type_ahead_context(
         &self,
         event: &KeyboardEvent,
         target: &MountedNodeId,
@@ -159,7 +159,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         focus_group_type_ahead_context(&self.tree, &self.focus, target)
     }
 
-    fn collect_focus_group_type_ahead_default(
+    pub(super) fn collect_focus_group_type_ahead_default(
         &mut self,
         transaction: &mut crate::runtime::RoutedTransaction<Action>,
         event: &KeyboardEvent,
