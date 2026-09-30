@@ -430,10 +430,12 @@ fn capacity_accepts_exact_64_scalar_256_byte_boundary() {
     type_character(&mut runtime, &exact_boundary);
 
     assert_eq!(runtime.focus().focused_node(), Some(&alpha));
-    assert!(!runtime.trace().kinds().any(|kind| matches!(
-        kind,
-        TraceRecordKind::FocusGroupTypeAheadCapacityRejected
-    )));
+    assert!(
+        !runtime
+            .trace()
+            .kinds()
+            .any(|kind| matches!(kind, TraceRecordKind::FocusGroupTypeAheadCapacityRejected))
+    );
 }
 
 #[test]
