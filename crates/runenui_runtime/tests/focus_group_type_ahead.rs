@@ -495,27 +495,21 @@ fn group_transfer_and_focus_departure_clear_the_exact_group_buffer() {
 
     reset_focus(&mut runtime, "a.zulu");
     reset_character(&mut runtime, "a");
-    assert_eq!(
-        runtime.focus().focused_node(),
-        Some(&reset_id(&mut runtime, "a.alpha"))
-    );
+    let a_alpha = reset_id(&mut runtime, "a.alpha");
+    assert_eq!(runtime.focus().focused_node(), Some(&a_alpha));
 
     reset_focus(&mut runtime, "b.zulu");
     reset_character(&mut runtime, "l");
-    assert_eq!(
-        runtime.focus().focused_node(),
-        Some(&reset_id(&mut runtime, "b.lima"))
-    );
+    let b_lima = reset_id(&mut runtime, "b.lima");
+    assert_eq!(runtime.focus().focused_node(), Some(&b_lima));
 
     reset_focus(&mut runtime, "a.zulu");
     reset_character(&mut runtime, "a");
     reset_focus(&mut runtime, "outside");
     reset_focus(&mut runtime, "a.zulu");
     reset_character(&mut runtime, "l");
-    assert_eq!(
-        runtime.focus().focused_node(),
-        Some(&reset_id(&mut runtime, "a.lima"))
-    );
+    let a_lima = reset_id(&mut runtime, "a.lima");
+    assert_eq!(runtime.focus().focused_node(), Some(&a_lima));
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -615,9 +609,10 @@ fn owner_replacement_retires_buffer_with_the_old_exact_group_lifetime() {
 
     replacement_focus(&mut runtime, "replace.zulu");
     replacement_character(&mut runtime, "l");
+    let replacement_lima = replacement_id(&mut runtime, "replace.lima");
     assert_eq!(
         runtime.focus().focused_node(),
-        Some(&replacement_id(&mut runtime, "replace.lima"))
+        Some(&replacement_lima)
     );
 }
 
@@ -698,10 +693,8 @@ fn nested_group_search_enters_existing_target_and_nested_scope_is_not_searchable
         .submit_keyboard(key("n"))
         .unwrap_or_else(|_| unreachable!("nested-group search is admitted"));
     nested.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
-    assert_eq!(
-        nested.focus().focused_node(),
-        Some(&nested_id(&mut nested, "nested.first"))
-    );
+    let nested_first = nested_id(&mut nested, "nested.first");
+    assert_eq!(nested.focus().focused_node(), Some(&nested_first));
 
     let mut scoped = AppRuntime::<NestedBoundaryApp>::mount(());
     scoped.pump(PumpBudget::new(
@@ -719,6 +712,7 @@ fn nested_group_search_enters_existing_target_and_nested_scope_is_not_searchable
     assert_eq!(scoped.focus().focused_node(), Some(&current));
 }
 
+#[derive(Debug)]
 struct PreventingMember {
     prevent: bool,
 }
