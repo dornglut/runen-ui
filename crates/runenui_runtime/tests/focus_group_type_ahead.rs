@@ -6,8 +6,8 @@ use runenui_core::{
     CommandOrigin, EditIntent, EditableContribution, EditingSessionPolicy, Element, EventContext,
     EventPhase, FocusGroup, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy,
     FocusGroupTypeAhead, FocusGroupTypeAheadError, FocusReason, FocusScope, Focusability,
-    InputModality, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
-    KeyboardPhase, LogicalKey,
+    InputModality, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase,
+    LogicalKey,
     NoHostProtocol, PhysicalKey, SemanticCommand, TextDocumentId, TextDocumentRevision,
     TextDocumentSnapshot, TextPosition, TextSelection, TextSensitivity, UiApp, UiEvent, View,
     Widget, WidgetEventOutput, WidgetTextInput, button, column,
@@ -485,7 +485,10 @@ fn type_ahead_attempt_commits_keyboard_modality_even_without_a_match() {
     settle(&mut runtime);
     focus(&mut runtime, "three");
     let beta = id(&mut runtime, "three");
-    assert_eq!(runtime.focus().modality(), Some(InputModality::Programmatic));
+    assert_eq!(
+        runtime.focus().modality(),
+        Some(InputModality::Programmatic)
+    );
 
     type_character(&mut runtime, "z");
     assert_eq!(runtime.focus().focused_node(), Some(&beta));
