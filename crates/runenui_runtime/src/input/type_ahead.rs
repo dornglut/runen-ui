@@ -86,6 +86,10 @@ impl FocusGroupTypeAheadState {
     }
 
     fn apply(&mut self, update: FocusGroupTypeAheadUpdate) {
+        if update.buffer.is_empty() {
+            self.clear();
+            return;
+        }
         self.group = Some(update.group);
         self.policy = Some(update.policy);
         self.buffer = update.buffer;
