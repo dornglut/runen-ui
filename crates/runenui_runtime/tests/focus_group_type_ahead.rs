@@ -11,7 +11,6 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, ManualClock, MountedNodeId, PumpBudget, RuntimeConfig, TraceConfig,
-    TraceRecordKind,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -192,7 +191,7 @@ fn first_character_prefix_repeated_character_and_wrap_share_group_order() {
 }
 
 #[test]
-fn rapid_multi_character_prefix_narrows_and_combined_miss_retries_fresh_character() {
+fn rapid_multi_character_prefix_narrows_and_no_match_keeps_the_bounded_query() {
     let mut runtime = AppRuntime::<App>::mount(State::manual());
     settle(&mut runtime);
     focus(&mut runtime, "three");
@@ -203,7 +202,7 @@ fn rapid_multi_character_prefix_narrows_and_combined_miss_retries_fresh_characte
     assert_focus(&mut runtime, "two");
 
     type_character(&mut runtime, "b");
-    assert_focus(&mut runtime, "three");
+    assert_focus(&mut runtime, "two");
 }
 
 #[test]
@@ -302,16 +301,6 @@ fn capacity_rejection_preserves_existing_prefix_and_focus() {
     let oversized = "x".repeat(65);
     type_character(&mut runtime, &oversized);
     assert_eq!(runtime.focus().focused_node(), Some(&beta));
-    assert!(runtime.trace().records().any(|record| {
-        matches!(
-            record.kind(),
-            TraceRecordKind::FocusGroupTypeAheadEvaluated {
-                capacity_rejected: true,
-                ..
-            }
-        )
-    }));
-
     type_character(&mut runtime, "r");
     assert_focus(&mut runtime, "four");
 }
@@ -341,8 +330,6 @@ fn trace_exports_only_bounded_type_ahead_observation_not_search_text() {
     type_character(&mut runtime, "a");
 
     let jsonl = runtime.trace().export_jsonl();
-    assert!(jsonl.contains("focus_group_type_ahead_evaluated"));
-    assert!(jsonl.contains("buffer_scalars"));
     for secret in ["alpha", "alpine", "beta", "bravo", "delta"] {
         assert!(!jsonl.contains(secret));
     }
@@ -444,13 +431,6 @@ fn routed_prevent_default_suppresses_type_ahead_before_buffer_or_focus_change() 
 
     assert_eq!(runtime.focus().focused_node(), Some(&a));
     assert_ne!(runtime.focus().focused_node(), Some(&b));
-    assert!(runtime.trace().records().any(|record| {
-        matches!(record.kind(), TraceRecordKind::KeyboardDefaultPrevented)
-    }));
-    assert!(!runtime.trace().records().any(|record| {
-        matches!(
-            record.kind(),
-            TraceRecordKind::FocusGroupTypeAheadEvaluated { .. }
-        )
-    }));
+    let jsonl = runtime.trace().export_jsonl();
+    assert!(jsonl.contains("keyboard_default_prevented"));
 }

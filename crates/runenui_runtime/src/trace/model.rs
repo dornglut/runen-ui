@@ -170,11 +170,6 @@ pub enum TraceRecordKind {
     KeyboardSubmissionRejected,
     KeyboardProcessingValidated,
     KeyboardDefaultPrevented,
-    FocusGroupTypeAheadEvaluated {
-        buffer_scalars: usize,
-        matched: bool,
-        capacity_rejected: bool,
-    },
     KeyboardEnterActivationDerived,
     KeyboardSpaceOwnershipEstablished,
     KeyboardSpaceReleaseMatched {

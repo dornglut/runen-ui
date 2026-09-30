@@ -1084,10 +1084,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return;
         }
         let transaction_result = if type_ahead_context.is_some() {
-            let trace = MandatoryTracePlan::input_processing()
-                .checked_add(MandatoryTracePlan::one_fact())
-                .unwrap_or_else(|| unreachable!("type-ahead input trace plan is bounded"));
-            self.try_begin_focus_input_transaction(facts, trace, mandatory_default_commands)
+            self.try_begin_focus_input_transaction(
+                facts,
+                MandatoryTracePlan::input_processing(),
+                mandatory_default_commands,
+            )
         } else {
             self.try_begin_routed_transaction_with_trace_and_default_commands(
                 facts,

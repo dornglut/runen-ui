@@ -172,14 +172,14 @@ pub enum FocusGroupActivationPolicy {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FocusGroupTypeAheadError {
     ZeroTimeout,
-    TimeoutTooLong,
+    TimeoutOverflow,
 }
 
 impl fmt::Display for FocusGroupTypeAheadError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ZeroTimeout => formatter.write_str("focus-group type-ahead timeout must be positive"),
-            Self::TimeoutTooLong => formatter.write_str("focus-group type-ahead timeout exceeds the bounded maximum"),
+            Self::TimeoutOverflow => formatter.write_str("focus-group type-ahead timeout exceeds the monotonic-time domain"),
         }
     }
 }
@@ -193,20 +193,17 @@ pub struct FocusGroupTypeAhead {
 }
 
 impl FocusGroupTypeAhead {
-    /// Maximum authored timeout retained by the M11 bounded type-ahead contract.
-    pub const MAX_TIMEOUT: Duration = Duration::from_secs(10);
-
-    /// Creates a positive, explicitly bounded type-ahead timeout.
+    /// Creates a positive timeout representable by RunenUI's monotonic nanosecond clock.
     ///
     /// # Errors
     ///
-    /// Returns an error for zero or values above the bounded maximum.
+    /// Returns an error for zero or values outside the monotonic u64 nanosecond domain.
     pub const fn new(timeout: Duration) -> Result<Self, FocusGroupTypeAheadError> {
         if timeout.is_zero() {
             return Err(FocusGroupTypeAheadError::ZeroTimeout);
         }
-        if timeout.as_nanos() > Self::MAX_TIMEOUT.as_nanos() {
-            return Err(FocusGroupTypeAheadError::TimeoutTooLong);
+        if timeout.as_nanos() > u64::MAX as u128 {
+            return Err(FocusGroupTypeAheadError::TimeoutOverflow);
         }
         Ok(Self { timeout })
     }

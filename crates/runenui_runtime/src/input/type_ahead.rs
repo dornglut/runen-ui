@@ -4,7 +4,6 @@ use runenui_core::{
 };
 
 use crate::{
-    TraceRecordKind,
     focus::{
         FocusGroupTypeAheadContext, focus_group_type_ahead_context,
         select_focus_group_type_ahead_match,
@@ -12,8 +11,8 @@ use crate::{
     runtime::Runtime,
 };
 
-const TYPE_AHEAD_MAX_BYTES: usize = 64;
-const TYPE_AHEAD_MAX_SCALARS: usize = 32;
+const TYPE_AHEAD_MAX_BYTES: usize = 256;
+const TYPE_AHEAD_MAX_SCALARS: usize = 64;
 
 /// Private transient type-ahead state for one exact active focus group.
 ///
@@ -153,7 +152,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return None;
         }
         let modifiers = event.modifiers();
-        if modifiers.control() || modifiers.alt() || modifiers.meta() {
+        if modifiers.control()
+            || modifiers.alt()
+            || modifiers.meta()
+            || self.editing.has_owner(target)
+        {
             return None;
         }
         focus_group_type_ahead_context(&self.tree, &self.focus, target)
@@ -172,13 +175,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Ok(false);
         };
         let Some((fragment, fragment_scalars)) = lowercase_type_ahead_fragment(character) else {
-            self.record_focus_group_type_ahead_evaluation(
-                transaction,
-                self.focus_group_type_ahead.scalar_count,
-                false,
-                true,
-                &context.group,
-            );
             return Ok(true);
         };
 
@@ -234,70 +230,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             (combined, query_scalars)
         };
 
-        let mut retained_query = query;
-        let mut retained_scalars = query_scalars;
-        let mut matched = select_focus_group_type_ahead_match(
+        let matched = select_focus_group_type_ahead_match(
             &mut self.tree,
             &self.focus,
             &context.group,
-            &retained_query,
+            &query,
         );
-        if matched.is_none()
-            && session_current
-            && retained_query != fragment
-        {
-            retained_query = fragment;
-            retained_scalars = fragment_scalars;
-            matched = select_focus_group_type_ahead_match(
-                &mut self.tree,
-                &self.focus,
-                &context.group,
-                &retained_query,
-            );
-        }
 
         transaction.focus_group_type_ahead_update = Some(FocusGroupTypeAheadUpdate::new(
             &context,
-            retained_query,
-            retained_scalars,
+            query,
+            query_scalars,
             transaction.instant,
         ));
-        let observation_target = matched.as_ref().unwrap_or(&context.group);
-        self.record_focus_group_type_ahead_evaluation(
-            transaction,
-            retained_scalars,
-            matched.is_some(),
-            false,
-            observation_target,
-        );
         if let Some(destination) = matched {
             self.apply_focus_group_destination(transaction, destination, context.activation)?;
         }
         Ok(true)
-    }
-
-    fn record_focus_group_type_ahead_evaluation(
-        &mut self,
-        transaction: &mut crate::runtime::RoutedTransaction<Action>,
-        buffer_scalars: usize,
-        matched: bool,
-        capacity_rejected: bool,
-        observation_target: &MountedNodeId,
-    ) {
-        transaction.parent = self.trace.record_event(
-            TraceRecordKind::FocusGroupTypeAheadEvaluated {
-                buffer_scalars,
-                matched,
-                capacity_rejected,
-            },
-            transaction.sequence,
-            transaction.parent,
-            Some(self.tree.trace_target(observation_target)),
-            transaction.instant,
-            &transaction.target,
-            Some(observation_target),
-            transaction.origin,
-        );
     }
 
 }
