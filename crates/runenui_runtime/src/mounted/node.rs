@@ -28,6 +28,7 @@ pub(crate) struct MountedNode<Action> {
     pub(crate) focus_scope: Option<FocusScope>,
     pub(crate) focus_group: Option<FocusGroup>,
     pub(crate) focus_group_entry: FocusGroupEntry,
+    pub(crate) focus_group_search_text: Option<String>,
     pub(crate) authoring_diagnostics: Vec<AuthoringDiagnostic>,
     pub(crate) widget: MountedWidget<Action>,
     pub(crate) state: MountedWidgetState,
@@ -140,6 +141,10 @@ impl<'a, Action> MountedNodeRef<'a, Action> {
     #[must_use]
     pub const fn focus_group_entry(&self) -> FocusGroupEntry {
         self.node.focus_group_entry
+    }
+    #[must_use]
+    pub fn focus_group_search_text(&self) -> Option<&'a str> {
+        self.node.focus_group_search_text.as_deref()
     }
     #[must_use]
     pub const fn interaction(&self) -> InteractionStateRef<'a> {
