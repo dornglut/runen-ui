@@ -172,6 +172,7 @@ fn reconstructs_counter_activation(replay: &TraceReplay) -> bool {
     })
 }
 
+#[allow(clippy::assert_is_empty)]
 fn counter_jsonl() -> String {
     let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
     settle(&mut runtime);
@@ -195,7 +196,7 @@ fn counter_jsonl() -> String {
     let publication = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("counter replay publication is admitted"));
-    assert!(publication.frame().nodes().first().is_some());
+    assert!(!publication.frame().nodes().is_empty());
 
     runtime.trace().export_jsonl()
 }

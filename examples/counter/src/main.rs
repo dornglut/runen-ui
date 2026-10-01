@@ -225,12 +225,13 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn counter_state_changes_have_distinct_literal_paint_publications() {
         let zero = published_paint_colors(Counter::new());
         let one = published_paint_colors(Counter { count: 1 });
         let win = published_paint_colors(Counter { count: WIN_COUNT });
 
-        assert!(zero.first().is_some());
+        assert!(!zero.is_empty());
         assert_ne!(zero, one);
         assert_ne!(one, win);
     }
