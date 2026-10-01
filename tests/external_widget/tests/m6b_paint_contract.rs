@@ -274,7 +274,7 @@ fn independent_fixed_opacity_compositor_decodes_srgb_and_uses_source_over_scene_
     assert_close(srgb8_to_linear(128), 0.215_860_53);
     assert_close(red_then_blue[0], alpha * (1.0 - alpha));
     assert_close(red_then_blue[2], alpha);
-    assert_close(red_then_blue[3], alpha + alpha * (1.0 - alpha));
+    assert_close(red_then_blue[3], alpha.mul_add(1.0 - alpha, alpha));
     assert_close(blue_then_red[0], alpha);
     assert_close(blue_then_red[2], alpha * (1.0 - alpha));
     assert!(
