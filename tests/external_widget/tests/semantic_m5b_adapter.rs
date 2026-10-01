@@ -1,3 +1,5 @@
+#![allow(clippy::assert_is_empty)]
+
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{

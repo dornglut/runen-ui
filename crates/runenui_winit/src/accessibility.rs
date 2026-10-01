@@ -4,7 +4,14 @@
 //! callback plumbing. `RunenUI` semantic publication and action ingress remain the
 //! only semantic/runtime authorities.
 
-#![cfg_attr(test, allow(clippy::ignored_unit_patterns, clippy::unwrap_used))]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::assert_is_empty,
+        clippy::ignored_unit_patterns,
+        clippy::unwrap_used
+    )
+)]
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
