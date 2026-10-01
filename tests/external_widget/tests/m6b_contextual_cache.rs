@@ -108,6 +108,7 @@ fn scene_color(publication: &SurfacePublication) -> Color {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn paint_contribution_cache_is_keyed_by_exact_owner_visible_context() {
     let paint_calls = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<App>::mount(State {

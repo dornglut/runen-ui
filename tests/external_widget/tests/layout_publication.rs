@@ -219,6 +219,7 @@ impl UiApp for CountingApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn measurement_callbacks_are_transaction_local_and_clean_publication_reuses_products() {
     let panel = Rc::new(Cell::new(0));
     let layout = Rc::new(Cell::new(0));
