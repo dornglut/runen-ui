@@ -504,8 +504,8 @@ fn validate_buffers(
 }
 
 #[cfg(test)]
-#[allow(clippy::assert_is_empty)]
 mod tests {
+    #![allow(clippy::assert_is_empty)]
     use lyon_tessellation::path::Event;
     use runenui_core::{
         LogicalLength, LogicalPoint, LogicalRect, PathFillRule, PathVerb, Radius, ScenePath,

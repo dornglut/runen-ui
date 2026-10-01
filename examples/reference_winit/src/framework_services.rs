@@ -281,8 +281,8 @@ const fn cursor_icon(shape: CursorShape) -> CursorIcon {
 }
 
 #[cfg(test)]
-#[allow(clippy::assert_is_empty)]
 mod tests {
+    #![allow(clippy::assert_is_empty)]
     use super::{NativeFrameworkServices, cursor_icon, map_clipboard_error, native_clipboard_text};
     use std::{
         num::{NonZeroU32, NonZeroU64},

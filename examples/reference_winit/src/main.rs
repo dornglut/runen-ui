@@ -2306,8 +2306,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(test)]
-#[allow(clippy::assert_is_empty)]
 mod tests {
+    #![allow(clippy::assert_is_empty)]
     use super::{
         AppRuntime, CommandOrigin, CommittedTextEvent, DemoApp, DemoHistoryEntry, DemoState,
         DisplayedFrame, HOST_PUMP_BUDGET, INITIAL_EDITOR_TEXT, KeyboardEvent, LARGE_DOCUMENT_LINES,

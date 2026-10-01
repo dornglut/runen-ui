@@ -567,8 +567,8 @@ fn create_image_pipeline(
 }
 
 #[cfg(test)]
-#[allow(clippy::assert_is_empty)]
 mod tests {
+    #![allow(clippy::assert_is_empty)]
     use runenui_core::{
         ImageIntrinsicSize, LogicalRect, LogicalTransform, ResourceKind, ResourceRef, SceneOpacity,
     };

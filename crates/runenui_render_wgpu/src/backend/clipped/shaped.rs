@@ -1092,8 +1092,8 @@ fn create_shaped_pipeline(
 }
 
 #[cfg(test)]
-#[allow(clippy::assert_is_empty)]
 mod tests {
+    #![allow(clippy::assert_is_empty)]
     use std::sync::Arc;
 
     use runenui_core::{
