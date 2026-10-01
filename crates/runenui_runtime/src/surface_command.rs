@@ -146,6 +146,7 @@ impl SubmitSurfaceCommandError {
     }
 
     /// Borrows the exact unaccepted request.
+    #[must_use]
     pub const fn unaccepted(&self) -> &UnacceptedSurfaceCommand {
         &self.unaccepted
     }

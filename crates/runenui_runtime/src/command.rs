@@ -114,6 +114,7 @@ impl SubmitCommandError {
     }
 
     /// Borrows the exact unaccepted command.
+    #[must_use]
     pub const fn unaccepted(&self) -> &UnacceptedCommand {
         &self.unaccepted
     }
