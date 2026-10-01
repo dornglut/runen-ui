@@ -195,7 +195,7 @@ fn counter_jsonl() -> String {
     let publication = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("counter replay publication is admitted"));
-    assert!(!publication.frame().nodes().is_empty());
+    assert!(publication.frame().nodes().first().is_some());
 
     runtime.trace().export_jsonl()
 }

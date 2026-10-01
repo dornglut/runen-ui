@@ -230,7 +230,7 @@ mod tests {
         let one = published_paint_colors(Counter { count: 1 });
         let win = published_paint_colors(Counter { count: WIN_COUNT });
 
-        assert!(!zero.is_empty());
+        assert!(zero.first().is_some());
         assert_ne!(zero, one);
         assert_ne!(one, win);
     }
