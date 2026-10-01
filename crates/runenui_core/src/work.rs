@@ -153,7 +153,6 @@ impl<Action> TimerEffect<Action> {
     }
 
     #[doc(hidden)]
-    #[must_use]
     pub fn __runtime_into_parts(self) -> TimerEffectParts<Action> {
         (self.key, self.delay, self.interval, self.action)
     }
