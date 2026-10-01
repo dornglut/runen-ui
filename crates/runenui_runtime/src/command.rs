@@ -114,7 +114,7 @@ impl SubmitCommandError {
     }
 
     /// Borrows the exact unaccepted command.
-    #[must_use]
+    #[allow(clippy::must_use_candidate)]
     pub const fn unaccepted(&self) -> &UnacceptedCommand {
         &self.unaccepted
     }

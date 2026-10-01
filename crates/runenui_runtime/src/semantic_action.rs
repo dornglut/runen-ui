@@ -49,7 +49,7 @@ impl SubmitSemanticActionError {
     }
 
     /// Borrows the exact semantic request that did not enter the canonical FIFO.
-    #[must_use]
+    #[allow(clippy::must_use_candidate)]
     pub const fn request(&self) -> &SemanticActionRequest {
         &self.request
     }
