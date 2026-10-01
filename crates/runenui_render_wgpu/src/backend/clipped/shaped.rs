@@ -1006,6 +1006,8 @@ fn glyph_vertex_bytes(
     Some(bytes)
 }
 
+// Preserve the existing non-fused arithmetic and its established rounding behavior.
+#[allow(clippy::suboptimal_flops)]
 fn atlas_uv(
     logical_coordinate: f64,
     logical_extent: f64,
