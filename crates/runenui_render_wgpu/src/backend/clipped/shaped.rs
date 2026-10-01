@@ -1092,6 +1092,7 @@ fn create_shaped_pipeline(
 }
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use std::sync::Arc;
 

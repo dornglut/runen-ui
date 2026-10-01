@@ -412,6 +412,7 @@ fn position_point(
 }
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use runenui_core::{FontFamilyName, GenericFontFamily, LogicalPoint, Typography};
     use runenui_text::{FontSourcePolicy, TextConstraints, TextRequest, TextSystem};

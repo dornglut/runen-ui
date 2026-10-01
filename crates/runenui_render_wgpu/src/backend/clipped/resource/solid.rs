@@ -763,6 +763,7 @@ fn coverage_vertex_bytes(
 }
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use runenui_core::{
         Brush, Color, GradientStop, GradientStops, LinearGradient, LogicalLength, LogicalPoint,
