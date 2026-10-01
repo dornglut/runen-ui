@@ -1,4 +1,5 @@
 #![allow(refining_impl_trait)]
+#![allow(clippy::assert_is_empty)]
 
 use core::{future::Future, pin::pin, task::Poll};
 use std::{
