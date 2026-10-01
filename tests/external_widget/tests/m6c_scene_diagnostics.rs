@@ -180,6 +180,7 @@ fn publish(
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn singular_scene_diagnostics_are_public_fail_closed_and_cleared_by_their_owning_phase() {
     let mut runtime = AppRuntime::<SceneDiagnosticApp>::mount(SceneDiagnosticState {
         paint_singular: true,
