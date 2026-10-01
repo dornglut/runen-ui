@@ -351,10 +351,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(())
     }
 
-    pub(in crate::runtime) fn commit_pending_modality(
-        &mut self,
-        transaction: &mut RoutedTransaction<Action>,
-    ) {
+    pub(crate) fn commit_pending_modality(&mut self, transaction: &mut RoutedTransaction<Action>) {
         let modality = transaction.pending_modality;
         let previous = self.focus.modality();
         if self.focus.set_modality(modality).is_some() && self.trace.is_enabled() {
@@ -398,12 +395,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Some(target) = selection.target else {
             return Ok(());
         };
-        let moved = self.focus.focused_node() != Some(&target);
-        let reveal_route = moved
-            .then(|| self.checked_focus_route(&target))
-            .transpose()?;
+        self.apply_focus_group_destination(transaction, target, selection.activation)
+    }
+
+    pub(crate) fn apply_focus_group_destination(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        target: MountedNodeId,
+        activation: runenui_core::FocusGroupActivationPolicy,
+    ) -> Result<(), TraceRoutedIntegrityFailure> {
+        if self.focus.focused_node() == Some(&target) {
+            return Ok(());
+        }
+        let reveal_route = self.checked_focus_route(&target)?;
         let activate_target =
-            selection.activation == runenui_core::FocusGroupActivationPolicy::ActivateTarget;
+            activation == runenui_core::FocusGroupActivationPolicy::ActivateTarget;
         if activate_target {
             transaction.consume_mandatory_default_command()?;
         }
@@ -412,9 +418,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Some(target.clone()),
             FocusReason::GroupNavigation,
         )?;
-        if let Some(route) = reveal_route.as_deref() {
-            self.apply_scroll_into_view_target(transaction, &target, route);
-        }
+        self.apply_scroll_into_view_target(transaction, &target, &reveal_route);
         if activate_target {
             transaction
                 .default_outputs
@@ -608,6 +612,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
         self.focus
             .commit(new_target.clone(), new_route.clone(), reason);
+        self.reconcile_focus_group_type_ahead_state();
         if let Some(target) = new_target.as_ref() {
             for scope in new_route.iter().filter(|scope| {
                 self.tree.node(scope).is_some_and(|node| {
@@ -862,6 +867,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface,
         } = cleanup;
         self.focus.commit(None, Vec::new(), reason);
+        self.reconcile_focus_group_type_ahead_state();
         let Some(trace_target) = trace_target else {
             return;
         };

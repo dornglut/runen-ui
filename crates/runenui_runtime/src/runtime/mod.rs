@@ -66,7 +66,7 @@ use crate::{
 
 mod model;
 
-use crate::input::{CompositionState, SpaceOwnership};
+use crate::input::{CompositionState, FocusGroupTypeAheadState, SpaceOwnership};
 use automation::AutomationSubmissionPolicy;
 pub(in crate::runtime) use helpers::{
     CommitError, mounted_effect_into_effect, public_trace_work_identity, trace_work_family,
@@ -95,6 +95,7 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     pub(crate) trace_action_labeler: Option<fn(&Action) -> Option<&'static str>>,
     text_system: TextSystem,
     pub(crate) focus: FocusState,
+    pub(crate) focus_group_type_ahead: FocusGroupTypeAheadState,
     pointer_registry: PointerRegistry,
     pub(crate) space_ownership: Option<SpaceOwnership>,
     pub(crate) composition: CompositionState,

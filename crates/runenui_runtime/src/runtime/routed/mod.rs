@@ -221,6 +221,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
     }
 
+    pub(crate) fn try_begin_focus_input_transaction(
+        &mut self,
+        facts: RoutedIngressFacts,
+        additional_trace: MandatoryTracePlan,
+        mandatory_default_commands: usize,
+    ) -> Result<RoutedTransaction<Action>, RoutedFailureLineage> {
+        let (route, admission) =
+            self.prepare_focus_routed_route(&facts, additional_trace, mandatory_default_commands)?;
+        let pointer_callback_targets = route.clone();
+        Ok(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(in crate::runtime) fn begin_pointer_routed_transaction(
         &mut self,
@@ -328,6 +340,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             scroll_chain_remainder: None,
             pointer_selection_update: None,
             pointer_selection_transition: None,
+            focus_group_type_ahead_update: None,
             pending_modality: modality_for_source(facts.origin.source()),
         }
     }
@@ -347,8 +360,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             ) && focus_group_activation_policy(&self.tree, &self.focus, &facts.target)
                 == Some(runenui_core::FocusGroupActivationPolicy::ActivateTarget),
         );
-        let (route, admission) =
-            self.prepare_focus_routed_route(&facts, mandatory_default_commands)?;
+        let (route, admission) = self
+            .prepare_focus_routed_route(
+                &facts,
+                MandatoryTracePlan::none(),
+                mandatory_default_commands,
+            )
+            .ok()?;
         let pointer_callback_targets = route.clone();
         Some(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
     }

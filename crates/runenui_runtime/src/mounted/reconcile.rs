@@ -72,6 +72,7 @@ pub(super) struct IncomingNode<Action> {
     focus_scope: Option<FocusScope>,
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
+    focus_group_search_text: Option<String>,
     authoring_diagnostics: Vec<runenui_core::AuthoringDiagnostic>,
     widget: MountedWidget<Action>,
     children: Vec<Self>,
@@ -82,6 +83,7 @@ impl<Action> IncomingNode<Action> {
         let parts = element.into_runtime_parts();
         let focus_group = parts.focus_group();
         let focus_group_entry = parts.focus_group_entry();
+        let focus_group_search_text = parts.focus_group_search_text().map(str::to_owned);
         let (
             authored_id,
             key,
@@ -104,6 +106,7 @@ impl<Action> IncomingNode<Action> {
             focus_scope,
             focus_group,
             focus_group_entry,
+            focus_group_search_text,
             authoring_diagnostics,
             widget,
             children: children.into_iter().map(Self::from_element).collect(),
@@ -226,6 +229,7 @@ impl<Action> MountedTree<Action> {
             focus_scope,
             focus_group,
             focus_group_entry,
+            focus_group_search_text,
             authoring_diagnostics,
             widget,
             children,
@@ -245,6 +249,7 @@ impl<Action> MountedTree<Action> {
                 focus_scope,
                 focus_group,
                 focus_group_entry,
+                focus_group_search_text,
                 authoring_diagnostics,
                 widget,
                 children: Vec::new(),
@@ -482,6 +487,7 @@ impl<Action> MountedTree<Action> {
             focus_scope,
             focus_group,
             focus_group_entry,
+            focus_group_search_text,
             authoring_diagnostics,
             widget,
             children: _,
@@ -522,6 +528,7 @@ impl<Action> MountedTree<Action> {
                     focus_scope,
                     focus_group,
                     focus_group_entry,
+                    focus_group_search_text: focus_group_search_text.as_deref(),
                     diagnostics: &authoring_diagnostics,
                 },
             );
@@ -534,6 +541,7 @@ impl<Action> MountedTree<Action> {
             node.focus_scope = focus_scope;
             node.focus_group = focus_group;
             node.focus_group_entry = focus_group_entry;
+            node.focus_group_search_text = focus_group_search_text;
             node.authoring_diagnostics = authoring_diagnostics;
             node.widget = widget;
             // Input capability declarations belong to the incoming widget instance,
@@ -582,6 +590,7 @@ impl<Action> MountedTree<Action> {
             focus_scope,
             focus_group,
             focus_group_entry,
+            focus_group_search_text,
             authoring_diagnostics,
             widget,
             children,
@@ -608,6 +617,7 @@ impl<Action> MountedTree<Action> {
                     focus_scope,
                     focus_group,
                     focus_group_entry,
+                    focus_group_search_text,
                     authoring_diagnostics,
                     widget,
                     state: widget_state,
@@ -754,6 +764,7 @@ struct CommonFieldRefs<'a> {
     focus_scope: Option<FocusScope>,
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
+    focus_group_search_text: Option<&'a str>,
     diagnostics: &'a [runenui_core::AuthoringDiagnostic],
 }
 
@@ -780,6 +791,7 @@ fn common_field_invalidation<Action>(
         || node.focus_scope != incoming.focus_scope
         || node.focus_group != incoming.focus_group
         || node.focus_group_entry != incoming.focus_group_entry
+        || node.focus_group_search_text.as_deref() != incoming.focus_group_search_text
     {
         invalidation |= WidgetInvalidation::INTERACTION;
     }

@@ -282,6 +282,7 @@ pub(crate) fn process_application_action<App: UiApp>(
     }
     runtime.tree.finish_focus_validation();
     runtime.prune_focus_memory();
+    runtime.reconcile_focus_group_type_ahead_state();
     runtime.report = ReconciliationReport {
         generation: after,
         live_node_count: runtime.tree.live_count(),

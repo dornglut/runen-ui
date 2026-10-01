@@ -1,11 +1,13 @@
 #![allow(refining_impl_trait)]
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use runenui_core::{
     CommandOrigin, Element, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusGroup,
-    FocusGroupBoundaryPolicy, FocusGroupEntry, FocusReason, FocusScope, FocusScopePolicy,
-    Focusability, NoHostProtocol, SemanticCommand, UiApp, View, column, container,
+    FocusGroupBoundaryPolicy, FocusGroupEntry, FocusGroupTypeAhead, FocusReason, FocusScope,
+    FocusScopePolicy, Focusability, KeyLocation, KeyModifiers, KeyboardCompositionState,
+    KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey, SemanticCommand, UiApp,
+    View, column, container,
 };
 use runenui_external_widget_conformance::{
     ExternalFocusFact, ExternalFocusWidget, external_focus_panel,
@@ -324,19 +326,29 @@ impl UiApp for ExternalGroupApp {
             vec![
                 Element::new(ExternalFocusWidget::new("a", Rc::clone(state), true))
                     .id("group.a")
-                    .focusable(true),
+                    .focusable(true)
+                    .focus_group_search_text("amber"),
                 Element::new(ExternalFocusWidget::new("b", Rc::clone(state), true))
                     .id("group.b")
                     .focusable(true)
-                    .focus_group_preferred(true),
+                    .focus_group_preferred(true)
+                    .focus_group_search_text("blue"),
                 Element::new(ExternalFocusWidget::new("c", Rc::clone(state), false))
                     .id("group.c")
-                    .with_focusability(Focusability::FocusableWhenDisabled),
+                    .with_focusability(Focusability::FocusableWhenDisabled)
+                    .focus_group_search_text("cyan"),
             ],
         )
         .id("group.root")
         .into_element()
-        .focus_group(FocusGroup::new().with_boundary(FocusGroupBoundaryPolicy::Wrap));
+        .focus_group(
+            FocusGroup::new()
+                .with_boundary(FocusGroupBoundaryPolicy::Wrap)
+                .with_type_ahead(
+                    FocusGroupTypeAhead::new(Duration::from_millis(500))
+                        .unwrap_or_else(|_| unreachable!("downstream timeout is bounded")),
+                ),
+        );
         let after = Element::new(ExternalFocusWidget::new("after", Rc::clone(state), true))
             .id("group.after")
             .focusable(true);
@@ -356,6 +368,19 @@ fn group_id(runtime: &mut AppRuntime<ExternalGroupApp>, authored: &str) -> Mount
         .unwrap_or_else(|| unreachable!("external group node is mounted"))
         .id()
         .clone()
+}
+
+fn group_character(character: &str) -> KeyboardEvent {
+    KeyboardEvent::new(
+        KeyboardPhase::Down,
+        PhysicalKey::Code(String::from("KeyX")),
+        LogicalKey::Character(character.to_owned()),
+        KeyModifiers::NONE,
+        false,
+        KeyLocation::Standard,
+        KeyboardCompositionState::Inactive,
+        None,
+    )
 }
 
 #[test]
@@ -381,7 +406,14 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
             .node(&group)
             .unwrap_or_else(|| unreachable!("group root is public"))
             .focus_group(),
-        Some(FocusGroup::new().with_boundary(FocusGroupBoundaryPolicy::Wrap))
+        Some(
+            FocusGroup::new()
+                .with_boundary(FocusGroupBoundaryPolicy::Wrap)
+                .with_type_ahead(
+                    FocusGroupTypeAhead::new(Duration::from_millis(500))
+                        .unwrap_or_else(|_| unreachable!("downstream timeout is bounded")),
+                ),
+        )
     );
     assert_eq!(
         runtime
@@ -428,7 +460,7 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
 
     runtime
         .submit_command(
-            b,
+            b.clone(),
             SemanticCommand::FocusGroupLast,
             CommandOrigin::programmatic(),
         )
@@ -445,4 +477,10 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
         .unwrap_or_else(|_| unreachable!("external first-member navigation is accepted"));
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.focus().focused_node(), Some(&a));
+
+    runtime
+        .submit_keyboard(group_character("b"))
+        .unwrap_or_else(|_| unreachable!("downstream type-ahead keyboard input is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.focus().focused_node(), Some(&b));
 }

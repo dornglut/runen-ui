@@ -1,10 +1,13 @@
 #![allow(refining_impl_trait)]
 
+use std::time::Duration;
+
 use runenui_core::{
     CommandOrigin, Element, FocusGroup, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy,
-    Focusability, LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, NoHostProtocol,
-    OverflowPolicy, OverflowStyle, SemanticCommand, StyleEnvironment, UiApp, View, Widget,
-    WidgetActivation, button, children, column, row,
+    FocusGroupTypeAhead, Focusability, KeyLocation, KeyModifiers, KeyboardCompositionState,
+    KeyboardEvent, KeyboardPhase, LayoutContainer, LayoutDimension, LayoutStyle, LogicalKey,
+    LogicalLength, NoHostProtocol, OverflowPolicy, OverflowStyle, PhysicalKey, SemanticCommand,
+    StyleEnvironment, UiApp, View, Widget, WidgetActivation, button, children, column, row,
 };
 use runenui_runtime::{
     AppRuntime, FocusReason, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig,
@@ -229,22 +232,34 @@ impl UiApp for ScrollGroupApp {
     type HostProtocol = NoHostProtocol;
 
     fn root((): &Self::State) -> Element<Self::Action> {
-        let item = |name: &'static str| {
-            Element::new(FocusProbe).id(name).key(name).with_layout(
-                LayoutStyle::default()
-                    .with_width(LayoutDimension::Length(LogicalLength::from(20_u8)))
-                    .with_height(LayoutDimension::Length(LogicalLength::from(20_u8))),
-            )
+        let item = |name: &'static str, search: &'static str| {
+            Element::new(FocusProbe)
+                .id(name)
+                .key(name)
+                .with_layout(
+                    LayoutStyle::default()
+                        .with_width(LayoutDimension::Length(LogicalLength::from(20_u8)))
+                        .with_height(LayoutDimension::Length(LogicalLength::from(20_u8))),
+                )
+                .focus_group_search_text(search)
         };
-        let group = column(vec![item("scroll.a"), item("scroll.b"), item("scroll.c")])
-            .id("scroll.group")
-            .key("scroll.group")
-            .into_element()
-            .focus_group(
-                FocusGroup::new()
-                    .with_boundary(FocusGroupBoundaryPolicy::Stop)
-                    .with_activation(FocusGroupActivationPolicy::Manual),
-            );
+        let group = column(vec![
+            item("scroll.a", "alpha"),
+            item("scroll.b", "beta"),
+            item("scroll.c", "charlie"),
+        ])
+        .id("scroll.group")
+        .key("scroll.group")
+        .into_element()
+        .focus_group(
+            FocusGroup::new()
+                .with_boundary(FocusGroupBoundaryPolicy::Stop)
+                .with_activation(FocusGroupActivationPolicy::Manual)
+                .with_type_ahead(
+                    FocusGroupTypeAhead::new(Duration::from_millis(500))
+                        .unwrap_or_else(|_| unreachable!("fixture timeout is bounded")),
+                ),
+        );
         row(children![group])
             .id("scroll.viewport")
             .key("scroll.viewport")
@@ -355,6 +370,71 @@ fn group_navigation_reveals_the_exact_new_focus_target() {
     runtime
         .publish_surface(&build)
         .unwrap_or_else(|error| unreachable!("revealed scroll fixture republishes: {error:?}"));
+}
+
+#[test]
+fn type_ahead_navigation_reveals_the_exact_new_focus_target() {
+    let mut runtime = AppRuntime::<ScrollGroupApp>::mount_with_config(
+        (),
+        RuntimeConfig::default().with_trace_config(TraceConfig::new(256)),
+    );
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let environment = StyleEnvironment::default();
+    let build = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::try_new(20.0, 20.0)
+            .unwrap_or_else(|_| unreachable!("fixture surface is finite")),
+    );
+    runtime
+        .publish_surface(&build)
+        .unwrap_or_else(|error| unreachable!("scroll fixture publishes: {error:?}"));
+
+    let a = scroll_id(&mut runtime, "scroll.a");
+    let c = scroll_id(&mut runtime, "scroll.c");
+    let viewport = scroll_id(&mut runtime, "scroll.viewport");
+    runtime
+        .submit_command(
+            a,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("first group item accepts focus"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+
+    runtime
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("KeyC")),
+            LogicalKey::Character(String::from("c")),
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        ))
+        .unwrap_or_else(|_| unreachable!("type-ahead keyboard input is admitted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+
+    assert_eq!(runtime.focus().focused_node(), Some(&c));
+    assert_eq!(
+        runtime
+            .index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!("scroll viewport remains mounted"))
+            .interaction()
+            .scroll_offset(),
+        (0.0, 40.0)
+    );
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::LogicalScrollOwnerApplied { consumed, .. }
+            if consumed.y().to_bits() == 40.0_f32.to_bits()
+    )));
 }
 
 #[test]

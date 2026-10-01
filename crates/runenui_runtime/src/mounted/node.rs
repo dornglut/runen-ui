@@ -28,6 +28,7 @@ pub(crate) struct MountedNode<Action> {
     pub(crate) focus_scope: Option<FocusScope>,
     pub(crate) focus_group: Option<FocusGroup>,
     pub(crate) focus_group_entry: FocusGroupEntry,
+    pub(crate) focus_group_search_text: Option<String>,
     pub(crate) authoring_diagnostics: Vec<AuthoringDiagnostic>,
     pub(crate) widget: MountedWidget<Action>,
     pub(crate) state: MountedWidgetState,

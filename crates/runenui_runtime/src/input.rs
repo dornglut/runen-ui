@@ -1,11 +1,15 @@
 //! Public input receipts and canonical keyboard/text ingress.
 
+mod type_ahead;
+pub use type_ahead::{FocusGroupTypeAheadState, FocusGroupTypeAheadUpdate};
+
 use core::fmt;
 use runenui_core::{
     CommandOrigin, CommittedTextEvent, CompositionCancel, CompositionCancelReason, CompositionEnd,
     CompositionEvent, CompositionGeneration, CompositionRange, CompositionStart, CompositionUpdate,
-    ElementId, HostProtocol, InputDeviceId, KeyboardEvent, KeyboardPhase, LogicalKey,
-    MonotonicInstant, PhysicalKey, SemanticCommand, UiEvent, WorkSequence,
+    ElementId, FocusGroupActivationPolicy, HostProtocol, InputDeviceId, KeyboardEvent,
+    KeyboardPhase, LogicalKey, MonotonicInstant, PhysicalKey, SemanticCommand, UiEvent,
+    WorkSequence,
 };
 
 use crate::{
@@ -1044,9 +1048,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             causal_parent,
             trace_reservation,
         );
+        let type_ahead_context = match &payload {
+            InputEnvelopePayload::Keyboard(event) => {
+                self.keyboard_type_ahead_context(event, &target)
+            }
+            InputEnvelopePayload::CommittedText(_) | InputEnvelopePayload::Composition(_) => None,
+        };
         let mandatory_default_commands = match &payload {
             InputEnvelopePayload::Keyboard(event) => {
                 usize::from(Self::keyboard_default_command_is_possible(event))
+                    .checked_add(usize::from(type_ahead_context.as_ref().is_some_and(
+                        |context| context.activation == FocusGroupActivationPolicy::ActivateTarget,
+                    )))
+                    .unwrap_or_else(|| unreachable!("keyboard defaults have a fixed bounded count"))
             }
             InputEnvelopePayload::CommittedText(_) => usize::from(self.editing.has_owner(&target)),
             InputEnvelopePayload::Composition(_) => 0,
@@ -1067,12 +1081,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
             return;
         }
-        let mut transaction = match self
-            .try_begin_routed_transaction_with_trace_and_default_commands(
+        let transaction_result = if type_ahead_context.is_some() {
+            self.try_begin_focus_input_transaction(
                 facts,
                 MandatoryTracePlan::input_processing(),
                 mandatory_default_commands,
-            ) {
+            )
+        } else {
+            self.try_begin_routed_transaction_with_trace_and_default_commands(
+                facts,
+                MandatoryTracePlan::input_processing(),
+                mandatory_default_commands,
+            )
+        };
+        let mut transaction = match transaction_result {
             Ok(transaction) => transaction,
             Err(failure) => {
                 self.retire_failed_composition(
@@ -1560,6 +1582,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         target: crate::MountedNodeId,
     ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
         if event.phase() != KeyboardPhase::Down {
+            return Ok(());
+        }
+        if self.collect_focus_group_type_ahead_default(transaction, event, &target)? {
             return Ok(());
         }
         let editable = self.editing.has_owner(&target);

@@ -103,6 +103,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             trace_action_labeler: None,
             text_system,
             focus: FocusState::new(),
+            focus_group_type_ahead: crate::input::FocusGroupTypeAheadState::new(),
             pointer_registry: PointerRegistry::new(limits.pointer_streams()),
             space_ownership: None,
             composition: crate::input::CompositionState::None,

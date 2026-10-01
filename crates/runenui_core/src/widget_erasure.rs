@@ -504,6 +504,7 @@ pub struct ElementParts<Action> {
     focus_scope: Option<FocusScope>,
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
+    focus_group_search_text: Option<String>,
     widget: MountedWidget<Action>,
     children: Vec<Element<Action>>,
     authoring_diagnostics: Vec<AuthoringDiagnostic>,
@@ -528,6 +529,7 @@ impl<Action> ElementParts<Action> {
         fields: AuthoredElementFields,
         focus_group: Option<FocusGroup>,
         focus_group_entry: FocusGroupEntry,
+        focus_group_search_text: Option<String>,
         widget: MountedWidget<Action>,
         children: Vec<Element<Action>>,
         authoring_diagnostics: Vec<AuthoringDiagnostic>,
@@ -542,6 +544,7 @@ impl<Action> ElementParts<Action> {
             focus_scope: fields.focus_scope,
             focus_group,
             focus_group_entry,
+            focus_group_search_text,
             widget,
             children,
             authoring_diagnostics,
@@ -582,6 +585,10 @@ impl<Action> ElementParts<Action> {
     #[must_use]
     pub const fn focus_group_entry(&self) -> FocusGroupEntry {
         self.focus_group_entry
+    }
+    #[must_use]
+    pub fn focus_group_search_text(&self) -> Option<&str> {
+        self.focus_group_search_text.as_deref()
     }
     #[must_use]
     pub const fn authoring_diagnostics(&self) -> &[AuthoringDiagnostic] {
