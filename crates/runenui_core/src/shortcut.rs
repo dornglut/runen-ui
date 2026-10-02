@@ -5,9 +5,7 @@
 //! strings, and platform accelerator tables are deliberately outside this
 //! contract.
 
-use crate::{
-    ApplicationCommand, KeyModifiers, KeyboardEvent, LogicalKey, PhysicalKey,
-};
+use crate::{ApplicationCommand, KeyModifiers, KeyboardEvent, LogicalKey, PhysicalKey};
 
 /// Explicit keyboard identity used by one shortcut chord.
 #[non_exhaustive]
@@ -129,9 +127,7 @@ impl ShortcutBinding {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        ApplicationCommandId, KeyLocation, KeyboardCompositionState, KeyboardPhase,
-    };
+    use crate::{ApplicationCommandId, KeyLocation, KeyboardCompositionState, KeyboardPhase};
 
     use super::*;
 
@@ -206,10 +202,7 @@ mod tests {
         assert!(ShortcutRepeatPolicy::AllowRepeat.allows(event.is_repeat()));
 
         let binding = ShortcutBinding::new(
-            ShortcutChord::physical(
-                PhysicalKey::Code(String::from("KeyS")),
-                event.modifiers(),
-            ),
+            ShortcutChord::physical(PhysicalKey::Code(String::from("KeyS")), event.modifiers()),
             ShortcutRepeatPolicy::AllowRepeat,
             command(false),
         );
