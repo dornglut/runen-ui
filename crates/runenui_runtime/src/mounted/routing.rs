@@ -2,8 +2,8 @@
 
 use runenui_core::{
     __runtime::{EventContextOutput, WidgetBridgeError},
-    CommandOrigin, EventPhase, MonotonicInstant, PointerId, UiEvent, WidgetEventOutput,
-    WorkSequence,
+    CommandOrigin, EventPhase, MonotonicInstant, PointerId, ShortcutBinding, UiEvent,
+    WidgetEventOutput, WorkSequence,
 };
 
 use super::{
@@ -49,6 +49,13 @@ impl<Action> MountedTree<Action> {
             return Err(RouteBuildError::BrokenTopology);
         }
         Ok(route)
+    }
+
+    pub(crate) fn shortcut_bindings(
+        &self,
+        owner: &MountedNodeId,
+    ) -> Option<&[ShortcutBinding]> {
+        self.node(owner).map(|node| node.widget.shortcuts())
     }
 
     pub(crate) fn preflight_event_bridges(
