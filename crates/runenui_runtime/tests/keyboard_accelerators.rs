@@ -614,7 +614,8 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
     );
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(
-        runtime.state().fired, [] as [&str; 0],
+        runtime.state().fired,
+        [] as [&str; 0],
         "keyboard default only queues the command"
     );
     let matched = runtime
@@ -636,7 +637,8 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
 
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(
-        runtime.state().fired, [] as [&str; 0],
+        runtime.state().fired,
+        [] as [&str; 0],
         "resolved command action remains queued"
     );
     assert!(runtime.trace().records().any(|record| matches!(
