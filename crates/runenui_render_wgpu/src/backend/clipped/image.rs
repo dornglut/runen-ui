@@ -621,6 +621,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn exact_canvas_clipping_reconstructs_resolved_source_domain()
     -> Result<(), Box<dyn std::error::Error>> {
         let transform = LogicalTransform::try_new(1.0, 0.0, 0.0, 1.0, -10.0, 0.0)?;
@@ -677,6 +678,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn singular_image_transform_produces_no_vertices() -> Result<(), Box<dyn std::error::Error>> {
         let singular = LogicalTransform::try_new(1.0, 0.0, 0.0, 0.0, 2.0, 1.0)?;
         let image = image([0.0, 0.0, 20.0, 10.0], rect(2.0, 3.0, 20.0, 10.0), singular);

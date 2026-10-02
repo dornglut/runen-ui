@@ -223,6 +223,7 @@ fn assert_plan_identity(bundle: &TraceRecord, pointer_id: PointerId) {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn initial_enter_reconstructs_empty_previous_and_exact_current_path() {
     let mut harness = harness();
     let pointer_id =
@@ -304,6 +305,7 @@ fn initial_enter_reconstructs_empty_previous_and_exact_current_path() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn leave_reconstructs_exact_previous_and_empty_current_path() {
     let mut harness = harness();
     let move_inside = pointer_event(&harness, 2, PointerPhase::Move, harness.inside);

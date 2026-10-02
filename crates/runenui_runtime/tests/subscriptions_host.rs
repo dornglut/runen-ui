@@ -137,6 +137,7 @@ fn duplicate_subscription_key_is_diagnosed_and_starts_no_stream() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn subscription_diagnostic_retention_is_explicitly_bounded() {
     let limits = RuntimeLimits::default().with_subscription_diagnostics(1);
     let mut runtime = AppRuntime::<DuplicateSubscriptionApp>::mount_with_config(
@@ -394,6 +395,7 @@ fn assert_host_success_causal_chain(runtime: &AppRuntime<HostApp>) {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn host_commands_are_exposed_after_start_and_map_only_valid_live_responses() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
     assert!(runtime.pending_host_requests().is_empty());
@@ -599,6 +601,7 @@ fn detached_host_completion_with_only_three_unreserved_records_never_runs_mapper
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn host_cancellation_sequence_exhaustion_terminalizes_and_closes_authority() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
     runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
@@ -661,6 +664,7 @@ fn host_cancellation_queue_full_is_recoverable() {
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn one_remaining_sequence_is_the_final_host_mapper_action() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
     runtime.pump(PumpBudget::new(2, 0, 0, 0));
@@ -696,6 +700,7 @@ fn one_remaining_sequence_is_the_final_host_mapper_action() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn cancellation_invalidates_accepted_detached_response_before_ui_mapping() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
     runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
@@ -766,6 +771,7 @@ fn detached_host_completion_reserves_only_after_successful_ingress_acceptance() 
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn cancellation_claims_before_detached_submission_and_retry_after_full_is_stale() {
     let limits = RuntimeLimits::default().with_completion_ingress(0);
     let mut runtime = AppRuntime::<HostApp>::mount_with_config(

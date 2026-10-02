@@ -195,6 +195,7 @@ fn downstream_widget_owner_local_bounds_publish_as_absolute_semantic_bounds() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn invalid_owner_semantics_publish_typed_fail_closed_diagnostic() {
     let mut runtime = AppRuntime::<InvalidSemanticApp>::mount(());
     let style_environment = StyleEnvironment::default();

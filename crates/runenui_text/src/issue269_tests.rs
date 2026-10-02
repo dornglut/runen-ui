@@ -35,6 +35,7 @@ fn request(text: String) -> TextRequest {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn issue_269_large_run_cluster_coverage() -> Result<(), Box<dyn Error>> {
     let mut failures = Vec::new();
 

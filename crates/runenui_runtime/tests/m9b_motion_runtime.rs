@@ -197,6 +197,7 @@ fn pump_one_action<App: UiApp>(runtime: &mut AppRuntime<App>) {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn explicit_timeline_uses_public_manual_time_and_reuses_unaffected_stages() {
     let mut runtime = AppRuntime::<TimelineApp>::mount(());
     let environment = StyleEnvironment::default();
@@ -255,6 +256,7 @@ fn timeline_completion_hands_off_from_exact_terminal_sample() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn zero_duration_handoff_commits_style_target_in_the_same_candidate() {
     let mut runtime = AppRuntime::<TimelineHandoffApp>::mount(Duration::ZERO);
     let environment = StyleEnvironment::default();

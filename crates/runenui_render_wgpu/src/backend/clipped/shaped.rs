@@ -1006,6 +1006,8 @@ fn glyph_vertex_bytes(
     Some(bytes)
 }
 
+// Preserve the existing non-fused arithmetic and its established rounding behavior.
+#[allow(clippy::suboptimal_flops)]
 fn atlas_uv(
     logical_coordinate: f64,
     logical_extent: f64,
@@ -1169,6 +1171,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn devanagari_glyphs_produce_cpu_fields() {
         let (_system, artifact) =
             shaped_resource_with_font("क्षि", DEVANAGARI_FONT_BYTES, "RunenUI Fixture Devanagari");

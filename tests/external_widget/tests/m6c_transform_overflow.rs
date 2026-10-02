@@ -94,6 +94,7 @@ impl UiApp for OverflowApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn finite_authored_transforms_that_overflow_surface_composition_are_excluded_and_diagnosed() {
     let mut runtime = AppRuntime::<OverflowApp>::mount(());
     let style_environment = StyleEnvironment::default();

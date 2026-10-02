@@ -434,6 +434,7 @@ fn delegated_command_targets_current_node_and_runs_later_without_recursion() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn route_only_commands_have_no_default_action() {
     for command in [
         SemanticCommand::CancelOrBack,
@@ -753,6 +754,7 @@ fn final_trace_sequence_cannot_accept_a_command_without_outcome_authority() {
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn accepted_command_consumes_reserved_outcome_before_publication_authority() {
     let mut runtime = make_runtime(Behavior::Observe, Behavior::Observe, Behavior::Observe);
     settle(&mut runtime);
@@ -821,6 +823,7 @@ fn same_runtime_missing_target_is_distinct_and_exactly_recoverable() {
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn route_wide_bridge_mismatch_invokes_no_callback() {
     let mut runtime = make_runtime(Behavior::Observe, Behavior::Observe, Behavior::Observe);
     settle(&mut runtime);
@@ -877,6 +880,7 @@ fn assert_routed_integrity_failure(
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn routed_integrity_trace_distinguishes_broken_topology() {
     let mut runtime = make_runtime(Behavior::Observe, Behavior::Observe, Behavior::Observe);
     settle(&mut runtime);
@@ -939,6 +943,7 @@ fn routed_integrity_trace_distinguishes_output_allowance_exceeded() {
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn routed_integrity_trace_distinguishes_semantic_default_failure() {
     let mut runtime = make_runtime(Behavior::Observe, Behavior::Observe, Behavior::Observe);
     settle(&mut runtime);
@@ -967,6 +972,7 @@ fn routed_integrity_trace_distinguishes_semantic_default_failure() {
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn routed_integrity_trace_distinguishes_commit_invariant_failure_without_partial_output() {
     let mut runtime = make_runtime(Behavior::Observe, Behavior::Observe, Behavior::Emit);
     settle(&mut runtime);
@@ -983,6 +989,7 @@ fn routed_integrity_trace_distinguishes_commit_invariant_failure_without_partial
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn routed_queue_admission_has_an_exact_required_boundary() {
     let base = RuntimeLimits::default().with_transaction_outputs(1);
     let mut exact =
@@ -1007,6 +1014,7 @@ fn routed_queue_admission_has_an_exact_required_boundary() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn routed_output_allowance_rejects_zero_before_the_first_callback() {
     let limits = RuntimeLimits::default().with_transaction_outputs(0);
     let mut runtime = make_single(RuntimeConfig::default().with_limits(limits));
@@ -1024,6 +1032,7 @@ fn routed_output_allowance_rejects_zero_before_the_first_callback() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn routed_admission_rejects_checked_arithmetic_overflow_before_the_first_callback() {
     let limits = RuntimeLimits::default().with_transaction_outputs(usize::MAX);
     let mut runtime = make_single(RuntimeConfig::default().with_limits(limits));
@@ -1063,6 +1072,7 @@ fn trace_capacity_zero_preserves_routed_behavior() {
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn every_routed_bounded_authority_rejects_before_the_first_callback() {
     let base = RuntimeLimits::default()
         .with_waiting_envelopes(2)
@@ -1126,6 +1136,7 @@ fn every_routed_bounded_authority_rejects_before_the_first_callback() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn no_output_callback_is_rejected_when_conservative_family_reservation_is_unavailable() {
     let limits = RuntimeLimits::default()
         .with_waiting_envelopes(2)

@@ -10,6 +10,7 @@ fn hash(value: &impl Hash) -> u64 {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn identifier_constructors_and_builder_diagnostics_are_validated() {
     assert_eq!(ElementId::new(""), Err(IdentifierError::Empty));
     assert_eq!(ElementKey::new("   "), Err(IdentifierError::WhitespaceOnly));
@@ -57,6 +58,7 @@ fn identifier_identity_is_textual_across_static_and_owned_storage() -> Result<()
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn identifiers_use_one_unicode_aware_grammar_in_all_public_paths() {
     let invalid = [
         ("\u{00A0}", IdentifierError::WhitespaceOnly),

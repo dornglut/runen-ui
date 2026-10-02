@@ -361,6 +361,7 @@ fn assert_initial_adapter_snapshot(first: &SurfacePublication) -> (SurfaceId, Se
     (adapted.surface, adapted.revision)
 }
 
+#[allow(clippy::assert_is_empty)]
 fn commit_focus_and_assert_delta(
     runtime: &mut AppRuntime<AdapterApp>,
     first: &SurfacePublication,
@@ -407,6 +408,7 @@ fn commit_focus_and_assert_delta(
     update.revision
 }
 
+#[allow(clippy::assert_is_empty)]
 fn change_adapter_and_assert_delta(
     runtime: &mut AppRuntime<AdapterApp>,
     previous_revision: SemanticRevision,
@@ -444,6 +446,7 @@ fn change_adapter_and_assert_delta(
     (surface, update.revision)
 }
 
+#[allow(clippy::assert_is_empty)]
 fn finalize_adapter_and_assert_delta(
     runtime: &mut AppRuntime<AdapterApp>,
     surface: &SurfaceId,

@@ -225,6 +225,7 @@ extern crate runenui_core as legacy_core;
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn cfg_test_modules_are_not_treated_as_renderer_production_authority() {
     let source = r#"
 use runenui_runtime::PaintPublication;

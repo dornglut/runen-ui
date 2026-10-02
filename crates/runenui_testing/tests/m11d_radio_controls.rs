@@ -322,6 +322,7 @@ fn radio_semantics_form_one_group_with_exact_application_checked_state() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn external_entry_prefers_checked_and_no_selection_falls_back_without_selecting() {
     let mut harness = TestHarness::<RadioApp>::mount(State {
         selected: Some(2),
@@ -581,6 +582,7 @@ fn published_hit_point(harness: &TestHarness<RadioApp>, authored: &str) -> Logic
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn programmatic_surface_focus_targets_one_radio_without_selecting_it() {
     let mut harness = TestHarness::<RadioApp>::mount(State {
         selected: Some(1),
@@ -656,6 +658,7 @@ fn pointer_activation_converges_through_ordinary_application_selection() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn externally_managed_radio_group_leaves_directional_command_unclaimed() {
     let mut harness = TestHarness::<ExternallyManagedRadioApp>::mount(ExternallyManagedState {
         selected: 1,
@@ -684,6 +687,7 @@ fn externally_managed_radio_group_leaves_directional_command_unclaimed() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn prevented_directional_command_does_not_trigger_radio_group_navigation() {
     let mut harness = TestHarness::<PreventedRadioNavigationApp>::mount(ExternallyManagedState {
         selected: 1,
@@ -714,6 +718,7 @@ fn prevented_directional_command_does_not_trigger_radio_group_navigation() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn invalid_multiple_checked_group_fails_closed_without_rewriting_children() {
     let mut harness = TestHarness::<InvalidRadioApp>::mount(());
     assert!(harness.publish().is_ok());

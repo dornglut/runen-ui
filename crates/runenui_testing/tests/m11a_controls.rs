@@ -67,6 +67,7 @@ fn button_query() -> SemanticQuery {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn text_is_static_semantic_content_without_activation() {
     let mut harness = TestHarness::<ControlsApp>::mount(State {
         enabled: true,

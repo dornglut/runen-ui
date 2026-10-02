@@ -138,6 +138,7 @@ fn publication_retains_initial_and_update_redraw_causality() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn capacity_zero_does_not_block_publication_or_allocate_trace_context() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(0));
     let mut runtime = mounted_with(config);

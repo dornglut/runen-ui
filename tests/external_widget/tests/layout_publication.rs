@@ -42,6 +42,7 @@ impl UiApp for ResponsiveApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn downstream_custom_measurement_receives_bounded_requests_and_baseline() {
     let inputs = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<ResponsiveApp>::mount(Rc::clone(&inputs));
@@ -219,6 +220,7 @@ impl UiApp for CountingApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn measurement_callbacks_are_transaction_local_and_clean_publication_reuses_products() {
     let panel = Rc::new(Cell::new(0));
     let layout = Rc::new(Cell::new(0));

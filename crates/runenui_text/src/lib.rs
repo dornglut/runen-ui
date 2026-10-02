@@ -470,6 +470,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn production_request_produces_one_measure_and_resource_artifact() -> Result<(), Box<dyn Error>>
     {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);

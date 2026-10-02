@@ -700,6 +700,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn unresolved_capabilities_are_staged_without_mutating_live_authority() {
         let (probe, semantic_callbacks) = probe(false);
         let (tree, _) = MountedTree::mount(Element::new(probe));
@@ -788,11 +789,11 @@ mod tests {
         let mounted_commit = finalized.commit_store();
 
         assert_eq!(tree.semantic_store.live_count(), 1);
-        assert!(
+        assert_eq!(
             tree.node(&root)
                 .unwrap_or_else(|| unreachable!("root remains mounted"))
-                .semantic_bindings
-                .is_empty()
+                .semantic_bindings,
+            []
         );
 
         tree.commit_semantic_publication(mounted_commit);
@@ -864,6 +865,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn invalid_authoring_stages_complete_owner_withdrawal_without_live_revocation() {
         let (probe, _) = probe(true);
         let (tree, _) = MountedTree::mount(Element::new(probe));
@@ -888,6 +890,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn corrupted_state_stages_fail_closed_withdrawal_without_marking_live_node() {
         let (probe, _) = probe(false);
         let (mut tree, _) = MountedTree::mount(Element::new(probe));

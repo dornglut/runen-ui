@@ -213,6 +213,7 @@ struct Panel {
     readback: OffscreenPublicationReadback,
 }
 
+#[allow(clippy::assert_is_empty)]
 fn render_panel(
     renderer: &mut Renderer,
     name: &'static str,

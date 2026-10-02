@@ -105,6 +105,7 @@ fn disabled_and_inert_nodes_remain_queryable_but_fail_action_admission() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn hidden_nodes_are_absent_from_the_committed_semantic_snapshot() {
     let mut harness = TestHarness::<StateApp>::mount(Availability::Hidden);
     assert!(harness.publish().is_ok());

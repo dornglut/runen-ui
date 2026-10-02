@@ -655,6 +655,7 @@ fn equal_opaque_edit_and_effect_action_values_keep_their_private_envelope_origin
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn logical_character_keys_do_not_insert_and_prevented_committed_text_enqueues_no_edit() {
     let mut runtime = mounted();
     focus(&mut runtime);
@@ -706,6 +707,7 @@ fn logical_character_keys_do_not_insert_and_prevented_committed_text_enqueues_no
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_revalidation() {
     let mut copy = mounted();
     install_controlled_font(&mut copy);
@@ -866,6 +868,7 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn clipboard_copy_is_suppressed_secret_and_unclassified_paste_is_rejected() {
     let mut secret = AppRuntime::<App>::mount(Document {
         sensitivity: TextSensitivity::Secret,
@@ -1607,6 +1610,7 @@ fn touch_text_selection_wins_only_after_its_validated_threshold_and_uses_display
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn undo_and_redo_are_application_owned_transactions_over_committed_history_only() {
     let mut runtime = mounted();
     focus(&mut runtime);
@@ -1925,6 +1929,7 @@ fn editable_vertical_keys_move_and_extend_without_retargeting_focus_navigation()
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn owner_removal_retires_live_authority_drains_queued_rejection_and_keeps_app_history() {
     let mut runtime = mounted();
     focus(&mut runtime);
@@ -2052,6 +2057,7 @@ fn transformed_prefix_rebases_a_non_overlapping_dependent_suffix() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn inverse_and_grouping_hints_are_deterministic_but_history_remains_application_owned() {
     let mut runtime = AppRuntime::<App>::mount(Document {
         transform_next: true,

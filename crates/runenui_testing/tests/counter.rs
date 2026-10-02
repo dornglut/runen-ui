@@ -22,6 +22,7 @@ fn settle_budget() -> SettleBudget {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn real_counter_uses_public_semantic_query_action_publication_and_replay() {
     let mut harness = TestHarness::<CounterApp>::mount(Counter::new());
     assert!(harness.publish().is_ok());

@@ -76,6 +76,7 @@ fn map_for(source: &str, width: Option<f32>) -> Result<TextCaretMap, Box<dyn Err
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn scalar_coordinates_are_narrowed_to_grapheme_and_shaping_stops() -> Result<(), Box<dyn Error>> {
     let source = "e\u{301} office 👩\u{200d}💻";
     let map = map_for(source, None)?;
@@ -206,6 +207,7 @@ fn utf16_conversion_rejects_stale_split_and_non_caret_positions() -> Result<(), 
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn map_correlates_hit_caret_selection_and_candidate_geometry() -> Result<(), Box<dyn Error>> {
     let source = "abc אבג xyz";
     let map = map_for(source, None)?;
@@ -354,6 +356,7 @@ fn logical_and_visual_navigation_diverge_in_mixed_bidi_and_preserve_direction()
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn controlled_ltr_rtl_and_mixed_corpora_keep_all_public_geometry_legal()
 -> Result<(), Box<dyn Error>> {
     for source in ["abc", "אבג", "abc אבג xyz"] {
@@ -442,6 +445,7 @@ fn word_and_hard_line_navigation_return_valid_positions() -> Result<(), Box<dyn 
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn terminal_newline_and_empty_selection_use_no_guessed_rectangle() -> Result<(), Box<dyn Error>> {
     for source in ["", "a\n"] {
         let map = map_for(source, None).map_err(|error| {

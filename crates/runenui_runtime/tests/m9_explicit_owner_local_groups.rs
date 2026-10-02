@@ -309,6 +309,7 @@ impl UiApp for TextAndExplicitApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn runtime_generated_shaped_text_stays_outside_widget_authored_group_but_inside_node_effect() {
     let mut runtime = AppRuntime::<TextAndExplicitApp>::mount(());
     assert!(runtime.register_text_font_bytes(CANTARELL.to_vec()).is_ok());
@@ -419,6 +420,7 @@ impl UiApp for ClipGroupApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn group_clip_uses_owner_presentation_path_without_inheriting_child_item_transform() {
     let clip_transform = LogicalTransform::translation(3.0, 4.0)
         .unwrap_or_else(|_| unreachable!("controlled transform is finite"));
@@ -537,6 +539,7 @@ impl UiApp for OverflowGroupClipApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn non_finite_group_clip_composition_excludes_only_that_explicit_subtree() {
     let mut runtime = AppRuntime::<OverflowGroupClipApp>::mount(());
     let publication = publish(&mut runtime);

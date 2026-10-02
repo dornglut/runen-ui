@@ -148,6 +148,7 @@ fn mixed_bidi_exposes_both_visual_run_directions() -> Result<(), Box<dyn Error>>
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn combining_grapheme_is_not_line_broken_internally() -> Result<(), Box<dyn Error>> {
     let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
     assert!(system.register_font_bytes(CANTARELL.to_vec())? > 0);

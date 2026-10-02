@@ -64,6 +64,7 @@ impl UiApp for FocusApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn public_harness_drives_downstream_controller_traversal_and_remembered_restoration() {
     let log = Rc::new(RefCell::new(Vec::new()));
     let mut harness = TestHarness::<FocusApp>::mount(FocusState {

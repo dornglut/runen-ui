@@ -287,6 +287,7 @@ fn real_gpu_image_semantics_match_scene_contract() -> Result<(), Box<dyn Error>>
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn png_provider_normalizes_complete_domain_and_reuses_image_cache() -> Result<(), Box<dyn Error>> {
     let Some(mut renderer) = renderer_or_adapterless()? else {
         return Ok(());

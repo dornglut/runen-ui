@@ -2420,6 +2420,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn reference_editor_publishes_visible_editable_text_and_accepts_commits() {
         let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
             DemoState::default(),
@@ -2774,6 +2775,7 @@ mod tests {
         clippy::panic,
         reason = "panic reports the exact rejected keyboard submission in this test"
     )]
+    #[allow(clippy::assert_is_empty)]
     fn reference_editor_undo_and_redo_restore_application_owned_text_history() {
         let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
             DemoState::default(),
@@ -3586,6 +3588,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn mouse_stream_identity_is_stable_until_release_then_advances() {
         let mapping = NativeMapping::from_parts(PhysicalSize::new(1200, 800), 2.0)
             .unwrap_or_else(|| unreachable!("the fixture mapping is valid"));
@@ -3645,6 +3648,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn point_authority_invalidation_clears_native_position_and_cancels_stream() {
         let mapping = NativeMapping::from_parts(PhysicalSize::new(1200, 800), 2.0)
             .unwrap_or_else(|| unreachable!("the fixture mapping is valid"));

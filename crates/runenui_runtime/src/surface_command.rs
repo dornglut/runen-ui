@@ -146,6 +146,7 @@ impl SubmitSurfaceCommandError {
     }
 
     /// Borrows the exact unaccepted request.
+    #[allow(clippy::must_use_candidate)]
     pub const fn unaccepted(&self) -> &UnacceptedSurfaceCommand {
         &self.unaccepted
     }

@@ -188,6 +188,7 @@ fn activate_increment_with_keyboard(
     (action.sequence(), action_work)
 }
 
+#[allow(clippy::assert_is_empty)]
 fn assert_update_reconciliation_and_publication(
     runtime: &mut AppRuntime<CounterApp>,
     action_sequence: TraceSequence,

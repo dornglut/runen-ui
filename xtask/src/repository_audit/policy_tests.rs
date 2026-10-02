@@ -44,6 +44,7 @@ fn volatility_policy_is_derived_from_artifact_class() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn current_process_template_allows_empty_review_evidence_prompt() {
     let path = ".github/pull_request_template.md";
     let mut findings = Vec::new();

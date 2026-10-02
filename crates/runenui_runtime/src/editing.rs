@@ -1582,6 +1582,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn capacity_and_generation_exhaustion_preflight_without_partial_sessions() {
         let namespace = RuntimeNamespace::__runtime_new();
         let first = namespace.__runtime_mounted_id(1, 1);
@@ -1615,6 +1616,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn reset_retires_generation_and_old_chain_drains_without_aba_revival() {
         let namespace = RuntimeNamespace::__runtime_new();
         let owner = namespace.__runtime_mounted_id(1, 1);
@@ -1703,6 +1705,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn owner_slot_and_document_aba_drain_without_transferring_session_authority() {
         let namespace = RuntimeNamespace::__runtime_new();
         let retired_owner = namespace.__runtime_mounted_id(1, 1);

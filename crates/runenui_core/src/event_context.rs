@@ -572,7 +572,7 @@ mod tests {
         assert_eq!(context.instant().as_nanos(), 11);
         assert_eq!(context.pointer_id(), None);
         assert_eq!(context.physical_target(), None);
-        assert!(context.physical_path().is_empty());
+        assert_eq!(context.physical_path(), []);
         assert!(context.default_is_cancelable());
         assert!(!context.default_is_prevented());
         assert!(!context.propagation_is_stopped());
@@ -601,7 +601,7 @@ mod tests {
             output.mounted_work.as_slice(),
             [MountedEffect::LocalTask(_)]
         ));
-        assert!(output.pointer_capture.is_empty());
+        assert_eq!(output.pointer_capture, Vec::new());
         assert!(output.propagation_stopped);
         assert!(output.default_prevented);
         assert!(!output.overflowed);

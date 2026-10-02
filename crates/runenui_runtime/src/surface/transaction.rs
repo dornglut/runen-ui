@@ -498,6 +498,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn planning_keeps_surface_cache_motion_and_dirty_completion_uncommitted() {
         let (mut tree, _) = MountedTree::<()>::mount(text("staged").key("root").into_element());
         let environment = StyleEnvironment::default();

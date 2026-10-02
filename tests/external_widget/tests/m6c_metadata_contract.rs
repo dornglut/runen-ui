@@ -164,6 +164,7 @@ fn raster_scale_is_finite_positive_and_defaults_to_one() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
     let initial_color = Color::rgba(10, 20, 30, 255);
     let changed_color = Color::rgba(30, 20, 10, 255);

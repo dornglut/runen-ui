@@ -78,6 +78,7 @@ fn typed_builders_use_the_open_widget_protocol() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn binary_control_builders_use_the_open_widget_protocol() {
     assert_eq!(
         SemanticCheckedState::from(false),
@@ -172,6 +173,7 @@ fn binary_control_builders_use_the_open_widget_protocol() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn radio_controls_use_public_semantics_and_typed_group_authoring() {
     let radio_element: runenui_core::Element<Action> = radio_button("One", true)
         .id("radio.one")

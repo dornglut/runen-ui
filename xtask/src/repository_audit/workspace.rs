@@ -875,6 +875,7 @@ fn read(root: &Path, relative: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+
     use std::{
         collections::{BTreeMap, BTreeSet},
         path::Path,
@@ -999,6 +1000,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn neutral_core_and_runtime_reject_native_accessibility_dependencies() {
         for (relative, package) in [
             ("crates/runenui_core", CORE_PACKAGE),
@@ -1033,6 +1035,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn text_package_requires_core_and_rejects_renderer_native_accessibility_edges() {
         let core = member(
             "crates/runenui_core",
@@ -1129,6 +1132,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn testing_package_requires_public_core_runtime_production_dependencies() {
         let core = member(
             "crates/runenui_core",
@@ -1161,6 +1165,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn renderer_requires_public_core_runtime_and_rejects_host_accessibility_dependencies() {
         let core = member(
             "crates/runenui_core",
@@ -1236,6 +1241,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn winit_adapter_requires_public_core_runtime_and_rejects_renderer_backend() {
         let core = member(
             "crates/runenui_core",
@@ -1308,6 +1314,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn reference_winit_may_consume_renderer_but_generic_examples_may_not() {
         let core = member(
             "crates/runenui_core",
@@ -1400,6 +1407,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn external_host_has_exact_renderer_boundary_and_rejects_privileged_source_markers() {
         let relative = Path::new("tests/external_host");
         let dependencies = BTreeSet::from([
@@ -1450,6 +1458,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn external_fixture_may_consume_testing_only_as_a_dev_dependency() {
         let core = member(
             "crates/runenui_core",

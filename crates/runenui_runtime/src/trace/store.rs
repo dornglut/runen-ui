@@ -366,13 +366,11 @@ impl Trace {
     }
 
     /// Borrows canonical records from oldest retained to newest.
-    #[must_use]
     pub fn records(&self) -> impl ExactSizeIterator<Item = &TraceRecord> {
         self.records.iter().map(Arc::as_ref)
     }
 
     /// Borrows structured record kinds from oldest retained to newest.
-    #[must_use]
     pub fn kinds(&self) -> impl ExactSizeIterator<Item = &TraceRecordKind> {
         self.records.iter().map(|record| record.kind())
     }

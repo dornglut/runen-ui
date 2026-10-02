@@ -209,7 +209,7 @@ const fn command_for(button: ControllerButton) -> Option<SemanticCommand> {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic)]
+#[allow(clippy::assert_is_empty, clippy::panic)]
 mod tests {
     use runenui_core::{
         CommandDerivation, EventSource, IntoUpdateOutput, NoHostProtocol, SemanticCommand, UiApp,

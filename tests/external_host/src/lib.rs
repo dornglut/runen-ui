@@ -459,6 +459,7 @@ mod tests {
         io::Error::other(format!("{context}: {error:?}"))
     }
 
+    #[allow(clippy::assert_is_empty)]
     fn renderer_or_adapterless() -> Result<Option<Renderer>, Box<dyn Error>> {
         match block_on(Renderer::request(RendererOptions::new())) {
             Ok(renderer) => Ok(Some(renderer)),

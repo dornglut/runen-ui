@@ -813,6 +813,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn zero_width_stroke_prepares_empty_geometry() {
         let rect = LogicalRect::try_new(0.0, 0.0, 10.0, 10.0)
             .unwrap_or_else(|_| unreachable!("test rect is valid"));

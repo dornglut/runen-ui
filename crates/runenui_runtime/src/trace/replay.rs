@@ -204,7 +204,6 @@ impl TraceReplay {
     }
 
     /// Returns retained replay records in strictly increasing sequence order.
-    #[must_use]
     pub fn records(&self) -> impl ExactSizeIterator<Item = &TraceReplayRecord> {
         self.records.iter()
     }

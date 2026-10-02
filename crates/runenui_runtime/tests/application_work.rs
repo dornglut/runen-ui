@@ -46,6 +46,7 @@ impl UiApp for OrderedWorkApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn initial_and_update_effects_append_in_transaction_order() {
     let mut runtime = AppRuntime::<OrderedWorkApp>::mount(Vec::new());
     let first = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
@@ -243,6 +244,7 @@ impl UiApp for InitialTransactionApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn initial_transaction_assigns_every_group_atomically_in_canonical_order() {
     let declarations = Rc::new(std::cell::RefCell::new(Vec::new()));
     let mut runtime =

@@ -220,6 +220,7 @@ fn submit(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: Semanti
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn downstream_event_mapping_preserves_facts_state_actions_and_work() {
     let observations = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<App>::mount(State {
@@ -335,6 +336,7 @@ fn assert_interleaved_acceptance_trace(
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn downstream_commit_orders_coalesced_reconciliation_interleaved_outputs_and_later_delegation() {
     let observations = Rc::new(RefCell::new(Vec::new()));
     let subscription_calls = Rc::new(Cell::new(0));
@@ -629,6 +631,7 @@ fn downstream_route_only_commands_route_once_without_implicit_default_or_output(
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn downstream_conservative_rejection_runs_no_callback_and_commits_no_partial_output() {
     let limits = RuntimeLimits::default()
         .with_transaction_outputs(1)

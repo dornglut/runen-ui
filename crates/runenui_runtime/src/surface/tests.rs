@@ -88,6 +88,7 @@ fn assert_retained_reuse(before: &SurfaceCache, cache: Option<&SurfaceCache>, ex
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn phase_function_counters_track_only_actual_execution_branches() {
     let (mut tree, _) = MountedTree::<()>::mount(text("phase").key("root").into_element());
     let environment = StyleEnvironment::default();
@@ -114,6 +115,7 @@ fn phase_function_counters_track_only_actual_execution_branches() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn clean_and_semantic_publications_reuse_all_retained_products() {
     let mut tree = reuse_tree();
     let environment = StyleEnvironment::default();
@@ -315,6 +317,7 @@ fn report_bookkeeping_is_independent_from_phase_execution_counters() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn isolated_phase_entry_points_match_truthful_reports() {
     let (mut tree, _) = MountedTree::<()>::mount(
         text("phase")

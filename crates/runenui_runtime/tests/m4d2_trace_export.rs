@@ -145,6 +145,7 @@ fn deterministic_execution() -> String {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn trace_export_01_jsonl_v1_is_versioned_and_byte_stable() {
     let first = deterministic_execution();
     let second = deterministic_execution();
@@ -389,6 +390,7 @@ fn trace_export_07_09_10_sink_delivery_state_cannot_change_runtime_or_canonical_
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn trace_export_10_huge_logical_sink_capacity_does_not_eagerly_allocate() {
     let huge =
         NonZeroUsize::new(usize::MAX).unwrap_or_else(|| unreachable!("usize max is non-zero"));
@@ -398,6 +400,7 @@ fn trace_export_10_huge_logical_sink_capacity_does_not_eagerly_allocate() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn capacity_zero_disables_payload_and_sink_diagnostics_without_changing_actions() {
     let huge =
         NonZeroUsize::new(usize::MAX).unwrap_or_else(|| unreachable!("usize max is non-zero"));

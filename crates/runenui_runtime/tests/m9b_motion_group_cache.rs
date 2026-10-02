@@ -142,6 +142,7 @@ fn high_contrast_opaque() -> StyleEnvironment {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn active_spec_retains_group_at_identity_sample_and_drops_it_at_terminal_identity() {
     let mut runtime = AppRuntime::<GroupLifetimeApp>::mount(());
     let environment = StyleEnvironment::default();
@@ -168,6 +169,7 @@ fn active_spec_retains_group_at_identity_sample_and_drops_it_at_terminal_identit
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn mandatory_suppression_removes_motion_group_until_the_same_clock_sample_is_revealed() {
     let mut runtime = AppRuntime::<GroupLifetimeApp>::mount(());
     let high_contrast = high_contrast_opaque();

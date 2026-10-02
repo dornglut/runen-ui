@@ -455,6 +455,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn whitespace_is_valid_non_painting_outline_content() {
         let (_system, artifact) = shaped_resource(" ");
         let resource = artifact.lines()[0].runs()[0].shaped_resource();
@@ -467,6 +468,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn positioned_paths_are_deterministic_and_follow_run_origin() {
         let (_system, artifact) = shaped_resource("T");
         let resource = artifact.lines()[0].runs()[0].shaped_resource();

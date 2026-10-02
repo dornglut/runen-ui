@@ -178,6 +178,7 @@ fn publish(
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn clean_and_paint_only_publication_skip_unrelated_work() {
     let (calls, mut runtime, environment) = mounted_cache();
     let _ = publish(&mut runtime, &environment);

@@ -225,6 +225,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn counter_state_changes_have_distinct_literal_paint_publications() {
         let zero = published_paint_colors(Counter::new());
         let one = published_paint_colors(Counter { count: 1 });

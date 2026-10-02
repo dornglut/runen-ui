@@ -200,6 +200,7 @@ fn trace_sequence_exhaustion_prevents_local_future_poll() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn direct_work_sequence_exhaustion_returns_action_and_closes_mutation() {
     let calls = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<App>::mount(state(&calls));
@@ -235,6 +236,7 @@ fn direct_work_sequence_exhaustion_returns_action_and_closes_mutation() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn command_submission_sequence_exhaustion_recovers_inputs_and_closes_mutation() {
     let calls = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<App>::mount(state(&calls));
@@ -280,6 +282,7 @@ fn command_submission_sequence_exhaustion_recovers_inputs_and_closes_mutation() 
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn direct_trace_sequence_exhaustion_returns_action_and_closes_mutation() {
     let calls = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<App>::mount(state(&calls));
@@ -313,6 +316,7 @@ fn direct_trace_sequence_exhaustion_returns_action_and_closes_mutation() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn trace_exhaustion_during_pump_cancels_failed_and_waiting_envelopes() {
     let calls = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<App>::mount(state(&calls));
@@ -377,6 +381,7 @@ fn trace_exhaustion_during_pump_cancels_failed_and_waiting_envelopes() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn reconciliation_generation_exhaustion_cancels_accepted_envelopes() {
     let calls = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<App>::mount(state(&calls));
@@ -474,6 +479,7 @@ impl UiApp for InitialMountedCapacityApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn initial_mounted_identity_exhaustion_runs_no_mount_callback_and_is_terminal() {
     let mount_calls = Rc::new(Cell::new(0));
     let config =

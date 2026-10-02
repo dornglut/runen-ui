@@ -389,7 +389,6 @@ impl PointerButtons {
     }
 
     /// Iterates active buttons in deterministic order.
-    #[must_use]
     pub fn iter(&self) -> impl ExactSizeIterator<Item = PointerButton> + '_ {
         self.buttons.iter().copied()
     }

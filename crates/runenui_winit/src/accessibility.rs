@@ -1761,6 +1761,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn all_current_roles_map_exactly_and_unsupported_facts_diagnose() {
         let namespace = RuntimeNamespace::__runtime_new();
         let id = namespace.__runtime_semantic_id(0, 1);
@@ -1853,6 +1854,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn typed_standard_semantics_project_exact_native_properties_and_collection_delta() {
         let mut runtime = AppRuntime::<FixtureApp>::mount(3);
         let first_publication = publication(&mut runtime);
@@ -1935,6 +1937,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn range_and_expansion_actions_project_and_round_trip_exact_native_requests() {
         let mut runtime = AppRuntime::<FixtureApp>::mount(3);
         let publication = publication(&mut runtime);
@@ -2104,6 +2107,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn exhausted_initial_projection_diagnoses_without_publishing_partial_state() {
         let mut runtime = AppRuntime::<FixtureApp>::mount(0);
         let publication = publication(&mut runtime);
@@ -2157,6 +2161,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn node_id_exhaustion_preserves_the_last_coherent_projection() {
         let mut runtime = AppRuntime::<FixtureApp>::mount(0);
         let first_publication = publication(&mut runtime);
@@ -2262,6 +2267,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn exact_delta_and_skipped_revision_resync_keep_ids_stable_and_retired_ids_unused() {
         let mut runtime = AppRuntime::<FixtureApp>::mount(0);
         let first_publication = publication(&mut runtime);

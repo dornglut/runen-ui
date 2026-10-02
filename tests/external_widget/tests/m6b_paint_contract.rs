@@ -257,6 +257,7 @@ fn independent_logical_coverage_proves_degenerate_and_centered_miter_strokes() {
 }
 
 #[test]
+#[allow(clippy::suboptimal_flops)]
 fn independent_fixed_opacity_compositor_decodes_srgb_and_uses_source_over_scene_order() {
     let area = logical_rect(0.0, 0.0, 10.0, 10.0);
     let red = PaintPrimitive::Fill {

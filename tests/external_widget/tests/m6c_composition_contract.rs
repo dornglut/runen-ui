@@ -257,7 +257,7 @@ fn paint_scene_composes_self_contained_values_exact_order_and_conjunctive_clips(
     ));
 
     let green = &items[2];
-    assert!(green.clips().is_empty());
+    assert_eq!(green.clips(), []);
     assert!(fill_item_covers_surface_point(
         green,
         point(owner_x + 1.0, owner_y + 1.0)

@@ -605,6 +605,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn shutdown_clears_all_lifetimes_and_is_idempotent() {
         let (mut mounted, _) = mount_tree(tree(["a", "b"], "a", "a"));
         let ids: Vec<_> = mounted.publication_preorder_ids().into_iter().collect();

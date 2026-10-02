@@ -109,6 +109,7 @@ fn keyboard() -> KeyboardEvent {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn downstream_widget_uses_only_public_keyboard_text_and_composition_protocols() {
     let facts = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<App>::mount(State {

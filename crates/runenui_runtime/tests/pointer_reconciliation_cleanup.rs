@@ -279,6 +279,7 @@ fn assert_captured_cleanup(record: &TraceRecord, harness: &Harness, captured: Po
     assert!(cleanup.physical_path_cleared());
 }
 
+#[allow(clippy::assert_is_empty)]
 fn assert_suppressed_capture_loss(record: &TraceRecord, harness: &Harness, captured: PointerId) {
     assert!(matches!(
         record.kind(),
@@ -373,6 +374,7 @@ fn cancel_reconciled_streams(harness: &mut Harness, captured: PointerId, hovered
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn removal_cleans_streams_in_registration_order_and_suppresses_removed_capture_loss() {
     let mut harness = harness();
     let captured = pointer(9);

@@ -563,6 +563,7 @@ fn retired_context_cancel_diagnoses_geometry_but_routes_cleanup_and_closes() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn cancel_closes_hover_stream_after_target_removal_without_stale_callback() {
     let mut harness = harness(RuntimeConfig::default());
     submit_and_pump(

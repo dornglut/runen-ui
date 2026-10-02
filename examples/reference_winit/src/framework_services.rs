@@ -377,6 +377,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn native_drop_custody_moves_only_after_exact_runtime_admission() {
         let mut services = NativeFrameworkServices::new();
         let source = WorkSequence::__runtime_new(
@@ -412,6 +413,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn native_drop_rejection_cancellation_and_shutdown_release_host_paths() {
         let mut services = NativeFrameworkServices::new();
         let first = WorkSequence::__runtime_new(

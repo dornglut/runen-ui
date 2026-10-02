@@ -189,6 +189,7 @@ fn focus_target(runtime: &mut AppRuntime<App>) {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn late_composition_never_retargets_a_same_slot_replacement() {
     let log = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = mounted(Rc::clone(&log));

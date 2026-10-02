@@ -102,6 +102,7 @@ fn switch_query(checked: SemanticCheckedState) -> SemanticQuery {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn passive_binary_controls_publish_exact_application_authored_state() {
     let mut harness = TestHarness::<StaticBinaryControlsApp>::mount(());
     assert!(harness.publish().is_ok());

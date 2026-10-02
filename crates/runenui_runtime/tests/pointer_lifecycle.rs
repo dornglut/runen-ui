@@ -348,6 +348,7 @@ fn assert_gained_capture(capture: &TraceRecord, harness: &Harness) {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn pointer_submission_is_non_reentrant_and_exposes_physical_facts() {
     let mut harness = harness(false, false);
     let down = pointer_event(

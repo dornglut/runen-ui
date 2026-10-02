@@ -79,6 +79,7 @@ fn pump<Application: UiApp>(runtime: &mut AppRuntime<Application>) {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn downstream_mounted_subscription_reconciles_identity_duplicates_and_lifecycle() {
     let log = Rc::new(ExternalSubscriptionLog::default());
     let mut runtime = AppRuntime::<SubscriptionApp>::mount(State {
@@ -186,6 +187,7 @@ impl UiApp for ActivationSubscriptionApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn downstream_activation_invalidates_current_declaration_before_ordered_actions() {
     let log = Rc::new(ExternalSubscriptionLog::default());
     let mut runtime = AppRuntime::<ActivationSubscriptionApp>::mount((Rc::clone(&log), Vec::new()));
