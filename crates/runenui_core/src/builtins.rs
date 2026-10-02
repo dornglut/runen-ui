@@ -308,7 +308,6 @@ pub fn shortcut_scope<Action>(
     ShortcutScope::new(bindings, children)
 }
 
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Text {
     content: String,
