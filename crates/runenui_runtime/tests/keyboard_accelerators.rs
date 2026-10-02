@@ -8,10 +8,9 @@ use runenui_core::{
     FocusGroupTypeAhead, Focusability, KeyLocation, KeyModifiers, KeyboardCompositionState,
     KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey, SemanticCommand,
     ShortcutBinding, ShortcutChord, ShortcutRepeatPolicy, StyleEnvironment, TextDocumentId,
-    TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, TextSensitivity, UiApp,
-    UiEvent, View,
-    Widget, WidgetEventOutput, WidgetTextInput, button, column, command_binding, command_scope,
-    container, shortcut_scope,
+    TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, TextSensitivity,
+    UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetTextInput, button, column,
+    command_binding, command_scope, container, shortcut_scope,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus,
@@ -194,10 +193,7 @@ impl UiApp for App {
             true,
         ));
         inner.push(shortcut(
-            ShortcutChord::physical(
-                PhysicalKey::Code(String::from("KeyP")),
-                control,
-            ),
+            ShortcutChord::physical(PhysicalKey::Code(String::from("KeyP")), control),
             ShortcutRepeatPolicy::IgnoreRepeat,
             "shortcut.physical",
             true,
@@ -266,9 +262,7 @@ impl UiApp for App {
         .key("command.b")
         .into_element();
 
-        column(vec![branch_a, branch_b])
-            .key("root")
-            .into_element()
+        column(vec![branch_a, branch_b]).key("root").into_element()
     }
 
     fn update(state: &mut State, action: Action) {
@@ -377,14 +371,8 @@ fn ambiguous_and_disabled_nearest_declarations_fail_closed_without_outer_fallbac
         settle(&mut runtime);
         assert!(runtime.state().fired.is_empty());
         assert!(runtime.trace().records().any(|record| match mode {
-            Mode::Ambiguous => matches!(
-                record.kind(),
-                TraceRecordKind::KeyboardShortcutAmbiguous
-            ),
-            Mode::Disabled => matches!(
-                record.kind(),
-                TraceRecordKind::KeyboardShortcutDisabled
-            ),
+            Mode::Ambiguous => matches!(record.kind(), TraceRecordKind::KeyboardShortcutAmbiguous),
+            Mode::Disabled => matches!(record.kind(), TraceRecordKind::KeyboardShortcutDisabled),
             _ => unreachable!("fixture iterates only fail-closed modes"),
         }));
     }
@@ -560,14 +548,20 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
         ),
     );
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
-    assert!(runtime.state().fired.is_empty(), "keyboard default only queues the command");
+    assert!(
+        runtime.state().fired.is_empty(),
+        "keyboard default only queues the command"
+    );
     assert!(has_trace(&runtime, |kind| matches!(
         kind,
         TraceRecordKind::KeyboardShortcutMatched
     )));
 
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
-    assert!(runtime.state().fired.is_empty(), "resolved command action remains queued");
+    assert!(
+        runtime.state().fired.is_empty(),
+        "resolved command action remains queued"
+    );
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::ApplicationCommandResolution {
@@ -987,8 +981,10 @@ fn editor_owned_m10_default_precedes_accelerator_matching() {
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
 
     assert!(!runtime.state().shortcut_fired);
-    assert!(!runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::KeyboardShortcutMatched
-    )));
+    assert!(
+        !runtime
+            .trace()
+            .records()
+            .any(|record| matches!(record.kind(), TraceRecordKind::KeyboardShortcutMatched))
+    );
 }
