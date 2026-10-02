@@ -688,11 +688,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     }
                 }
             }
-            assert_eq!(
-            mounted.len(),
-            0,
-            "activation output order must account for every mounted output"
-        );
+                assert_eq!(
+                mounted.len(),
+                0,
+                "activation output order must account for every mounted output"
+            );
         } else {
             for effect in mounted {
                 self.collect_activation_effect(transaction, effect);
