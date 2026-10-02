@@ -460,7 +460,7 @@ fn routed_output_admission_rejects_before_emitter_callback_or_partial_command_co
 fn application_command_waiting_queue_saturation_rejects_before_emitter_callback() {
     let limits = RuntimeLimits::default()
         .with_waiting_envelopes(2)
-        .with_transaction_outputs(2);
+        .with_transaction_outputs(1);
     let mut runtime = AppRuntime::<App>::mount_with_config(
         state(Mode::Enabled),
         RuntimeConfig::default().with_limits(limits),
