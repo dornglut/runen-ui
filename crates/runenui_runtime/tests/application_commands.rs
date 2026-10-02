@@ -267,11 +267,7 @@ fn ancestor_emission_retains_original_target_and_nearest_scope_resolves_non_reen
     assert_eq!(runtime.state().updates, []);
 
     pump_one(&mut runtime);
-    assert_eq!(
-        runtime.state().updates,
-        [],
-        "scope action remains queued"
-    );
+    assert_eq!(runtime.state().updates, [], "scope action remains queued");
     assert!(has_outcome(
         &runtime,
         TraceApplicationCommandOutcome::Resolved
@@ -337,9 +333,7 @@ fn retained_scope_rebuild_updates_duplicate_diagnostic_publication() {
             .nodes()
             .iter()
             .flat_map(runenui_runtime::SurfaceNode::diagnostics)
-            .filter(|diagnostic| {
-                diagnostic.code() == "runenui.command-scope.duplicate-command"
-            })
+            .filter(|diagnostic| diagnostic.code() == "runenui.command-scope.duplicate-command")
             .count()
     };
 
@@ -535,4 +529,3 @@ fn application_command_trace_exhaustion_rejects_before_emitter_callback() {
             | TraceRecordKind::ApplicationCommandResolution { .. }
     )));
 }
-
