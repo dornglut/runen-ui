@@ -5,7 +5,8 @@ use std::{cell::RefCell, rc::Rc};
 use runenui_core::{
     CommandOrigin, CommittedTextEvent, Element, EventContext, EventPhase, KeyLocation, KeyModifiers,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
-    PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetEventOutput, container,
+    PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
+    WidgetEventOutput, container,
 };
 use runenui_external_widget_conformance::{
     ExternalInputAction, ExternalInputAncestor, ExternalInputFact, ExternalInputKind,
@@ -218,6 +219,10 @@ impl Widget<()> for NavigationKeyProbe {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(true)
+    }
 
     fn event(
         &mut self,
