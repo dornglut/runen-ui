@@ -1608,6 +1608,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if self.editor_owned_keyboard_default(event, target).is_some() {
             return true;
         }
+        if event.composition_state() == KeyboardCompositionState::Active {
+            return Self::generic_keyboard_default(event).is_some();
+        }
         if let Some(candidate) = shortcut_candidate {
             return candidate.reserves_default_output();
         }
@@ -1770,7 +1773,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 scope,
                 TraceRecordKind::KeyboardShortcutCompositionSuppressed,
             );
-            return Ok(true);
+            return Ok(false);
         }
         let (scope, binding) = match candidate {
             KeyboardShortcutCandidate::Ambiguous { scope } => {
