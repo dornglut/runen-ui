@@ -688,7 +688,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     }
                 }
             }
-                assert_eq!(
+            assert_eq!(
                 mounted.len(),
                 0,
                 "activation output order must account for every mounted output"
