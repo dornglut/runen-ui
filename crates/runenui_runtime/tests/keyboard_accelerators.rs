@@ -895,11 +895,13 @@ impl UiApp for TypeAheadApp {
                 .id("typeahead.alpha")
                 .key("typeahead.alpha")
                 .into_element()
+                .focusable(true)
                 .focus_group_search_text("alpha"),
             button("beta")
                 .id("typeahead.beta")
                 .key("typeahead.beta")
                 .into_element()
+                .focusable(true)
                 .focus_group_search_text("beta"),
         ])
         .key("typeahead.group")
@@ -963,6 +965,7 @@ fn accelerator_precedes_type_ahead_when_editor_does_not_own_key() {
         )
         .unwrap_or_else(|_| unreachable!("type-ahead focus request is admitted"));
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.focus().focused_node(), Some(&alpha));
 
     runtime
         .submit_keyboard(key(
@@ -1106,7 +1109,7 @@ fn editor_owned_m10_default_precedes_accelerator_matching() {
     assert!(!runtime.state().shortcut_fired);
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
-        TraceRecordKind::SemanticDefaultApplied {
+        TraceRecordKind::EditingDefaultUnavailable {
             command: SemanticCommand::Copy
         }
     )));
