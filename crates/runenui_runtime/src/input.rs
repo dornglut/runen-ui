@@ -1094,10 +1094,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             InputEnvelopePayload::CommittedText(_) => usize::from(self.editing.has_owner(&target)),
             InputEnvelopePayload::Composition(_) => 0,
         };
-        let shortcut_trace = if shortcut_candidate.is_some() {
-            MandatoryTracePlan::one_fact()
-        } else {
-            MandatoryTracePlan::none()
+        let shortcut_trace = match &payload {
+            InputEnvelopePayload::Keyboard(event)
+                if shortcut_candidate.is_some()
+                    && self.editor_owned_keyboard_default(event, &target).is_none() =>
+            {
+                MandatoryTracePlan::one_fact()
+            }
+            InputEnvelopePayload::Keyboard(_)
+            | InputEnvelopePayload::CommittedText(_)
+            | InputEnvelopePayload::Composition(_) => MandatoryTracePlan::none(),
         };
         let processing_trace = MandatoryTracePlan::input_processing()
             .checked_add(shortcut_trace)
