@@ -16,7 +16,7 @@ use core::{
 };
 use std::rc::Rc;
 
-use crate::__runtime::MountedEffect;
+use crate::__runtime::{MountedEffect, WidgetActivationContextOutputOrder};
 
 pub struct MappedWidget<ChildAction, ParentAction> {
     pub child: Box<dyn ErasedWidget<ChildAction>>,
@@ -152,7 +152,7 @@ where
             context.semantic_action_target().cloned(),
         );
         let action = self.child.activate(state, &mut child_context)?;
-        transfer_context(child_context, context, &self.mapper);
+        transfer_activation_context(child_context, context, &self.mapper);
         Ok(action.map_action(self.mapper.as_ref()))
     }
     fn measure(
@@ -229,7 +229,6 @@ macro_rules! transfer_context_impl {
 
 transfer_context_impl!(WidgetMountContext);
 transfer_context_impl!(WidgetUpdateContext);
-transfer_context_impl!(WidgetActivationContext);
 
 fn transfer_context<ChildAction: 'static, ParentAction: 'static>(
     mut child: impl TransferContext<ChildAction>,
@@ -242,6 +241,41 @@ fn transfer_context<ChildAction: 'static, ParentAction: 'static>(
     }
     for output in child.take_outputs() {
         parent.push_output(map_output(output, mapper));
+    }
+}
+
+fn transfer_activation_context<ChildAction: 'static, ParentAction: 'static>(
+    mut child: WidgetActivationContext<ChildAction>,
+    parent: &mut WidgetActivationContext<ParentAction>,
+    mapper: &Rc<dyn Fn(ChildAction) -> ParentAction>,
+) {
+    parent.invalidate(child.__runtime_take_invalidation());
+    if child.__runtime_take_subscription_invalidation() {
+        parent.invalidate_subscriptions();
+    }
+    let (mounted, order) = child
+        .__runtime_take_activation_outputs()
+        .__runtime_into_parts();
+    let mut mounted = mounted.into_iter();
+    if let Some(order) = order {
+        for output in order {
+            match output {
+                WidgetActivationContextOutputOrder::Mounted => {
+                    let effect = mounted
+                        .next()
+                        .unwrap_or_else(|| unreachable!("mounted activation output is ordered"));
+                    parent.__runtime_push_output(map_output(effect, mapper));
+                }
+                WidgetActivationContextOutputOrder::ApplicationCommand(command) => {
+                    parent.__runtime_push_application_command(command);
+                }
+            }
+        }
+        debug_assert_eq!(mounted.len(), 0);
+    } else {
+        for effect in mounted {
+            parent.__runtime_push_output(map_output(effect, mapper));
+        }
     }
 }
 
@@ -269,7 +303,6 @@ macro_rules! parent_context_impl {
 
 parent_context_impl!(WidgetMountContext);
 parent_context_impl!(WidgetUpdateContext);
-parent_context_impl!(WidgetActivationContext);
 
 pub fn map_output<ChildAction: 'static, ParentAction: 'static>(
     output: MountedEffect<ChildAction>,

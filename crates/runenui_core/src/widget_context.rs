@@ -6,7 +6,8 @@ use core::{
 };
 
 use crate::{
-    SemanticActionTarget, SendTaskStartFailure, TimerEffect, WorkFamily, WorkKey,
+    ApplicationCommandId, SemanticActionTarget, SendTaskStartFailure, TimerEffect, WorkFamily,
+    WorkKey,
     effects::MountedEffect,
     work::{LocalTaskEffect, SendTaskEffect},
 };
@@ -59,23 +60,60 @@ impl BitOrAssign for WidgetInvalidation {
     }
 }
 
+/// Ordering marker for provisional activation-context outputs.
+#[doc(hidden)]
+pub enum WidgetActivationContextOutputOrder {
+    Mounted,
+    ApplicationCommand(ApplicationCommandId),
+}
+
+/// Provisional activation-context outputs with large mounted effects retained
+/// separately from the small ordering stream.
+#[doc(hidden)]
+pub struct WidgetActivationContextOutputs<Action> {
+    mounted: Vec<MountedEffect<Action>>,
+    order: Option<Vec<WidgetActivationContextOutputOrder>>,
+}
+
+impl<Action> WidgetActivationContextOutputs<Action> {
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __runtime_into_parts(
+        self,
+    ) -> (
+        Vec<MountedEffect<Action>>,
+        Option<Vec<WidgetActivationContextOutputOrder>>,
+    ) {
+        (self.mounted, self.order)
+    }
+}
+
 pub struct WidgetWorkCollector<Action> {
     outputs: Vec<MountedEffect<Action>>,
+    activation_order: Option<Vec<WidgetActivationContextOutputOrder>>,
 }
 
 impl<Action> WidgetWorkCollector<Action> {
     pub const fn new() -> Self {
         Self {
             outputs: Vec::new(),
+            activation_order: None,
+        }
+    }
+
+    fn push_mounted_output(&mut self, output: MountedEffect<Action>) {
+        self.outputs.push(output);
+        if let Some(order) = &mut self.activation_order {
+            order.push(WidgetActivationContextOutputOrder::Mounted);
         }
     }
 
     pub fn emit(&mut self, action: Action) {
-        self.outputs.push(MountedEffect::Action(action));
+        self.push_mounted_output(MountedEffect::Action(action));
     }
 
     pub fn local_task(&mut self, future: impl Future<Output = Option<Action>> + 'static) {
-        self.outputs.push(MountedEffect::LocalTask(LocalTaskEffect {
+        self.push_mounted_output(MountedEffect::LocalTask(LocalTaskEffect {
             key: None,
             future: Box::pin(future),
         }));
@@ -86,7 +124,7 @@ impl<Action> WidgetWorkCollector<Action> {
         key: WorkKey,
         future: impl Future<Output = Option<Action>> + 'static,
     ) {
-        self.outputs.push(MountedEffect::LocalTask(LocalTaskEffect {
+        self.push_mounted_output(MountedEffect::LocalTask(LocalTaskEffect {
             key: Some(key),
             future: Box::pin(future),
         }));
@@ -133,7 +171,7 @@ impl<Action> WidgetWorkCollector<Action> {
     ) where
         Output: Send + 'static,
     {
-        self.outputs.push(MountedEffect::SendTask(SendTaskEffect {
+        self.push_mounted_output(MountedEffect::SendTask(SendTaskEffect {
             key,
             future: Box::pin(async move { Box::new(future.await) as crate::work::SendOutput }),
             map: Box::new(move |output| {
@@ -146,23 +184,51 @@ impl<Action> WidgetWorkCollector<Action> {
     }
 
     pub fn timer(&mut self, timer: TimerEffect<Action>) {
-        self.outputs.push(MountedEffect::Timer(timer));
+        self.push_mounted_output(MountedEffect::Timer(timer));
     }
 
     pub fn cancel(&mut self, family: WorkFamily, key: WorkKey) {
-        self.outputs.push(MountedEffect::Cancel { family, key });
+        self.push_mounted_output(MountedEffect::Cancel { family, key });
     }
 
     pub fn take_outputs(&mut self) -> Vec<MountedEffect<Action>> {
+        debug_assert!(
+            self.activation_order.is_none(),
+            "activation command ordering must be consumed through the activation output path"
+        );
         core::mem::take(&mut self.outputs)
     }
 
+    pub fn take_activation_outputs(&mut self) -> WidgetActivationContextOutputs<Action> {
+        WidgetActivationContextOutputs {
+            mounted: core::mem::take(&mut self.outputs),
+            order: self.activation_order.take(),
+        }
+    }
+
     pub fn push_output(&mut self, output: MountedEffect<Action>) {
-        self.outputs.push(output);
+        self.push_mounted_output(output);
+    }
+
+    pub fn push_application_command(&mut self, command: ApplicationCommandId) {
+        let order = self.activation_order.get_or_insert_with(|| {
+            let mut order = Vec::with_capacity(self.outputs.len().saturating_add(1));
+            order.extend(
+                core::iter::repeat_with(|| WidgetActivationContextOutputOrder::Mounted)
+                    .take(self.outputs.len()),
+            );
+            order
+        });
+        order.push(WidgetActivationContextOutputOrder::ApplicationCommand(
+            command,
+        ));
     }
 
     const fn len(&self) -> usize {
-        self.outputs.len()
+        match &self.activation_order {
+            Some(order) => order.len(),
+            None => self.outputs.len(),
+        }
     }
 }
 
@@ -362,6 +428,13 @@ work_context!(
 );
 
 impl<Action> WidgetActivationContext<Action> {
+    /// Stages one contextual application command for later FIFO processing.
+    pub fn emit_application_command(&mut self, command: ApplicationCommandId) {
+        if self.__runtime_reserve_output() {
+            self.work.push_application_command(command);
+        }
+    }
+
     /// Borrows the exact semantic target when this activation originated from
     /// an admitted semantic-node action request.
     ///
@@ -390,6 +463,19 @@ impl<Action> WidgetActivationContext<Action> {
         let mut context = Self::__runtime_new_bounded(output_allowance);
         context.semantic_target = semantic_target;
         context
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __runtime_take_activation_outputs(&mut self) -> WidgetActivationContextOutputs<Action> {
+        self.work.take_activation_outputs()
+    }
+
+    #[doc(hidden)]
+    pub fn __runtime_push_application_command(&mut self, command: ApplicationCommandId) {
+        if self.__runtime_reserve_output() {
+            self.work.push_application_command(command);
+        }
     }
 }
 
@@ -422,9 +508,12 @@ impl WidgetUnmountContext {
 
 #[cfg(test)]
 mod tests {
-    use crate::{__runtime::RuntimeNamespace, SemanticAction, SemanticActionTarget, SemanticKey};
+    use crate::{
+        __runtime::{MountedEffect, RuntimeNamespace},
+        ApplicationCommandId, SemanticAction, SemanticActionTarget, SemanticKey,
+    };
 
-    use super::{WidgetActivationContext, WidgetInvalidation};
+    use super::{WidgetActivationContext, WidgetActivationContextOutputOrder, WidgetInvalidation};
 
     #[test]
     fn invalidation_union_and_containment_are_exact() {
@@ -435,6 +524,35 @@ mod tests {
         assert!(!value.contains(WidgetInvalidation::SEMANTICS));
         assert!(WidgetInvalidation::NONE.is_empty());
         assert!(WidgetInvalidation::ALL.contains(value));
+    }
+
+    #[test]
+    fn activation_context_commands_share_the_bounded_output_allowance() {
+        let command = ApplicationCommandId::from_static("document.save")
+            .unwrap_or_else(|_| unreachable!("static command id is valid"));
+        let mut context = WidgetActivationContext::__runtime_new_bounded(2);
+
+        context.emit(7_u8);
+        context.emit_application_command(command.clone());
+        context.emit(9_u8);
+
+        assert_eq!(context.__runtime_remaining_outputs(), Some(0));
+        assert!(context.__runtime_overflowed());
+        let outputs = context.__runtime_take_activation_outputs();
+        let (mounted, order) = outputs.__runtime_into_parts();
+        assert_eq!(mounted.len(), 1);
+        assert!(matches!(&mounted[0], MountedEffect::Action(7)));
+        let order = order.unwrap_or_else(|| unreachable!("command emission records ordering"));
+        assert_eq!(order.len(), 2);
+        assert!(matches!(
+            order[0],
+            WidgetActivationContextOutputOrder::Mounted
+        ));
+        assert!(matches!(
+            &order[1],
+            WidgetActivationContextOutputOrder::ApplicationCommand(observed)
+                if observed == &command
+        ));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use runenui_core::{
-    __runtime::WidgetBridgeError, EditableContribution, SemanticActionTarget, WidgetActivation,
-    WidgetActivationContext, WidgetInvalidation, WidgetTextInput,
+    __runtime::{WidgetActivationContextOutputs, WidgetBridgeError},
+    EditableContribution, SemanticActionTarget, WidgetActivation, WidgetActivationContext,
+    WidgetInvalidation, WidgetTextInput,
 };
 #[cfg(test)]
 use runenui_core::{
@@ -21,7 +22,8 @@ use super::{CachedSemanticContribution, semantic::SemanticReconcileError};
 pub(crate) struct MountedActivationOutput<Action> {
     pub(crate) invalidation: WidgetInvalidation,
     pub(crate) subscription_invalidation: bool,
-    pub(crate) outputs: Vec<runenui_core::__runtime::MountedEffect<Action>>,
+    pub(crate) primary_action: Option<Action>,
+    pub(crate) outputs: WidgetActivationContextOutputs<Action>,
     pub(crate) state_changed: bool,
     pub(crate) overflowed: bool,
     pub(crate) remaining_outputs: usize,
@@ -135,20 +137,18 @@ impl<Action> MountedTree<Action> {
         let invalidation = context.__runtime_take_invalidation();
         let subscription_invalidation = context.__runtime_take_subscription_invalidation();
         apply_invalidation(node, invalidation);
-        let mut outputs = context.__runtime_take_outputs();
+        let outputs = context.__runtime_take_activation_outputs();
         let state_changed = activation.state_changed();
-        let action = activation.into_action();
-        if let Some(action) = action
-            && context.__runtime_reserve_output()
-        {
-            outputs.insert(0, runenui_core::__runtime::MountedEffect::Action(action));
-        }
+        let primary_action = activation
+            .into_action()
+            .filter(|_| context.__runtime_reserve_output());
         let remaining_outputs = context
             .__runtime_remaining_outputs()
             .unwrap_or_else(|| unreachable!("activation context is bounded"));
         Ok(MountedActivationOutput {
             invalidation,
             subscription_invalidation,
+            primary_action,
             outputs,
             state_changed,
             overflowed: context.__runtime_overflowed(),

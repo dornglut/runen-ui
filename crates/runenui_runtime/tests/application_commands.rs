@@ -5,8 +5,9 @@ use std::{cell::Cell, rc::Rc};
 use runenui_core::{
     ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandId, ChildBearingWidget,
     CommandOrigin, Element, EventContext, EventPhase, NoHostProtocol, SemanticCommand,
-    SemanticCommandEvent, StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetEventOutput,
-    command_binding, command_scope, container, text,
+    SemanticCommandEvent, StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetActivation,
+    WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, children, command_binding,
+    command_scope, container, text,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, RuntimeConfig, RuntimeLimits, SurfaceBuildContext,
@@ -28,14 +29,32 @@ enum Mode {
     Ambiguous,
     Unbound,
     CustomScope,
+    ActivationDisabled,
+    ActivationNonActionable,
 }
 
 #[derive(Debug)]
 enum Action {
     Inner,
     Outer,
+    ActivationPrimary,
+    ActivationBefore,
+    ActivationAfter,
+    Mapped(MappedActivationAction),
     Replace,
     SetMode(Mode),
+}
+
+#[derive(Debug)]
+enum LeafActivationAction {
+    Primary,
+    Before,
+    After,
+}
+
+#[derive(Debug)]
+enum MappedActivationAction {
+    Leaf(LeafActivationAction),
 }
 
 #[derive(Debug)]
@@ -81,6 +100,70 @@ impl Widget<Action> for CommandEmitter {
 impl ChildBearingWidget<Action> for CommandEmitter {}
 
 #[derive(Debug)]
+struct ActivationCommandEmitter {
+    command: ApplicationCommandId,
+    calls: Rc<Cell<usize>>,
+    enabled: bool,
+    actionable: bool,
+}
+
+impl Widget<Action> for ActivationCommandEmitter {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        if !self.enabled {
+            WidgetActivation::disabled()
+        } else if self.actionable {
+            WidgetActivation::actionable(true)
+        } else {
+            WidgetActivation::NONE
+        }
+    }
+
+    fn activate(
+        &mut self,
+        (): &mut Self::State,
+        context: &mut WidgetActivationContext<Action>,
+    ) -> WidgetActivationOutput<Action> {
+        self.calls.set(self.calls.get() + 1);
+        context.emit(Action::ActivationBefore);
+        context.emit_application_command(self.command.clone());
+        context.emit(Action::ActivationAfter);
+        WidgetActivationOutput::action(Action::ActivationPrimary)
+    }
+}
+
+#[derive(Debug)]
+struct MappedActivationCommandEmitter {
+    command: ApplicationCommandId,
+    calls: Rc<Cell<usize>>,
+}
+
+impl Widget<LeafActivationAction> for MappedActivationCommandEmitter {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(true)
+    }
+
+    fn activate(
+        &mut self,
+        (): &mut Self::State,
+        context: &mut WidgetActivationContext<LeafActivationAction>,
+    ) -> WidgetActivationOutput<LeafActivationAction> {
+        self.calls.set(self.calls.get() + 1);
+        context.emit(LeafActivationAction::Before);
+        context.emit_application_command(self.command.clone());
+        context.emit(LeafActivationAction::After);
+        WidgetActivationOutput::action(LeafActivationAction::Primary)
+    }
+}
+
+#[derive(Debug)]
 struct DownstreamCommandScope {
     command: ApplicationCommandId,
 }
@@ -124,22 +207,50 @@ impl UiApp for App {
         } else {
             "leaf-old"
         });
+        let activation_enabled = state.mode != Mode::ActivationDisabled;
+        let activation_actionable = state.mode != Mode::ActivationNonActionable;
+        let direct_activation = Element::new(ActivationCommandEmitter {
+            command: id.clone(),
+            calls: Rc::clone(&state.emitter_calls),
+            enabled: activation_enabled,
+            actionable: activation_actionable,
+        })
+        .id("activation.direct")
+        .key(if state.replaced {
+            "activation-direct-new"
+        } else {
+            "activation-direct-old"
+        });
+        let mapped_activation = Element::new(MappedActivationCommandEmitter {
+            command: id.clone(),
+            calls: Rc::clone(&state.emitter_calls),
+        })
+        .id("activation.mapped")
+        .key(if state.replaced {
+            "activation-mapped-new"
+        } else {
+            "activation-mapped-old"
+        })
+        .map_action(MappedActivationAction::Leaf)
+        .map_action(Action::Mapped);
 
         let inner: Element<Action> = match state.mode {
             Mode::CustomScope => container(
                 DownstreamCommandScope {
                     command: id.clone(),
                 },
-                [leaf],
+                children![leaf, direct_activation, mapped_activation],
             )
             .key("inner-custom")
             .into_element(),
             mode => {
                 let bindings = match mode {
-                    Mode::Enabled => vec![command_binding(
-                        ApplicationCommand::new(id.clone(), true),
-                        || Action::Inner,
-                    )],
+                    Mode::Enabled | Mode::ActivationDisabled | Mode::ActivationNonActionable => {
+                        vec![command_binding(
+                            ApplicationCommand::new(id.clone(), true),
+                            || Action::Inner,
+                        )]
+                    }
                     Mode::Disabled => vec![command_binding(
                         ApplicationCommand::new(id.clone(), false),
                         || Action::Inner,
@@ -155,7 +266,12 @@ impl UiApp for App {
                     Mode::Unbound => Vec::new(),
                     Mode::CustomScope => unreachable!(),
                 };
-                command_scope(bindings, [leaf]).key("inner").into_element()
+                command_scope(
+                    bindings,
+                    children![leaf, direct_activation, mapped_activation],
+                )
+                .key("inner")
+                .into_element()
             }
         };
 
@@ -187,6 +303,14 @@ impl UiApp for App {
         match action {
             Action::Inner => state.updates.push("inner"),
             Action::Outer => state.updates.push("outer"),
+            Action::ActivationPrimary => state.updates.push("primary"),
+            Action::ActivationBefore => state.updates.push("before"),
+            Action::ActivationAfter => state.updates.push("after"),
+            Action::Mapped(MappedActivationAction::Leaf(action)) => match action {
+                LeafActivationAction::Primary => state.updates.push("mapped-primary"),
+                LeafActivationAction::Before => state.updates.push("mapped-before"),
+                LeafActivationAction::After => state.updates.push("mapped-after"),
+            },
             Action::Replace => state.replaced = true,
             Action::SetMode(mode) => state.mode = mode,
         }
@@ -215,17 +339,32 @@ fn pump_one(runtime: &mut AppRuntime<App>) {
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
 }
 
-fn leaf(runtime: &mut AppRuntime<App>) -> runenui_runtime::MountedNodeId {
-    let id = runenui_core::ElementId::from_static("leaf")
+fn authored_target(
+    runtime: &mut AppRuntime<App>,
+    authored: &'static str,
+) -> runenui_runtime::MountedNodeId {
+    let id = runenui_core::ElementId::from_static(authored)
         .unwrap_or_else(|_| unreachable!("test element id is valid"));
     runtime
         .index()
         .nodes()
         .iter()
         .find(|node| node.authored_id() == Some(&id))
-        .unwrap_or_else(|| unreachable!("leaf is mounted"))
+        .unwrap_or_else(|| unreachable!("authored target is mounted"))
         .id()
         .clone()
+}
+
+fn leaf(runtime: &mut AppRuntime<App>) -> runenui_runtime::MountedNodeId {
+    authored_target(runtime, "leaf")
+}
+
+fn direct_activation(runtime: &mut AppRuntime<App>) -> runenui_runtime::MountedNodeId {
+    authored_target(runtime, "activation.direct")
+}
+
+fn mapped_activation(runtime: &mut AppRuntime<App>) -> runenui_runtime::MountedNodeId {
+    authored_target(runtime, "activation.mapped")
 }
 
 fn submit_trigger(runtime: &mut AppRuntime<App>) {
@@ -546,5 +685,205 @@ fn application_command_trace_exhaustion_rejects_before_emitter_callback() {
         kind,
         TraceRecordKind::DelegatedApplicationCommandCollected { .. }
             | TraceRecordKind::ApplicationCommandResolution { .. }
+    )));
+}
+#[test]
+fn activation_context_preserves_primary_action_and_context_output_order() {
+    let mut runtime = AppRuntime::<App>::mount(state(Mode::Enabled));
+    settle(&mut runtime);
+    let target = direct_activation(&mut runtime);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("live activation target is accepted"));
+
+    pump_one(&mut runtime);
+    assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
+    assert_eq!(runtime.state().emitter_calls.get(), 1);
+
+    pump_one(&mut runtime);
+    assert_eq!(runtime.state().updates, ["primary"]);
+    pump_one(&mut runtime);
+    assert_eq!(runtime.state().updates, ["primary", "before"]);
+    pump_one(&mut runtime);
+    assert_eq!(
+        runtime.state().updates,
+        ["primary", "before"],
+        "application-command resolution occupies its emitted FIFO position"
+    );
+    assert!(has_outcome(
+        &runtime,
+        TraceApplicationCommandOutcome::Resolved
+    ));
+    pump_one(&mut runtime);
+    assert_eq!(runtime.state().updates, ["primary", "before", "after"]);
+    pump_one(&mut runtime);
+    assert_eq!(
+        runtime.state().updates,
+        ["primary", "before", "after", "inner"]
+    );
+}
+
+#[test]
+fn recursively_mapped_activation_maps_actions_but_preserves_command_identity_and_capacity() {
+    let limits = RuntimeLimits::default().with_transaction_outputs(4);
+    let mut runtime = AppRuntime::<App>::mount_with_config(
+        state(Mode::Enabled),
+        RuntimeConfig::default().with_limits(limits),
+    );
+    settle(&mut runtime);
+    let target = mapped_activation(&mut runtime);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("mapped activation target is accepted"));
+    settle(&mut runtime);
+
+    assert_eq!(
+        runtime.state().updates,
+        ["mapped-primary", "mapped-before", "mapped-after", "inner"]
+    );
+    assert_eq!(runtime.state().emitter_calls.get(), 1);
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::DelegatedApplicationCommandCollected { command }
+            if command == &command_id()
+    )));
+    assert!(has_outcome(
+        &runtime,
+        TraceApplicationCommandOutcome::Resolved
+    ));
+}
+
+#[test]
+fn disabled_and_non_actionable_activation_do_not_invoke_or_emit_commands() {
+    for mode in [Mode::ActivationDisabled, Mode::ActivationNonActionable] {
+        let mut runtime = AppRuntime::<App>::mount(state(mode));
+        settle(&mut runtime);
+        let target = direct_activation(&mut runtime);
+        runtime
+            .submit_command(
+                target,
+                SemanticCommand::Activate,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("live activation target is accepted"));
+        settle(&mut runtime);
+
+        assert_eq!(runtime.state().emitter_calls.get(), 0);
+        assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
+        assert!(!runtime.trace().records().any(|record| matches!(
+            record.kind(),
+            TraceRecordKind::DelegatedApplicationCommandCollected { .. }
+        )));
+    }
+}
+
+#[test]
+fn activation_command_admission_rejects_before_callback_under_output_backpressure() {
+    let limits = RuntimeLimits::default().with_transaction_outputs(0);
+    let mut runtime = AppRuntime::<App>::mount_with_config(
+        state(Mode::Enabled),
+        RuntimeConfig::default().with_limits(limits),
+    );
+    settle(&mut runtime);
+    let target = direct_activation(&mut runtime);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("live activation target is accepted"));
+
+    pump_one(&mut runtime);
+
+    assert_eq!(runtime.state().emitter_calls.get(), 0);
+    assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::RoutedEventAdmissionRejected {
+            capacity: TraceRoutedAdmissionRejection::TransactionOutputs
+        }
+    )));
+    assert!(!runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::DelegatedApplicationCommandCollected { .. }
+    )));
+}
+
+#[cfg(feature = "internal-test-seams")]
+#[test]
+fn activation_command_trace_exhaustion_rejects_before_callback_or_partial_output() {
+    let limits = RuntimeLimits::default()
+        .with_waiting_envelopes(16)
+        .with_transaction_outputs(4);
+    let mut runtime = AppRuntime::<App>::mount_with_config(
+        state(Mode::Enabled),
+        RuntimeConfig::default().with_limits(limits),
+    );
+    settle(&mut runtime);
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 2);
+    let target = direct_activation(&mut runtime);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("live activation target is accepted"));
+    pump_one(&mut runtime);
+
+    assert_eq!(runtime.state().emitter_calls.get(), 0);
+    assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
+    assert_eq!(
+        runtime.status(),
+        runenui_runtime::RuntimeStatus::Terminal(
+            runenui_runtime::RuntimeTerminalReason::TraceSequenceExhausted
+        )
+    );
+    assert!(!runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::DelegatedApplicationCommandCollected { .. }
+    )));
+}
+
+#[test]
+fn activation_emitted_command_preserves_exact_target_generation_until_processing() {
+    let mut runtime = AppRuntime::<App>::mount(state(Mode::Enabled));
+    settle(&mut runtime);
+    let target = direct_activation(&mut runtime);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("live activation target is accepted"));
+    runtime
+        .submit_action(Action::Replace)
+        .unwrap_or_else(|_| unreachable!("replacement action is accepted"));
+
+    settle(&mut runtime);
+
+    assert_eq!(
+        runtime.state().updates,
+        ["primary", "before", "after"],
+        "replacement may not retarget the queued application command"
+    );
+    assert!(!runtime.state().updates.contains(&"inner"));
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::CommandProcessingRejected {
+            outcome: TraceTargetRejection::Stale
+        }
     )));
 }
