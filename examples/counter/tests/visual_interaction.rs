@@ -236,8 +236,46 @@ fn counter_centers_with_free_height_and_keeps_tight_overflow_top_reachable() {
     );
 }
 
+fn focused_hover_fixture(
+    runtime: &mut AppRuntime<CounterApp>,
+    environment: &runenui_core::StyleEnvironment,
+) -> (PointerId, LogicalPoint, SurfacePublication) {
+    let initial = publish(runtime, environment);
+    let point = target_point(&initial, "counter.increment");
+    let pointer_id = PointerId::new(1).unwrap_or_else(|| unreachable!("pointer id is non-zero"));
+
+    runtime
+        .submit_pointer(PointerEvent::new(
+            pointer_id,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Move,
+            point,
+            initial.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("Counter hover ingress is admitted"));
+    pump_all(runtime);
+    runtime
+        .advance_time(Duration::from_millis(100))
+        .unwrap_or_else(|_| unreachable!("Counter hover duration is bounded"));
+    let hovered = publish(runtime, environment);
+    assert_eq!(
+        background(&hovered, "counter.increment"),
+        Brush::Solid(CONTROL_HOVER_BACKGROUND)
+    );
+
+    runtime
+        .submit_automation_command(
+            authored_id("counter.increment"),
+            SemanticCommand::RequestFocus,
+        )
+        .unwrap_or_else(|_| unreachable!("Counter focus target resolves"));
+    pump_all(runtime);
+    let focused_hover = publish(runtime, environment);
+    (pointer_id, point, focused_hover)
+}
+
 #[test]
-fn canonical_hover_focus_and_active_facts_drive_counter_visual_feedback() {
+fn canonical_hover_and_focus_facts_drive_counter_visual_feedback() {
     let environment = ui::style_environment();
     let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
     pump_all(&mut runtime);
@@ -245,7 +283,6 @@ fn canonical_hover_focus_and_active_facts_drive_counter_visual_feedback() {
     let initial = publish(&mut runtime, &environment);
     let point = target_point(&initial, "counter.increment");
     let pointer_id = PointerId::new(1).unwrap_or_else(|| unreachable!("pointer id is non-zero"));
-
     runtime
         .submit_pointer(PointerEvent::new(
             pointer_id,
@@ -299,6 +336,15 @@ fn canonical_hover_focus_and_active_facts_drive_counter_visual_feedback() {
             .is_some(),
         "focus is immediately visible through a persistent outline"
     );
+}
+
+#[test]
+fn canonical_active_and_release_facts_drive_counter_visual_feedback() {
+    let environment = ui::style_environment();
+    let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+    pump_all(&mut runtime);
+    let (pointer_id, point, focused_hover) =
+        focused_hover_fixture(&mut runtime, &environment);
 
     runtime
         .submit_pointer(
@@ -356,26 +402,20 @@ fn canonical_hover_focus_and_active_facts_drive_counter_visual_feedback() {
         )
         .unwrap_or_else(|_| unreachable!("Counter primary release is admitted"));
     pump_all(&mut runtime);
-    assert_eq!(
-        runtime.state().count,
-        1,
-        "visual polish preserves ordinary Button activation semantics"
-    );
+    assert_eq!(runtime.state().count, 1);
 
     let release_start = publish(&mut runtime, &environment);
     assert_eq!(
         background(&release_start, "counter.increment"),
         Brush::Solid(CONTROL_ACTIVE_BACKGROUND)
     );
-
     runtime
         .advance_time(Duration::from_millis(100))
         .unwrap_or_else(|_| unreachable!("Counter release duration is bounded"));
     let released = publish(&mut runtime, &environment);
     assert_eq!(
         background(&released, "counter.increment"),
-        Brush::Solid(CONTROL_BACKGROUND),
-        "an empty-button primary Up closes the accepted pointer stream, so hover resumes on the next native pointer move rather than being fabricated by Counter"
+        Brush::Solid(CONTROL_BACKGROUND)
     );
     assert!(
         frame_node(&released, "counter.increment")

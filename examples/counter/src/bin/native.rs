@@ -697,15 +697,12 @@ impl CounterHost {
         let Some(device_id) = self.resolve_native_device_id(event_loop, native_device_id) else {
             return;
         };
-        let translated = match self.translate_latest_cursor() {
-            Ok(translated) => translated,
-            Err(_) => {
-                let _ = self.handle_native_point_authority_loss(
-                    event_loop,
-                    "native wheel arrived without matching displayed point authority",
-                );
-                return;
-            }
+        let Ok(translated) = self.translate_latest_cursor() else {
+            let _ = self.handle_native_point_authority_loss(
+                event_loop,
+                "native wheel arrived without matching displayed point authority",
+            );
+            return;
         };
         let Some(displayed_mapping) = self.displayed_frame.as_ref().map(|frame| frame.mapping)
         else {
