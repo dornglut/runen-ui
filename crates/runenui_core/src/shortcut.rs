@@ -43,12 +43,12 @@ impl ShortcutChord {
     }
 
     #[must_use]
-    pub fn logical(key: LogicalKey, modifiers: KeyModifiers) -> Self {
+    pub const fn logical(key: LogicalKey, modifiers: KeyModifiers) -> Self {
         Self::new(ShortcutKey::Logical(key), modifiers)
     }
 
     #[must_use]
-    pub fn physical(key: PhysicalKey, modifiers: KeyModifiers) -> Self {
+    pub const fn physical(key: PhysicalKey, modifiers: KeyModifiers) -> Self {
         Self::new(ShortcutKey::Physical(key), modifiers)
     }
 
