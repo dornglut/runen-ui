@@ -204,7 +204,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Some(mut transaction) = (if is_focus_command(command) {
             self.begin_focus_routed_transaction(facts, command)
         } else if default_outputs != 0 {
-            self.try_begin_routed_transaction_with_trace_and_default_commands(
+            self.try_begin_routed_transaction_with_trace_and_default_outputs(
                 facts,
                 MandatoryTracePlan::none(),
                 default_outputs,
@@ -264,23 +264,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         facts: RoutedIngressFacts,
         additional_trace: MandatoryTracePlan,
     ) -> Result<RoutedTransaction<Action>, RoutedFailureLineage> {
-        self.try_begin_routed_transaction_with_trace_and_default_commands(
+        self.try_begin_routed_transaction_with_trace_and_default_outputs(
             facts,
             additional_trace,
             0,
         )
     }
 
-    pub(crate) fn try_begin_routed_transaction_with_trace_and_default_commands(
+    pub(crate) fn try_begin_routed_transaction_with_trace_and_default_outputs(
         &mut self,
         facts: RoutedIngressFacts,
         additional_trace: MandatoryTracePlan,
-        mandatory_default_commands: usize,
+        mandatory_default_outputs: usize,
     ) -> Result<RoutedTransaction<Action>, RoutedFailureLineage> {
-        let (route, admission) = self.prepare_routed_route_with_default_commands(
+        let (route, admission) = self.prepare_routed_route_with_default_outputs(
             &facts,
             additional_trace,
-            mandatory_default_commands,
+            mandatory_default_outputs,
         )?;
         let pointer_callback_targets = route.clone();
         Ok(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
@@ -290,10 +290,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         facts: RoutedIngressFacts,
         additional_trace: MandatoryTracePlan,
-        mandatory_default_commands: usize,
+        mandatory_default_outputs: usize,
     ) -> Result<RoutedTransaction<Action>, RoutedFailureLineage> {
         let (route, admission) =
-            self.prepare_focus_routed_route(&facts, additional_trace, mandatory_default_commands)?;
+            self.prepare_focus_routed_route(&facts, additional_trace, mandatory_default_outputs)?;
         let pointer_callback_targets = route.clone();
         Ok(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
     }
@@ -382,7 +382,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             target_trace,
             parent,
             remaining_outputs: admission.max_outputs,
-            remaining_default_commands: admission.mandatory_default_commands,
+            remaining_default_outputs: admission.mandatory_default_outputs,
             propagation_stopped: false,
             application_command_resolution: None,
             default_prevented: false,
@@ -416,7 +416,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         facts: RoutedIngressFacts,
         command: runenui_core::SemanticCommand,
     ) -> Option<RoutedTransaction<Action>> {
-        let mandatory_default_commands = usize::from(
+        let mandatory_default_outputs = usize::from(
             matches!(
                 command,
                 runenui_core::SemanticCommand::FocusGroupNext
@@ -430,7 +430,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .prepare_focus_routed_route(
                 &facts,
                 MandatoryTracePlan::none(),
-                mandatory_default_commands,
+                mandatory_default_outputs,
             )
             .ok()?;
         let pointer_callback_targets = route.clone();
