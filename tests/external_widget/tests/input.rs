@@ -3,9 +3,9 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    CommandOrigin, CommittedTextEvent, Element, EventPhase, KeyLocation, KeyModifiers,
+    CommandOrigin, CommittedTextEvent, Element, EventContext, EventPhase, KeyLocation, KeyModifiers,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
-    PhysicalKey, SemanticCommand, UiApp, View, container,
+    PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetEventOutput, container,
 };
 use runenui_external_widget_conformance::{
     ExternalInputAction, ExternalInputAncestor, ExternalInputFact, ExternalInputKind,
@@ -205,5 +205,142 @@ fn downstream_widget_uses_only_public_keyboard_text_and_composition_protocols() 
         kinds
             .iter()
             .any(|kind| matches!(kind, TraceRecordKind::CommittedTextDefaultPrevented))
+    );
+}
+
+
+#[derive(Debug)]
+struct NavigationKeyProbe {
+    observed: Rc<RefCell<Vec<(PhysicalKey, LogicalKey)>>>,
+}
+
+impl Widget<()> for NavigationKeyProbe {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ()>,
+    ) -> WidgetEventOutput {
+        if context.phase() == EventPhase::Target {
+            if let UiEvent::Keyboard(event) = event {
+                self.observed
+                    .borrow_mut()
+                    .push((event.physical_key().clone(), event.logical_key().clone()));
+            }
+        }
+        WidgetEventOutput::none()
+    }
+}
+
+#[derive(Debug)]
+struct NavigationState {
+    observed: Rc<RefCell<Vec<(PhysicalKey, LogicalKey)>>>,
+}
+
+struct NavigationApp;
+
+impl UiApp for NavigationApp {
+    type State = NavigationState;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        Element::new(NavigationKeyProbe {
+            observed: Rc::clone(&state.observed),
+        })
+        .id("navigation.key.probe")
+        .key("navigation-key-probe")
+        .focusable(true)
+    }
+
+    fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn downstream_widget_observes_structured_navigation_key_identities() {
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<NavigationApp>::mount(NavigationState {
+        observed: Rc::clone(&observed),
+    });
+    assert!(
+        runtime
+            .pump(PumpBudget::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ))
+            .is_quiescent()
+    );
+    let authored = runenui_core::ElementId::new("navigation.key.probe")
+        .unwrap_or_else(|_| unreachable!("fixture authored id is valid"));
+    let target = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("navigation probe is mounted"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("navigation probe focus is accepted"));
+    assert!(
+        runtime
+            .pump(PumpBudget::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ))
+            .is_quiescent()
+    );
+
+    for (physical, logical) in [
+        (PhysicalKey::Home, LogicalKey::Home),
+        (PhysicalKey::End, LogicalKey::End),
+        (PhysicalKey::PageUp, LogicalKey::PageUp),
+        (PhysicalKey::PageDown, LogicalKey::PageDown),
+    ] {
+        runtime
+            .submit_keyboard(KeyboardEvent::new(
+                KeyboardPhase::Down,
+                physical,
+                logical,
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            ))
+            .unwrap_or_else(|_| unreachable!("structured navigation key is accepted"));
+    }
+    assert!(
+        runtime
+            .pump(PumpBudget::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ))
+            .is_quiescent()
+    );
+
+    assert_eq!(
+        observed.borrow().as_slice(),
+        &[
+            (PhysicalKey::Home, LogicalKey::Home),
+            (PhysicalKey::End, LogicalKey::End),
+            (PhysicalKey::PageUp, LogicalKey::PageUp),
+            (PhysicalKey::PageDown, LogicalKey::PageDown),
+        ]
     );
 }
