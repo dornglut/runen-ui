@@ -192,7 +192,7 @@ impl<Action> WidgetWorkCollector<Action> {
     }
 
     pub fn take_outputs(&mut self) -> Vec<MountedEffect<Action>> {
-        debug_assert!(
+        assert!(
             self.activation_order.is_none(),
             "activation command ordering must be consumed through the activation output path"
         );
