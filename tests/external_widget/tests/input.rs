@@ -230,12 +230,12 @@ impl Widget<()> for NavigationKeyProbe {
         event: &UiEvent,
         context: &mut EventContext<'_, ()>,
     ) -> WidgetEventOutput {
-        if context.phase() == EventPhase::Target {
-            if let UiEvent::Keyboard(event) = event {
-                self.observed
-                    .borrow_mut()
-                    .push((event.physical_key().clone(), event.logical_key().clone()));
-            }
+        if context.phase() == EventPhase::Target
+            && let UiEvent::Keyboard(event) = event
+        {
+            self.observed
+                .borrow_mut()
+                .push((event.physical_key().clone(), event.logical_key().clone()));
         }
         WidgetEventOutput::none()
     }
