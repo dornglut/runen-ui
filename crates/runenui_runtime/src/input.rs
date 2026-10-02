@@ -1083,14 +1083,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             | InputEnvelopePayload::Composition(_) => None,
         };
         let mandatory_default_outputs = match &payload {
-            InputEnvelopePayload::Keyboard(event) => usize::from(
-                self.keyboard_default_output_is_possible(
+            InputEnvelopePayload::Keyboard(event) => {
+                usize::from(self.keyboard_default_output_is_possible(
                     event,
                     &target,
                     shortcut_candidate.as_ref(),
                     type_ahead_context.as_ref(),
-                ),
-            ),
+                ))
+            }
             InputEnvelopePayload::CommittedText(_) => usize::from(self.editing.has_owner(&target)),
             InputEnvelopePayload::Composition(_) => 0,
         };
@@ -1155,11 +1155,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.poison_transaction(&transaction, failure, current.as_ref());
             return;
         }
-        if let Err(failure) = self.collect_input_default(
-            &mut transaction,
-            &payload,
-            shortcut_candidate.as_ref(),
-        ) {
+        if let Err(failure) =
+            self.collect_input_default(&mut transaction, &payload, shortcut_candidate.as_ref())
+        {
             let current = transaction.failure_current_target.clone();
             self.poison_transaction(&transaction, failure, current.as_ref());
             return;
@@ -1570,9 +1568,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             LogicalKey::ArrowLeft => Some(SemanticCommand::MoveBackward),
             LogicalKey::ArrowRight => Some(SemanticCommand::MoveForward),
             LogicalKey::ArrowUp if event.modifiers().shift() => Some(SemanticCommand::ExtendUp),
-            LogicalKey::ArrowDown if event.modifiers().shift() => {
-                Some(SemanticCommand::ExtendDown)
-            }
+            LogicalKey::ArrowDown if event.modifiers().shift() => Some(SemanticCommand::ExtendDown),
             LogicalKey::ArrowUp => Some(SemanticCommand::MoveUp),
             LogicalKey::ArrowDown => Some(SemanticCommand::MoveDown),
             LogicalKey::Escape if self.editing.has_stable_range_selection(target) => {
@@ -1615,9 +1611,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if let Some(candidate) = shortcut_candidate {
             return candidate.reserves_default_output();
         }
-        type_ahead_context.is_some_and(|context| {
-            context.activation == FocusGroupActivationPolicy::ActivateTarget
-        }) || Self::generic_keyboard_default(event).is_some()
+        type_ahead_context
+            .is_some_and(|context| context.activation == FocusGroupActivationPolicy::ActivateTarget)
+            || Self::generic_keyboard_default(event).is_some()
     }
 
     fn collect_keyboard_default(
@@ -1708,12 +1704,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             return Ok(());
         }
-        self.collect_non_space_keyboard_default(
-            transaction,
-            event,
-            target,
-            shortcut_candidate,
-        )
+        self.collect_non_space_keyboard_default(transaction, event, target, shortcut_candidate)
     }
 
     fn collect_non_space_keyboard_default(
@@ -1813,14 +1804,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             scope,
             TraceRecordKind::KeyboardShortcutMatched,
         );
-        transaction
-            .default_outputs
-            .push(crate::runtime::CollectedRoutedOutput::ApplicationCommand {
+        transaction.default_outputs.push(
+            crate::runtime::CollectedRoutedOutput::ApplicationCommand {
                 target: transaction.target.clone(),
                 command: binding.command().id().clone(),
                 origin: CommandOrigin::__runtime_keyboard_default(),
                 causal_parent: transaction.parent,
-            });
+            },
+        );
         Ok(true)
     }
 
