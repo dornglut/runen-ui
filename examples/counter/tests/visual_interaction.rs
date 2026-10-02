@@ -254,6 +254,11 @@ fn focused_hover_fixture(
         ))
         .unwrap_or_else(|_| unreachable!("Counter hover ingress is admitted"));
     pump_all(runtime);
+    let hover_start = publish(runtime, environment);
+    assert_eq!(
+        background(&hover_start, "counter.increment"),
+        Brush::Solid(CONTROL_BACKGROUND)
+    );
     runtime
         .advance_time(Duration::from_millis(100))
         .unwrap_or_else(|_| unreachable!("Counter hover duration is bounded"));
