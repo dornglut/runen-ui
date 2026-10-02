@@ -136,6 +136,143 @@ impl Widget<Action> for KeyboardGate {
 
 impl ChildBearingWidget<Action> for KeyboardGate {}
 
+fn app_inner_shortcuts(mode: Mode, control: KeyModifiers) -> Vec<ShortcutBinding> {
+    let mut inner = match mode {
+        Mode::OuterOnly => Vec::new(),
+        Mode::Unique | Mode::PreventDefault => vec![shortcut(
+            logical_chord("s", control),
+            ShortcutRepeatPolicy::IgnoreRepeat,
+            "shortcut.inner",
+            true,
+        )],
+        Mode::Ambiguous => vec![
+            shortcut(
+                logical_chord("s", control),
+                ShortcutRepeatPolicy::IgnoreRepeat,
+                "shortcut.inner",
+                true,
+            ),
+            shortcut(
+                logical_chord("s", control),
+                ShortcutRepeatPolicy::IgnoreRepeat,
+                "shortcut.alternate",
+                true,
+            ),
+        ],
+        Mode::Disabled => vec![shortcut(
+            logical_chord("s", control),
+            ShortcutRepeatPolicy::AllowRepeat,
+            "shortcut.inner",
+            false,
+        )],
+        Mode::AllowRepeat => vec![shortcut(
+            logical_chord("s", control),
+            ShortcutRepeatPolicy::AllowRepeat,
+            "shortcut.inner",
+            true,
+        )],
+    };
+    inner.push(shortcut(
+        logical_chord("l", control),
+        ShortcutRepeatPolicy::IgnoreRepeat,
+        "shortcut.logical",
+        true,
+    ));
+    inner.push(shortcut(
+        ShortcutChord::physical(PhysicalKey::Code(String::from("KeyP")), control),
+        ShortcutRepeatPolicy::IgnoreRepeat,
+        "shortcut.physical",
+        true,
+    ));
+    inner.push(shortcut(
+        ShortcutChord::logical(LogicalKey::Enter, KeyModifiers::NONE),
+        ShortcutRepeatPolicy::IgnoreRepeat,
+        "shortcut.enter",
+        true,
+    ));
+    inner
+}
+
+fn app_branch_a(state: &State) -> Element<Action> {
+    let control = KeyModifiers::NONE.with_control();
+    let outer = shortcut(
+        logical_chord("s", control),
+        ShortcutRepeatPolicy::AllowRepeat,
+        "shortcut.outer",
+        true,
+    );
+    let target = button("target")
+        .id("target.a")
+        .key(if state.replaced {
+            "target.a.replaced"
+        } else {
+            "target.a.original"
+        })
+        .on_activate(|| Action::Filler)
+        .into_element();
+    let gated = container(
+        KeyboardGate {
+            prevent_default: state.mode == Mode::PreventDefault,
+            calls: Rc::clone(&state.callback_calls),
+        },
+        [target],
+    )
+    .key("keyboard-gate")
+    .into_element();
+
+    command_scope(
+        vec![
+            command_binding(
+                ApplicationCommand::new(command_id("shortcut.outer"), true),
+                || Action::Fired("outer"),
+            ),
+            command_binding(
+                ApplicationCommand::new(command_id("shortcut.inner"), true),
+                || Action::Fired("inner"),
+            ),
+            command_binding(
+                ApplicationCommand::new(command_id("shortcut.alternate"), true),
+                || Action::Fired("alternate"),
+            ),
+            command_binding(
+                ApplicationCommand::new(command_id("shortcut.logical"), true),
+                || Action::Fired("logical"),
+            ),
+            command_binding(
+                ApplicationCommand::new(command_id("shortcut.physical"), true),
+                || Action::Fired("physical"),
+            ),
+            command_binding(
+                ApplicationCommand::new(command_id("shortcut.enter"), true),
+                || Action::Fired("enter"),
+            ),
+        ],
+        [shortcut_scope(
+            [outer],
+            [shortcut_scope(app_inner_shortcuts(state.mode, control), [gated])
+                .key("shortcut.inner")],
+        )
+        .key("shortcut.outer")],
+    )
+    .key("command.a")
+    .into_element()
+}
+
+fn app_branch_b() -> Element<Action> {
+    command_scope(
+        [command_binding(
+            ApplicationCommand::new(command_id("shortcut.inner"), true),
+            || Action::Fired("retargeted-b"),
+        )],
+        [button("other")
+            .id("target.b")
+            .key("target.b")
+            .on_activate(|| Action::Filler)],
+    )
+    .key("command.b")
+    .into_element()
+}
+
 struct App;
 
 impl UiApp for App {
@@ -144,135 +281,9 @@ impl UiApp for App {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &State) -> Element<Action> {
-        let control = KeyModifiers::NONE.with_control();
-        let outer = shortcut(
-            logical_chord("s", control),
-            ShortcutRepeatPolicy::AllowRepeat,
-            "shortcut.outer",
-            true,
-        );
-        let mut inner = match state.mode {
-            Mode::OuterOnly => Vec::new(),
-            Mode::Unique | Mode::PreventDefault => vec![shortcut(
-                logical_chord("s", control),
-                ShortcutRepeatPolicy::IgnoreRepeat,
-                "shortcut.inner",
-                true,
-            )],
-            Mode::Ambiguous => vec![
-                shortcut(
-                    logical_chord("s", control),
-                    ShortcutRepeatPolicy::IgnoreRepeat,
-                    "shortcut.inner",
-                    true,
-                ),
-                shortcut(
-                    logical_chord("s", control),
-                    ShortcutRepeatPolicy::IgnoreRepeat,
-                    "shortcut.alternate",
-                    true,
-                ),
-            ],
-            Mode::Disabled => vec![shortcut(
-                logical_chord("s", control),
-                ShortcutRepeatPolicy::AllowRepeat,
-                "shortcut.inner",
-                false,
-            )],
-            Mode::AllowRepeat => vec![shortcut(
-                logical_chord("s", control),
-                ShortcutRepeatPolicy::AllowRepeat,
-                "shortcut.inner",
-                true,
-            )],
-        };
-        inner.push(shortcut(
-            logical_chord("l", control),
-            ShortcutRepeatPolicy::IgnoreRepeat,
-            "shortcut.logical",
-            true,
-        ));
-        inner.push(shortcut(
-            ShortcutChord::physical(PhysicalKey::Code(String::from("KeyP")), control),
-            ShortcutRepeatPolicy::IgnoreRepeat,
-            "shortcut.physical",
-            true,
-        ));
-        inner.push(shortcut(
-            ShortcutChord::logical(LogicalKey::Enter, KeyModifiers::NONE),
-            ShortcutRepeatPolicy::IgnoreRepeat,
-            "shortcut.enter",
-            true,
-        ));
-
-        let target = button("target")
-            .id("target.a")
-            .key(if state.replaced {
-                "target.a.replaced"
-            } else {
-                "target.a.original"
-            })
-            .on_activate(|| Action::Filler)
-            .into_element();
-        let gated = container(
-            KeyboardGate {
-                prevent_default: state.mode == Mode::PreventDefault,
-                calls: Rc::clone(&state.callback_calls),
-            },
-            [target],
-        )
-        .key("keyboard-gate")
-        .into_element();
-        let branch_a = command_scope(
-            vec![
-                command_binding(
-                    ApplicationCommand::new(command_id("shortcut.outer"), true),
-                    || Action::Fired("outer"),
-                ),
-                command_binding(
-                    ApplicationCommand::new(command_id("shortcut.inner"), true),
-                    || Action::Fired("inner"),
-                ),
-                command_binding(
-                    ApplicationCommand::new(command_id("shortcut.alternate"), true),
-                    || Action::Fired("alternate"),
-                ),
-                command_binding(
-                    ApplicationCommand::new(command_id("shortcut.logical"), true),
-                    || Action::Fired("logical"),
-                ),
-                command_binding(
-                    ApplicationCommand::new(command_id("shortcut.physical"), true),
-                    || Action::Fired("physical"),
-                ),
-                command_binding(
-                    ApplicationCommand::new(command_id("shortcut.enter"), true),
-                    || Action::Fired("enter"),
-                ),
-            ],
-            [shortcut_scope(
-                [outer],
-                [shortcut_scope(inner, [gated]).key("shortcut.inner")],
-            )
-            .key("shortcut.outer")],
-        )
-        .key("command.a")
-        .into_element();
-
-        let branch_b = command_scope(
-            [command_binding(
-                ApplicationCommand::new(command_id("shortcut.inner"), true),
-                || Action::Fired("retargeted-b"),
-            )],
-            [button("other")
-                .id("target.b")
-                .key("target.b")
-                .on_activate(|| Action::Filler)],
-        )
-        .key("command.b")
-        .into_element();
-
-        column(vec![branch_a, branch_b]).key("root").into_element()
+        column(vec![app_branch_a(state), app_branch_b()])
+            .key("root")
+            .into_element()
     }
 
     fn update(state: &mut State, action: Action) {
