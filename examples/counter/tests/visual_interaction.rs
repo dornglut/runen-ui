@@ -343,8 +343,7 @@ fn canonical_active_and_release_facts_drive_counter_visual_feedback() {
     let environment = ui::style_environment();
     let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
     pump_all(&mut runtime);
-    let (pointer_id, point, focused_hover) =
-        focused_hover_fixture(&mut runtime, &environment);
+    let (pointer_id, point, focused_hover) = focused_hover_fixture(&mut runtime, &environment);
 
     runtime
         .submit_pointer(
