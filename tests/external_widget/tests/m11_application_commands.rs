@@ -2,7 +2,7 @@
 
 use runenui_core::{
     ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandId, ChildBearingWidget,
-    CommandOrigin, Element, EventContext, EventPhase, Focusability, KeyLocation, KeyModifiers,
+    CommandOrigin, Element, EventContext, EventPhase, KeyLocation, KeyModifiers,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
     PhysicalKey, SemanticCommand, SemanticCommandEvent, ShortcutBinding, ShortcutChord,
     ShortcutRepeatPolicy, UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
@@ -258,7 +258,7 @@ impl UiApp for ShortcutApp {
             [button("shortcut target")
                 .id("shortcut.target")
                 .key("shortcut-target")
-                .with_focusability(Focusability::Focusable)],
+                .focusable(true)],
         )
         .key("downstream-shortcut-scope")
         .into_element()
