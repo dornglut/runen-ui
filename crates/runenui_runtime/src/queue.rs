@@ -6,8 +6,9 @@ use core::{fmt, num::NonZeroU64};
 use std::collections::VecDeque;
 
 use runenui_core::{
-    CommandOrigin, CommittedTextEvent, CompositionEvent, FrameworkServiceResponse, KeyboardEvent,
-    PointerEvent, SemanticActionTarget, SemanticCommand, SurfaceInputContext,
+    ApplicationCommandId, CommandOrigin, CommittedTextEvent, CompositionEvent,
+    FrameworkServiceResponse, KeyboardEvent, PointerEvent, SemanticActionTarget, SemanticCommand,
+    SurfaceInputContext,
 };
 
 use crate::trace::TraceReservation;
@@ -108,6 +109,16 @@ impl SemanticCommandQueueTarget {
     }
 }
 
+pub(crate) struct ApplicationCommandEnvelope {
+    pub(crate) sequence: WorkSequence,
+    pub(crate) target: MountedNodeId,
+    pub(crate) command: ApplicationCommandId,
+    pub(crate) origin: CommandOrigin,
+    pub(crate) instant: MonotonicInstant,
+    pub(crate) causal_parent: Option<TraceSequence>,
+    pub(crate) trace_reservation: TraceReservation,
+}
+
 pub(crate) struct SemanticCommandEnvelope {
     pub(crate) sequence: WorkSequence,
     pub(crate) target: MountedNodeId,
@@ -164,6 +175,7 @@ pub(crate) enum ApplicationActionOrigin {
 pub(crate) enum WorkEnvelope<Action> {
     ApplicationAction(ApplicationActionEnvelope<Action>),
     SemanticCommand(SemanticCommandEnvelope),
+    ApplicationCommand(ApplicationCommandEnvelope),
     Pointer(PointerEnvelope),
     Input(InputEnvelope),
     EffectStart(SequencedWork),
@@ -316,6 +328,28 @@ impl<Action> WorkQueue<Action> {
                 command,
                 origin,
                 semantic_target,
+                instant,
+                causal_parent,
+                trace_reservation,
+            })
+        })
+    }
+
+    pub(crate) fn push_application_command_preflighted(
+        &mut self,
+        target: MountedNodeId,
+        command: ApplicationCommandId,
+        origin: CommandOrigin,
+        instant: MonotonicInstant,
+        causal_parent: Option<TraceSequence>,
+        trace_reservation: TraceReservation,
+    ) -> Result<WorkSequence, QueueCommitError> {
+        self.push_control(|sequence| {
+            WorkEnvelope::ApplicationCommand(ApplicationCommandEnvelope {
+                sequence,
+                target,
+                command,
+                origin,
                 instant,
                 causal_parent,
                 trace_reservation,
@@ -520,6 +554,10 @@ impl<Action> WorkQueue<Action> {
                 matches!(
                     envelope,
                     WorkEnvelope::SemanticCommand(command)
+                        if command.trace_reservation.is_active()
+                ) || matches!(
+                    envelope,
+                    WorkEnvelope::ApplicationCommand(command)
                         if command.trace_reservation.is_active()
                 )
             })

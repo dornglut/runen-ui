@@ -104,5 +104,16 @@ pub(in crate::runtime) fn with_routed_parent<Action>(
             origin,
             causal_parent,
         },
+        CollectedRoutedOutput::ApplicationCommand {
+            target,
+            command,
+            origin,
+            ..
+        } => CollectedRoutedOutput::ApplicationCommand {
+            target,
+            command,
+            origin,
+            causal_parent,
+        },
     }
 }

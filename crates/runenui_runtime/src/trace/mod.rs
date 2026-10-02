@@ -31,11 +31,12 @@ pub use input_context::{
     TraceTextMetrics,
 };
 pub use model::{
-    TraceConfig, TraceEditResolutionOutcome, TraceFocusBoundaryOutcome, TraceFrameworkServiceKind,
-    TraceFrameworkServiceOutcome, TracePayloadCapture, TracePointerCaptureRequestKind,
-    TracePointerCaptureRequestRejection, TracePointerRejection, TraceRecord, TraceRecordKind,
-    TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
-    TraceSequence, TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind,
+    TraceApplicationCommandOutcome, TraceConfig, TraceEditResolutionOutcome,
+    TraceFocusBoundaryOutcome, TraceFrameworkServiceKind, TraceFrameworkServiceOutcome,
+    TracePayloadCapture, TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection,
+    TracePointerRejection, TraceRecord, TraceRecordKind, TraceRoutedAdmissionRejection,
+    TraceRoutedIntegrityFailure, TraceSemanticActionRejection, TraceSequence,
+    TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind,
     TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection,
     TraceTimerTerminalOutcome, TraceTouchGestureKind, TraceWorkFamily, TraceWorkIdentity,
     TraceWorkOwner, TraceWorkStartRefusal,

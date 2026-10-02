@@ -6,12 +6,12 @@ use runenui_core::{
 
 use crate::{
     RuntimeTerminalReason, SurfacePhase, SurfacePublicationCounter, TraceActionCategory,
-    TraceAutomationRecordRole, TraceDeliveryOutcome, TraceEventFamily, TraceFocusBoundaryOutcome,
-    TraceFocusRecordRole, TraceInputRecordRole, TracePointerCaptureRequestKind,
-    TracePointerCaptureRequestRejection, TracePointerRecordRole, TracePointerRejection,
-    TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
-    TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind,
-    TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTargetRejection,
+    TraceApplicationCommandOutcome, TraceAutomationRecordRole, TraceDeliveryOutcome,
+    TraceEventFamily, TraceFocusBoundaryOutcome, TraceFocusRecordRole, TraceInputRecordRole,
+    TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection, TracePointerRecordRole,
+    TracePointerRejection, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure,
+    TraceSemanticActionRejection, TraceSinkDeliveryOutcome, TraceSpaceCleanupReason,
+    TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTargetRejection,
     TraceTimerTerminalOutcome, TraceTouchGestureKind, TraceWorkFamily, TraceWorkStartRefusal,
 };
 
@@ -21,6 +21,18 @@ pub(super) const fn event_phase(value: EventPhase) -> &'static str {
         EventPhase::Target => "target",
         EventPhase::Bubble => "bubble",
         _ => "unknown",
+    }
+}
+
+pub(super) const fn application_command_outcome(
+    value: TraceApplicationCommandOutcome,
+) -> &'static str {
+    match value {
+        TraceApplicationCommandOutcome::Resolved => "resolved",
+        TraceApplicationCommandOutcome::Disabled => "disabled",
+        TraceApplicationCommandOutcome::Ambiguous => "ambiguous",
+        TraceApplicationCommandOutcome::Unbound => "unbound",
+        TraceApplicationCommandOutcome::Unknown => "unknown",
     }
 }
 
@@ -175,6 +187,7 @@ pub(super) const fn runtime_terminal_reason(value: RuntimeTerminalReason) -> &'s
 pub(super) const fn event_family(value: TraceEventFamily) -> &'static str {
     match value {
         TraceEventFamily::SemanticCommand => "semantic_command",
+        TraceEventFamily::ApplicationCommand => "application_command",
         TraceEventFamily::Pointer => "pointer",
         TraceEventFamily::PointerBoundary => "pointer_boundary",
         TraceEventFamily::PointerCapture => "pointer_capture",

@@ -325,6 +325,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     )
                     .map_err(|_| ())?;
                 }
+                CollectedRoutedOutput::ApplicationCommand {
+                    target,
+                    command,
+                    origin,
+                    causal_parent,
+                } => {
+                    self.commit_preflighted_routed_application_command(
+                        &target,
+                        command,
+                        origin,
+                        causal_parent,
+                        instant,
+                    )
+                    .map_err(|_| ())?;
+                }
             }
         }
         Ok(())
