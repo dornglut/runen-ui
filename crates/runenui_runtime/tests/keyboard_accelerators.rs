@@ -612,10 +612,22 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
         runtime.state().fired.is_empty(),
         "keyboard default only queues the command"
     );
-    assert!(has_trace(&runtime, |kind| matches!(
-        kind,
-        TraceRecordKind::KeyboardShortcutMatched
-    )));
+    let matched = runtime
+        .trace()
+        .records()
+        .find(|record| matches!(record.kind(), TraceRecordKind::KeyboardShortcutMatched))
+        .unwrap_or_else(|| unreachable!("matched shortcut is traced"));
+    let accepted = runtime
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::ApplicationCommandSubmissionAccepted { .. }
+            )
+        })
+        .unwrap_or_else(|| unreachable!("shortcut application command is accepted"));
+    assert_eq!(accepted.causal_parent(), Some(matched.sequence()));
 
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert!(
