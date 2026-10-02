@@ -304,8 +304,32 @@ fn downstream_custom_widget_publishes_shortcuts_without_builtin_type_knowledge()
         .unwrap_or_else(|_| unreachable!("shortcut target focus is accepted"));
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
 
-    let shortcut_event = || {
-        KeyboardEvent::new(
+    runtime
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("KeyX")),
+            LogicalKey::Character(String::from("x")),
+            KeyModifiers::NONE.with_control(),
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        ))
+        .unwrap_or_else(|_| unreachable!("unmatched downstream key is accepted"));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    assert_eq!(
+        runtime.state(),
+        &0,
+        "unmatched key mutates only the live callback object and triggers no rebuild"
+    );
+
+    runtime
+        .submit_keyboard(KeyboardEvent::new(
             KeyboardPhase::Down,
             PhysicalKey::Code(String::from("KeyS")),
             LogicalKey::Character(String::from("s")),
@@ -314,22 +338,8 @@ fn downstream_custom_widget_publishes_shortcuts_without_builtin_type_knowledge()
             KeyLocation::Standard,
             KeyboardCompositionState::Inactive,
             None,
-        )
-    };
-    runtime
-        .submit_keyboard(shortcut_event())
-        .unwrap_or_else(|_| unreachable!("first downstream shortcut key is accepted"));
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
-    assert_eq!(runtime.state(), &1);
-
-    runtime
-        .submit_keyboard(shortcut_event())
-        .unwrap_or_else(|_| unreachable!("second downstream shortcut key is accepted"));
+        ))
+        .unwrap_or_else(|_| unreachable!("matching downstream shortcut key is accepted"));
     runtime.pump(PumpBudget::new(
         usize::MAX,
         usize::MAX,
@@ -339,7 +349,7 @@ fn downstream_custom_widget_publishes_shortcuts_without_builtin_type_knowledge()
 
     assert_eq!(
         runtime.state(),
-        &2,
+        &1,
         "callback-local widget mutation cannot replace reconciliation-authored shortcut facts"
     );
     assert!(
