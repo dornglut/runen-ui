@@ -1089,9 +1089,15 @@ fn editor_owned_m10_default_precedes_accelerator_matching() {
             None,
         ))
         .unwrap_or_else(|_| unreachable!("editable Copy key is admitted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    settle(&mut runtime);
 
     assert!(!runtime.state().shortcut_fired);
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::SemanticDefaultApplied {
+            command: SemanticCommand::Copy
+        }
+    )));
     assert!(
         !runtime
             .trace()
