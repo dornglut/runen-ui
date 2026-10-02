@@ -264,10 +264,14 @@ fn ancestor_emission_retains_original_target_and_nearest_scope_resolves_non_reen
 
     pump_one(&mut runtime);
     assert_eq!(runtime.state().emitter_calls.get(), 1);
-    assert_eq!(runtime.state().updates, []);
+    assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
 
     pump_one(&mut runtime);
-    assert_eq!(runtime.state().updates, [], "scope action remains queued");
+    assert_eq!(
+        runtime.state().updates,
+        Vec::<&'static str>::new(),
+        "scope action remains queued"
+    );
     assert!(has_outcome(
         &runtime,
         TraceApplicationCommandOutcome::Resolved
@@ -289,7 +293,7 @@ fn disabled_and_ambiguous_inner_scopes_shadow_outer_bindings() {
         pump_one(&mut runtime);
         pump_one(&mut runtime);
         pump_one(&mut runtime);
-        assert_eq!(runtime.state().updates, []);
+        assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
         assert!(has_outcome(&runtime, expected));
     }
 }
@@ -360,7 +364,7 @@ fn unbound_command_is_explicit_and_inert() {
     pump_one(&mut runtime);
     pump_one(&mut runtime);
     pump_one(&mut runtime);
-    assert_eq!(runtime.state().updates, []);
+    assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
     assert!(has_outcome(
         &runtime,
         TraceApplicationCommandOutcome::Unbound
@@ -396,7 +400,7 @@ fn replacement_before_later_command_processing_rejects_exact_stale_target() {
     pump_one(&mut runtime);
     pump_one(&mut runtime);
 
-    assert_eq!(runtime.state().updates, []);
+    assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
     assert!(!has_outcome(
         &runtime,
         TraceApplicationCommandOutcome::Resolved
@@ -438,7 +442,7 @@ fn routed_output_admission_rejects_before_emitter_callback_or_partial_command_co
 
     pump_one(&mut runtime);
     assert_eq!(runtime.state().emitter_calls.get(), 0);
-    assert_eq!(runtime.state().updates, []);
+    assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
     assert!(runtime.trace().records().any(|record| {
         matches!(
             record.kind(),
@@ -478,7 +482,7 @@ fn application_command_waiting_queue_saturation_rejects_before_emitter_callback(
         1
     );
     assert_eq!(runtime.state().emitter_calls.get(), 0);
-    assert_eq!(runtime.state().updates, []);
+    assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
     assert!(runtime.trace().kinds().any(|kind| matches!(
         kind,
         TraceRecordKind::RoutedEventAdmissionRejected {
@@ -510,7 +514,7 @@ fn application_command_trace_exhaustion_rejects_before_emitter_callback() {
     pump_one(&mut runtime);
 
     assert_eq!(runtime.state().emitter_calls.get(), 0);
-    assert_eq!(runtime.state().updates, []);
+    assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
     assert_eq!(
         runtime.status(),
         runenui_runtime::RuntimeStatus::Terminal(
