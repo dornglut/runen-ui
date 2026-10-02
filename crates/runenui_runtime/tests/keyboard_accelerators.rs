@@ -497,6 +497,30 @@ fn repeat_policy_and_composition_suppress_without_outer_fallback() {
         kind,
         TraceRecordKind::KeyboardShortcutCompositionSuppressed
     )));
+
+    let mut ambiguous_composing = AppRuntime::<App>::mount(State::new(Mode::Ambiguous));
+    settle(&mut ambiguous_composing);
+    focus(&mut ambiguous_composing, "target.a");
+    submit_shortcut(
+        &mut ambiguous_composing,
+        key(
+            "s",
+            "KeyS",
+            control,
+            false,
+            KeyboardCompositionState::Active,
+        ),
+    );
+    settle(&mut ambiguous_composing);
+    assert!(ambiguous_composing.state().fired.is_empty());
+    assert!(has_trace(&ambiguous_composing, |kind| matches!(
+        kind,
+        TraceRecordKind::KeyboardShortcutCompositionSuppressed
+    )));
+    assert!(!has_trace(&ambiguous_composing, |kind| matches!(
+        kind,
+        TraceRecordKind::KeyboardShortcutAmbiguous
+    )));
 }
 
 #[test]
