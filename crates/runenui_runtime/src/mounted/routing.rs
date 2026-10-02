@@ -51,10 +51,7 @@ impl<Action> MountedTree<Action> {
         Ok(route)
     }
 
-    pub(crate) fn shortcut_bindings(
-        &self,
-        owner: &MountedNodeId,
-    ) -> Option<&[ShortcutBinding]> {
+    pub(crate) fn shortcut_bindings(&self, owner: &MountedNodeId) -> Option<&[ShortcutBinding]> {
         self.node(owner)
             .map(|node| node.shortcut_bindings.as_slice())
     }
