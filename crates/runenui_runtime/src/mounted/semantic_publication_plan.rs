@@ -700,6 +700,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn unresolved_capabilities_are_staged_without_mutating_live_authority() {
         let (probe, semantic_callbacks) = probe(false);
         let (tree, _) = MountedTree::mount(Element::new(probe));
@@ -864,6 +865,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn invalid_authoring_stages_complete_owner_withdrawal_without_live_revocation() {
         let (probe, _) = probe(true);
         let (tree, _) = MountedTree::mount(Element::new(probe));
@@ -888,6 +890,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn corrupted_state_stages_fail_closed_withdrawal_without_marking_live_node() {
         let (probe, _) = probe(false);
         let (mut tree, _) = MountedTree::mount(Element::new(probe));

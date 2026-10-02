@@ -577,7 +577,6 @@ fn compare_optional_zero_summary(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::assert_is_empty)]
 
     use std::collections::BTreeSet;
 
@@ -601,6 +600,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn matrix_row_parser_rejects_wrong_column_count() {
         let mut findings = Vec::new();
         let (rows, invalid_schemas) = parse_rows(
@@ -626,6 +626,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn m4_gate_policy_preserves_inherited_m5_rows() {
         let contents = "| ID | A | B | C | D | E | F | G |\n\
 |---|---|---|---|---|---|---|---|\n\
@@ -639,6 +640,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn m5_gate_policy_requires_required_for_m5_slices() {
         let valid = "| ID | A | B | C | D | E | F | G |\n\
 |---|---|---|---|---|---|---|---|\n\
@@ -651,6 +653,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn m6_gate_policy_requires_required_for_m6_slices() {
         let valid = "| ID | A | B | C | D | E | F | G |\n\
 |---|---|---|---|---|---|---|---|\n\
@@ -692,6 +695,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn m8_m9_and_m10_contracts_reject_invalid_slices_gates_statuses_and_schemas() {
         for (spec, slice) in [(M8_SPEC, "M8A"), (M9_SPEC, "M9A"), (M10_SPEC, "M10B")] {
             let valid = format!(
@@ -767,6 +771,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn m10_inventory_accepts_integrated_m10f_closure() -> Result<(), String> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -837,6 +842,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn m11_inventory_accepts_current_control_contracts() -> Result<(), String> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -930,6 +936,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn index_and_directory_cannot_silently_omit_a_matrix() {
         let indexed = MATRIX_SPECS
             .iter()
@@ -999,6 +1006,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn accepted_repository_matrices_are_registered_and_parse_cleanly() -> Result<(), String> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()

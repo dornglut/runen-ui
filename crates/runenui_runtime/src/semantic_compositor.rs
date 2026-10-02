@@ -704,6 +704,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn transparent_owner_and_marker_preserve_exact_semantic_order() {
         let runtime = RuntimeNamespace::__runtime_new();
         let root = runtime.__runtime_mounted_id(0, 1);
@@ -798,6 +799,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn hidden_semantic_subtree_also_hides_spliced_mounted_children() {
         let runtime = RuntimeNamespace::__runtime_new();
         let owner = runtime.__runtime_mounted_id(0, 1);
@@ -933,6 +935,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn relationships_and_focus_use_exact_visible_targets_without_fallback() {
         let runtime = RuntimeNamespace::__runtime_new();
         let root = runtime.__runtime_mounted_id(0, 1);
@@ -1017,6 +1020,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn owner_local_visible_index_keeps_identical_keys_isolated_across_owners() {
         let runtime = RuntimeNamespace::__runtime_new();
         let root = runtime.__runtime_mounted_id(0, 1);
@@ -1107,6 +1111,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn active_descendant_requires_option_inside_controlled_listbox() {
         let runtime = RuntimeNamespace::__runtime_new();
         let root = runtime.__runtime_mounted_id(0, 1);
@@ -1479,6 +1484,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn authored_owner_index_rejects_ambiguity_without_first_or_last_fallback() {
         let runtime = RuntimeNamespace::__runtime_new();
         let root = runtime.__runtime_mounted_id(0, 1);

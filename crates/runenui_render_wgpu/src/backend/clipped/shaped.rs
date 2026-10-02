@@ -1093,7 +1093,6 @@ fn create_shaped_pipeline(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::assert_is_empty)]
     use std::sync::Arc;
 
     use runenui_core::{
@@ -1172,6 +1171,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn devanagari_glyphs_produce_cpu_fields() {
         let (_system, artifact) =
             shaped_resource_with_font("क्षि", DEVANAGARI_FONT_BYTES, "RunenUI Fixture Devanagari");

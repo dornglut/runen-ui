@@ -138,6 +138,7 @@ fn report(label: &str, totals: &mut [u128], profiles: &[TextPhaseProfile]) {
     });
 }
 
+#[allow(clippy::assert_is_empty)]
 fn capture(
     system: &mut TextSystem,
     state: &mut TextLayoutState,

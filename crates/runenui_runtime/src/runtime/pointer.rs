@@ -732,6 +732,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn target_cleanup_is_exact_per_stream() {
         let namespace = RuntimeNamespace::__runtime_new();
         let surface = namespace.__runtime_surface_id(0, 1);

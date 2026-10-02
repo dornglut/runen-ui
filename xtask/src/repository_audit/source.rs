@@ -919,7 +919,6 @@ fn normalized_identifier(token: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::assert_is_empty)]
 
     use std::path::Path;
 
@@ -1049,6 +1048,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn surface_publication_entrypoint_rejects_alternative_or_duplicate_authority() {
         let mut findings = Vec::new();
         audit_surface_publication_entrypoint(&[], &mut findings);

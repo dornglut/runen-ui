@@ -505,7 +505,6 @@ fn validate_buffers(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::assert_is_empty)]
     use lyon_tessellation::path::Event;
     use runenui_core::{
         LogicalLength, LogicalPoint, LogicalRect, PathFillRule, PathVerb, Radius, ScenePath,
@@ -553,6 +552,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn fill_output_is_deterministic_and_valid() {
         let shape = SceneShape::rect(rect(10.0, 6.0));
         let first =
@@ -565,6 +565,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn positive_rounded_rect_and_ellipse_fills_are_non_empty() {
         let rounded = SceneShape::rounded_rect(
             rect(20.0, 12.0),
@@ -608,6 +609,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn path_with_line_quadratic_and_cubic_tessellates() {
         let shape = path(
             vec![
@@ -904,6 +906,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn nondegenerate_one_dimensional_curve_stroke_remains_real_geometry() {
         let shape = path(
             vec![

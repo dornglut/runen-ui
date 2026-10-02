@@ -1,4 +1,3 @@
-#![cfg_attr(test, allow(clippy::assert_is_empty))]
 
 //! Headless runtime for `RunenUI`.
 //!

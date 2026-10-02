@@ -574,6 +574,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn completed_anonymous_work_leaves_no_registry_tombstones() {
         let mut registry: WorkRegistry<(), NoHostProtocol> =
             WorkRegistry::new(RuntimeLimits::default());

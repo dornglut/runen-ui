@@ -123,6 +123,7 @@ fn compatible_update_reorders_keys_without_reissuing_semantic_ids() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn invalid_contribution_revokes_semantics_without_replacing_owner_and_can_recover() {
     let (mut tree, _) = MountedTree::mount(probe(ContributionMode::Ordered, "probe"));
     let owner = root_id(&tree);
@@ -174,6 +175,7 @@ fn invalid_contribution_revokes_semantics_without_replacing_owner_and_can_recove
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn capacity_failure_withdraws_complete_owner_semantics_and_recovers_cleanly() {
     let (mut tree, _) = MountedTree::mount(probe(ContributionMode::PrimaryOnly, "probe"));
     let owner = root_id(&tree);
@@ -219,6 +221,7 @@ fn capacity_failure_withdraws_complete_owner_semantics_and_recovers_cleanly() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn semantic_index_corruption_withdraws_owner_and_marks_integrity_failure() {
     let (mut tree, _) = MountedTree::mount(probe(ContributionMode::PrimaryOnly, "probe"));
     let owner = root_id(&tree);

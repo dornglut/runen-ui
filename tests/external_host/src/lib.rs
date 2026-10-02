@@ -7,8 +7,7 @@
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::assert_is_empty)]
-    use core::{error::Error, future::Future, pin::pin, task::Poll};
+        use core::{error::Error, future::Future, pin::pin, task::Poll};
     use std::{
         cell::Cell,
         io,
@@ -460,6 +459,7 @@ mod tests {
         io::Error::other(format!("{context}: {error:?}"))
     }
 
+    #[allow(clippy::assert_is_empty)]
     fn renderer_or_adapterless() -> Result<Option<Renderer>, Box<dyn Error>> {
         match block_on(Renderer::request(RendererOptions::new())) {
             Ok(renderer) => Ok(Some(renderer)),

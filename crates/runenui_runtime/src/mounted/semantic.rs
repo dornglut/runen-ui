@@ -895,6 +895,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn fail_closed_finalize_withdraws_only_exhausted_owner_and_replans() {
         let runtime = RuntimeNamespace::__runtime_new();
         let new_owner = runtime.__runtime_mounted_id(1, 1);
@@ -935,6 +936,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn staged_owner_purge_is_non_mutating_until_commit() {
         let runtime = RuntimeNamespace::__runtime_new();
         let owner = runtime.__runtime_mounted_id(4, 1);

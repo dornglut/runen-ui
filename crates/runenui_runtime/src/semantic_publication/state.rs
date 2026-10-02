@@ -347,6 +347,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn first_commit_is_revision_one_without_synthetic_delta() {
         let namespace = RuntimeNamespace::__runtime_new();
         let surface = namespace.__runtime_surface_id(0, 1);
@@ -687,6 +688,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn changed_candidate_advances_once_and_builds_exact_delta() {
         let namespace = RuntimeNamespace::__runtime_new();
         let surface = namespace.__runtime_surface_id(0, 1);
@@ -725,6 +727,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn exhausted_revision_refuses_without_mutating_committed_products() {
         let namespace = RuntimeNamespace::__runtime_new();
         let surface = namespace.__runtime_surface_id(0, 1);
