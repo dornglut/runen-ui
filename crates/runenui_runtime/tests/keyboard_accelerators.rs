@@ -3,7 +3,7 @@
 use std::{cell::Cell, rc::Rc, time::Duration};
 
 use runenui_core::{
-    ApplicationCommand, ApplicationCommandId, ChildBearingWidget, CommandOrigin, EditIntent,
+    ApplicationCommand, ApplicationCommandId, ChildBearingWidget, CommandOrigin,
     EditableContribution, EditingSessionPolicy, Element, EventContext, EventPhase, FocusGroup,
     FocusGroupTypeAhead, Focusability, KeyLocation, KeyModifiers, KeyboardCompositionState,
     KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey, SemanticCommand,
