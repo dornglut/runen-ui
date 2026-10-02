@@ -55,7 +55,8 @@ impl<Action> MountedTree<Action> {
         &self,
         owner: &MountedNodeId,
     ) -> Option<&[ShortcutBinding]> {
-        self.node(owner).map(|node| node.widget.shortcuts())
+        self.node(owner)
+            .map(|node| node.shortcut_bindings.as_slice())
     }
 
     pub(crate) fn preflight_event_bridges(
