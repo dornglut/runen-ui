@@ -209,7 +209,6 @@ fn downstream_widget_uses_only_public_keyboard_text_and_composition_protocols() 
     );
 }
 
-
 #[derive(Debug)]
 struct NavigationKeyProbe {
     observed: Rc<RefCell<Vec<(PhysicalKey, LogicalKey)>>>,
