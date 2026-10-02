@@ -258,6 +258,7 @@ impl UiApp for ShortcutApp {
             [button("shortcut target")
                 .id("shortcut.target")
                 .key("shortcut-target")
+                .into_element()
                 .focusable(true)],
         )
         .key("downstream-shortcut-scope")
