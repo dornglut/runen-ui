@@ -7,9 +7,11 @@ use runenui_core::{
 };
 use runenui_runtime::{
     LogicalPoint, MountedNodeId, PointerDeviceKind, PointerId, PointerPhase, PumpBudget,
-    SemanticUpdateResult,
+    RuntimeConfig, SemanticUpdateResult,
 };
-use runenui_testing::{SemanticQuery, SemanticTarget, SettleBudget, SettleOutcome, TestHarness};
+use runenui_testing::{
+    SemanticQuery, SemanticTarget, SettleBudget, SettleOutcome, TestHarness, TestSurfaceConfig,
+};
 
 #[path = "../../../examples/counter/src/app.rs"]
 mod app;
@@ -38,6 +40,14 @@ fn settle_budget() -> SettleBudget {
     SettleBudget::new(
         NonZeroUsize::new(8).unwrap_or(NonZeroUsize::MIN),
         PumpBudget::new(64, 64, 64, 64),
+    )
+}
+
+fn counter_harness() -> TestHarness<CounterApp> {
+    TestHarness::mount_with_config(
+        Counter::new(),
+        RuntimeConfig::default(),
+        TestSurfaceConfig::default().with_style_environment(ui::style_environment()),
     )
 }
 
@@ -239,7 +249,7 @@ fn assert_trace(harness: &TestHarness<CounterApp>, origin: ActivationOrigin) {
 }
 
 fn run_origin(origin: ActivationOrigin) {
-    let mut harness = TestHarness::<CounterApp>::mount(Counter::new());
+    let mut harness = counter_harness();
     assert!(harness.publish().is_ok());
 
     let Ok(snapshot) = harness.semantic_snapshot() else {

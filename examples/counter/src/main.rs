@@ -10,7 +10,7 @@ mod ui;
 use app::{Counter, CounterApp, WIN_COUNT};
 use runenui_core::{
     ElementId, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase,
-    LogicalKey, LogicalLength, PhysicalKey, SemanticCommand, StyleEnvironment,
+    LogicalKey, LogicalLength, PhysicalKey, SemanticCommand,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, render_debug_surface_frame,
@@ -28,7 +28,7 @@ const EXAMPLE_SURFACE_SIZE: LogicalSize = LogicalSize::new(
 );
 
 fn debug_surface(runtime: &mut AppRuntime<CounterApp>) -> String {
-    let style_environment = StyleEnvironment::default();
+    let style_environment = crate::ui::style_environment();
     let context = SurfaceBuildContext::tight(&style_environment, EXAMPLE_SURFACE_SIZE);
     let publication = runtime
         .publish_surface(&context)
@@ -144,7 +144,7 @@ mod tests {
     use runenui_core::{
         LogicalDelta, LogicalKey, LogicalLength, LogicalPoint, PhysicalKey, PointerButton,
         PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
-        SemanticCommand, StyleEnvironment,
+        SemanticCommand,
     };
     use runenui_runtime::{
         AppRuntime, LogicalSize, PublishSurfaceError, PumpBudget, RuntimeStatus,
@@ -162,7 +162,7 @@ mod tests {
 
     fn published_names(counter: Counter) -> Vec<String> {
         let mut runtime = mounted_counter(counter);
-        let style_environment = StyleEnvironment::default();
+        let style_environment = crate::ui::style_environment();
         let context = SurfaceBuildContext::tight(
             &style_environment,
             LogicalSize::new(LogicalLength::from(240_u16), LogicalLength::from(160_u16)),
@@ -181,7 +181,7 @@ mod tests {
 
     fn published_paint_colors(counter: Counter) -> Vec<runenui_core::Color> {
         let mut runtime = mounted_counter(counter);
-        let style_environment = StyleEnvironment::default();
+        let style_environment = crate::ui::style_environment();
         let context = SurfaceBuildContext::tight(
             &style_environment,
             LogicalSize::new(LogicalLength::from(240_u16), LogicalLength::from(160_u16)),
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn physical_primary_release_inside_increments_once() {
         let mut runtime = mounted_counter(Counter::new());
-        let style_environment = StyleEnvironment::default();
+        let style_environment = crate::ui::style_environment();
         let context = SurfaceBuildContext::tight(&style_environment, crate::EXAMPLE_SURFACE_SIZE);
         let publication = runtime
             .publish_surface(&context)
@@ -408,7 +408,7 @@ mod tests {
             .focused_node()
             .cloned()
             .unwrap_or_else(|| unreachable!("automation focus committed"));
-        let style_environment = StyleEnvironment::default();
+        let style_environment = crate::ui::style_environment();
         let context = SurfaceBuildContext::tight(&style_environment, crate::EXAMPLE_SURFACE_SIZE);
         runtime
             .publish_surface(&context)
@@ -446,7 +446,7 @@ mod tests {
         let mut runtime = mounted_counter(Counter::new());
         let surface = debug_surface(&mut runtime);
 
-        assert!(surface.contains("surface size=(240.0,160.0) nodes=7"));
+        assert!(surface.contains("surface size=(240.0,160.0) nodes=11"));
         assert!(surface.contains("authored=counter.title"));
         assert!(surface.contains("authored=counter.value"));
         let increment = surface
@@ -456,7 +456,7 @@ mod tests {
         assert!(!increment.contains("semantics="));
         assert!(!surface.contains("paint="));
 
-        let style_environment = StyleEnvironment::default();
+        let style_environment = crate::ui::style_environment();
         let publication = runtime
             .publish_surface(&SurfaceBuildContext::tight(
                 &style_environment,
@@ -495,7 +495,7 @@ mod tests {
 
         let surface = debug_surface(&mut runtime);
 
-        assert!(surface.contains("surface size=(240.0,160.0) nodes=4"));
+        assert!(surface.contains("surface size=(240.0,160.0) nodes=8"));
         assert!(surface.contains("authored=counter.win.title"));
         assert!(surface.contains("authored=counter.value"));
         assert!(surface.contains("authored=counter.reset"));
@@ -523,7 +523,7 @@ mod tests {
         runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
         assert_eq!(runtime.state(), &Counter { count: 1 });
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
-        let style_environment = StyleEnvironment::default();
+        let style_environment = crate::ui::style_environment();
         let context = SurfaceBuildContext::tight(&style_environment, crate::EXAMPLE_SURFACE_SIZE);
         let publication = runtime
             .publish_surface(&context)

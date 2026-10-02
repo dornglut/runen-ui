@@ -4,8 +4,10 @@ use runenui_core::{
     ElementId, PointerButton, PointerButtons, PointerDeviceKind, PointerId, PointerPhase,
     SemanticAction, SemanticRole,
 };
-use runenui_runtime::{LogicalPoint, PumpBudget, SemanticUpdateResult, TraceRecordKind};
-use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
+use runenui_runtime::{
+    LogicalPoint, PumpBudget, RuntimeConfig, SemanticUpdateResult, TraceRecordKind,
+};
+use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness, TestSurfaceConfig};
 
 #[path = "../../../examples/counter/src/app.rs"]
 mod app;
@@ -21,10 +23,18 @@ fn settle_budget() -> SettleBudget {
     )
 }
 
+fn counter_harness() -> TestHarness<CounterApp> {
+    TestHarness::mount_with_config(
+        Counter::new(),
+        RuntimeConfig::default(),
+        TestSurfaceConfig::default().with_style_environment(ui::style_environment()),
+    )
+}
+
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn real_counter_uses_public_semantic_query_action_publication_and_replay() {
-    let mut harness = TestHarness::<CounterApp>::mount(Counter::new());
+    let mut harness = counter_harness();
     assert!(harness.publish().is_ok());
 
     let Ok(snapshot) = harness.semantic_snapshot() else {
@@ -71,7 +81,7 @@ fn real_counter_uses_public_semantic_query_action_publication_and_replay() {
         Ok(SemanticUpdateResult::Delta(_))
     ));
 
-    let mut foreign = TestHarness::<CounterApp>::mount(Counter::new());
+    let mut foreign = counter_harness();
     assert!(foreign.publish().is_ok());
     let Ok(foreign_snapshot) = foreign.semantic_snapshot() else {
         return;
@@ -87,7 +97,7 @@ fn real_counter_uses_public_semantic_query_action_publication_and_replay() {
 
 #[test]
 fn harness_point_input_converges_on_the_latest_public_scene_and_context() {
-    let mut harness = TestHarness::<CounterApp>::mount(Counter::new());
+    let mut harness = counter_harness();
     let publication = harness
         .publish()
         .unwrap_or_else(|_| unreachable!("counter publication is admitted"))
