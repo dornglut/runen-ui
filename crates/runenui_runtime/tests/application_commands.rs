@@ -818,6 +818,53 @@ fn activation_command_admission_rejects_before_callback_under_output_backpressur
     )));
 }
 
+#[test]
+fn activation_command_waiting_queue_saturation_rejects_before_callback_or_partial_output() {
+    const QUEUE_CAPACITY: usize = 16;
+    let limits = RuntimeLimits::default()
+        .with_waiting_envelopes(QUEUE_CAPACITY)
+        .with_transaction_outputs(4);
+    let mut runtime = AppRuntime::<App>::mount_with_config(
+        state(Mode::Enabled),
+        RuntimeConfig::default().with_limits(limits),
+    );
+    settle(&mut runtime);
+    let target = direct_activation(&mut runtime);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("live activation target is accepted"));
+    for _ in 0..(QUEUE_CAPACITY - 1) {
+        runtime
+            .submit_action(Action::Outer)
+            .unwrap_or_else(|_| unreachable!("filler action is admitted"));
+    }
+
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+    assert_eq!(runtime.state().emitter_calls.get(), 0);
+    assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
+    assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::RoutedEventAdmissionRejected {
+            capacity: TraceRoutedAdmissionRejection::WaitingEnvelopes
+        }
+    )));
+    assert!(!runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::DelegatedApplicationCommandCollected { .. }
+            | TraceRecordKind::ApplicationCommandResolution { .. }
+    )));
+}
+
 #[cfg(feature = "internal-test-seams")]
 #[test]
 fn activation_command_trace_exhaustion_rejects_before_callback_or_partial_output() {
