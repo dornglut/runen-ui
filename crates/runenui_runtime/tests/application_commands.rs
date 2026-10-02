@@ -462,18 +462,27 @@ fn routed_output_admission_rejects_before_emitter_callback_or_partial_command_co
 
 #[test]
 fn application_command_waiting_queue_saturation_rejects_before_emitter_callback() {
+    const QUEUE_CAPACITY: usize = 16;
     let limits = RuntimeLimits::default()
-        .with_waiting_envelopes(2)
+        .with_waiting_envelopes(QUEUE_CAPACITY)
         .with_transaction_outputs(1);
     let mut runtime = AppRuntime::<App>::mount_with_config(
         state(Mode::Enabled),
         RuntimeConfig::default().with_limits(limits),
     );
     settle(&mut runtime);
+    assert_eq!(
+        runtime.status(),
+        runenui_runtime::RuntimeStatus::Running,
+        "bounded fixture must mount and settle before admission pressure is applied"
+    );
+
     submit_trigger(&mut runtime);
-    runtime
-        .submit_action(Action::Outer)
-        .unwrap_or_else(|_| unreachable!("filler action is admitted"));
+    for _ in 0..(QUEUE_CAPACITY - 1) {
+        runtime
+            .submit_action(Action::Outer)
+            .unwrap_or_else(|_| unreachable!("filler action is admitted"));
+    }
 
     assert_eq!(
         runtime
@@ -483,6 +492,7 @@ fn application_command_waiting_queue_saturation_rejects_before_emitter_callback(
     );
     assert_eq!(runtime.state().emitter_calls.get(), 0);
     assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
+    assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
     assert!(runtime.trace().kinds().any(|kind| matches!(
         kind,
         TraceRecordKind::RoutedEventAdmissionRejected {
@@ -500,17 +510,22 @@ fn application_command_waiting_queue_saturation_rejects_before_emitter_callback(
 #[test]
 fn application_command_trace_exhaustion_rejects_before_emitter_callback() {
     let limits = RuntimeLimits::default()
-        .with_waiting_envelopes(2)
+        .with_waiting_envelopes(16)
         .with_transaction_outputs(1);
     let mut runtime = AppRuntime::<App>::mount_with_config(
         state(Mode::Enabled),
         RuntimeConfig::default().with_limits(limits),
     );
     settle(&mut runtime);
+    assert_eq!(
+        runtime.status(),
+        runenui_runtime::RuntimeStatus::Running,
+        "bounded fixture must mount and settle before trace pressure is applied"
+    );
     assert!(runtime.__surface_publication_trace_reserved_for_test());
+
     runtime.__seed_next_trace_sequence_for_test(u64::MAX - 2);
     submit_trigger(&mut runtime);
-
     pump_one(&mut runtime);
 
     assert_eq!(runtime.state().emitter_calls.get(), 0);
