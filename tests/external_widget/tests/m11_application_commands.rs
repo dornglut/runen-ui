@@ -3,7 +3,8 @@
 use runenui_core::{
     ApplicationCommandDisposition, ApplicationCommandId, ChildBearingWidget, CommandOrigin,
     Element, EventContext, EventPhase, NoHostProtocol, SemanticCommand, SemanticCommandEvent,
-    UiApp, UiEvent, View, Widget, WidgetEventOutput, children, container,
+    UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
+    WidgetActivationOutput, WidgetEventOutput, children, container,
 };
 use runenui_runtime::{AppRuntime, PumpBudget, TraceApplicationCommandOutcome, TraceRecordKind};
 
@@ -34,6 +35,19 @@ impl Widget<ChildAction> for EmitCommand {
             context.emit_application_command(self.command.clone());
         }
         WidgetEventOutput::none()
+    }
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(true)
+    }
+
+    fn activate(
+        &mut self,
+        (): &mut Self::State,
+        context: &mut WidgetActivationContext<ChildAction>,
+    ) -> WidgetActivationOutput<ChildAction> {
+        context.emit_application_command(self.command.clone());
+        WidgetActivationOutput::none()
     }
 }
 
@@ -144,4 +158,47 @@ fn downstream_widgets_emit_and_resolve_application_commands_through_public_contr
             }
         )
     }));
+}
+
+#[test]
+fn downstream_mapped_activation_emits_the_same_scoped_application_command() {
+    let mut runtime = AppRuntime::<App>::mount(0);
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let authored = runenui_core::ElementId::from_static("command.target")
+        .unwrap_or_else(|_| unreachable!("static authored id is valid"));
+    let target = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("command target is mounted"))
+        .id()
+        .clone();
+
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("live activation target is accepted"));
+
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    assert_eq!(runtime.state(), &1);
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::ApplicationCommandResolution {
+            outcome: TraceApplicationCommandOutcome::Resolved
+        }
+    )));
 }

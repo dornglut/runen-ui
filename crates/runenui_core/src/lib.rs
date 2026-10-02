@@ -347,6 +347,9 @@ pub mod __runtime {
     pub use crate::presentation_geometry::transform_rect_aabb;
     pub use crate::runtime_protocol::RuntimeNamespace;
     pub use crate::subscription::{ErasedSendSubscriptionSource, Subscription, SubscriptionSource};
+    pub use crate::widget_context::{
+        WidgetActivationContextOutputOrder, WidgetActivationContextOutputs,
+    };
     pub use crate::widget_erasure::{
         ElementParts, ElementRuntimeParts, MountedWidget, MountedWidgetState, WidgetBridgeError,
     };

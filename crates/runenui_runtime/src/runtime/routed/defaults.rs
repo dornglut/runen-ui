@@ -1,7 +1,11 @@
 use runenui_core::{
-    __runtime::{FrameworkServiceBinding, FrameworkServiceEffect, MountedEffect},
-    ClipboardWritePurpose, FocusDirection, FrameworkServiceRequest, HostProtocol, LogicalDelta,
-    OverflowPolicy, SemanticActionData, SemanticCommand, TextSensitivity,
+    __runtime::{
+        FrameworkServiceBinding, FrameworkServiceEffect, MountedEffect,
+        WidgetActivationContextOutputOrder, WidgetActivationContextOutputs,
+    },
+    ApplicationCommandId, ClipboardWritePurpose, CommandOrigin, FocusDirection,
+    FrameworkServiceRequest, HostProtocol, LogicalDelta, OverflowPolicy, SemanticActionData,
+    SemanticCommand, TextSensitivity,
 };
 
 use super::{
@@ -599,6 +603,103 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    fn collect_activation_action(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        action: Action,
+    ) {
+        transaction.parent = self.trace.record_event(
+            TraceRecordKind::RoutedActionCollected,
+            transaction.sequence,
+            transaction.parent,
+            Some(transaction.target_trace.clone()),
+            transaction.instant,
+            &transaction.target,
+            Some(&transaction.target),
+            transaction.origin,
+        );
+        transaction
+            .default_outputs
+            .push(CollectedRoutedOutput::Action {
+                action,
+                causal_parent: transaction.parent,
+                current_target: transaction.target.clone(),
+            });
+    }
+
+    fn collect_activation_effect(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        effect: MountedEffect<Action>,
+    ) {
+        match effect {
+            MountedEffect::Action(action) => self.collect_activation_action(transaction, action),
+            effect => transaction
+                .mounted_work
+                .push((transaction.target.clone(), effect)),
+        }
+    }
+
+    fn collect_activation_application_command(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        command: ApplicationCommandId,
+    ) {
+        transaction.parent = self.trace.record_event(
+            TraceRecordKind::DelegatedApplicationCommandCollected {
+                command: command.clone(),
+            },
+            transaction.sequence,
+            transaction.parent,
+            Some(transaction.target_trace.clone()),
+            transaction.instant,
+            &transaction.target,
+            Some(&transaction.target),
+            transaction.origin,
+        );
+        transaction
+            .default_outputs
+            .push(CollectedRoutedOutput::ApplicationCommand {
+                target: transaction.target.clone(),
+                command,
+                origin: CommandOrigin::__runtime_delegated(transaction.origin.source()),
+                causal_parent: transaction.parent,
+            });
+    }
+
+    fn collect_activation_context_outputs(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        outputs: WidgetActivationContextOutputs<Action>,
+    ) {
+        let (mounted, order) = outputs.__runtime_into_parts();
+        let mut mounted = mounted.into_iter();
+        if let Some(order) = order {
+            for output in order {
+                match output {
+                    WidgetActivationContextOutputOrder::Mounted => {
+                        let effect = mounted.next().unwrap_or_else(|| {
+                            unreachable!("mounted activation output is ordered")
+                        });
+                        self.collect_activation_effect(transaction, effect);
+                    }
+                    WidgetActivationContextOutputOrder::ApplicationCommand(command) => {
+                        self.collect_activation_application_command(transaction, command);
+                    }
+                }
+            }
+            assert_eq!(
+                mounted.len(),
+                0,
+                "activation output order must account for every mounted output"
+            );
+        } else {
+            for effect in mounted {
+                self.collect_activation_effect(transaction, effect);
+            }
+        }
+    }
+
     fn invoke_activation_default(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
@@ -636,32 +737,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             activation.subscription_invalidation,
             subscription_credit,
         );
-        for effect in activation.outputs {
-            match effect {
-                MountedEffect::Action(action) => {
-                    transaction.parent = self.trace.record_event(
-                        TraceRecordKind::RoutedActionCollected,
-                        transaction.sequence,
-                        transaction.parent,
-                        Some(transaction.target_trace.clone()),
-                        transaction.instant,
-                        &transaction.target,
-                        Some(&transaction.target),
-                        transaction.origin,
-                    );
-                    transaction
-                        .default_outputs
-                        .push(CollectedRoutedOutput::Action {
-                            action,
-                            causal_parent: transaction.parent,
-                            current_target: transaction.target.clone(),
-                        });
-                }
-                effect => transaction
-                    .mounted_work
-                    .push((transaction.target.clone(), effect)),
-            }
+        if let Some(action) = activation.primary_action {
+            self.collect_activation_action(transaction, action);
         }
+        self.collect_activation_context_outputs(transaction, activation.outputs);
         Ok(())
     }
 }
