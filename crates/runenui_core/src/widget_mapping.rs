@@ -271,7 +271,11 @@ fn transfer_activation_context<ChildAction: 'static, ParentAction: 'static>(
                 }
             }
         }
-        debug_assert_eq!(mounted.len(), 0);
+        assert_eq!(
+            mounted.len(),
+            0,
+            "activation output order must account for every mounted output"
+        );
     } else {
         for effect in mounted {
             parent.__runtime_push_output(map_output(effect, mapper));
