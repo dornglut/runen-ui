@@ -7,8 +7,8 @@ use crate::{
     LayoutContainer, LayoutStyle, LogicalLength, LogicalRect, LogicalSize, SemanticAction,
     SemanticCheckedState, SemanticCommand, SemanticCommandEvent, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
-    SemanticText, UiEvent, WidgetActivationContext, WidgetDiagnostic, WidgetEventOutput,
-    WidgetInvalidation, WidgetUpdateContext,
+    SemanticText, ShortcutBinding, UiEvent, WidgetActivationContext, WidgetDiagnostic,
+    WidgetEventOutput, WidgetInvalidation, WidgetUpdateContext,
     element::{CommonNodeAuthoring, Element, View, Views, common_node_builder_methods},
     widget_erasure::{ErasedWidget, WidgetAdapter},
     widget_protocol::{
@@ -194,6 +194,120 @@ pub fn command_scope<Action>(
 ) -> CommandScope<Action> {
     CommandScope::new(bindings, children)
 }
+
+pub struct ShortcutScope<Action> {
+    bindings: Vec<ShortcutBinding>,
+    children: Vec<Element<Action>>,
+    common: CommonNodeAuthoring,
+}
+
+impl<Action> fmt::Debug for ShortcutScope<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ShortcutScope")
+            .field("binding_count", &self.bindings.len())
+            .field("children", &self.children)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<Action> ShortcutScope<Action> {
+    #[must_use]
+    pub fn new(
+        bindings: impl IntoIterator<Item = ShortcutBinding>,
+        children: impl Views<Action>,
+    ) -> Self {
+        Self {
+            bindings: bindings.into_iter().collect(),
+            children: children.into_elements(),
+            common: CommonNodeAuthoring::default(),
+        }
+    }
+
+    common_node_builder_methods!();
+}
+
+#[derive(Debug)]
+struct ShortcutScopeWidget {
+    bindings: Vec<ShortcutBinding>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ShortcutScopeWidgetState {
+    has_duplicate_chord: bool,
+}
+
+impl ShortcutScopeWidget {
+    fn has_duplicate_chord(&self) -> bool {
+        self.bindings.iter().enumerate().any(|(index, binding)| {
+            self.bindings[index + 1..]
+                .iter()
+                .any(|other| other.chord() == binding.chord())
+        })
+    }
+}
+
+impl<Action> Widget<Action> for ShortcutScopeWidget {
+    type State = ShortcutScopeWidgetState;
+
+    fn create_state(&self) -> Self::State {
+        ShortcutScopeWidgetState {
+            has_duplicate_chord: self.has_duplicate_chord(),
+        }
+    }
+
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
+        let has_duplicate_chord = self.has_duplicate_chord();
+        if state.has_duplicate_chord != has_duplicate_chord {
+            context.invalidate(WidgetInvalidation::DIAGNOSTICS);
+        }
+        state.has_duplicate_chord = has_duplicate_chord;
+    }
+
+    fn shortcuts(&self) -> &[ShortcutBinding] {
+        self.bindings.as_slice()
+    }
+
+    fn diagnostics(&self, state: &Self::State) -> Vec<WidgetDiagnostic> {
+        if state.has_duplicate_chord {
+            vec![WidgetDiagnostic::new(
+                "runenui.shortcut-scope.duplicate-chord",
+                "ShortcutScope contains duplicate bindings for one shortcut chord",
+            )]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+impl<Action> ChildBearingWidget<Action> for ShortcutScopeWidget {}
+
+impl<Action: 'static> View<Action> for ShortcutScope<Action> {
+    fn into_element(self) -> Element<Action> {
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(crate::Focusability::Automatic, None);
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(ShortcutScopeWidget {
+                bindings: self.bindings,
+            })),
+            self.children,
+            diagnostics,
+        )
+    }
+}
+
+#[must_use]
+pub fn shortcut_scope<Action>(
+    bindings: impl IntoIterator<Item = ShortcutBinding>,
+    children: impl Views<Action>,
+) -> ShortcutScope<Action> {
+    ShortcutScope::new(bindings, children)
+}
+
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Text {
