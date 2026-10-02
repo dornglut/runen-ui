@@ -789,11 +789,11 @@ mod tests {
         let mounted_commit = finalized.commit_store();
 
         assert_eq!(tree.semantic_store.live_count(), 1);
-        assert!(
+        assert_eq!(
             tree.node(&root)
                 .unwrap_or_else(|| unreachable!("root remains mounted"))
-                .semantic_bindings
-                .is_empty()
+                .semantic_bindings,
+            []
         );
 
         tree.commit_semantic_publication(mounted_commit);

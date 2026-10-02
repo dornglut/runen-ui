@@ -2420,6 +2420,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assert_is_empty)]
     fn reference_editor_publishes_visible_editable_text_and_accepts_commits() {
         let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
             DemoState::default(),
