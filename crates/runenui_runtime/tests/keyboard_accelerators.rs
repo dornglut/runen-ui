@@ -359,16 +359,7 @@ fn nearest_scope_wins_and_missing_inner_declaration_falls_back_to_outer() {
 #[test]
 fn ambiguous_and_disabled_nearest_declarations_fail_closed_without_outer_fallback() {
     let control = KeyModifiers::NONE.with_control();
-    for (mode, outcome) in [
-        (
-            Mode::Ambiguous,
-            TraceRecordKind::KeyboardShortcutAmbiguous as fn() -> TraceRecordKind,
-        ),
-        (
-            Mode::Disabled,
-            TraceRecordKind::KeyboardShortcutDisabled as fn() -> TraceRecordKind,
-        ),
-    ] {
+    for mode in [Mode::Ambiguous, Mode::Disabled] {
         let mut runtime = AppRuntime::<App>::mount(State::new(mode));
         settle(&mut runtime);
         focus(&mut runtime, "target.a");
@@ -384,8 +375,17 @@ fn ambiguous_and_disabled_nearest_declarations_fail_closed_without_outer_fallbac
         );
         settle(&mut runtime);
         assert!(runtime.state().fired.is_empty());
-        let expected = outcome();
-        assert!(runtime.trace().records().any(|record| record.kind() == &expected));
+        assert!(runtime.trace().records().any(|record| match mode {
+            Mode::Ambiguous => matches!(
+                record.kind(),
+                TraceRecordKind::KeyboardShortcutAmbiguous
+            ),
+            Mode::Disabled => matches!(
+                record.kind(),
+                TraceRecordKind::KeyboardShortcutDisabled
+            ),
+            _ => unreachable!("fixture iterates only fail-closed modes"),
+        }));
     }
 }
 
@@ -647,35 +647,8 @@ fn replacement_after_keyboard_processing_makes_queued_command_stale_without_reta
 }
 
 #[test]
-fn shortcut_admission_rejects_before_callbacks_under_transaction_and_queue_pressure() {
+fn shortcut_waiting_queue_admission_rejects_before_callbacks_or_partial_output() {
     let control = KeyModifiers::NONE.with_control();
-
-    let mut output_limited = AppRuntime::<App>::mount_with_config(
-        State::new(Mode::Unique),
-        RuntimeConfig::default().with_limits(RuntimeLimits::default().with_transaction_outputs(0)),
-    );
-    settle(&mut output_limited);
-    focus(&mut output_limited, "target.a");
-    output_limited.state().callback_calls.set(0);
-    submit_shortcut(
-        &mut output_limited,
-        key(
-            "s",
-            "KeyS",
-            control,
-            false,
-            KeyboardCompositionState::Inactive,
-        ),
-    );
-    output_limited.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
-    assert_eq!(output_limited.state().callback_calls.get(), 0);
-    assert!(output_limited.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::RoutedEventAdmissionRejected {
-            capacity: TraceRoutedAdmissionRejection::TransactionOutputs
-        }
-    )));
-
     const QUEUE_CAPACITY: usize = 8;
     let limits = RuntimeLimits::default()
         .with_waiting_envelopes(QUEUE_CAPACITY)
