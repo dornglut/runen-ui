@@ -36,6 +36,7 @@ fn pump_all(runtime: &mut AppRuntime<TraceDisabledApp>) {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn disabled_trace_preserves_checked_surface_command_behavior() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(0));
     let mut runtime = AppRuntime::<TraceDisabledApp>::mount_with_config(0, config);

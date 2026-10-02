@@ -679,6 +679,7 @@ fn accepted_last_sequence<App: UiApp>(runtime: &AppRuntime<App>) -> usize {
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn one_remaining_sequence_is_consumed_only_by_each_final_scheduler_action() {
     let mut local = AppRuntime::<LocalTaskApp>::mount(Vec::new());
     local.pump(PumpBudget::new(2, 0, 0, 0));
@@ -859,6 +860,7 @@ fn send_task_completion_with_only_two_unreserved_records_never_runs_mapper() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn disabled_trace_changes_no_send_completion_behavior() {
     let mapper_calls = Rc::new(Cell::new(0));
     let jobs = Rc::new(RefCell::new(Vec::new()));

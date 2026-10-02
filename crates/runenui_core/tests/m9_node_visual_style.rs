@@ -78,6 +78,7 @@ fn visual_tokens_resolve_exact_values_order_and_property_local_provenance()
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn visual_defaults_are_normalized_and_report_initial_provenance() {
     let resolution = resolve_style_in_environment(
         &StyleIntent::EMPTY,
@@ -111,6 +112,7 @@ fn visual_defaults_are_normalized_and_report_initial_provenance() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn missing_higher_visual_tokens_mask_lower_values_to_normalized_defaults()
 -> Result<(), Box<dyn std::error::Error>> {
     let lower_shadows = shadows()?;
@@ -163,6 +165,7 @@ fn missing_higher_visual_tokens_mask_lower_values_to_normalized_defaults()
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn visual_node_properties_do_not_inherit() -> Result<(), Box<dyn std::error::Error>> {
     let parent = ComputedStyle::EMPTY
         .with_outline(outline())

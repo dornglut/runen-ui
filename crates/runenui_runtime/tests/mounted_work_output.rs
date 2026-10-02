@@ -224,6 +224,7 @@ impl UiApp for ActivationOrderApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn routed_activation_commits_subscription_then_primary_and_auxiliary_actions() {
     let declarations = Rc::new(RefCell::new(Vec::new()));
     let mut runtime =

@@ -80,6 +80,7 @@ impl UiApp for CompositeApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn built_in_row_column_measure_arrange_hit_and_debug_through_mounted_publication() {
     let mut runtime = AppRuntime::<CompositeApp>::mount(());
     register_controlled_text(&mut runtime);
@@ -231,6 +232,7 @@ impl UiApp for RetainedTextApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn retained_paint_publication_keeps_old_shaped_binding_after_text_changes() {
     let mut runtime = AppRuntime::<RetainedTextApp>::mount("first");
     register_controlled_text(&mut runtime);
@@ -479,6 +481,7 @@ impl UiApp for OutOfRangeGridLineApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn out_of_range_grid_line_is_diagnosed_without_saturation() {
     let mut runtime = AppRuntime::<OutOfRangeGridLineApp>::mount(());
     let publication = publish(
@@ -582,6 +585,7 @@ impl UiApp for TextCorrelationApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn final_text_request_selects_the_matching_artifact_resource() {
     let inputs = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<TextCorrelationApp>::mount(CorrelationState {

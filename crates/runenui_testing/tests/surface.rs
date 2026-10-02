@@ -47,6 +47,7 @@ fn register_controlled_text(harness: &mut TestHarness<SurfaceApp>) {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn fixed_surface_layout_and_font_backed_text_are_public_and_deterministic() {
     let mut harness = TestHarness::<SurfaceApp>::mount(());
     assert_eq!(harness.surface_config().size(), DEFAULT_TEST_SURFACE_SIZE);

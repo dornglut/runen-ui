@@ -288,6 +288,7 @@ impl UiApp for PreventApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn prevented_initiating_command_changes_modality_but_commits_no_focus_notification() {
     let log = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<PreventApp>::mount(Rc::clone(&log));

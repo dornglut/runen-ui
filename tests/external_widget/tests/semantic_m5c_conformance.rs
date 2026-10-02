@@ -491,6 +491,7 @@ fn assert_semantic_trace_lineage(runtime: &AppRuntime<ProbeApp>, work: WorkSeque
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn semantic_activate_enters_the_existing_fifo_route_default_and_update_path() {
     let mut runtime = runtime(ProbeConfig::actionable());
     let published = publish(&mut runtime);
@@ -695,6 +696,7 @@ fn menu_actions_route_without_owner_actionable_or_activation_default() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn foreign_dirty_and_capacity_rejections_are_atomic_and_recover_exact_requests() {
     let mut local = runtime(ProbeConfig::actionable());
     let local_targets = publish(&mut local);
@@ -822,6 +824,7 @@ fn hidden_target_is_not_in_current_surface_and_replaced_generation_becomes_stale
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn accepted_then_replaced_semantic_work_rejects_without_retargeting() {
     let mut runtime = runtime(ProbeConfig::actionable());
     let published = publish(&mut runtime);

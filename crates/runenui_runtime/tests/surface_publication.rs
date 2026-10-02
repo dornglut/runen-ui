@@ -773,6 +773,7 @@ fn warmed_combined_padding_and_color_change_executes_canonical_phases() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn equivalent_common_authored_fields_execute_no_publication_phase() {
     let mut tokens = StyleTokens::new();
     tokens
@@ -908,6 +909,7 @@ fn divergent_clones_follow_exact_current_token_content() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn equal_token_content_can_reuse_the_warmed_publication() {
     let mut first = StyleTokens::new();
     let mut second = StyleTokens::new();

@@ -317,6 +317,7 @@ fn expand_and_collapse_follow_current_authored_expanded_state() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn processing_time_revalidation_uses_republished_current_range_state_before_callback() {
     let mut runtime = app_runtime(false);
     let (surface, range, _) = publish(&mut runtime);

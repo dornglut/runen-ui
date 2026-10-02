@@ -213,7 +213,7 @@ mod tests {
         let default_region = HitRegion::rect(rect);
         assert_eq!(default_region.shape(), &SceneShape::rect(rect));
         assert_eq!(default_region.local_transform(), LogicalTransform::IDENTITY);
-        assert!(default_region.clips().is_empty());
+        assert_eq!(default_region.clips(), []);
         assert_eq!(default_region.layer(), SceneLayer::ZERO);
         assert_eq!(default_region.pointer_policy(), PointerPolicy::Target);
 

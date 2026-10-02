@@ -252,6 +252,7 @@ fn removal_cleanup_keeps_composition_sequence_and_links_the_removing_action() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn failed_cleanup_retires_without_false_delivery_and_shutdown_unmounts_once() {
     let log = Rc::new(RefCell::new(Vec::new()));
     let config = RuntimeConfig::default().with_limits(

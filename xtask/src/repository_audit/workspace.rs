@@ -875,6 +875,8 @@ fn read(root: &Path, relative: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::assert_is_empty)]
+
     use std::{
         collections::{BTreeMap, BTreeSet},
         path::Path,

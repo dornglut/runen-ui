@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![cfg_attr(test, allow(clippy::assert_is_empty))]
 //! Renderer-neutral production text-system foundations.
 //!
 //! `RunenUI` owns the public contracts in this crate. Parley and Fontique remain

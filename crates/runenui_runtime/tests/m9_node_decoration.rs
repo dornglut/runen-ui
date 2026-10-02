@@ -126,6 +126,7 @@ impl UiApp for BuiltinBackgroundApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn builtin_background_has_one_runtime_publication_authority() {
     let mut runtime = AppRuntime::<BuiltinBackgroundApp>::mount(());
     let publication = publish(&mut runtime);
@@ -185,6 +186,7 @@ impl UiApp for LayeredTextApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn rounded_decoration_preserves_m6_layer_and_local_text_order() {
     let mut runtime = AppRuntime::<LayeredTextApp>::mount(());
     register_font(&mut runtime);

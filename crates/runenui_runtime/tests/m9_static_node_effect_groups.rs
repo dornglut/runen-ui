@@ -203,6 +203,7 @@ fn only_group(entry: PaintSceneEntry) -> PaintSceneGroupId {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn static_node_effect_groups_contract_at_first_member_without_changing_pre_group_items() {
     let mut runtime = AppRuntime::<GroupedApp>::mount(());
     let publication = publish(&mut runtime);
@@ -272,6 +273,7 @@ fn sibling_groups_contract_by_first_member_and_descendant_layers_do_not_escape()
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn identity_defaults_preserve_exact_ungrouped_m6_root_order() {
     let mut runtime = AppRuntime::<UngroupedApp>::mount(());
     let publication = publish(&mut runtime);
@@ -287,6 +289,7 @@ fn identity_defaults_preserve_exact_ungrouped_m6_root_order() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn static_effect_group_with_no_admitted_descendant_paint_is_omitted() {
     let mut runtime = AppRuntime::<EmptyGroupApp>::mount(());
     let publication = publish(&mut runtime);

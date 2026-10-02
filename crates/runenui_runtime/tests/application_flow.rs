@@ -152,6 +152,7 @@ impl UiApp for NonCloneApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn non_clone_actions_remain_supported() {
     let mut runtime = AppRuntime::<NonCloneApp>::mount(Vec::new());
     let id = runtime.index().nodes()[0].id().clone();

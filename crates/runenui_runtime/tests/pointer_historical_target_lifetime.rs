@@ -275,6 +275,7 @@ fn has_pointer_rejection(
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn stale_displayed_hit_down_rejects_without_poison_or_current_geometry_retarget() {
     let mut harness = harness();
     replace_target_without_publishing(&mut harness);
@@ -331,6 +332,7 @@ fn stale_displayed_hit_down_rejects_without_poison_or_current_geometry_retarget(
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn stale_displayed_hit_up_closes_existing_stream_without_route_or_activation() {
     let mut harness = harness();
     submit_and_pump(
@@ -390,6 +392,7 @@ fn stale_displayed_hit_up_closes_existing_stream_without_route_or_activation() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn stale_physical_hit_preserves_distinct_live_capture_routing_without_retarget() {
     let mut harness = harness();
     submit_and_pump(

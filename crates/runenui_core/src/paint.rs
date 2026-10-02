@@ -731,7 +731,7 @@ mod tests {
         let default_item =
             PaintContributionItem::fill(SceneShape::rect(rect), Brush::solid(Color::WHITE));
         assert_eq!(default_item.local_transform(), LogicalTransform::IDENTITY);
-        assert!(default_item.clips().is_empty());
+        assert_eq!(default_item.clips(), []);
         assert_eq!(default_item.opacity(), SceneOpacity::OPAQUE);
         assert_eq!(default_item.layer(), SceneLayer::ZERO);
 

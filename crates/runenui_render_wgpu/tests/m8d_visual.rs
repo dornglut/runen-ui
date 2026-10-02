@@ -1,5 +1,4 @@
 #![allow(refining_impl_trait)]
-#![allow(clippy::assert_is_empty)]
 
 use core::{future::Future, pin::pin, task::Poll};
 use std::{
@@ -214,6 +213,7 @@ struct Panel {
     readback: OffscreenPublicationReadback,
 }
 
+#[allow(clippy::assert_is_empty)]
 fn render_panel(
     renderer: &mut Renderer,
     name: &'static str,

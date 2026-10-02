@@ -115,6 +115,7 @@ fn delay_holds_keyframe_zero_until_the_active_interval_begins() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn exact_non_final_repeat_boundary_restarts_at_keyframe_zero() {
     let repeat =
         MotionRepeat::finite(NonZeroU64::new(2).unwrap_or_else(|| unreachable!("two is non-zero")));
@@ -147,6 +148,7 @@ fn exact_non_final_repeat_boundary_restarts_at_keyframe_zero() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn zero_duration_positive_delay_completes_atomically_at_the_deadline() {
     let mut runtime = AppRuntime::<TimingApp>::mount(TimingState {
         duration: Duration::ZERO,

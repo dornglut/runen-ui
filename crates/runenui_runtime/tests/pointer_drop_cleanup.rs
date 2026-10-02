@@ -82,6 +82,7 @@ impl Widget<()> for Probe {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn dropping_runtime_closes_active_pointer_before_one_widget_unmount_without_callbacks() {
     let callbacks = Rc::new(RefCell::new(Vec::new()));
     let unmounts = Rc::new(Cell::new(0));

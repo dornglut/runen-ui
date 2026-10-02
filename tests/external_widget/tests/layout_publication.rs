@@ -42,6 +42,7 @@ impl UiApp for ResponsiveApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn downstream_custom_measurement_receives_bounded_requests_and_baseline() {
     let inputs = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<ResponsiveApp>::mount(Rc::clone(&inputs));

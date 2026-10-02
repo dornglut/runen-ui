@@ -776,6 +776,7 @@ fn key_04_keyboard_rejections_preserve_the_owned_event_and_runtime_state() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 #[allow(
     clippy::too_many_lines,
     reason = "this one conformance row keeps Enter, matched Space, and exact admission-boundary proof together"

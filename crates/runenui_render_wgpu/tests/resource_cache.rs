@@ -267,6 +267,7 @@ fn resource_cache_loss_forces_full_resync_and_reloads_before_repaint() -> Result
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn cached_image_extent_mismatch_fails_without_provider_reload() -> Result<(), Box<dyn Error>> {
     let Some(mut renderer) = renderer_or_adapterless()? else {
         return Ok(());

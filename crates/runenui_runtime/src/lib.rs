@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::assert_is_empty))]
+
 //! Headless runtime for `RunenUI`.
 //!
 //! This crate owns typed action delivery, update calls, root rebuilding, input

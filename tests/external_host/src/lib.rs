@@ -7,6 +7,7 @@
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::assert_is_empty)]
     use core::{error::Error, future::Future, pin::pin, task::Poll};
     use std::{
         cell::Cell,

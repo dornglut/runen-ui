@@ -293,6 +293,7 @@ fn strict_current_policy_rejects_live_issue_sha_and_run_marker() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn frozen_contract_allows_accepted_provenance_but_rejects_mutable_head_state() {
     let mut findings = Vec::new();
     audit_volatility(

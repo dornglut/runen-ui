@@ -532,6 +532,7 @@ fn capacity_rejection_clears_existing_prefix_and_preserves_focus() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn activate_target_remains_deferred_until_after_focus_transition() {
     let mut runtime = AppRuntime::<App>::mount(State::activating());
     settle(&mut runtime);

@@ -592,6 +592,7 @@ fn retired_primary_partial_release_clears_primary_interaction_without_closing_st
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn retired_secondary_partial_release_preserves_primary_interaction_for_current_final_release() {
     let retention =
         NonZeroUsize::new(1).unwrap_or_else(|| unreachable!("test retention is non-zero"));

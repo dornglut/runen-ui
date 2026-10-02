@@ -919,6 +919,8 @@ fn normalized_identifier(token: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::assert_is_empty)]
+
     use std::path::Path;
 
     use super::{

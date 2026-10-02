@@ -30,6 +30,7 @@ impl UiApp for OrderedApp {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn submission_sequences_full_recovery_and_fifo_are_exact() {
     let config = RuntimeConfig::default().with_queue_capacity(2);
     let mut runtime = AppRuntime::<OrderedApp>::mount_with_config(Vec::new(), config);
@@ -271,6 +272,7 @@ fn actions_need_neither_clone_send_nor_debug() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn shutdown_is_idempotent_cancels_waiting_actions_and_closes_submission() {
     let mut runtime = AppRuntime::<OrderedApp>::mount(Vec::new());
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));

@@ -1020,6 +1020,7 @@ fn real_gpu_nested_transparent_effect_support_reaches_ancestor_shadow() -> Resul
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn real_gpu_empty_and_singular_generic_clips_erase_coverage() -> Result<(), Box<dyn Error>> {
     let Some(mut renderer) = renderer_or_adapterless()? else {
         return Ok(());

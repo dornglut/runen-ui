@@ -68,6 +68,7 @@ fn settle(runtime: &mut AppRuntime<TraceApp>) {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn trace_export_04_public_non_debug_labels_are_optional_and_dormant_when_trace_is_disabled() {
     LABEL_CALLS.store(0, Ordering::Relaxed);
     let mut runtime = AppRuntime::<TraceApp>::mount(TraceState { updates: 0 });

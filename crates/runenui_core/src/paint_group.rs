@@ -225,8 +225,8 @@ mod tests {
     fn item_only_structure_canonicalizes_to_flat_no_group_storage() {
         let normalized = normalize_entries(vec![item(1).into(), item(2).into()]);
         assert_eq!(normalized.items, vec![item(1), item(2)]);
-        assert!(normalized.groups.is_empty());
-        assert!(normalized.item_groups.is_empty());
+        assert_eq!(normalized.groups, Vec::new());
+        assert_eq!(normalized.item_groups, Vec::new());
     }
 
     #[test]
@@ -256,8 +256,8 @@ mod tests {
         assert_eq!(normalized.groups.len(), 1);
         assert_eq!(normalized.groups[0].parent, None);
         assert_eq!(normalized.groups[0].opacity, SceneOpacity::OPAQUE);
-        assert!(normalized.groups[0].clips.is_empty());
-        assert!(normalized.groups[0].shadows.is_empty());
+        assert_eq!(normalized.groups[0].clips, Vec::new());
+        assert_eq!(normalized.groups[0].shadows, Vec::new());
         assert_eq!(normalized.item_groups, vec![Some(0)]);
     }
 

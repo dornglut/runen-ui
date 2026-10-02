@@ -286,6 +286,7 @@ fn boundary_bundle_is_target_only_ordered_and_precedes_the_ordinary_move() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn leaving_the_surface_delivers_leaves_without_a_fake_ordinary_route() {
     let mut harness = harness();
     submit_and_pump(

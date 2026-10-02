@@ -245,6 +245,7 @@ fn zero_eligible_group_contributes_no_external_focus_stop() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn absolute_group_navigation_selects_first_and_last_eligible_members() {
     let mut runtime = AppRuntime::<App>::mount(State {
         activation: FocusGroupActivationPolicy::Manual,
@@ -274,6 +275,7 @@ fn absolute_group_navigation_selects_first_and_last_eligible_members() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn absolute_group_navigation_activates_only_after_focus_commit() {
     let mut runtime = AppRuntime::<App>::mount(State::default());
     settle(&mut runtime);
@@ -319,6 +321,7 @@ fn absolute_group_navigation_activates_only_after_focus_commit() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn absolute_group_navigation_is_idempotent_at_the_requested_boundary() {
     let mut runtime = AppRuntime::<App>::mount(State::default());
     settle(&mut runtime);
@@ -362,6 +365,7 @@ fn absolute_group_navigation_trace_exports_and_replays_stable_tokens() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn internal_navigation_wraps_and_activation_is_deferred_until_after_focus() {
     let mut runtime = AppRuntime::<App>::mount(State::default());
     settle(&mut runtime);
@@ -440,6 +444,7 @@ fn hidden_preferred_entry_falls_back_and_internal_navigation_skips_ineligible_me
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn manual_stop_policy_moves_without_activation_and_stops_at_boundary() {
     let mut runtime = AppRuntime::<App>::mount(State {
         activation: FocusGroupActivationPolicy::Manual,
@@ -1020,6 +1025,7 @@ fn pressure_id(runtime: &mut AppRuntime<OutputPressureApp>, name: &str) -> Mount
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn absolute_group_navigation_reserves_activation_capacity_before_focus_commit() {
     let config =
         RuntimeConfig::default().with_limits(RuntimeLimits::default().with_transaction_outputs(1));
@@ -1077,6 +1083,7 @@ fn absolute_group_navigation_reserves_activation_capacity_before_focus_commit() 
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn activate_target_reserves_default_command_capacity_beyond_routed_callback_outputs() {
     let config =
         RuntimeConfig::default().with_limits(RuntimeLimits::default().with_transaction_outputs(1));

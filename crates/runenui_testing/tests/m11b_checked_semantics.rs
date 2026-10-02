@@ -76,6 +76,7 @@ fn settle_budget() -> SettleBudget {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn checked_semantics_follow_application_state_through_ordinary_activation() {
     let unchecked = SemanticQuery::new()
         .with_role(SemanticRole::Checkbox)

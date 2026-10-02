@@ -103,6 +103,7 @@ fn retained_text_measurement(publication: &SurfacePublication) -> &SurfaceTextMe
     retained[0]
 }
 
+#[allow(clippy::assert_is_empty)]
 fn assert_measurement_lowering(record: &SurfaceTextMeasurementRecord) {
     let input = record.input();
     let constraints = record.text_constraints();
@@ -132,6 +133,7 @@ fn assert_measurement_lowering(record: &SurfaceTextMeasurementRecord) {
     assert!(!record.retained_resource_refs().is_empty());
 }
 
+#[allow(clippy::assert_is_empty)]
 fn assert_publication_correlation(publication: &SurfacePublication) {
     let frame = publication
         .frame()
@@ -191,6 +193,7 @@ fn assert_publication_correlation(publication: &SurfacePublication) {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn public_m8d_corpus_correlates_layout_text_paint_and_semantics() {
     let mut runtime = AppRuntime::<IntegrationApp>::mount(());
     register_controlled_fonts(&mut runtime);

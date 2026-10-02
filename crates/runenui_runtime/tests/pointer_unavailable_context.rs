@@ -221,6 +221,7 @@ fn registration_count(runtime: &AppRuntime<App>, pointer_id: u64) -> usize {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn unavailable_down_and_wheel_consume_no_stream_or_default_authority() {
     let mut harness = harness();
     let missing = harness.runtime.__surface_context_for_test(
@@ -294,6 +295,7 @@ fn unavailable_down_and_wheel_consume_no_stream_or_default_authority() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn unavailable_move_preserves_the_retained_physical_path() {
     let mut harness = harness();
     submit_and_pump(
@@ -361,6 +363,7 @@ fn unavailable_move_preserves_the_retained_physical_path() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn validation_order_rejects_surface_before_stream_and_stream_before_generation() {
     let mut local = harness();
     let foreign_runtime = harness();
@@ -440,6 +443,7 @@ fn validation_order_rejects_surface_before_stream_and_stream_before_generation()
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn malformed_missing_context_up_rejects_before_integrity_settlement() {
     let mut harness = harness();
     let pointer_id =

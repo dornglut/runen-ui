@@ -631,6 +631,7 @@ fn downstream_route_only_commands_route_once_without_implicit_default_or_output(
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn downstream_conservative_rejection_runs_no_callback_and_commits_no_partial_output() {
     let limits = RuntimeLimits::default()
         .with_transaction_outputs(1)

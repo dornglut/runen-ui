@@ -577,6 +577,8 @@ fn compare_optional_zero_summary(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::assert_is_empty)]
+
     use std::collections::BTreeSet;
 
     use super::{

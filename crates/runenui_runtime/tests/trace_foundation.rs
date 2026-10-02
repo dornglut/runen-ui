@@ -24,6 +24,7 @@ impl UiApp for App {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn capacity_zero_retains_nothing_and_changes_no_behavior() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(0));
     let mut runtime = AppRuntime::<App>::mount_with_config(0, config);
@@ -36,6 +37,7 @@ fn capacity_zero_retains_nothing_and_changes_no_behavior() {
 }
 
 #[test]
+#[allow(clippy::assert_is_empty)]
 fn logical_trace_capacity_does_not_eagerly_reserve() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(usize::MAX));
     let mut runtime = AppRuntime::<App>::mount_with_config(0, config);
