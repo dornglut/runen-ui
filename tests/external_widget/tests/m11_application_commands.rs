@@ -2,7 +2,7 @@
 
 use runenui_core::{
     ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandId, ChildBearingWidget,
-    CommandOrigin, Element, EventContext, EventPhase, KeyLocation, KeyModifiers,
+    CommandOrigin, Element, EventContext, EventPhase, Focusability, KeyLocation, KeyModifiers,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
     PhysicalKey, SemanticCommand, SemanticCommandEvent, ShortcutBinding, ShortcutChord,
     ShortcutRepeatPolicy, UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
@@ -215,6 +215,18 @@ impl Widget<ChildAction> for DownstreamShortcutScope {
 
     fn create_state(&self) -> Self::State {}
 
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ChildAction>,
+    ) -> WidgetEventOutput {
+        if context.phase() == EventPhase::Bubble && matches!(event, UiEvent::Keyboard(_)) {
+            self.bindings.clear();
+        }
+        WidgetEventOutput::none()
+    }
+
     fn shortcuts(&self) -> &[ShortcutBinding] {
         self.bindings.as_slice()
     }
@@ -245,7 +257,8 @@ impl UiApp for ShortcutApp {
             },
             [button("shortcut target")
                 .id("shortcut.target")
-                .key("shortcut-target")],
+                .key("shortcut-target")
+                .with_focusability(Focusability::Focusable)],
         )
         .key("downstream-shortcut-scope")
         .into_element()
@@ -291,8 +304,8 @@ fn downstream_custom_widget_publishes_shortcuts_without_builtin_type_knowledge()
         .unwrap_or_else(|_| unreachable!("shortcut target focus is accepted"));
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
 
-    runtime
-        .submit_keyboard(KeyboardEvent::new(
+    let shortcut_event = || {
+        KeyboardEvent::new(
             KeyboardPhase::Down,
             PhysicalKey::Code(String::from("KeyS")),
             LogicalKey::Character(String::from("s")),
@@ -301,9 +314,22 @@ fn downstream_custom_widget_publishes_shortcuts_without_builtin_type_knowledge()
             KeyLocation::Standard,
             KeyboardCompositionState::Inactive,
             None,
-        ))
-        .unwrap_or_else(|_| unreachable!("downstream shortcut key is accepted"));
+        )
+    };
+    runtime
+        .submit_keyboard(shortcut_event())
+        .unwrap_or_else(|_| unreachable!("first downstream shortcut key is accepted"));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    assert_eq!(runtime.state(), &1);
 
+    runtime
+        .submit_keyboard(shortcut_event())
+        .unwrap_or_else(|_| unreachable!("second downstream shortcut key is accepted"));
     runtime.pump(PumpBudget::new(
         usize::MAX,
         usize::MAX,
@@ -311,7 +337,11 @@ fn downstream_custom_widget_publishes_shortcuts_without_builtin_type_knowledge()
         usize::MAX,
     ));
 
-    assert_eq!(runtime.state(), &1);
+    assert_eq!(
+        runtime.state(),
+        &2,
+        "callback-local widget mutation cannot replace reconciliation-authored shortcut facts"
+    );
     assert!(
         runtime
             .trace()
