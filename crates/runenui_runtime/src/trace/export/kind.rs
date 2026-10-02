@@ -29,6 +29,15 @@ macro_rules! trace_kind_name {
             TraceRecordKind::KeyboardSubmissionRejected => "keyboard_submission_rejected",
             TraceRecordKind::KeyboardProcessingValidated => "keyboard_processing_validated",
             TraceRecordKind::KeyboardDefaultPrevented => "keyboard_default_prevented",
+            TraceRecordKind::KeyboardShortcutMatched => "keyboard_shortcut_matched",
+            TraceRecordKind::KeyboardShortcutRepeatSuppressed => {
+                "keyboard_shortcut_repeat_suppressed"
+            }
+            TraceRecordKind::KeyboardShortcutCompositionSuppressed => {
+                "keyboard_shortcut_composition_suppressed"
+            }
+            TraceRecordKind::KeyboardShortcutAmbiguous => "keyboard_shortcut_ambiguous",
+            TraceRecordKind::KeyboardShortcutDisabled => "keyboard_shortcut_disabled",
             TraceRecordKind::FocusGroupTypeAheadCapacityRejected => {
                 "focus_group_type_ahead_capacity_rejected"
             }

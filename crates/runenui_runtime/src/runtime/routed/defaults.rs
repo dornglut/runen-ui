@@ -425,7 +425,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             },
             _ => return false,
         };
-        if transaction.consume_mandatory_default_command().is_err() {
+        if transaction.consume_mandatory_default_output().is_err() {
             return false;
         }
         let binding = FrameworkServiceBinding::__runtime_new(
@@ -492,7 +492,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 | SemanticCommand::Redo
                 | SemanticCommand::ReplaceSelection
         ) {
-            transaction.consume_mandatory_default_command()?;
+            transaction.consume_mandatory_default_output()?;
         }
         let namespace = self.tree.runtime_namespace();
         if command == SemanticCommand::ReplaceSelection {

@@ -8,8 +8,8 @@ use crate::{
     ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope, Focusability, HitContribution,
     HitContributionContext, LayoutStyle, MonotonicInstant, MountedNodeId, PaintContribution,
     PaintContributionContext, PointerId, SemanticContribution, SemanticContributionContext,
-    StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext, WidgetEventOutput,
-    WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
+    ShortcutBinding, StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext,
+    WidgetEventOutput, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
 };
 use core::{any::Any, fmt};
 
@@ -45,6 +45,7 @@ pub trait ErasedWidget<Action>: fmt::Debug {
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> Result<WidgetEventOutput, WidgetBridgeError>;
+    fn shortcuts(&self) -> &[ShortcutBinding];
     fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError>;
     fn text_input(&self, state: &dyn Any) -> Result<WidgetTextInput, WidgetBridgeError>;
     fn editable(
@@ -152,6 +153,9 @@ where
             event,
             context,
         ))
+    }
+    fn shortcuts(&self) -> &[ShortcutBinding] {
+        self.0.shortcuts()
     }
     fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError> {
         Ok(self
@@ -320,6 +324,10 @@ impl<Action> MountedWidget<Action> {
     #[must_use]
     pub fn event_bridge_matches(&self, state: &MountedWidgetState) -> bool {
         self.inner.event_bridge_matches(state.value.as_ref())
+    }
+    #[must_use]
+    pub fn shortcuts(&self) -> &[ShortcutBinding] {
+        self.inner.shortcuts()
     }
     /// Invokes one event callback through the checked core-owned context bridge.
     ///

@@ -7,9 +7,9 @@ use core::fmt;
 use runenui_core::{
     CommandOrigin, CommittedTextEvent, CompositionCancel, CompositionCancelReason, CompositionEnd,
     CompositionEvent, CompositionGeneration, CompositionRange, CompositionStart, CompositionUpdate,
-    ElementId, FocusGroupActivationPolicy, HostProtocol, InputDeviceId, KeyboardEvent,
-    KeyboardPhase, LogicalKey, MonotonicInstant, PhysicalKey, SemanticCommand, UiEvent,
-    WorkSequence,
+    ElementId, FocusGroupActivationPolicy, HostProtocol, InputDeviceId, KeyboardCompositionState,
+    KeyboardEvent, KeyboardPhase, LogicalKey, MonotonicInstant, PhysicalKey, SemanticCommand,
+    ShortcutBinding, UiEvent, WorkSequence,
 };
 
 use crate::{
@@ -79,6 +79,26 @@ impl KeyboardSubmission {
     #[must_use]
     pub const fn sequence(self) -> WorkSequence {
         self.sequence
+    }
+}
+
+#[derive(Clone, Debug)]
+enum KeyboardShortcutCandidate {
+    Unique {
+        scope: crate::MountedNodeId,
+        binding: ShortcutBinding,
+    },
+    Ambiguous {
+        scope: crate::MountedNodeId,
+    },
+}
+
+impl KeyboardShortcutCandidate {
+    const fn reserves_default_output(&self) -> bool {
+        matches!(
+            self,
+            Self::Unique { binding, .. } if binding.command().enabled()
+        )
     }
 }
 
@@ -1048,23 +1068,46 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             causal_parent,
             trace_reservation,
         );
-        let type_ahead_context = match &payload {
+        let shortcut_candidate = match &payload {
             InputEnvelopePayload::Keyboard(event) => {
-                self.keyboard_type_ahead_context(event, &target)
+                self.keyboard_shortcut_candidate(event, &target)
             }
             InputEnvelopePayload::CommittedText(_) | InputEnvelopePayload::Composition(_) => None,
         };
-        let mandatory_default_commands = match &payload {
+        let type_ahead_context = match &payload {
+            InputEnvelopePayload::Keyboard(event) if shortcut_candidate.is_none() => {
+                self.keyboard_type_ahead_context(event, &target)
+            }
+            InputEnvelopePayload::Keyboard(_)
+            | InputEnvelopePayload::CommittedText(_)
+            | InputEnvelopePayload::Composition(_) => None,
+        };
+        let mandatory_default_outputs = match &payload {
             InputEnvelopePayload::Keyboard(event) => {
-                usize::from(Self::keyboard_default_command_is_possible(event))
-                    .checked_add(usize::from(type_ahead_context.as_ref().is_some_and(
-                        |context| context.activation == FocusGroupActivationPolicy::ActivateTarget,
-                    )))
-                    .unwrap_or_else(|| unreachable!("keyboard defaults have a fixed bounded count"))
+                usize::from(self.keyboard_default_output_is_possible(
+                    event,
+                    &target,
+                    shortcut_candidate.as_ref(),
+                    type_ahead_context.as_ref(),
+                ))
             }
             InputEnvelopePayload::CommittedText(_) => usize::from(self.editing.has_owner(&target)),
             InputEnvelopePayload::Composition(_) => 0,
         };
+        let shortcut_trace = match &payload {
+            InputEnvelopePayload::Keyboard(event)
+                if shortcut_candidate.is_some()
+                    && self.editor_owned_keyboard_default(event, &target).is_none() =>
+            {
+                MandatoryTracePlan::one_fact()
+            }
+            InputEnvelopePayload::Keyboard(_)
+            | InputEnvelopePayload::CommittedText(_)
+            | InputEnvelopePayload::Composition(_) => MandatoryTracePlan::none(),
+        };
+        let processing_trace = MandatoryTracePlan::input_processing()
+            .checked_add(shortcut_trace)
+            .unwrap_or_else(|| unreachable!("keyboard shortcut trace plan has a fixed bound"));
         if let InputEnvelopePayload::Composition(event) = &payload
             && !self.composition_processing_matches(&target, event)
         {
@@ -1084,14 +1127,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let transaction_result = if type_ahead_context.is_some() {
             self.try_begin_focus_input_transaction(
                 facts,
-                MandatoryTracePlan::input_processing(),
-                mandatory_default_commands,
+                processing_trace,
+                mandatory_default_outputs,
             )
         } else {
-            self.try_begin_routed_transaction_with_trace_and_default_commands(
+            self.try_begin_routed_transaction_with_trace_and_default_outputs(
                 facts,
-                MandatoryTracePlan::input_processing(),
-                mandatory_default_commands,
+                processing_trace,
+                mandatory_default_outputs,
             )
         };
         let mut transaction = match transaction_result {
@@ -1118,7 +1161,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.poison_transaction(&transaction, failure, current.as_ref());
             return;
         }
-        if let Err(failure) = self.collect_input_default(&mut transaction, &payload) {
+        if let Err(failure) =
+            self.collect_input_default(&mut transaction, &payload, shortcut_candidate.as_ref())
+        {
             let current = transaction.failure_current_target.clone();
             self.poison_transaction(&transaction, failure, current.as_ref());
             return;
@@ -1235,6 +1280,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         transaction: &mut crate::runtime::RoutedTransaction<Action>,
         payload: &InputEnvelopePayload,
+        shortcut_candidate: Option<&KeyboardShortcutCandidate>,
     ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
         if matches!(
             payload,
@@ -1269,7 +1315,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         match payload {
             InputEnvelopePayload::Keyboard(keyboard) => {
-                self.collect_keyboard_default(transaction, keyboard)?;
+                self.collect_keyboard_default(transaction, keyboard, shortcut_candidate)?;
             }
             InputEnvelopePayload::CommittedText(committed) => {
                 self.collect_committed_text_default(transaction, committed)?;
@@ -1306,7 +1352,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if !self.editing.has_owner(&target) {
             return Ok(());
         }
-        transaction.consume_mandatory_default_command()?;
+        transaction.consume_mandatory_default_output()?;
         let composition = self
             .composition
             .owner()
@@ -1464,31 +1510,126 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
-    const fn keyboard_default_command_is_possible(event: &KeyboardEvent) -> bool {
+    fn keyboard_shortcut_candidate(
+        &self,
+        event: &KeyboardEvent,
+        target: &crate::MountedNodeId,
+    ) -> Option<KeyboardShortcutCandidate> {
+        if event.phase() != KeyboardPhase::Down
+            || matches!(event.physical_key(), PhysicalKey::Space)
+        {
+            return None;
+        }
+        let route = self.tree.event_route(target).ok()?;
+        for scope in route.into_iter().rev() {
+            let bindings = self.tree.shortcut_bindings(&scope)?;
+            let mut matching = bindings
+                .iter()
+                .filter(|binding| binding.chord().matches(event));
+            let Some(binding) = matching.next() else {
+                continue;
+            };
+            if matching.next().is_some() {
+                return Some(KeyboardShortcutCandidate::Ambiguous { scope });
+            }
+            return Some(KeyboardShortcutCandidate::Unique {
+                scope,
+                binding: binding.clone(),
+            });
+        }
+        None
+    }
+
+    fn editor_owned_keyboard_default(
+        &self,
+        event: &KeyboardEvent,
+        target: &crate::MountedNodeId,
+    ) -> Option<SemanticCommand> {
+        if event.phase() != KeyboardPhase::Down || !self.editing.has_owner(target) {
+            return None;
+        }
+        match event.logical_key() {
+            LogicalKey::Command(_) if event.is_repeat() => None,
+            LogicalKey::Backspace => Some(SemanticCommand::DeleteBackward),
+            LogicalKey::Delete => Some(SemanticCommand::DeleteForward),
+            LogicalKey::Command(command)
+                if matches!(
+                    command,
+                    SemanticCommand::SelectAll
+                        | SemanticCommand::Copy
+                        | SemanticCommand::Cut
+                        | SemanticCommand::Paste
+                        | SemanticCommand::Undo
+                        | SemanticCommand::Redo
+                ) =>
+            {
+                Some(*command)
+            }
+            LogicalKey::ArrowLeft if event.modifiers().shift() => {
+                Some(SemanticCommand::ExtendBackward)
+            }
+            LogicalKey::ArrowRight if event.modifiers().shift() => {
+                Some(SemanticCommand::ExtendForward)
+            }
+            LogicalKey::ArrowLeft => Some(SemanticCommand::MoveBackward),
+            LogicalKey::ArrowRight => Some(SemanticCommand::MoveForward),
+            LogicalKey::ArrowUp if event.modifiers().shift() => Some(SemanticCommand::ExtendUp),
+            LogicalKey::ArrowDown if event.modifiers().shift() => Some(SemanticCommand::ExtendDown),
+            LogicalKey::ArrowUp => Some(SemanticCommand::MoveUp),
+            LogicalKey::ArrowDown => Some(SemanticCommand::MoveDown),
+            LogicalKey::Escape if self.editing.has_stable_range_selection(target) => {
+                Some(SemanticCommand::MoveBackward)
+            }
+            _ => None,
+        }
+    }
+
+    const fn generic_keyboard_default(event: &KeyboardEvent) -> Option<SemanticCommand> {
+        if !matches!(event.phase(), KeyboardPhase::Down) {
+            return None;
+        }
+        match event.logical_key() {
+            LogicalKey::Tab if event.modifiers().shift() => Some(SemanticCommand::FocusPrevious),
+            LogicalKey::Tab => Some(SemanticCommand::FocusNext),
+            LogicalKey::ArrowLeft => Some(SemanticCommand::FocusLeft),
+            LogicalKey::ArrowRight => Some(SemanticCommand::FocusRight),
+            LogicalKey::ArrowUp => Some(SemanticCommand::FocusUp),
+            LogicalKey::ArrowDown => Some(SemanticCommand::FocusDown),
+            LogicalKey::Escape => Some(SemanticCommand::CancelOrBack),
+            LogicalKey::Enter if !event.is_repeat() => Some(SemanticCommand::Activate),
+            _ => None,
+        }
+    }
+
+    fn keyboard_default_output_is_possible(
+        &self,
+        event: &KeyboardEvent,
+        target: &crate::MountedNodeId,
+        shortcut_candidate: Option<&KeyboardShortcutCandidate>,
+        type_ahead_context: Option<&crate::focus::FocusGroupTypeAheadContext>,
+    ) -> bool {
         if matches!(event.physical_key(), PhysicalKey::Space) {
             return matches!(event.phase(), KeyboardPhase::Up) && !event.is_repeat();
         }
-        if !matches!(event.phase(), KeyboardPhase::Down) {
-            return false;
+        if self.editor_owned_keyboard_default(event, target).is_some() {
+            return true;
         }
-        matches!(
-            event.logical_key(),
-            LogicalKey::Tab
-                | LogicalKey::Backspace
-                | LogicalKey::Delete
-                | LogicalKey::ArrowLeft
-                | LogicalKey::ArrowRight
-                | LogicalKey::ArrowUp
-                | LogicalKey::ArrowDown
-                | LogicalKey::Escape
-                | LogicalKey::Command(_)
-        ) || (matches!(event.logical_key(), LogicalKey::Enter) && !event.is_repeat())
+        if event.composition_state() == KeyboardCompositionState::Active {
+            return Self::generic_keyboard_default(event).is_some();
+        }
+        if let Some(candidate) = shortcut_candidate {
+            return candidate.reserves_default_output();
+        }
+        type_ahead_context
+            .is_some_and(|context| context.activation == FocusGroupActivationPolicy::ActivateTarget)
+            || Self::generic_keyboard_default(event).is_some()
     }
 
     fn collect_keyboard_default(
         &mut self,
         transaction: &mut crate::runtime::RoutedTransaction<Action>,
         event: &KeyboardEvent,
+        shortcut_candidate: Option<&KeyboardShortcutCandidate>,
     ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
         let target = transaction.target.clone();
         if matches!(event.phase(), KeyboardPhase::Cancel) {
@@ -1572,7 +1713,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             return Ok(());
         }
-        self.collect_non_space_keyboard_default(transaction, event, target)
+        self.collect_non_space_keyboard_default(transaction, event, target, shortcut_candidate)
     }
 
     fn collect_non_space_keyboard_default(
@@ -1580,61 +1721,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         transaction: &mut crate::runtime::RoutedTransaction<Action>,
         event: &KeyboardEvent,
         target: crate::MountedNodeId,
+        shortcut_candidate: Option<&KeyboardShortcutCandidate>,
     ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
         if event.phase() != KeyboardPhase::Down {
+            return Ok(());
+        }
+        if let Some(command) = self.editor_owned_keyboard_default(event, &target) {
+            Self::collect_keyboard_default_command(transaction, target, command)?;
+            return Ok(());
+        }
+        if self.collect_keyboard_shortcut_default(transaction, event, shortcut_candidate)? {
             return Ok(());
         }
         if self.collect_focus_group_type_ahead_default(transaction, event, &target)? {
             return Ok(());
         }
-        let editable = self.editing.has_owner(&target);
-        let command = match event.logical_key() {
-            LogicalKey::Command(_) if event.is_repeat() => None,
-            LogicalKey::Tab if event.modifiers().shift() => Some(SemanticCommand::FocusPrevious),
-            LogicalKey::Tab => Some(SemanticCommand::FocusNext),
-            LogicalKey::Backspace if editable => Some(SemanticCommand::DeleteBackward),
-            LogicalKey::Delete if editable => Some(SemanticCommand::DeleteForward),
-            LogicalKey::Command(command)
-                if editable
-                    && matches!(
-                        command,
-                        SemanticCommand::SelectAll
-                            | SemanticCommand::Copy
-                            | SemanticCommand::Cut
-                            | SemanticCommand::Paste
-                            | SemanticCommand::Undo
-                            | SemanticCommand::Redo
-                    ) =>
-            {
-                Some(*command)
-            }
-            LogicalKey::ArrowLeft if editable && event.modifiers().shift() => {
-                Some(SemanticCommand::ExtendBackward)
-            }
-            LogicalKey::ArrowRight if editable && event.modifiers().shift() => {
-                Some(SemanticCommand::ExtendForward)
-            }
-            LogicalKey::ArrowLeft if editable => Some(SemanticCommand::MoveBackward),
-            LogicalKey::ArrowRight if editable => Some(SemanticCommand::MoveForward),
-            LogicalKey::ArrowLeft => Some(SemanticCommand::FocusLeft),
-            LogicalKey::ArrowRight => Some(SemanticCommand::FocusRight),
-            LogicalKey::ArrowUp if editable && event.modifiers().shift() => {
-                Some(SemanticCommand::ExtendUp)
-            }
-            LogicalKey::ArrowDown if editable && event.modifiers().shift() => {
-                Some(SemanticCommand::ExtendDown)
-            }
-            LogicalKey::ArrowUp if editable => Some(SemanticCommand::MoveUp),
-            LogicalKey::ArrowDown if editable => Some(SemanticCommand::MoveDown),
-            LogicalKey::ArrowUp => Some(SemanticCommand::FocusUp),
-            LogicalKey::ArrowDown => Some(SemanticCommand::FocusDown),
-            LogicalKey::Escape if self.editing.has_stable_range_selection(&target) => {
-                Some(SemanticCommand::MoveBackward)
-            }
-            LogicalKey::Escape => Some(SemanticCommand::CancelOrBack),
-            LogicalKey::Enter if !event.is_repeat() => Some(SemanticCommand::Activate),
-            _ => None,
-        };
+        let command = Self::generic_keyboard_default(event);
         if matches!(command, Some(SemanticCommand::Activate))
             && !self.keyboard_activation_eligible(&target)
         {
@@ -1658,12 +1760,98 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(())
     }
 
+    fn collect_keyboard_shortcut_default(
+        &mut self,
+        transaction: &mut crate::runtime::RoutedTransaction<Action>,
+        event: &KeyboardEvent,
+        candidate: Option<&KeyboardShortcutCandidate>,
+    ) -> Result<bool, crate::TraceRoutedIntegrityFailure> {
+        let Some(candidate) = candidate else {
+            return Ok(false);
+        };
+        if event.composition_state() == KeyboardCompositionState::Active {
+            let scope = match candidate {
+                KeyboardShortcutCandidate::Unique { scope, .. }
+                | KeyboardShortcutCandidate::Ambiguous { scope } => scope,
+            };
+            self.record_keyboard_shortcut_outcome(
+                transaction,
+                scope,
+                TraceRecordKind::KeyboardShortcutCompositionSuppressed,
+            );
+            return Ok(false);
+        }
+        let (scope, binding) = match candidate {
+            KeyboardShortcutCandidate::Ambiguous { scope } => {
+                self.record_keyboard_shortcut_outcome(
+                    transaction,
+                    scope,
+                    TraceRecordKind::KeyboardShortcutAmbiguous,
+                );
+                return Ok(true);
+            }
+            KeyboardShortcutCandidate::Unique { scope, binding } => (scope, binding),
+        };
+        if !binding.command().enabled() {
+            self.record_keyboard_shortcut_outcome(
+                transaction,
+                scope,
+                TraceRecordKind::KeyboardShortcutDisabled,
+            );
+            return Ok(true);
+        }
+        if !binding.repeat_policy().allows(event.is_repeat()) {
+            self.record_keyboard_shortcut_outcome(
+                transaction,
+                scope,
+                TraceRecordKind::KeyboardShortcutRepeatSuppressed,
+            );
+            return Ok(true);
+        }
+        if let Err(failure) = transaction.consume_mandatory_default_output() {
+            transaction.failure_current_target = Some(scope.clone());
+            return Err(failure);
+        }
+        self.record_keyboard_shortcut_outcome(
+            transaction,
+            scope,
+            TraceRecordKind::KeyboardShortcutMatched,
+        );
+        transaction.default_outputs.push(
+            crate::runtime::CollectedRoutedOutput::ApplicationCommand {
+                target: transaction.target.clone(),
+                command: binding.command().id().clone(),
+                origin: CommandOrigin::__runtime_keyboard_default(),
+                causal_parent: transaction.parent,
+            },
+        );
+        Ok(true)
+    }
+
+    fn record_keyboard_shortcut_outcome(
+        &mut self,
+        transaction: &mut crate::runtime::RoutedTransaction<Action>,
+        scope: &crate::MountedNodeId,
+        kind: TraceRecordKind,
+    ) {
+        transaction.parent = self.trace.record_event(
+            kind,
+            transaction.sequence,
+            transaction.parent,
+            Some(transaction.target_trace.clone()),
+            transaction.instant,
+            &transaction.target,
+            Some(scope),
+            transaction.origin,
+        );
+    }
+
     fn collect_keyboard_default_command(
         transaction: &mut crate::runtime::RoutedTransaction<Action>,
         target: crate::MountedNodeId,
         command: SemanticCommand,
     ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
-        if let Err(failure) = transaction.consume_mandatory_default_command() {
+        if let Err(failure) = transaction.consume_mandatory_default_output() {
             transaction.failure_current_target = Some(target);
             return Err(failure);
         }

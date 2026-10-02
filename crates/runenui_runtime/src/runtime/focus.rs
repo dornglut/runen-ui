@@ -411,7 +411,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let activate_target =
             activation == runenui_core::FocusGroupActivationPolicy::ActivateTarget;
         if activate_target {
-            transaction.consume_mandatory_default_command()?;
+            transaction.consume_mandatory_default_output()?;
         }
         self.commit_focus_transition(
             transaction,

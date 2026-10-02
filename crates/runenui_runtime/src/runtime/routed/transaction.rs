@@ -112,7 +112,7 @@ pub(crate) struct RoutedTransaction<Action> {
     pub(crate) target_trace: TraceTarget,
     pub(crate) parent: Option<TraceSequence>,
     pub(in crate::runtime) remaining_outputs: usize,
-    pub(crate) remaining_default_commands: usize,
+    pub(crate) remaining_default_outputs: usize,
     pub(in crate::runtime) propagation_stopped: bool,
     pub(crate) application_command_resolution:
         Option<(MountedNodeId, ApplicationCommandDisposition)>,
@@ -166,13 +166,13 @@ impl<Action> RoutedTransaction<Action> {
             .unwrap_or_else(|| unreachable!("one coalescing credit fits"))
     }
 
-    pub(crate) const fn consume_mandatory_default_command(
+    pub(crate) const fn consume_mandatory_default_output(
         &mut self,
     ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
-        let Some(remaining) = self.remaining_default_commands.checked_sub(1) else {
+        let Some(remaining) = self.remaining_default_outputs.checked_sub(1) else {
             return Err(crate::TraceRoutedIntegrityFailure::OutputAllowanceExceeded);
         };
-        self.remaining_default_commands = remaining;
+        self.remaining_default_outputs = remaining;
         Ok(())
     }
 }

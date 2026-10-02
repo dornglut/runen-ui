@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use runenui_core::{
     __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusGroup,
-    FocusGroupEntry, FocusScope, Focusability, LayoutStyle, StyleIntent, WidgetInvalidation,
-    WidgetMountContext, WidgetUnmountReason, WidgetUpdateContext,
+    FocusGroupEntry, FocusScope, Focusability, LayoutStyle, ShortcutBinding, StyleIntent,
+    WidgetInvalidation, WidgetMountContext, WidgetUnmountReason, WidgetUpdateContext,
 };
 
 use crate::ReconciliationDiagnostic;
@@ -73,6 +73,7 @@ pub(super) struct IncomingNode<Action> {
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
     focus_group_search_text: Option<String>,
+    shortcut_bindings: Vec<ShortcutBinding>,
     authoring_diagnostics: Vec<runenui_core::AuthoringDiagnostic>,
     widget: MountedWidget<Action>,
     children: Vec<Self>,
@@ -96,6 +97,7 @@ impl<Action> IncomingNode<Action> {
             widget,
             children,
         ) = parts.into_parts();
+        let shortcut_bindings = widget.shortcuts().to_vec();
         Self {
             authored_id,
             key,
@@ -107,6 +109,7 @@ impl<Action> IncomingNode<Action> {
             focus_group,
             focus_group_entry,
             focus_group_search_text,
+            shortcut_bindings,
             authoring_diagnostics,
             widget,
             children: children.into_iter().map(Self::from_element).collect(),
@@ -230,6 +233,7 @@ impl<Action> MountedTree<Action> {
             focus_group,
             focus_group_entry,
             focus_group_search_text,
+            shortcut_bindings,
             authoring_diagnostics,
             widget,
             children,
@@ -250,6 +254,7 @@ impl<Action> MountedTree<Action> {
                 focus_group,
                 focus_group_entry,
                 focus_group_search_text,
+                shortcut_bindings,
                 authoring_diagnostics,
                 widget,
                 children: Vec::new(),
@@ -488,6 +493,7 @@ impl<Action> MountedTree<Action> {
             focus_group,
             focus_group_entry,
             focus_group_search_text,
+            shortcut_bindings,
             authoring_diagnostics,
             widget,
             children: _,
@@ -542,6 +548,7 @@ impl<Action> MountedTree<Action> {
             node.focus_group = focus_group;
             node.focus_group_entry = focus_group_entry;
             node.focus_group_search_text = focus_group_search_text;
+            node.shortcut_bindings = shortcut_bindings;
             node.authoring_diagnostics = authoring_diagnostics;
             node.widget = widget;
             // Input capability declarations belong to the incoming widget instance,
@@ -591,6 +598,7 @@ impl<Action> MountedTree<Action> {
             focus_group,
             focus_group_entry,
             focus_group_search_text,
+            shortcut_bindings,
             authoring_diagnostics,
             widget,
             children,
@@ -618,6 +626,7 @@ impl<Action> MountedTree<Action> {
                     focus_group,
                     focus_group_entry,
                     focus_group_search_text,
+                    shortcut_bindings,
                     authoring_diagnostics,
                     widget,
                     state: widget_state,

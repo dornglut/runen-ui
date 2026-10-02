@@ -5,8 +5,8 @@ use core::fmt;
 use runenui_core::{
     __runtime::{MountedWidget, MountedWidgetState},
     AuthoringDiagnostic, ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry,
-    FocusScope, Focusability, LayoutStyle, StyleIntent, WidgetActivation, WidgetStateTypeId,
-    WidgetTypeId,
+    FocusScope, Focusability, LayoutStyle, ShortcutBinding, StyleIntent, WidgetActivation,
+    WidgetStateTypeId, WidgetTypeId,
 };
 
 use super::{
@@ -29,6 +29,7 @@ pub(crate) struct MountedNode<Action> {
     pub(crate) focus_group: Option<FocusGroup>,
     pub(crate) focus_group_entry: FocusGroupEntry,
     pub(crate) focus_group_search_text: Option<String>,
+    pub(crate) shortcut_bindings: Vec<ShortcutBinding>,
     pub(crate) authoring_diagnostics: Vec<AuthoringDiagnostic>,
     pub(crate) widget: MountedWidget<Action>,
     pub(crate) state: MountedWidgetState,
@@ -60,6 +61,7 @@ impl<Action> fmt::Debug for MountedNode<Action> {
             .field("authored_id", &self.authored_id)
             .field("key", &self.key)
             .field("timeline_count", &self.timelines.len())
+            .field("shortcut_binding_count", &self.shortcut_bindings.len())
             .field("widget", &self.widget)
             .finish_non_exhaustive()
     }

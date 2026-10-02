@@ -251,6 +251,7 @@ mod runtime_protocol;
 mod scene_geometry;
 mod semantic;
 mod semantic_action;
+mod shortcut;
 mod style;
 mod style_effects;
 mod style_environment;
@@ -277,9 +278,9 @@ pub use application::{
 };
 pub use application_command::{ApplicationCommand, ApplicationCommandDisposition};
 pub use builtins::{
-    Button, Checkbox, CommandBinding, CommandScope, Container, RadioButton, RadioGroup, Switch,
-    Text, button, checkbox, column, command_binding, command_scope, container, radio_button,
-    radio_group, row, switch, text,
+    Button, Checkbox, CommandBinding, CommandScope, Container, RadioButton, RadioGroup,
+    ShortcutScope, Switch, Text, button, checkbox, column, command_binding, command_scope,
+    container, radio_button, radio_group, row, shortcut_scope, switch, text,
 };
 pub use computed_style::ComputedStyle;
 pub use editing::{
@@ -395,6 +396,7 @@ pub use semantic::{
     SemanticValue,
 };
 pub use semantic_action::{SemanticActionData, SemanticActionRequest, SemanticActionTarget};
+pub use shortcut::{ShortcutBinding, ShortcutChord, ShortcutKey, ShortcutRepeatPolicy};
 pub use style::{
     BrushToken, BrushValue, Color, ColorToken, ColorValue, EdgeInsets, OpacityToken, OutlineToken,
     PresentationToken, Radius, RadiusToken, RadiusValue, ShadowToken, SpacingToken, SpacingValue,

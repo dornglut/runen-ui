@@ -5,9 +5,9 @@ use crate::widget_protocol::{
 };
 use crate::{
     EditableContribution, EventContext, HitContribution, HitContributionContext, PaintContribution,
-    PaintContributionContext, SemanticContribution, SemanticContributionContext, SubscriptionSet,
-    UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetMountContext, WidgetUnmountContext,
-    WidgetUpdateContext,
+    PaintContributionContext, SemanticContribution, SemanticContributionContext, ShortcutBinding,
+    SubscriptionSet, UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetMountContext,
+    WidgetUnmountContext, WidgetUpdateContext,
 };
 use core::{any::Any, fmt};
 use core::{
@@ -128,6 +128,9 @@ where
         let output = self.child.event(state, event, &mut child_context)?;
         context.absorb_mapped(child_context.into_output(), &self.mapper);
         Ok(output)
+    }
+    fn shortcuts(&self) -> &[ShortcutBinding] {
+        self.child.shortcuts()
     }
     fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError> {
         self.child.activation(state)

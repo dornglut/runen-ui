@@ -5,9 +5,9 @@ use core::{any::TypeId, fmt};
 use crate::{
     EditableContribution, EventContext, HitContribution, HitContributionContext, LogicalLength,
     LogicalSize, PaintContribution, PaintContributionContext, SemanticContribution,
-    SemanticContributionContext, SubscriptionSet, UiEvent, WidgetActivationContext,
-    WidgetEventOutput, WidgetInvalidation, WidgetMountContext, WidgetUnmountContext,
-    WidgetUpdateContext,
+    SemanticContributionContext, ShortcutBinding, SubscriptionSet, UiEvent,
+    WidgetActivationContext, WidgetEventOutput, WidgetInvalidation, WidgetMountContext,
+    WidgetUnmountContext, WidgetUpdateContext,
 };
 
 /// Process-local identity of a concrete widget implementation type.
@@ -391,6 +391,14 @@ pub trait Widget<Action>: fmt::Debug {
         _context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
         WidgetEventOutput::none()
+    }
+
+    /// Returns immutable authored keyboard-shortcut declarations for this mounted owner.
+    ///
+    /// Shortcut declarations are read-only composition facts. They are not event
+    /// callbacks and contain no application action or runtime identity.
+    fn shortcuts(&self) -> &[ShortcutBinding] {
+        &[]
     }
 
     /// Returns non-consuming activation/focus facts.
