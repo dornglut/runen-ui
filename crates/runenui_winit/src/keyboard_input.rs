@@ -407,6 +407,21 @@ mod tests {
                 expected_logical
             );
         }
+
+        assert_eq!(
+            translate_physical_key(WinitPhysicalKey::Code(KeyCode::Numpad7)),
+            NeutralPhysicalKey::Code(String::from("Numpad7"))
+        );
+        assert_eq!(
+            translate_logical_key(
+                &WinitKey::Named(NamedKey::Home),
+                WinitPhysicalKey::Code(KeyCode::Numpad7),
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            ),
+            NeutralLogicalKey::Home,
+            "logical Home meaning must not rewrite the independent numpad physical identity"
+        );
     }
 
     #[test]
