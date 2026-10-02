@@ -249,8 +249,10 @@ fn app_branch_a(state: &State) -> Element<Action> {
         ],
         [shortcut_scope(
             [outer],
-            [shortcut_scope(app_inner_shortcuts(state.mode, control), [gated])
-                .key("shortcut.inner")],
+            [
+                shortcut_scope(app_inner_shortcuts(state.mode, control), [gated])
+                    .key("shortcut.inner"),
+            ],
         )
         .key("shortcut.outer")],
     )
