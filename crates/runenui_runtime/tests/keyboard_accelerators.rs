@@ -198,6 +198,12 @@ impl UiApp for App {
             "shortcut.physical",
             true,
         ));
+        inner.push(shortcut(
+            ShortcutChord::logical(LogicalKey::Enter, KeyModifiers::NONE),
+            ShortcutRepeatPolicy::IgnoreRepeat,
+            "shortcut.enter",
+            true,
+        ));
 
         let target = button("target")
             .id("target.a")
@@ -238,6 +244,10 @@ impl UiApp for App {
                 command_binding(
                     ApplicationCommand::new(command_id("shortcut.physical"), true),
                     || Action::Fired("physical"),
+                ),
+                command_binding(
+                    ApplicationCommand::new(command_id("shortcut.enter"), true),
+                    || Action::Fired("enter"),
                 ),
             ],
             [shortcut_scope(
@@ -520,6 +530,32 @@ fn repeat_policy_and_composition_suppress_without_outer_fallback() {
     assert!(!has_trace(&ambiguous_composing, |kind| matches!(
         kind,
         TraceRecordKind::KeyboardShortcutAmbiguous
+    )));
+
+    let mut composing_enter = AppRuntime::<App>::mount(State::new(Mode::Unique));
+    settle(&mut composing_enter);
+    focus(&mut composing_enter, "target.a");
+    composing_enter
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Enter,
+            LogicalKey::Enter,
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Active,
+            None,
+        ))
+        .unwrap_or_else(|_| unreachable!("composition-active Enter is admitted"));
+    settle(&mut composing_enter);
+    assert!(composing_enter.state().fired.is_empty());
+    assert!(has_trace(&composing_enter, |kind| matches!(
+        kind,
+        TraceRecordKind::KeyboardShortcutCompositionSuppressed
+    )));
+    assert!(has_trace(&composing_enter, |kind| matches!(
+        kind,
+        TraceRecordKind::KeyboardEnterActivationDerived
     )));
 }
 
