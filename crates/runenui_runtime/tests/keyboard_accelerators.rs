@@ -379,7 +379,7 @@ fn ambiguous_and_disabled_nearest_declarations_fail_closed_without_outer_fallbac
             ),
         );
         settle(&mut runtime);
-        assert!(runtime.state().fired.is_empty());
+        assert_eq!(runtime.state().fired, []);
         assert!(runtime.trace().records().any(|record| match mode {
             Mode::Ambiguous => matches!(record.kind(), TraceRecordKind::KeyboardShortcutAmbiguous),
             Mode::Disabled => matches!(record.kind(), TraceRecordKind::KeyboardShortcutDisabled),
@@ -406,7 +406,7 @@ fn exact_modifiers_and_logical_physical_identity_are_distinct() {
         ),
     );
     settle(&mut runtime);
-    assert!(runtime.state().fired.is_empty());
+    assert_eq!(runtime.state().fired, []);
 
     submit_shortcut(
         &mut runtime,
@@ -419,7 +419,7 @@ fn exact_modifiers_and_logical_physical_identity_are_distinct() {
         ),
     );
     settle(&mut runtime);
-    assert!(runtime.state().fired.is_empty());
+    assert_eq!(runtime.state().fired, []);
 
     submit_shortcut(
         &mut runtime,
@@ -449,7 +449,7 @@ fn exact_modifiers_and_logical_physical_identity_are_distinct() {
 }
 
 #[test]
-fn repeat_policy_and_composition_suppress_without_outer_fallback() {
+fn repeat_policy_suppresses_or_allows_without_outer_fallback() {
     let control = KeyModifiers::NONE.with_control();
 
     let mut ignored = AppRuntime::<App>::mount(State::new(Mode::Unique));
@@ -466,7 +466,7 @@ fn repeat_policy_and_composition_suppress_without_outer_fallback() {
         ),
     );
     settle(&mut ignored);
-    assert!(ignored.state().fired.is_empty());
+    assert_eq!(ignored.state().fired, []);
     assert!(has_trace(&ignored, |kind| matches!(
         kind,
         TraceRecordKind::KeyboardShortcutRepeatSuppressed
@@ -487,6 +487,11 @@ fn repeat_policy_and_composition_suppress_without_outer_fallback() {
     );
     settle(&mut allowed);
     assert_eq!(allowed.state().fired, ["inner"]);
+}
+
+#[test]
+fn composition_suppresses_accelerators_before_conflicts_and_preserves_ordinary_defaults() {
+    let control = KeyModifiers::NONE.with_control();
 
     let mut composing = AppRuntime::<App>::mount(State::new(Mode::Unique));
     settle(&mut composing);
@@ -502,7 +507,7 @@ fn repeat_policy_and_composition_suppress_without_outer_fallback() {
         ),
     );
     settle(&mut composing);
-    assert!(composing.state().fired.is_empty());
+    assert_eq!(composing.state().fired, []);
     assert!(has_trace(&composing, |kind| matches!(
         kind,
         TraceRecordKind::KeyboardShortcutCompositionSuppressed
@@ -522,7 +527,7 @@ fn repeat_policy_and_composition_suppress_without_outer_fallback() {
         ),
     );
     settle(&mut ambiguous_composing);
-    assert!(ambiguous_composing.state().fired.is_empty());
+    assert_eq!(ambiguous_composing.state().fired, []);
     assert!(has_trace(&ambiguous_composing, |kind| matches!(
         kind,
         TraceRecordKind::KeyboardShortcutCompositionSuppressed
@@ -548,7 +553,7 @@ fn repeat_policy_and_composition_suppress_without_outer_fallback() {
         ))
         .unwrap_or_else(|_| unreachable!("composition-active Enter is admitted"));
     settle(&mut composing_enter);
-    assert!(composing_enter.state().fired.is_empty());
+    assert_eq!(composing_enter.state().fired, []);
     assert!(has_trace(&composing_enter, |kind| matches!(
         kind,
         TraceRecordKind::KeyboardShortcutCompositionSuppressed
@@ -579,7 +584,7 @@ fn routed_prevent_default_suppresses_accelerator_after_callbacks() {
     settle(&mut runtime);
 
     assert_eq!(runtime.state().callback_calls.get(), 1);
-    assert!(runtime.state().fired.is_empty());
+    assert_eq!(runtime.state().fired, []);
     assert!(has_trace(&runtime, |kind| matches!(
         kind,
         TraceRecordKind::KeyboardDefaultPrevented
@@ -608,8 +613,9 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
         ),
     );
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
-    assert!(
-        runtime.state().fired.is_empty(),
+    assert_eq!(
+        runtime.state().fired,
+        [],
         "keyboard default only queues the command"
     );
     let matched = runtime
@@ -630,8 +636,9 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
     assert_eq!(accepted.causal_parent(), Some(matched.sequence()));
 
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
-    assert!(
-        runtime.state().fired.is_empty(),
+    assert_eq!(
+        runtime.state().fired,
+        [],
         "resolved command action remains queued"
     );
     assert!(runtime.trace().records().any(|record| matches!(
@@ -706,7 +713,7 @@ fn accepted_keyboard_target_replacement_before_processing_rejects_without_retarg
     settle(&mut runtime);
 
     assert_eq!(runtime.state().callback_calls.get(), 0);
-    assert!(runtime.state().fired.is_empty());
+    assert_eq!(runtime.state().fired, []);
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::CommandProcessingRejected {
@@ -743,7 +750,7 @@ fn replacement_after_keyboard_processing_makes_queued_command_stale_without_reta
 
     settle(&mut runtime);
 
-    assert!(runtime.state().fired.is_empty());
+    assert_eq!(runtime.state().fired, []);
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::CommandProcessingRejected {
@@ -754,8 +761,8 @@ fn replacement_after_keyboard_processing_makes_queued_command_stale_without_reta
 
 #[test]
 fn shortcut_waiting_queue_admission_rejects_before_callbacks_or_partial_output() {
-    let control = KeyModifiers::NONE.with_control();
     const QUEUE_CAPACITY: usize = 8;
+    let control = KeyModifiers::NONE.with_control();
     let limits = RuntimeLimits::default()
         .with_waiting_envelopes(QUEUE_CAPACITY)
         .with_transaction_outputs(1);
@@ -783,7 +790,7 @@ fn shortcut_waiting_queue_admission_rejects_before_callbacks_or_partial_output()
     }
     queue_limited.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(queue_limited.state().callback_calls.get(), 0);
-    assert!(queue_limited.state().fired.is_empty());
+    assert_eq!(queue_limited.state().fired, []);
     assert_eq!(queue_limited.status(), RuntimeStatus::Running);
     assert!(!queue_limited.trace().records().any(|record| matches!(
         record.kind(),
@@ -821,7 +828,7 @@ fn shortcut_trace_exhaustion_rejects_before_keyboard_callback() {
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
 
     assert_eq!(runtime.state().callback_calls.get(), 0);
-    assert!(runtime.state().fired.is_empty());
+    assert_eq!(runtime.state().fired, []);
     assert!(!runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::KeyboardShortcutMatched
@@ -988,7 +995,7 @@ fn accelerator_precedes_type_ahead_when_editor_does_not_own_key() {
 
 #[derive(Debug)]
 enum EditorAction {
-    Edit(EditIntent),
+    Edit,
     Shortcut,
 }
 
@@ -1022,7 +1029,7 @@ impl Widget<EditorAction> for EditableProbe {
             false,
             false,
             EditingSessionPolicy::PreserveExact,
-            EditorAction::Edit,
+            |_| EditorAction::Edit,
         )
         .ok()
     }
@@ -1063,7 +1070,7 @@ impl UiApp for EditorApp {
 
     fn update(state: &mut EditorState, action: EditorAction) {
         match action {
-            EditorAction::Edit(_) => {}
+            EditorAction::Edit => {}
             EditorAction::Shortcut => state.shortcut_fired = true,
         }
     }
