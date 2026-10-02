@@ -670,6 +670,45 @@ fn queued_target_is_not_retargeted_after_focus_transfer() {
 }
 
 #[test]
+fn accepted_keyboard_target_replacement_before_processing_rejects_without_retargeting() {
+    let control = KeyModifiers::NONE.with_control();
+    let mut runtime = AppRuntime::<App>::mount(State::new(Mode::Unique));
+    settle(&mut runtime);
+    focus(&mut runtime, "target.a");
+    runtime.state().callback_calls.set(0);
+
+    runtime
+        .submit_action(Action::Replace)
+        .unwrap_or_else(|_| unreachable!("replacement action is admitted"));
+    submit_shortcut(
+        &mut runtime,
+        key(
+            "s",
+            "KeyS",
+            control,
+            false,
+            KeyboardCompositionState::Inactive,
+        ),
+    );
+
+    settle(&mut runtime);
+
+    assert_eq!(runtime.state().callback_calls.get(), 0);
+    assert!(runtime.state().fired.is_empty());
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::CommandProcessingRejected {
+            outcome: TraceTargetRejection::Stale
+        }
+    )));
+    assert!(!runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::KeyboardShortcutMatched
+            | TraceRecordKind::ApplicationCommandSubmissionAccepted { .. }
+    )));
+}
+
+#[test]
 fn replacement_after_keyboard_processing_makes_queued_command_stale_without_retargeting() {
     let control = KeyModifiers::NONE.with_control();
     let mut runtime = AppRuntime::<App>::mount(State::new(Mode::Unique));
