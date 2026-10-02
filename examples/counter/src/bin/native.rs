@@ -16,8 +16,8 @@ use std::{
 
 use app::{Counter, CounterApp};
 use runenui_core::{
-    ElementId, InputDeviceId, KeyModifiers, KeyboardCompositionState, LogicalPoint, PointerEvent,
-    SemanticCommand, StyleEnvironment, SurfaceInputContext,
+    ElementId, InputDeviceId, KeyModifiers, KeyboardCompositionState, LogicalDelta, LogicalPoint,
+    PointerEvent, SemanticCommand, StyleEnvironment, SurfaceInputContext,
 };
 use runenui_render_wgpu::{
     PublicationRenderError, Renderer, RendererOptions, ResourcePayload, ResourceProvider,
@@ -37,13 +37,14 @@ use runenui_winit::{
 use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalPosition, PhysicalSize},
-    event::{DeviceId, ElementState, MouseButton, WindowEvent},
+    event::{DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
     keyboard::ModifiersState,
     window::{Window, WindowId},
 };
 
 const INITIAL_PHYSICAL_SIZE: PhysicalSize<u32> = PhysicalSize::new(640, 420);
+const COUNTER_LINE_SCROLL_LOGICAL_UNITS: f64 = 48.0;
 const HOST_PUMP_BUDGET: PumpBudget = PumpBudget::new(64, 64, 64, 64);
 
 #[derive(Debug)]
@@ -127,6 +128,41 @@ struct PendingFrame {
 struct DisplayedFrame {
     input_context: SurfaceInputContext,
     mapping: NativeMapping,
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "native wheel deltas are finite and f32-range-checked before conversion into RunenUI logical coordinates"
+)]
+fn normalize_wheel_delta(
+    delta: MouseScrollDelta,
+    displayed_scale_factor: f64,
+) -> Option<LogicalDelta> {
+    let (logical_x, logical_y) = match delta {
+        MouseScrollDelta::LineDelta(x, y) => (
+            f64::from(x) * COUNTER_LINE_SCROLL_LOGICAL_UNITS,
+            f64::from(y) * COUNTER_LINE_SCROLL_LOGICAL_UNITS,
+        ),
+        MouseScrollDelta::PixelDelta(delta) => {
+            if !displayed_scale_factor.is_finite() || displayed_scale_factor <= 0.0 {
+                return None;
+            }
+            (
+                delta.x / displayed_scale_factor,
+                delta.y / displayed_scale_factor,
+            )
+        }
+    };
+    if !logical_x.is_finite()
+        || !logical_y.is_finite()
+        || logical_x < f64::from(f32::MIN)
+        || logical_x > f64::from(f32::MAX)
+        || logical_y < f64::from(f32::MIN)
+        || logical_y > f64::from(f32::MAX)
+    {
+        return None;
+    }
+    LogicalDelta::new(logical_x as f32, logical_y as f32).ok()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -283,7 +319,7 @@ impl CounterHost {
         });
         Self {
             runtime,
-            style_environment: StyleEnvironment::default(),
+            style_environment: ui::style_environment(),
             event_loop_proxy: proxy,
             window: None,
             accessibility: None,
@@ -645,6 +681,67 @@ impl CounterHost {
         self.request_pending_redraw();
     }
 
+    fn handle_mouse_wheel(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        native_device_id: DeviceId,
+        delta: MouseScrollDelta,
+    ) {
+        let zero = match &delta {
+            MouseScrollDelta::LineDelta(x, y) => *x == 0.0 && *y == 0.0,
+            MouseScrollDelta::PixelDelta(delta) => delta.x == 0.0 && delta.y == 0.0,
+        };
+        if zero {
+            return;
+        }
+        let Some(device_id) = self.resolve_native_device_id(event_loop, native_device_id) else {
+            return;
+        };
+        let translated = match self.translate_latest_cursor() {
+            Ok(translated) => translated,
+            Err(_) => {
+                let _ = self.handle_native_point_authority_loss(
+                    event_loop,
+                    "native wheel arrived without matching displayed point authority",
+                );
+                return;
+            }
+        };
+        let Some(displayed_mapping) = self.displayed_frame.as_ref().map(|frame| frame.mapping)
+        else {
+            return;
+        };
+        let Some(scroll_delta) =
+            normalize_wheel_delta(delta, displayed_mapping.native_scale_factor)
+        else {
+            eprintln!("Counter native wheel input withheld: unrepresentable delta");
+            return;
+        };
+        if self
+            .mouse
+            .active_device_id()
+            .is_some_and(|active| active != device_id)
+            && !self.cancel_mouse_for_device_change(event_loop, "native mouse wheel device changed")
+        {
+            return;
+        }
+        let event = match self.mouse.wheel(device_id, translated, scroll_delta) {
+            Ok(event) => event,
+            Err(diagnostic) => {
+                self.fail(
+                    event_loop,
+                    &format!("native mouse wheel could not be represented: {diagnostic:?}"),
+                );
+                return;
+            }
+        };
+        if !self.submit_pointer_event(event_loop, event) {
+            return;
+        }
+        self.drive_runtime(event_loop);
+        self.request_pending_redraw();
+    }
+
     fn handle_mouse_input(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -941,6 +1038,9 @@ impl ApplicationHandler<HostEvent> for CounterHost {
                 state,
                 button,
             } => self.handle_mouse_input(event_loop, device_id, state, button),
+            WindowEvent::MouseWheel {
+                device_id, delta, ..
+            } => self.handle_mouse_wheel(event_loop, device_id, delta),
             WindowEvent::KeyboardInput {
                 device_id,
                 event,
@@ -991,4 +1091,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut host = CounterHost::new(proxy);
     event_loop.run_app(&mut host)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wheel_line_delta_uses_counter_host_policy() {
+        let delta = normalize_wheel_delta(MouseScrollDelta::LineDelta(0.0, -1.0), 2.0)
+            .unwrap_or_else(|| unreachable!("fixture line delta is representable"));
+        assert_eq!(delta.x(), 0.0);
+        assert_eq!(delta.y(), -48.0);
+    }
+
+    #[test]
+    fn wheel_pixel_delta_uses_displayed_native_scale() {
+        let delta = normalize_wheel_delta(
+            MouseScrollDelta::PixelDelta(PhysicalPosition::new(40.0, -20.0)),
+            2.0,
+        )
+        .unwrap_or_else(|| unreachable!("fixture pixel delta is representable"));
+        assert_eq!(delta.x(), 20.0);
+        assert_eq!(delta.y(), -10.0);
+    }
 }

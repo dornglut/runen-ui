@@ -6,7 +6,7 @@ mod ui;
 use std::time::Duration;
 
 use app::{Counter, CounterAction, CounterApp};
-use runenui_core::{Brush, Color, StyleEnvironment};
+use runenui_core::{Brush, Color};
 use runenui_runtime::{
     AppRuntime, LogicalSize, ManualClock, PumpBudget, SurfaceBuildContext, SurfacePublication,
 };
@@ -47,7 +47,7 @@ fn count_background_transition_uses_host_provided_monotonic_time() {
     runtime.set_monotonic_clock(host_clock.clone());
     pump_all(&mut runtime);
 
-    let style_environment = StyleEnvironment::default();
+    let style_environment = ui::style_environment();
     let context = SurfaceBuildContext::tight(&style_environment, surface_size());
     let initial = runtime
         .publish_surface(&context)
@@ -99,7 +99,7 @@ fn negative_count_transitions_through_zero_without_palette_wrap() {
     runtime.set_monotonic_clock(host_clock.clone());
     pump_all(&mut runtime);
 
-    let style_environment = StyleEnvironment::default();
+    let style_environment = ui::style_environment();
     let context = SurfaceBuildContext::tight(&style_environment, surface_size());
     let neutral = Brush::Solid(Color::rgb(40, 56, 104));
     let negative = Brush::Solid(Color::rgb(40, 56, 116));
@@ -159,7 +159,7 @@ fn negative_count_transitions_through_zero_without_palette_wrap() {
 
 #[test]
 fn count_color_clamps_at_palette_limits() {
-    let style_environment = StyleEnvironment::default();
+    let style_environment = ui::style_environment();
     let context = SurfaceBuildContext::tight(&style_environment, surface_size());
     for count in [-9, -10, i32::MIN] {
         let mut runtime = AppRuntime::<CounterApp>::mount(Counter { count });
