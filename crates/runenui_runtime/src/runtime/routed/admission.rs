@@ -16,7 +16,7 @@ use crate::{
 pub(super) struct RoutedTransactionAdmissionPlan {
     pub(super) route_invocations: usize,
     pub(super) max_outputs: usize,
-    pub(super) mandatory_default_commands: usize,
+    pub(super) mandatory_default_outputs: usize,
     queue_slots: usize,
     pub(super) trace: MandatoryTracePlan,
 }
@@ -26,31 +26,31 @@ impl RoutedTransactionAdmissionPlan {
         route_invocations: usize,
         admitted_invocations: usize,
         max_outputs: usize,
-        mandatory_default_commands: usize,
+        mandatory_default_outputs: usize,
     ) -> Result<Self, TraceRoutedAdmissionRejection> {
         // IME and cursor state synchronization are ordinary runtime-owned
         // framework-service outputs. Reserve both before callbacks mutate any
         // routed state so their commit cannot overrun the existing FIFO plan.
         let queued_output_envelopes = max_outputs
-            .checked_add(mandatory_default_commands)
+            .checked_add(mandatory_default_outputs)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
         let queue_slots = queued_output_envelopes
             .checked_mul(2)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
         // IME and cursor services are registered as work, not placed in the
         // FIFO. Reserve their work/trace capacity without reserving queue slots.
-        let mandatory_default_commands = mandatory_default_commands
+        let mandatory_default_outputs = mandatory_default_outputs
             .checked_add(2)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
         let total_output_envelopes = max_outputs
-            .checked_add(mandatory_default_commands)
+            .checked_add(mandatory_default_outputs)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
         let trace = MandatoryTracePlan::routed_event(admitted_invocations, total_output_envelopes)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
         Ok(Self {
             route_invocations,
             max_outputs,
-            mandatory_default_commands,
+            mandatory_default_outputs,
             queue_slots,
             trace,
         })
@@ -77,7 +77,7 @@ impl RoutedTransactionAdmissionPlan {
             })?;
         let possible_mounted_outputs = self
             .max_outputs
-            .checked_add(self.mandatory_default_commands)
+            .checked_add(self.mandatory_default_outputs)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
         runtime
             .work
@@ -107,11 +107,11 @@ impl RoutedTransactionAdmissionPlan {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(super) fn prepare_routed_route_with_default_commands(
+    pub(super) fn prepare_routed_route_with_default_outputs(
         &mut self,
         facts: &RoutedIngressFacts,
         additional_trace: MandatoryTracePlan,
-        mandatory_default_commands: usize,
+        mandatory_default_outputs: usize,
     ) -> Result<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan), RoutedFailureLineage> {
         self.try_prepare_routed_invocations(
             facts,
@@ -120,7 +120,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &[],
             0,
             additional_trace,
-            mandatory_default_commands,
+            mandatory_default_outputs,
         )
     }
 
@@ -186,7 +186,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         facts: &RoutedIngressFacts,
         additional_trace: MandatoryTracePlan,
-        mandatory_default_commands: usize,
+        mandatory_default_outputs: usize,
     ) -> Result<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan), RoutedFailureLineage> {
         let targets = self.tree.publication_preorder_ids();
         let Some(deferred_invocations) = focus_notification_invocations(targets.len()) else {
@@ -210,7 +210,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &targets,
             deferred_invocations,
             trace,
-            mandatory_default_commands,
+            mandatory_default_outputs,
         )
     }
 
@@ -223,7 +223,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         deferred_target_only: &[MountedNodeId],
         deferred_invocations: usize,
         additional_trace: MandatoryTracePlan,
-        mandatory_default_commands: usize,
+        mandatory_default_outputs: usize,
     ) -> Result<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan), RoutedFailureLineage> {
         let route = self.prepare_invocation_route(facts, include_ordinary_route)?;
         self.preflight_target_only_bridges(facts, target_only)?;
@@ -251,7 +251,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             route_invocations,
             admitted_invocations,
             additional_trace,
-            mandatory_default_commands,
+            mandatory_default_outputs,
         )?;
         Ok((route, admission))
     }
@@ -348,13 +348,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         route_invocations: usize,
         admitted_invocations: usize,
         additional_trace: MandatoryTracePlan,
-        mandatory_default_commands: usize,
+        mandatory_default_outputs: usize,
     ) -> Result<RoutedTransactionAdmissionPlan, RoutedFailureLineage> {
         let admission = RoutedTransactionAdmissionPlan::checked(
             route_invocations,
             admitted_invocations,
             self.limits.transaction_outputs(),
-            mandatory_default_commands,
+            mandatory_default_outputs,
         )
         .and_then(|plan| {
             plan.preflight(self)?;
