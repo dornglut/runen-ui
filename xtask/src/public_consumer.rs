@@ -29,6 +29,11 @@ pub fn validate(root: &Path) -> Result<(), String> {
     let arguments = public_test_arguments(&policy.packages);
     let argument_refs = arguments.iter().map(String::as_str).collect::<Vec<_>>();
     super::run_cargo_step(root, "stable", &argument_refs)?;
+    // The following proofs intentionally run offline and resolve target-specific
+    // dependencies as part of Cargo's normal resolver model. Prime the locked
+    // dependency cache for every target first rather than relying on whatever
+    // the host-only test build happened to download.
+    super::run_cargo_step(root, "stable", &["fetch", "--locked"])?;
     validate_public_feature_graph(root, &policy)?;
     validate_private_seam_isolation(root)
 }
