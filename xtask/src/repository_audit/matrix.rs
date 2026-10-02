@@ -600,7 +600,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::assert_is_empty)]
     fn matrix_row_parser_rejects_wrong_column_count() {
         let mut findings = Vec::new();
         let (rows, invalid_schemas) = parse_rows(
@@ -608,7 +607,7 @@ mod tests {
             M4_SPEC.path,
             &mut findings,
         );
-        assert!(rows.is_empty());
+        assert_eq!(rows, Vec::new());
         assert_eq!(invalid_schemas, 1);
         assert_eq!(findings.len(), 1);
     }
@@ -626,7 +625,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::assert_is_empty)]
     fn m4_gate_policy_preserves_inherited_m5_rows() {
         let contents = "| ID | A | B | C | D | E | F | G |\n\
 |---|---|---|---|---|---|---|---|\n\
@@ -636,11 +634,10 @@ mod tests {
         let mut seen = BTreeSet::new();
         let analysis = analyze_contents(M4_SPEC, contents, &mut seen, &mut findings);
         assert_eq!(analysis.invalid_schemas, 0);
-        assert!(findings.is_empty());
+        assert_eq!(findings, Vec::new());
     }
 
     #[test]
-    #[allow(clippy::assert_is_empty)]
     fn m5_gate_policy_requires_required_for_m5_slices() {
         let valid = "| ID | A | B | C | D | E | F | G |\n\
 |---|---|---|---|---|---|---|---|\n\
@@ -649,11 +646,10 @@ mod tests {
         let mut seen = BTreeSet::new();
         let analysis = analyze_contents(M5_SPEC, valid, &mut seen, &mut findings);
         assert_eq!(analysis.invalid_schemas, 0);
-        assert!(findings.is_empty());
+        assert_eq!(findings, Vec::new());
     }
 
     #[test]
-    #[allow(clippy::assert_is_empty)]
     fn m6_gate_policy_requires_required_for_m6_slices() {
         let valid = "| ID | A | B | C | D | E | F | G |\n\
 |---|---|---|---|---|---|---|---|\n\
@@ -662,7 +658,7 @@ mod tests {
         let mut seen = BTreeSet::new();
         let analysis = analyze_contents(M6_SPEC, valid, &mut seen, &mut findings);
         assert_eq!(analysis.invalid_schemas, 0);
-        assert!(findings.is_empty());
+        assert_eq!(findings, Vec::new());
     }
 
     #[test]
@@ -674,7 +670,7 @@ mod tests {
         let mut seen = BTreeSet::new();
         let analysis = analyze_contents(M7_SPEC, valid, &mut seen, &mut findings);
         assert_eq!(analysis.invalid_schemas, 0);
-        assert!(findings.is_empty());
+        assert_eq!(findings, Vec::new());
     }
 
     #[test]
@@ -695,7 +691,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::assert_is_empty)]
     fn m8_m9_and_m10_contracts_reject_invalid_slices_gates_statuses_and_schemas() {
         for (spec, slice) in [(M8_SPEC, "M8A"), (M9_SPEC, "M9A"), (M10_SPEC, "M10B")] {
             let valid = format!(
@@ -705,7 +700,7 @@ mod tests {
             let mut seen = BTreeSet::new();
             let analysis = analyze_contents(spec, &valid, &mut seen, &mut findings);
             assert_eq!(analysis.metrics.total_rows, 1);
-            assert!(findings.is_empty());
+            assert_eq!(findings, Vec::new());
 
             for (mutant, expected_code) in [
                 (
@@ -771,7 +766,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::assert_is_empty)]
     fn m10_inventory_accepts_integrated_m10f_closure() -> Result<(), String> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -837,7 +831,7 @@ mod tests {
                 .collect::<BTreeSet<_>>(),
             BTreeSet::from(["M10B", "M10C", "M10D", "M10E", "M10F"])
         );
-        assert!(findings.is_empty());
+        assert_eq!(findings, Vec::new());
         Ok(())
     }
 
@@ -936,7 +930,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::assert_is_empty)]
     fn index_and_directory_cannot_silently_omit_a_matrix() {
         let indexed = MATRIX_SPECS
             .iter()
@@ -964,7 +957,7 @@ mod tests {
             .collect::<BTreeSet<_>>();
         let mut findings = Vec::new();
         validate_inventory(&indexed, &files, &mut findings);
-        assert!(findings.is_empty());
+        assert_eq!(findings, Vec::new());
 
         validate_inventory(
             &format!("{indexed}\n- [M12 conformance matrix](m12-conformance-matrix.md)"),
