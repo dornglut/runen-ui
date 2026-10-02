@@ -1760,6 +1760,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Some(candidate) = candidate else {
             return Ok(false);
         };
+        if event.composition_state() == KeyboardCompositionState::Active {
+            let scope = match candidate {
+                KeyboardShortcutCandidate::Unique { scope, .. }
+                | KeyboardShortcutCandidate::Ambiguous { scope } => scope,
+            };
+            self.record_keyboard_shortcut_outcome(
+                transaction,
+                scope,
+                TraceRecordKind::KeyboardShortcutCompositionSuppressed,
+            );
+            return Ok(true);
+        }
         let (scope, binding) = match candidate {
             KeyboardShortcutCandidate::Ambiguous { scope } => {
                 self.record_keyboard_shortcut_outcome(
@@ -1771,14 +1783,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             KeyboardShortcutCandidate::Unique { scope, binding } => (scope, binding),
         };
-        if event.composition_state() == KeyboardCompositionState::Active {
-            self.record_keyboard_shortcut_outcome(
-                transaction,
-                scope,
-                TraceRecordKind::KeyboardShortcutCompositionSuppressed,
-            );
-            return Ok(true);
-        }
         if !binding.command().enabled() {
             self.record_keyboard_shortcut_outcome(
                 transaction,
