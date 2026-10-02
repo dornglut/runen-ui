@@ -44,7 +44,7 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
         transaction: &mut RoutedTransaction<Action>,
     ) {
         if let Some((owner, effect)) = self.current_input_method_service()
-            && transaction.consume_mandatory_default_command().is_ok()
+            && transaction.consume_mandatory_default_output().is_ok()
             && self.prepare_framework_service(&effect.request, &effect.binding)
         {
             if matches!(
@@ -79,7 +79,7 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
         else {
             return;
         };
-        if transaction.consume_mandatory_default_command().is_ok()
+        if transaction.consume_mandatory_default_output().is_ok()
             && self.prepare_framework_service(&effect.request, &effect.binding)
         {
             transaction
@@ -165,7 +165,7 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
             payload: offer.payload(),
             accepted,
         };
-        if transaction.consume_mandatory_default_command().is_ok()
+        if transaction.consume_mandatory_default_output().is_ok()
             && self.prepare_framework_service(&request, &binding)
         {
             transaction.mounted_work.push((
