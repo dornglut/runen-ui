@@ -94,7 +94,7 @@ enum KeyboardShortcutCandidate {
 }
 
 impl KeyboardShortcutCandidate {
-    fn reserves_default_output(&self) -> bool {
+    const fn reserves_default_output(&self) -> bool {
         matches!(
             self,
             Self::Unique { binding, .. } if binding.command().enabled()
