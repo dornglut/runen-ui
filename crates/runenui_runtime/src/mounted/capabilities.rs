@@ -389,7 +389,7 @@ impl<Action> MountedTree<Action> {
     }
 
     #[cfg(test)]
-    #[cfg_attr(test, allow(clippy::assert_is_empty))]
+    #[allow(clippy::assert_is_empty)]
     fn try_commit_semantic_owner_purge(
         &mut self,
         id: &MountedNodeId,

@@ -7,7 +7,7 @@
 
 #[cfg(test)]
 mod tests {
-        use core::{error::Error, future::Future, pin::pin, task::Poll};
+    use core::{error::Error, future::Future, pin::pin, task::Poll};
     use std::{
         cell::Cell,
         io,
