@@ -587,6 +587,13 @@ fn queued_target_is_not_retargeted_after_focus_transfer() {
     focus(&mut runtime, "target.a");
     let other = target(&mut runtime, "target.b");
 
+    runtime
+        .submit_command(
+            other.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus transfer is admitted"));
     submit_shortcut(
         &mut runtime,
         key(
@@ -597,13 +604,6 @@ fn queued_target_is_not_retargeted_after_focus_transfer() {
             KeyboardCompositionState::Inactive,
         ),
     );
-    runtime
-        .submit_command(
-            other.clone(),
-            SemanticCommand::RequestFocus,
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("focus transfer is admitted"));
 
     settle(&mut runtime);
 
