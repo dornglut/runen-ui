@@ -672,7 +672,13 @@ fn shortcut_waiting_queue_admission_rejects_before_callbacks_or_partial_output()
     }
     queue_limited.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(queue_limited.state().callback_calls.get(), 0);
+    assert!(queue_limited.state().fired.is_empty());
     assert_eq!(queue_limited.status(), RuntimeStatus::Running);
+    assert!(!queue_limited.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::KeyboardShortcutMatched
+            | TraceRecordKind::ApplicationCommandSubmissionAccepted { .. }
+    )));
     assert!(queue_limited.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::RoutedEventAdmissionRejected {
@@ -704,6 +710,12 @@ fn shortcut_trace_exhaustion_rejects_before_keyboard_callback() {
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
 
     assert_eq!(runtime.state().callback_calls.get(), 0);
+    assert!(runtime.state().fired.is_empty());
+    assert!(!runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::KeyboardShortcutMatched
+            | TraceRecordKind::ApplicationCommandSubmissionAccepted { .. }
+    )));
     assert_eq!(
         runtime.status(),
         RuntimeStatus::Terminal(runenui_runtime::RuntimeTerminalReason::TraceSequenceExhausted)
