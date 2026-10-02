@@ -3,9 +3,9 @@
 use runenui_core::{
     ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandId, ChildBearingWidget,
     CommandOrigin, Element, EventContext, EventPhase, KeyLocation, KeyModifiers,
-    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey,
-    SemanticCommand, SemanticCommandEvent, ShortcutBinding, ShortcutChord, ShortcutRepeatPolicy,
-    UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
+    PhysicalKey, SemanticCommand, SemanticCommandEvent, ShortcutBinding, ShortcutChord,
+    ShortcutRepeatPolicy, UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
     WidgetActivationOutput, WidgetEventOutput, button, children, container,
 };
 use runenui_runtime::{AppRuntime, PumpBudget, TraceApplicationCommandOutcome, TraceRecordKind};
@@ -251,11 +251,7 @@ impl UiApp for ShortcutApp {
         .into_element()
         .map_action(Action::Child);
 
-        container(
-            CommandScopeProbe { command },
-            [downstream],
-        )
-        .key("downstream-command-scope")
+        container(CommandScopeProbe { command }, [downstream]).key("downstream-command-scope")
     }
 
     fn update(state: &mut Self::State, action: Self::Action) {
@@ -316,10 +312,12 @@ fn downstream_custom_widget_publishes_shortcuts_without_builtin_type_knowledge()
     ));
 
     assert_eq!(runtime.state(), &1);
-    assert!(runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::KeyboardShortcutMatched
-    )));
+    assert!(
+        runtime
+            .trace()
+            .records()
+            .any(|record| matches!(record.kind(), TraceRecordKind::KeyboardShortcutMatched))
+    );
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::ApplicationCommandResolution {
