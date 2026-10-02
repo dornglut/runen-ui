@@ -264,11 +264,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         facts: RoutedIngressFacts,
         additional_trace: MandatoryTracePlan,
     ) -> Result<RoutedTransaction<Action>, RoutedFailureLineage> {
-        self.try_begin_routed_transaction_with_trace_and_default_outputs(
-            facts,
-            additional_trace,
-            0,
-        )
+        self.try_begin_routed_transaction_with_trace_and_default_outputs(facts, additional_trace, 0)
     }
 
     pub(crate) fn try_begin_routed_transaction_with_trace_and_default_outputs(
