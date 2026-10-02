@@ -1,10 +1,12 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    ApplicationCommandDisposition, ApplicationCommandId, ChildBearingWidget, CommandOrigin,
-    Element, EventContext, EventPhase, NoHostProtocol, SemanticCommand, SemanticCommandEvent,
+    ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandId, ChildBearingWidget,
+    CommandOrigin, Element, EventContext, EventPhase, KeyLocation, KeyModifiers,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey,
+    SemanticCommand, SemanticCommandEvent, ShortcutBinding, ShortcutChord, ShortcutRepeatPolicy,
     UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
-    WidgetActivationOutput, WidgetEventOutput, children, container,
+    WidgetActivationOutput, WidgetEventOutput, button, children, container,
 };
 use runenui_runtime::{AppRuntime, PumpBudget, TraceApplicationCommandOutcome, TraceRecordKind};
 
@@ -195,6 +197,129 @@ fn downstream_mapped_activation_emits_the_same_scoped_application_command() {
         usize::MAX,
     ));
     assert_eq!(runtime.state(), &1);
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::ApplicationCommandResolution {
+            outcome: TraceApplicationCommandOutcome::Resolved
+        }
+    )));
+}
+
+#[derive(Debug)]
+struct DownstreamShortcutScope {
+    bindings: Vec<ShortcutBinding>,
+}
+
+impl Widget<ChildAction> for DownstreamShortcutScope {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn shortcuts(&self) -> &[ShortcutBinding] {
+        self.bindings.as_slice()
+    }
+}
+
+impl ChildBearingWidget<ChildAction> for DownstreamShortcutScope {}
+
+struct ShortcutApp;
+
+impl UiApp for ShortcutApp {
+    type State = usize;
+    type Action = Action;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &Self::State) -> impl View<Self::Action> {
+        let command = ApplicationCommandId::from_static("document.save")
+            .unwrap_or_else(|_| unreachable!("static command identity is valid"));
+        let downstream = container(
+            DownstreamShortcutScope {
+                bindings: vec![ShortcutBinding::new(
+                    ShortcutChord::logical(
+                        LogicalKey::Character(String::from("s")),
+                        KeyModifiers::NONE.with_control(),
+                    ),
+                    ShortcutRepeatPolicy::IgnoreRepeat,
+                    ApplicationCommand::new(command.clone(), true),
+                )],
+            },
+            [button("shortcut target")
+                .id("shortcut.target")
+                .key("shortcut-target")],
+        )
+        .key("downstream-shortcut-scope")
+        .into_element()
+        .map_action(Action::Child);
+
+        container(
+            CommandScopeProbe { command },
+            [downstream],
+        )
+        .key("downstream-command-scope")
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        match action {
+            Action::Handled => *state += 1,
+            Action::Child(never) => match never {},
+        }
+    }
+}
+
+#[test]
+fn downstream_custom_widget_publishes_shortcuts_without_builtin_type_knowledge() {
+    let mut runtime = AppRuntime::<ShortcutApp>::mount(0);
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let authored = runenui_core::ElementId::from_static("shortcut.target")
+        .unwrap_or_else(|_| unreachable!("static authored id is valid"));
+    let target = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("shortcut target is mounted"))
+        .id()
+        .clone();
+
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("shortcut target focus is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+
+    runtime
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("KeyS")),
+            LogicalKey::Character(String::from("s")),
+            KeyModifiers::NONE.with_control(),
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        ))
+        .unwrap_or_else(|_| unreachable!("downstream shortcut key is accepted"));
+
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+
+    assert_eq!(runtime.state(), &1);
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::KeyboardShortcutMatched
+    )));
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::ApplicationCommandResolution {
