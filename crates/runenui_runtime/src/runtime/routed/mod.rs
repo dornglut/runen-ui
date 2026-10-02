@@ -6,16 +6,17 @@ mod failure;
 mod transaction;
 
 use runenui_core::{
-    EventSource, HostProtocol, InputModality, SemanticCommandEvent, UiEvent, WidgetInvalidation,
+    ApplicationCommandDisposition, ApplicationCommandEvent, EventSource, HostProtocol,
+    InputModality, SemanticCommandEvent, UiEvent, WidgetInvalidation,
 };
 
 use super::{Runtime, ingress::trace_semantic_action_rejection};
 use crate::{
-    MonotonicInstant, MountedNodeId, TraceContext, TraceEventContext, TraceEventFamily,
-    TraceRecordKind, TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
-    TraceSequence,
+    MonotonicInstant, MountedNodeId, TraceApplicationCommandOutcome, TraceContext,
+    TraceEventContext, TraceEventFamily, TraceRecordKind, TraceRouteSnapshot,
+    TraceRoutedIntegrityFailure, TraceSemanticActionRejection, TraceSequence,
     focus::focus_group_activation_policy,
-    queue::SemanticCommandEnvelope,
+    queue::{ApplicationCommandEnvelope, SemanticCommandEnvelope},
     trace::{MandatoryTracePlan, TraceRecordDraft},
 };
 pub(crate) use dispatch::PointerDispatchFacts;
@@ -25,6 +26,70 @@ pub(crate) use transaction::{
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    pub(crate) fn process_application_command(&mut self, envelope: ApplicationCommandEnvelope) {
+        let ApplicationCommandEnvelope {
+            sequence,
+            target,
+            command,
+            origin,
+            instant,
+            causal_parent,
+            trace_reservation,
+        } = envelope;
+        let facts = RoutedIngressFacts::new(
+            sequence,
+            target,
+            origin,
+            instant,
+            TraceEventContext::new(TraceEventFamily::ApplicationCommand, false),
+            causal_parent,
+            trace_reservation,
+        );
+        let Some(mut transaction) =
+            self.begin_routed_transaction_with_trace(facts, MandatoryTracePlan::one_fact())
+        else {
+            return;
+        };
+        let event =
+            UiEvent::ApplicationCommand(ApplicationCommandEvent::__runtime_new(command, origin));
+        if let Err(failure) = self.invoke_routed_callbacks(&mut transaction, &event, None) {
+            let current = transaction.failure_current_target.clone();
+            self.poison_transaction(&transaction, failure, current.as_ref());
+            return;
+        }
+        let (outcome, resolver) = match transaction.application_command_resolution.clone() {
+            Some((resolver, ApplicationCommandDisposition::Resolved)) => {
+                (TraceApplicationCommandOutcome::Resolved, Some(resolver))
+            }
+            Some((resolver, ApplicationCommandDisposition::Disabled)) => {
+                (TraceApplicationCommandOutcome::Disabled, Some(resolver))
+            }
+            Some((resolver, ApplicationCommandDisposition::Ambiguous)) => {
+                (TraceApplicationCommandOutcome::Ambiguous, Some(resolver))
+            }
+            Some((resolver, _)) => (TraceApplicationCommandOutcome::Unknown, Some(resolver)),
+            None => (TraceApplicationCommandOutcome::Unbound, None),
+        };
+        transaction.parent = self.trace.record_event(
+            TraceRecordKind::ApplicationCommandResolution { outcome },
+            transaction.sequence,
+            transaction.parent,
+            Some(transaction.target_trace.clone()),
+            transaction.instant,
+            &transaction.target,
+            resolver.as_ref(),
+            transaction.origin,
+        );
+        let failure_facts = transaction.failure_facts();
+        if self.commit_routed_transaction(transaction).is_err() {
+            self.poison_routed_event(
+                &failure_facts,
+                TraceRoutedIntegrityFailure::CommitInvariantFailure,
+                None,
+            );
+        }
+    }
+
     pub(crate) fn process_semantic_command(&mut self, envelope: SemanticCommandEnvelope) {
         let SemanticCommandEnvelope {
             sequence,
@@ -319,6 +384,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             remaining_outputs: admission.max_outputs,
             remaining_default_commands: admission.mandatory_default_commands,
             propagation_stopped: false,
+            application_command_resolution: None,
             default_prevented: false,
             collecting_notification_outputs: false,
             notification_outputs: Vec::new(),

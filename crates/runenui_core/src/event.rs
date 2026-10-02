@@ -1,9 +1,9 @@
 //! Host-neutral routed event and semantic-command protocol.
 
 use crate::{
-    CommittedTextEvent, CompositionEvent, DragDropPayloadMetadata, DragDropPhase, FocusDirection,
-    FocusEvent, KeyboardEvent, LogicalScrollCommand, PointerBoundaryEvent, PointerCaptureEvent,
-    PointerEvent, SemanticActionTarget, SemanticNumber,
+    ApplicationCommandId, CommittedTextEvent, CompositionEvent, DragDropPayloadMetadata,
+    DragDropPhase, FocusDirection, FocusEvent, KeyboardEvent, LogicalScrollCommand,
+    PointerBoundaryEvent, PointerCaptureEvent, PointerEvent, SemanticActionTarget, SemanticNumber,
 };
 
 /// One host-neutral drag/drop offer routed to the exact physical hit target.
@@ -165,6 +165,29 @@ impl CommandOrigin {
     }
 }
 
+/// One routed application-command invocation.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ApplicationCommandEvent {
+    command: ApplicationCommandId,
+    origin: CommandOrigin,
+}
+
+impl ApplicationCommandEvent {
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn __runtime_new(command: ApplicationCommandId, origin: CommandOrigin) -> Self {
+        Self { command, origin }
+    }
+    #[must_use]
+    pub const fn command(&self) -> &ApplicationCommandId {
+        &self.command
+    }
+    #[must_use]
+    pub const fn origin(&self) -> CommandOrigin {
+        self.origin
+    }
+}
+
 /// Device-independent semantic command.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -219,6 +242,7 @@ pub enum SemanticCommand {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum UiEvent {
     SemanticCommand(SemanticCommandEvent),
+    ApplicationCommand(ApplicationCommandEvent),
     Pointer(PointerEvent),
     PointerBoundary(PointerBoundaryEvent),
     PointerCapture(PointerCaptureEvent),
@@ -235,7 +259,25 @@ impl UiEvent {
     pub const fn as_semantic_command(&self) -> Option<&SemanticCommandEvent> {
         match self {
             Self::SemanticCommand(command) => Some(command),
-            Self::Pointer(_)
+            Self::ApplicationCommand(_)
+            | Self::Pointer(_)
+            | Self::PointerBoundary(_)
+            | Self::PointerCapture(_)
+            | Self::Focus(_)
+            | Self::Keyboard(_)
+            | Self::CommittedText(_)
+            | Self::Composition(_)
+            | Self::DragDrop(_) => None,
+        }
+    }
+
+    /// Borrows the application-command payload when this is that event family.
+    #[must_use]
+    pub const fn as_application_command(&self) -> Option<&ApplicationCommandEvent> {
+        match self {
+            Self::ApplicationCommand(command) => Some(command),
+            Self::SemanticCommand(_)
+            | Self::Pointer(_)
             | Self::PointerBoundary(_)
             | Self::PointerCapture(_)
             | Self::Focus(_)
@@ -252,6 +294,7 @@ impl UiEvent {
         match self {
             Self::Pointer(event) => Some(event),
             Self::SemanticCommand(_)
+            | Self::ApplicationCommand(_)
             | Self::PointerBoundary(_)
             | Self::PointerCapture(_)
             | Self::Focus(_)
@@ -268,6 +311,7 @@ impl UiEvent {
         match self {
             Self::DragDrop(event) => Some(event),
             Self::SemanticCommand(_)
+            | Self::ApplicationCommand(_)
             | Self::Pointer(_)
             | Self::PointerBoundary(_)
             | Self::PointerCapture(_)
@@ -284,6 +328,7 @@ impl UiEvent {
         match self {
             Self::PointerBoundary(event) => Some(event),
             Self::SemanticCommand(_)
+            | Self::ApplicationCommand(_)
             | Self::Pointer(_)
             | Self::PointerCapture(_)
             | Self::Focus(_)
@@ -300,6 +345,7 @@ impl UiEvent {
         match self {
             Self::PointerCapture(event) => Some(event),
             Self::SemanticCommand(_)
+            | Self::ApplicationCommand(_)
             | Self::Pointer(_)
             | Self::PointerBoundary(_)
             | Self::Focus(_)
@@ -316,6 +362,7 @@ impl UiEvent {
         match self {
             Self::Focus(event) => Some(event),
             Self::SemanticCommand(_)
+            | Self::ApplicationCommand(_)
             | Self::Pointer(_)
             | Self::PointerBoundary(_)
             | Self::PointerCapture(_)

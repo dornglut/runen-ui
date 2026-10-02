@@ -232,6 +232,10 @@ impl Hash for IdentifierText {
 }
 
 define_identifier!(
+    ApplicationCommandId,
+    "Validated application-authored command identity."
+);
+define_identifier!(
     ElementId,
     "Validated authored debug, test, automation, and integration identity."
 );

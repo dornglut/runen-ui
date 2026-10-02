@@ -1,8 +1,8 @@
 use core::num::{NonZeroU64, NonZeroUsize};
 
 use runenui_core::{
-    ClipboardClassification, ClipboardWritePurpose, CommandOrigin, ElementId, EventPhase,
-    FocusBoundaryPolicy, FocusEventKind, FocusReason, MonotonicInstant, MotionTarget,
+    ApplicationCommandId, ClipboardClassification, ClipboardWritePurpose, CommandOrigin, ElementId,
+    EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusReason, MonotonicInstant, MotionTarget,
     PointerBoundaryKind, PointerCaptureKind, PointerId, PointerPhase, SemanticActionTarget,
     SemanticCommand, TouchGestureThresholds, WidgetInvalidation, WorkKey,
 };
@@ -148,6 +148,17 @@ pub enum TraceEditResolutionOutcome {
     Transformed,
 }
 
+/// Typed terminal result of one routed application-command lookup.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceApplicationCommandOutcome {
+    Resolved,
+    Disabled,
+    Ambiguous,
+    Unbound,
+    Unknown,
+}
+
 /// Structured kind of one canonical trace record.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -155,6 +166,12 @@ pub enum TraceRecordKind {
     RuntimeMounted,
     ActionSubmissionAccepted,
     CommandSubmissionAccepted,
+    ApplicationCommandSubmissionAccepted {
+        command: ApplicationCommandId,
+    },
+    ApplicationCommandResolution {
+        outcome: TraceApplicationCommandOutcome,
+    },
     SemanticActionBound {
         target: SemanticActionTarget,
         command: SemanticCommand,
@@ -331,6 +348,9 @@ pub enum TraceRecordKind {
     RoutedActionCollected,
     DelegatedCommandCollected {
         command: SemanticCommand,
+    },
+    DelegatedApplicationCommandCollected {
+        command: ApplicationCommandId,
     },
     PropagationStopped,
     DefaultPrevented,

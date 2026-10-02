@@ -1,7 +1,8 @@
 use runenui_core::{
     __runtime::{MountedEffect, PointerCaptureRequest},
-    CommandOrigin, DragDropEvent, InputModality, LogicalDelta, MonotonicInstant, PointerId,
-    SemanticActionTarget, SurfaceInputContext, WidgetInvalidation, WorkSequence,
+    ApplicationCommandDisposition, CommandOrigin, DragDropEvent, InputModality, LogicalDelta,
+    MonotonicInstant, PointerId, SemanticActionTarget, SurfaceInputContext, WidgetInvalidation,
+    WorkSequence,
 };
 
 use super::super::CollectedRoutedOutput;
@@ -113,6 +114,8 @@ pub(crate) struct RoutedTransaction<Action> {
     pub(in crate::runtime) remaining_outputs: usize,
     pub(crate) remaining_default_commands: usize,
     pub(in crate::runtime) propagation_stopped: bool,
+    pub(crate) application_command_resolution:
+        Option<(MountedNodeId, ApplicationCommandDisposition)>,
     pub(crate) default_prevented: bool,
     pub(in crate::runtime) collecting_notification_outputs: bool,
     pub(in crate::runtime) notification_outputs: Vec<CollectedRoutedOutput<Action>>,

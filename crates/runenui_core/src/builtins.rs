@@ -1,13 +1,14 @@
 use core::fmt;
 
 use crate::{
-    EventContext, EventPhase, FlexContainerStyle, FlexDirection, FocusGroup,
-    FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, Focusability, HitContribution,
-    HitContributionContext, LayoutContainer, LayoutStyle, LogicalLength, LogicalRect, LogicalSize,
-    SemanticAction, SemanticCheckedState, SemanticCommand, SemanticCommandEvent,
-    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
-    SemanticState, SemanticText, UiEvent, WidgetActivationContext, WidgetDiagnostic,
-    WidgetEventOutput, WidgetInvalidation, WidgetUpdateContext,
+    ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandEvent, EventContext,
+    EventPhase, FlexContainerStyle, FlexDirection, FocusGroup, FocusGroupActivationPolicy,
+    FocusGroupBoundaryPolicy, Focusability, HitContribution, HitContributionContext,
+    LayoutContainer, LayoutStyle, LogicalLength, LogicalRect, LogicalSize, SemanticAction,
+    SemanticCheckedState, SemanticCommand, SemanticCommandEvent, SemanticContribution,
+    SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
+    SemanticText, UiEvent, WidgetActivationContext, WidgetDiagnostic, WidgetEventOutput,
+    WidgetInvalidation, WidgetUpdateContext,
     element::{CommonNodeAuthoring, Element, View, Views, common_node_builder_methods},
     widget_erasure::{ErasedWidget, WidgetAdapter},
     widget_protocol::{
@@ -15,6 +16,184 @@ use crate::{
         WidgetMeasureInput,
     },
 };
+
+pub struct CommandBinding<Action> {
+    command: ApplicationCommand,
+    action_factory: Box<dyn FnMut() -> Action>,
+}
+impl<Action> fmt::Debug for CommandBinding<Action> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CommandBinding")
+            .field("command", &self.command)
+            .finish_non_exhaustive()
+    }
+}
+impl<Action> CommandBinding<Action> {
+    #[must_use]
+    pub fn new(command: ApplicationCommand, action: impl FnMut() -> Action + 'static) -> Self {
+        Self {
+            command,
+            action_factory: Box::new(action),
+        }
+    }
+    #[must_use]
+    pub const fn command(&self) -> &ApplicationCommand {
+        &self.command
+    }
+}
+
+pub struct CommandScope<Action> {
+    bindings: Vec<CommandBinding<Action>>,
+    children: Vec<Element<Action>>,
+    common: CommonNodeAuthoring,
+}
+impl<Action> fmt::Debug for CommandScope<Action> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CommandScope")
+            .field("binding_count", &self.bindings.len())
+            .field("children", &self.children)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .finish_non_exhaustive()
+    }
+}
+impl<Action> CommandScope<Action> {
+    #[must_use]
+    pub fn new(
+        bindings: impl IntoIterator<Item = CommandBinding<Action>>,
+        children: impl Views<Action>,
+    ) -> Self {
+        Self {
+            bindings: bindings.into_iter().collect(),
+            children: children.into_elements(),
+            common: CommonNodeAuthoring::default(),
+        }
+    }
+    common_node_builder_methods!();
+}
+struct CommandScopeWidget<Action> {
+    bindings: Vec<CommandBinding<Action>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CommandScopeWidgetState {
+    has_duplicate_binding: bool,
+}
+
+impl<Action> CommandScopeWidget<Action> {
+    fn has_duplicate_binding(&self) -> bool {
+        self.bindings.iter().enumerate().any(|(index, binding)| {
+            self.bindings[index + 1..]
+                .iter()
+                .any(|other| other.command().id() == binding.command().id())
+        })
+    }
+}
+
+impl<Action> fmt::Debug for CommandScopeWidget<Action> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CommandScopeWidget")
+            .field("binding_count", &self.bindings.len())
+            .finish()
+    }
+}
+impl<Action> Widget<Action> for CommandScopeWidget<Action> {
+    type State = CommandScopeWidgetState;
+
+    fn create_state(&self) -> Self::State {
+        CommandScopeWidgetState {
+            has_duplicate_binding: self.has_duplicate_binding(),
+        }
+    }
+
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
+        let has_duplicate_binding = self.has_duplicate_binding();
+        if state.has_duplicate_binding != has_duplicate_binding {
+            context.invalidate(WidgetInvalidation::DIAGNOSTICS);
+        }
+        state.has_duplicate_binding = has_duplicate_binding;
+    }
+
+    fn event(
+        &mut self,
+        _: &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        if context.phase() == EventPhase::Capture {
+            return WidgetEventOutput::none();
+        }
+        let Some(command) = event
+            .as_application_command()
+            .map(ApplicationCommandEvent::command)
+        else {
+            return WidgetEventOutput::none();
+        };
+        let mut matching = None;
+        let mut duplicate = false;
+        for (index, binding) in self.bindings.iter().enumerate() {
+            if binding.command().id() == command && matching.replace(index).is_some() {
+                duplicate = true;
+                break;
+            }
+        }
+        let Some(index) = matching else {
+            return WidgetEventOutput::none();
+        };
+        if duplicate {
+            context.consume_application_command(ApplicationCommandDisposition::Ambiguous);
+            return WidgetEventOutput::none();
+        }
+        if !self.bindings[index].command().enabled() {
+            context.consume_application_command(ApplicationCommandDisposition::Disabled);
+            return WidgetEventOutput::none();
+        }
+        context.consume_application_command(ApplicationCommandDisposition::Resolved);
+        let action = (self.bindings[index].action_factory)();
+        context.emit(action);
+        WidgetEventOutput::none()
+    }
+    fn diagnostics(&self, state: &Self::State) -> Vec<WidgetDiagnostic> {
+        if state.has_duplicate_binding {
+            vec![WidgetDiagnostic::new(
+                "runenui.command-scope.duplicate-command",
+                "CommandScope contains duplicate bindings for one application command",
+            )]
+        } else {
+            Vec::new()
+        }
+    }
+}
+impl<Action> ChildBearingWidget<Action> for CommandScopeWidget<Action> {}
+impl<Action: 'static> View<Action> for CommandScope<Action> {
+    fn into_element(self) -> Element<Action> {
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(crate::Focusability::Automatic, None);
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(CommandScopeWidget {
+                bindings: self.bindings,
+            })),
+            self.children,
+            diagnostics,
+        )
+    }
+}
+#[must_use]
+pub fn command_binding<Action>(
+    command: ApplicationCommand,
+    action: impl FnMut() -> Action + 'static,
+) -> CommandBinding<Action> {
+    CommandBinding::new(command, action)
+}
+#[must_use]
+pub fn command_scope<Action>(
+    bindings: impl IntoIterator<Item = CommandBinding<Action>>,
+    children: impl Views<Action>,
+) -> CommandScope<Action> {
+    CommandScope::new(bindings, children)
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Text {

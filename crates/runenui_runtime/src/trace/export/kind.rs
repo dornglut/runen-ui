@@ -14,6 +14,12 @@ macro_rules! trace_kind_name {
             TraceRecordKind::RuntimeMounted => "runtime_mounted",
             TraceRecordKind::ActionSubmissionAccepted => "action_submission_accepted",
             TraceRecordKind::CommandSubmissionAccepted => "command_submission_accepted",
+            TraceRecordKind::ApplicationCommandSubmissionAccepted { .. } => {
+                "application_command_submission_accepted"
+            }
+            TraceRecordKind::ApplicationCommandResolution { .. } => {
+                "application_command_resolution"
+            }
             TraceRecordKind::SemanticActionBound { .. } => "semantic_action_bound",
             TraceRecordKind::SemanticActionProcessingRejected { .. } => {
                 "semantic_action_processing_rejected"
@@ -120,6 +126,9 @@ macro_rules! trace_kind_name {
             TraceRecordKind::EventPhaseInvoked { .. } => "event_phase_invoked",
             TraceRecordKind::RoutedActionCollected => "routed_action_collected",
             TraceRecordKind::DelegatedCommandCollected { .. } => "delegated_command_collected",
+            TraceRecordKind::DelegatedApplicationCommandCollected { .. } => {
+                "delegated_application_command_collected"
+            }
             TraceRecordKind::PropagationStopped => "propagation_stopped",
             TraceRecordKind::DefaultPrevented => "default_prevented",
             TraceRecordKind::WidgetStateMutated => "widget_state_mutated",
@@ -664,6 +673,17 @@ fn encode_routed_focus_data(output: &mut String, kind: &TraceRecordKind) -> bool
         }
         TraceRecordKind::EventPhaseInvoked { phase } => {
             field_str(output, "phase", tokens::event_phase(*phase));
+        }
+        TraceRecordKind::ApplicationCommandSubmissionAccepted { command }
+        | TraceRecordKind::DelegatedApplicationCommandCollected { command } => {
+            field_str(output, "command", command.as_str());
+        }
+        TraceRecordKind::ApplicationCommandResolution { outcome } => {
+            field_str(
+                output,
+                "outcome",
+                tokens::application_command_outcome(*outcome),
+            );
         }
         TraceRecordKind::DelegatedCommandCollected { command }
         | TraceRecordKind::SemanticDefaultApplied { command }

@@ -178,6 +178,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         .map_err(|_| TraceRoutedIntegrityFailure::CallbackBridgeFailure)?;
         transaction.remaining_outputs = invocation.output.remaining_outputs;
         transaction.propagation_stopped = invocation.output.propagation_stopped;
+        if let Some(disposition) = invocation.output.application_command_disposition {
+            transaction.application_command_resolution = Some((current.clone(), disposition));
+        }
         transaction.default_prevented = invocation.output.default_prevented;
         if invocation.output.accepted_drag_drop {
             transaction.drag_drop_acceptor = Some(current.clone());
@@ -349,6 +352,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 } => (
                     TraceRecordKind::DelegatedCommandCollected { command },
                     CollectedRoutedOutput::Command {
+                        target,
+                        command,
+                        origin,
+                        causal_parent: None,
+                    },
+                ),
+                RoutedEventOutput::ApplicationCommand {
+                    target,
+                    command,
+                    origin,
+                } => (
+                    TraceRecordKind::DelegatedApplicationCommandCollected {
+                        command: command.clone(),
+                    },
+                    CollectedRoutedOutput::ApplicationCommand {
                         target,
                         command,
                         origin,

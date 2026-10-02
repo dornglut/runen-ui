@@ -15,6 +15,7 @@ use super::{
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TraceEventFamily {
     SemanticCommand,
+    ApplicationCommand,
     Pointer,
     PointerBoundary,
     PointerCapture,

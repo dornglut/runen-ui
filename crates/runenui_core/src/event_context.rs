@@ -3,9 +3,10 @@
 use core::{fmt, future::Future};
 
 use crate::{
-    CommandOrigin, DragDropEvent, DragDropPhase, EventPhase, MonotonicInstant, MountedNodeId,
-    PointerId, SemanticCommand, SendTaskStartFailure, TimerEffect, WidgetInvalidation, WorkFamily,
-    WorkKey, WorkSequence, effects::MountedEffect, widget_context::WidgetWorkCollector,
+    ApplicationCommandDisposition, ApplicationCommandId, CommandOrigin, DragDropEvent,
+    DragDropPhase, EventPhase, MonotonicInstant, MountedNodeId, PointerId, SemanticCommand,
+    SendTaskStartFailure, TimerEffect, WidgetInvalidation, WorkFamily, WorkKey, WorkSequence,
+    effects::MountedEffect, widget_context::WidgetWorkCollector,
 };
 
 /// One action or delegated command in exact callback emission order.
@@ -15,6 +16,11 @@ pub enum RoutedEventOutput<Action> {
     Command {
         target: MountedNodeId,
         command: SemanticCommand,
+        origin: CommandOrigin,
+    },
+    ApplicationCommand {
+        target: MountedNodeId,
+        command: ApplicationCommandId,
         origin: CommandOrigin,
     },
 }
@@ -41,6 +47,7 @@ pub enum PointerCaptureRequest {
 )]
 pub struct EventContextOutput<Action> {
     pub ordered: Vec<RoutedEventOutput<Action>>,
+    pub application_command_disposition: Option<ApplicationCommandDisposition>,
     pub invalidation: WidgetInvalidation,
     pub subscription_invalidation: bool,
     pub mounted_work: Vec<MountedEffect<Action>>,
@@ -74,6 +81,7 @@ pub struct EventContext<'a, Action> {
     default_cancelable: bool,
     default_prevented: bool,
     propagation_stopped: bool,
+    application_command_disposition: Option<ApplicationCommandDisposition>,
     invalidation: WidgetInvalidation,
     subscription_invalidation: bool,
     ordered: Vec<RoutedEventOutput<Action>>,
@@ -204,6 +212,33 @@ impl<'a, Action> EventContext<'a, Action> {
                 origin: CommandOrigin::delegated(self.origin.source()),
             });
         }
+    }
+
+    /// Stages one contextual application command for later FIFO processing.
+    pub fn emit_application_command(&mut self, command: ApplicationCommandId) {
+        if self.reserve_output() {
+            self.ordered.push(RoutedEventOutput::ApplicationCommand {
+                target: self.original_target.clone(),
+                command,
+                origin: CommandOrigin::delegated(self.origin.source()),
+            });
+        }
+    }
+
+    /// Consumes the current routed application command with one typed scope disposition.
+    /// Capture-phase callbacks cannot consume contextual commands because scope resolution
+    /// proceeds from the exact target outward.
+    pub const fn consume_application_command(
+        &mut self,
+        disposition: ApplicationCommandDisposition,
+    ) {
+        if matches!(self.phase, EventPhase::Capture)
+            || self.application_command_disposition.is_some()
+        {
+            return;
+        }
+        self.application_command_disposition = Some(disposition);
+        self.propagation_stopped = true;
     }
 
     /// Stages capture of the current pointer by the current routed node.
@@ -367,6 +402,9 @@ impl<'a, Action> EventContext<'a, Action> {
         self.accepted_drag_drop |= child.accepted_drag_drop;
         self.default_prevented = child.default_prevented;
         self.propagation_stopped = child.propagation_stopped;
+        if child.application_command_disposition.is_some() {
+            self.application_command_disposition = child.application_command_disposition;
+        }
         self.overflowed |= child.overflowed;
         self.remaining_outputs = child.remaining_outputs;
         for output in child.ordered.drain(..) {
@@ -377,6 +415,15 @@ impl<'a, Action> EventContext<'a, Action> {
                     command,
                     origin,
                 } => RoutedEventOutput::Command {
+                    target,
+                    command,
+                    origin,
+                },
+                RoutedEventOutput::ApplicationCommand {
+                    target,
+                    command,
+                    origin,
+                } => RoutedEventOutput::ApplicationCommand {
                     target,
                     command,
                     origin,
@@ -497,6 +544,7 @@ impl<'a, Action> EventContext<'a, Action> {
             default_cancelable,
             default_prevented,
             propagation_stopped,
+            application_command_disposition: None,
             invalidation: WidgetInvalidation::NONE,
             subscription_invalidation: false,
             ordered: Vec::new(),
@@ -510,6 +558,7 @@ impl<'a, Action> EventContext<'a, Action> {
     pub(crate) fn into_output(mut self) -> EventContextOutput<Action> {
         EventContextOutput {
             ordered: self.ordered,
+            application_command_disposition: self.application_command_disposition,
             invalidation: self.invalidation,
             subscription_invalidation: self.subscription_invalidation,
             mounted_work: self.mounted_work.take_outputs(),
@@ -530,7 +579,7 @@ mod tests {
 
     use crate::{
         __runtime::{MountedEffect, PointerCaptureRequest, RoutedEventOutput, RuntimeNamespace},
-        CommandDerivation, CommandOrigin, DragDropEvent, DragDropPayloadKind,
+        ApplicationCommandId, CommandDerivation, CommandOrigin, DragDropEvent, DragDropPayloadKind,
         DragDropPayloadMetadata, DragDropPhase, EventPhase, EventSource, MonotonicInstant,
         PointerId, SemanticCommand, WidgetInvalidation, WorkSequence,
     };
@@ -796,6 +845,10 @@ mod tests {
         let mut child = parent.mapped_child::<NonClone>();
         child.emit(NonClone(9));
         child.emit_command(SemanticCommand::CancelOrBack);
+        child.emit_application_command(
+            ApplicationCommandId::from_static("save")
+                .unwrap_or_else(|_| unreachable!("test command id is valid")),
+        );
         child.invalidate(WidgetInvalidation::SEMANTICS);
         child.prevent_default();
         let mapper: Rc<dyn Fn(NonClone) -> String> = Rc::new(|value| value.0.to_string());
@@ -810,9 +863,17 @@ mod tests {
                     && origin.source() == EventSource::Controller
                     && origin.derivation() == CommandDerivation::Delegated
         ));
+        assert!(matches!(
+            &output.ordered[2],
+            RoutedEventOutput::ApplicationCommand { target: delegated, command, origin }
+                if delegated == &target
+                    && command.as_str() == "save"
+                    && origin.source() == EventSource::Controller
+                    && origin.derivation() == CommandDerivation::Delegated
+        ));
         assert!(output.invalidation.contains(WidgetInvalidation::SEMANTICS));
         assert!(output.default_prevented);
-        assert_eq!(output.remaining_outputs, 1);
+        assert_eq!(output.remaining_outputs, 0);
     }
 
     #[test]

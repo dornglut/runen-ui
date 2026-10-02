@@ -1,5 +1,7 @@
 //! Runtime status, diagnostics, reconciliation, and terminal result vocabulary.
 
+use runenui_core::ApplicationCommandId;
+
 use super::{
     CommandOrigin, ElementKey, MountedNodeId, SemanticCommand, TraceSequence,
     WorkCancellationCounts, fmt,
@@ -35,6 +37,12 @@ pub(crate) enum CollectedRoutedOutput<Action> {
     Command {
         target: MountedNodeId,
         command: SemanticCommand,
+        origin: CommandOrigin,
+        causal_parent: Option<TraceSequence>,
+    },
+    ApplicationCommand {
+        target: MountedNodeId,
+        command: ApplicationCommandId,
         origin: CommandOrigin,
         causal_parent: Option<TraceSequence>,
     },

@@ -222,6 +222,7 @@
 #![forbid(unsafe_code)]
 
 mod application;
+mod application_command;
 mod builtins;
 mod computed_style;
 mod editing;
@@ -274,9 +275,11 @@ include!("token_macros.rs");
 pub use application::{
     HostProtocol, NoHostCommand, NoHostProtocol, NoHostResponse, NoHostResponseKind, UiApp,
 };
+pub use application_command::{ApplicationCommand, ApplicationCommandDisposition};
 pub use builtins::{
-    Button, Checkbox, Container, RadioButton, RadioGroup, Switch, Text, button, checkbox, column,
-    container, radio_button, radio_group, row, switch, text,
+    Button, Checkbox, CommandBinding, CommandScope, Container, RadioButton, RadioGroup, Switch,
+    Text, button, checkbox, column, command_binding, command_scope, container, radio_button,
+    radio_group, row, switch, text,
 };
 pub use computed_style::ComputedStyle;
 pub use editing::{
@@ -288,8 +291,8 @@ pub use editing::{
 pub use effects::{Effects, IntoEffects};
 pub use element::{AuthoringDiagnostic, Element, View, Views};
 pub use event::{
-    CommandDerivation, CommandOrigin, DragDropEvent, EventPhase, EventSource, SemanticCommand,
-    SemanticCommandEvent, UiEvent, WidgetEventOutput,
+    ApplicationCommandEvent, CommandDerivation, CommandOrigin, DragDropEvent, EventPhase,
+    EventSource, SemanticCommand, SemanticCommandEvent, UiEvent, WidgetEventOutput,
 };
 pub use event_context::EventContext;
 pub use focus::{
@@ -351,7 +354,9 @@ pub mod __runtime {
 }
 #[doc(hidden)]
 pub use identity::is_valid_identifier_literal;
-pub use identity::{ElementId, ElementKey, IdentifierError, IntoElementId, IntoElementKey};
+pub use identity::{
+    ApplicationCommandId, ElementId, ElementKey, IdentifierError, IntoElementId, IntoElementKey,
+};
 pub use layout::{
     Axis, ContentAlignment, FlexBasis, FlexContainerStyle, FlexDirection, FlexItemStyle, FlexWrap,
     GridAutoFlow, GridAxisPlacement, GridContainerStyle, GridItemPlacement, GridItemStyle,

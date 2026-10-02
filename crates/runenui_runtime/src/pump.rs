@@ -207,6 +207,10 @@ pub(crate) fn pump<App: UiApp>(
                 runtime.process_semantic_command(envelope);
                 ProcessApplicationActionOutcome::Completed
             }
+            WorkEnvelope::ApplicationCommand(envelope) => {
+                runtime.process_application_command(envelope);
+                ProcessApplicationActionOutcome::Completed
+            }
             WorkEnvelope::Pointer(envelope) => runtime.process_pointer_envelope(envelope),
             WorkEnvelope::Input(envelope) => {
                 runtime.process_input_envelope(envelope);

@@ -1,4 +1,4 @@
-use runenui_core::{MonotonicInstant, SemanticActionTarget};
+use runenui_core::{ApplicationCommandId, MonotonicInstant, SemanticActionTarget};
 
 use crate::{
     TraceActionCategory, TraceActionIdentity, TraceContext, TraceSurfaceContext,
@@ -354,6 +354,50 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 parent: causal_parent,
             },
         )
+    }
+
+    pub(in crate::runtime) fn commit_preflighted_routed_application_command(
+        &mut self,
+        target: &MountedNodeId,
+        command: ApplicationCommandId,
+        origin: CommandOrigin,
+        causal_parent: Option<TraceSequence>,
+        instant: MonotonicInstant,
+    ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
+        self.command_preflight(target)?;
+        let trace_reservation = self
+            .trace
+            .reserve_command_outcome()
+            .ok_or(SubmitCommandErrorKind::TraceSequenceExhausted)?;
+        let sequence = self
+            .queue
+            .next_sequence()
+            .unwrap_or_else(|| unreachable!("application command sequence was preflighted"));
+        let accepted = self.trace.record_event(
+            TraceRecordKind::ApplicationCommandSubmissionAccepted {
+                command: command.clone(),
+            },
+            sequence,
+            causal_parent,
+            Some(self.tree.trace_target(target)),
+            instant,
+            target,
+            None,
+            origin,
+        );
+        let causal_parent = self.require_reserved_trace_record(accepted, trace_reservation)?;
+        self.queue
+            .push_application_command_preflighted(
+                target.clone(),
+                command,
+                origin,
+                instant,
+                causal_parent,
+                trace_reservation,
+            )
+            .unwrap_or_else(|_| unreachable!("application command queue was preflighted"));
+        self.external_queue_commit_accepted();
+        Ok(CommandSubmission::new(sequence))
     }
 
     fn commit_preflighted_command(
