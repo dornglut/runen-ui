@@ -166,6 +166,7 @@ pub enum TraceApplicationCommandOutcome {
 pub enum TraceScrollControlBindingOutcome {
     Resolved,
     MissingBinding,
+    Stale,
     NonScrollable,
     MetricsUnavailable,
 }
