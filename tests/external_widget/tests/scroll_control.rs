@@ -3,10 +3,12 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    Axis, ChildBearingWidget, CommandOrigin, Element, EventContext, EventPhase, HitContribution,
-    HitContributionContext, LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength,
-    LogicalPoint, LogicalRect, NoHostProtocol, OverflowPolicy, OverflowStyle, PaintContribution,
-    PaintContributionContext, ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot,
+    Axis, Brush, ChildBearingWidget, Color, CommandOrigin, Element, EventContext, EventPhase,
+    Focusability, HitContribution, HitContributionContext, LayoutContainer, LayoutDimension,
+    LayoutStyle, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, OverflowPolicy,
+    OverflowStyle, PaintContribution, PaintContributionContext, PaintContributionItem,
+    PaintPrimitive, SceneShape, ScrollBarLayout, ScrollBarPlacement, ScrollBarVisibility,
+    ScrollChrome, ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot,
     ScrollNormalizedValue, SemanticAction, SemanticActionRequest, SemanticCommand,
     SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
     SemanticOrientation, SemanticRelationshipKind, SemanticRole, StyleEnvironment, UiApp, UiEvent,
@@ -455,3 +457,528 @@ fn non_scrollable_bound_scrollbar_remains_semantic_but_is_not_a_dead_focus_stop(
     ));
     assert_ne!(runtime.focus().focused_node(), Some(&control));
 }
+
+const TRACK_COLOR: Color = Color::rgba(220, 40, 40, 255);
+const THUMB_COLOR: Color = Color::rgba(40, 80, 220, 255);
+
+#[derive(Debug)]
+struct ChromeContent {
+    height: LogicalLength,
+}
+
+impl Widget<()> for ChromeContent {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(length(80.0), self.height)
+    }
+}
+
+#[derive(Debug)]
+struct ChromeViewport;
+
+impl Widget<()> for ChromeViewport {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
+        HitContribution::single_rect(
+            LogicalRect::try_new(
+                0.0,
+                0.0,
+                context.local_size().width(),
+                context.local_size().height(),
+            )
+            .unwrap_or_else(|_| unreachable!("chrome viewport hit bounds are finite")),
+        )
+    }
+
+    fn semantics(
+        &self,
+        (): &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let mut node = SemanticNodeContribution::primary(SemanticRole::Group);
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
+        SemanticContribution::single(node)
+    }
+}
+
+impl ChildBearingWidget<()> for ChromeViewport {}
+
+#[derive(Debug)]
+struct ChromeTrack {
+    semantic_callbacks: Rc<RefCell<usize>>,
+}
+
+impl Widget<()> for ChromeTrack {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(true)
+    }
+
+    fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
+        HitContribution::single_rect(
+            LogicalRect::try_new(
+                0.0,
+                0.0,
+                context.local_size().width(),
+                context.local_size().height(),
+            )
+            .unwrap_or_else(|_| unreachable!("track hit bounds are finite")),
+        )
+    }
+
+    fn paint(&self, (): &Self::State, context: PaintContributionContext) -> PaintContribution {
+        PaintContribution::new(vec![PaintContributionItem::fill(
+            SceneShape::rect(
+                LogicalRect::try_new(
+                    0.0,
+                    0.0,
+                    context.local_size().width(),
+                    context.local_size().height(),
+                )
+                .unwrap_or_else(|_| unreachable!("track paint bounds are finite")),
+            ),
+            Brush::solid(TRACK_COLOR),
+        )])
+    }
+
+    fn semantics(
+        &self,
+        (): &Self::State,
+        _: SemanticContributionContext,
+    ) -> SemanticContribution {
+        *self.semantic_callbacks.borrow_mut() += 1;
+        SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+                .with_action(SemanticAction::RequestFocus),
+        )
+    }
+}
+
+impl ChildBearingWidget<()> for ChromeTrack {}
+
+#[derive(Debug)]
+struct ChromeThumb {
+    semantic_callbacks: Rc<RefCell<usize>>,
+}
+
+impl Widget<()> for ChromeThumb {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(true)
+    }
+
+    fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
+        HitContribution::single_rect(
+            LogicalRect::try_new(
+                0.0,
+                0.0,
+                context.local_size().width(),
+                context.local_size().height(),
+            )
+            .unwrap_or_else(|_| unreachable!("thumb hit bounds are finite")),
+        )
+    }
+
+    fn paint(&self, (): &Self::State, context: PaintContributionContext) -> PaintContribution {
+        PaintContribution::new(vec![PaintContributionItem::fill(
+            SceneShape::rect(
+                LogicalRect::try_new(
+                    0.0,
+                    0.0,
+                    context.local_size().width(),
+                    context.local_size().height(),
+                )
+                .unwrap_or_else(|_| unreachable!("thumb paint bounds are finite")),
+            ),
+            Brush::solid(THUMB_COLOR),
+        )])
+    }
+
+    fn semantics(
+        &self,
+        (): &Self::State,
+        _: SemanticContributionContext,
+    ) -> SemanticContribution {
+        *self.semantic_callbacks.borrow_mut() += 1;
+        SemanticContribution::empty()
+    }
+}
+
+#[derive(Debug)]
+struct ChromeState {
+    content_height: f32,
+    visibility: ScrollBarVisibility,
+    placement: ScrollBarPlacement,
+    explicit_focus: bool,
+    track_semantics: Rc<RefCell<usize>>,
+    thumb_semantics: Rc<RefCell<usize>>,
+}
+
+struct ChromeApp;
+
+impl UiApp for ChromeApp {
+    type State = ChromeState;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        let binding = ScrollControlBinding::new(Axis::Vertical, length(10.0))
+            .unwrap_or_else(|_| unreachable!("chrome binding is valid"));
+        let thumb = Element::new(ChromeThumb {
+            semantic_callbacks: Rc::clone(&state.thumb_semantics),
+        })
+        .id("chrome.thumb")
+        .key("chrome.thumb")
+        .with_focusability(Focusability::NotFocusable)
+        .scroll_control(binding)
+        .scroll_chrome(ScrollChrome::Thumb(Axis::Vertical));
+        let track_layout = ScrollBarLayout::new(Axis::Vertical, length(10.0), length(20.0))
+            .with_visibility(state.visibility)
+            .with_placement(state.placement);
+        let track = container(
+            ChromeTrack {
+                semantic_callbacks: Rc::clone(&state.track_semantics),
+            },
+            children![thumb],
+        )
+        .id("chrome.track")
+        .key("chrome.track")
+        .into_element()
+        .with_focusability(if state.explicit_focus {
+            Focusability::Focusable
+        } else {
+            Focusability::Automatic
+        })
+        .scroll_control(binding)
+        .scroll_chrome(ScrollChrome::Bar(track_layout));
+        let content = Element::new(ChromeContent {
+            height: length(state.content_height),
+        })
+        .id("chrome.content")
+        .key("chrome.content")
+        .with_layout(
+            LayoutStyle::default()
+                .with_width(dimension(80.0))
+                .with_height(dimension(state.content_height)),
+        );
+
+        container(ChromeViewport, children![content, track])
+            .id("chrome.viewport")
+            .key("chrome.viewport")
+            .with_layout(
+                LayoutStyle::default()
+                    .with_container(LayoutContainer::Block)
+                    .with_width(dimension(100.0))
+                    .with_height(dimension(100.0))
+                    .with_overflow(OverflowStyle::new(
+                        OverflowPolicy::Clip,
+                        OverflowPolicy::Scroll,
+                    )),
+            )
+            .into_element()
+    }
+
+    fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+fn chrome_node_id(runtime: &mut AppRuntime<ChromeApp>, authored: &str) -> MountedNodeId {
+    let authored =
+        runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!("valid chrome id"));
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("chrome fixture node is mounted"))
+        .id()
+        .clone()
+}
+
+fn chrome_publish(runtime: &mut AppRuntime<ChromeApp>) -> runenui_runtime::SurfacePublication {
+    let environment = StyleEnvironment::default();
+    runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &environment,
+            LogicalSize::try_new(100.0, 100.0)
+                .unwrap_or_else(|_| unreachable!("chrome fixture surface is finite")),
+        ))
+        .unwrap_or_else(|error| panic!("chrome fixture publication is admitted: {error:?}"))
+}
+
+fn chrome_state(
+    content_height: f32,
+    visibility: ScrollBarVisibility,
+    placement: ScrollBarPlacement,
+    explicit_focus: bool,
+) -> ChromeState {
+    ChromeState {
+        content_height,
+        visibility,
+        placement,
+        explicit_focus,
+        track_semantics: Rc::new(RefCell::new(0)),
+        thumb_semantics: Rc::new(RefCell::new(0)),
+    }
+}
+
+fn item_color(item: &runenui_runtime::PaintSceneItem) -> Option<Color> {
+    match item.primitive() {
+        PaintPrimitive::Fill {
+            brush: Brush::Solid(color),
+            ..
+        } => Some(*color),
+        _ => None,
+    }
+}
+
+fn colored_item<'a>(
+    publication: &'a runenui_runtime::SurfacePublication,
+    color: Color,
+) -> &'a runenui_runtime::PaintSceneItem {
+    publication
+        .paint_scene()
+        .items()
+        .iter()
+        .find(|item| item_color(item) == Some(color))
+        .unwrap_or_else(|| unreachable!("expected chrome paint item is published"))
+}
+
+fn translated_origin(item: &runenui_runtime::PaintSceneItem) -> LogicalPoint {
+    item.local_to_surface()
+        .transform_point(
+            LogicalPoint::new(0.0, 0.0)
+                .unwrap_or_else(|_| unreachable!("fixture origin is finite")),
+        )
+        .unwrap_or_else(|| unreachable!("published chrome transform is finite"))
+}
+
+#[test]
+fn downstream_reserved_scroll_chrome_is_viewport_attached_and_thumb_moves_in_presentation_only() {
+    let state = chrome_state(
+        200.0,
+        ScrollBarVisibility::Automatic,
+        ScrollBarPlacement::Reserved,
+        false,
+    );
+    let track_callbacks = Rc::clone(&state.track_semantics);
+    let thumb_callbacks = Rc::clone(&state.thumb_semantics);
+    let mut runtime = AppRuntime::<ChromeApp>::mount(state);
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let initial = chrome_publish(&mut runtime);
+    let viewport = chrome_node_id(&mut runtime, "chrome.viewport");
+    let track = chrome_node_id(&mut runtime, "chrome.track");
+    let thumb = chrome_node_id(&mut runtime, "chrome.thumb");
+
+    let viewport_layout = initial
+        .layout_report()
+        .nodes()
+        .iter()
+        .find(|node| node.id() == &viewport)
+        .unwrap_or_else(|| unreachable!("viewport layout is published"));
+    assert_eq!(viewport_layout.scroll_viewport_extent().width(), 90.0);
+    assert_eq!(viewport_layout.scroll_viewport_extent().height(), 100.0);
+
+    let track_bounds = initial
+        .frame()
+        .node(&track)
+        .unwrap_or_else(|| unreachable!("track layout is published"))
+        .bounds();
+    let thumb_bounds = initial
+        .frame()
+        .node(&thumb)
+        .unwrap_or_else(|| unreachable!("thumb layout is published"))
+        .bounds();
+    assert_eq!((track_bounds.x(), track_bounds.y(), track_bounds.width(), track_bounds.height()), (90.0, 0.0, 10.0, 100.0));
+    assert_eq!((thumb_bounds.x(), thumb_bounds.y(), thumb_bounds.width(), thumb_bounds.height()), (90.0, 0.0, 10.0, 50.0));
+
+    assert!(initial.hit_test_scene().contains_mounted_target(&track));
+    assert!(initial.hit_test_scene().contains_mounted_target(&thumb));
+    assert_eq!(
+        initial.hit_test_scene().target_at(
+            LogicalPoint::new(95.0, 25.0)
+                .unwrap_or_else(|_| unreachable!("thumb sample is finite"))
+        ),
+        Some(&thumb)
+    );
+    assert_eq!(
+        initial.hit_test_scene().target_at(
+            LogicalPoint::new(95.0, 75.0)
+                .unwrap_or_else(|_| unreachable!("track sample is finite"))
+        ),
+        Some(&track)
+    );
+    assert_eq!(translated_origin(colored_item(&initial, THUMB_COLOR)).y(), 0.0);
+    assert!(*track_callbacks.borrow() > 0);
+    assert!(*thumb_callbacks.borrow() > 0);
+    assert_eq!(
+        initial
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .filter(|node| node.role() == SemanticRole::ScrollBar)
+            .count(),
+        1
+    );
+
+    runtime
+        .submit_command(
+            track.clone(),
+            SemanticCommand::ScrollControl(ScrollControlRequest::ToEnd),
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("direct bound scroll request is admitted"));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let scrolled = chrome_publish(&mut runtime);
+    let scrolled_thumb_bounds = scrolled
+        .frame()
+        .node(&thumb)
+        .unwrap_or_else(|| unreachable!("thumb remains laid out"))
+        .bounds();
+    assert_eq!(scrolled_thumb_bounds, thumb_bounds);
+    assert_eq!(translated_origin(colored_item(&scrolled, THUMB_COLOR)).y(), 50.0);
+    assert_eq!(
+        scrolled.hit_test_scene().target_at(
+            LogicalPoint::new(95.0, 75.0)
+                .unwrap_or_else(|_| unreachable!("translated thumb sample is finite"))
+        ),
+        Some(&thumb)
+    );
+}
+
+#[test]
+fn downstream_scroll_chrome_visibility_and_overlay_share_one_participation_authority() {
+    for visibility in [ScrollBarVisibility::Hidden, ScrollBarVisibility::Automatic] {
+        let content_height = if visibility == ScrollBarVisibility::Hidden {
+            200.0
+        } else {
+            100.0
+        };
+        let state = chrome_state(
+            content_height,
+            visibility,
+            ScrollBarPlacement::Reserved,
+            true,
+        );
+        let track_callbacks = Rc::clone(&state.track_semantics);
+        let thumb_callbacks = Rc::clone(&state.thumb_semantics);
+        let mut runtime = AppRuntime::<ChromeApp>::mount(state);
+        runtime.pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ));
+        let publication = chrome_publish(&mut runtime);
+        let track = chrome_node_id(&mut runtime, "chrome.track");
+        let thumb = chrome_node_id(&mut runtime, "chrome.thumb");
+
+        assert!(!publication.hit_test_scene().contains_mounted_target(&track));
+        assert!(!publication.hit_test_scene().contains_mounted_target(&thumb));
+        assert!(publication.paint_scene().items().iter().all(|item| {
+            !matches!(item_color(item), Some(color) if color == TRACK_COLOR || color == THUMB_COLOR)
+        }));
+        assert_eq!(*track_callbacks.borrow(), 0);
+        assert_eq!(*thumb_callbacks.borrow(), 0);
+        assert!(
+            publication
+                .semantic_publication()
+                .snapshot()
+                .nodes()
+                .iter()
+                .all(|node| node.role() != SemanticRole::ScrollBar)
+        );
+        assert!(
+            runtime
+                .index()
+                .node(&track)
+                .is_some_and(|node| !node.is_focusable()),
+            "authored hidden/absent chrome cannot be reintroduced by explicit focusability"
+        );
+    }
+
+    let mut overlay = AppRuntime::<ChromeApp>::mount(chrome_state(
+        200.0,
+        ScrollBarVisibility::Always,
+        ScrollBarPlacement::Overlay,
+        false,
+    ));
+    overlay.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let overlay_publication = chrome_publish(&mut overlay);
+    let viewport = chrome_node_id(&mut overlay, "chrome.viewport");
+    let layout = overlay_publication
+        .layout_report()
+        .nodes()
+        .iter()
+        .find(|node| node.id() == &viewport)
+        .unwrap_or_else(|| unreachable!("overlay viewport layout is published"));
+    assert_eq!(layout.scroll_viewport_extent().width(), 100.0);
+    assert_eq!(layout.scroll_viewport_extent().height(), 100.0);
+
+    let mut zero_range = AppRuntime::<ChromeApp>::mount(chrome_state(
+        100.0,
+        ScrollBarVisibility::Always,
+        ScrollBarPlacement::Reserved,
+        true,
+    ));
+    zero_range.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let zero_publication = chrome_publish(&mut zero_range);
+    let track = chrome_node_id(&mut zero_range, "chrome.track");
+    assert!(zero_publication.hit_test_scene().contains_mounted_target(&track));
+    assert!(
+        zero_range
+            .index()
+            .node(&track)
+            .is_some_and(|node| node.is_focusable()),
+        "present explicit Focusable chrome may override zero-range Automatic focus exclusion"
+    );
+    let scrollbar = zero_publication
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::ScrollBar)
+        .unwrap_or_else(|| unreachable!("Always zero-range scrollbar remains semantic"));
+    assert_eq!(
+        scrollbar
+            .range()
+            .and_then(|range| range.current())
+            .map(|value| value.get()),
+        Some(0.0)
+    );
+}
+
