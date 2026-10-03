@@ -624,8 +624,10 @@ fn assert_latest_bound_snapshots(runtime: &AppRuntime<BoundApp>) {
     let latest = last_snapshot(&runtime.state().paint);
     let latest_hit = last_snapshot(&runtime.state().hit);
     let latest_semantics = last_snapshot(&runtime.state().semantics);
+    let latest_event = last_snapshot(&runtime.state().event);
     assert_eq!(latest_hit, latest);
     assert_eq!(latest_semantics, latest);
+    assert_eq!(latest_event, latest);
     assert_eq!(latest.offset().get(), 40.0);
     assert_eq!(latest.maximum_offset().get(), 60.0);
     assert_eq!(latest.viewport_extent().get(), 40.0);
@@ -715,6 +717,15 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
     runtime
         .publish_surface(&bound_build(&environment))
         .unwrap_or_else(|error| panic!("scrolled surface republishes: {error:?}"));
+    submit_scroll(
+        &mut runtime,
+        bound.clone(),
+        ScrollControlRequest::SetNormalized(
+            ScrollNormalizedValue::new(2.0 / 3.0)
+                .unwrap_or_else(|_| unreachable!("current position is normalized")),
+        ),
+    );
+    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 40.0));
     assert_latest_bound_snapshots(&runtime);
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
