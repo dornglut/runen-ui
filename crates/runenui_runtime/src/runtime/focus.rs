@@ -96,16 +96,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     pub(crate) fn focus_eligibility_projection(&self) -> FocusEligibilityProjection {
         let ids = self.tree.publication_preorder_ids();
-        FocusEligibilityProjection::new(
-            ids.iter()
-                .filter(|id| self.current_automatic_scroll_focusability(id) == Some(true))
-                .cloned(),
-            ids.into_iter().filter(|id| {
+        let scrollable_controls = ids
+            .iter()
+            .filter(|id| self.current_automatic_scroll_focusability(id) == Some(true))
+            .cloned()
+            .collect::<Vec<_>>();
+        let nonparticipating_chrome = ids
+            .iter()
+            .filter(|id| {
                 self.surface_publication
                     .current_scroll_chrome_participation(id)
                     == Some(false)
-            }),
-        )
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        FocusEligibilityProjection::new(scrollable_controls, nonparticipating_chrome)
     }
 
     /// Applies input-lifetime revocation selected by the sole reconciliation

@@ -968,8 +968,7 @@ mod tests {
         let surface = tree.plan_surface_publication_capabilities(DirtyPhases::SEMANTICS);
         let contexts = semantic_contexts(&tree);
         let participation = vec![false; contexts.len()];
-        let plan =
-            tree.plan_semantic_publication_capabilities(&surface, &contexts, &participation);
+        let plan = tree.plan_semantic_publication_capabilities(&surface, &contexts, &participation);
         assert_eq!(
             semantic_callbacks.load(Ordering::SeqCst),
             1,
