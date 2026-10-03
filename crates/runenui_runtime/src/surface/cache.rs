@@ -399,16 +399,21 @@ impl SurfaceCache {
         ))
     }
 
-    pub(crate) fn current_scroll_control_projection(
+    pub(crate) fn current_scroll_control_binding(
         &self,
         target: &MountedNodeId,
-    ) -> Option<Option<&CachedScrollControlProjection>> {
+    ) -> Option<Option<(MountedNodeId, ScrollControlBinding)>> {
         let position = self
             .topology
             .nodes
             .iter()
             .position(|node| &node.id == target)?;
-        Some(self.scroll_controls.get(position)?.as_ref())
+        Some(
+            self.scroll_controls
+                .get(position)?
+                .as_ref()
+                .map(|projection| (projection.owner.clone(), projection.binding)),
+        )
     }
 
     pub(crate) fn current_scroll_metrics(
