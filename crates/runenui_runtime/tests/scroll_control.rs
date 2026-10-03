@@ -244,12 +244,14 @@ impl Widget<()> for SnapshotProbe {
 #[derive(Clone, Copy, Debug)]
 enum BoundAction {
     ResizeInner,
+    DisableInnerScroll,
     ReplaceBound,
 }
 
 #[derive(Debug)]
 struct BoundState {
     inner_height: f32,
+    inner_scrollable: bool,
     replaced: bool,
     hit: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
     paint: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
@@ -287,10 +289,15 @@ impl UiApp for BoundApp {
         .scroll_control(binding)
         .map_action(|()| BoundAction::ReplaceBound);
 
-        let inner = scroll_viewport(children![bound], vertical_scroll())
+        let inner_overflow = if state.inner_scrollable {
+            vertical_scroll()
+        } else {
+            OverflowStyle::all(OverflowPolicy::Clip)
+        };
+        let inner = scroll_viewport(children![bound], inner_overflow)
             .id("inner")
             .key("inner")
-            .with_layout(block_size(30.0, state.inner_height, vertical_scroll()))
+            .with_layout(block_size(30.0, state.inner_height, inner_overflow))
             .into_element();
         let filler = Element::new(Spacer)
             .id("outer.filler")
@@ -314,6 +321,7 @@ impl UiApp for BoundApp {
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
             BoundAction::ResizeInner => state.inner_height = 40.0,
+            BoundAction::DisableInnerScroll => state.inner_scrollable = false,
             BoundAction::ReplaceBound => state.replaced = true,
         }
     }
@@ -323,6 +331,7 @@ fn bound_runtime() -> AppRuntime<BoundApp> {
     AppRuntime::<BoundApp>::mount_with_config(
         BoundState {
             inner_height: 30.0,
+            inner_scrollable: true,
             replaced: false,
             hit: Rc::new(RefCell::new(Vec::new())),
             paint: Rc::new(RefCell::new(Vec::new())),
@@ -580,6 +589,43 @@ fn missing_and_non_scrollable_bindings_fail_closed() {
 }
 
 #[test]
+fn accepted_bound_owner_becoming_non_scrollable_fails_closed_without_outer_fallback() {
+    let mut runtime = bound_runtime();
+    settle(&mut runtime);
+    let environment = StyleEnvironment::default();
+    runtime
+        .publish_surface(&bound_build(&environment))
+        .unwrap_or_else(|error| panic!("binding fixture publishes: {error:?}"));
+    let bound = node_id(&mut runtime, "bound");
+
+    runtime
+        .submit_action(BoundAction::DisableInnerScroll)
+        .unwrap_or_else(|_| unreachable!("owner policy update is admitted"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+    submit_scroll(&mut runtime, bound, ScrollControlRequest::PageForward);
+
+    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 0.0));
+    assert_eq!(
+        scroll_offset(&mut runtime, "outer"),
+        (0.0, 0.0),
+        "an invalidated exact binding must not retarget to the outer scroll owner"
+    );
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::ScrollControlBindingEvaluated {
+            outcome: TraceScrollControlBindingOutcome::NonScrollable,
+            axis: Some(Axis::Vertical),
+            ..
+        }
+    )));
+}
+
+#[test]
 fn replaced_bound_target_is_rejected_without_retargeting() {
     let mut runtime = bound_runtime();
     settle(&mut runtime);
@@ -628,6 +674,7 @@ fn scroll_control_trace_admission_rejects_before_scroll_mutation() {
     let mut runtime = AppRuntime::<BoundApp>::mount_with_config(
         BoundState {
             inner_height: 30.0,
+            inner_scrollable: true,
             replaced: false,
             hit: Rc::new(RefCell::new(Vec::new())),
             paint: Rc::new(RefCell::new(Vec::new())),
