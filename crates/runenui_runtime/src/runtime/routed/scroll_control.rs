@@ -4,8 +4,7 @@ use runenui_core::{
 
 use super::super::Runtime;
 use crate::{
-    MountedNodeId, TraceScrollControlBindingOutcome,
-    mounted::DirtyPhases,
+    MountedNodeId, TraceScrollControlBindingOutcome, mounted::DirtyPhases,
     surface::ScrollControlBindingLookup,
 };
 
