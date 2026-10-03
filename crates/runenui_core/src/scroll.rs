@@ -166,11 +166,13 @@ impl ScrollControlSnapshot {
         if !maximum.is_finite() {
             return None;
         }
-        let bounded_offset = offset.clamp(0.0, maximum);
+        if offset > maximum {
+            return None;
+        }
         let normalized_position = if maximum == 0.0 {
             ScrollNormalizedValue::ZERO
         } else {
-            ScrollNormalizedValue::new(bounded_offset / maximum).ok()?
+            ScrollNormalizedValue::new(offset / maximum).ok()?
         };
         let visible_fraction = if content_extent <= viewport_extent || content_extent == 0.0 {
             ScrollNormalizedValue::ONE
@@ -179,7 +181,7 @@ impl ScrollControlSnapshot {
         };
         Some(Self::__runtime_new(
             axis,
-            LogicalLength::new(bounded_offset).ok()?,
+            LogicalLength::new(offset).ok()?,
             LogicalLength::new(maximum).ok()?,
             LogicalLength::new(viewport_extent).ok()?,
             LogicalLength::new(content_extent).ok()?,
