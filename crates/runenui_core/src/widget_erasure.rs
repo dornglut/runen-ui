@@ -9,8 +9,8 @@ use crate::{
     HitContributionContext, LayoutStyle, MonotonicInstant, MountedNodeId, PaintContribution,
     PaintContributionContext, PointerId, ScrollControlBinding, SemanticContribution,
     SemanticContributionContext, ShortcutBinding, StyleIntent, SubscriptionSet, UiEvent,
-    WidgetActivationContext,
-    WidgetEventOutput, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
+    WidgetActivationContext, WidgetEventOutput, WidgetMountContext, WidgetUnmountContext,
+    WidgetUpdateContext, WorkSequence,
 };
 use core::{any::Any, fmt};
 
