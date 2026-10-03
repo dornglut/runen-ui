@@ -22,8 +22,9 @@ use runenui_text::{ShapedTextLease, TextDisplaySelection, TextPreeditProjection,
 use super::{
     DisplayedScrollMetrics, SurfaceInteractionProjection, SurfaceScrollProjection,
     cache::{
-        CachedLayoutFacts, CachedPresentationFacts, CachedScrollControlProjection,
-        PresentationNodeFacts, TextEditingPaintInputs,
+        CachedLayoutFacts, CachedPresentationFacts, CachedScrollChromeKind,
+        CachedScrollChromeProjection, CachedScrollControlProjection, PresentationNodeFacts,
+        TextEditingPaintInputs,
     },
 };
 
@@ -650,6 +651,166 @@ pub(super) fn hit_contexts(
         .collect()
 }
 
+#[must_use]
+pub(super) fn scroll_chrome_participates(
+    topology: &SurfaceTopologySnapshot,
+    layout: &CachedLayoutFacts,
+    position: usize,
+) -> bool {
+    match topology.nodes.get(position).and_then(|node| node.scroll_chrome) {
+        None => true,
+        Some(_) => layout
+            .scroll_chrome
+            .get(position)
+            .copied()
+            .flatten()
+            .is_some_and(CachedScrollChromeProjection::present),
+    }
+}
+
+fn scroll_thumb_presentation_offset(
+    topology: &SurfaceTopologySnapshot,
+    layout: &CachedLayoutFacts,
+    scroll: &SurfaceScrollProjection,
+    position: usize,
+    projection: CachedScrollChromeProjection,
+) -> Result<(f32, f32), PresentationGeometryError> {
+    let CachedScrollChromeKind::Thumb {
+        owner_position,
+        axis,
+        track_position,
+    } = projection.kind()
+    else {
+        return Ok((0.0, 0.0));
+    };
+    let owner = topology
+        .nodes
+        .get(owner_position)
+        .ok_or(PresentationGeometryError)?;
+    let owner_layout = layout
+        .report
+        .nodes()
+        .get(owner_position)
+        .filter(|layout_node| layout_node.id() == &owner.id)
+        .ok_or(PresentationGeometryError)?;
+    let track = layout
+        .bounds
+        .get(track_position)
+        .ok_or(PresentationGeometryError)?;
+    let thumb = layout.bounds.get(position).ok_or(PresentationGeometryError)?;
+    let viewport = owner_layout.scroll_viewport_extent();
+    let content = owner_layout.scrollable_extent();
+    let (travel, maximum, offset) = match axis {
+        Axis::Horizontal => (
+            (track.width() - thumb.width()).max(0.0),
+            (content.width() - viewport.width()).max(0.0),
+            scroll.offset(&owner.id).0,
+        ),
+        Axis::Vertical => (
+            (track.height() - thumb.height()).max(0.0),
+            (content.height() - viewport.height()).max(0.0),
+            scroll.offset(&owner.id).1,
+        ),
+    };
+    let normalized = if maximum > 0.0 {
+        (offset / maximum).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let shift = travel * normalized;
+    if !shift.is_finite() {
+        return Err(PresentationGeometryError);
+    }
+    Ok(match axis {
+        Axis::Horizontal => (shift, 0.0),
+        Axis::Vertical => (0.0, shift),
+    })
+}
+
+fn resolve_present_scroll_chrome(
+    topology: &SurfaceTopologySnapshot,
+    layout: &CachedLayoutFacts,
+    effective: &CachedEffectiveFacts,
+    scroll: &SurfaceScrollProjection,
+    position: usize,
+    bounds: LogicalRect,
+    projection: CachedScrollChromeProjection,
+    nodes: &[PresentationNodeFacts],
+    inherited_scroll_offsets: &[(f32, f32)],
+) -> Result<
+    (
+        PresentationNodeFacts,
+        (f32, f32),
+        Vec<SceneClip>,
+        Vec<LogicalRect>,
+    ),
+    PresentationGeometryError,
+> {
+    let owner_position = projection.owner_position();
+    if owner_position >= position {
+        return Err(PresentationGeometryError);
+    }
+    let owner_bounds = *layout
+        .bounds
+        .get(owner_position)
+        .ok_or(PresentationGeometryError)?;
+    let owner_presentation = nodes
+        .get(owner_position)
+        .ok_or(PresentationGeometryError)?;
+    let owner_inherited_scroll = inherited_scroll_offsets
+        .get(owner_position)
+        .copied()
+        .ok_or(PresentationGeometryError)?;
+    let node_presentation = effective
+        .node(position)
+        .computed_style()
+        .presentation()
+        .map_or(Ok(LogicalTransform::IDENTITY), |presentation| {
+            presentation.resolve_in_box(bounds.size())
+        })
+        .map_err(|_| PresentationGeometryError)?;
+    let (thumb_x, thumb_y) =
+        scroll_thumb_presentation_offset(topology, layout, scroll, position, projection)?;
+    let placement = LogicalTransform::translation(
+        bounds.x() - owner_bounds.x() + thumb_x,
+        bounds.y() - owner_bounds.y() + thumb_y,
+    )
+    .map_err(|_| PresentationGeometryError)?;
+    let owner_to_surface = node_presentation
+        .then(placement)
+        .and_then(|transform| transform.then(owner_presentation.owner_to_surface()))
+        .map_err(|_| PresentationGeometryError)?;
+    let local_bounds = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
+        .unwrap_or_else(|_| unreachable!("published chrome layout size is valid"));
+    let presented_bounds =
+        transform_rect_aabb(owner_to_surface, local_bounds).ok_or(PresentationGeometryError)?;
+    let visible_bounds = intersect_rects(presented_bounds, owner_presentation.visible_bounds());
+
+    let owner_clip_rect =
+        LogicalRect::try_new(0.0, 0.0, owner_bounds.width(), owner_bounds.height())
+            .unwrap_or_else(|_| unreachable!("published owner layout size is valid"));
+    let mut inherited_clips = owner_presentation.inherited_clips().to_vec();
+    inherited_clips.push(SceneClip::new(
+        SceneShape::rect(owner_clip_rect),
+        owner_presentation.owner_to_surface(),
+    ));
+    let content_clips = inherited_clips.clone();
+    let clip_bounds = vec![owner_presentation.visible_bounds()];
+    Ok((
+        PresentationNodeFacts::new(
+            owner_to_surface,
+            owner_to_surface,
+            presented_bounds,
+            visible_bounds,
+            Arc::from(inherited_clips.clone()),
+            Arc::from(content_clips),
+        ),
+        owner_inherited_scroll,
+        inherited_clips,
+        clip_bounds,
+    ))
+}
+
 /// Recoverable failure to derive a finite node-presentation publication product.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct PresentationGeometryError;
@@ -667,6 +828,7 @@ pub(super) fn resolve_presentation(
     if layout.bounds.len() != effective.nodes.len()
         || layout.bounds.len() != topology.nodes.len()
         || layout.report.nodes().len() != topology.nodes.len()
+        || layout.scroll_chrome.len() != topology.nodes.len()
     {
         return Err(PresentationGeometryError);
     }
@@ -677,6 +839,7 @@ pub(super) fn resolve_presentation(
         .map(|(position, node)| (node.id.clone(), position))
         .collect::<HashMap<_, _>>();
     let mut nodes = Vec::with_capacity(layout.bounds.len());
+    let mut inherited_scroll_offsets = Vec::with_capacity(layout.bounds.len());
     let mut child_offsets = Vec::with_capacity(layout.bounds.len());
     let mut child_clips = Vec::<Vec<SceneClip>>::with_capacity(layout.bounds.len());
     let mut child_clip_bounds = Vec::<Vec<LogicalRect>>::with_capacity(layout.bounds.len());
@@ -699,6 +862,27 @@ pub(super) fn resolve_presentation(
             .and_then(|parent| positions.get(parent).copied());
         let (ancestor_x, ancestor_y) =
             parent_position.map_or((0.0, 0.0), |parent| child_offsets[parent]);
+        if let Some(projection) = layout.scroll_chrome[position].filter(|chrome| chrome.present()) {
+            let (presentation, child_offset, inherited_clips, inherited_clip_bounds) =
+                resolve_present_scroll_chrome(
+                    topology,
+                    layout,
+                    effective,
+                    scroll,
+                    position,
+                    *bounds,
+                    projection,
+                    &nodes,
+                    &inherited_scroll_offsets,
+                )?;
+            inherited_scroll_offsets.push(child_offset);
+            child_offsets.push(child_offset);
+            nodes.push(presentation);
+            child_clips.push(inherited_clips);
+            child_clip_bounds.push(inherited_clip_bounds);
+            continue;
+        }
+        inherited_scroll_offsets.push((ancestor_x, ancestor_y));
         let inherited_clips = parent_position
             .map(|parent| child_clips[parent].clone())
             .unwrap_or_default();
@@ -1349,6 +1533,9 @@ pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
     let mut explicit_groups = Vec::new();
     let mut shaped_text_leases = Vec::new();
     for (mounted_preorder, node) in topology.nodes.iter().enumerate() {
+        if !scroll_chrome_participates(topology, layout, mounted_preorder) {
+            continue;
+        }
         let owner = owner_paint_context(presentation, mounted_preorder);
         let computed = effective.node(mounted_preorder).computed_style();
         let decoration_shape = (computed.background().is_some() || computed.outline().is_some())
@@ -1445,15 +1632,25 @@ pub(super) struct ResolvedHitTest {
 
 pub(super) fn resolve_hit_test(
     topology: &SurfaceTopologySnapshot,
+    layout: &CachedLayoutFacts,
     presentation: &CachedPresentationFacts,
     capabilities: &SurfaceCapabilityPlan,
 ) -> ResolvedHitTest {
     #[cfg(test)]
     super::cache::note_hit_test_phase_execution();
-    let membership = topology.nodes.iter().map(|node| node.id.clone()).collect();
+    let membership = topology
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(position, _)| scroll_chrome_participates(topology, layout, *position))
+        .map(|(_, node)| node.id.clone())
+        .collect();
     let mut diagnostics = empty_scene_diagnostics(topology);
     let mut ordered = Vec::new();
     for (mounted_preorder, node) in topology.nodes.iter().enumerate() {
+        if !scroll_chrome_participates(topology, layout, mounted_preorder) {
+            continue;
+        }
         let Some(contribution) = capabilities.hit_test_at(mounted_preorder, &node.id) else {
             continue;
         };

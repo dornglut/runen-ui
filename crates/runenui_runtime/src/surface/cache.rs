@@ -275,6 +275,15 @@ impl CachedScrollChromeProjection {
     }
 
     #[must_use]
+    pub(super) const fn owner_position(self) -> usize {
+        match self.kind {
+            CachedScrollChromeKind::Bar { owner_position, .. }
+            | CachedScrollChromeKind::Thumb { owner_position, .. }
+            | CachedScrollChromeKind::Corner { owner_position } => owner_position,
+        }
+    }
+
+    #[must_use]
     pub(super) const fn present(self) -> bool {
         self.present
     }

@@ -19,8 +19,8 @@ use super::resolve::{
     EffectiveEffects, PaintResolutionInput, PresentationGeometryError, ResolvedSurfaceTree,
     collect_topology, hit_contexts, normalize_scroll_projection, paint_contexts,
     resolve_diagnostics, resolve_hit_test, resolve_paint, resolve_presentation,
-    resolve_scroll_chrome_layout_plan, resolve_styles, scroll_control_projections,
-    semantic_contexts,
+    resolve_scroll_chrome_layout_plan, resolve_styles, scroll_chrome_participates,
+    scroll_control_projections, semantic_contexts,
 };
 use super::taffy_layout::layout_resolved_surface;
 use super::transaction::{PlannedSurfacePublication, StagedSurfaceMotion};
@@ -168,7 +168,12 @@ fn resolve_contribution_phases<Action>(
 
     let mut scene_diagnostics_changed = false;
     if publication_phases.contains(DirtyPhases::HIT_TEST) {
-        let resolved = resolve_hit_test(&current.topology, &current.presentation, capability_plan);
+        let resolved = resolve_hit_test(
+            &current.topology,
+            &current.layout,
+            &current.presentation,
+            capability_plan,
+        );
         current.hit_test = resolved.scene;
         scene_diagnostics_changed |= replace_scene_diagnostics_if_changed(
             &mut current.hit_diagnostics,
@@ -572,7 +577,8 @@ fn plan_structural_surface<'tree, Action>(
         &paint_contexts,
         &hit_contexts,
     );
-    let resolved_hit_test = resolve_hit_test(&topology, &presentation, &capability_plan);
+    let resolved_hit_test =
+        resolve_hit_test(&topology, &layout, &presentation, &capability_plan);
     let hit_test = resolved_hit_test.scene;
     let hit_diagnostics = Arc::new(resolved_hit_test.diagnostics);
     report.record(SurfacePhase::HitTesting);
@@ -744,7 +750,6 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
         || cache.layout.scroll_chrome.len() != expected
         || cache.layout.text_layouts.len() != expected
         || cache.presentation.nodes.len() != expected
-        || cache.hit_test.membership().len() != expected
         || cache.diagnostics.len() != expected
         || cache.hit_diagnostics.len() != expected
         || cache.paint_diagnostics.len() != expected
@@ -760,10 +765,19 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
             || layout.id() != &topology.id
             || layout.parent() != topology.parent.as_ref()
             || layout.authored_id() != topology.authored_id.as_ref()
-            || cache.hit_test.membership()[index] != topology.id
         {
             return Err("surface cache node identity is not topology-aligned");
         }
+    }
+    let expected_membership = cache
+        .topology
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(position, _)| scroll_chrome_participates(&cache.topology, &cache.layout, *position))
+        .map(|(_, node)| &node.id);
+    if cache.hit_test.membership().iter().ne(expected_membership) {
+        return Err("surface hit membership is not aligned with participating topology");
     }
     Ok(())
 }
