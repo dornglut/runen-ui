@@ -108,6 +108,15 @@ fn unit(value: f32) -> UnitInterval {
     UnitInterval::new(value).unwrap_or_else(|_| unreachable!("fixture unit is valid"))
 }
 
+fn local_position_is(local_position: Option<[u32; 2]>, expected: [f32; 2]) -> bool {
+    let Some([x, y]) = local_position else {
+        return false;
+    };
+    let [expected_x, expected_y] = expected;
+    (f32::from_bits(x) - expected_x).abs() <= 1.0e-4
+        && (f32::from_bits(y) - expected_y).abs() <= 1.0e-4
+}
+
 fn presentation(translation: f32, singular: bool) -> PresentationTransform {
     PresentationTransform::new(
         PresentationTranslation::new(translation, translation)
@@ -277,8 +286,8 @@ fn pointer_local_position_uses_retained_capture_geometry_and_rejects_singular_tr
             phase: PointerPhase::Down,
             callback_phase: EventPhase::Target,
             physical_target: true,
-            local_position: Some([x, y]),
-        } if *x == 2.0_f32.to_bits() && *y == 3.0_f32.to_bits()
+            local_position,
+        } if local_position_is(*local_position, [2.0, 3.0])
     )));
 
     observations.borrow_mut().clear();
@@ -311,8 +320,8 @@ fn pointer_local_position_uses_retained_capture_geometry_and_rejects_singular_tr
             phase: PointerPhase::Move,
             callback_phase: EventPhase::Target,
             physical_target: false,
-            local_position: Some([x, y]),
-        } if *x == 40.0_f32.to_bits() && *y == 40.0_f32.to_bits()
+            local_position,
+        } if local_position_is(*local_position, [40.0, 40.0])
     )));
 
     observations.borrow_mut().clear();
