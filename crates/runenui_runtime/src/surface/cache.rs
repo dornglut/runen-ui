@@ -360,16 +360,8 @@ impl SurfaceCache {
         if target == owner {
             return None;
         }
-        let target_position = self
-            .topology
-            .nodes
-            .iter()
-            .position(|node| &node.id == target)?;
-        let owner_position = self
-            .topology
-            .nodes
-            .iter()
-            .position(|node| &node.id == owner)?;
+        let target_position = self.topology.position(target)?;
+        let owner_position = self.topology.position(owner)?;
         let target_presentation = self.presentation.node(target_position);
         let owner_presentation = self.presentation.node(owner_position);
         let surface_to_owner = owner_presentation.owner_to_surface().inverse()?;
@@ -405,12 +397,7 @@ impl SurfaceCache {
         &self,
         target: &MountedNodeId,
     ) -> super::ScrollControlProjectionLookup {
-        let Some(position) = self
-            .topology
-            .nodes
-            .iter()
-            .position(|node| &node.id == target)
-        else {
+        let Some(position) = self.topology.position(target) else {
             return super::ScrollControlProjectionLookup::Unavailable;
         };
         let Some(projection) = self.scroll_controls.get(position) else {
@@ -441,9 +428,7 @@ impl SurfaceCache {
     ) -> Result<TextCaretMap, TextCaretMapError> {
         let position = self
             .topology
-            .nodes
-            .iter()
-            .position(|node| &node.id == owner)
+            .position(owner)
             .ok_or(TextCaretMapError::MissingLayout)?;
         self.layout
             .text_layouts
@@ -462,9 +447,7 @@ impl SurfaceCache {
     ) -> Result<LogicalRect, TextCaretMapError> {
         let position = self
             .topology
-            .nodes
-            .iter()
-            .position(|node| &node.id == owner)
+            .position(owner)
             .ok_or(TextCaretMapError::MissingLayout)?;
         let layout = self
             .layout
@@ -555,9 +538,7 @@ impl SurfaceCache {
         for (id, bounds) in geometry {
             let position = self
                 .topology
-                .nodes
-                .iter()
-                .position(|node| &node.id == id)
+                .position(id)
                 .unwrap_or_else(|| unreachable!("test geometry names a published node"));
             let current = presentation.nodes[position].clone();
             presentation.nodes[position] = PresentationNodeFacts::new(

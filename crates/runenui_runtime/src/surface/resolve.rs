@@ -32,6 +32,13 @@ use super::{
 #[derive(Clone, Debug)]
 pub(super) struct SurfaceTopologySnapshot {
     pub(super) nodes: Vec<SurfaceTopologyNode>,
+    positions: HashMap<MountedNodeId, usize>,
+}
+
+impl SurfaceTopologySnapshot {
+    pub(super) fn position(&self, id: &MountedNodeId) -> Option<usize> {
+        self.positions.get(id).copied()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -65,8 +72,13 @@ pub(super) fn collect_topology<Action>(
                 overflow: node.layout.overflow(),
             }
         })
+        .collect::<Vec<_>>();
+    let positions = nodes
+        .iter()
+        .enumerate()
+        .map(|(position, node)| (node.id.clone(), position))
         .collect();
-    SurfaceTopologySnapshot { nodes }
+    SurfaceTopologySnapshot { nodes, positions }
 }
 
 #[derive(Clone, Debug)]
@@ -335,7 +347,7 @@ pub(super) fn displayed_scroll_metrics(
     layout: &CachedLayoutFacts,
     owner: &MountedNodeId,
 ) -> Option<DisplayedScrollMetrics> {
-    let position = topology.nodes.iter().position(|node| &node.id == owner)?;
+    let position = topology.position(owner)?;
     displayed_scroll_metrics_at(topology, layout, owner, position)
 }
 
