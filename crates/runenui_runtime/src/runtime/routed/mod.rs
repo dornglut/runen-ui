@@ -89,10 +89,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 owner: None,
             });
         };
-        if published_binding != binding || !route.iter().any(|candidate| candidate == &owner) {
+        if published_binding != binding {
             return Err(ScrollControlResolutionFailure {
                 axis: Some(axis),
                 outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
+                owner: Some(owner),
+            });
+        }
+        if !route.iter().any(|candidate| candidate == &owner) {
+            return Err(ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: TraceScrollControlBindingOutcome::Stale,
                 owner: Some(owner),
             });
         }
@@ -101,7 +108,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .node(&owner)
             .ok_or_else(|| ScrollControlResolutionFailure {
                 axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
+                outcome: TraceScrollControlBindingOutcome::Stale,
                 owner: Some(owner.clone()),
             })?;
         let current_policy = match axis {
