@@ -55,6 +55,8 @@ impl<Action> MountedTree<Action> {
             .map(|node| MountedNodeRef {
                 automatic_scroll_focusable: eligibility
                     .automatic_scroll_focusability(&node.id, node.scroll_control_binding.is_some()),
+                scroll_chrome_participates: eligibility
+                    .scroll_chrome_participates(&node.id, node.scroll_chrome.is_some()),
                 node,
             })
             .collect();

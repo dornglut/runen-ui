@@ -888,6 +888,15 @@ impl SurfacePublicationState {
             .unwrap_or_default()
     }
 
+    pub(crate) fn current_scroll_chrome_participation(
+        &self,
+        target: &MountedNodeId,
+    ) -> Option<bool> {
+        self.cache
+            .as_ref()?
+            .current_scroll_chrome_participation(target)
+    }
+
     pub(crate) fn current_scroll_control_projection(
         &self,
         target: &MountedNodeId,

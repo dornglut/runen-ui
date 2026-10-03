@@ -13,14 +13,17 @@ use crate::{LogicalRect, MountedNodeId, mounted::MountedTree};
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct FocusEligibilityProjection {
     scrollable_controls: HashSet<MountedNodeId>,
+    nonparticipating_chrome: HashSet<MountedNodeId>,
 }
 
 impl FocusEligibilityProjection {
-    pub(crate) fn from_scrollable_controls(
-        controls: impl IntoIterator<Item = MountedNodeId>,
+    pub(crate) fn new(
+        scrollable_controls: impl IntoIterator<Item = MountedNodeId>,
+        nonparticipating_chrome: impl IntoIterator<Item = MountedNodeId>,
     ) -> Self {
         Self {
-            scrollable_controls: controls.into_iter().collect(),
+            scrollable_controls: scrollable_controls.into_iter().collect(),
+            nonparticipating_chrome: nonparticipating_chrome.into_iter().collect(),
         }
     }
 
@@ -31,6 +34,15 @@ impl FocusEligibilityProjection {
         has_scroll_binding: bool,
     ) -> Option<bool> {
         has_scroll_binding.then(|| self.scrollable_controls.contains(id))
+    }
+
+    #[must_use]
+    pub(crate) fn scroll_chrome_participates(
+        &self,
+        id: &MountedNodeId,
+        has_scroll_chrome: bool,
+    ) -> bool {
+        !has_scroll_chrome || !self.nonparticipating_chrome.contains(id)
     }
 }
 
@@ -236,10 +248,17 @@ pub fn is_focus_eligible<Action>(
     id: &MountedNodeId,
     eligibility: &FocusEligibilityProjection,
 ) -> bool {
-    let (focusability, has_scroll_binding) = match tree.node(id) {
-        Some(node) => (node.focusability, node.scroll_control_binding.is_some()),
+    let (focusability, has_scroll_binding, has_scroll_chrome) = match tree.node(id) {
+        Some(node) => (
+            node.focusability,
+            node.scroll_control_binding.is_some(),
+            node.scroll_chrome.is_some(),
+        ),
         None => return false,
     };
+    if !eligibility.scroll_chrome_participates(id, has_scroll_chrome) {
+        return false;
+    }
     let Ok(activation) = tree.activation(id) else {
         return false;
     };

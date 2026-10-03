@@ -85,17 +85,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .node(target)
             .and_then(|node| node.scroll_control_binding)
             .map(|_| {
-                self.resolve_scroll_control_context_snapshot(target)
-                    .is_some_and(|snapshot| snapshot.maximum_offset().get() > 0.0)
+                self.surface_publication
+                    .current_scroll_chrome_participation(target)
+                    != Some(false)
+                    && self
+                        .resolve_scroll_control_context_snapshot(target)
+                        .is_some_and(|snapshot| snapshot.maximum_offset().get() > 0.0)
             })
     }
 
     pub(crate) fn focus_eligibility_projection(&self) -> FocusEligibilityProjection {
-        FocusEligibilityProjection::from_scrollable_controls(
-            self.tree
-                .publication_preorder_ids()
-                .into_iter()
-                .filter(|id| self.current_automatic_scroll_focusability(id) == Some(true)),
+        let ids = self.tree.publication_preorder_ids();
+        FocusEligibilityProjection::new(
+            ids.iter()
+                .filter(|id| self.current_automatic_scroll_focusability(id) == Some(true))
+                .cloned(),
+            ids.into_iter().filter(|id| {
+                self.surface_publication
+                    .current_scroll_chrome_participation(id)
+                    == Some(false)
+            }),
         )
     }
 

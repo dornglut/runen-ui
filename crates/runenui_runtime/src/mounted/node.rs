@@ -75,6 +75,7 @@ impl<Action> fmt::Debug for MountedNode<Action> {
 pub struct MountedNodeRef<'a, Action> {
     pub(crate) node: &'a MountedNode<Action>,
     pub(crate) automatic_scroll_focusable: Option<bool>,
+    pub(crate) scroll_chrome_participates: bool,
 }
 
 impl<Action> Clone for MountedNodeRef<'_, Action> {
@@ -123,6 +124,9 @@ impl<'a, Action> MountedNodeRef<'a, Action> {
     }
     #[must_use]
     pub fn is_focusable(&self) -> bool {
+        if !self.scroll_chrome_participates {
+            return false;
+        }
         let Some(activation) = self.node.caches.activation.ready() else {
             return false;
         };

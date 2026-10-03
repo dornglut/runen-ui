@@ -479,6 +479,22 @@ impl SurfaceCache {
         Some((content_bounds, owner_layout.scroll_viewport_extent()))
     }
 
+    pub(crate) fn current_scroll_chrome_participation(
+        &self,
+        target: &MountedNodeId,
+    ) -> Option<bool> {
+        let position = self.topology.position(target)?;
+        self.topology.nodes.get(position)?.scroll_chrome?;
+        Some(
+            self.layout
+                .scroll_chrome
+                .get(position)
+                .copied()
+                .flatten()
+                .is_some_and(CachedScrollChromeProjection::present),
+        )
+    }
+
     pub(crate) fn current_scroll_control_projection(
         &self,
         target: &MountedNodeId,
