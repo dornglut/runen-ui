@@ -5,13 +5,19 @@ use runenui_core::{
 use super::super::Runtime;
 use crate::{
     MountedNodeId, TraceScrollControlBindingOutcome, mounted::DirtyPhases,
-    surface::ScrollControlBindingLookup,
+    surface::ScrollControlProjectionLookup,
 };
 
 pub(super) struct ResolvedScrollControl {
     pub(super) owner: MountedNodeId,
     pub(super) binding: ScrollControlBinding,
     pub(super) snapshot: ScrollControlSnapshot,
+}
+
+struct AcceptedScrollControlProjection {
+    owner: MountedNodeId,
+    binding: ScrollControlBinding,
+    snapshot: ScrollControlSnapshot,
 }
 
 pub(super) struct ScrollControlResolutionFailure {
@@ -37,6 +43,29 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &self,
         target: &MountedNodeId,
     ) -> Result<ResolvedScrollControl, ScrollControlResolutionFailure> {
+        let accepted = self.resolve_scroll_control_projection(target)?;
+        let snapshot =
+            self.resolve_scroll_control_snapshot(&accepted.owner, accepted.binding)?;
+        Ok(ResolvedScrollControl {
+            owner: accepted.owner,
+            binding: accepted.binding,
+            snapshot,
+        })
+    }
+
+    pub(super) fn resolve_scroll_control_context_snapshot(
+        &self,
+        target: &MountedNodeId,
+    ) -> Option<ScrollControlSnapshot> {
+        self.resolve_scroll_control_projection(target)
+            .ok()
+            .map(|projection| projection.snapshot)
+    }
+
+    fn resolve_scroll_control_projection(
+        &self,
+        target: &MountedNodeId,
+    ) -> Result<AcceptedScrollControlProjection, ScrollControlResolutionFailure> {
         let Some(binding) = self
             .tree
             .node(target)
@@ -56,20 +85,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             )
         })?;
         let current_owner = self.current_scroll_owner(&route, binding.axis());
-        let owner = self.resolve_published_scroll_owner(target, binding, current_owner.as_ref())?;
+        let projection = self.resolve_published_scroll_control_projection(
+            target,
+            binding,
+            current_owner.as_ref(),
+        )?;
         if self.scroll_control_metrics_are_stale() {
             return Err(scroll_control_failure(
                 binding.axis(),
-                Some(owner),
+                Some(projection.owner),
                 TraceScrollControlBindingOutcome::MetricsUnavailable,
             ));
         }
-        let snapshot = self.resolve_scroll_control_snapshot(&owner, binding)?;
-        Ok(ResolvedScrollControl {
-            owner,
-            binding,
-            snapshot,
-        })
+        Ok(projection)
     }
 
     fn scroll_control_metrics_are_stale(&self) -> bool {
@@ -92,25 +120,25 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         })
     }
 
-    fn resolve_published_scroll_owner(
+    fn resolve_published_scroll_control_projection(
         &self,
         target: &MountedNodeId,
         binding: ScrollControlBinding,
         current_owner: Option<&MountedNodeId>,
-    ) -> Result<MountedNodeId, ScrollControlResolutionFailure> {
+    ) -> Result<AcceptedScrollControlProjection, ScrollControlResolutionFailure> {
         let axis = binding.axis();
-        let (owner, published_binding) = match self
+        let (owner, published_binding, snapshot) = match self
             .surface_publication
-            .current_scroll_control_binding(target)
+            .current_scroll_control_projection(target)
         {
-            ScrollControlBindingLookup::Unavailable => {
+            ScrollControlProjectionLookup::Unavailable => {
                 return Err(scroll_control_failure(
                     axis,
                     None,
                     TraceScrollControlBindingOutcome::MetricsUnavailable,
                 ));
             }
-            ScrollControlBindingLookup::Unbound => {
+            ScrollControlProjectionLookup::Unbound => {
                 let outcome = if current_owner.is_some() {
                     TraceScrollControlBindingOutcome::MetricsUnavailable
                 } else {
@@ -118,7 +146,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 };
                 return Err(scroll_control_failure(axis, None, outcome));
             }
-            ScrollControlBindingLookup::Bound { owner, binding } => (owner, binding),
+            ScrollControlProjectionLookup::Bound {
+                owner,
+                binding,
+                snapshot,
+            } => (owner, binding, snapshot),
         };
         if published_binding != binding {
             return Err(scroll_control_failure(
@@ -138,7 +170,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Some(owner),
                 TraceScrollControlBindingOutcome::Stale,
             )),
-            Some(_) => Ok(owner),
+            Some(_) => Ok(AcceptedScrollControlProjection {
+                owner,
+                binding: published_binding,
+                snapshot,
+            }),
         }
     }
 
