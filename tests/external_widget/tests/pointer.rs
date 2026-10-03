@@ -241,7 +241,8 @@ fn downstream_widget_uses_public_pointer_capture_boundary_and_wheel_protocol() {
 }
 
 #[test]
-fn pointer_local_position_uses_exact_retained_transform_through_capture_and_fails_closed_when_singular() {
+fn pointer_local_position_uses_exact_retained_transform_through_capture_and_fails_closed_when_singular()
+{
     let observations = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<App>::mount(State {
         observations: Rc::clone(&observations),
@@ -259,8 +260,8 @@ fn pointer_local_position_uses_exact_retained_transform_through_capture_and_fail
         .publish_surface(&build)
         .unwrap_or_else(|_| unreachable!("translated pointer fixture publishes"));
     let retained_context = initial.input_context().clone();
-    let down = LogicalPoint::new(12.0, 13.0)
-        .unwrap_or_else(|_| unreachable!("fixture point is finite"));
+    let down =
+        LogicalPoint::new(12.0, 13.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
 
     runtime
         .submit_pointer(pointer_event(
@@ -294,8 +295,8 @@ fn pointer_local_position_uses_exact_retained_transform_through_capture_and_fail
         retained_context.coordinate_revision()
     );
 
-    let outside_old_hit = LogicalPoint::new(50.0, 50.0)
-        .unwrap_or_else(|_| unreachable!("fixture point is finite"));
+    let outside_old_hit =
+        LogicalPoint::new(50.0, 50.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
     runtime
         .submit_pointer(pointer_event(
             11,

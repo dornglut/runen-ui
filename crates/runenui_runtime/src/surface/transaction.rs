@@ -263,9 +263,7 @@ impl<'a> PlannedSurfacePublication<'a> {
         targets
     }
 
-    pub(crate) fn displayed_owner_transforms(
-        &self,
-    ) -> HashMap<MountedNodeId, LogicalTransform> {
+    pub(crate) fn displayed_owner_transforms(&self) -> HashMap<MountedNodeId, LogicalTransform> {
         self.cache
             .topology
             .nodes
