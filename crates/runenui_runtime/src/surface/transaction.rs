@@ -263,6 +263,23 @@ impl<'a> PlannedSurfacePublication<'a> {
         targets
     }
 
+    pub(crate) fn displayed_owner_transforms(
+        &self,
+    ) -> HashMap<MountedNodeId, LogicalTransform> {
+        self.cache
+            .topology
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(position, topology)| {
+                (
+                    topology.id.clone(),
+                    self.cache.presentation.node(position).owner_to_surface(),
+                )
+            })
+            .collect()
+    }
+
     pub(crate) fn displayed_scroll_metrics(
         &self,
     ) -> HashMap<MountedNodeId, DisplayedScrollMetrics> {

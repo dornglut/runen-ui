@@ -141,6 +141,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(TraceRoutedIntegrityFailure::CallbackBridgeFailure);
         }
         let scroll_control = self.routed_scroll_control_snapshot(current);
+        let pointer_local_position = pointer
+            .and_then(|_| event.as_pointer())
+            .and_then(|event| {
+                self.surface_publication.pointer_local_position_at(
+                    event.surface_context(),
+                    current,
+                    event.position(),
+                )
+            });
         let invocation = match pointer {
             Some(pointer) => self.tree.invoke_pointer_event(
                 current,
@@ -154,6 +163,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 pointer.pointer_id,
                 pointer.physical_target,
                 pointer.physical_path,
+                pointer_local_position,
                 scroll_control,
                 pointer.default_cancelable,
                 transaction.default_prevented,
