@@ -11,7 +11,9 @@ use runenui_text::{TextLayoutError, TextSystem};
 use crate::mounted::{DirtyPhases, SemanticReconcileError, SurfaceCapabilityPlan};
 use crate::style_debug::SurfaceStyleReport;
 
-use super::cache::{CachedLayoutFacts, TextEditingPaintInputs, context_key};
+use super::cache::{
+    CachedLayoutFacts, CachedScrollControlProjection, TextEditingPaintInputs, context_key,
+};
 use super::motion::{self, MotionPlanningFailure};
 use super::resolve::{
     EffectiveEffects, PaintResolutionInput, PresentationGeometryError, ResolvedSurfaceTree,
@@ -148,7 +150,7 @@ struct ContributionPhasePlan<'a> {
 fn resolve_contribution_phases<Action>(
     tree: &crate::mounted::MountedTree<Action>,
     current: &mut SurfaceCache,
-    scroll_controls: &[Option<runenui_core::ScrollControlSnapshot>],
+    scroll_controls: &[Option<CachedScrollControlProjection>],
     plan: ContributionPhasePlan<'_>,
 ) -> bool {
     let ContributionPhasePlan {
