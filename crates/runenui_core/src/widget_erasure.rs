@@ -7,7 +7,8 @@ use crate::{
     CommandOrigin, EditableContribution, ElementId, ElementKey, EventContext, EventPhase,
     ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope, Focusability, HitContribution,
     HitContributionContext, LayoutStyle, MonotonicInstant, MountedNodeId, PaintContribution,
-    PaintContributionContext, PointerId, ScrollControlBinding, SemanticContribution,
+    PaintContributionContext, PointerId, ScrollControlBinding, ScrollControlSnapshot,
+    SemanticContribution,
     SemanticContributionContext, ShortcutBinding, StyleIntent, SubscriptionSet, UiEvent,
     WidgetActivationContext, WidgetEventOutput, WidgetMountContext, WidgetUnmountContext,
     WidgetUpdateContext, WorkSequence,
@@ -347,6 +348,7 @@ impl<Action> MountedWidget<Action> {
         origin: CommandOrigin,
         sequence: WorkSequence,
         instant: MonotonicInstant,
+        scroll_control: Option<ScrollControlSnapshot>,
         default_cancelable: bool,
         default_prevented: bool,
         propagation_stopped: bool,
@@ -358,7 +360,7 @@ impl<Action> MountedWidget<Action> {
         ),
         WidgetBridgeError,
     > {
-        let context = EventContext::new(
+        let context = EventContext::new_with_scroll_control(
             phase,
             original_target,
             current_target,
@@ -367,6 +369,7 @@ impl<Action> MountedWidget<Action> {
             sequence,
             instant,
             event.as_drag_drop().copied(),
+            scroll_control,
             default_cancelable,
             default_prevented,
             propagation_stopped,
@@ -391,6 +394,7 @@ impl<Action> MountedWidget<Action> {
         pointer_id: PointerId,
         physical_target: Option<&MountedNodeId>,
         physical_path: &[MountedNodeId],
+        scroll_control: Option<ScrollControlSnapshot>,
         default_cancelable: bool,
         default_prevented: bool,
         propagation_stopped: bool,
@@ -402,7 +406,7 @@ impl<Action> MountedWidget<Action> {
         ),
         WidgetBridgeError,
     > {
-        let context = EventContext::new_pointer(
+        let context = EventContext::new_pointer_with_scroll_control(
             phase,
             original_target,
             current_target,
@@ -414,6 +418,7 @@ impl<Action> MountedWidget<Action> {
             pointer_id,
             physical_target,
             physical_path,
+            scroll_control,
             default_cancelable,
             default_prevented,
             propagation_stopped,
