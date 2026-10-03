@@ -160,7 +160,7 @@ fn resolve_contribution_phases<Action>(
         completed,
     } = plan;
     let paint_contexts = paint_contexts(&current.layout, &current.effective, scroll_controls);
-    let hit_contexts = hit_contexts(&current.layout);
+    let hit_contexts = hit_contexts(&current.layout, scroll_controls);
     tree.plan_surface_publication_contributions(capability_plan, &paint_contexts, &hit_contexts);
 
     let mut scene_diagnostics_changed = false;
@@ -550,7 +550,7 @@ fn plan_structural_surface<'tree, Action>(
     let presentation = resolve_presentation(&topology, &layout, &effective, &scroll)?;
 
     let paint_contexts = paint_contexts(&layout, &effective, &scroll_controls);
-    let hit_contexts = hit_contexts(&layout);
+    let hit_contexts = hit_contexts(&layout, &scroll_controls);
     tree.plan_surface_publication_contributions(
         &mut capability_plan,
         &paint_contexts,
