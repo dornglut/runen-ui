@@ -168,6 +168,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             ScrollControlRequest::SetNormalized(normalized) => {
                 maximum.mul_add(normalized.get(), -before)
             }
+            _ => {
+                self.record_scroll_control_binding(
+                    transaction,
+                    request,
+                    Some(axis),
+                    TraceScrollControlBindingOutcome::MetricsUnavailable,
+                    Some(&owner),
+                );
+                return;
+            }
         };
         let after = bounded_scroll_offset(before, offered, maximum);
         let offset = match axis {
