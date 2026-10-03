@@ -4,14 +4,15 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    Axis, ChildBearingWidget, CommandOrigin, Element, HitContribution, HitContributionContext,
+    Axis, ChildBearingWidget, CommandOrigin, Element, EventContext, HitContribution,
+    HitContributionContext,
     LayoutContainer, LayoutDimension, LayoutStyle, LogicalDelta, LogicalLength, LogicalPoint,
     LogicalRect, NoHostProtocol, OverflowPolicy, OverflowStyle, PaintContribution,
     PaintContributionContext, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
     ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot, ScrollNormalizedValue,
     SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
-    SemanticRole, StyleEnvironment, UiApp, View, Widget, WidgetMeasure, WidgetMeasureInput,
-    children, column, scroll_viewport,
+    SemanticRole, StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure,
+    WidgetMeasureInput, children, column, scroll_viewport,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits,
@@ -179,8 +180,10 @@ impl Widget<()> for Spacer {
 
 #[derive(Debug)]
 struct SnapshotProbe {
+    hit: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
     paint: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
     semantics: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
+    event: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
 }
 
 impl Widget<()> for SnapshotProbe {
@@ -190,6 +193,33 @@ impl Widget<()> for SnapshotProbe {
 
     fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::measured(length(20.0), length(100.0))
+    }
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        _: &UiEvent,
+        context: &mut EventContext<'_, ()>,
+    ) -> WidgetEventOutput {
+        if let Some(snapshot) = context.scroll_control_snapshot() {
+            self.event.borrow_mut().push(snapshot);
+        }
+        WidgetEventOutput::none()
+    }
+
+    fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
+        if let Some(snapshot) = context.scroll_control_snapshot() {
+            self.hit.borrow_mut().push(snapshot);
+        }
+        HitContribution::single_rect(
+            LogicalRect::try_new(
+                0.0,
+                0.0,
+                context.local_size().width(),
+                context.local_size().height(),
+            )
+            .unwrap_or_else(|_| unreachable!("bound-control hit bounds are finite")),
+        )
     }
 
     fn paint(&self, (): &Self::State, context: PaintContributionContext) -> PaintContribution {
@@ -221,8 +251,10 @@ enum BoundAction {
 struct BoundState {
     inner_height: f32,
     replaced: bool,
+    hit: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
     paint: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
     semantics: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
+    event: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
 }
 
 struct BoundApp;
@@ -236,8 +268,10 @@ impl UiApp for BoundApp {
         let binding = ScrollControlBinding::new(Axis::Vertical, length(5.0))
             .unwrap_or_else(|_| unreachable!("positive fixture step is valid"));
         let bound = Element::new(SnapshotProbe {
+            hit: Rc::clone(&state.hit),
             paint: Rc::clone(&state.paint),
             semantics: Rc::clone(&state.semantics),
+            event: Rc::clone(&state.event),
         })
         .id("bound")
         .key(if state.replaced {
@@ -290,8 +324,10 @@ fn bound_runtime() -> AppRuntime<BoundApp> {
         BoundState {
             inner_height: 30.0,
             replaced: false,
+            hit: Rc::new(RefCell::new(Vec::new())),
             paint: Rc::new(RefCell::new(Vec::new())),
             semantics: Rc::new(RefCell::new(Vec::new())),
+            event: Rc::new(RefCell::new(Vec::new())),
         },
         RuntimeConfig::default().with_trace_config(TraceConfig::new(1024)),
     )
@@ -342,8 +378,10 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
         .unwrap_or_else(|error| panic!("bound scroll surface publishes: {error:?}"));
     let bound = node_id(&mut runtime, "bound");
 
+    let hit = last_snapshot(&runtime.state().hit);
     let paint = last_snapshot(&runtime.state().paint);
     let semantics = last_snapshot(&runtime.state().semantics);
+    assert_eq!(hit, paint);
     assert_eq!(paint, semantics);
     assert_eq!(paint.axis(), Axis::Vertical);
     assert_eq!(paint.offset().get(), 0.0);
@@ -387,6 +425,9 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
         (0.0, 40.0),
         "queued request re-reads the resized viewport at processing time"
     );
+    let event = last_snapshot(&runtime.state().event);
+    assert_eq!(event.viewport_extent().get(), 40.0);
+    assert_eq!(event.maximum_offset().get(), 60.0);
     assert_eq!(
         scroll_offset(&mut runtime, "outer"),
         (0.0, 0.0),
@@ -588,8 +629,10 @@ fn scroll_control_trace_admission_rejects_before_scroll_mutation() {
         BoundState {
             inner_height: 30.0,
             replaced: false,
+            hit: Rc::new(RefCell::new(Vec::new())),
             paint: Rc::new(RefCell::new(Vec::new())),
             semantics: Rc::new(RefCell::new(Vec::new())),
+            event: Rc::new(RefCell::new(Vec::new())),
         },
         RuntimeConfig::default()
             .with_limits(limits)
