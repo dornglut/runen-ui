@@ -4,7 +4,8 @@ use crate::mounted::{
 };
 use crate::scene::{HitTestSceneContent, PaintScene};
 use crate::semantic_compositor::{
-    SemanticCandidate, SemanticCompositionDiagnostic, SemanticOwnerFacts, compose_semantics,
+    SemanticCandidate, SemanticCompositionDiagnostic, SemanticOwnerFacts,
+    SemanticScrollControlFacts, compose_semantics,
 };
 use crate::trace::StagedMotionTraceFact;
 use crate::{MountedNodeId, SemanticDiagnostic};
@@ -262,6 +263,21 @@ impl<'a> PlannedSurfacePublication<'a> {
         targets
     }
 
+    pub(crate) fn displayed_owner_transforms(&self) -> HashMap<MountedNodeId, LogicalTransform> {
+        self.cache
+            .topology
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(position, topology)| {
+                (
+                    topology.id.clone(),
+                    self.cache.presentation.node(position).owner_to_surface(),
+                )
+            })
+            .collect()
+    }
+
     pub(crate) fn displayed_scroll_metrics(
         &self,
     ) -> HashMap<MountedNodeId, DisplayedScrollMetrics> {
@@ -272,17 +288,21 @@ impl<'a> PlannedSurfacePublication<'a> {
             {
                 continue;
             }
-            let Some(layout) = self.cache.layout.bounds.get(position) else {
-                continue;
-            };
-            let Some(layout_node) = self.cache.layout.report.node(&topology.id) else {
+            let Some(layout_node) = self
+                .cache
+                .layout
+                .report
+                .nodes()
+                .get(position)
+                .filter(|layout_node| layout_node.id() == &topology.id)
+            else {
                 continue;
             };
             metrics.insert(
                 topology.id.clone(),
                 DisplayedScrollMetrics {
                     overflow: topology.overflow,
-                    viewport: layout.size(),
+                    viewport: layout_node.scroll_viewport_extent(),
                     content: layout_node.scrollable_extent(),
                 },
             );
@@ -307,6 +327,7 @@ impl<'a> PlannedSurfacePublication<'a> {
         if finalized.len() != expected
             || self.cache.layout.bounds.len() != expected
             || self.cache.presentation.nodes.len() != expected
+            || self.cache.scroll_controls.len() != expected
         {
             return Err(SurfacePlanningError::SemanticIntegrity);
         }
@@ -363,6 +384,12 @@ impl<'a> PlannedSurfacePublication<'a> {
                 bounds: presentation.visible_bounds(),
                 activation: semantic.activation,
                 focusability: semantic.focusability,
+                scroll_control: self.cache.scroll_controls[position]
+                    .as_ref()
+                    .map(|projection| SemanticScrollControlFacts {
+                        owner: projection.owner.clone(),
+                        snapshot: projection.snapshot,
+                    }),
                 editable_source,
                 editable_selection,
                 editable_caret_offsets,

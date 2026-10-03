@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use runenui_core::{DropShadow, SceneLayer, SceneOpacity};
 
 use crate::scene::{
@@ -106,19 +104,13 @@ struct CompositionEntries {
 }
 
 fn topology_parents(topology: &SurfaceTopologySnapshot) -> Vec<Option<usize>> {
-    let index_by_id = topology
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(index, node)| (node.id.clone(), index))
-        .collect::<HashMap<_, _>>();
     topology
         .nodes
         .iter()
         .map(|node| {
             node.parent
                 .as_ref()
-                .and_then(|parent| index_by_id.get(parent).copied())
+                .and_then(|parent| topology.position(parent))
         })
         .collect()
 }

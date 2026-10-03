@@ -453,13 +453,8 @@ pub(super) fn plan_surface_motion<Action>(
         let node = tree
             .node(&topology_node.id)
             .unwrap_or_else(|| unreachable!("motion topology remains live"));
-        let prior_position = previous_cache.and_then(|cache| {
-            cache
-                .topology
-                .nodes
-                .iter()
-                .position(|candidate| candidate.id == topology_node.id)
-        });
+        let prior_position =
+            previous_cache.and_then(|cache| cache.topology.position(&topology_node.id));
         let prior_computed = previous_cache.and_then(|cache| {
             prior_position.map(|prior| cache.effective.node(prior).computed_style())
         });

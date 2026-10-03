@@ -1,16 +1,22 @@
 use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
-    __runtime::transform_rect_aabb, ElementId, Focusability, LogicalRect, LogicalTransform,
-    MountedNodeId, SemanticAction, SemanticAutocomplete, SemanticBounds, SemanticCheckedState,
-    SemanticCollectionPosition, SemanticContribution, SemanticEditable, SemanticEditableMode,
-    SemanticHierarchyLevel, SemanticInvalidState, SemanticItem, SemanticKey,
-    SemanticNodeContribution, SemanticOrientation, SemanticPopupKind, SemanticPressedState,
-    SemanticRange, SemanticReference, SemanticRelationshipKind, SemanticRole,
+    __runtime::transform_rect_aabb, Axis, ElementId, Focusability, LogicalRect, LogicalTransform,
+    MountedNodeId, ScrollControlSnapshot, SemanticAction, SemanticAutocomplete, SemanticBounds,
+    SemanticCheckedState, SemanticCollectionPosition, SemanticContribution, SemanticEditable,
+    SemanticEditableMode, SemanticHierarchyLevel, SemanticInvalidState, SemanticItem, SemanticKey,
+    SemanticNodeContribution, SemanticNumber, SemanticOrientation, SemanticPopupKind,
+    SemanticPressedState, SemanticRange, SemanticReference, SemanticRelationshipKind, SemanticRole,
     SemanticSelectionMode, SemanticText, SemanticValue, WidgetActivation,
 };
 
 use crate::SemanticNodeId;
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct SemanticScrollControlFacts {
+    pub(crate) owner: MountedNodeId,
+    pub(crate) snapshot: ScrollControlSnapshot,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SemanticOwnerFacts {
@@ -22,6 +28,7 @@ pub struct SemanticOwnerFacts {
     pub bounds: LogicalRect,
     pub activation: WidgetActivation,
     pub focusability: Focusability,
+    pub(crate) scroll_control: Option<SemanticScrollControlFacts>,
     pub editable_source: Option<Arc<str>>,
     pub editable_selection: Option<runenui_core::TextSelection>,
     pub editable_caret_offsets: Option<Arc<[usize]>>,
@@ -104,6 +111,12 @@ pub enum SemanticCompositionDiagnostic {
         source: SemanticNodeId,
     },
     FocusedOwnerMissingVisiblePrimary,
+    MissingScrollControlBinding {
+        source: SemanticNodeId,
+    },
+    MissingScrollControlTarget {
+        source: SemanticNodeId,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -291,6 +304,11 @@ impl<'a> SemanticCompositor<'a> {
                 .push(SemanticCompositionDiagnostic::UnrepresentableBounds { source: id });
             return Vec::new();
         };
+        if authored.role() == SemanticRole::ScrollBar && owner.scroll_control.is_none() {
+            self.diagnostics
+                .push(SemanticCompositionDiagnostic::MissingScrollControlBinding { source: id });
+            return self.compose_items(owner_index, authored.children(), parent);
+        }
         let editable = authored.editable().cloned().and_then(|editable| {
             let source = owner.editable_source.as_deref()?;
             let selection = owner.editable_selection?;
@@ -298,6 +316,18 @@ impl<'a> SemanticCompositor<'a> {
             editable.__runtime_with_projection(source, selection, offsets)
         });
         let authored_editable = authored.editable().is_some();
+        let (range, orientation) = if authored.role() == SemanticRole::ScrollBar {
+            let scroll_control = owner
+                .scroll_control
+                .as_ref()
+                .unwrap_or_else(|| unreachable!("visible ScrollBar has a bound projection"));
+            (
+                Some(scrollbar_range(scroll_control.snapshot)),
+                Some(scrollbar_orientation(scroll_control.snapshot)),
+            )
+        } else {
+            (authored.range().cloned(), authored.orientation())
+        };
         let node = SemanticCandidateNode {
             id: id.clone(),
             parent: parent.cloned(),
@@ -331,8 +361,8 @@ impl<'a> SemanticCompositor<'a> {
                 .then(|| authored.text().cloned())
                 .flatten(),
             editable,
-            range: authored.range().cloned(),
-            orientation: authored.orientation(),
+            range,
+            orientation,
             popup: authored.popup(),
             selection_mode: authored.selection_mode(),
             collection_position: authored.collection_position(),
@@ -420,6 +450,35 @@ impl<'a> SemanticCompositor<'a> {
                         kind: relationship.kind(),
                         target,
                     });
+                }
+            }
+            if self.drafts[index].node.role == SemanticRole::ScrollBar {
+                match self
+                    .owner_index(&owner)
+                    .and_then(|owner_index| self.owners[owner_index].scroll_control.as_ref())
+                {
+                    Some(scroll_control) => {
+                        if let Some(target) = self
+                            .visible_id(&scroll_control.owner, &SemanticKey::PRIMARY)
+                            .cloned()
+                        {
+                            relationships.push(ResolvedSemanticRelationship {
+                                kind: SemanticRelationshipKind::Controls,
+                                target,
+                            });
+                        } else {
+                            self.diagnostics.push(
+                                SemanticCompositionDiagnostic::MissingScrollControlTarget {
+                                    source: source.clone(),
+                                },
+                            );
+                        }
+                    }
+                    None => self.diagnostics.push(
+                        SemanticCompositionDiagnostic::MissingScrollControlBinding {
+                            source: source.clone(),
+                        },
+                    ),
                 }
             }
             self.drafts[index].node.relationships = relationships;
@@ -582,7 +641,12 @@ fn supported_actions(
             SemanticAction::RequestFocus => {
                 authored.key().is_primary()
                     && match owner.focusability {
-                        Focusability::Automatic => owner.activation.is_actionable(),
+                        Focusability::Automatic => {
+                            owner.activation.is_actionable()
+                                && owner.scroll_control.as_ref().is_none_or(|projection| {
+                                    projection.snapshot.maximum_offset().get() > 0.0
+                                })
+                        }
                         Focusability::Focusable | Focusability::FocusableWhenDisabled => true,
                         _ => false,
                     }
@@ -620,7 +684,39 @@ fn supported_actions(
             _ => false,
         })
         .cloned()
+        .chain(
+            (authored.role() == SemanticRole::ScrollBar
+                && owner
+                    .scroll_control
+                    .as_ref()
+                    .is_some_and(|projection| projection.snapshot.maximum_offset().get() > 0.0))
+            .then_some([
+                SemanticAction::Increment,
+                SemanticAction::Decrement,
+                SemanticAction::SetValue,
+            ])
+            .into_iter()
+            .flatten(),
+        )
         .collect()
+}
+
+fn scrollbar_range(snapshot: ScrollControlSnapshot) -> SemanticRange {
+    let minimum = SemanticNumber::new(0.0)
+        .unwrap_or_else(|_| unreachable!("zero is a finite semantic number"));
+    let maximum = SemanticNumber::new(100.0)
+        .unwrap_or_else(|_| unreachable!("one hundred is a finite semantic number"));
+    let current = SemanticNumber::new(f64::from(snapshot.normalized_position().get()) * 100.0)
+        .unwrap_or_else(|_| unreachable!("normalized scroll percentage is finite"));
+    SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+        .unwrap_or_else(|_| unreachable!("normalized scroll percentage is within 0..=100"))
+}
+
+const fn scrollbar_orientation(snapshot: ScrollControlSnapshot) -> SemanticOrientation {
+    match snapshot.axis() {
+        Axis::Horizontal => SemanticOrientation::Horizontal,
+        Axis::Vertical => SemanticOrientation::Vertical,
+    }
 }
 
 fn resolve_bounds(
@@ -637,16 +733,17 @@ fn resolve_bounds(
 #[cfg(test)]
 mod tests {
     use runenui_core::{
-        __runtime::RuntimeNamespace, ElementId, Focusability, LogicalPoint, LogicalRect,
-        LogicalSize, LogicalTransform, SemanticAction, SemanticBounds, SemanticContribution,
-        SemanticItem, SemanticKey, SemanticNodeContribution, SemanticPopupKind, SemanticReference,
+        __runtime::RuntimeNamespace, Axis, ElementId, Focusability, LogicalPoint, LogicalRect,
+        LogicalSize, LogicalTransform, ScrollControlSnapshot, SemanticAction, SemanticBounds,
+        SemanticContribution, SemanticItem, SemanticKey, SemanticNodeContribution,
+        SemanticOrientation, SemanticPopupKind, SemanticRange, SemanticReference,
         SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
         WidgetActivation,
     };
 
     use super::{
         ResolvedSemanticRelationship, SemanticCandidate, SemanticCompositionDiagnostic,
-        SemanticOwnerFacts, compose_semantics,
+        SemanticOwnerFacts, SemanticScrollControlFacts, compose_semantics,
     };
 
     fn rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
@@ -655,6 +752,22 @@ mod tests {
             LogicalSize::try_new(width, height)
                 .unwrap_or_else(|_| unreachable!("test size is valid")),
         )
+    }
+
+    fn scroll_projection(
+        owner: runenui_core::MountedNodeId,
+        axis: Axis,
+        offset: f32,
+        viewport: f32,
+        content: f32,
+    ) -> SemanticScrollControlFacts {
+        SemanticScrollControlFacts {
+            owner,
+            snapshot: ScrollControlSnapshot::__runtime_from_metrics(
+                axis, offset, viewport, content,
+            )
+            .unwrap_or_else(|| unreachable!("controlled scroll projection is valid")),
+        }
     }
 
     fn key(value: &'static str) -> SemanticKey {
@@ -697,6 +810,7 @@ mod tests {
             bounds,
             activation: WidgetActivation::NONE,
             focusability: Focusability::NotFocusable,
+            scroll_control: None,
             editable_source: None,
             editable_selection: None,
             editable_caret_offsets: None,
@@ -740,6 +854,7 @@ mod tests {
                 bounds: rect(0.0, 0.0, 100.0, 100.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -757,6 +872,7 @@ mod tests {
                 bounds: rect(10.0, 20.0, 50.0, 40.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -772,6 +888,7 @@ mod tests {
                 bounds: rect(12.0, 22.0, 10.0, 5.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -821,6 +938,7 @@ mod tests {
                 bounds: rect(0.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -836,6 +954,7 @@ mod tests {
                 bounds: rect(1.0, 1.0, 5.0, 5.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -883,6 +1002,7 @@ mod tests {
             bounds: rect(10.0, 20.0, 30.0, 40.0),
             activation: WidgetActivation::disabled(),
             focusability: Focusability::Focusable,
+            scroll_control: None,
             editable_source: None,
             editable_selection: None,
             editable_caret_offsets: None,
@@ -923,6 +1043,7 @@ mod tests {
             bounds: rect(4.0, 10.0, 8.0, 12.0),
             activation: WidgetActivation::NONE,
             focusability: Focusability::NotFocusable,
+            scroll_control: None,
             editable_source: None,
             editable_selection: None,
             editable_caret_offsets: None,
@@ -974,6 +1095,7 @@ mod tests {
                 bounds: rect(0.0, 0.0, 100.0, 100.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -990,6 +1112,7 @@ mod tests {
                 bounds: rect(0.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::Focusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1005,6 +1128,7 @@ mod tests {
                 bounds: rect(30.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::Focusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1065,6 +1189,7 @@ mod tests {
                 bounds: rect(0.0, 0.0, 100.0, 100.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1081,6 +1206,7 @@ mod tests {
                 bounds: rect(0.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1097,6 +1223,7 @@ mod tests {
                 bounds: rect(30.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1156,6 +1283,7 @@ mod tests {
                 bounds: rect(0.0, 0.0, 100.0, 100.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1169,6 +1297,7 @@ mod tests {
                 bounds: rect(0.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::Focusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1185,6 +1314,7 @@ mod tests {
                 bounds: rect(0.0, 30.0, 60.0, 60.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1208,6 +1338,247 @@ mod tests {
                 kind: SemanticRelationshipKind::ActiveDescendant,
                 target: option_id,
             }
+        );
+    }
+
+    #[test]
+    fn scrollbar_semantics_are_derived_from_exact_bound_snapshot_and_owner() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let root = runtime.__runtime_mounted_id(0, 1);
+        let viewport = runtime.__runtime_mounted_id(1, 1);
+        let scrollbar_owner_id = runtime.__runtime_mounted_id(2, 1);
+        let viewport_id = runtime.__runtime_semantic_id(0, 1);
+        let scrollbar_id = runtime.__runtime_semantic_id(1, 1);
+
+        let root_owner = semantic_owner(
+            root.clone(),
+            None,
+            vec![viewport.clone(), scrollbar_owner_id.clone()],
+            SemanticContribution::empty(),
+            Vec::new(),
+            rect(0.0, 0.0, 100.0, 100.0),
+        );
+        let viewport_owner = semantic_owner(
+            viewport.clone(),
+            None,
+            Vec::new(),
+            SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::Group)),
+            vec![(SemanticKey::PRIMARY, viewport_id.clone())],
+            rect(0.0, 0.0, 80.0, 100.0),
+        );
+        let mut scrollbar_owner = semantic_owner(
+            scrollbar_owner_id,
+            None,
+            Vec::new(),
+            SemanticContribution::single(SemanticNodeContribution::primary(
+                SemanticRole::ScrollBar,
+            )),
+            vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
+            rect(80.0, 0.0, 20.0, 100.0),
+        );
+        scrollbar_owner.scroll_control = Some(scroll_projection(
+            viewport,
+            Axis::Vertical,
+            15.0,
+            40.0,
+            100.0,
+        ));
+
+        let candidate = compose(
+            &[root_owner, viewport_owner, scrollbar_owner],
+            Some(&root),
+            None,
+        );
+        assert!(candidate.diagnostics.is_empty());
+        let scrollbar = candidate
+            .nodes
+            .iter()
+            .find(|node| node.id == scrollbar_id)
+            .unwrap_or_else(|| unreachable!("scrollbar semantic node is published"));
+        assert_eq!(scrollbar.orientation, Some(SemanticOrientation::Vertical));
+        let range = scrollbar
+            .range
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("runtime publishes scrollbar range"));
+        assert_eq!(range.minimum().map(|value| value.get()), Some(0.0));
+        assert_eq!(range.maximum().map(|value| value.get()), Some(100.0));
+        assert_eq!(range.current().map(|value| value.get()), Some(25.0));
+        assert_eq!(
+            scrollbar.supported_actions,
+            vec![
+                SemanticAction::Increment,
+                SemanticAction::Decrement,
+                SemanticAction::SetValue,
+            ]
+        );
+        assert_eq!(
+            scrollbar.relationships,
+            vec![ResolvedSemanticRelationship {
+                kind: SemanticRelationshipKind::Controls,
+                target: viewport_id,
+            }]
+        );
+    }
+
+    #[test]
+    fn non_scrollable_scrollbar_withholds_runtime_mutable_actions() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let root = runtime.__runtime_mounted_id(0, 1);
+        let viewport = runtime.__runtime_mounted_id(1, 1);
+        let scrollbar_owner_id = runtime.__runtime_mounted_id(2, 1);
+        let viewport_id = runtime.__runtime_semantic_id(0, 1);
+        let scrollbar_id = runtime.__runtime_semantic_id(1, 1);
+
+        let root_owner = semantic_owner(
+            root.clone(),
+            None,
+            vec![viewport.clone(), scrollbar_owner_id.clone()],
+            SemanticContribution::empty(),
+            Vec::new(),
+            rect(0.0, 0.0, 100.0, 100.0),
+        );
+        let viewport_owner = semantic_owner(
+            viewport.clone(),
+            None,
+            Vec::new(),
+            SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::Group)),
+            vec![(SemanticKey::PRIMARY, viewport_id)],
+            rect(0.0, 0.0, 80.0, 100.0),
+        );
+        let mut scrollbar_owner = semantic_owner(
+            scrollbar_owner_id,
+            None,
+            Vec::new(),
+            SemanticContribution::single(SemanticNodeContribution::primary(
+                SemanticRole::ScrollBar,
+            )),
+            vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
+            rect(80.0, 0.0, 20.0, 100.0),
+        );
+        scrollbar_owner.scroll_control = Some(scroll_projection(
+            viewport,
+            Axis::Vertical,
+            0.0,
+            100.0,
+            100.0,
+        ));
+
+        let candidate = compose(
+            &[root_owner, viewport_owner, scrollbar_owner],
+            Some(&root),
+            None,
+        );
+        let scrollbar = candidate
+            .nodes
+            .iter()
+            .find(|node| node.id == scrollbar_id)
+            .unwrap_or_else(|| unreachable!("Always scrollbar semantics remain representable"));
+        assert!(scrollbar.supported_actions.is_empty());
+        assert_eq!(
+            scrollbar
+                .range
+                .as_ref()
+                .and_then(SemanticRange::current)
+                .map(|value| value.get()),
+            Some(0.0)
+        );
+    }
+
+    #[test]
+    fn scrollbar_without_bound_projection_is_diagnosed_and_withheld() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let root = runtime.__runtime_mounted_id(0, 1);
+        let scrollbar_owner_id = runtime.__runtime_mounted_id(1, 1);
+        let scrollbar_id = runtime.__runtime_semantic_id(0, 1);
+
+        let root_owner = semantic_owner(
+            root.clone(),
+            None,
+            vec![scrollbar_owner_id.clone()],
+            SemanticContribution::empty(),
+            Vec::new(),
+            rect(0.0, 0.0, 100.0, 100.0),
+        );
+        let scrollbar_owner = semantic_owner(
+            scrollbar_owner_id,
+            None,
+            Vec::new(),
+            SemanticContribution::single(SemanticNodeContribution::primary(
+                SemanticRole::ScrollBar,
+            )),
+            vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
+            rect(80.0, 0.0, 20.0, 100.0),
+        );
+
+        let candidate = compose(&[root_owner, scrollbar_owner], Some(&root), None);
+        assert!(candidate.nodes.is_empty());
+        assert_eq!(
+            candidate.diagnostics,
+            vec![SemanticCompositionDiagnostic::MissingScrollControlBinding {
+                source: scrollbar_id,
+            }]
+        );
+    }
+
+    #[test]
+    fn scrollbar_missing_bound_primary_is_diagnosed_and_controls_are_withheld() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let root = runtime.__runtime_mounted_id(0, 1);
+        let viewport = runtime.__runtime_mounted_id(1, 1);
+        let scrollbar_owner_id = runtime.__runtime_mounted_id(2, 1);
+        let scrollbar_id = runtime.__runtime_semantic_id(0, 1);
+
+        let root_owner = semantic_owner(
+            root.clone(),
+            None,
+            vec![viewport.clone(), scrollbar_owner_id.clone()],
+            SemanticContribution::empty(),
+            Vec::new(),
+            rect(0.0, 0.0, 100.0, 100.0),
+        );
+        let viewport_owner = semantic_owner(
+            viewport.clone(),
+            None,
+            Vec::new(),
+            SemanticContribution::empty(),
+            Vec::new(),
+            rect(0.0, 0.0, 80.0, 100.0),
+        );
+        let mut scrollbar_owner = semantic_owner(
+            scrollbar_owner_id,
+            None,
+            Vec::new(),
+            SemanticContribution::single(SemanticNodeContribution::primary(
+                SemanticRole::ScrollBar,
+            )),
+            vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
+            rect(80.0, 0.0, 20.0, 100.0),
+        );
+        scrollbar_owner.scroll_control = Some(scroll_projection(
+            viewport,
+            Axis::Vertical,
+            15.0,
+            40.0,
+            100.0,
+        ));
+
+        let candidate = compose(
+            &[root_owner, viewport_owner, scrollbar_owner],
+            Some(&root),
+            None,
+        );
+        let scrollbar = candidate
+            .nodes
+            .iter()
+            .find(|node| node.id == scrollbar_id)
+            .unwrap_or_else(|| unreachable!("bound scrollbar semantics remain published"));
+        assert!(scrollbar.relationships.is_empty());
+        assert!(scrollbar.range.is_some());
+        assert_eq!(
+            candidate.diagnostics,
+            vec![SemanticCompositionDiagnostic::MissingScrollControlTarget {
+                source: scrollbar_id,
+            }]
         );
     }
 
@@ -1335,6 +1706,7 @@ mod tests {
                 bounds: rect(0.0, 0.0, 100.0, 100.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1348,6 +1720,7 @@ mod tests {
                 bounds: rect(0.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::Focusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1364,6 +1737,7 @@ mod tests {
                 bounds: rect(0.0, 30.0, 60.0, 60.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1520,6 +1894,7 @@ mod tests {
                 bounds: rect(0.0, 0.0, 100.0, 100.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1533,6 +1908,7 @@ mod tests {
                 bounds: rect(0.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1548,6 +1924,7 @@ mod tests {
                 bounds: rect(30.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,
@@ -1563,6 +1940,7 @@ mod tests {
                 bounds: rect(60.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                scroll_control: None,
                 editable_source: None,
                 editable_selection: None,
                 editable_caret_offsets: None,

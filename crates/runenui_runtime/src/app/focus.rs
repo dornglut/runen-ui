@@ -5,7 +5,8 @@ use super::{AppRuntime, MountedTreeIndex, UiApp};
 impl<App: UiApp> AppRuntime<App> {
     #[must_use]
     pub fn index(&mut self) -> MountedTreeIndex<'_, App::Action> {
-        self.runtime.tree.index()
+        let eligibility = self.runtime.focus_eligibility_projection();
+        self.runtime.tree.index_with_focus_eligibility(&eligibility)
     }
 
     /// Returns the focused mounted owner's current host-neutral text-input capability.

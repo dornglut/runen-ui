@@ -97,6 +97,7 @@ pub enum SemanticRole {
     Image,
     ComboBox,
     Slider,
+    ScrollBar,
     Progress,
     SpinButton,
     ListBox,
@@ -1627,6 +1628,9 @@ fn validate_range_contract(
                 return missing_property(node, "range.current");
             }
         }
+        SemanticRole::ScrollBar if node.range().is_some() => {
+            return property_not_supported(node, "range");
+        }
         SemanticRole::Progress => {
             let range = required_range(node)?;
             if range.minimum().is_none() {
@@ -1764,6 +1768,13 @@ fn validate_relationship_contract(
     let mut has_controls = false;
     for relationship in node.relationships() {
         match relationship.kind() {
+            SemanticRelationshipKind::Controls if role == SemanticRole::ScrollBar => {
+                return Err(SemanticContributionError::RelationshipNotSupported {
+                    key: node.key().clone(),
+                    role,
+                    kind: relationship.kind(),
+                });
+            }
             SemanticRelationshipKind::ErrorMessage if !is_input_state_role(role) => {
                 return Err(SemanticContributionError::RelationshipNotSupported {
                     key: node.key().clone(),
@@ -1872,9 +1883,9 @@ mod tests {
         SemanticCheckedState, SemanticContribution, SemanticContributionContext,
         SemanticContributionError, SemanticEditable, SemanticEditableMode, SemanticItem,
         SemanticKey, SemanticNodeContribution, SemanticNumber, SemanticNumberError,
-        SemanticPopupKind, SemanticPressedState, SemanticRange, SemanticRangeError,
-        SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole,
-        SemanticSelectionMode, SemanticState,
+        SemanticOrientation, SemanticPopupKind, SemanticPressedState, SemanticRange,
+        SemanticRangeError, SemanticReference, SemanticRelationship, SemanticRelationshipKind,
+        SemanticRole, SemanticSelectionMode, SemanticState,
     };
     use crate::{
         TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,
@@ -2099,6 +2110,39 @@ mod tests {
                 .is_ok()
         );
 
+        let scrollbar = SemanticNodeContribution::primary(SemanticRole::ScrollBar);
+        assert!(
+            SemanticContribution::single(scrollbar)
+                .validate(context)
+                .is_ok()
+        );
+
+        let authored_scrollbar_range = SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+            .with_range(
+                SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+                    .unwrap_or_else(|_| unreachable!("controlled scrollbar range is valid")),
+            );
+        assert_eq!(
+            SemanticContribution::single(authored_scrollbar_range).validate(context),
+            Err(SemanticContributionError::PropertyNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::ScrollBar,
+                property: "range",
+            })
+        );
+
+        let authored_scrollbar_orientation =
+            SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+                .with_orientation(SemanticOrientation::Horizontal);
+        assert_eq!(
+            SemanticContribution::single(authored_scrollbar_orientation).validate(context),
+            Err(SemanticContributionError::PropertyNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::ScrollBar,
+                property: "orientation",
+            })
+        );
+
         let listbox = SemanticNodeContribution::primary(SemanticRole::ListBox)
             .with_selection_mode(SemanticSelectionMode::Multiple);
         assert!(
@@ -2157,6 +2201,28 @@ mod tests {
                     .is_ok()
             );
         }
+    }
+
+    #[test]
+    fn scrollbar_controls_relationship_is_runtime_derived_only() {
+        let context = SemanticContributionContext::default();
+        let target = SemanticKey::from_static("viewport")
+            .unwrap_or_else(|_| unreachable!("static test key is valid"));
+        let scrollbar = SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::Controls,
+                SemanticReference::Local(target.clone()),
+            ))
+            .with_child(SemanticNodeContribution::new(target, SemanticRole::Group));
+
+        assert_eq!(
+            SemanticContribution::single(scrollbar).validate(context),
+            Err(SemanticContributionError::RelationshipNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::ScrollBar,
+                kind: SemanticRelationshipKind::Controls,
+            })
+        );
     }
 
     #[test]

@@ -5,8 +5,8 @@ use std::{
 };
 
 use runenui_core::{
-    __runtime::RuntimeNamespace, MonotonicInstant, SurfaceId, SurfaceInputContext,
-    TextDocumentSnapshot,
+    __runtime::RuntimeNamespace, LogicalTransform, MonotonicInstant, SurfaceId,
+    SurfaceInputContext, TextDocumentSnapshot,
 };
 use runenui_text::{TextCaretMap, TextCaretMapError, TextLayoutError, TextSystem};
 
@@ -193,6 +193,7 @@ pub(in crate::runtime) struct StagedSurfacePublication<'a> {
     hit_test_scene: HitTestScene,
     displayed_text_targets: HashMap<MountedNodeId, DisplayedTextTarget>,
     displayed_scroll_metrics: HashMap<MountedNodeId, DisplayedScrollMetrics>,
+    displayed_owner_transforms: HashMap<MountedNodeId, LogicalTransform>,
     paint_publication: PaintPublication,
     allocated_paint_revision: Option<u64>,
     hit_test_generation: u64,
@@ -218,6 +219,7 @@ impl StagedSurfacePublication<'_> {
             hit_test_scene,
             displayed_text_targets,
             displayed_scroll_metrics,
+            displayed_owner_transforms,
             paint_publication,
             allocated_paint_revision,
             hit_test_generation,
@@ -231,6 +233,7 @@ impl StagedSurfacePublication<'_> {
             hit_test_scene,
             displayed_text_targets,
             displayed_scroll_metrics,
+            displayed_owner_transforms,
             paint_publication,
             allocated_paint_revision,
             hit_test_generation,
@@ -248,6 +251,7 @@ pub(in crate::runtime) struct AdmittedSurfacePublicationCommit {
     hit_test_scene: HitTestScene,
     displayed_text_targets: HashMap<MountedNodeId, DisplayedTextTarget>,
     displayed_scroll_metrics: HashMap<MountedNodeId, DisplayedScrollMetrics>,
+    displayed_owner_transforms: HashMap<MountedNodeId, LogicalTransform>,
     paint_publication: PaintPublication,
     allocated_paint_revision: Option<u64>,
     hit_test_generation: u64,
@@ -280,6 +284,7 @@ struct RetainedSurfaceSnapshot {
     scene: HitTestScene,
     text_targets: HashMap<MountedNodeId, DisplayedTextTarget>,
     scroll_metrics: HashMap<MountedNodeId, DisplayedScrollMetrics>,
+    owner_transforms: HashMap<MountedNodeId, LogicalTransform>,
 }
 
 impl RetainedSurfaceSnapshot {
@@ -410,6 +415,7 @@ impl SurfacePublicationState {
         #[cfg(feature = "internal-test-seams")]
         crate::surface::profile::record_displayed_text_targets(displayed_text_started.elapsed());
         let displayed_scroll_metrics = planned.displayed_scroll_metrics();
+        let displayed_owner_transforms = planned.displayed_owner_transforms();
         #[cfg(feature = "internal-test-seams")]
         let semantic_candidate_started = std::time::Instant::now();
         let semantic_candidate = planned.semantic_candidate(focused_owner, editing)?;
@@ -493,6 +499,7 @@ impl SurfacePublicationState {
             hit_test_scene,
             displayed_text_targets,
             displayed_scroll_metrics,
+            displayed_owner_transforms,
             paint_publication,
             allocated_paint_revision,
             hit_test_generation,
@@ -513,6 +520,7 @@ impl SurfacePublicationState {
             hit_test_scene,
             displayed_text_targets,
             displayed_scroll_metrics,
+            displayed_owner_transforms,
             paint_publication,
             allocated_paint_revision,
             hit_test_generation,
@@ -531,6 +539,7 @@ impl SurfacePublicationState {
             hit_test_scene.clone(),
             displayed_text_targets,
             displayed_scroll_metrics,
+            displayed_owner_transforms,
             hit_test_generation,
             coordinate_revision,
         );
@@ -548,6 +557,7 @@ impl SurfacePublicationState {
         scene: HitTestScene,
         text_targets: HashMap<MountedNodeId, DisplayedTextTarget>,
         scroll_metrics: HashMap<MountedNodeId, DisplayedScrollMetrics>,
+        owner_transforms: HashMap<MountedNodeId, LogicalTransform>,
         hit_test_generation: u64,
         coordinate_revision: u64,
     ) {
@@ -582,6 +592,7 @@ impl SurfacePublicationState {
             scene,
             text_targets,
             scroll_metrics,
+            owner_transforms,
         });
     }
 
@@ -753,6 +764,20 @@ impl SurfacePublicationState {
             .captured_drag_position(point)
     }
 
+    pub(in crate::runtime) fn pointer_local_position_at(
+        &self,
+        context: &SurfaceInputContext,
+        owner: &MountedNodeId,
+        point: LogicalPoint,
+    ) -> Option<LogicalPoint> {
+        let (snapshot, _) = self.validate_context(context).ok()?;
+        snapshot
+            .owner_transforms
+            .get(owner)?
+            .inverse()?
+            .transform_point(point)
+    }
+
     pub(crate) fn displayed_scroll_metrics(
         &self,
         hit_test_generation: u64,
@@ -861,6 +886,15 @@ impl SurfacePublicationState {
             .as_ref()
             .map(SurfaceCache::current_focus_geometry)
             .unwrap_or_default()
+    }
+
+    pub(crate) fn current_scroll_chrome_participation(
+        &self,
+        target: &MountedNodeId,
+    ) -> Option<bool> {
+        self.cache
+            .as_ref()?
+            .current_scroll_chrome_participation(target)
     }
 
     pub(crate) fn current_scroll_control_projection(
