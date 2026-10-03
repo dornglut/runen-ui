@@ -505,15 +505,15 @@ impl<Action> MountedWidget<Action> {
     }
 }
 
-pub(crate) struct ElementCompositionFields {
-    pub(crate) focus_group: Option<FocusGroup>,
-    pub(crate) focus_group_entry: FocusGroupEntry,
-    pub(crate) focus_group_search_text: Option<String>,
-    pub(crate) scroll_control_binding: Option<ScrollControlBinding>,
+pub(super) struct ElementCompositionFields {
+    focus_group: Option<FocusGroup>,
+    focus_group_entry: FocusGroupEntry,
+    focus_group_search_text: Option<String>,
+    scroll_control_binding: Option<ScrollControlBinding>,
 }
 
 impl ElementCompositionFields {
-    pub(crate) const fn new(
+    pub(super) const fn new(
         focus_group: Option<FocusGroup>,
         focus_group_entry: FocusGroupEntry,
         focus_group_search_text: Option<String>,
