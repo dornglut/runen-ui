@@ -12,8 +12,9 @@ use runenui_core::{
     __runtime::transform_rect_aabb, Axis, Color, ComputedStyle, ContributionClip, ElementId,
     HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
     LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
-    PaintContributionItem, Radius, SceneShape, ScrollChrome, ScrollControlSnapshot,
-    SemanticContributionContext, StyleEnvironment, StyleInteractionState, StyleResolution,
+    PaintContributionItem, Radius, SceneShape, ScrollBarLayout, ScrollChrome,
+    ScrollControlSnapshot, SemanticContributionContext, StyleEnvironment, StyleInteractionState,
+    StyleResolution,
     TextAffinity, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
     style_effects_between,
 };
@@ -403,6 +404,120 @@ pub(super) fn resolve_scroll_owner(
         ancestor = owner_topology.parent.as_ref();
     }
     Ok(None)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct ResolvedScrollBarChrome {
+    pub(super) position: usize,
+    pub(super) owner_position: usize,
+    pub(super) layout: ScrollBarLayout,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct ResolvedScrollThumbChrome {
+    pub(super) position: usize,
+    pub(super) owner_position: usize,
+    pub(super) axis: Axis,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct ResolvedScrollCornerChrome {
+    pub(super) position: usize,
+    pub(super) owner_position: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct ScrollChromeLayoutPlan {
+    pub(super) chrome_positions: Vec<bool>,
+    pub(super) bars: Vec<ResolvedScrollBarChrome>,
+    pub(super) thumbs: Vec<ResolvedScrollThumbChrome>,
+    pub(super) corners: Vec<ResolvedScrollCornerChrome>,
+}
+
+const fn axis_key(axis: Axis) -> u8 {
+    match axis {
+        Axis::Horizontal => 0,
+        Axis::Vertical => 1,
+    }
+}
+
+pub(super) fn resolve_scroll_chrome_layout_plan(
+    topology: &SurfaceTopologySnapshot,
+) -> Result<ScrollChromeLayoutPlan, PresentationGeometryError> {
+    let chrome_positions = topology
+        .nodes
+        .iter()
+        .map(|node| node.scroll_chrome.is_some())
+        .collect::<Vec<_>>();
+
+    let mut bar_candidates = Vec::new();
+    let mut owner_axis_counts = HashMap::<(usize, u8), usize>::new();
+    for (position, node) in topology.nodes.iter().enumerate() {
+        let Some(ScrollChrome::Bar(layout)) = node.scroll_chrome else {
+            continue;
+        };
+        let Some((_, owner_position)) =
+            resolve_scroll_owner(topology, &node.id, layout.axis())?
+        else {
+            continue;
+        };
+        *owner_axis_counts
+            .entry((owner_position, axis_key(layout.axis())))
+            .or_default() += 1;
+        bar_candidates.push(ResolvedScrollBarChrome {
+            position,
+            owner_position,
+            layout,
+        });
+    }
+    let bars = bar_candidates
+        .into_iter()
+        .filter(|bar| {
+            owner_axis_counts
+                .get(&(bar.owner_position, axis_key(bar.layout.axis())))
+                .copied()
+                == Some(1)
+        })
+        .collect::<Vec<_>>();
+
+    let mut thumbs = Vec::new();
+    let mut corners = Vec::new();
+    for (position, node) in topology.nodes.iter().enumerate() {
+        match node.scroll_chrome {
+            Some(ScrollChrome::Thumb(axis)) => {
+                if let Some((_, owner_position)) =
+                    resolve_scroll_owner(topology, &node.id, axis)?
+                {
+                    thumbs.push(ResolvedScrollThumbChrome {
+                        position,
+                        owner_position,
+                        axis,
+                    });
+                }
+            }
+            Some(ScrollChrome::Corner) => {
+                let horizontal = resolve_scroll_owner(topology, &node.id, Axis::Horizontal)?;
+                let vertical = resolve_scroll_owner(topology, &node.id, Axis::Vertical)?;
+                if let (Some((horizontal_owner, owner_position)), Some((vertical_owner, _))) =
+                    (horizontal, vertical)
+                    && horizontal_owner == vertical_owner
+                {
+                    corners.push(ResolvedScrollCornerChrome {
+                        position,
+                        owner_position,
+                    });
+                }
+            }
+            Some(ScrollChrome::Bar(_)) | None => {}
+        }
+    }
+
+    Ok(ScrollChromeLayoutPlan {
+        chrome_positions,
+        bars,
+        thumbs,
+        corners,
+    })
 }
 
 pub(super) fn scroll_control_projections<Action>(
