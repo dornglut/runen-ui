@@ -549,10 +549,7 @@ fn plan_structural_surface<'tree, Action>(
     report.record(SurfacePhase::Layout);
     let scroll = normalize_scroll_projection(&topology, &layout, scroll)?;
     let scroll_controls = Arc::new(scroll_control_projections(
-        tree,
-        &topology,
-        &layout,
-        &scroll,
+        tree, &topology, &layout, &scroll,
     )?);
     let semantic_contexts = semantic_contexts(&topology, scroll_controls.as_slice());
     let semantic_capability_plan =
