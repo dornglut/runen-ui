@@ -5,8 +5,8 @@ use std::{
 };
 
 use runenui_core::{
-    __runtime::RuntimeNamespace, MonotonicInstant, ScrollControlBinding, SurfaceId,
-    SurfaceInputContext, TextDocumentSnapshot,
+    __runtime::RuntimeNamespace, MonotonicInstant, SurfaceId, SurfaceInputContext,
+    TextDocumentSnapshot,
 };
 use runenui_text::{TextCaretMap, TextCaretMapError, TextLayoutError, TextSystem};
 
