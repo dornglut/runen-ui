@@ -389,13 +389,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
-    pub(crate) fn begin_routed_transaction(
-        &mut self,
-        facts: RoutedIngressFacts,
-    ) -> Option<RoutedTransaction<Action>> {
-        self.begin_routed_transaction_with_trace(facts, MandatoryTracePlan::none())
-    }
-
     pub(crate) fn begin_routed_transaction_with_trace(
         &mut self,
         facts: RoutedIngressFacts,
