@@ -8,10 +8,9 @@ use crate::{
     ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope, Focusability, HitContribution,
     HitContributionContext, LayoutStyle, MonotonicInstant, MountedNodeId, PaintContribution,
     PaintContributionContext, PointerId, ScrollControlBinding, ScrollControlSnapshot,
-    SemanticContribution,
-    SemanticContributionContext, ShortcutBinding, StyleIntent, SubscriptionSet, UiEvent,
-    WidgetActivationContext, WidgetEventOutput, WidgetMountContext, WidgetUnmountContext,
-    WidgetUpdateContext, WorkSequence,
+    SemanticContribution, SemanticContributionContext, ShortcutBinding, StyleIntent,
+    SubscriptionSet, UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetMountContext,
+    WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
 };
 use core::{any::Any, fmt};
 
