@@ -869,6 +869,71 @@ fn replaced_bound_target_is_rejected_without_retargeting() {
     )));
 }
 
+#[test]
+fn scroll_control_waiting_queue_pressure_rejects_before_callback_or_offset_mutation() {
+    const QUEUE_CAPACITY: usize = 16;
+    let limits = RuntimeLimits::default()
+        .with_waiting_envelopes(QUEUE_CAPACITY)
+        .with_transaction_outputs(1);
+    let mut runtime = AppRuntime::<BoundApp>::mount_with_config(
+        BoundState {
+            inner_height: 30.0,
+            inner_scrollable: true,
+            replaced: false,
+            hit: Rc::new(RefCell::new(Vec::new())),
+            paint: Rc::new(RefCell::new(Vec::new())),
+            semantics: Rc::new(RefCell::new(Vec::new())),
+            event: Rc::new(RefCell::new(Vec::new())),
+        },
+        RuntimeConfig::default()
+            .with_limits(limits)
+            .with_trace_config(TraceConfig::new(512)),
+    );
+    settle(&mut runtime);
+    let environment = StyleEnvironment::default();
+    runtime
+        .publish_surface(&bound_build(&environment))
+        .unwrap_or_else(|error| panic!("queue-pressure fixture publishes: {error:?}"));
+    let bound = node_id(&mut runtime, "bound");
+    runtime.state().event.borrow_mut().clear();
+
+    runtime
+        .submit_command(
+            bound,
+            SemanticCommand::ScrollControl(ScrollControlRequest::PageForward),
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("scroll-control command ingress is admitted"));
+    for _ in 0..(QUEUE_CAPACITY - 1) {
+        runtime
+            .submit_action(BoundAction::ResizeInner)
+            .unwrap_or_else(|_| unreachable!("filler action is admitted"));
+    }
+
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 0.0));
+    assert!(
+        runtime.state().event.borrow().is_empty(),
+        "routed admission rejects before the bound widget callback"
+    );
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::RoutedEventAdmissionRejected {
+            capacity: TraceRoutedAdmissionRejection::WaitingEnvelopes
+        }
+    )));
+    assert!(!runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::ScrollControlBindingEvaluated { .. }
+            | TraceRecordKind::LogicalScrollOwnerApplied { .. }
+    )));
+}
+
 #[cfg(feature = "internal-test-seams")]
 #[test]
 fn scroll_control_trace_admission_rejects_before_scroll_mutation() {
