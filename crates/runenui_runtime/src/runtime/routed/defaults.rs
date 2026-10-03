@@ -133,92 +133,31 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         transaction: &mut RoutedTransaction<Action>,
         request: ScrollControlRequest,
     ) {
-        let target = transaction.target.clone();
-        let Some(binding) = self
+        let resolved = match self.resolve_scroll_control(&transaction.target) {
+            Ok(resolved) => resolved,
+            Err(failure) => {
+                self.record_scroll_control_binding(
+                    transaction,
+                    request,
+                    failure.axis,
+                    failure.outcome,
+                    failure.owner.as_ref(),
+                );
+                return;
+            }
+        };
+        let owner = resolved.owner;
+        let binding = resolved.binding;
+        let snapshot = resolved.snapshot;
+        let axis = snapshot.axis();
+        let before = snapshot.offset().get();
+        let viewport = snapshot.viewport_extent().get();
+        let maximum = snapshot.maximum_offset().get();
+        let before_pair = self
             .tree
-            .node(&target)
-            .and_then(|node| node.scroll_control_binding)
-        else {
-            self.record_scroll_control_binding(
-                transaction,
-                request,
-                None,
-                TraceScrollControlBindingOutcome::MissingBinding,
-                None,
-            );
-            return;
-        };
-        let axis = binding.axis();
-
-        let resolved = transaction.route.iter().rev().skip(1).find_map(|owner| {
-            let node = self.tree.node(owner)?;
-            let authored_policy = match axis {
-                Axis::Horizontal => node.layout.overflow().horizontal(),
-                Axis::Vertical => node.layout.overflow().vertical(),
-            };
-            (authored_policy == OverflowPolicy::Scroll).then(|| owner.clone())
-        });
-
-        let Some(owner) = resolved else {
-            self.record_scroll_control_binding(
-                transaction,
-                request,
-                Some(axis),
-                TraceScrollControlBindingOutcome::NonScrollable,
-                None,
-            );
-            return;
-        };
-
-        let Some(metrics) = self.surface_publication.current_scroll_metrics(&owner) else {
-            self.record_scroll_control_binding(
-                transaction,
-                request,
-                Some(axis),
-                TraceScrollControlBindingOutcome::MetricsUnavailable,
-                Some(&owner),
-            );
-            return;
-        };
-        let metrics_policy = match axis {
-            Axis::Horizontal => metrics.overflow.horizontal(),
-            Axis::Vertical => metrics.overflow.vertical(),
-        };
-        if metrics_policy != OverflowPolicy::Scroll {
-            self.record_scroll_control_binding(
-                transaction,
-                request,
-                Some(axis),
-                TraceScrollControlBindingOutcome::MetricsUnavailable,
-                Some(&owner),
-            );
-            return;
-        }
-
-        let Some(node) = self.tree.node(&owner) else {
-            self.record_scroll_control_binding(
-                transaction,
-                request,
-                Some(axis),
-                TraceScrollControlBindingOutcome::MetricsUnavailable,
-                Some(&owner),
-            );
-            return;
-        };
-        let before_pair = node.interaction.scroll_offset;
-        let (before, viewport, content) = match axis {
-            Axis::Horizontal => (
-                before_pair.0,
-                metrics.viewport.width(),
-                metrics.content.width(),
-            ),
-            Axis::Vertical => (
-                before_pair.1,
-                metrics.viewport.height(),
-                metrics.content.height(),
-            ),
-        };
-        let maximum = (content - viewport).max(0.0);
+            .node(&owner)
+            .map(|node| node.interaction.scroll_offset)
+            .unwrap_or_else(|| unreachable!("resolved scroll owner remains live"));
         let offered = match request {
             ScrollControlRequest::SmallStepBackward => -binding.small_step().get(),
             ScrollControlRequest::SmallStepForward => binding.small_step().get(),
