@@ -620,7 +620,7 @@ impl<Action> MountedTree<Action> {
             );
             apply_retained_phase_changes(
                 node,
-                tree_metadata_changed || topology_overflow_changed || scroll_chrome_changed,
+                tree_metadata_changed || topology_overflow_changed,
                 style_changed,
                 timelines_changed,
             );

@@ -12,9 +12,8 @@ use runenui_core::{
     __runtime::transform_rect_aabb, Axis, Color, ComputedStyle, ContributionClip, ElementId,
     HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
     LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
-    PaintContributionItem, Radius, SceneShape, ScrollChrome, ScrollControlSnapshot,
-    SemanticContributionContext, StyleEnvironment, StyleInteractionState, StyleResolution,
-    TextAffinity, WidgetDiagnostic,
+    PaintContributionItem, Radius, SceneShape, ScrollControlSnapshot, SemanticContributionContext,
+    StyleEnvironment, StyleInteractionState, StyleResolution, TextAffinity, WidgetDiagnostic,
     WidgetTypeId, resolve_style_in_environment, style_effects_between,
 };
 use runenui_text::{ShapedTextLease, TextDisplaySelection, TextPreeditProjection, TextSystem};
@@ -43,7 +42,6 @@ pub(super) struct SurfaceTopologyNode {
     pub(super) widget_type_id: WidgetTypeId,
     pub(super) children: Vec<MountedNodeId>,
     pub(super) overflow: OverflowStyle,
-    pub(super) scroll_chrome: Option<ScrollChrome>,
 }
 
 pub(super) fn collect_topology<Action>(
@@ -65,7 +63,6 @@ pub(super) fn collect_topology<Action>(
                 widget_type_id: node.widget.widget_type_id(),
                 children: node.children.clone(),
                 overflow: node.layout.overflow(),
-                scroll_chrome: node.scroll_chrome,
             }
         })
         .collect();

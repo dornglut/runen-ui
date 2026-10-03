@@ -137,10 +137,6 @@ impl<'a, Action> MountedNodeRef<'a, Action> {
         self.node.focusability
     }
     #[must_use]
-    pub const fn scroll_chrome(&self) -> Option<ScrollChrome> {
-        self.node.scroll_chrome
-    }
-    #[must_use]
     pub const fn focus_scope(&self) -> Option<FocusScope> {
         self.node.focus_scope
     }
