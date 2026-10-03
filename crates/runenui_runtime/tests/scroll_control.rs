@@ -5,8 +5,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
     Axis, ChildBearingWidget, CommandOrigin, Element, EventContext, HitContribution,
-    HitContributionContext, LayoutContainer, LayoutDimension, LayoutStyle, LogicalDelta,
-    LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, OverflowPolicy, OverflowStyle,
+    HitContributionContext, KeyModifiers, LayoutContainer, LayoutDimension, LayoutStyle,
+    LogicalDelta, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, OverflowPolicy,
+    OverflowStyle,
     PaintContribution, PaintContributionContext, PointerButton, PointerButtons, PointerDeviceKind,
     PointerEvent, PointerId, PointerPhase, ScrollControlBinding, ScrollControlRequest,
     ScrollControlSnapshot, ScrollNormalizedValue, SemanticCommand, SemanticContribution,
@@ -225,6 +226,32 @@ fn standard_viewport_hits_blank_area_without_stealing_child_and_wheel_scrolls() 
         .unwrap_or_else(|error| panic!("blank-area wheel is admitted: {error:?}"));
     settle(&mut runtime);
     assert_eq!(scroll_offset(&mut runtime, "viewport"), (0.0, 12.0));
+
+    let publication = runtime
+        .publish_surface(&build)
+        .unwrap_or_else(|error| panic!("shift-wheel viewport republishes: {error:?}"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                PointerId::new(203).unwrap_or_else(|| unreachable!("pointer id is nonzero")),
+                PointerDeviceKind::Mouse,
+                PointerPhase::Wheel,
+                blank_point,
+                publication.input_context().clone(),
+            )
+            .with_modifiers(KeyModifiers::SHIFT)
+            .with_scroll_delta(
+                LogicalDelta::new(0.0, 5.0)
+                    .unwrap_or_else(|_| unreachable!("wheel delta is finite")),
+            ),
+        )
+        .unwrap_or_else(|error| panic!("shift-wheel is admitted: {error:?}"));
+    settle(&mut runtime);
+    assert_eq!(
+        scroll_offset(&mut runtime, "viewport"),
+        (0.0, 17.0),
+        "Scroll A preserves the accepted exact wheel axes and does not add Shift remapping"
+    );
 }
 
 #[test]
