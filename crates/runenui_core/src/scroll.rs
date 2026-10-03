@@ -29,7 +29,9 @@ pub struct ScrollControlBinding {
 impl ScrollControlBinding {
     /// Creates one checked axis binding.
     ///
-    /// Errors when the small step is zero.
+    /// # Errors
+    ///
+    /// Returns an error when the small step is zero.
     pub const fn new(
         axis: Axis,
         small_step: LogicalLength,
@@ -82,6 +84,11 @@ impl ScrollNormalizedValue {
     pub const ONE: Self = Self(1.0_f32.to_bits());
 
     /// Validates and canonicalizes a normalized value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for non-finite values or values outside the closed
+    /// [0, 1] interval.
     pub const fn new(value: f32) -> Result<Self, ScrollNormalizedError> {
         if value.is_nan() || value == f32::INFINITY || value == f32::NEG_INFINITY {
             Err(ScrollNormalizedError::NotFinite)
@@ -279,8 +286,12 @@ mod tests {
             ScrollNormalizedValue::new(0.5)
                 .unwrap_or_else(|_| unreachable!("half is a normalized value")),
         );
-        assert!(
-            matches!(request, ScrollControlRequest::SetNormalized(value) if value.get() == 0.5)
+        assert_eq!(
+            request,
+            ScrollControlRequest::SetNormalized(
+                ScrollNormalizedValue::new(0.5)
+                    .unwrap_or_else(|_| unreachable!("half is a normalized value")),
+            )
         );
         assert!(
             ScrollControlSnapshot::__runtime_from_metrics(Axis::Vertical, 11.0, 10.0, 20.0)
