@@ -2113,9 +2113,8 @@ mod tests {
                 .is_ok()
         );
 
-        let missing_scrollbar_range =
-            SemanticNodeContribution::primary(SemanticRole::ScrollBar)
-                .with_orientation(SemanticOrientation::Horizontal);
+        let missing_scrollbar_range = SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+            .with_orientation(SemanticOrientation::Horizontal);
         assert_eq!(
             SemanticContribution::single(missing_scrollbar_range).validate(context),
             Err(SemanticContributionError::MissingRequiredProperty {

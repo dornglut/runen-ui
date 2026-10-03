@@ -10,8 +10,8 @@ use crate::widget_mapping::MappedWidget;
 use crate::widget_protocol::Widget;
 use crate::{
     ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope, Focusability,
-    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, ScrollChrome, ScrollControlBinding,
-    StyleIntent,
+    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, ScrollChrome,
+    ScrollControlBinding, StyleIntent,
 };
 
 #[derive(Clone, Debug, PartialEq)]
