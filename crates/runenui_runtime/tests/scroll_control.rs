@@ -966,7 +966,7 @@ fn accepted_bound_owner_becoming_non_scrollable_fails_closed_without_outer_fallb
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::ScrollControlBindingEvaluated {
-            outcome: TraceScrollControlBindingOutcome::NonScrollable,
+            outcome: TraceScrollControlBindingOutcome::Stale,
             axis: Some(Axis::Vertical),
             ..
         }
