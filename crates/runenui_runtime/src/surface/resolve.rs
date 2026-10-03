@@ -23,7 +23,8 @@ use runenui_text::{ShapedTextLease, TextDisplaySelection, TextPreeditProjection,
 use super::{
     SurfaceInteractionProjection, SurfaceScrollProjection,
     cache::{
-        CachedLayoutFacts, CachedPresentationFacts, PresentationNodeFacts, TextEditingPaintInputs,
+        CachedLayoutFacts, CachedPresentationFacts, CachedScrollControlProjection,
+        PresentationNodeFacts, TextEditingPaintInputs,
     },
 };
 
@@ -311,7 +312,7 @@ impl ResolvedSurfaceNode {
 pub(super) fn paint_contexts(
     layout: &CachedLayoutFacts,
     effective: &CachedEffectiveFacts,
-    scroll_controls: &[Option<ScrollControlSnapshot>],
+    scroll_controls: &[Option<CachedScrollControlProjection>],
 ) -> Vec<PaintContributionContext> {
     debug_assert_eq!(layout.bounds.len(), scroll_controls.len());
     layout
@@ -323,18 +324,18 @@ pub(super) fn paint_contexts(
             PaintContributionContext::__runtime_with_scroll_control(
                 bounds.size(),
                 node.computed_style().clone(),
-                *scroll_control,
+                scroll_control.as_ref().map(|projection| projection.snapshot),
             )
         })
         .collect()
 }
 
-pub(super) fn scroll_control_snapshots<Action>(
+pub(super) fn scroll_control_projections<Action>(
     tree: &crate::mounted::MountedTree<Action>,
     topology: &SurfaceTopologySnapshot,
     layout: &CachedLayoutFacts,
     scroll: &SurfaceScrollProjection,
-) -> Result<Vec<Option<ScrollControlSnapshot>>, PresentationGeometryError> {
+) -> Result<Vec<Option<CachedScrollControlProjection>>, PresentationGeometryError> {
     if topology.nodes.len() != layout.bounds.len() {
         return Err(PresentationGeometryError);
     }
@@ -378,14 +379,18 @@ pub(super) fn scroll_control_snapshots<Action>(
                         Axis::Horizontal => (offset.0, viewport.width(), content.width()),
                         Axis::Vertical => (offset.1, viewport.height(), content.height()),
                     };
-                    return ScrollControlSnapshot::__runtime_from_metrics(
+                    let snapshot = ScrollControlSnapshot::__runtime_from_metrics(
                         binding.axis(),
                         offset,
                         viewport,
                         content,
                     )
-                    .map(Some)
-                    .ok_or(PresentationGeometryError);
+                    .ok_or(PresentationGeometryError)?;
+                    return Ok(Some(CachedScrollControlProjection {
+                        owner: owner.clone(),
+                        binding,
+                        snapshot,
+                    }));
                 }
                 ancestor = owner_topology.parent.as_ref();
             }
@@ -396,7 +401,7 @@ pub(super) fn scroll_control_snapshots<Action>(
 
 pub(super) fn semantic_contexts(
     topology: &SurfaceTopologySnapshot,
-    scroll_controls: &[Option<ScrollControlSnapshot>],
+    scroll_controls: &[Option<CachedScrollControlProjection>],
 ) -> Vec<SemanticContributionContext> {
     debug_assert_eq!(topology.nodes.len(), scroll_controls.len());
     topology
@@ -406,7 +411,7 @@ pub(super) fn semantic_contexts(
         .map(|(node, scroll_control)| {
             SemanticContributionContext::__runtime_with_scroll_control(
                 node.children.len(),
-                *scroll_control,
+                scroll_control.as_ref().map(|projection| projection.snapshot),
             )
         })
         .collect()
@@ -414,7 +419,7 @@ pub(super) fn semantic_contexts(
 
 pub(super) fn hit_contexts(
     layout: &CachedLayoutFacts,
-    scroll_controls: &[Option<ScrollControlSnapshot>],
+    scroll_controls: &[Option<CachedScrollControlProjection>],
 ) -> Vec<HitContributionContext> {
     debug_assert_eq!(layout.bounds.len(), scroll_controls.len());
     layout
@@ -422,7 +427,10 @@ pub(super) fn hit_contexts(
         .iter()
         .zip(scroll_controls)
         .map(|(bounds, scroll_control)| {
-            HitContributionContext::__runtime_with_scroll_control(bounds.size(), *scroll_control)
+            HitContributionContext::__runtime_with_scroll_control(
+                bounds.size(),
+                scroll_control.as_ref().map(|projection| projection.snapshot),
+            )
         })
         .collect()
 }
