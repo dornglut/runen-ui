@@ -529,6 +529,12 @@ pub(super) fn resolve_presentation(
         .zip(&topology.nodes)
         .enumerate()
     {
+        let layout_node = layout
+            .report
+            .nodes()
+            .get(position)
+            .filter(|layout_node| layout_node.id() == &topology_node.id)
+            .ok_or(PresentationGeometryError)?;
         let parent_position = topology_node
             .parent
             .as_ref()
@@ -590,7 +596,7 @@ pub(super) fn resolve_presentation(
         if topology_node.overflow.horizontal() == OverflowPolicy::Scroll
             || topology_node.overflow.vertical() == OverflowPolicy::Scroll
         {
-            let viewport = layout.report.nodes()[position].scroll_viewport_extent();
+            let viewport = layout_node.scroll_viewport_extent();
             let clip_rect = LogicalRect::try_new(0.0, 0.0, viewport.width(), viewport.height())
                 .unwrap_or_else(|_| unreachable!("published viewport extent is valid"));
             let clip_bounds = transform_rect_aabb(owner_to_surface, clip_rect)
