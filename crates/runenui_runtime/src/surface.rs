@@ -320,6 +320,7 @@ pub struct SurfaceLayoutNode {
     layout_extent: LogicalSize,
     content_extent: LogicalSize,
     scrollable_extent: LogicalSize,
+    scroll_viewport_extent: LogicalSize,
     overflow: LayoutOverflow,
     text_measurements: Vec<SurfaceTextMeasurementRecord>,
     diagnostics: Vec<WidgetDiagnostic>,
@@ -346,6 +347,7 @@ impl SurfaceLayoutNode {
             layout_extent: sizes[2],
             content_extent: sizes[0],
             scrollable_extent: sizes[0],
+            scroll_viewport_extent: sizes[2],
             overflow,
             text_measurements: Vec::new(),
             diagnostics: Vec::new(),
@@ -370,10 +372,12 @@ impl SurfaceLayoutNode {
         layout_extent: LogicalSize,
         content_extent: LogicalSize,
         scrollable_extent: LogicalSize,
+        scroll_viewport_extent: LogicalSize,
     ) -> Self {
         self.layout_extent = layout_extent;
         self.content_extent = content_extent;
         self.scrollable_extent = scrollable_extent;
+        self.scroll_viewport_extent = scroll_viewport_extent;
         self
     }
 
@@ -433,6 +437,14 @@ impl SurfaceLayoutNode {
     #[must_use]
     pub const fn scrollable_extent(&self) -> LogicalSize {
         self.scrollable_extent
+    }
+
+    /// Returns the exact scroll viewport extent used by scrolling, clipping and
+    /// bound scroll-control metrics. This may be smaller than the border-box
+    /// layout extent when reserved viewport chrome is present.
+    #[must_use]
+    pub const fn scroll_viewport_extent(&self) -> LogicalSize {
+        self.scroll_viewport_extent
     }
 
     #[must_use]

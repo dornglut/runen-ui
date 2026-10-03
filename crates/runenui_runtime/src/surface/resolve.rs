@@ -364,10 +364,14 @@ fn displayed_scroll_metrics_at(
     {
         return None;
     }
+    let layout_node = layout.report.nodes().get(position)?;
+    if layout_node.id() != owner {
+        return None;
+    }
     Some(DisplayedScrollMetrics {
         overflow: topology_node.overflow,
-        viewport: layout.bounds.get(position)?.size(),
-        content: layout.report.node(owner)?.scrollable_extent(),
+        viewport: layout_node.scroll_viewport_extent(),
+        content: layout_node.scrollable_extent(),
     })
 }
 
@@ -377,7 +381,9 @@ pub(super) fn scroll_control_projections<Action>(
     layout: &CachedLayoutFacts,
     scroll: &SurfaceScrollProjection,
 ) -> Result<Vec<Option<CachedScrollControlProjection>>, PresentationGeometryError> {
-    if topology.nodes.len() != layout.bounds.len() {
+    if topology.nodes.len() != layout.bounds.len()
+        || topology.nodes.len() != layout.report.nodes().len()
+    {
         return Err(PresentationGeometryError);
     }
     let positions = topology
@@ -500,7 +506,10 @@ pub(super) fn resolve_presentation(
     effective: &CachedEffectiveFacts,
     scroll: &SurfaceScrollProjection,
 ) -> Result<CachedPresentationFacts, PresentationGeometryError> {
-    if layout.bounds.len() != effective.nodes.len() || layout.bounds.len() != topology.nodes.len() {
+    if layout.bounds.len() != effective.nodes.len()
+        || layout.bounds.len() != topology.nodes.len()
+        || layout.report.nodes().len() != topology.nodes.len()
+    {
         return Err(PresentationGeometryError);
     }
     let positions = topology
@@ -513,11 +522,12 @@ pub(super) fn resolve_presentation(
     let mut child_offsets = Vec::with_capacity(layout.bounds.len());
     let mut child_clips = Vec::<Vec<SceneClip>>::with_capacity(layout.bounds.len());
     let mut child_clip_bounds = Vec::<Vec<LogicalRect>>::with_capacity(layout.bounds.len());
-    for ((bounds, effective), topology_node) in layout
+    for (position, ((bounds, effective), topology_node)) in layout
         .bounds
         .iter()
         .zip(&effective.nodes)
         .zip(&topology.nodes)
+        .enumerate()
     {
         let parent_position = topology_node
             .parent
@@ -580,7 +590,8 @@ pub(super) fn resolve_presentation(
         if topology_node.overflow.horizontal() == OverflowPolicy::Scroll
             || topology_node.overflow.vertical() == OverflowPolicy::Scroll
         {
-            let clip_rect = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
+            let viewport = layout.report.nodes()[position].scroll_viewport_extent();
+            let clip_rect = LogicalRect::try_new(0.0, 0.0, viewport.width(), viewport.height())
                 .unwrap_or_else(|_| unreachable!("published viewport extent is valid"));
             let clip_bounds = transform_rect_aabb(owner_to_surface, clip_rect)
                 .ok_or(PresentationGeometryError)?;
@@ -609,7 +620,9 @@ pub(super) fn normalize_scroll_projection(
     layout: &CachedLayoutFacts,
     scroll: &SurfaceScrollProjection,
 ) -> Result<SurfaceScrollProjection, PresentationGeometryError> {
-    if topology.nodes.len() != layout.bounds.len() {
+    if topology.nodes.len() != layout.bounds.len()
+        || topology.nodes.len() != layout.report.nodes().len()
+    {
         return Err(PresentationGeometryError);
     }
     let mut offsets = Vec::with_capacity(topology.nodes.len());
@@ -620,9 +633,11 @@ pub(super) fn normalize_scroll_projection(
         }
         let layout_node = layout
             .report
-            .node(&node.id)
+            .nodes()
+            .get(position)
+            .filter(|layout_node| layout_node.id() == &node.id)
             .ok_or(PresentationGeometryError)?;
-        let viewport = layout.bounds[position].size();
+        let viewport = layout_node.scroll_viewport_extent();
         let extent = layout_node.scrollable_extent();
         let max_x = (extent.width() - viewport.width()).max(0.0);
         let max_y = (extent.height() - viewport.height()).max(0.0);

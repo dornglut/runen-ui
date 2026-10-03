@@ -420,7 +420,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                     [desired_content, desired_outer, node_size],
                     overflow,
                 )
-                .with_extents(node_size, desired_content, scrollable_extent)
+                .with_extents(node_size, desired_content, scrollable_extent, node_size)
                 .with_text_measurements(std::mem::take(&mut self.text_measurements[index]))
                 .with_diagnostics(std::mem::take(&mut self.diagnostics[index])),
             );
