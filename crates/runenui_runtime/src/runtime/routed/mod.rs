@@ -18,6 +18,7 @@ use crate::{
     TraceRoutedIntegrityFailure, TraceScrollControlBindingOutcome, TraceSemanticActionRejection,
     TraceSequence,
     focus::focus_group_activation_policy,
+    mounted::DirtyPhases,
     queue::{ApplicationCommandEnvelope, SemanticCommandEnvelope},
     surface::ScrollControlBindingLookup,
     trace::{MandatoryTracePlan, TraceRecordDraft},
@@ -68,10 +69,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 owner: None,
             });
         };
-        let route = self
-            .tree
-            .event_route(target)
-            .map_err(|_| scroll_control_failure(binding.axis(), None, TraceScrollControlBindingOutcome::MetricsUnavailable))?;
+        if self.scroll_control_metrics_are_stale() {
+            return Err(scroll_control_failure(
+                binding.axis(),
+                None,
+                TraceScrollControlBindingOutcome::MetricsUnavailable,
+            ));
+        }
+        let route = self.tree.event_route(target).map_err(|_| {
+            scroll_control_failure(
+                binding.axis(),
+                None,
+                TraceScrollControlBindingOutcome::MetricsUnavailable,
+            )
+        })?;
         let current_owner = self.current_scroll_owner(&route, binding.axis());
         let owner = self.resolve_published_scroll_owner(target, binding, current_owner.as_ref())?;
         let snapshot = self.resolve_scroll_control_snapshot(&owner, binding)?;
@@ -80,6 +91,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             binding,
             snapshot,
         })
+    }
+
+    fn scroll_control_metrics_are_stale(&self) -> bool {
+        let pending = self.tree.pending_phases();
+        pending.contains(DirtyPhases::TREE)
+            || pending.contains(DirtyPhases::STYLE)
+            || pending.contains(DirtyPhases::LAYOUT)
+            || pending.contains(DirtyPhases::MOTION)
     }
 
     fn current_scroll_owner(&self, route: &[MountedNodeId], axis: Axis) -> Option<MountedNodeId> {
