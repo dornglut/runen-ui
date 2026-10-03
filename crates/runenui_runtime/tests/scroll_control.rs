@@ -670,10 +670,7 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
         .unwrap_or_else(|error| panic!("resized scroll surface publishes: {error:?}"));
     let accepted_snapshot = last_snapshot(&runtime.state().paint);
     assert_eq!(last_snapshot(&runtime.state().hit), accepted_snapshot);
-    assert_eq!(
-        last_snapshot(&runtime.state().semantics),
-        accepted_snapshot
-    );
+    assert_eq!(last_snapshot(&runtime.state().semantics), accepted_snapshot);
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
