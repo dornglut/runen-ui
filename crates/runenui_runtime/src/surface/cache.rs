@@ -1,6 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
-use runenui_core::{LogicalTransform, StyleEnvironment, TextDocumentSnapshot, WidgetDiagnostic};
+use runenui_core::{
+    LogicalTransform, ScrollControlBinding, ScrollControlSnapshot, StyleEnvironment,
+    TextDocumentSnapshot, WidgetDiagnostic,
+};
 use runenui_text::{
     FontSourceSnapshot, TextCaretMap, TextCaretMapError, TextDisplaySelection, TextLayoutState,
     TextPreeditProjection,
@@ -289,6 +292,14 @@ impl CachedPresentationFacts {
     }
 }
 
+/// Exact derived binding for one scroll-control owner in the accepted surface projection.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct CachedScrollControlProjection {
+    pub(super) owner: MountedNodeId,
+    pub(super) binding: ScrollControlBinding,
+    pub(super) snapshot: ScrollControlSnapshot,
+}
+
 /// Sole retained renderer/input-side publication substrate.
 ///
 /// Every phase product is immutable once retained. Non-structural planning
@@ -309,6 +320,9 @@ pub(crate) struct SurfaceCache {
     // Mounted logical scroll offsets consumed by the correlated presentation,
     // clip, physical-hit and semantic geometry products.
     pub(super) scroll: Arc<super::SurfaceScrollProjection>,
+    // Exact topology-aligned derived control -> scroll-owner bindings for this
+    // accepted surface projection. This is publication cache, never scroll state.
+    pub(super) scroll_controls: Arc<Vec<Option<CachedScrollControlProjection>>>,
     // Target style/provenance facts. Motion never rewrites these.
     pub(super) styles: Arc<CachedStyleFacts>,
     // Accepted effective style/layout values consumed by downstream phases.
@@ -383,6 +397,18 @@ impl SurfaceCache {
             content_bounds,
             self.layout.bounds.get(owner_position)?.size(),
         ))
+    }
+
+    pub(crate) fn current_scroll_control_projection(
+        &self,
+        target: &MountedNodeId,
+    ) -> Option<Option<&CachedScrollControlProjection>> {
+        let position = self
+            .topology
+            .nodes
+            .iter()
+            .position(|node| &node.id == target)?;
+        Some(self.scroll_controls.get(position)?.as_ref())
     }
 
     pub(crate) fn current_scroll_metrics(
@@ -497,6 +523,7 @@ impl SurfaceCache {
             interaction: Arc::clone(&self.interaction),
             text_editing: Arc::clone(&self.text_editing),
             scroll: Arc::clone(&self.scroll),
+            scroll_controls: Arc::clone(&self.scroll_controls),
             styles: Arc::clone(&self.styles),
             effective: Arc::clone(&self.effective),
             layout: Arc::clone(&self.layout),
