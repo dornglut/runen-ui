@@ -4,7 +4,8 @@ use crate::{
     ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandEvent, EventContext,
     EventPhase, FlexContainerStyle, FlexDirection, FocusGroup, FocusGroupActivationPolicy,
     FocusGroupBoundaryPolicy, Focusability, HitContribution, HitContributionContext,
-    LayoutContainer, LayoutStyle, LogicalLength, LogicalRect, LogicalSize, SemanticAction,
+    LayoutContainer, LayoutStyle, LogicalLength, LogicalRect, LogicalSize, OverflowStyle,
+    SemanticAction,
     SemanticCheckedState, SemanticCommand, SemanticCommandEvent, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
     SemanticText, ShortcutBinding, UiEvent, WidgetActivationContext, WidgetDiagnostic,
@@ -1153,6 +1154,82 @@ impl<Action: 'static> View<Action> for RadioGroup<Action> {
     }
 }
 
+pub struct ScrollViewport<Action> {
+    children: Vec<Element<Action>>,
+    common: CommonNodeAuthoring,
+}
+
+impl<Action> fmt::Debug for ScrollViewport<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ScrollViewport")
+            .field("children", &self.children)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("layout", &self.common.layout)
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
+            .field("diagnostics", &self.common.diagnostics)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<Action> ScrollViewport<Action> {
+    #[must_use]
+    pub fn new(children: impl Views<Action>, overflow: OverflowStyle) -> Self {
+        Self {
+            children: children.into_elements(),
+            common: CommonNodeAuthoring {
+                layout: LayoutStyle::default().with_overflow(overflow),
+                ..CommonNodeAuthoring::default()
+            },
+        }
+    }
+
+    common_node_builder_methods!();
+}
+
+#[derive(Debug)]
+struct ScrollViewportWidget;
+
+impl<Action> Widget<Action> for ScrollViewportWidget {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
+        HitContribution::single_rect(local_rect(context.local_size()))
+    }
+
+    fn semantics(
+        &self,
+        (): &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let mut node = SemanticNodeContribution::primary(SemanticRole::Group);
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
+        SemanticContribution::single(node)
+    }
+}
+
+impl<Action> ChildBearingWidget<Action> for ScrollViewportWidget {}
+
+impl<Action: 'static> View<Action> for ScrollViewport<Action> {
+    fn into_element(self) -> Element<Action> {
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(crate::Focusability::Automatic, None);
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(ScrollViewportWidget)),
+            self.children,
+            diagnostics,
+        )
+    }
+}
+
 pub struct Container<Action> {
     widget: Box<dyn ErasedWidget<Action>>,
     children: Vec<Element<Action>>,
@@ -1253,6 +1330,13 @@ pub fn text(content: impl Into<String>) -> Text {
 #[must_use]
 pub fn button<Action>(label: impl Into<String>) -> Button<Action> {
     Button::new(label)
+}
+#[must_use]
+pub fn scroll_viewport<Action>(
+    children: impl Views<Action>,
+    overflow: OverflowStyle,
+) -> ScrollViewport<Action> {
+    ScrollViewport::new(children, overflow)
 }
 #[must_use]
 pub fn container<Action, Implementation>(
