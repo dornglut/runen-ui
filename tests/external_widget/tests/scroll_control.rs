@@ -112,8 +112,9 @@ impl Widget<()> for ExternalScrollControl {
                 if !(0.0..=100.0).contains(&percentage) {
                     return WidgetEventOutput::none();
                 }
-                let normalized = ScrollNormalizedValue::new((percentage / 100.0) as f32)
-                    .unwrap_or_else(|_| unreachable!("checked percentage normalizes into [0, 1]"));
+                let Some(normalized) = normalized_scroll_percentage(percentage) else {
+                    return WidgetEventOutput::none();
+                };
                 ScrollControlRequest::SetNormalized(normalized)
             }
             _ => return WidgetEventOutput::none(),
@@ -165,6 +166,17 @@ impl Widget<()> for ExternalScrollControl {
                 .with_action(SemanticAction::RequestFocus),
         )
     }
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "the semantic percentage is range-checked to finite [0, 100] before normalization into the accepted f32 scroll protocol"
+)]
+fn normalized_scroll_percentage(percentage: f64) -> Option<ScrollNormalizedValue> {
+    if !(0.0..=100.0).contains(&percentage) {
+        return None;
+    }
+    ScrollNormalizedValue::new((percentage / 100.0) as f32).ok()
 }
 
 #[derive(Debug)]
@@ -326,6 +338,11 @@ fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_reques
     let _ = runtime
         .publish_surface(&build)
         .unwrap_or_else(|_| unreachable!("post-increment scroll fixture republishes"));
+    let republished = *observed
+        .borrow()
+        .last()
+        .unwrap_or_else(|| unreachable!("republished paint observes current scroll snapshot"));
+    assert_eq!(republished.offset().get(), 4.0);
 
     runtime
         .submit_command(
@@ -351,7 +368,7 @@ fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_reques
         .borrow()
         .last()
         .unwrap_or_else(|| unreachable!("downstream callback observed scroll snapshot"));
-    assert_eq!(event_snapshot, initial);
+    assert_eq!(event_snapshot, republished);
 
     assert_eq!(scroll_offset_for(&mut runtime, &viewport), (0.0, 30.0));
 }
