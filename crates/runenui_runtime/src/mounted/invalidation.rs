@@ -44,6 +44,7 @@ pub(crate) const fn publication_is_dirty(invalidation: WidgetInvalidation) -> bo
 
 pub(crate) fn invalidate_semantic_structure<Action>(node: &mut MountedNode<Action>) {
     node.caches.semantics = CachedSemanticContribution::Unresolved;
+    node.caches.semantic_context = None;
     node.dirty_phases.insert(DirtyPhases::SEMANTICS);
 }
 
