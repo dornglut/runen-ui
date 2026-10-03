@@ -144,6 +144,50 @@ impl ScrollControlSnapshot {
         }
     }
 
+    /// Derives one validated runtime snapshot from canonical axis metrics.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __runtime_from_metrics(
+        axis: Axis,
+        offset: f32,
+        viewport_extent: f32,
+        content_extent: f32,
+    ) -> Option<Self> {
+        if !offset.is_finite()
+            || !viewport_extent.is_finite()
+            || !content_extent.is_finite()
+            || offset < 0.0
+            || viewport_extent < 0.0
+            || content_extent < 0.0
+        {
+            return None;
+        }
+        let maximum = (content_extent - viewport_extent).max(0.0);
+        if !maximum.is_finite() {
+            return None;
+        }
+        let bounded_offset = offset.clamp(0.0, maximum);
+        let normalized_position = if maximum == 0.0 {
+            ScrollNormalizedValue::ZERO
+        } else {
+            ScrollNormalizedValue::new(bounded_offset / maximum).ok()?
+        };
+        let visible_fraction = if content_extent <= viewport_extent || content_extent == 0.0 {
+            ScrollNormalizedValue::ONE
+        } else {
+            ScrollNormalizedValue::new((viewport_extent / content_extent).clamp(0.0, 1.0)).ok()?
+        };
+        Some(Self::__runtime_new(
+            axis,
+            LogicalLength::new(bounded_offset).ok()?,
+            LogicalLength::new(maximum).ok()?,
+            LogicalLength::new(viewport_extent).ok()?,
+            LogicalLength::new(content_extent).ok()?,
+            normalized_position,
+            visible_fraction,
+        ))
+    }
+
     #[must_use]
     pub const fn axis(self) -> Axis {
         self.axis
