@@ -509,6 +509,7 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
                 }
             }
             Some(ScrollChrome::Bar(_)) | None => {}
+            Some(_) => {}
         }
     }
 

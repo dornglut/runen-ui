@@ -198,7 +198,9 @@ fn apply_scroll_chrome_geometry(
                 ScrollBarPlacement::Overlay => {
                     axis_has_positive_range(report.nodes().get(bar.owner_position), bar.layout.axis())
                 }
+                _ => false,
             },
+            _ => false,
         })
         .collect::<Vec<_>>();
 
@@ -310,6 +312,7 @@ fn bar_track_bounds(
             )
             .ok()
         }
+        _ => None,
     }
 }
 
