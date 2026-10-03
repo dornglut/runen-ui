@@ -28,7 +28,7 @@ fn dimension(value: f32) -> LayoutDimension {
     LayoutDimension::Length(length(value))
 }
 
-fn vertical_scroll() -> OverflowStyle {
+const fn vertical_scroll() -> OverflowStyle {
     OverflowStyle::new(OverflowPolicy::Clip, OverflowPolicy::Scroll)
 }
 
@@ -141,16 +141,20 @@ impl UiApp for ViewportApp {
     }
 }
 
+fn viewport_build(environment: &StyleEnvironment) -> SurfaceBuildContext<'_> {
+    SurfaceBuildContext::tight(
+        environment,
+        LogicalSize::try_new(40.0, 30.0)
+            .unwrap_or_else(|_| unreachable!("fixture surface is finite")),
+    )
+}
+
 #[test]
 fn standard_viewport_hits_blank_area_without_stealing_child_and_wheel_scrolls() {
     let mut runtime = AppRuntime::<ViewportApp>::mount(0);
     settle(&mut runtime);
     let environment = StyleEnvironment::default();
-    let build = SurfaceBuildContext::tight(
-        &environment,
-        LogicalSize::try_new(40.0, 30.0)
-            .unwrap_or_else(|_| unreachable!("fixture surface is finite")),
-    );
+    let build = viewport_build(&environment);
     let publication = runtime
         .publish_surface(&build)
         .unwrap_or_else(|error| panic!("scroll viewport publishes: {error:?}"));
@@ -261,11 +265,7 @@ fn blank_viewport_touch_pan_uses_the_existing_m10_scroll_gesture() {
     );
     settle(&mut runtime);
     let environment = StyleEnvironment::default();
-    let build = SurfaceBuildContext::tight(
-        &environment,
-        LogicalSize::try_new(40.0, 30.0)
-            .unwrap_or_else(|_| unreachable!("fixture surface is finite")),
-    );
+    let build = viewport_build(&environment);
     let publication = runtime
         .publish_surface(&build)
         .unwrap_or_else(|error| panic!("touch viewport publishes: {error:?}"));
@@ -504,7 +504,7 @@ fn bound_runtime() -> AppRuntime<BoundApp> {
     bound_runtime_with_scrollability(true)
 }
 
-fn bound_build<'a>(environment: &'a StyleEnvironment) -> SurfaceBuildContext<'a> {
+fn bound_build(environment: &StyleEnvironment) -> SurfaceBuildContext<'_> {
     SurfaceBuildContext::tight(
         environment,
         LogicalSize::try_new(40.0, 40.0)
@@ -539,16 +539,7 @@ fn last_snapshot(values: &Rc<RefCell<Vec<ScrollControlSnapshot>>>) -> ScrollCont
         .unwrap_or_else(|| unreachable!("fixture contribution observed a scroll snapshot"))
 }
 
-#[test]
-fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processing_metrics() {
-    let mut runtime = bound_runtime();
-    settle(&mut runtime);
-    let environment = StyleEnvironment::default();
-    runtime
-        .publish_surface(&bound_build(&environment))
-        .unwrap_or_else(|error| panic!("bound scroll surface publishes: {error:?}"));
-    let bound = node_id(&mut runtime, "bound");
-
+fn assert_initial_bound_snapshots(runtime: &AppRuntime<BoundApp>) {
     let hit = last_snapshot(&runtime.state().hit);
     let paint = last_snapshot(&runtime.state().paint);
     let semantics = last_snapshot(&runtime.state().semantics);
@@ -565,6 +556,91 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
         ScrollNormalizedValue::new(0.3)
             .unwrap_or_else(|_| unreachable!("fixture fraction is normalized"))
     );
+}
+
+fn exercise_bound_requests(runtime: &mut AppRuntime<BoundApp>, bound: &MountedNodeId) {
+    submit_scroll(runtime, bound.clone(), ScrollControlRequest::ToStart);
+    assert_eq!(scroll_offset(runtime, "inner"), (0.0, 0.0));
+    submit_scroll(
+        runtime,
+        bound.clone(),
+        ScrollControlRequest::SmallStepForward,
+    );
+    assert_eq!(scroll_offset(runtime, "inner"), (0.0, 5.0));
+    submit_scroll(
+        runtime,
+        bound.clone(),
+        ScrollControlRequest::SmallStepBackward,
+    );
+    assert_eq!(scroll_offset(runtime, "inner"), (0.0, 0.0));
+    submit_scroll(runtime, bound.clone(), ScrollControlRequest::ToEnd);
+    assert_eq!(scroll_offset(runtime, "inner"), (0.0, 60.0));
+    submit_scroll(
+        runtime,
+        bound.clone(),
+        ScrollControlRequest::SmallStepForward,
+    );
+    assert_eq!(scroll_offset(runtime, "inner"), (0.0, 60.0));
+    let clamped = runtime
+        .trace()
+        .records()
+        .filter(|record| matches!(record.kind(), TraceRecordKind::LogicalScrollOwnerApplied { .. }))
+        .last()
+        .unwrap_or_else(|| unreachable!("clamped request retains canonical owner trace"));
+    assert!(matches!(
+        clamped.kind(),
+        TraceRecordKind::LogicalScrollOwnerApplied {
+            offered,
+            consumed,
+            remainder,
+            ..
+        } if offered.y().to_bits() == 5.0_f32.to_bits()
+            && consumed.y().to_bits() == 0.0_f32.to_bits()
+            && remainder.y().to_bits() == 5.0_f32.to_bits()
+    ));
+    submit_scroll(
+        runtime,
+        bound.clone(),
+        ScrollControlRequest::SetNormalized(
+            ScrollNormalizedValue::new(0.5)
+                .unwrap_or_else(|_| unreachable!("half is normalized")),
+        ),
+    );
+    assert_eq!(scroll_offset(runtime, "inner"), (0.0, 30.0));
+    submit_scroll(runtime, bound.clone(), ScrollControlRequest::PageBackward);
+    assert_eq!(scroll_offset(runtime, "inner"), (0.0, 0.0));
+    submit_scroll(runtime, bound.clone(), ScrollControlRequest::PageForward);
+    assert_eq!(scroll_offset(runtime, "inner"), (0.0, 40.0));
+}
+
+fn assert_latest_bound_snapshots(runtime: &AppRuntime<BoundApp>) {
+    let latest = last_snapshot(&runtime.state().paint);
+    let latest_hit = last_snapshot(&runtime.state().hit);
+    let latest_semantics = last_snapshot(&runtime.state().semantics);
+    assert_eq!(latest_hit, latest);
+    assert_eq!(latest_semantics, latest);
+    assert_eq!(latest.offset().get(), 40.0);
+    assert_eq!(latest.maximum_offset().get(), 60.0);
+    assert_eq!(latest.viewport_extent().get(), 40.0);
+    assert_eq!(latest.content_extent().get(), 100.0);
+    assert_eq!(
+        latest.normalized_position(),
+        ScrollNormalizedValue::new(2.0 / 3.0)
+            .unwrap_or_else(|_| unreachable!("fixture position is normalized"))
+    );
+}
+
+#[test]
+fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processing_metrics() {
+    let mut runtime = bound_runtime();
+    settle(&mut runtime);
+    let environment = StyleEnvironment::default();
+    runtime
+        .publish_surface(&bound_build(&environment))
+        .unwrap_or_else(|error| panic!("bound scroll surface publishes: {error:?}"));
+    let bound = node_id(&mut runtime, "bound");
+
+    assert_initial_bound_snapshots(&runtime);
 
     runtime
         .submit_action(BoundAction::ResizeInner)
@@ -605,86 +681,12 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
         "nearest eligible ancestor owns the request"
     );
 
-    submit_scroll(&mut runtime, bound.clone(), ScrollControlRequest::ToStart);
-    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 0.0));
-    submit_scroll(
-        &mut runtime,
-        bound.clone(),
-        ScrollControlRequest::SmallStepForward,
-    );
-    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 5.0));
-    submit_scroll(
-        &mut runtime,
-        bound.clone(),
-        ScrollControlRequest::SmallStepBackward,
-    );
-    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 0.0));
-    submit_scroll(&mut runtime, bound.clone(), ScrollControlRequest::ToEnd);
-    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 60.0));
-    submit_scroll(
-        &mut runtime,
-        bound.clone(),
-        ScrollControlRequest::SmallStepForward,
-    );
-    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 60.0));
-    let clamped = runtime
-        .trace()
-        .records()
-        .filter(|record| {
-            matches!(
-                record.kind(),
-                TraceRecordKind::LogicalScrollOwnerApplied { .. }
-            )
-        })
-        .last()
-        .unwrap_or_else(|| {
-            unreachable!("clamped scroll request retains the canonical owner trace")
-        });
-    assert!(matches!(
-        clamped.kind(),
-        TraceRecordKind::LogicalScrollOwnerApplied {
-            offered,
-            consumed,
-            remainder,
-            ..
-        } if offered.y().to_bits() == 5.0_f32.to_bits()
-            && consumed.y().to_bits() == 0.0_f32.to_bits()
-            && remainder.y().to_bits() == 5.0_f32.to_bits()
-    ));
-    submit_scroll(
-        &mut runtime,
-        bound.clone(),
-        ScrollControlRequest::SetNormalized(
-            ScrollNormalizedValue::new(0.5).unwrap_or_else(|_| unreachable!("half is normalized")),
-        ),
-    );
-    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 30.0));
-    submit_scroll(
-        &mut runtime,
-        bound.clone(),
-        ScrollControlRequest::PageBackward,
-    );
-    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 0.0));
-    submit_scroll(&mut runtime, bound, ScrollControlRequest::PageForward);
-    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 40.0));
+    exercise_bound_requests(&mut runtime, &bound);
 
     runtime
         .publish_surface(&bound_build(&environment))
         .unwrap_or_else(|error| panic!("scrolled surface republishes: {error:?}"));
-    let latest = last_snapshot(&runtime.state().paint);
-    let latest_hit = last_snapshot(&runtime.state().hit);
-    let latest_semantics = last_snapshot(&runtime.state().semantics);
-    assert_eq!(latest_hit, latest);
-    assert_eq!(latest_semantics, latest);
-    assert_eq!(latest.offset().get(), 40.0);
-    assert_eq!(latest.maximum_offset().get(), 60.0);
-    assert_eq!(latest.viewport_extent().get(), 40.0);
-    assert_eq!(latest.content_extent().get(), 100.0);
-    assert_eq!(
-        latest.normalized_position(),
-        ScrollNormalizedValue::new(2.0 / 3.0)
-            .unwrap_or_else(|_| unreachable!("fixture position is normalized"))
-    );
+    assert_latest_bound_snapshots(&runtime);
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::ScrollControlBindingEvaluated {
