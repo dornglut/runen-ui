@@ -679,11 +679,24 @@ mod tests {
             .unwrap_or_else(|| unreachable!("mounted test tree has a root"))
     }
 
+    fn semantic_contexts(tree: &MountedTree<()>) -> Vec<SemanticContributionContext> {
+        tree.publication_preorder_ids()
+            .into_iter()
+            .map(|owner| {
+                let node = tree
+                    .node(&owner)
+                    .unwrap_or_else(|| unreachable!("semantic context owner remains mounted"));
+                SemanticContributionContext::__runtime_new(node.children.len())
+            })
+            .collect()
+    }
+
     fn publication_plans(
         tree: &MountedTree<()>,
     ) -> (SurfaceCapabilityPlan, SemanticCapabilityPlan) {
         let surface = tree.plan_surface_publication_capabilities(DirtyPhases::SEMANTICS);
-        let semantics = tree.plan_semantic_publication_capabilities(&surface);
+        let contexts = semantic_contexts(tree);
+        let semantics = tree.plan_semantic_publication_capabilities(&surface, &contexts);
         (surface, semantics)
     }
 
@@ -868,7 +881,9 @@ mod tests {
         let surface_plan = tree.plan_surface_publication_capabilities(DirtyPhases::SEMANTICS);
         assert_eq!(activation_callbacks.load(Ordering::SeqCst), 1);
 
-        let semantic_plan = tree.plan_semantic_publication_capabilities(&surface_plan);
+        let contexts = semantic_contexts(&tree);
+        let semantic_plan =
+            tree.plan_semantic_publication_capabilities(&surface_plan, &contexts);
         assert_eq!(activation_callbacks.load(Ordering::SeqCst), 1);
         let finalized = tree
             .finalize_semantic_publication(semantic_plan)
