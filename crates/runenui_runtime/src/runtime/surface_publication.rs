@@ -22,7 +22,7 @@ use crate::{
     },
     surface::{
         DisplayedScrollMetrics, DisplayedTextTarget, MotionPlanningFailure,
-        PlannedSurfacePublication, ScrollControlBindingLookup, SurfaceCache,
+        PlannedSurfacePublication, ScrollControlProjectionLookup, SurfaceCache,
         SurfaceInteractionProjection, SurfaceMotionActivity, SurfaceMotionStore,
         SurfacePlanningError, SurfacePublicationCommit, plan_mounted_surface_cached_with_text,
     },
@@ -863,14 +863,14 @@ impl SurfacePublicationState {
             .unwrap_or_default()
     }
 
-    pub(crate) fn current_scroll_control_binding(
+    pub(crate) fn current_scroll_control_projection(
         &self,
         target: &MountedNodeId,
-    ) -> ScrollControlBindingLookup {
+    ) -> ScrollControlProjectionLookup {
         self.cache
             .as_ref()
-            .map_or(ScrollControlBindingLookup::Unavailable, |cache| {
-                cache.current_scroll_control_binding(target)
+            .map_or(ScrollControlProjectionLookup::Unavailable, |cache| {
+                cache.current_scroll_control_projection(target)
             })
     }
 
