@@ -308,7 +308,7 @@ fn pointer_local_position_uses_retained_capture_geometry_and_rejects_singular_tr
     );
 
     let outside_old_hit =
-        LogicalPoint::new(60.0, 60.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
+        LogicalPoint::new(120.0, 120.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
     runtime
         .submit_pointer(pointer_event(
             11,
@@ -328,7 +328,7 @@ fn pointer_local_position_uses_retained_capture_geometry_and_rejects_singular_tr
                     callback_phase: EventPhase::Target,
                     physical_target: false,
                     local_position,
-                } if local_position_is(*local_position, [50.0, 50.0])
+                } if local_position_is(*local_position, [110.0, 110.0])
             )),
             "retained capture must use retained owner-local geometry: {observations:?}"
         );
