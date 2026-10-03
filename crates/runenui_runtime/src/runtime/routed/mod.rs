@@ -201,10 +201,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 | runenui_core::SemanticCommand::Cut
                 | runenui_core::SemanticCommand::Paste
         ));
-        let additional_trace = if matches!(
-            command,
-            runenui_core::SemanticCommand::ScrollControl(_)
-        ) {
+        let additional_trace = if matches!(command, runenui_core::SemanticCommand::ScrollControl(_))
+        {
             MandatoryTracePlan::one_fact()
         } else {
             MandatoryTracePlan::none()
