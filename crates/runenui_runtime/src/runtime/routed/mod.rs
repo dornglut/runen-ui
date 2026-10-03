@@ -6,15 +6,17 @@ mod failure;
 mod transaction;
 
 use runenui_core::{
-    ApplicationCommandDisposition, ApplicationCommandEvent, EventSource, HostProtocol,
-    InputModality, SemanticCommandEvent, UiEvent, WidgetInvalidation,
+    ApplicationCommandDisposition, ApplicationCommandEvent, Axis, EventSource, HostProtocol,
+    InputModality, OverflowPolicy, ScrollControlBinding, ScrollControlSnapshot,
+    SemanticCommandEvent, UiEvent, WidgetInvalidation,
 };
 
 use super::{Runtime, ingress::trace_semantic_action_rejection};
 use crate::{
     MonotonicInstant, MountedNodeId, TraceApplicationCommandOutcome, TraceContext,
     TraceEventContext, TraceEventFamily, TraceRecordKind, TraceRouteSnapshot,
-    TraceRoutedIntegrityFailure, TraceSemanticActionRejection, TraceSequence,
+    TraceRoutedIntegrityFailure, TraceScrollControlBindingOutcome, TraceSemanticActionRejection,
+    TraceSequence,
     focus::focus_group_activation_policy,
     queue::{ApplicationCommandEnvelope, SemanticCommandEnvelope},
     trace::{MandatoryTracePlan, TraceRecordDraft},
@@ -25,7 +27,109 @@ pub(crate) use transaction::{
     RoutedTransaction,
 };
 
+pub(super) struct ResolvedScrollControl {
+    pub(super) owner: MountedNodeId,
+    pub(super) binding: ScrollControlBinding,
+    pub(super) snapshot: ScrollControlSnapshot,
+}
+
+pub(super) struct ScrollControlResolutionFailure {
+    pub(super) axis: Option<Axis>,
+    pub(super) outcome: TraceScrollControlBindingOutcome,
+    pub(super) owner: Option<MountedNodeId>,
+}
+
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    pub(super) fn resolve_scroll_control(
+        &self,
+        target: &MountedNodeId,
+    ) -> Result<ResolvedScrollControl, ScrollControlResolutionFailure> {
+        let Some(binding) = self
+            .tree
+            .node(target)
+            .and_then(|node| node.scroll_control_binding)
+        else {
+            return Err(ScrollControlResolutionFailure {
+                axis: None,
+                outcome: TraceScrollControlBindingOutcome::MissingBinding,
+                owner: None,
+            });
+        };
+        let axis = binding.axis();
+        let route = self.tree.event_route(target).map_err(|_| ScrollControlResolutionFailure {
+            axis: Some(axis),
+            outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
+            owner: None,
+        })?;
+        let owner = route
+            .iter()
+            .rev()
+            .skip(1)
+            .find_map(|owner| {
+                let node = self.tree.node(owner)?;
+                let policy = match axis {
+                    Axis::Horizontal => node.layout.overflow().horizontal(),
+                    Axis::Vertical => node.layout.overflow().vertical(),
+                };
+                (policy == OverflowPolicy::Scroll).then(|| owner.clone())
+            })
+            .ok_or_else(|| ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: TraceScrollControlBindingOutcome::NonScrollable,
+                owner: None,
+            })?;
+        let metrics = self
+            .surface_publication
+            .current_scroll_metrics(&owner)
+            .ok_or_else(|| ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
+                owner: Some(owner.clone()),
+            })?;
+        let metrics_policy = match axis {
+            Axis::Horizontal => metrics.overflow.horizontal(),
+            Axis::Vertical => metrics.overflow.vertical(),
+        };
+        if metrics_policy != OverflowPolicy::Scroll {
+            return Err(ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
+                owner: Some(owner),
+            });
+        }
+        let node = self
+            .tree
+            .node(&owner)
+            .ok_or_else(|| ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
+                owner: Some(owner.clone()),
+            })?;
+        let (offset, viewport, content) = match axis {
+            Axis::Horizontal => (
+                node.interaction.scroll_offset.0,
+                metrics.viewport.width(),
+                metrics.content.width(),
+            ),
+            Axis::Vertical => (
+                node.interaction.scroll_offset.1,
+                metrics.viewport.height(),
+                metrics.content.height(),
+            ),
+        };
+        let snapshot = ScrollControlSnapshot::__runtime_from_metrics(axis, offset, viewport, content)
+            .ok_or_else(|| ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
+                owner: Some(owner.clone()),
+            })?;
+        Ok(ResolvedScrollControl {
+            owner,
+            binding,
+            snapshot,
+        })
+    }
+
     pub(crate) fn process_application_command(&mut self, envelope: ApplicationCommandEnvelope) {
         let ApplicationCommandEnvelope {
             sequence,
