@@ -13,8 +13,8 @@ use super::{
     transaction::RoutedTransaction,
 };
 use crate::{
-    MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure,
-    TraceScrollControlBindingOutcome, TraceSemanticActionRejection,
+    MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure, TraceScrollControlBindingOutcome,
+    TraceSemanticActionRejection,
 };
 
 const MAX_CLIPBOARD_BYTES: usize = 1_048_576;
@@ -150,19 +150,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let axis = binding.axis();
 
-        let resolved = transaction
-            .route
-            .iter()
-            .rev()
-            .skip(1)
-            .find_map(|owner| {
-                let node = self.tree.node(owner)?;
-                let authored_policy = match axis {
-                    Axis::Horizontal => node.layout.overflow().horizontal(),
-                    Axis::Vertical => node.layout.overflow().vertical(),
-                };
-                (authored_policy == OverflowPolicy::Scroll).then(|| owner.clone())
-            });
+        let resolved = transaction.route.iter().rev().skip(1).find_map(|owner| {
+            let node = self.tree.node(owner)?;
+            let authored_policy = match axis {
+                Axis::Horizontal => node.layout.overflow().horizontal(),
+                Axis::Vertical => node.layout.overflow().vertical(),
+            };
+            (authored_policy == OverflowPolicy::Scroll).then(|| owner.clone())
+        });
 
         let Some(owner) = resolved else {
             self.record_scroll_control_binding(
