@@ -230,6 +230,18 @@ fn resolve_layout_phase<Action>(
     })
 }
 
+fn semantic_participation(
+    topology: &super::resolve::SurfaceTopologySnapshot,
+    layout: &CachedLayoutFacts,
+) -> Vec<bool> {
+    topology
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(position, _)| scroll_chrome_participates(topology, layout, position))
+        .collect()
+}
+
 fn resolve_style_phase_if_dirty<Action>(
     tree: &crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
@@ -443,8 +455,14 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     )?);
     current.scroll_controls = Arc::clone(&scroll_controls);
     let semantic_contexts = semantic_contexts(&current.topology, scroll_controls.as_slice());
-    let semantic_capability_plan = semantic_dirty
-        .then(|| tree.plan_semantic_publication_capabilities(&capability_plan, &semantic_contexts));
+    let semantic_participation = semantic_participation(&current.topology, &current.layout);
+    let semantic_capability_plan = semantic_dirty.then(|| {
+        tree.plan_semantic_publication_capabilities(
+            &capability_plan,
+            &semantic_contexts,
+            &semantic_participation,
+        )
+    });
     if presentation_dirty {
         current.presentation = Arc::new(resolve_presentation(
             &current.topology,
@@ -566,8 +584,12 @@ fn plan_structural_surface<'tree, Action>(
         tree, &topology, &layout, &scroll,
     )?);
     let semantic_contexts = semantic_contexts(&topology, scroll_controls.as_slice());
-    let semantic_capability_plan =
-        tree.plan_semantic_publication_capabilities(&capability_plan, &semantic_contexts);
+    let semantic_participation = semantic_participation(&topology, &layout);
+    let semantic_capability_plan = tree.plan_semantic_publication_capabilities(
+        &capability_plan,
+        &semantic_contexts,
+        &semantic_participation,
+    );
     let presentation = resolve_presentation(&topology, &layout, &effective, &scroll)?;
 
     let paint_contexts = paint_contexts(&layout, &effective, scroll_controls.as_slice());
