@@ -4,8 +4,9 @@ use core::{fmt, future::Future};
 
 use crate::{
     ApplicationCommandDisposition, ApplicationCommandId, CommandOrigin, DragDropEvent,
-    DragDropPhase, EventPhase, MonotonicInstant, MountedNodeId, PointerId, SemanticCommand,
-    SendTaskStartFailure, TimerEffect, WidgetInvalidation, WorkFamily, WorkKey, WorkSequence,
+    DragDropPhase, EventPhase, MonotonicInstant, MountedNodeId, PointerId, ScrollControlSnapshot,
+    SemanticCommand, SendTaskStartFailure, TimerEffect, WidgetInvalidation, WorkFamily, WorkKey,
+    WorkSequence,
     effects::MountedEffect, widget_context::WidgetWorkCollector,
 };
 
@@ -77,6 +78,7 @@ pub struct EventContext<'a, Action> {
     pointer_id: Option<PointerId>,
     physical_target: Option<&'a MountedNodeId>,
     physical_path: &'a [MountedNodeId],
+    scroll_control: Option<ScrollControlSnapshot>,
     pointer_capture: Vec<PointerCaptureRequest>,
     default_cancelable: bool,
     default_prevented: bool,
@@ -181,6 +183,12 @@ impl<'a, Action> EventContext<'a, Action> {
     #[must_use]
     pub const fn physical_path(&self) -> &[MountedNodeId] {
         self.physical_path
+    }
+
+    /// Returns the runtime-derived bound scroll snapshot for the current routed node.
+    #[must_use]
+    pub const fn scroll_control_snapshot(&self) -> Option<ScrollControlSnapshot> {
+        self.scroll_control
     }
 
     #[must_use]
@@ -382,6 +390,7 @@ impl<'a, Action> EventContext<'a, Action> {
             self.pointer_id,
             self.physical_target,
             self.physical_path,
+            self.scroll_control,
             self.default_cancelable,
             self.default_prevented,
             self.propagation_stopped,
@@ -464,6 +473,44 @@ impl<'a, Action> EventContext<'a, Action> {
             None,
             None,
             &[],
+            None,
+            default_cancelable,
+            default_prevented,
+            propagation_stopped,
+            output_allowance,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[must_use]
+    pub(crate) const fn new_with_scroll_control(
+        phase: EventPhase,
+        original_target: &'a MountedNodeId,
+        current_target: &'a MountedNodeId,
+        related_target: Option<&'a MountedNodeId>,
+        origin: CommandOrigin,
+        sequence: WorkSequence,
+        instant: MonotonicInstant,
+        drag_drop: Option<DragDropEvent>,
+        scroll_control: Option<ScrollControlSnapshot>,
+        default_cancelable: bool,
+        default_prevented: bool,
+        propagation_stopped: bool,
+        output_allowance: usize,
+    ) -> Self {
+        Self::new_with_pointer_facts(
+            phase,
+            original_target,
+            current_target,
+            related_target,
+            origin,
+            sequence,
+            instant,
+            drag_drop,
+            None,
+            None,
+            &[],
+            scroll_control,
             default_cancelable,
             default_prevented,
             propagation_stopped,
@@ -502,6 +549,47 @@ impl<'a, Action> EventContext<'a, Action> {
             Some(pointer_id),
             physical_target,
             physical_path,
+            None,
+            default_cancelable,
+            default_prevented,
+            propagation_stopped,
+            output_allowance,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[must_use]
+    pub(crate) const fn new_pointer_with_scroll_control(
+        phase: EventPhase,
+        original_target: &'a MountedNodeId,
+        current_target: &'a MountedNodeId,
+        related_target: Option<&'a MountedNodeId>,
+        origin: CommandOrigin,
+        sequence: WorkSequence,
+        instant: MonotonicInstant,
+        drag_drop: Option<DragDropEvent>,
+        pointer_id: PointerId,
+        physical_target: Option<&'a MountedNodeId>,
+        physical_path: &'a [MountedNodeId],
+        scroll_control: Option<ScrollControlSnapshot>,
+        default_cancelable: bool,
+        default_prevented: bool,
+        propagation_stopped: bool,
+        output_allowance: usize,
+    ) -> Self {
+        Self::new_with_pointer_facts(
+            phase,
+            original_target,
+            current_target,
+            related_target,
+            origin,
+            sequence,
+            instant,
+            drag_drop,
+            Some(pointer_id),
+            physical_target,
+            physical_path,
+            scroll_control,
             default_cancelable,
             default_prevented,
             propagation_stopped,
@@ -522,6 +610,7 @@ impl<'a, Action> EventContext<'a, Action> {
         pointer_id: Option<PointerId>,
         physical_target: Option<&'a MountedNodeId>,
         physical_path: &'a [MountedNodeId],
+        scroll_control: Option<ScrollControlSnapshot>,
         default_cancelable: bool,
         default_prevented: bool,
         propagation_stopped: bool,
@@ -540,6 +629,7 @@ impl<'a, Action> EventContext<'a, Action> {
             pointer_id,
             physical_target,
             physical_path,
+            scroll_control,
             pointer_capture: Vec::new(),
             default_cancelable,
             default_prevented,
