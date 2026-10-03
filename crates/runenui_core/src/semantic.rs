@@ -1616,7 +1616,7 @@ fn validate_range_contract(
     node: &SemanticNodeContribution,
 ) -> Result<(), SemanticContributionError> {
     match node.role() {
-        SemanticRole::Slider | SemanticRole::ScrollBar | SemanticRole::Splitter => {
+        SemanticRole::Slider | SemanticRole::Splitter => {
             let range = required_range(node)?;
             if range.minimum().is_none() {
                 return missing_property(node, "range.minimum");
@@ -1627,6 +1627,9 @@ fn validate_range_contract(
             if range.current().is_none() {
                 return missing_property(node, "range.current");
             }
+        }
+        SemanticRole::ScrollBar if node.range().is_some() => {
+            return property_not_supported(node, "range");
         }
         SemanticRole::Progress => {
             let range = required_range(node)?;
@@ -1654,7 +1657,6 @@ fn validate_node_property_contract(
         && !matches!(
             role,
             SemanticRole::Slider
-                | SemanticRole::ScrollBar
                 | SemanticRole::ListBox
                 | SemanticRole::TabList
                 | SemanticRole::Toolbar
@@ -2108,26 +2110,36 @@ mod tests {
                 .is_ok()
         );
 
-        let scrollbar = SemanticNodeContribution::primary(SemanticRole::ScrollBar)
-            .with_range(
-                SemanticRange::new(Some(minimum), Some(maximum), Some(current))
-                    .unwrap_or_else(|_| unreachable!("controlled scrollbar range is valid")),
-            )
-            .with_orientation(SemanticOrientation::Vertical);
+        let scrollbar = SemanticNodeContribution::primary(SemanticRole::ScrollBar);
         assert!(
             SemanticContribution::single(scrollbar)
                 .validate(context)
                 .is_ok()
         );
 
-        let missing_scrollbar_range = SemanticNodeContribution::primary(SemanticRole::ScrollBar)
-            .with_orientation(SemanticOrientation::Horizontal);
+        let authored_scrollbar_range =
+            SemanticNodeContribution::primary(SemanticRole::ScrollBar).with_range(
+                SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+                    .unwrap_or_else(|_| unreachable!("controlled scrollbar range is valid")),
+            );
         assert_eq!(
-            SemanticContribution::single(missing_scrollbar_range).validate(context),
-            Err(SemanticContributionError::MissingRequiredProperty {
+            SemanticContribution::single(authored_scrollbar_range).validate(context),
+            Err(SemanticContributionError::PropertyNotSupported {
                 key: SemanticKey::PRIMARY,
                 role: SemanticRole::ScrollBar,
                 property: "range",
+            })
+        );
+
+        let authored_scrollbar_orientation =
+            SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+                .with_orientation(SemanticOrientation::Horizontal);
+        assert_eq!(
+            SemanticContribution::single(authored_scrollbar_orientation).validate(context),
+            Err(SemanticContributionError::PropertyNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::ScrollBar,
+                property: "orientation",
             })
         );
 
@@ -2196,17 +2208,7 @@ mod tests {
         let context = SemanticContributionContext::default();
         let target = SemanticKey::from_static("viewport")
             .unwrap_or_else(|_| unreachable!("static test key is valid"));
-        let minimum = SemanticNumber::new(0.0)
-            .unwrap_or_else(|_| unreachable!("controlled minimum is finite"));
-        let maximum = SemanticNumber::new(100.0)
-            .unwrap_or_else(|_| unreachable!("controlled maximum is finite"));
-        let current = SemanticNumber::new(25.0)
-            .unwrap_or_else(|_| unreachable!("controlled current is finite"));
         let scrollbar = SemanticNodeContribution::primary(SemanticRole::ScrollBar)
-            .with_range(
-                SemanticRange::new(Some(minimum), Some(maximum), Some(current))
-                    .unwrap_or_else(|_| unreachable!("controlled scrollbar range is valid")),
-            )
             .with_relationship(SemanticRelationship::new(
                 SemanticRelationshipKind::Controls,
                 SemanticReference::Local(target.clone()),
