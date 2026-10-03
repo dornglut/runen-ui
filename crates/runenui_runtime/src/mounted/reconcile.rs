@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use runenui_core::{
     __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusGroup,
-    FocusGroupEntry, FocusScope, Focusability, LayoutStyle, ShortcutBinding, StyleIntent,
+    FocusGroupEntry, FocusScope, Focusability, LayoutStyle, ScrollControlBinding, ShortcutBinding,
+    StyleIntent,
     WidgetInvalidation, WidgetMountContext, WidgetUnmountReason, WidgetUpdateContext,
 };
 
@@ -73,6 +74,7 @@ pub(super) struct IncomingNode<Action> {
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
     focus_group_search_text: Option<String>,
+    scroll_control_binding: Option<ScrollControlBinding>,
     shortcut_bindings: Vec<ShortcutBinding>,
     authoring_diagnostics: Vec<runenui_core::AuthoringDiagnostic>,
     widget: MountedWidget<Action>,
@@ -85,6 +87,7 @@ impl<Action> IncomingNode<Action> {
         let focus_group = parts.focus_group();
         let focus_group_entry = parts.focus_group_entry();
         let focus_group_search_text = parts.focus_group_search_text().map(str::to_owned);
+        let scroll_control_binding = parts.scroll_control_binding();
         let (
             authored_id,
             key,
@@ -109,6 +112,7 @@ impl<Action> IncomingNode<Action> {
             focus_group,
             focus_group_entry,
             focus_group_search_text,
+            scroll_control_binding,
             shortcut_bindings,
             authoring_diagnostics,
             widget,
@@ -233,6 +237,7 @@ impl<Action> MountedTree<Action> {
             focus_group,
             focus_group_entry,
             focus_group_search_text,
+            scroll_control_binding,
             shortcut_bindings,
             authoring_diagnostics,
             widget,
@@ -493,6 +498,7 @@ impl<Action> MountedTree<Action> {
             focus_group,
             focus_group_entry,
             focus_group_search_text,
+            scroll_control_binding,
             shortcut_bindings,
             authoring_diagnostics,
             widget,
@@ -524,6 +530,8 @@ impl<Action> MountedTree<Action> {
             let tree_metadata_changed = node.authored_id != authored_id;
             let style_changed = node.style != style;
             let timelines_changed = node.timelines != timelines;
+            let scroll_control_binding_changed =
+                node.scroll_control_binding != scroll_control_binding;
             common_invalidation = common_field_invalidation(
                 node,
                 &CommonFieldRefs {
@@ -548,6 +556,7 @@ impl<Action> MountedTree<Action> {
             node.focus_group = focus_group;
             node.focus_group_entry = focus_group_entry;
             node.focus_group_search_text = focus_group_search_text;
+            node.scroll_control_binding = scroll_control_binding;
             node.shortcut_bindings = shortcut_bindings;
             node.authoring_diagnostics = authoring_diagnostics;
             node.widget = widget;
@@ -556,9 +565,16 @@ impl<Action> MountedTree<Action> {
             // the widget explicitly invalidates semantics or mounted-child structure changes.
             node.caches.activation = CachedCapability::Unresolved;
             node.caches.text_input = CachedCapability::Unresolved;
+            let scroll_control_invalidation = if scroll_control_binding_changed {
+                WidgetInvalidation::PAINT | WidgetInvalidation::SEMANTICS
+            } else {
+                WidgetInvalidation::NONE
+            };
             apply_invalidation(
                 node,
-                update_context.__runtime_take_invalidation() | common_invalidation,
+                update_context.__runtime_take_invalidation()
+                    | common_invalidation
+                    | scroll_control_invalidation,
             );
             if tree_metadata_changed {
                 node.dirty_phases.insert(DirtyPhases::TREE);
@@ -598,6 +614,7 @@ impl<Action> MountedTree<Action> {
             focus_group,
             focus_group_entry,
             focus_group_search_text,
+            scroll_control_binding,
             shortcut_bindings,
             authoring_diagnostics,
             widget,
@@ -626,6 +643,7 @@ impl<Action> MountedTree<Action> {
                     focus_group,
                     focus_group_entry,
                     focus_group_search_text,
+                    scroll_control_binding,
                     shortcut_bindings,
                     authoring_diagnostics,
                     widget,
