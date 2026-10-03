@@ -3,8 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use runenui_core::{
     __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusGroup,
     FocusGroupEntry, FocusScope, Focusability, LayoutStyle, ScrollControlBinding, ShortcutBinding,
-    StyleIntent,
-    WidgetInvalidation, WidgetMountContext, WidgetUnmountReason, WidgetUpdateContext,
+    StyleIntent, WidgetInvalidation, WidgetMountContext, WidgetUnmountReason, WidgetUpdateContext,
 };
 
 use crate::ReconciliationDiagnostic;
@@ -259,6 +258,7 @@ impl<Action> MountedTree<Action> {
                 focus_group,
                 focus_group_entry,
                 focus_group_search_text,
+                scroll_control_binding,
                 shortcut_bindings,
                 authoring_diagnostics,
                 widget,
