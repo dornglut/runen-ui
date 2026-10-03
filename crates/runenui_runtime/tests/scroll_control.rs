@@ -540,6 +540,29 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
     submit_scroll(
         &mut runtime,
         bound.clone(),
+        ScrollControlRequest::SmallStepForward,
+    );
+    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 60.0));
+    let clamped = runtime
+        .trace()
+        .records()
+        .filter(|record| matches!(record.kind(), TraceRecordKind::LogicalScrollOwnerApplied { .. }))
+        .last()
+        .unwrap_or_else(|| unreachable!("clamped scroll request retains the canonical owner trace"));
+    assert!(matches!(
+        clamped.kind(),
+        TraceRecordKind::LogicalScrollOwnerApplied {
+            offered,
+            consumed,
+            remainder,
+            ..
+        } if offered.y().to_bits() == 5.0_f32.to_bits()
+            && consumed.y().to_bits() == 0.0_f32.to_bits()
+            && remainder.y().to_bits() == 5.0_f32.to_bits()
+    ));
+    submit_scroll(
+        &mut runtime,
+        bound.clone(),
         ScrollControlRequest::SetNormalized(
             ScrollNormalizedValue::new(0.5).unwrap_or_else(|_| unreachable!("half is normalized")),
         ),
