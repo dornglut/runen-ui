@@ -12,8 +12,8 @@ use runenui_core::{
     __runtime::transform_rect_aabb, Axis, Color, ComputedStyle, ContributionClip, ElementId,
     HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
     LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
-    PaintContributionItem, Radius, SceneShape, ScrollControlBinding, ScrollControlSnapshot,
-    SemanticContributionContext, StyleEnvironment, StyleInteractionState, StyleResolution,
+    PaintContributionItem, Radius, SceneShape, ScrollControlSnapshot, SemanticContributionContext,
+    StyleEnvironment, StyleInteractionState, StyleResolution,
     TextAffinity, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
     style_effects_between,
 };
@@ -376,19 +376,19 @@ fn displayed_scroll_metrics_at(
     })
 }
 
-pub(super) fn resolve_scroll_control_owner(
+pub(super) fn resolve_scroll_owner(
     topology: &SurfaceTopologySnapshot,
-    control: &MountedNodeId,
-    binding: ScrollControlBinding,
+    descendant: &MountedNodeId,
+    axis: Axis,
 ) -> Result<Option<(MountedNodeId, usize)>, PresentationGeometryError> {
-    let control_position = topology
-        .position(control)
+    let descendant_position = topology
+        .position(descendant)
         .ok_or(PresentationGeometryError)?;
-    let mut ancestor = topology.nodes[control_position].parent.as_ref();
+    let mut ancestor = topology.nodes[descendant_position].parent.as_ref();
     while let Some(owner) = ancestor {
         let owner_position = topology.position(owner).ok_or(PresentationGeometryError)?;
         let owner_topology = &topology.nodes[owner_position];
-        let scrollable = match binding.axis() {
+        let scrollable = match axis {
             Axis::Horizontal => owner_topology.overflow.horizontal() == OverflowPolicy::Scroll,
             Axis::Vertical => owner_topology.overflow.vertical() == OverflowPolicy::Scroll,
         };
@@ -423,7 +423,7 @@ pub(super) fn scroll_control_projections<Action>(
                 return Ok(None);
             };
             let Some((owner, owner_position)) =
-                resolve_scroll_control_owner(topology, &node.id, binding)?
+                resolve_scroll_owner(topology, &node.id, binding.axis())?
             else {
                 return Ok(None);
             };
