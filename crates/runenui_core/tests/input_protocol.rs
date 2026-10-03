@@ -36,6 +36,31 @@ fn keyboard_event_preserves_host_neutral_physical_logical_and_device_facts() {
 }
 
 #[test]
+fn structured_navigation_keys_preserve_distinct_physical_and_logical_identity() {
+    for (physical, logical) in [
+        (PhysicalKey::Home, LogicalKey::Home),
+        (PhysicalKey::End, LogicalKey::End),
+        (PhysicalKey::PageUp, LogicalKey::PageUp),
+        (PhysicalKey::PageDown, LogicalKey::PageDown),
+    ] {
+        let event = KeyboardEvent::new(
+            KeyboardPhase::Down,
+            physical.clone(),
+            logical.clone(),
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        );
+        assert_eq!(event.physical_key(), &physical);
+        assert_eq!(event.logical_key(), &logical);
+    }
+    assert_ne!(PhysicalKey::Home, PhysicalKey::Code(String::from("Home")));
+    assert_ne!(LogicalKey::Home, LogicalKey::Named(String::from("Home")));
+}
+
+#[test]
 fn committed_text_requires_nonempty_unicode_and_stays_distinct_from_keys() {
     assert!(CommittedTextEvent::new("", None).is_err());
     let event = CommittedTextEvent::new("🙂é", None)

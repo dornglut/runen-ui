@@ -198,6 +198,10 @@ fn translate_physical_key(key: WinitPhysicalKey) -> PhysicalKey {
         WinitPhysicalKey::Code(KeyCode::ArrowRight) => PhysicalKey::ArrowRight,
         WinitPhysicalKey::Code(KeyCode::ArrowUp) => PhysicalKey::ArrowUp,
         WinitPhysicalKey::Code(KeyCode::ArrowDown) => PhysicalKey::ArrowDown,
+        WinitPhysicalKey::Code(KeyCode::Home) => PhysicalKey::Home,
+        WinitPhysicalKey::Code(KeyCode::End) => PhysicalKey::End,
+        WinitPhysicalKey::Code(KeyCode::PageUp) => PhysicalKey::PageUp,
+        WinitPhysicalKey::Code(KeyCode::PageDown) => PhysicalKey::PageDown,
         WinitPhysicalKey::Code(code) => PhysicalKey::Code(format!("{code:?}")),
         WinitPhysicalKey::Unidentified(native) => {
             PhysicalKey::Code(format!("Unidentified:{native:?}"))
@@ -222,6 +226,10 @@ fn translate_logical_key(
         WinitKey::Named(NamedKey::ArrowRight) => LogicalKey::ArrowRight,
         WinitKey::Named(NamedKey::ArrowUp) => LogicalKey::ArrowUp,
         WinitKey::Named(NamedKey::ArrowDown) => LogicalKey::ArrowDown,
+        WinitKey::Named(NamedKey::Home) => LogicalKey::Home,
+        WinitKey::Named(NamedKey::End) => LogicalKey::End,
+        WinitKey::Named(NamedKey::PageUp) => LogicalKey::PageUp,
+        WinitKey::Named(NamedKey::PageDown) => LogicalKey::PageDown,
         WinitKey::Character(text) => native_shortcut_command(text, modifiers, composition)
             .map_or_else(
                 || LogicalKey::Character(text.to_string()),
@@ -354,6 +362,65 @@ mod tests {
                 KeyboardCompositionState::Inactive,
             ),
             NeutralLogicalKey::Named(String::from("F5"))
+        );
+    }
+
+    #[test]
+    fn native_navigation_keys_map_to_structured_physical_and_logical_identities() {
+        for (physical, logical, expected_physical, expected_logical) in [
+            (
+                KeyCode::Home,
+                NamedKey::Home,
+                NeutralPhysicalKey::Home,
+                NeutralLogicalKey::Home,
+            ),
+            (
+                KeyCode::End,
+                NamedKey::End,
+                NeutralPhysicalKey::End,
+                NeutralLogicalKey::End,
+            ),
+            (
+                KeyCode::PageUp,
+                NamedKey::PageUp,
+                NeutralPhysicalKey::PageUp,
+                NeutralLogicalKey::PageUp,
+            ),
+            (
+                KeyCode::PageDown,
+                NamedKey::PageDown,
+                NeutralPhysicalKey::PageDown,
+                NeutralLogicalKey::PageDown,
+            ),
+        ] {
+            assert_eq!(
+                translate_physical_key(WinitPhysicalKey::Code(physical)),
+                expected_physical
+            );
+            assert_eq!(
+                translate_logical_key(
+                    &WinitKey::Named(logical),
+                    WinitPhysicalKey::Code(physical),
+                    KeyModifiers::NONE,
+                    KeyboardCompositionState::Inactive,
+                ),
+                expected_logical
+            );
+        }
+
+        assert_eq!(
+            translate_physical_key(WinitPhysicalKey::Code(KeyCode::Numpad7)),
+            NeutralPhysicalKey::Code(String::from("Numpad7"))
+        );
+        assert_eq!(
+            translate_logical_key(
+                &WinitKey::Named(NamedKey::Home),
+                WinitPhysicalKey::Code(KeyCode::Numpad7),
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            ),
+            NeutralLogicalKey::Home,
+            "logical Home meaning must not rewrite the independent numpad physical identity"
         );
     }
 
