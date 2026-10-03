@@ -41,7 +41,7 @@ pub(crate) use transaction::{
 
 use runenui_core::{
     ComputedStyle, ElementId, LogicalRect, LogicalSize, ResourceRef, ScrollControlBinding,
-    WidgetDiagnostic, WidgetMeasureInput, WidgetTypeId,
+    ScrollControlSnapshot, WidgetDiagnostic, WidgetMeasureInput, WidgetTypeId,
 };
 use runenui_text::{TextConstraints, TextLayoutDecision};
 
@@ -49,12 +49,13 @@ use crate::style_debug::SurfaceStyleReport;
 use crate::{LayoutConstraints, MountedNodeId};
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ScrollControlBindingLookup {
+pub(crate) enum ScrollControlProjectionLookup {
     Unavailable,
     Unbound,
     Bound {
         owner: MountedNodeId,
         binding: ScrollControlBinding,
+        snapshot: ScrollControlSnapshot,
     },
 }
 
