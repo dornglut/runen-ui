@@ -336,9 +336,19 @@ pub(super) fn displayed_scroll_metrics(
     owner: &MountedNodeId,
 ) -> Option<DisplayedScrollMetrics> {
     let position = topology.nodes.iter().position(|node| &node.id == owner)?;
+    displayed_scroll_metrics_at(topology, layout, owner, position)
+}
+
+fn displayed_scroll_metrics_at(
+    topology: &SurfaceTopologySnapshot,
+    layout: &CachedLayoutFacts,
+    owner: &MountedNodeId,
+    position: usize,
+) -> Option<DisplayedScrollMetrics> {
     let topology_node = topology.nodes.get(position)?;
-    if topology_node.overflow.horizontal() != OverflowPolicy::Scroll
-        && topology_node.overflow.vertical() != OverflowPolicy::Scroll
+    if &topology_node.id != owner
+        || (topology_node.overflow.horizontal() != OverflowPolicy::Scroll
+            && topology_node.overflow.vertical() != OverflowPolicy::Scroll)
     {
         return None;
     }
@@ -390,8 +400,9 @@ pub(super) fn scroll_control_projections<Action>(
                     Axis::Vertical => owner_topology.overflow.vertical() == OverflowPolicy::Scroll,
                 };
                 if scrollable {
-                    let metrics = displayed_scroll_metrics(topology, layout, owner)
-                        .ok_or(PresentationGeometryError)?;
+                    let metrics =
+                        displayed_scroll_metrics_at(topology, layout, owner, owner_position)
+                            .ok_or(PresentationGeometryError)?;
                     let offset = scroll.offset(owner);
                     let (offset, viewport, content) = match binding.axis() {
                         Axis::Horizontal => {
