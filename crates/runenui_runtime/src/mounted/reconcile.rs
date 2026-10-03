@@ -165,9 +165,7 @@ struct PlanningState {
 
 const fn scroll_control_binding_invalidation(changed: bool) -> WidgetInvalidation {
     if changed {
-        WidgetInvalidation::HIT_TEST
-            | WidgetInvalidation::PAINT
-            | WidgetInvalidation::SEMANTICS
+        WidgetInvalidation::HIT_TEST | WidgetInvalidation::PAINT | WidgetInvalidation::SEMANTICS
     } else {
         WidgetInvalidation::NONE
     }
