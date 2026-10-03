@@ -2,6 +2,7 @@
 
 mod public_consumer;
 mod repository_audit;
+mod validation_timing;
 
 use std::{
     env,
@@ -26,14 +27,20 @@ const EXPECTED_POLICY_MARKERS: &[&str] = &[
     "external pull requests contributing tracked repository content",
     "Issue reports, design discussion, reviews, and reproducible cases",
 ];
-const VALIDATE_STEPS: &[(&str, &[&str])] = &[
-    ("stable", &["metadata", "--locked", "--no-deps"]),
-    ("stable", &["fmt", "--all", "--check"]),
+const VALIDATE_STEPS: &[(&str, &str, &[&str])] = &[
     (
+        "stable metadata",
+        "stable",
+        &["metadata", "--locked", "--no-deps"],
+    ),
+    ("stable formatting", "stable", &["fmt", "--all", "--check"]),
+    (
+        "stable workspace all-feature tests",
         "stable",
         &["test", "--workspace", "--all-features", "--locked"],
     ),
     (
+        "stable workspace all-target Clippy",
         "stable",
         &[
             "clippy",
@@ -47,6 +54,7 @@ const VALIDATE_STEPS: &[(&str, &[&str])] = &[
         ],
     ),
     (
+        "MSRV workspace all-feature tests",
         "1.93.0",
         &["test", "--workspace", "--all-features", "--locked"],
     ),
@@ -72,42 +80,36 @@ fn main() -> ExitCode {
 }
 
 fn validate() -> ExitCode {
-    let root = match workspace_root() {
-        Ok(root) => root,
+    let mut timings = validation_timing::ValidationTimings::start();
+    let result = validate_inner(&mut timings);
+    timings.report(result.is_ok());
+
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("{error}");
-            return ExitCode::FAILURE;
-        }
-    };
-
-    for (toolchain, arguments) in VALIDATE_STEPS {
-        if let Err(error) = run_cargo_step(&root, toolchain, arguments) {
-            eprintln!("{error}");
-            return ExitCode::FAILURE;
+            ExitCode::FAILURE
         }
     }
+}
 
-    if let Err(error) = public_consumer::validate(&root) {
-        eprintln!("{error}");
-        return ExitCode::FAILURE;
+fn validate_inner(timings: &mut validation_timing::ValidationTimings) -> Result<(), String> {
+    let root = workspace_root()?;
+
+    for (label, toolchain, arguments) in VALIDATE_STEPS {
+        timings.measure(label, || run_cargo_step(&root, toolchain, arguments))?;
     }
 
-    if let Err(error) = validate_current_licensing(&root) {
-        eprintln!("{error}");
-        return ExitCode::FAILURE;
-    }
+    public_consumer::validate(&root, timings)?;
+    timings.measure("licensing and publish policy", || {
+        validate_current_licensing(&root)
+    })?;
+    timings.measure("documentation links", || check_repository_links(&root))?;
+    timings.measure("fatal repository audit", || {
+        repository_audit::validate_fatal(&root)
+    })?;
 
-    if let Err(error) = check_repository_links(&root) {
-        eprintln!("{error}");
-        return ExitCode::FAILURE;
-    }
-
-    if let Err(error) = repository_audit::validate_fatal(&root) {
-        eprintln!("{error}");
-        return ExitCode::FAILURE;
-    }
-
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 fn check_links() -> ExitCode {
