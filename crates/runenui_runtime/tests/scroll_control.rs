@@ -673,6 +673,10 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
         .publish_surface(&bound_build(&environment))
         .unwrap_or_else(|error| panic!("scrolled surface republishes: {error:?}"));
     let latest = last_snapshot(&runtime.state().paint);
+    let latest_hit = last_snapshot(&runtime.state().hit);
+    let latest_semantics = last_snapshot(&runtime.state().semantics);
+    assert_eq!(latest_hit, latest);
+    assert_eq!(latest_semantics, latest);
     assert_eq!(latest.offset().get(), 40.0);
     assert_eq!(latest.maximum_offset().get(), 60.0);
     assert_eq!(latest.viewport_extent().get(), 40.0);
