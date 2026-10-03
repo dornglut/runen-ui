@@ -184,22 +184,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Axis::Horizontal => (after, before_pair.1),
             Axis::Vertical => (before_pair.0, after),
         };
-        let (offered, consumed, maximum_delta, offset_delta) = match axis {
+        let consumed_scalar = after - before;
+        let remainder_scalar = offered - consumed_scalar;
+        let (offered, consumed, remainder, maximum_delta, offset_delta) = match axis {
             Axis::Horizontal => (
                 LogicalDelta::new(offered, 0.0),
-                LogicalDelta::new(after - before, 0.0),
+                LogicalDelta::new(consumed_scalar, 0.0),
+                LogicalDelta::new(remainder_scalar, 0.0),
                 LogicalDelta::new(maximum, 0.0),
                 LogicalDelta::new(offset.0, offset.1),
             ),
             Axis::Vertical => (
                 LogicalDelta::new(0.0, offered),
-                LogicalDelta::new(0.0, after - before),
+                LogicalDelta::new(0.0, consumed_scalar),
+                LogicalDelta::new(0.0, remainder_scalar),
                 LogicalDelta::new(0.0, maximum),
                 LogicalDelta::new(offset.0, offset.1),
             ),
         };
-        let (Ok(offered), Ok(consumed), Ok(maximum_delta), Ok(offset_delta)) =
-            (offered, consumed, maximum_delta, offset_delta)
+        let (Ok(offered), Ok(consumed), Ok(remainder), Ok(maximum_delta), Ok(offset_delta)) =
+            (offered, consumed, remainder, maximum_delta, offset_delta)
         else {
             self.record_scroll_control_binding(
                 transaction,
@@ -233,7 +237,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 evaluation_order: 0,
                 offered,
                 consumed,
-                remainder: LogicalDelta::ZERO,
+                remainder,
                 offset: offset_delta,
                 maximum: maximum_delta,
             });
