@@ -11,8 +11,8 @@ use runenui_core::{
     PointerEvent, PointerId, PointerPhase, ScrollControlBinding, ScrollControlRequest,
     ScrollControlSnapshot, ScrollNormalizedValue, SemanticCommand, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment, UiApp,
-    UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, children, column,
-    scroll_viewport,
+    UiEvent, View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
+    WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, children, column, scroll_viewport,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits,
@@ -77,10 +77,27 @@ fn scroll_offset<App: UiApp>(runtime: &mut AppRuntime<App>, authored: &str) -> (
 #[derive(Debug)]
 struct HitProbe;
 
-impl Widget<()> for HitProbe {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ViewportAction {
+    ChildActivated,
+}
+
+impl Widget<ViewportAction> for HitProbe {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(true)
+    }
+
+    fn activate(
+        &mut self,
+        (): &mut Self::State,
+        _: &mut WidgetActivationContext<ViewportAction>,
+    ) -> WidgetActivationOutput<ViewportAction> {
+        WidgetActivationOutput::action(ViewportAction::ChildActivated)
+    }
 
     fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
         HitContribution::single_rect(
@@ -98,11 +115,11 @@ impl Widget<()> for HitProbe {
 struct ViewportApp;
 
 impl UiApp for ViewportApp {
-    type State = ();
-    type Action = ();
+    type State = usize;
+    type Action = ViewportAction;
     type HostProtocol = NoHostProtocol;
 
-    fn root((): &Self::State) -> Element<Self::Action> {
+    fn root(_: &Self::State) -> Element<Self::Action> {
         let child = Element::new(HitProbe)
             .id("viewport.child")
             .key("viewport.child")
@@ -118,12 +135,15 @@ impl UiApp for ViewportApp {
             .into_element()
     }
 
-    fn update((): &mut Self::State, (): Self::Action) {}
+    fn update(state: &mut Self::State, action: Self::Action) {
+        let ViewportAction::ChildActivated = action;
+        *state += 1;
+    }
 }
 
 #[test]
 fn standard_viewport_hits_blank_area_without_stealing_child_and_wheel_scrolls() {
-    let mut runtime = AppRuntime::<ViewportApp>::mount(());
+    let mut runtime = AppRuntime::<ViewportApp>::mount(0);
     settle(&mut runtime);
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
@@ -152,6 +172,44 @@ fn standard_viewport_hits_blank_area_without_stealing_child_and_wheel_scrolls() 
         "blank viewport area routes to the scroll owner"
     );
 
+    let pointer_id =
+        PointerId::new(200).unwrap_or_else(|| unreachable!("fixture pointer id is nonzero"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                child_point,
+                publication.input_context().clone(),
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|error| panic!("child pointer down is admitted: {error:?}"));
+    settle(&mut runtime);
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                child_point,
+                publication.input_context().clone(),
+            )
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|error| panic!("child pointer up is admitted: {error:?}"));
+    settle(&mut runtime);
+    assert_eq!(
+        *runtime.state(),
+        1,
+        "the viewport owner hit shell does not steal ordinary child activation"
+    );
+
+    let publication = runtime
+        .publish_surface(&build)
+        .unwrap_or_else(|error| panic!("post-activation viewport republishes: {error:?}"));
     let wheel = PointerEvent::new(
         PointerId::new(201).unwrap_or_else(|| unreachable!("pointer id is nonzero")),
         PointerDeviceKind::Mouse,
@@ -172,7 +230,7 @@ fn standard_viewport_hits_blank_area_without_stealing_child_and_wheel_scrolls() 
 #[test]
 fn blank_viewport_touch_pan_uses_the_existing_m10_scroll_gesture() {
     let mut runtime = AppRuntime::<ViewportApp>::mount_with_config(
-        (),
+        0,
         RuntimeConfig::default().with_trace_config(TraceConfig::new(256)),
     );
     settle(&mut runtime);
