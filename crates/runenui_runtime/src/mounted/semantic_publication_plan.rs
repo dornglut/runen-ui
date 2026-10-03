@@ -443,36 +443,40 @@ fn stage_semantic_capability<Action>(
     let context_matches = node.caches.semantic_context.as_ref() == Some(&context);
     let staged = if context_matches {
         match &node.caches.semantics {
-        CachedSemanticContribution::Ready(contribution) => {
-            StagedSemanticCapability::ready(contribution.clone(), context)
-        }
-        CachedSemanticContribution::Unresolved => {
-            node.widget.semantics(&node.state, context).map_or_else(
-                |_| {
-                    StagedSemanticCapability::withdrawn(
-                        CachedSemanticContribution::StatePayloadMismatch,
-                        true,
-                    )
-                },
-                |contribution| StagedSemanticCapability::ready(contribution, context),
-            )
-        }
-        CachedSemanticContribution::Invalid(error) => StagedSemanticCapability::withdrawn(
-            CachedSemanticContribution::Invalid(error.clone()),
-            false,
-        ),
-        CachedSemanticContribution::IdentityExhausted => StagedSemanticCapability::withdrawn(
-            CachedSemanticContribution::IdentityExhausted,
-            false,
-        ),
-        CachedSemanticContribution::IndexIntegrityFailure => StagedSemanticCapability::withdrawn(
-            CachedSemanticContribution::IndexIntegrityFailure,
-            true,
-        ),
-        CachedSemanticContribution::StatePayloadMismatch => StagedSemanticCapability::withdrawn(
-            CachedSemanticContribution::StatePayloadMismatch,
-            true,
-        ),
+            CachedSemanticContribution::Ready(contribution) => {
+                StagedSemanticCapability::ready(contribution.clone(), context)
+            }
+            CachedSemanticContribution::Unresolved => {
+                node.widget.semantics(&node.state, context).map_or_else(
+                    |_| {
+                        StagedSemanticCapability::withdrawn(
+                            CachedSemanticContribution::StatePayloadMismatch,
+                            true,
+                        )
+                    },
+                    |contribution| StagedSemanticCapability::ready(contribution, context),
+                )
+            }
+            CachedSemanticContribution::Invalid(error) => StagedSemanticCapability::withdrawn(
+                CachedSemanticContribution::Invalid(error.clone()),
+                false,
+            ),
+            CachedSemanticContribution::IdentityExhausted => StagedSemanticCapability::withdrawn(
+                CachedSemanticContribution::IdentityExhausted,
+                false,
+            ),
+            CachedSemanticContribution::IndexIntegrityFailure => {
+                StagedSemanticCapability::withdrawn(
+                    CachedSemanticContribution::IndexIntegrityFailure,
+                    true,
+                )
+            }
+            CachedSemanticContribution::StatePayloadMismatch => {
+                StagedSemanticCapability::withdrawn(
+                    CachedSemanticContribution::StatePayloadMismatch,
+                    true,
+                )
+            }
         }
     } else {
         node.widget.semantics(&node.state, context).map_or_else(
