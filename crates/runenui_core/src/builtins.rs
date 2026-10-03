@@ -1154,7 +1154,7 @@ impl<Action: 'static> View<Action> for RadioGroup<Action> {
 }
 
 pub struct ScrollViewport<Action> {
-    children: Vec<Element<Action>>,
+    content: Element<Action>,
     common: CommonNodeAuthoring,
 }
 
@@ -1162,7 +1162,7 @@ impl<Action> fmt::Debug for ScrollViewport<Action> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("ScrollViewport")
-            .field("children", &self.children)
+            .field("content", &self.content)
             .field("id", &self.common.id)
             .field("key", &self.common.key)
             .field("layout", &self.common.layout)
@@ -1175,9 +1175,9 @@ impl<Action> fmt::Debug for ScrollViewport<Action> {
 
 impl<Action> ScrollViewport<Action> {
     #[must_use]
-    pub fn new(children: impl Views<Action>, overflow: OverflowStyle) -> Self {
+    pub fn new(content: impl View<Action>, overflow: OverflowStyle) -> Self {
         Self {
-            children: children.into_elements(),
+            content: content.into_element(),
             common: CommonNodeAuthoring {
                 layout: LayoutStyle::default().with_overflow(overflow),
                 ..CommonNodeAuthoring::default()
@@ -1223,7 +1223,7 @@ impl<Action: 'static> View<Action> for ScrollViewport<Action> {
         Element::from_authored_parts(
             fields,
             Box::new(WidgetAdapter(ScrollViewportWidget)),
-            self.children,
+            vec![self.content],
             diagnostics,
         )
     }
@@ -1332,10 +1332,10 @@ pub fn button<Action>(label: impl Into<String>) -> Button<Action> {
 }
 #[must_use]
 pub fn scroll_viewport<Action>(
-    children: impl Views<Action>,
+    content: impl View<Action>,
     overflow: OverflowStyle,
 ) -> ScrollViewport<Action> {
-    ScrollViewport::new(children, overflow)
+    ScrollViewport::new(content, overflow)
 }
 #[must_use]
 pub fn container<Action, Implementation>(
