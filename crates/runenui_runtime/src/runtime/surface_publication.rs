@@ -23,9 +23,8 @@ use crate::{
     surface::{
         DisplayedScrollMetrics, DisplayedTextTarget, MotionPlanningFailure,
         PlannedSurfacePublication, ScrollControlBindingLookup, SurfaceCache,
-        SurfaceInteractionProjection,
-        SurfaceMotionActivity, SurfaceMotionStore, SurfacePlanningError, SurfacePublicationCommit,
-        plan_mounted_surface_cached_with_text,
+        SurfaceInteractionProjection, SurfaceMotionActivity, SurfaceMotionStore,
+        SurfacePlanningError, SurfacePublicationCommit, plan_mounted_surface_cached_with_text,
     },
     trace::StagedMotionTraceFact,
 };
@@ -868,10 +867,11 @@ impl SurfacePublicationState {
         &self,
         target: &MountedNodeId,
     ) -> ScrollControlBindingLookup {
-        self.cache.as_ref().map_or(
-            ScrollControlBindingLookup::Unavailable,
-            |cache| cache.current_scroll_control_binding(target),
-        )
+        self.cache
+            .as_ref()
+            .map_or(ScrollControlBindingLookup::Unavailable, |cache| {
+                cache.current_scroll_control_binding(target)
+            })
     }
 
     pub(crate) fn current_scroll_metrics(
