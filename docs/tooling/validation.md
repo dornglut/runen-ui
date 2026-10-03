@@ -55,14 +55,17 @@ findings. Record the reviewed feature head and accepted squash merge separately,
 then inspect accepted-main push validation at the exact squash commit when required.
 
 The shared CI workflow is read-only and requires no repository write permission.
-Successful validation prints a compact evidence summary rather than the complete
-command output. Failed validation preserves the canonical command's real exit
-status, prints a bounded excerpt and tail, and uploads the complete failed-command
-log from runner-temporary storage outside the checkout with short retention.
-Temporary diagnostics are removed. Successful runs create no diagnostic artifact
-and CI does not create, update, or remove pull-request comments. The Actions log
-remains useful evidence; the failure-only artifact retains the complete failed
-command log.
+Shared CI owns checkout, toolchain, cache, and bounded-diagnostics orchestration;
+RunenUI owns validation semantics. The checked-out exact source and `cargo validate`
+remain authoritative, and a restored caller workspace `target/` tree must never
+substitute for them. Successful validation prints a compact evidence summary rather
+than the complete command output. Failed validation preserves the canonical
+command's real exit status, prints a bounded excerpt and tail, and uploads the
+complete failed-command log from runner-temporary storage outside the checkout
+with short retention. Temporary diagnostics are removed. Successful runs create
+no diagnostic artifact and CI does not create, update, or remove pull-request
+comments. The Actions log remains useful evidence; the failure-only artifact
+retains the complete failed command log.
 
 Do not add branch-mutating formatter, fixer, or self-commit workflows as a
 substitute for ordinary reviewed repository edits. Automated contributors should
