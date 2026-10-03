@@ -171,7 +171,7 @@ fn scroll_control_binding_invalidation(changed: bool) -> WidgetInvalidation {
     }
 }
 
-fn apply_retained_phase_changes<Action>(
+const fn apply_retained_phase_changes<Action>(
     node: &mut MountedNode<Action>,
     tree_changed: bool,
     style_changed: bool,
