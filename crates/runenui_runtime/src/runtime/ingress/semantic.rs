@@ -1,6 +1,6 @@
 use runenui_core::{
-    Focusability, SemanticAction, SemanticActionData, SemanticActionRequest, SemanticActionTarget,
-    SemanticCommand, SemanticKey, SemanticNodeId, SemanticRole, SurfaceId, TextSensitivity,
+    SemanticAction, SemanticActionData, SemanticActionRequest, SemanticActionTarget, SemanticCommand,
+    SemanticKey, SemanticNodeId, SemanticRole, SurfaceId, TextSensitivity,
 };
 
 use crate::{
