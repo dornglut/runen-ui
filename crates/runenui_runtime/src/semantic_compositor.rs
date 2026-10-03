@@ -643,9 +643,10 @@ fn supported_actions(
                     && focusability_is_eligible(
                         owner.focusability,
                         owner.activation,
-                        owner.scroll_control.as_ref().map(|projection| {
-                            projection.snapshot.maximum_offset().get() > 0.0
-                        }),
+                        owner
+                            .scroll_control
+                            .as_ref()
+                            .map(|projection| projection.snapshot.maximum_offset().get() > 0.0),
                     )
             }
             SemanticAction::OpenMenu | SemanticAction::OpenContextMenu => true,

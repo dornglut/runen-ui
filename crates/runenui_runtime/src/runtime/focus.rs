@@ -77,7 +77,7 @@ struct FocusNotificationPlan {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(in crate::runtime) fn current_automatic_scroll_focusability(
+    pub(crate) fn current_automatic_scroll_focusability(
         &self,
         target: &MountedNodeId,
     ) -> Option<bool> {
@@ -90,7 +90,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             })
     }
 
-    pub(in crate::runtime) fn focus_eligibility_projection(&self) -> FocusEligibilityProjection {
+    pub(crate) fn focus_eligibility_projection(&self) -> FocusEligibilityProjection {
         FocusEligibilityProjection::from_scrollable_controls(
             self.tree
                 .publication_preorder_ids()

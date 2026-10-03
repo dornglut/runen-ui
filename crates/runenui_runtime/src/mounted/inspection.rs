@@ -52,10 +52,8 @@ impl<Action> MountedTree<Action> {
             .iter()
             .filter_map(|id| self.node(id))
             .map(|node| MountedNodeRef {
-                automatic_scroll_focusable: eligibility.automatic_scroll_focusability(
-                    &node.id,
-                    node.scroll_control_binding.is_some(),
-                ),
+                automatic_scroll_focusable: eligibility
+                    .automatic_scroll_focusability(&node.id, node.scroll_control_binding.is_some()),
                 node,
             })
             .collect();
