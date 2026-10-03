@@ -948,14 +948,14 @@ mod tests {
         assert!(matches!(
             &output.ordered[1],
             RoutedEventOutput::Command { target: delegated, origin, .. }
-                if *delegated == target
+                if delegated == &target
                     && origin.source() == EventSource::Controller
                     && origin.derivation() == CommandDerivation::Delegated
         ));
         assert!(matches!(
             &output.ordered[2],
             RoutedEventOutput::ApplicationCommand { target: delegated, command, origin }
-                if *delegated == target
+                if delegated == &target
                     && command.as_str() == "save"
                     && origin.source() == EventSource::Controller
                     && origin.derivation() == CommandDerivation::Delegated
