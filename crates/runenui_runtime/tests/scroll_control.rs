@@ -243,6 +243,7 @@ impl Widget<()> for SnapshotProbe {
 #[derive(Clone, Copy, Debug)]
 enum BoundAction {
     ResizeInner,
+    EnableInnerScroll,
     DisableInnerScroll,
     ReplaceBound,
 }
@@ -320,17 +321,18 @@ impl UiApp for BoundApp {
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
             BoundAction::ResizeInner => state.inner_height = 40.0,
+            BoundAction::EnableInnerScroll => state.inner_scrollable = true,
             BoundAction::DisableInnerScroll => state.inner_scrollable = false,
             BoundAction::ReplaceBound => state.replaced = true,
         }
     }
 }
 
-fn bound_runtime() -> AppRuntime<BoundApp> {
+fn bound_runtime_with_scrollability(inner_scrollable: bool) -> AppRuntime<BoundApp> {
     AppRuntime::<BoundApp>::mount_with_config(
         BoundState {
             inner_height: 30.0,
-            inner_scrollable: true,
+            inner_scrollable,
             replaced: false,
             hit: Rc::new(RefCell::new(Vec::new())),
             paint: Rc::new(RefCell::new(Vec::new())),
@@ -339,6 +341,10 @@ fn bound_runtime() -> AppRuntime<BoundApp> {
         },
         RuntimeConfig::default().with_trace_config(TraceConfig::new(1024)),
     )
+}
+
+fn bound_runtime() -> AppRuntime<BoundApp> {
+    bound_runtime_with_scrollability(true)
 }
 
 fn bound_build<'a>(environment: &'a StyleEnvironment) -> SurfaceBuildContext<'a> {
@@ -621,6 +627,50 @@ fn accepted_bound_owner_becoming_non_scrollable_fails_closed_without_outer_fallb
             ..
         }
     )));
+}
+
+#[test]
+fn newly_nearer_scroll_owner_requires_republication_before_binding_switches() {
+    let mut runtime = bound_runtime_with_scrollability(false);
+    settle(&mut runtime);
+    let environment = StyleEnvironment::default();
+    runtime
+        .publish_surface(&bound_build(&environment))
+        .unwrap_or_else(|error| panic!("outer-bound fixture publishes: {error:?}"));
+    let bound = node_id(&mut runtime, "bound");
+
+    runtime
+        .submit_action(BoundAction::EnableInnerScroll)
+        .unwrap_or_else(|_| unreachable!("inner-scrollability update is admitted"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+    submit_scroll(
+        &mut runtime,
+        bound.clone(),
+        ScrollControlRequest::PageForward,
+    );
+
+    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 0.0));
+    assert_eq!(scroll_offset(&mut runtime, "outer"), (0.0, 0.0));
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::ScrollControlBindingEvaluated {
+            outcome: TraceScrollControlBindingOutcome::Stale,
+            axis: Some(Axis::Vertical),
+            ..
+        }
+    )));
+
+    runtime
+        .publish_surface(&bound_build(&environment))
+        .unwrap_or_else(|error| panic!("updated nearest-owner publication commits: {error:?}"));
+    submit_scroll(&mut runtime, bound, ScrollControlRequest::PageForward);
+    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 30.0));
+    assert_eq!(scroll_offset(&mut runtime, "outer"), (0.0, 0.0));
 }
 
 #[test]
