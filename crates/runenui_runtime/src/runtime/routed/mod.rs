@@ -19,6 +19,7 @@ use crate::{
     TraceSequence,
     focus::focus_group_activation_policy,
     queue::{ApplicationCommandEnvelope, SemanticCommandEnvelope},
+    surface::ScrollControlBindingLookup,
     trace::{MandatoryTracePlan, TraceRecordDraft},
 };
 pub(crate) use dispatch::PointerDispatchFacts;
@@ -39,6 +40,18 @@ pub(super) struct ScrollControlResolutionFailure {
     pub(super) owner: Option<MountedNodeId>,
 }
 
+fn scroll_control_failure(
+    axis: Axis,
+    owner: Option<MountedNodeId>,
+    outcome: TraceScrollControlBindingOutcome,
+) -> ScrollControlResolutionFailure {
+    ScrollControlResolutionFailure {
+        axis: Some(axis),
+        outcome,
+        owner,
+    }
+}
+
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(super) fn resolve_scroll_control(
         &self,
@@ -55,16 +68,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 owner: None,
             });
         };
-        let axis = binding.axis();
         let route = self
             .tree
             .event_route(target)
-            .map_err(|_| ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
-                owner: None,
-            })?;
-        let current_owner = route.iter().rev().skip(1).find_map(|candidate| {
+            .map_err(|_| scroll_control_failure(binding.axis(), None, TraceScrollControlBindingOutcome::MetricsUnavailable))?;
+        let current_owner = self.current_scroll_owner(&route, binding.axis());
+        let owner = self.resolve_published_scroll_owner(target, binding, current_owner.as_ref())?;
+        let snapshot = self.resolve_scroll_control_snapshot(&owner, binding)?;
+        Ok(ResolvedScrollControl {
+            owner,
+            binding,
+            snapshot,
+        })
+    }
+
+    fn current_scroll_owner(&self, route: &[MountedNodeId], axis: Axis) -> Option<MountedNodeId> {
+        route.iter().rev().skip(1).find_map(|candidate| {
             self.tree.node(candidate).and_then(|node| {
                 let policy = match axis {
                     Axis::Horizontal => node.layout.overflow().horizontal(),
@@ -72,84 +91,100 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 };
                 (policy == OverflowPolicy::Scroll).then(|| candidate.clone())
             })
-        });
-        let published = self
+        })
+    }
+
+    fn resolve_published_scroll_owner(
+        &self,
+        target: &MountedNodeId,
+        binding: ScrollControlBinding,
+        current_owner: Option<&MountedNodeId>,
+    ) -> Result<MountedNodeId, ScrollControlResolutionFailure> {
+        let axis = binding.axis();
+        let (owner, published_binding) = match self
             .surface_publication
             .current_scroll_control_binding(target)
-            .ok_or(ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
-                owner: None,
-            })?;
-        let Some((owner, published_binding)) = published else {
-            return Err(ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: if current_owner.is_some() {
+        {
+            ScrollControlBindingLookup::Unavailable => {
+                return Err(scroll_control_failure(
+                    axis,
+                    None,
+                    TraceScrollControlBindingOutcome::MetricsUnavailable,
+                ));
+            }
+            ScrollControlBindingLookup::Unbound => {
+                let outcome = if current_owner.is_some() {
                     TraceScrollControlBindingOutcome::MetricsUnavailable
                 } else {
                     TraceScrollControlBindingOutcome::NonScrollable
-                },
-                owner: None,
-            });
+                };
+                return Err(scroll_control_failure(axis, None, outcome));
+            }
+            ScrollControlBindingLookup::Bound { owner, binding } => (owner, binding),
         };
         if published_binding != binding {
-            return Err(ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
-                owner: Some(owner),
-            });
+            return Err(scroll_control_failure(
+                axis,
+                Some(owner),
+                TraceScrollControlBindingOutcome::MetricsUnavailable,
+            ));
         }
-        let owner_node = self
-            .tree
-            .node(&owner)
-            .ok_or_else(|| ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::Stale,
-                owner: Some(owner.clone()),
-            })?;
+        match current_owner {
+            None => Err(scroll_control_failure(
+                axis,
+                Some(owner),
+                TraceScrollControlBindingOutcome::NonScrollable,
+            )),
+            Some(current) if current != &owner => Err(scroll_control_failure(
+                axis,
+                Some(owner),
+                TraceScrollControlBindingOutcome::Stale,
+            )),
+            Some(_) => Ok(owner),
+        }
+    }
+
+    fn resolve_scroll_control_snapshot(
+        &self,
+        owner: &MountedNodeId,
+        binding: ScrollControlBinding,
+    ) -> Result<ScrollControlSnapshot, ScrollControlResolutionFailure> {
+        let axis = binding.axis();
+        let owner_node = self.tree.node(owner).ok_or_else(|| {
+            scroll_control_failure(
+                axis,
+                Some(owner.clone()),
+                TraceScrollControlBindingOutcome::Stale,
+            )
+        })?;
         let owner_policy = match axis {
             Axis::Horizontal => owner_node.layout.overflow().horizontal(),
             Axis::Vertical => owner_node.layout.overflow().vertical(),
         };
         if owner_policy != OverflowPolicy::Scroll {
-            return Err(ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::NonScrollable,
-                owner: Some(owner),
-            });
+            return Err(scroll_control_failure(
+                axis,
+                Some(owner.clone()),
+                TraceScrollControlBindingOutcome::NonScrollable,
+            ));
         }
-        let Some(current_owner) = current_owner else {
-            return Err(ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::NonScrollable,
-                owner: Some(owner),
-            });
-        };
-        if current_owner != owner {
-            return Err(ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::Stale,
-                owner: Some(owner),
-            });
-        }
-        let metrics = self
-            .surface_publication
-            .current_scroll_metrics(&owner)
-            .ok_or_else(|| ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
-                owner: Some(owner.clone()),
-            })?;
+        let metrics = self.surface_publication.current_scroll_metrics(owner).ok_or_else(|| {
+            scroll_control_failure(
+                axis,
+                Some(owner.clone()),
+                TraceScrollControlBindingOutcome::MetricsUnavailable,
+            )
+        })?;
         let metrics_policy = match axis {
             Axis::Horizontal => metrics.overflow.horizontal(),
             Axis::Vertical => metrics.overflow.vertical(),
         };
         if metrics_policy != OverflowPolicy::Scroll {
-            return Err(ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
-                owner: Some(owner),
-            });
+            return Err(scroll_control_failure(
+                axis,
+                Some(owner.clone()),
+                TraceScrollControlBindingOutcome::MetricsUnavailable,
+            ));
         }
         let (offset, viewport, content) = match axis {
             Axis::Horizontal => (
@@ -163,18 +198,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 metrics.content.height(),
             ),
         };
-        let snapshot =
-            ScrollControlSnapshot::__runtime_from_metrics(axis, offset, viewport, content)
-                .ok_or_else(|| ScrollControlResolutionFailure {
-                    axis: Some(axis),
-                    outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
-                    owner: Some(owner.clone()),
-                })?;
-        Ok(ResolvedScrollControl {
-            owner,
-            binding,
-            snapshot,
-        })
+        ScrollControlSnapshot::__runtime_from_metrics(axis, offset, viewport, content).ok_or_else(
+            || {
+                scroll_control_failure(
+                    axis,
+                    Some(owner.clone()),
+                    TraceScrollControlBindingOutcome::MetricsUnavailable,
+                )
+            },
+        )
     }
 
     pub(crate) fn process_application_command(&mut self, envelope: ApplicationCommandEnvelope) {
