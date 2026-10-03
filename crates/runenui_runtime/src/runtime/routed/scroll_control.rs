@@ -20,7 +20,7 @@ pub(super) struct ScrollControlResolutionFailure {
     pub(super) owner: Option<MountedNodeId>,
 }
 
-fn scroll_control_failure(
+const fn scroll_control_failure(
     axis: Axis,
     owner: Option<MountedNodeId>,
     outcome: TraceScrollControlBindingOutcome,
