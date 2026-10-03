@@ -5,8 +5,8 @@ use std::{
 };
 
 use runenui_core::{
-    __runtime::RuntimeNamespace, MonotonicInstant, SurfaceId, SurfaceInputContext,
-    TextDocumentSnapshot,
+    __runtime::RuntimeNamespace, MonotonicInstant, ScrollControlBinding, SurfaceId,
+    SurfaceInputContext, TextDocumentSnapshot,
 };
 use runenui_text::{TextCaretMap, TextCaretMapError, TextLayoutError, TextSystem};
 
@@ -861,6 +861,13 @@ impl SurfacePublicationState {
             .as_ref()
             .map(SurfaceCache::current_focus_geometry)
             .unwrap_or_default()
+    }
+
+    pub(crate) fn current_scroll_control_binding(
+        &self,
+        target: &MountedNodeId,
+    ) -> Option<Option<(MountedNodeId, ScrollControlBinding)>> {
+        self.cache.as_ref()?.current_scroll_control_binding(target)
     }
 
     pub(crate) fn current_scroll_metrics(
