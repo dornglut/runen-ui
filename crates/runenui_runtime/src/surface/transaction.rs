@@ -288,17 +288,21 @@ impl<'a> PlannedSurfacePublication<'a> {
             {
                 continue;
             }
-            let Some(layout) = self.cache.layout.bounds.get(position) else {
-                continue;
-            };
-            let Some(layout_node) = self.cache.layout.report.node(&topology.id) else {
+            let Some(layout_node) = self
+                .cache
+                .layout
+                .report
+                .nodes()
+                .get(position)
+                .filter(|layout_node| layout_node.id() == &topology.id)
+            else {
                 continue;
             };
             metrics.insert(
                 topology.id.clone(),
                 DisplayedScrollMetrics {
                     overflow: topology.overflow,
-                    viewport: layout.size(),
+                    viewport: layout_node.scroll_viewport_extent(),
                     content: layout_node.scrollable_extent(),
                 },
             );

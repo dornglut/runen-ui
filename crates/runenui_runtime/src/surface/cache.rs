@@ -387,10 +387,13 @@ impl SurfaceCache {
             target_bounds.height(),
         )
         .ok()?;
-        Some((
-            content_bounds,
-            self.layout.bounds.get(owner_position)?.size(),
-        ))
+        let owner_layout = self
+            .layout
+            .report
+            .nodes()
+            .get(owner_position)
+            .filter(|layout_node| layout_node.id() == owner)?;
+        Some((content_bounds, owner_layout.scroll_viewport_extent()))
     }
 
     pub(crate) fn current_scroll_control_projection(
