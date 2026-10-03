@@ -79,7 +79,9 @@ impl TextEditingPaintKey {
 
 use super::{
     SurfaceBuildContext, SurfaceInteractionProjection, SurfaceLayoutReport, SurfacePublication,
-    resolve::{CachedEffectiveFacts, CachedStyleFacts, SurfaceTopologySnapshot},
+    resolve::{
+        CachedEffectiveFacts, CachedStyleFacts, SurfaceTopologySnapshot, displayed_scroll_metrics,
+    },
 };
 
 #[cfg(test)]
@@ -420,24 +422,7 @@ impl SurfaceCache {
         &self,
         owner: &MountedNodeId,
     ) -> Option<super::DisplayedScrollMetrics> {
-        let position = self
-            .topology
-            .nodes
-            .iter()
-            .position(|node| &node.id == owner)?;
-        let topology = self.topology.nodes.get(position)?;
-        if topology.overflow.horizontal() != runenui_core::OverflowPolicy::Scroll
-            && topology.overflow.vertical() != runenui_core::OverflowPolicy::Scroll
-        {
-            return None;
-        }
-        let viewport = self.layout.bounds.get(position)?.size();
-        let content = self.layout.report.node(owner)?.scrollable_extent();
-        Some(super::DisplayedScrollMetrics {
-            overflow: topology.overflow,
-            viewport,
-            content,
-        })
+        displayed_scroll_metrics(&self.topology, &self.layout, owner)
     }
 
     pub(crate) fn text_caret_map(
