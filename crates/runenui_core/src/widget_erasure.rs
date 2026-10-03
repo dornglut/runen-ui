@@ -505,7 +505,7 @@ impl<Action> MountedWidget<Action> {
     }
 }
 
-pub(super) struct ElementCompositionFields {
+pub struct ElementCompositionFields {
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
     focus_group_search_text: Option<String>,
@@ -513,7 +513,7 @@ pub(super) struct ElementCompositionFields {
 }
 
 impl ElementCompositionFields {
-    pub(super) const fn new(
+    pub const fn new(
         focus_group: Option<FocusGroup>,
         focus_group_entry: FocusGroupEntry,
         focus_group_search_text: Option<String>,
