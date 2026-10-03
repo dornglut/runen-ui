@@ -229,6 +229,8 @@ mod tests {
             ScrollNormalizedValue::new(0.5)
                 .unwrap_or_else(|_| unreachable!("half is a normalized value")),
         );
-        assert!(matches!(request, ScrollControlRequest::SetNormalized(value) if value.get() == 0.5));
+        assert!(
+            matches!(request, ScrollControlRequest::SetNormalized(value) if value.get() == 0.5)
+        );
     }
 }
