@@ -2,8 +2,8 @@
 
 use runenui_core::{
     __runtime::{EventContextOutput, WidgetBridgeError},
-    CommandOrigin, EventPhase, MonotonicInstant, PointerId, ShortcutBinding, UiEvent,
-    WidgetEventOutput, WorkSequence,
+    CommandOrigin, EventPhase, MonotonicInstant, PointerId, ScrollControlSnapshot, ShortcutBinding,
+    UiEvent, WidgetEventOutput, WorkSequence,
 };
 
 use super::{
@@ -79,6 +79,7 @@ impl<Action> MountedTree<Action> {
         origin: CommandOrigin,
         sequence: WorkSequence,
         instant: MonotonicInstant,
+        scroll_control: Option<ScrollControlSnapshot>,
         default_prevented: bool,
         propagation_stopped: bool,
         output_allowance: usize,
@@ -96,6 +97,7 @@ impl<Action> MountedTree<Action> {
             origin,
             sequence,
             instant,
+            scroll_control,
             // Composition lifecycle is runtime-owned. In particular, a
             // cancellation that protects an exact live owner cannot be
             // prevented or retargeted by widget code.
@@ -119,6 +121,7 @@ impl<Action> MountedTree<Action> {
         origin: CommandOrigin,
         sequence: WorkSequence,
         instant: MonotonicInstant,
+        scroll_control: Option<ScrollControlSnapshot>,
         propagation_stopped: bool,
         output_allowance: usize,
     ) -> Result<EventInvocation<Action>, WidgetBridgeError> {
@@ -135,6 +138,7 @@ impl<Action> MountedTree<Action> {
             origin,
             sequence,
             instant,
+            scroll_control,
             false,
             false,
             propagation_stopped,
@@ -158,6 +162,7 @@ impl<Action> MountedTree<Action> {
         pointer_id: PointerId,
         physical_target: Option<&MountedNodeId>,
         physical_path: &[MountedNodeId],
+        scroll_control: Option<ScrollControlSnapshot>,
         default_cancelable: bool,
         default_prevented: bool,
         propagation_stopped: bool,
@@ -179,6 +184,7 @@ impl<Action> MountedTree<Action> {
             pointer_id,
             physical_target,
             physical_path,
+            scroll_control,
             default_cancelable,
             default_prevented,
             propagation_stopped,
