@@ -3,9 +3,9 @@ use runenui_core::{
         FrameworkServiceBinding, FrameworkServiceEffect, MountedEffect,
         WidgetActivationContextOutputOrder, WidgetActivationContextOutputs,
     },
-    ApplicationCommandId, ClipboardWritePurpose, CommandOrigin, FocusDirection,
-    FrameworkServiceRequest, HostProtocol, LogicalDelta, OverflowPolicy, SemanticActionData,
-    SemanticCommand, TextSensitivity,
+    ApplicationCommandId, Axis, ClipboardWritePurpose, CommandOrigin, FocusDirection,
+    FrameworkServiceRequest, HostProtocol, LogicalDelta, OverflowPolicy, ScrollControlRequest,
+    SemanticActionData, SemanticCommand, TextSensitivity,
 };
 
 use super::{
@@ -13,7 +13,8 @@ use super::{
     transaction::RoutedTransaction,
 };
 use crate::{
-    MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
+    MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure,
+    TraceScrollControlBindingOutcome, TraceSemanticActionRejection,
 };
 
 const MAX_CLIPBOARD_BYTES: usize = 1_048_576;
@@ -90,6 +91,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.apply_scroll_into_view_default(transaction);
             return Ok(());
         }
+        if let SemanticCommand::ScrollControl(request) = command {
+            self.record_semantic_default_applied(transaction, command);
+            self.apply_scroll_control_default(transaction, request);
+            return Ok(());
+        }
         self.record_semantic_default_applied(transaction, command);
         if super::is_editing_command(command) {
             return self.apply_editing_default(transaction, command);
@@ -118,6 +124,200 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             transaction.instant,
             &transaction.target,
             Some(&transaction.target),
+            transaction.origin,
+        );
+    }
+
+    fn apply_scroll_control_default(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        request: ScrollControlRequest,
+    ) {
+        let target = transaction.target.clone();
+        let Some(binding) = self
+            .tree
+            .node(&target)
+            .and_then(|node| node.scroll_control_binding)
+        else {
+            self.record_scroll_control_binding(
+                transaction,
+                request,
+                None,
+                TraceScrollControlBindingOutcome::MissingBinding,
+                None,
+            );
+            return;
+        };
+        let axis = binding.axis();
+
+        let resolved = transaction
+            .route
+            .iter()
+            .rev()
+            .skip(1)
+            .find_map(|owner| {
+                let node = self.tree.node(owner)?;
+                let authored_policy = match axis {
+                    Axis::Horizontal => node.layout.overflow().horizontal(),
+                    Axis::Vertical => node.layout.overflow().vertical(),
+                };
+                (authored_policy == OverflowPolicy::Scroll).then(|| owner.clone())
+            });
+
+        let Some(owner) = resolved else {
+            self.record_scroll_control_binding(
+                transaction,
+                request,
+                Some(axis),
+                TraceScrollControlBindingOutcome::NonScrollable,
+                None,
+            );
+            return;
+        };
+
+        let Some(metrics) = self.surface_publication.current_scroll_metrics(&owner) else {
+            self.record_scroll_control_binding(
+                transaction,
+                request,
+                Some(axis),
+                TraceScrollControlBindingOutcome::MetricsUnavailable,
+                Some(&owner),
+            );
+            return;
+        };
+        let metrics_policy = match axis {
+            Axis::Horizontal => metrics.overflow.horizontal(),
+            Axis::Vertical => metrics.overflow.vertical(),
+        };
+        if metrics_policy != OverflowPolicy::Scroll {
+            self.record_scroll_control_binding(
+                transaction,
+                request,
+                Some(axis),
+                TraceScrollControlBindingOutcome::MetricsUnavailable,
+                Some(&owner),
+            );
+            return;
+        }
+
+        let Some(node) = self.tree.node(&owner) else {
+            self.record_scroll_control_binding(
+                transaction,
+                request,
+                Some(axis),
+                TraceScrollControlBindingOutcome::MetricsUnavailable,
+                Some(&owner),
+            );
+            return;
+        };
+        let before_pair = node.interaction.scroll_offset;
+        let (before, viewport, content) = match axis {
+            Axis::Horizontal => (
+                before_pair.0,
+                metrics.viewport.width(),
+                metrics.content.width(),
+            ),
+            Axis::Vertical => (
+                before_pair.1,
+                metrics.viewport.height(),
+                metrics.content.height(),
+            ),
+        };
+        let maximum = (content - viewport).max(0.0);
+        let offered = match request {
+            ScrollControlRequest::SmallStepBackward => -binding.small_step().get(),
+            ScrollControlRequest::SmallStepForward => binding.small_step().get(),
+            ScrollControlRequest::PageBackward => -viewport,
+            ScrollControlRequest::PageForward => viewport,
+            ScrollControlRequest::ToStart => -before,
+            ScrollControlRequest::ToEnd => maximum - before,
+            ScrollControlRequest::SetNormalized(normalized) => {
+                maximum.mul_add(normalized.get(), -before)
+            }
+        };
+        let after = bounded_scroll_offset(before, offered, maximum);
+        let offset = match axis {
+            Axis::Horizontal => (after, before_pair.1),
+            Axis::Vertical => (before_pair.0, after),
+        };
+        let (offered, consumed, maximum_delta, offset_delta) = match axis {
+            Axis::Horizontal => (
+                LogicalDelta::new(offered, 0.0),
+                LogicalDelta::new(after - before, 0.0),
+                LogicalDelta::new(maximum, 0.0),
+                LogicalDelta::new(offset.0, offset.1),
+            ),
+            Axis::Vertical => (
+                LogicalDelta::new(0.0, offered),
+                LogicalDelta::new(0.0, after - before),
+                LogicalDelta::new(0.0, maximum),
+                LogicalDelta::new(offset.0, offset.1),
+            ),
+        };
+        let (Ok(offered), Ok(consumed), Ok(maximum_delta), Ok(offset_delta)) =
+            (offered, consumed, maximum_delta, offset_delta)
+        else {
+            self.record_scroll_control_binding(
+                transaction,
+                request,
+                Some(axis),
+                TraceScrollControlBindingOutcome::MetricsUnavailable,
+                Some(&owner),
+            );
+            return;
+        };
+
+        self.record_scroll_control_binding(
+            transaction,
+            request,
+            Some(axis),
+            TraceScrollControlBindingOutcome::Resolved,
+            Some(&owner),
+        );
+        if offset != before_pair {
+            transaction
+                .scroll_updates
+                .push(super::transaction::ScrollOffsetUpdate {
+                    owner: owner.clone(),
+                    offset,
+                });
+        }
+        transaction
+            .scroll_consumptions
+            .push(super::transaction::ScrollOwnerConsumption {
+                owner,
+                evaluation_order: 0,
+                offered,
+                consumed,
+                remainder: LogicalDelta::ZERO,
+                offset: offset_delta,
+                maximum: maximum_delta,
+            });
+    }
+
+    fn record_scroll_control_binding(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        request: ScrollControlRequest,
+        axis: Option<Axis>,
+        outcome: TraceScrollControlBindingOutcome,
+        owner: Option<&MountedNodeId>,
+    ) {
+        let trace_target = owner
+            .map(|owner| self.tree.trace_target(owner))
+            .unwrap_or_else(|| transaction.target_trace.clone());
+        transaction.parent = self.trace.record_event(
+            TraceRecordKind::ScrollControlBindingEvaluated {
+                request,
+                axis,
+                outcome,
+            },
+            transaction.sequence,
+            transaction.parent,
+            Some(trace_target),
+            transaction.instant,
+            &transaction.target,
+            owner.or(Some(&transaction.target)),
             transaction.origin,
         );
     }
