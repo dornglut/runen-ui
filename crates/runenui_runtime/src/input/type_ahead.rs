@@ -302,12 +302,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             (fragment.clone(), fragment_scalars)
         };
 
+        let eligibility = self.focus_eligibility_projection();
         let matched = select_focus_group_type_ahead_match(
             &mut self.tree,
             &self.focus,
             &context.group,
             &query,
             extending,
+            &eligibility,
         );
         let (retained_query, retained_scalars, destination) = if matched.is_none() && extending {
             let fresh_match = select_focus_group_type_ahead_match(
@@ -316,6 +318,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 &context.group,
                 &fragment,
                 false,
+                &eligibility,
             );
             if fresh_match.is_some() {
                 (fragment, fragment_scalars, fresh_match)

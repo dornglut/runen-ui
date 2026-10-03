@@ -52,7 +52,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         })
     }
 
-    pub(super) fn resolve_scroll_control_context_snapshot(
+    pub(in crate::runtime) fn resolve_scroll_control_context_snapshot(
         &self,
         target: &MountedNodeId,
     ) -> Option<ScrollControlSnapshot> {

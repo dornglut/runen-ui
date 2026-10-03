@@ -10,6 +10,7 @@ use crate::{
 };
 
 use super::{HostProtocol, Runtime, RuntimeStatus};
+use crate::focus::focusability_is_eligible;
 use crate::runtime::surface_publication::SurfaceIdentityError;
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -93,7 +94,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         validate_m11_semantic_action(node, action, data)?;
         validate_editable_semantic_action(node, action, data)?;
-        if !semantic_action_is_ready(&authority, action) {
+        let automatic_scroll_focusable =
+            self.current_automatic_scroll_focusability(authority.owner());
+        if !semantic_action_is_ready(&authority, action, automatic_scroll_focusable) {
             return Err(SubmitSemanticActionErrorKind::UnavailableAction);
         }
         Ok(authority)
@@ -266,16 +269,19 @@ fn validate_editable_semantic_action(
     Ok(())
 }
 
-fn semantic_action_is_ready(authority: &SemanticActionAuthority, action: &SemanticAction) -> bool {
+fn semantic_action_is_ready(
+    authority: &SemanticActionAuthority,
+    action: &SemanticAction,
+    automatic_scroll_focusable: Option<bool>,
+) -> bool {
     let activation = authority.activation();
     if *action == SemanticAction::RequestFocus {
         return authority.key() == &SemanticKey::PRIMARY
-            && match authority.focusability() {
-                Focusability::Automatic => activation.enabled() && activation.is_actionable(),
-                Focusability::Focusable => activation.enabled(),
-                Focusability::FocusableWhenDisabled => true,
-                _ => false,
-            };
+            && focusability_is_eligible(
+                authority.focusability(),
+                activation,
+                automatic_scroll_focusable,
+            );
     }
     if !activation.enabled() {
         return false;

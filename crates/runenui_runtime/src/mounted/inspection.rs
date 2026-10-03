@@ -7,6 +7,8 @@ use super::{
 use runenui_core::{ElementId, ElementKey};
 use std::collections::{BTreeMap, HashMap};
 
+use crate::focus::FocusEligibilityProjection;
+
 impl<Action> MountedTree<Action> {
     pub(super) fn preorder_ids(&self) -> Vec<MountedNodeId> {
         fn visit<Action>(
@@ -34,6 +36,13 @@ impl<Action> MountedTree<Action> {
     }
 
     pub(crate) fn index(&mut self) -> MountedTreeIndex<'_, Action> {
+        self.index_with_focus_eligibility(&FocusEligibilityProjection::default())
+    }
+
+    pub(crate) fn index_with_focus_eligibility(
+        &mut self,
+        eligibility: &FocusEligibilityProjection,
+    ) -> MountedTreeIndex<'_, Action> {
         let ids = self.preorder_ids();
         for id in &ids {
             let _ = self.activation(id);
@@ -42,7 +51,13 @@ impl<Action> MountedTree<Action> {
         let nodes = ids
             .iter()
             .filter_map(|id| self.node(id))
-            .map(|node| MountedNodeRef { node })
+            .map(|node| MountedNodeRef {
+                automatic_scroll_focusable: eligibility.automatic_scroll_focusability(
+                    &node.id,
+                    node.scroll_control_binding.is_some(),
+                ),
+                node,
+            })
             .collect();
         MountedTreeIndex { nodes, diagnostics }
     }

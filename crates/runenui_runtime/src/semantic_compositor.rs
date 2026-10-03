@@ -10,7 +10,7 @@ use runenui_core::{
     SemanticSelectionMode, SemanticText, SemanticValue, WidgetActivation,
 };
 
-use crate::SemanticNodeId;
+use crate::{SemanticNodeId, focus::focusability_is_eligible};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SemanticScrollControlFacts {
@@ -640,11 +640,13 @@ fn supported_actions(
             }
             SemanticAction::RequestFocus => {
                 authored.key().is_primary()
-                    && match owner.focusability {
-                        Focusability::Automatic => owner.activation.is_actionable(),
-                        Focusability::Focusable | Focusability::FocusableWhenDisabled => true,
-                        _ => false,
-                    }
+                    && focusability_is_eligible(
+                        owner.focusability,
+                        owner.activation,
+                        owner.scroll_control.as_ref().map(|projection| {
+                            projection.snapshot.maximum_offset().get() > 0.0
+                        }),
+                    )
             }
             SemanticAction::OpenMenu | SemanticAction::OpenContextMenu => true,
             SemanticAction::MoveBackward

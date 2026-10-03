@@ -74,6 +74,7 @@ impl<Action> fmt::Debug for MountedNode<Action> {
 /// Borrowed read-only mounted node inspection.
 pub struct MountedNodeRef<'a, Action> {
     pub(crate) node: &'a MountedNode<Action>,
+    pub(crate) automatic_scroll_focusable: Option<bool>,
 }
 
 impl<Action> Clone for MountedNodeRef<'_, Action> {
@@ -125,12 +126,11 @@ impl<'a, Action> MountedNodeRef<'a, Action> {
         let Some(activation) = self.node.caches.activation.ready() else {
             return false;
         };
-        match self.node.focusability {
-            Focusability::Automatic => activation.enabled() && activation.is_actionable(),
-            Focusability::Focusable => activation.enabled(),
-            Focusability::FocusableWhenDisabled => true,
-            _ => false,
-        }
+        crate::focus::focusability_is_eligible(
+            self.node.focusability,
+            activation,
+            self.automatic_scroll_focusable,
+        )
     }
     #[must_use]
     pub const fn focusability(&self) -> Focusability {
