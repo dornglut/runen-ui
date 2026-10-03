@@ -826,6 +826,26 @@ impl UiApp for FailApp {
 }
 
 #[test]
+fn bound_request_without_published_metrics_fails_closed() {
+    let mut runtime = bound_runtime();
+    settle(&mut runtime);
+    let bound = node_id(&mut runtime, "bound");
+
+    submit_scroll(&mut runtime, bound, ScrollControlRequest::PageForward);
+
+    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 0.0));
+    assert_eq!(scroll_offset(&mut runtime, "outer"), (0.0, 0.0));
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::ScrollControlBindingEvaluated {
+            outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
+            axis: Some(Axis::Vertical),
+            ..
+        }
+    )));
+}
+
+#[test]
 fn missing_and_non_scrollable_bindings_fail_closed() {
     for (mode, expected) in [
         (
