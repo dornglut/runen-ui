@@ -201,17 +201,25 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 | runenui_core::SemanticCommand::Cut
                 | runenui_core::SemanticCommand::Paste
         ));
+        let additional_trace = if matches!(
+            command,
+            runenui_core::SemanticCommand::ScrollControl(_)
+        ) {
+            MandatoryTracePlan::one_fact()
+        } else {
+            MandatoryTracePlan::none()
+        };
         let Some(mut transaction) = (if is_focus_command(command) {
             self.begin_focus_routed_transaction(facts, command)
         } else if default_outputs != 0 {
             self.try_begin_routed_transaction_with_trace_and_default_outputs(
                 facts,
-                MandatoryTracePlan::none(),
+                additional_trace,
                 default_outputs,
             )
             .ok()
         } else {
-            self.begin_routed_transaction(facts)
+            self.begin_routed_transaction_with_trace(facts, additional_trace)
         }) else {
             return;
         };
