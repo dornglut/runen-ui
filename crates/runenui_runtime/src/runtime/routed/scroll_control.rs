@@ -44,8 +44,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         target: &MountedNodeId,
     ) -> Result<ResolvedScrollControl, ScrollControlResolutionFailure> {
         let accepted = self.resolve_scroll_control_projection(target)?;
-        let snapshot =
-            self.resolve_scroll_control_snapshot(&accepted.owner, accepted.binding)?;
+        let snapshot = self.resolve_scroll_control_snapshot(&accepted.owner, accepted.binding)?;
         Ok(ResolvedScrollControl {
             owner: accepted.owner,
             binding: accepted.binding,
