@@ -3,7 +3,9 @@
 use core::fmt;
 use std::rc::Rc;
 
-use crate::widget_erasure::{ElementParts, ErasedWidget, MountedWidget, WidgetAdapter};
+use crate::widget_erasure::{
+    ElementCompositionFields, ElementParts, ErasedWidget, MountedWidget, WidgetAdapter,
+};
 use crate::widget_mapping::MappedWidget;
 use crate::widget_protocol::Widget;
 use crate::{
@@ -481,10 +483,12 @@ impl<Action> Element<Action> {
             .into_authored_fields(self.focusability, self.focus_scope);
         ElementParts::new(
             fields,
-            self.focus_group,
-            self.focus_group_entry,
-            self.focus_group_search_text,
-            self.scroll_control_binding,
+            ElementCompositionFields::new(
+                self.focus_group,
+                self.focus_group_entry,
+                self.focus_group_search_text,
+                self.scroll_control_binding,
+            ),
             MountedWidget::from_erased(self.widget),
             self.children,
             diagnostics,
