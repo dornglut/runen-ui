@@ -314,15 +314,21 @@ fn pointer_local_position_uses_retained_capture_geometry_and_rejects_singular_tr
         ))
         .unwrap_or_else(|_| unreachable!("captured retained-context move is admitted"));
     settle(&mut runtime);
-    assert!(observations.borrow().iter().any(|observation| matches!(
-        observation,
-        Observation::Pointer {
-            phase: PointerPhase::Move,
-            callback_phase: EventPhase::Target,
-            physical_target: false,
-            local_position,
-        } if local_position_is(*local_position, [40.0, 40.0])
-    )));
+    {
+        let observations = observations.borrow();
+        assert!(
+            observations.iter().any(|observation| matches!(
+                observation,
+                Observation::Pointer {
+                    phase: PointerPhase::Move,
+                    callback_phase: EventPhase::Target,
+                    physical_target: false,
+                    local_position,
+                } if local_position_is(*local_position, [40.0, 40.0])
+            )),
+            "retained capture must use retained owner-local geometry: {observations:?}"
+        );
+    }
 
     observations.borrow_mut().clear();
     runtime
