@@ -24,6 +24,7 @@ pub(crate) struct StagedSemanticOwnerCapabilities {
     ordered_keys: Vec<SemanticKey>,
     current_bindings: Vec<SemanticBinding>,
     semantic_cache: CachedSemanticContribution,
+    semantic_context: SemanticContributionContext,
     activation_cache: CachedCapability<WidgetActivation>,
     focusability: Focusability,
     editable: Option<EditableSemanticFacts>,
@@ -60,6 +61,7 @@ struct FinalizedSemanticOwner {
     contribution: SemanticContribution,
     bindings: Vec<SemanticBinding>,
     semantic_cache: CachedSemanticContribution,
+    semantic_context: SemanticContributionContext,
     activation_cache: CachedCapability<WidgetActivation>,
     focusability: Focusability,
     editable: Option<EditableSemanticFacts>,
@@ -173,16 +175,22 @@ impl<Action> MountedTree<Action> {
     pub(crate) fn plan_semantic_publication_capabilities(
         &self,
         surface_capabilities: &SurfaceCapabilityPlan,
+        semantic_contexts: &[SemanticContributionContext],
     ) -> SemanticCapabilityPlan {
+        let owners = self.publication_preorder_ids();
+        debug_assert_eq!(owners.len(), semantic_contexts.len());
         SemanticCapabilityPlan {
-            owners: self
-                .publication_preorder_ids()
+            owners: owners
                 .into_iter()
                 .enumerate()
                 .map(|(position, owner)| {
                     let activation_cache =
                         surface_capabilities.activation_cache_at(position, &owner);
-                    self.stage_semantic_owner_capabilities(&owner, activation_cache)
+                    self.stage_semantic_owner_capabilities(
+                        &owner,
+                        activation_cache,
+                        semantic_contexts[position],
+                    )
                 })
                 .collect(),
         }
@@ -192,6 +200,7 @@ impl<Action> MountedTree<Action> {
         &self,
         owner: &MountedNodeId,
         activation_cache: CachedCapability<WidgetActivation>,
+        semantic_context: SemanticContributionContext,
     ) -> StagedSemanticOwnerCapabilities {
         let node = self
             .node(owner)
@@ -202,10 +211,11 @@ impl<Action> MountedTree<Action> {
                 node.semantic_bindings.clone(),
                 node.focusability,
                 activation_cache,
+                semantic_context,
             );
         }
 
-        let semantic = stage_semantic_capability(node);
+        let semantic = stage_semantic_capability(node, semantic_context);
         let activation_integrity_failed =
             matches!(activation_cache, CachedCapability::StatePayloadMismatch);
         let mark_integrity_failed = semantic.integrity_failed || activation_integrity_failed;
@@ -216,6 +226,7 @@ impl<Action> MountedTree<Action> {
                 ordered_keys: Vec::new(),
                 current_bindings: node.semantic_bindings.clone(),
                 semantic_cache: CachedSemanticContribution::StatePayloadMismatch,
+                semantic_context,
                 activation_cache,
                 focusability: node.focusability,
                 editable: None,
@@ -229,6 +240,7 @@ impl<Action> MountedTree<Action> {
             ordered_keys: semantic.ordered_keys,
             current_bindings: node.semantic_bindings.clone(),
             semantic_cache: semantic.cache,
+            semantic_context,
             activation_cache,
             focusability: node.focusability,
             editable: semantic.editable,
@@ -339,6 +351,7 @@ impl<Action> MountedTree<Action> {
                 .unwrap_or_else(|| unreachable!("finalized semantic owner remains live"));
             node.semantic_bindings = finalized.bindings;
             node.caches.semantics = finalized.semantic_cache;
+            node.caches.semantic_context = Some(finalized.semantic_context);
             node.integrity_failed |= finalized.mark_integrity_failed;
         }
     }
@@ -357,6 +370,7 @@ fn finalize_owner(
             contribution: SemanticContribution::empty(),
             bindings,
             semantic_cache: CachedSemanticContribution::IdentityExhausted,
+            semantic_context: staged.semantic_context,
             activation_cache: staged.activation_cache,
             focusability: staged.focusability,
             editable: None,
@@ -370,6 +384,7 @@ fn finalize_owner(
             contribution: SemanticContribution::empty(),
             bindings,
             semantic_cache: CachedSemanticContribution::IdentityExhausted,
+            semantic_context: staged.semantic_context,
             activation_cache: staged.activation_cache,
             focusability: staged.focusability,
             editable: None,
@@ -380,6 +395,7 @@ fn finalize_owner(
             contribution: SemanticContribution::empty(),
             bindings,
             semantic_cache: CachedSemanticContribution::IndexIntegrityFailure,
+            semantic_context: staged.semantic_context,
             activation_cache: staged.activation_cache,
             focusability: staged.focusability,
             editable: None,
@@ -390,6 +406,7 @@ fn finalize_owner(
             contribution: staged.contribution,
             bindings,
             semantic_cache: staged.semantic_cache,
+            semantic_context: staged.semantic_context,
             activation_cache: staged.activation_cache,
             focusability: staged.focusability,
             editable: staged.editable,
@@ -403,6 +420,7 @@ fn integrity_withdrawal(
     current_bindings: Vec<SemanticBinding>,
     focusability: Focusability,
     activation_cache: CachedCapability<WidgetActivation>,
+    semantic_context: SemanticContributionContext,
 ) -> StagedSemanticOwnerCapabilities {
     StagedSemanticOwnerCapabilities {
         owner: owner.clone(),
@@ -410,6 +428,7 @@ fn integrity_withdrawal(
         ordered_keys: Vec::new(),
         current_bindings,
         semantic_cache: CachedSemanticContribution::StatePayloadMismatch,
+        semantic_context,
         activation_cache,
         focusability,
         editable: None,
@@ -417,9 +436,13 @@ fn integrity_withdrawal(
     }
 }
 
-fn stage_semantic_capability<Action>(node: &MountedNode<Action>) -> StagedSemanticCapability {
-    let context = SemanticContributionContext::__runtime_new(node.children.len());
-    let staged = match &node.caches.semantics {
+fn stage_semantic_capability<Action>(
+    node: &MountedNode<Action>,
+    context: SemanticContributionContext,
+) -> StagedSemanticCapability {
+    let context_matches = node.caches.semantic_context.as_ref() == Some(&context);
+    let staged = if context_matches {
+        match &node.caches.semantics {
         CachedSemanticContribution::Ready(contribution) => {
             StagedSemanticCapability::ready(contribution.clone(), context)
         }
@@ -450,6 +473,17 @@ fn stage_semantic_capability<Action>(node: &MountedNode<Action>) -> StagedSemant
             CachedSemanticContribution::StatePayloadMismatch,
             true,
         ),
+        }
+    } else {
+        node.widget.semantics(&node.state, context).map_or_else(
+            |_| {
+                StagedSemanticCapability::withdrawn(
+                    CachedSemanticContribution::StatePayloadMismatch,
+                    true,
+                )
+            },
+            |contribution| StagedSemanticCapability::ready(contribution, context),
+        )
     };
     if staged.integrity_failed {
         return staged;
