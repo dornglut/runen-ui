@@ -10,9 +10,9 @@ use crate::scene::{HitTestRegion, HitTestSceneContent, PaintScene, PaintSceneIte
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
     __runtime::transform_rect_aabb, Axis, Color, ComputedStyle, ContributionClip, ElementId,
-    HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
-    LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
-    PaintContributionItem, Radius, SceneShape, ScrollControlSnapshot, ScrollNormalizedValue,
+    HitContributionContext, LayoutStyle, LogicalPoint, LogicalRect, LogicalTransform,
+    OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
+    PaintContributionItem, Radius, SceneShape, ScrollControlSnapshot,
     SemanticContributionContext, StyleEnvironment, StyleInteractionState, StyleResolution,
     TextAffinity, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
     style_effects_between,
@@ -377,38 +377,14 @@ pub(super) fn scroll_control_snapshots<Action>(
                         Axis::Horizontal => (offset.0, viewport.width(), content.width()),
                         Axis::Vertical => (offset.1, viewport.height(), content.height()),
                     };
-                    let maximum = (content - viewport).max(0.0);
-                    if !offset.is_finite()
-                        || !viewport.is_finite()
-                        || !content.is_finite()
-                        || !maximum.is_finite()
-                        || offset < 0.0
-                        || viewport < 0.0
-                        || content < 0.0
-                    {
-                        return Err(PresentationGeometryError);
-                    }
-                    let normalized = if maximum == 0.0 {
-                        0.0
-                    } else {
-                        (offset / maximum).clamp(0.0, 1.0)
-                    };
-                    let visible = if content <= viewport || content == 0.0 {
-                        1.0
-                    } else {
-                        (viewport / content).clamp(0.0, 1.0)
-                    };
-                    return Ok(Some(ScrollControlSnapshot::__runtime_new(
+                    return ScrollControlSnapshot::__runtime_from_metrics(
                         binding.axis(),
-                        LogicalLength::new(offset).map_err(|_| PresentationGeometryError)?,
-                        LogicalLength::new(maximum).map_err(|_| PresentationGeometryError)?,
-                        LogicalLength::new(viewport).map_err(|_| PresentationGeometryError)?,
-                        LogicalLength::new(content).map_err(|_| PresentationGeometryError)?,
-                        ScrollNormalizedValue::new(normalized)
-                            .map_err(|_| PresentationGeometryError)?,
-                        ScrollNormalizedValue::new(visible)
-                            .map_err(|_| PresentationGeometryError)?,
-                    )));
+                        offset,
+                        viewport,
+                        content,
+                    )
+                    .map(Some)
+                    .ok_or(PresentationGeometryError);
                 }
                 ancestor = owner_topology.parent.as_ref();
             }
@@ -435,11 +411,18 @@ pub(super) fn semantic_contexts(
         .collect()
 }
 
-pub(super) fn hit_contexts(layout: &CachedLayoutFacts) -> Vec<HitContributionContext> {
+pub(super) fn hit_contexts(
+    layout: &CachedLayoutFacts,
+    scroll_controls: &[Option<ScrollControlSnapshot>],
+) -> Vec<HitContributionContext> {
+    debug_assert_eq!(layout.bounds.len(), scroll_controls.len());
     layout
         .bounds
         .iter()
-        .map(|bounds| HitContributionContext::__runtime_new(bounds.size()))
+        .zip(scroll_controls)
+        .map(|(bounds, scroll_control)| {
+            HitContributionContext::__runtime_with_scroll_control(bounds.size(), *scroll_control)
+        })
         .collect()
 }
 
