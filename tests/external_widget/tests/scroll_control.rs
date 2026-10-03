@@ -3,12 +3,14 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    Axis, ChildBearingWidget, CommandOrigin, Element, HitContribution, HitContributionContext,
+    Axis, ChildBearingWidget, CommandOrigin, Element, EventContext, EventPhase, HitContribution,
+    HitContributionContext,
     LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
     NoHostProtocol, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
     ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot, SemanticCommand,
     SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
-    StyleEnvironment, UiApp, View, Widget, WidgetMeasure, WidgetMeasureInput, children, container,
+    StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure,
+    WidgetMeasureInput, children, container,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext,
@@ -73,6 +75,7 @@ impl ChildBearingWidget<()> for ExternalViewport {}
 #[derive(Debug)]
 struct ExternalScrollControl {
     observed: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
+    events: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
 }
 
 impl Widget<()> for ExternalScrollControl {
@@ -82,6 +85,46 @@ impl Widget<()> for ExternalScrollControl {
 
     fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::measured(length(20.0), length(60.0))
+    }
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ()>,
+    ) -> WidgetEventOutput {
+        if context.phase() == EventPhase::Target
+            && event
+                .as_semantic_command()
+                .is_some_and(|event| event.command() == SemanticCommand::Activate)
+        {
+            let snapshot = context
+                .scroll_control_snapshot()
+                .unwrap_or_else(|| unreachable!("bound downstream callback has a live snapshot"));
+            self.events.borrow_mut().push(snapshot);
+            context.prevent_default();
+            context.stop_propagation();
+            context.emit_command(SemanticCommand::ScrollControl(
+                ScrollControlRequest::PageForward,
+            ));
+        }
+        WidgetEventOutput::none()
+    }
+
+    fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
+        assert!(
+            context.scroll_control_snapshot().is_some(),
+            "downstream hit contribution observes the public binding projection"
+        );
+        HitContribution::single_rect(
+            LogicalRect::try_new(
+                0.0,
+                0.0,
+                context.local_size().width(),
+                context.local_size().height(),
+            )
+            .unwrap_or_else(|_| unreachable!("control hit bounds are finite")),
+        )
     }
 
     fn paint(&self, (): &Self::State, context: PaintContributionContext) -> PaintContribution {
@@ -107,6 +150,7 @@ impl Widget<()> for ExternalScrollControl {
 #[derive(Debug)]
 struct State {
     observed: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
+    events: Rc<RefCell<Vec<ScrollControlSnapshot>>>,
 }
 
 struct App;
@@ -121,6 +165,7 @@ impl UiApp for App {
             .unwrap_or_else(|_| unreachable!("fixture binding is valid"));
         let control = Element::new(ExternalScrollControl {
             observed: Rc::clone(&state.observed),
+            events: Rc::clone(&state.events),
         })
         .id("external.control")
         .key("external.control")
@@ -152,8 +197,10 @@ impl UiApp for App {
 #[test]
 fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_request_contracts() {
     let observed = Rc::new(RefCell::new(Vec::new()));
+    let events = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<App>::mount(State {
         observed: Rc::clone(&observed),
+        events: Rc::clone(&events),
     });
     runtime.pump(PumpBudget::new(
         usize::MAX,
@@ -188,13 +235,26 @@ fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_reques
     assert_eq!(initial.content_extent().get(), 60.0);
 
     runtime
-        .submit_command(
-            control,
-            SemanticCommand::ScrollControl(ScrollControlRequest::PageForward),
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("downstream scroll request is admitted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+        .submit_command(control, SemanticCommand::Activate, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("downstream control trigger is admitted"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1,
+        "callback-emitted scroll request remains ordinary queued routed work"
+    );
+    let event_snapshot = *events
+        .borrow()
+        .last()
+        .unwrap_or_else(|| unreachable!("downstream callback observed scroll snapshot"));
+    assert_eq!(event_snapshot, initial);
 
     let offset = runtime
         .index()
