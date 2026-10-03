@@ -19,7 +19,7 @@ use runenui_core::{
 use runenui_text::{ShapedTextLease, TextDisplaySelection, TextPreeditProjection, TextSystem};
 
 use super::{
-    SurfaceInteractionProjection, SurfaceScrollProjection,
+    DisplayedScrollMetrics, SurfaceInteractionProjection, SurfaceScrollProjection,
     cache::{
         CachedLayoutFacts, CachedPresentationFacts, CachedScrollControlProjection,
         PresentationNodeFacts, TextEditingPaintInputs,
@@ -330,6 +330,25 @@ pub(super) fn paint_contexts(
         .collect()
 }
 
+pub(super) fn displayed_scroll_metrics(
+    topology: &SurfaceTopologySnapshot,
+    layout: &CachedLayoutFacts,
+    owner: &MountedNodeId,
+) -> Option<DisplayedScrollMetrics> {
+    let position = topology.nodes.iter().position(|node| &node.id == owner)?;
+    let topology_node = topology.nodes.get(position)?;
+    if topology_node.overflow.horizontal() != OverflowPolicy::Scroll
+        && topology_node.overflow.vertical() != OverflowPolicy::Scroll
+    {
+        return None;
+    }
+    Some(DisplayedScrollMetrics {
+        overflow: topology_node.overflow,
+        viewport: layout.bounds.get(position)?.size(),
+        content: layout.report.node(owner)?.scrollable_extent(),
+    })
+}
+
 pub(super) fn scroll_control_projections<Action>(
     tree: &crate::mounted::MountedTree<Action>,
     topology: &SurfaceTopologySnapshot,
@@ -364,20 +383,25 @@ pub(super) fn scroll_control_projections<Action>(
                     .copied()
                     .ok_or(PresentationGeometryError)?;
                 let owner_topology = &topology.nodes[owner_position];
+                let metrics =
+                    displayed_scroll_metrics(topology, layout, owner).ok_or(PresentationGeometryError)?;
                 let scrollable = match binding.axis() {
-                    Axis::Horizontal => {
-                        owner_topology.overflow.horizontal() == OverflowPolicy::Scroll
-                    }
-                    Axis::Vertical => owner_topology.overflow.vertical() == OverflowPolicy::Scroll,
+                    Axis::Horizontal => metrics.overflow.horizontal() == OverflowPolicy::Scroll,
+                    Axis::Vertical => metrics.overflow.vertical() == OverflowPolicy::Scroll,
                 };
                 if scrollable {
-                    let layout_node = layout.report.node(owner).ok_or(PresentationGeometryError)?;
-                    let viewport = layout.bounds[owner_position].size();
-                    let content = layout_node.scrollable_extent();
                     let offset = scroll.offset(owner);
                     let (offset, viewport, content) = match binding.axis() {
-                        Axis::Horizontal => (offset.0, viewport.width(), content.width()),
-                        Axis::Vertical => (offset.1, viewport.height(), content.height()),
+                        Axis::Horizontal => (
+                            offset.0,
+                            metrics.viewport.width(),
+                            metrics.content.width(),
+                        ),
+                        Axis::Vertical => (
+                            offset.1,
+                            metrics.viewport.height(),
+                            metrics.content.height(),
+                        ),
                     };
                     let snapshot = ScrollControlSnapshot::__runtime_from_metrics(
                         binding.axis(),
