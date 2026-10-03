@@ -882,8 +882,7 @@ mod tests {
         assert_eq!(activation_callbacks.load(Ordering::SeqCst), 1);
 
         let contexts = semantic_contexts(&tree);
-        let semantic_plan =
-            tree.plan_semantic_publication_capabilities(&surface_plan, &contexts);
+        let semantic_plan = tree.plan_semantic_publication_capabilities(&surface_plan, &contexts);
         assert_eq!(activation_callbacks.load(Ordering::SeqCst), 1);
         let finalized = tree
             .finalize_semantic_publication(semantic_plan)
