@@ -17,7 +17,7 @@ use super::resolve::{
     EffectiveEffects, PaintResolutionInput, PresentationGeometryError, ResolvedSurfaceTree,
     collect_topology, hit_contexts, normalize_scroll_projection, paint_contexts,
     resolve_diagnostics, resolve_hit_test, resolve_paint, resolve_presentation, resolve_styles,
-    scroll_control_snapshots, semantic_contexts,
+    scroll_control_projections, semantic_contexts,
 };
 use super::taffy_layout::layout_resolved_surface;
 use super::transaction::{PlannedSurfacePublication, StagedSurfaceMotion};
@@ -424,9 +424,14 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         &current.layout,
         &scroll,
     )?);
-    let scroll_controls =
-        scroll_control_snapshots(tree, &current.topology, &current.layout, &current.scroll)?;
-    let semantic_contexts = semantic_contexts(&current.topology, &scroll_controls);
+    let scroll_controls = Arc::new(scroll_control_projections(
+        tree,
+        &current.topology,
+        &current.layout,
+        &current.scroll,
+    )?);
+    current.scroll_controls = Arc::clone(&scroll_controls);
+    let semantic_contexts = semantic_contexts(&current.topology, scroll_controls.as_slice());
     let semantic_capability_plan = semantic_dirty
         .then(|| tree.plan_semantic_publication_capabilities(&capability_plan, &semantic_contexts));
     if presentation_dirty {
@@ -441,7 +446,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     let scene_diagnostics_changed = resolve_contribution_phases(
         tree,
         &mut current,
-        &scroll_controls,
+        scroll_controls.as_slice(),
         ContributionPhasePlan {
             capability_plan: &mut capability_plan,
             text_system,
@@ -543,14 +548,19 @@ fn plan_structural_surface<'tree, Action>(
     };
     report.record(SurfacePhase::Layout);
     let scroll = normalize_scroll_projection(&topology, &layout, scroll)?;
-    let scroll_controls = scroll_control_snapshots(tree, &topology, &layout, &scroll)?;
-    let semantic_contexts = semantic_contexts(&topology, &scroll_controls);
+    let scroll_controls = Arc::new(scroll_control_projections(
+        tree,
+        &topology,
+        &layout,
+        &scroll,
+    )?);
+    let semantic_contexts = semantic_contexts(&topology, scroll_controls.as_slice());
     let semantic_capability_plan =
         tree.plan_semantic_publication_capabilities(&capability_plan, &semantic_contexts);
     let presentation = resolve_presentation(&topology, &layout, &effective, &scroll)?;
 
-    let paint_contexts = paint_contexts(&layout, &effective, &scroll_controls);
-    let hit_contexts = hit_contexts(&layout, &scroll_controls);
+    let paint_contexts = paint_contexts(&layout, &effective, scroll_controls.as_slice());
+    let hit_contexts = hit_contexts(&layout, scroll_controls.as_slice());
     tree.plan_surface_publication_contributions(
         &mut capability_plan,
         &paint_contexts,
@@ -584,6 +594,7 @@ fn plan_structural_surface<'tree, Action>(
         interaction: Arc::new(interaction.clone()),
         text_editing: Arc::new(text_editing_key),
         scroll: Arc::new(scroll),
+        scroll_controls,
         styles: Arc::new(styles),
         effective: Arc::new(effective),
         layout: Arc::new(layout),
