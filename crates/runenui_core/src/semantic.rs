@@ -2117,8 +2117,8 @@ mod tests {
                 .is_ok()
         );
 
-        let authored_scrollbar_range =
-            SemanticNodeContribution::primary(SemanticRole::ScrollBar).with_range(
+        let authored_scrollbar_range = SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+            .with_range(
                 SemanticRange::new(Some(minimum), Some(maximum), Some(current))
                     .unwrap_or_else(|_| unreachable!("controlled scrollbar range is valid")),
             );

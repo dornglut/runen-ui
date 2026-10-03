@@ -306,9 +306,7 @@ impl<'a> SemanticCompositor<'a> {
         };
         if authored.role() == SemanticRole::ScrollBar && owner.scroll_control.is_none() {
             self.diagnostics
-                .push(SemanticCompositionDiagnostic::MissingScrollControlBinding {
-                    source: id,
-                });
+                .push(SemanticCompositionDiagnostic::MissingScrollControlBinding { source: id });
             return self.compose_items(owner_index, authored.children(), parent);
         }
         let editable = authored.editable().cloned().and_then(|editable| {
@@ -703,9 +701,8 @@ fn scrollbar_range(snapshot: ScrollControlSnapshot) -> SemanticRange {
         .unwrap_or_else(|_| unreachable!("zero is a finite semantic number"));
     let maximum = SemanticNumber::new(100.0)
         .unwrap_or_else(|_| unreachable!("one hundred is a finite semantic number"));
-    let current =
-        SemanticNumber::new(f64::from(snapshot.normalized_position().get()) * 100.0)
-            .unwrap_or_else(|_| unreachable!("normalized scroll percentage is finite"));
+    let current = SemanticNumber::new(f64::from(snapshot.normalized_position().get()) * 100.0)
+        .unwrap_or_else(|_| unreachable!("normalized scroll percentage is finite"));
     SemanticRange::new(Some(minimum), Some(maximum), Some(current))
         .unwrap_or_else(|_| unreachable!("normalized scroll percentage is within 0..=100"))
 }
@@ -1366,9 +1363,9 @@ mod tests {
             scrollbar_owner_id,
             None,
             Vec::new(),
-            SemanticContribution::single(
-                SemanticNodeContribution::primary(SemanticRole::ScrollBar),
-            ),
+            SemanticContribution::single(SemanticNodeContribution::primary(
+                SemanticRole::ScrollBar,
+            )),
             vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
             rect(80.0, 0.0, 20.0, 100.0),
         );
@@ -1445,9 +1442,9 @@ mod tests {
             scrollbar_owner_id,
             None,
             Vec::new(),
-            SemanticContribution::single(
-                SemanticNodeContribution::primary(SemanticRole::ScrollBar),
-            ),
+            SemanticContribution::single(SemanticNodeContribution::primary(
+                SemanticRole::ScrollBar,
+            )),
             vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
             rect(80.0, 0.0, 20.0, 100.0),
         );
@@ -1499,9 +1496,9 @@ mod tests {
             scrollbar_owner_id,
             None,
             Vec::new(),
-            SemanticContribution::single(
-                SemanticNodeContribution::primary(SemanticRole::ScrollBar),
-            ),
+            SemanticContribution::single(SemanticNodeContribution::primary(
+                SemanticRole::ScrollBar,
+            )),
             vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
             rect(80.0, 0.0, 20.0, 100.0),
         );
@@ -1544,9 +1541,9 @@ mod tests {
             scrollbar_owner_id,
             None,
             Vec::new(),
-            SemanticContribution::single(
-                SemanticNodeContribution::primary(SemanticRole::ScrollBar),
-            ),
+            SemanticContribution::single(SemanticNodeContribution::primary(
+                SemanticRole::ScrollBar,
+            )),
             vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
             rect(80.0, 0.0, 20.0, 100.0),
         );

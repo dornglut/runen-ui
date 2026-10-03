@@ -365,12 +365,12 @@ impl<'a> PlannedSurfacePublication<'a> {
                 bounds: presentation.visible_bounds(),
                 activation: semantic.activation,
                 focusability: semantic.focusability,
-                scroll_control: self.cache.scroll_controls[position].as_ref().map(|projection| {
-                    SemanticScrollControlFacts {
+                scroll_control: self.cache.scroll_controls[position]
+                    .as_ref()
+                    .map(|projection| SemanticScrollControlFacts {
                         owner: projection.owner.clone(),
                         snapshot: projection.snapshot,
-                    }
-                }),
+                    }),
                 editable_source,
                 editable_selection,
                 editable_caret_offsets,
