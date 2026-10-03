@@ -1,6 +1,7 @@
 use runenui_core::{
     HitContribution, HitContributionContext, PaintContribution, PaintContributionContext,
-    SemanticContribution, SemanticContributionError, WidgetActivation, WidgetDiagnostic,
+    SemanticContribution, SemanticContributionContext, SemanticContributionError,
+    WidgetActivation, WidgetDiagnostic,
     WidgetTextInput,
 };
 
@@ -41,5 +42,6 @@ pub(crate) struct CapabilityCaches {
     pub(crate) hit_test: CachedCapability<HitContribution>,
     pub(crate) hit_test_context: Option<HitContributionContext>,
     pub(crate) semantics: CachedSemanticContribution,
+    pub(crate) semantic_context: Option<SemanticContributionContext>,
     pub(crate) diagnostics: CachedCapability<Vec<WidgetDiagnostic>>,
 }
