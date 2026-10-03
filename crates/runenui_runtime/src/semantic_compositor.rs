@@ -731,8 +731,9 @@ mod tests {
         __runtime::RuntimeNamespace, Axis, ElementId, Focusability, LogicalPoint, LogicalRect,
         LogicalSize, LogicalTransform, ScrollControlSnapshot, SemanticAction, SemanticBounds,
         SemanticContribution, SemanticItem, SemanticKey, SemanticNodeContribution,
-        SemanticOrientation, SemanticPopupKind, SemanticReference, SemanticRelationship,
-        SemanticRelationshipKind, SemanticRole, SemanticState, WidgetActivation,
+        SemanticOrientation, SemanticPopupKind, SemanticRange, SemanticReference,
+        SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
+        WidgetActivation,
     };
 
     use super::{
@@ -996,6 +997,7 @@ mod tests {
             bounds: rect(10.0, 20.0, 30.0, 40.0),
             activation: WidgetActivation::disabled(),
             focusability: Focusability::Focusable,
+            scroll_control: None,
             editable_source: None,
             editable_selection: None,
             editable_caret_offsets: None,
