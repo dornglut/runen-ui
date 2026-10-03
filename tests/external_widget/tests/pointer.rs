@@ -241,7 +241,7 @@ fn downstream_widget_uses_public_pointer_capture_boundary_and_wheel_protocol() {
 }
 
 #[test]
-fn pointer_local_position_uses_exact_retained_transform_through_capture_and_fails_closed_when_singular() {
+fn pointer_local_position_uses_retained_capture_geometry_and_rejects_singular_transform() {
     let observations = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<App>::mount(State {
         observations: Rc::clone(&observations),
@@ -352,4 +352,3 @@ fn pointer_local_position_uses_exact_retained_transform_through_capture_and_fail
         .unwrap_or_else(|_| unreachable!("captured pointer up is admitted"));
     settle(&mut runtime);
 }
-
