@@ -128,7 +128,7 @@ impl UiApp for ViewportApp {
                     .with_width(dimension(20.0))
                     .with_height(dimension(60.0)),
             );
-        scroll_viewport(children![child], vertical_scroll())
+        scroll_viewport(child, vertical_scroll())
             .id("viewport")
             .key("viewport")
             .with_layout(block_size(40.0, 30.0, vertical_scroll()))
@@ -425,7 +425,7 @@ impl UiApp for BoundApp {
         } else {
             OverflowStyle::all(OverflowPolicy::Clip)
         };
-        let inner = scroll_viewport(children![bound], inner_overflow)
+        let inner = scroll_viewport(bound, inner_overflow)
             .id("inner")
             .key("inner")
             .with_layout(block_size(30.0, state.inner_height, inner_overflow))
@@ -442,7 +442,7 @@ impl UiApp for BoundApp {
         let outer_content = column(vec![inner, filler])
             .key("outer.content")
             .into_element();
-        scroll_viewport(children![outer_content], vertical_scroll())
+        scroll_viewport(outer_content, vertical_scroll())
             .id("outer")
             .key("outer")
             .with_layout(block_size(40.0, 40.0, vertical_scroll()))
@@ -687,7 +687,7 @@ impl UiApp for FailApp {
             );
         }
         scroll_viewport(
-            children![target],
+            target,
             OverflowStyle::new(OverflowPolicy::Clip, OverflowPolicy::Clip),
         )
         .id("fail.owner")
