@@ -435,8 +435,9 @@ impl<'a> SemanticCompositor<'a> {
                     .and_then(|owner_index| self.owners[owner_index].scroll_control_owner.as_ref())
                 {
                     Some(scroll_owner) => {
-                        if let Some(target) =
-                            self.visible_id(scroll_owner, &SemanticKey::PRIMARY).cloned()
+                        if let Some(target) = self
+                            .visible_id(scroll_owner, &SemanticKey::PRIMARY)
+                            .cloned()
                         {
                             relationships.push(ResolvedSemanticRelationship {
                                 kind: SemanticRelationshipKind::Controls,
@@ -1303,12 +1304,8 @@ mod tests {
             Vec::new(),
             SemanticContribution::single(
                 SemanticNodeContribution::primary(SemanticRole::ScrollBar).with_range(
-                    runenui_core::SemanticRange::new(
-                        Some(minimum),
-                        Some(maximum),
-                        Some(current),
-                    )
-                    .unwrap_or_else(|_| unreachable!("controlled range is valid")),
+                    runenui_core::SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+                        .unwrap_or_else(|_| unreachable!("controlled range is valid")),
                 ),
             ),
             vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
@@ -1372,12 +1369,8 @@ mod tests {
             Vec::new(),
             SemanticContribution::single(
                 SemanticNodeContribution::primary(SemanticRole::ScrollBar).with_range(
-                    runenui_core::SemanticRange::new(
-                        Some(minimum),
-                        Some(maximum),
-                        Some(current),
-                    )
-                    .unwrap_or_else(|_| unreachable!("controlled range is valid")),
+                    runenui_core::SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+                        .unwrap_or_else(|_| unreachable!("controlled range is valid")),
                 ),
             ),
             vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
