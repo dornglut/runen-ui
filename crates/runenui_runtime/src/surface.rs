@@ -381,6 +381,18 @@ impl SurfaceLayoutNode {
         self
     }
 
+    fn replace_derived_chrome_extent(&mut self, extent: LogicalSize) {
+        self.desired_content_size = extent;
+        self.desired_outer_size = extent;
+        self.constrained_outer_size = extent;
+        self.layout_extent = extent;
+        self.content_extent = extent;
+        self.scrollable_extent = extent;
+        self.scroll_viewport_extent = extent;
+        self.overflow = LayoutOverflow::default();
+        self.text_measurements.clear();
+    }
+
     #[must_use]
     pub const fn id(&self) -> &MountedNodeId {
         &self.id
@@ -477,6 +489,10 @@ impl SurfaceLayoutReport {
     #[must_use]
     pub const fn nodes(&self) -> &[SurfaceLayoutNode] {
         self.nodes.as_slice()
+    }
+
+    fn nodes_mut(&mut self) -> &mut [SurfaceLayoutNode] {
+        self.nodes.as_mut_slice()
     }
 
     #[must_use]

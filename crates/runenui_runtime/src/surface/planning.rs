@@ -18,8 +18,9 @@ use super::motion::{self, MotionPlanningFailure};
 use super::resolve::{
     EffectiveEffects, PaintResolutionInput, PresentationGeometryError, ResolvedSurfaceTree,
     collect_topology, hit_contexts, normalize_scroll_projection, paint_contexts,
-    resolve_diagnostics, resolve_hit_test, resolve_paint, resolve_presentation, resolve_styles,
-    scroll_control_projections, semantic_contexts,
+    resolve_diagnostics, resolve_hit_test, resolve_paint, resolve_presentation,
+    resolve_scroll_chrome_layout_plan, resolve_styles, scroll_control_projections,
+    semantic_contexts,
 };
 use super::taffy_layout::layout_resolved_surface;
 use super::transaction::{PlannedSurfacePublication, StagedSurfaceMotion};
@@ -205,8 +206,10 @@ fn resolve_layout_phase<Action>(
     preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
 ) -> Result<CachedLayoutFacts, SurfacePlanningError> {
     let resolved = ResolvedSurfaceTree::for_layout(&current.topology, &current.effective);
+    let chrome_plan = resolve_scroll_chrome_layout_plan(&current.topology)?;
     let (size, bounds, report, text_layouts) = layout_resolved_surface(
         &resolved,
+        &chrome_plan,
         tree,
         context.root_constraints(),
         text_system,
@@ -534,8 +537,10 @@ fn plan_structural_surface<'tree, Action>(
     );
     tree.extend_surface_publication_capabilities(&mut capability_plan, DirtyPhases::ALL);
     let resolved = ResolvedSurfaceTree::for_layout(&topology, &effective);
+    let chrome_plan = resolve_scroll_chrome_layout_plan(&topology)?;
     let (size, bounds, layout_report, text_layouts) = layout_resolved_surface(
         &resolved,
+        &chrome_plan,
         tree,
         context.root_constraints(),
         text_system,

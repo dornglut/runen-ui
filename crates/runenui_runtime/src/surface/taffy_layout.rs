@@ -4,10 +4,11 @@
 //! publication geometry. Taffy is used only for the algorithms themselves.
 
 use runenui_core::{
-    ComputedStyle, ContentAlignment, EdgeInsets, FlexBasis, FlexDirection, FlexWrap, ItemAlignment,
-    LayoutBound, LayoutContainer, LayoutDimension, LayoutPosition, LayoutStyle, LogicalPoint,
-    LogicalRect, LogicalSize, MainAxisAlignment, OverflowPolicy, Typography, WidgetAvailableSpace,
-    WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize,
+    Axis, ComputedStyle, ContentAlignment, EdgeInsets, FlexBasis, FlexDirection, FlexWrap,
+    ItemAlignment, LayoutBound, LayoutContainer, LayoutDimension, LayoutPosition, LayoutStyle,
+    LogicalLength, LogicalPoint, LogicalRect, LogicalSize, MainAxisAlignment, OverflowPolicy,
+    ScrollBarPlacement, ScrollBarVisibility, Typography, WidgetAvailableSpace, WidgetMeasure,
+    WidgetMeasureInput, WidgetMeasuredSize,
 };
 use std::{collections::HashMap, sync::Arc};
 
@@ -34,36 +35,105 @@ use taffy::{
     },
 };
 
-use super::resolve::{ResolvedSurfaceNode, ResolvedSurfaceTree};
+use super::resolve::{ResolvedSurfaceNode, ResolvedSurfaceTree, ScrollChromeLayoutPlan};
 use super::{LayoutOverflow, SurfaceLayoutNode, SurfaceLayoutReport, SurfaceTextMeasurementRecord};
 use crate::{AxisLimit, LayoutConstraints};
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct ScrollViewportGutter {
+    right: LogicalLength,
+    bottom: LogicalLength,
+}
+
+type LayoutResult = (
+    LogicalSize,
+    Vec<LogicalRect>,
+    SurfaceLayoutReport,
+    Vec<TextLayoutState>,
+);
+
 #[allow(
     clippy::let_and_return,
-    reason = "private profiling observes the completed layout result before returning it"
+    reason = "private profiling observes the completed fixed-point layout before returning it"
 )]
 pub(super) fn layout_resolved_surface<Action>(
     resolved_tree: &ResolvedSurfaceTree,
+    chrome_plan: &ScrollChromeLayoutPlan,
     mounted_tree: &crate::mounted::MountedTree<Action>,
     root_constraints: LayoutConstraints,
     text_system: &mut TextSystem,
     preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
     prior_text_layouts: Option<&[TextLayoutState]>,
-) -> Result<
-    (
-        LogicalSize,
-        Vec<LogicalRect>,
-        SurfaceLayoutReport,
-        Vec<TextLayoutState>,
-    ),
-    TextLayoutError,
-> {
+) -> Result<LayoutResult, TextLayoutError> {
     #[cfg(feature = "internal-test-seams")]
     let profile_started = std::time::Instant::now();
     #[cfg(test)]
     super::cache::note_layout_phase_execution();
+
+    let mut reserved_present = chrome_plan
+        .bars
+        .iter()
+        .map(|bar| {
+            bar.layout.placement() == ScrollBarPlacement::Reserved
+                && bar.layout.visibility() == ScrollBarVisibility::Always
+        })
+        .collect::<Vec<_>>();
+
+    let mut result;
+    loop {
+        let gutters = reserved_gutters(resolved_tree.nodes().len(), chrome_plan, &reserved_present);
+        result = layout_resolved_surface_once(
+            resolved_tree,
+            chrome_plan,
+            gutters.as_slice(),
+            mounted_tree,
+            root_constraints,
+            text_system,
+            preedits,
+            prior_text_layouts,
+        )?;
+        let mut added = false;
+        for (bar_index, bar) in chrome_plan.bars.iter().enumerate() {
+            if reserved_present[bar_index]
+                || bar.layout.placement() != ScrollBarPlacement::Reserved
+                || bar.layout.visibility() != ScrollBarVisibility::Automatic
+            {
+                continue;
+            }
+            if axis_has_positive_range(
+                result.2.nodes().get(bar.owner_position),
+                bar.layout.axis(),
+            ) {
+                reserved_present[bar_index] = true;
+                added = true;
+            }
+        }
+        if !added {
+            break;
+        }
+    }
+
+    apply_scroll_chrome_geometry(chrome_plan, &reserved_present, &mut result.1, &mut result.2);
+
+    #[cfg(feature = "internal-test-seams")]
+    super::profile::record_layout(profile_started.elapsed());
+    Ok(result)
+}
+
+fn layout_resolved_surface_once<Action>(
+    resolved_tree: &ResolvedSurfaceTree,
+    chrome_plan: &ScrollChromeLayoutPlan,
+    gutters: &[ScrollViewportGutter],
+    mounted_tree: &crate::mounted::MountedTree<Action>,
+    root_constraints: LayoutConstraints,
+    text_system: &mut TextSystem,
+    preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
+    prior_text_layouts: Option<&[TextLayoutState]>,
+) -> Result<LayoutResult, TextLayoutError> {
     let mut kernel = LayoutKernel::new(
         resolved_tree,
+        chrome_plan,
+        gutters,
         mounted_tree,
         text_system,
         preedits,
@@ -72,14 +142,200 @@ pub(super) fn layout_resolved_surface<Action>(
     );
     let root = NodeId::from(0usize);
     compute_root_layout(&mut kernel, root, available_space(root_constraints));
-    let result = kernel.finish(root_constraints);
-    #[cfg(feature = "internal-test-seams")]
-    super::profile::record_layout(profile_started.elapsed());
-    result
+    kernel.finish(root_constraints)
+}
+
+fn reserved_gutters(
+    count: usize,
+    chrome_plan: &ScrollChromeLayoutPlan,
+    reserved_present: &[bool],
+) -> Vec<ScrollViewportGutter> {
+    let mut gutters = vec![ScrollViewportGutter::default(); count];
+    for (bar_index, bar) in chrome_plan.bars.iter().enumerate() {
+        if !reserved_present.get(bar_index).copied().unwrap_or(false) {
+            continue;
+        }
+        let gutter = &mut gutters[bar.owner_position];
+        match bar.layout.axis() {
+            Axis::Horizontal => gutter.bottom = bar.layout.thickness(),
+            Axis::Vertical => gutter.right = bar.layout.thickness(),
+        }
+    }
+    gutters
+}
+
+fn axis_has_positive_range(node: Option<&SurfaceLayoutNode>, axis: Axis) -> bool {
+    let Some(node) = node else {
+        return false;
+    };
+    match axis {
+        Axis::Horizontal => {
+            node.scrollable_extent().width() > node.scroll_viewport_extent().width()
+        }
+        Axis::Vertical => {
+            node.scrollable_extent().height() > node.scroll_viewport_extent().height()
+        }
+    }
+}
+
+fn apply_scroll_chrome_geometry(
+    chrome_plan: &ScrollChromeLayoutPlan,
+    reserved_present: &[bool],
+    bounds: &mut [LogicalRect],
+    report: &mut SurfaceLayoutReport,
+) {
+    let visible_bars = chrome_plan
+        .bars
+        .iter()
+        .enumerate()
+        .map(|(bar_index, bar)| match bar.layout.visibility() {
+            ScrollBarVisibility::Hidden => false,
+            ScrollBarVisibility::Always => true,
+            ScrollBarVisibility::Automatic => match bar.layout.placement() {
+                ScrollBarPlacement::Reserved => {
+                    reserved_present.get(bar_index).copied().unwrap_or(false)
+                }
+                ScrollBarPlacement::Overlay => {
+                    axis_has_positive_range(report.nodes().get(bar.owner_position), bar.layout.axis())
+                }
+            },
+        })
+        .collect::<Vec<_>>();
+
+    for (bar_index, bar) in chrome_plan.bars.iter().enumerate() {
+        let Some(owner_bounds) = bounds.get(bar.owner_position).copied() else {
+            continue;
+        };
+        let Some(owner_layout) = report.nodes().get(bar.owner_position) else {
+            continue;
+        };
+        let rect = visible_bars[bar_index]
+            .then(|| bar_track_bounds(owner_bounds, owner_layout, bar.layout))
+            .flatten()
+            .unwrap_or_else(|| zero_rect_at(owner_bounds.x(), owner_bounds.y()));
+        replace_chrome_geometry(bounds, report, bar.position, rect);
+    }
+
+    for thumb in &chrome_plan.thumbs {
+        let matching_bar = chrome_plan.bars.iter().enumerate().find(|(_, bar)| {
+            bar.owner_position == thumb.owner_position && bar.layout.axis() == thumb.axis
+        });
+        let rect = matching_bar
+            .filter(|(bar_index, _)| visible_bars[*bar_index])
+            .and_then(|(_, bar)| bounds.get(bar.position).copied())
+            .unwrap_or_else(|| {
+                bounds.get(thumb.owner_position).map_or_else(
+                    || zero_rect_at(0.0, 0.0),
+                    |owner| zero_rect_at(owner.x(), owner.y()),
+                )
+            });
+        replace_chrome_geometry(bounds, report, thumb.position, rect);
+    }
+
+    for corner in &chrome_plan.corners {
+        let horizontal = chrome_plan.bars.iter().enumerate().find(|(bar_index, bar)| {
+            visible_bars[*bar_index]
+                && bar.owner_position == corner.owner_position
+                && bar.layout.axis() == Axis::Horizontal
+                && bar.layout.placement() == ScrollBarPlacement::Reserved
+        });
+        let vertical = chrome_plan.bars.iter().enumerate().find(|(bar_index, bar)| {
+            visible_bars[*bar_index]
+                && bar.owner_position == corner.owner_position
+                && bar.layout.axis() == Axis::Vertical
+                && bar.layout.placement() == ScrollBarPlacement::Reserved
+        });
+        let rect = match (horizontal, vertical) {
+            (Some(_), Some(_)) => {
+                let owner = bounds[corner.owner_position];
+                let viewport = report.nodes()[corner.owner_position].scroll_viewport_extent();
+                LogicalRect::try_new(
+                    owner.x() + viewport.width(),
+                    owner.y() + viewport.height(),
+                    (owner.width() - viewport.width()).max(0.0),
+                    (owner.height() - viewport.height()).max(0.0),
+                )
+                .ok()
+            }
+            _ => None,
+        }
+        .unwrap_or_else(|| {
+            bounds.get(corner.owner_position).map_or_else(
+                || zero_rect_at(0.0, 0.0),
+                |owner| zero_rect_at(owner.x(), owner.y()),
+            )
+        });
+        replace_chrome_geometry(bounds, report, corner.position, rect);
+    }
+}
+
+fn bar_track_bounds(
+    owner: LogicalRect,
+    owner_layout: &SurfaceLayoutNode,
+    layout: runenui_core::ScrollBarLayout,
+) -> Option<LogicalRect> {
+    let viewport = owner_layout.scroll_viewport_extent();
+    match (layout.axis(), layout.placement()) {
+        (Axis::Vertical, ScrollBarPlacement::Reserved) => LogicalRect::try_new(
+            owner.x() + viewport.width(),
+            owner.y(),
+            (owner.width() - viewport.width()).max(0.0),
+            viewport.height(),
+        )
+        .ok(),
+        (Axis::Horizontal, ScrollBarPlacement::Reserved) => LogicalRect::try_new(
+            owner.x(),
+            owner.y() + viewport.height(),
+            viewport.width(),
+            (owner.height() - viewport.height()).max(0.0),
+        )
+        .ok(),
+        (Axis::Vertical, ScrollBarPlacement::Overlay) => {
+            let thickness = layout.thickness().get().min(viewport.width());
+            LogicalRect::try_new(
+                owner.x() + (viewport.width() - thickness).max(0.0),
+                owner.y(),
+                thickness,
+                viewport.height(),
+            )
+            .ok()
+        }
+        (Axis::Horizontal, ScrollBarPlacement::Overlay) => {
+            let thickness = layout.thickness().get().min(viewport.height());
+            LogicalRect::try_new(
+                owner.x(),
+                owner.y() + (viewport.height() - thickness).max(0.0),
+                viewport.width(),
+                thickness,
+            )
+            .ok()
+        }
+    }
+}
+
+fn replace_chrome_geometry(
+    bounds: &mut [LogicalRect],
+    report: &mut SurfaceLayoutReport,
+    position: usize,
+    rect: LogicalRect,
+) {
+    if let Some(bounds) = bounds.get_mut(position) {
+        *bounds = rect;
+    }
+    if let Some(node) = report.nodes_mut().get_mut(position) {
+        node.replace_derived_chrome_extent(rect.size());
+    }
+}
+
+fn zero_rect_at(x: f32, y: f32) -> LogicalRect {
+    LogicalRect::try_new(x, y, 0.0, 0.0)
+        .unwrap_or_else(|_| unreachable!("finite layout origin accepts zero chrome extent"))
 }
 
 struct LayoutKernel<'a, Action> {
     resolved: &'a ResolvedSurfaceTree,
+    chrome_plan: &'a ScrollChromeLayoutPlan,
+    gutters: &'a [ScrollViewportGutter],
     mounted: &'a crate::mounted::MountedTree<Action>,
     text_system: &'a mut TextSystem,
     preedits: &'a HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
@@ -101,6 +357,8 @@ struct LayoutKernel<'a, Action> {
 impl<'a, Action> LayoutKernel<'a, Action> {
     fn new(
         resolved: &'a ResolvedSurfaceTree,
+        chrome_plan: &'a ScrollChromeLayoutPlan,
+        gutters: &'a [ScrollViewportGutter],
         mounted: &'a crate::mounted::MountedTree<Action>,
         text_system: &'a mut TextSystem,
         preedits: &'a HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
@@ -142,8 +400,12 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 }
             }
         }
+        debug_assert_eq!(chrome_plan.chrome_positions.len(), count);
+        debug_assert_eq!(gutters.len(), count);
         Self {
             resolved,
+            chrome_plan,
+            gutters,
             mounted,
             text_system,
             preedits,
@@ -166,6 +428,11 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             self.resolved.nodes()[index].layout(),
             self.resolved.nodes()[index].computed_style(),
         );
+        if self.chrome_plan.chrome_positions[index] {
+            style.display = Display::None;
+            return style;
+        }
+        style.padding = edge_length(self.layout_padding(index));
         if index == 0 {
             style.min_size.width =
                 root_min_bound(style.min_size.width, self.root_constraints.horizontal());
@@ -180,10 +447,21 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             apply_custom_intrinsic_minimum(
                 &mut style,
                 size,
-                resolved_padding(&self.resolved.nodes()[index]),
+                self.layout_padding(index),
             );
         }
         style
+    }
+
+    fn layout_padding(&self, index: usize) -> EdgeInsets {
+        let authored = resolved_padding(&self.resolved.nodes()[index]);
+        let gutter = self.gutters[index];
+        EdgeInsets::new(
+            authored.top(),
+            authored.right().saturating_add(gutter.right),
+            authored.bottom().saturating_add(gutter.bottom),
+            authored.left(),
+        )
     }
 
     #[allow(
@@ -198,7 +476,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             .node(resolved.id())
             .unwrap_or_else(|| unreachable!("layout node remains mounted"));
         let style = self.style_for(node);
-        let padding = resolved_padding(resolved);
+        let padding = self.layout_padding(index);
         let widget_input = widget_measure_input(inputs, padding);
         #[cfg(feature = "internal-test-seams")]
         let measure_started = std::time::Instant::now();
@@ -379,11 +657,13 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             });
             let node = &self.resolved.nodes()[index];
             let outer = constraints_for_node(index, root_constraints, node_size);
-            let padding = resolved_padding(node);
+            let padding = self.layout_padding(index);
             let content = content_constraints(outer, padding);
             let mut desired_content = self.intrinsic_sizes[index];
             for child_id in node.children() {
-                if let Some(child_index) = self.resolved.position(child_id) {
+                if let Some(child_index) = self.resolved.position(child_id)
+                    && !self.chrome_plan.chrome_positions[child_index]
+                {
                     let child_layout = self.layouts[child_index];
                     desired_content = logical_size(
                         desired_content.width().max(
@@ -407,9 +687,22 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 exceeds_max(desired_content.height(), content.vertical().max())
                     || desired_outer.height() > node_size.height(),
             );
+            let gutter = self.gutters[index];
+            let scroll_viewport_extent = logical_size(
+                (node_size.width() - gutter.right.get()).max(0.0),
+                (node_size.height() - gutter.bottom.get()).max(0.0),
+            );
+            let raw_scrollable_width =
+                (layout.scrollable_overflow_rect.right - layout.scrollable_overflow_rect.left)
+                    .max(0.0);
+            let raw_scrollable_height =
+                (layout.scrollable_overflow_rect.bottom - layout.scrollable_overflow_rect.top)
+                    .max(0.0);
             let scrollable_extent = logical_size(
-                layout.scrollable_overflow_rect.right - layout.scrollable_overflow_rect.left,
-                layout.scrollable_overflow_rect.bottom - layout.scrollable_overflow_rect.top,
+                (raw_scrollable_width - gutter.right.get())
+                    .max(scroll_viewport_extent.width()),
+                (raw_scrollable_height - gutter.bottom.get())
+                    .max(scroll_viewport_extent.height()),
             );
             reports.push(
                 SurfaceLayoutNode::new(
@@ -420,7 +713,12 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                     [desired_content, desired_outer, node_size],
                     overflow,
                 )
-                .with_extents(node_size, desired_content, scrollable_extent, node_size)
+                .with_extents(
+                    node_size,
+                    desired_content,
+                    scrollable_extent,
+                    scroll_viewport_extent,
+                )
                 .with_text_measurements(std::mem::take(&mut self.text_measurements[index]))
                 .with_diagnostics(std::mem::take(&mut self.diagnostics[index])),
             );
@@ -452,20 +750,18 @@ impl<Action> TraversePartialTree for LayoutKernel<'_, Action> {
             .children()
             .iter()
             .filter_map(|id| self.resolved.position(id))
+            .filter(|position| !self.chrome_plan.chrome_positions[*position])
             .map(NodeId::from)
             .collect::<Vec<_>>()
             .into_iter()
     }
     fn child_count(&self, parent: NodeId) -> usize {
-        self.resolved.nodes()[usize::from(parent)].children().len()
+        self.child_ids(parent).count()
     }
     fn get_child_id(&self, parent: NodeId, child_index: usize) -> NodeId {
-        let child = &self.resolved.nodes()[usize::from(parent)].children()[child_index];
-        NodeId::from(
-            self.resolved
-                .position(child)
-                .unwrap_or_else(|| unreachable!("Taffy child remains in the resolved tree")),
-        )
+        self.child_ids(parent)
+            .nth(child_index)
+            .unwrap_or_else(|| unreachable!("Taffy child index remains in the filtered tree"))
     }
 }
 
