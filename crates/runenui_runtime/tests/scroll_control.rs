@@ -584,7 +584,12 @@ fn exercise_bound_requests(runtime: &mut AppRuntime<BoundApp>, bound: &MountedNo
     let clamped = runtime
         .trace()
         .records()
-        .filter(|record| matches!(record.kind(), TraceRecordKind::LogicalScrollOwnerApplied { .. }))
+        .filter(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::LogicalScrollOwnerApplied { .. }
+            )
+        })
         .last()
         .unwrap_or_else(|| unreachable!("clamped request retains canonical owner trace"));
     assert!(matches!(
@@ -602,8 +607,7 @@ fn exercise_bound_requests(runtime: &mut AppRuntime<BoundApp>, bound: &MountedNo
         runtime,
         bound.clone(),
         ScrollControlRequest::SetNormalized(
-            ScrollNormalizedValue::new(0.5)
-                .unwrap_or_else(|_| unreachable!("half is normalized")),
+            ScrollNormalizedValue::new(0.5).unwrap_or_else(|_| unreachable!("half is normalized")),
         ),
     );
     assert_eq!(scroll_offset(runtime, "inner"), (0.0, 30.0));
