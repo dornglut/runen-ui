@@ -9,7 +9,8 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use crate::identity::{IdentifierText, validate_identifier};
 use crate::{
-    ElementId, IdentifierError, LogicalRect, TextDocumentSnapshot, TextSelection, TextSensitivity,
+    ElementId, IdentifierError, LogicalRect, ScrollControlSnapshot, TextDocumentSnapshot,
+    TextSelection, TextSensitivity,
 };
 
 /// Stable owner-local identity for one contributed semantic node.
@@ -1197,9 +1198,10 @@ impl SemanticNodeContribution {
 ///
 /// The context intentionally exposes no mounted IDs, semantic IDs, runtime
 /// namespace, layout coordinates, focus, or action authority.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SemanticContributionContext {
     direct_mounted_children: usize,
+    scroll_control: Option<ScrollControlSnapshot>,
 }
 
 impl SemanticContributionContext {
@@ -1208,6 +1210,19 @@ impl SemanticContributionContext {
     pub const fn __runtime_new(direct_mounted_children: usize) -> Self {
         Self {
             direct_mounted_children,
+            scroll_control: None,
+        }
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn __runtime_with_scroll_control(
+        direct_mounted_children: usize,
+        scroll_control: Option<ScrollControlSnapshot>,
+    ) -> Self {
+        Self {
+            direct_mounted_children,
+            scroll_control,
         }
     }
 
@@ -1219,6 +1234,12 @@ impl SemanticContributionContext {
     #[must_use]
     pub const fn has_mounted_children(self) -> bool {
         self.direct_mounted_children != 0
+    }
+
+    /// Returns the runtime-derived bound scroll snapshot when this owner is a bound control.
+    #[must_use]
+    pub const fn scroll_control_snapshot(self) -> Option<ScrollControlSnapshot> {
+        self.scroll_control
     }
 }
 
