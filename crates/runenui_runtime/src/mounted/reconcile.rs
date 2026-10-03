@@ -163,7 +163,7 @@ struct PlanningState {
     moved: usize,
 }
 
-const fn scroll_control_binding_invalidation(changed: bool) -> WidgetInvalidation {
+fn scroll_control_binding_invalidation(changed: bool) -> WidgetInvalidation {
     if changed {
         WidgetInvalidation::HIT_TEST | WidgetInvalidation::PAINT | WidgetInvalidation::SEMANTICS
     } else {
