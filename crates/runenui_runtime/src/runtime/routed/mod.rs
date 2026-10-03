@@ -64,6 +64,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
                 owner: None,
             })?;
+        let current_owner = route.iter().rev().skip(1).find_map(|candidate| {
+            self.tree.node(candidate).and_then(|node| {
+                let policy = match axis {
+                    Axis::Horizontal => node.layout.overflow().horizontal(),
+                    Axis::Vertical => node.layout.overflow().vertical(),
+                };
+                (policy == OverflowPolicy::Scroll).then(|| candidate.clone())
+            })
+        });
         let published = self
             .surface_publication
             .current_scroll_control_binding(target)
@@ -73,18 +82,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 owner: None,
             })?;
         let Some((owner, published_binding)) = published else {
-            let has_current_candidate = route.iter().rev().skip(1).any(|candidate| {
-                self.tree.node(candidate).is_some_and(|node| {
-                    let policy = match axis {
-                        Axis::Horizontal => node.layout.overflow().horizontal(),
-                        Axis::Vertical => node.layout.overflow().vertical(),
-                    };
-                    policy == OverflowPolicy::Scroll
-                })
-            });
             return Err(ScrollControlResolutionFailure {
                 axis: Some(axis),
-                outcome: if has_current_candidate {
+                outcome: if current_owner.is_some() {
                     TraceScrollControlBindingOutcome::MetricsUnavailable
                 } else {
                     TraceScrollControlBindingOutcome::NonScrollable
@@ -99,7 +99,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 owner: Some(owner),
             });
         }
-        if !route.iter().any(|candidate| candidate == &owner) {
+        let Some(current_owner) = current_owner else {
+            return Err(ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: TraceScrollControlBindingOutcome::NonScrollable,
+                owner: Some(owner),
+            });
+        };
+        if current_owner != owner {
             return Err(ScrollControlResolutionFailure {
                 axis: Some(axis),
                 outcome: TraceScrollControlBindingOutcome::Stale,
@@ -114,17 +121,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 outcome: TraceScrollControlBindingOutcome::Stale,
                 owner: Some(owner.clone()),
             })?;
-        let current_policy = match axis {
-            Axis::Horizontal => owner_node.layout.overflow().horizontal(),
-            Axis::Vertical => owner_node.layout.overflow().vertical(),
-        };
-        if current_policy != OverflowPolicy::Scroll {
-            return Err(ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::NonScrollable,
-                owner: Some(owner),
-            });
-        }
         let metrics = self
             .surface_publication
             .current_scroll_metrics(&owner)
