@@ -13,8 +13,8 @@ use runenui_core::{
     HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
     LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
     PaintContributionItem, Radius, SceneShape, ScrollControlSnapshot, ScrollNormalizedValue,
-    SemanticContributionContext, StyleEnvironment, StyleInteractionState,
-    StyleResolution, TextAffinity, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
+    SemanticContributionContext, StyleEnvironment, StyleInteractionState, StyleResolution,
+    TextAffinity, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
     style_effects_between,
 };
 use runenui_text::{ShapedTextLease, TextDisplaySelection, TextPreeditProjection, TextSystem};
@@ -363,14 +363,13 @@ pub(super) fn scroll_control_snapshots<Action>(
                     .ok_or(PresentationGeometryError)?;
                 let owner_topology = &topology.nodes[owner_position];
                 let scrollable = match binding.axis() {
-                    Axis::Horizontal => owner_topology.overflow.horizontal() == OverflowPolicy::Scroll,
+                    Axis::Horizontal => {
+                        owner_topology.overflow.horizontal() == OverflowPolicy::Scroll
+                    }
                     Axis::Vertical => owner_topology.overflow.vertical() == OverflowPolicy::Scroll,
                 };
                 if scrollable {
-                    let layout_node = layout
-                        .report
-                        .node(owner)
-                        .ok_or(PresentationGeometryError)?;
+                    let layout_node = layout.report.node(owner).ok_or(PresentationGeometryError)?;
                     let viewport = layout.bounds[owner_position].size();
                     let content = layout_node.scrollable_extent();
                     let offset = scroll.offset(owner);
