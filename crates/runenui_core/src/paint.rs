@@ -4,7 +4,8 @@ use crate::paint_group::{NormalizedPaintGroup, PaintContributionEntry, normalize
 use crate::{
     Brush, Color, ComputedStyle, ContributionClip, DropShadow, ImageIntrinsicSize,
     ImagePaintDescriptor, LogicalPoint, LogicalRect, LogicalSize, LogicalTransform, ResourceKind,
-    ResourceKindMismatch, ResourceRef, SceneLayer, SceneOpacity, SceneShape, StrokeStyle,
+    ResourceKindMismatch, ResourceRef, SceneLayer, SceneOpacity, SceneShape, ScrollControlSnapshot,
+    StrokeStyle,
 };
 
 /// Read-only facts supplied while one mounted widget contributes paint.
@@ -16,6 +17,7 @@ use crate::{
 pub struct PaintContributionContext {
     local_size: LogicalSize,
     computed_style: ComputedStyle,
+    scroll_control: Option<ScrollControlSnapshot>,
 }
 
 impl PaintContributionContext {
@@ -31,12 +33,33 @@ impl PaintContributionContext {
         &self.computed_style
     }
 
+    /// Returns the runtime-derived bound scroll snapshot when this owner is a bound control.
+    #[must_use]
+    pub const fn scroll_control_snapshot(&self) -> Option<ScrollControlSnapshot> {
+        self.scroll_control
+    }
+
     #[doc(hidden)]
     #[must_use]
     pub const fn __runtime_new(local_size: LogicalSize, computed_style: ComputedStyle) -> Self {
         Self {
             local_size,
             computed_style,
+            scroll_control: None,
+        }
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn __runtime_with_scroll_control(
+        local_size: LogicalSize,
+        computed_style: ComputedStyle,
+        scroll_control: Option<ScrollControlSnapshot>,
+    ) -> Self {
+        Self {
+            local_size,
+            computed_style,
+            scroll_control,
         }
     }
 }
