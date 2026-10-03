@@ -1766,6 +1766,13 @@ fn validate_relationship_contract(
     let mut has_controls = false;
     for relationship in node.relationships() {
         match relationship.kind() {
+            SemanticRelationshipKind::Controls if role == SemanticRole::ScrollBar => {
+                return Err(SemanticContributionError::RelationshipNotSupported {
+                    key: node.key().clone(),
+                    role,
+                    kind: relationship.kind(),
+                });
+            }
             SemanticRelationshipKind::ErrorMessage if !is_input_state_role(role) => {
                 return Err(SemanticContributionError::RelationshipNotSupported {
                     key: node.key().clone(),
@@ -2182,6 +2189,38 @@ mod tests {
                     .is_ok()
             );
         }
+    }
+
+    #[test]
+    fn scrollbar_controls_relationship_is_runtime_derived_only() {
+        let context = SemanticContributionContext::default();
+        let target = SemanticKey::from_static("viewport")
+            .unwrap_or_else(|_| unreachable!("static test key is valid"));
+        let minimum = SemanticNumber::new(0.0)
+            .unwrap_or_else(|_| unreachable!("controlled minimum is finite"));
+        let maximum = SemanticNumber::new(100.0)
+            .unwrap_or_else(|_| unreachable!("controlled maximum is finite"));
+        let current = SemanticNumber::new(25.0)
+            .unwrap_or_else(|_| unreachable!("controlled current is finite"));
+        let scrollbar = SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+            .with_range(
+                SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+                    .unwrap_or_else(|_| unreachable!("controlled scrollbar range is valid")),
+            )
+            .with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::Controls,
+                SemanticReference::Local(target.clone()),
+            ))
+            .with_child(SemanticNodeContribution::new(target, SemanticRole::Group));
+
+        assert_eq!(
+            SemanticContribution::single(scrollbar).validate(context),
+            Err(SemanticContributionError::RelationshipNotSupported {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::ScrollBar,
+                kind: SemanticRelationshipKind::Controls,
+            })
+        );
     }
 
     #[test]

@@ -307,6 +307,7 @@ impl<'a> PlannedSurfacePublication<'a> {
         if finalized.len() != expected
             || self.cache.layout.bounds.len() != expected
             || self.cache.presentation.nodes.len() != expected
+            || self.cache.scroll_controls.len() != expected
         {
             return Err(SurfacePlanningError::SemanticIntegrity);
         }
@@ -363,6 +364,9 @@ impl<'a> PlannedSurfacePublication<'a> {
                 bounds: presentation.visible_bounds(),
                 activation: semantic.activation,
                 focusability: semantic.focusability,
+                scroll_control_owner: self.cache.scroll_controls[position]
+                    .as_ref()
+                    .map(|projection| projection.owner.clone()),
                 editable_source,
                 editable_selection,
                 editable_caret_offsets,
