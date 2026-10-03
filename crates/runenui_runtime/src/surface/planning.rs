@@ -424,16 +424,11 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         &current.layout,
         &scroll,
     )?);
-    let scroll_controls = scroll_control_snapshots(
-        tree,
-        &current.topology,
-        &current.layout,
-        &current.scroll,
-    )?;
+    let scroll_controls =
+        scroll_control_snapshots(tree, &current.topology, &current.layout, &current.scroll)?;
     let semantic_contexts = semantic_contexts(&current.topology, &scroll_controls);
-    let semantic_capability_plan = semantic_dirty.then(|| {
-        tree.plan_semantic_publication_capabilities(&capability_plan, &semantic_contexts)
-    });
+    let semantic_capability_plan = semantic_dirty
+        .then(|| tree.plan_semantic_publication_capabilities(&capability_plan, &semantic_contexts));
     if presentation_dirty {
         current.presentation = Arc::new(resolve_presentation(
             &current.topology,
