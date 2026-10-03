@@ -22,9 +22,9 @@ use crate::{
     },
     surface::{
         DisplayedScrollMetrics, DisplayedTextTarget, MotionPlanningFailure,
-        PlannedSurfacePublication, SurfaceCache, SurfaceInteractionProjection,
-        SurfaceMotionActivity, SurfaceMotionStore, SurfacePlanningError, SurfacePublicationCommit,
-        plan_mounted_surface_cached_with_text,
+        PlannedSurfacePublication, ScrollControlProjectionLookup, SurfaceCache,
+        SurfaceInteractionProjection, SurfaceMotionActivity, SurfaceMotionStore,
+        SurfacePlanningError, SurfacePublicationCommit, plan_mounted_surface_cached_with_text,
     },
     trace::StagedMotionTraceFact,
 };
@@ -861,6 +861,17 @@ impl SurfacePublicationState {
             .as_ref()
             .map(SurfaceCache::current_focus_geometry)
             .unwrap_or_default()
+    }
+
+    pub(crate) fn current_scroll_control_projection(
+        &self,
+        target: &MountedNodeId,
+    ) -> ScrollControlProjectionLookup {
+        self.cache
+            .as_ref()
+            .map_or(ScrollControlProjectionLookup::Unavailable, |cache| {
+                cache.current_scroll_control_projection(target)
+            })
     }
 
     pub(crate) fn current_scroll_metrics(

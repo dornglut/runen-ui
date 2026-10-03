@@ -3,9 +3,9 @@ use runenui_core::{
         FrameworkServiceBinding, FrameworkServiceEffect, MountedEffect,
         WidgetActivationContextOutputOrder, WidgetActivationContextOutputs,
     },
-    ApplicationCommandId, ClipboardWritePurpose, CommandOrigin, FocusDirection,
-    FrameworkServiceRequest, HostProtocol, LogicalDelta, OverflowPolicy, SemanticActionData,
-    SemanticCommand, TextSensitivity,
+    ApplicationCommandId, Axis, ClipboardWritePurpose, CommandOrigin, FocusDirection,
+    FrameworkServiceRequest, HostProtocol, LogicalDelta, OverflowPolicy, ScrollControlRequest,
+    SemanticActionData, SemanticCommand, TextSensitivity,
 };
 
 use super::{
@@ -13,10 +13,72 @@ use super::{
     transaction::RoutedTransaction,
 };
 use crate::{
-    MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
+    MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure, TraceScrollControlBindingOutcome,
+    TraceSemanticActionRejection,
 };
 
 const MAX_CLIPBOARD_BYTES: usize = 1_048_576;
+
+struct ScrollControlApplication {
+    offset: (f32, f32),
+    offered: LogicalDelta,
+    consumed: LogicalDelta,
+    remainder: LogicalDelta,
+    maximum: LogicalDelta,
+}
+
+fn scroll_control_application(
+    request: ScrollControlRequest,
+    binding: runenui_core::ScrollControlBinding,
+    snapshot: runenui_core::ScrollControlSnapshot,
+    before_pair: (f32, f32),
+) -> Option<ScrollControlApplication> {
+    let axis = snapshot.axis();
+    let before = snapshot.offset().get();
+    let viewport = snapshot.viewport_extent().get();
+    let maximum = snapshot.maximum_offset().get();
+    let offered_scalar = match request {
+        ScrollControlRequest::SmallStepBackward => -binding.small_step().get(),
+        ScrollControlRequest::SmallStepForward => binding.small_step().get(),
+        ScrollControlRequest::PageBackward => -viewport,
+        ScrollControlRequest::PageForward => viewport,
+        ScrollControlRequest::ToStart => -before,
+        ScrollControlRequest::ToEnd => maximum - before,
+        ScrollControlRequest::SetNormalized(normalized) => {
+            maximum.mul_add(normalized.get(), -before)
+        }
+        _ => return None,
+    };
+    let after = bounded_scroll_offset(before, offered_scalar, maximum);
+    let offset = match axis {
+        Axis::Horizontal => (after, before_pair.1),
+        Axis::Vertical => (before_pair.0, after),
+    };
+    let consumed_scalar = after - before;
+    let remainder_scalar = offered_scalar - consumed_scalar;
+    let axis_delta = |horizontal: f32, vertical: f32| LogicalDelta::new(horizontal, vertical).ok();
+    let (offered, consumed, remainder, maximum) = match axis {
+        Axis::Horizontal => (
+            axis_delta(offered_scalar, 0.0)?,
+            axis_delta(consumed_scalar, 0.0)?,
+            axis_delta(remainder_scalar, 0.0)?,
+            axis_delta(maximum, 0.0)?,
+        ),
+        Axis::Vertical => (
+            axis_delta(0.0, offered_scalar)?,
+            axis_delta(0.0, consumed_scalar)?,
+            axis_delta(0.0, remainder_scalar)?,
+            axis_delta(0.0, maximum)?,
+        ),
+    };
+    Some(ScrollControlApplication {
+        offset,
+        offered,
+        consumed,
+        remainder,
+        maximum,
+    })
+}
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     #[allow(clippy::too_many_lines)] // Keeps semantic default suppression, rejection, and dispatch ordered.
@@ -90,6 +152,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.apply_scroll_into_view_default(transaction);
             return Ok(());
         }
+        if let SemanticCommand::ScrollControl(request) = command {
+            self.record_semantic_default_applied(transaction, command);
+            self.apply_scroll_control_default(transaction, request);
+            return Ok(());
+        }
         self.record_semantic_default_applied(transaction, command);
         if super::is_editing_command(command) {
             return self.apply_editing_default(transaction, command);
@@ -118,6 +185,101 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             transaction.instant,
             &transaction.target,
             Some(&transaction.target),
+            transaction.origin,
+        );
+    }
+
+    fn apply_scroll_control_default(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        request: ScrollControlRequest,
+    ) {
+        let resolved = match self.resolve_scroll_control(&transaction.target) {
+            Ok(resolved) => resolved,
+            Err(failure) => {
+                self.record_scroll_control_binding(
+                    transaction,
+                    request,
+                    failure.axis,
+                    failure.outcome,
+                    failure.owner.as_ref(),
+                );
+                return;
+            }
+        };
+        let owner = resolved.owner;
+        let axis = resolved.snapshot.axis();
+        let before_pair = self.tree.node(&owner).map_or_else(
+            || unreachable!("resolved scroll owner remains live"),
+            |node| node.interaction.scroll_offset,
+        );
+        let Some(application) =
+            scroll_control_application(request, resolved.binding, resolved.snapshot, before_pair)
+        else {
+            self.record_scroll_control_binding(
+                transaction,
+                request,
+                Some(axis),
+                TraceScrollControlBindingOutcome::MetricsUnavailable,
+                Some(&owner),
+            );
+            return;
+        };
+
+        self.record_scroll_control_binding(
+            transaction,
+            request,
+            Some(axis),
+            TraceScrollControlBindingOutcome::Resolved,
+            Some(&owner),
+        );
+        if application.offset != before_pair {
+            transaction
+                .scroll_updates
+                .push(super::transaction::ScrollOffsetUpdate {
+                    owner: owner.clone(),
+                    offset: application.offset,
+                });
+        }
+        let offset = LogicalDelta::new(application.offset.0, application.offset.1)
+            .unwrap_or_else(|_| unreachable!("validated scroll-control offset remains finite"));
+        transaction
+            .scroll_consumptions
+            .push(super::transaction::ScrollOwnerConsumption {
+                owner,
+                evaluation_order: 0,
+                offered: application.offered,
+                consumed: application.consumed,
+                remainder: application.remainder,
+                offset,
+                maximum: application.maximum,
+            });
+    }
+
+    fn record_scroll_control_binding(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        request: ScrollControlRequest,
+        axis: Option<Axis>,
+        outcome: TraceScrollControlBindingOutcome,
+        owner: Option<&MountedNodeId>,
+    ) {
+        let trace_target = owner.map_or_else(
+            || transaction.target_trace.clone(),
+            |owner| self.tree.trace_target(owner),
+        );
+        transaction.parent = self.trace.record_event(
+            TraceRecordKind::ScrollControlBindingEvaluated {
+                request,
+                axis,
+                outcome,
+            },
+            transaction.sequence,
+            transaction.parent,
+            Some(trace_target),
+            transaction.instant,
+            &transaction.target,
+            owner.or(Some(&transaction.target)),
             transaction.origin,
         );
     }

@@ -3,12 +3,14 @@
 use core::fmt;
 use std::rc::Rc;
 
-use crate::widget_erasure::{ElementParts, ErasedWidget, MountedWidget, WidgetAdapter};
+use crate::widget_erasure::{
+    ElementCompositionFields, ElementParts, ErasedWidget, MountedWidget, WidgetAdapter,
+};
 use crate::widget_mapping::MappedWidget;
 use crate::widget_protocol::Widget;
 use crate::{
     ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope, Focusability,
-    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, StyleIntent,
+    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, ScrollControlBinding, StyleIntent,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -207,6 +209,7 @@ pub struct Element<Action> {
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
     focus_group_search_text: Option<String>,
+    scroll_control_binding: Option<ScrollControlBinding>,
     widget: Box<dyn ErasedWidget<Action>>,
     children: Vec<Self>,
 }
@@ -256,6 +259,7 @@ impl<Action> fmt::Debug for Element<Action> {
             .field("focus_scope", &self.focus_scope)
             .field("focus_group", &self.focus_group)
             .field("focus_group_entry", &self.focus_group_entry)
+            .field("scroll_control_binding", &self.scroll_control_binding)
             .field("widget_type", &self.widget.widget_type_name())
             .field("children", &self.children)
             .field("authoring_diagnostics", &self.common.diagnostics)
@@ -281,6 +285,7 @@ impl<Action> Element<Action> {
             focus_group: None,
             focus_group_entry: FocusGroupEntry::Automatic,
             focus_group_search_text: None,
+            scroll_control_binding: None,
             widget,
             children,
         }
@@ -301,6 +306,7 @@ impl<Action> Element<Action> {
             focus_group: None,
             focus_group_entry: FocusGroupEntry::Automatic,
             focus_group_search_text: None,
+            scroll_control_binding: None,
             widget,
             children,
         }
@@ -371,6 +377,13 @@ impl<Action> Element<Action> {
         self
     }
 
+    /// Binds this descendant control to the nearest eligible ancestor scroll owner.
+    #[must_use]
+    pub const fn scroll_control(mut self, binding: ScrollControlBinding) -> Self {
+        self.scroll_control_binding = Some(binding);
+        self
+    }
+
     /// Maps every typed widget action in this subtree into a parent action.
     #[must_use]
     pub fn map_action<ParentAction>(
@@ -400,6 +413,7 @@ impl<Action> Element<Action> {
             focus_group: self.focus_group,
             focus_group_entry: self.focus_group_entry,
             focus_group_search_text: self.focus_group_search_text,
+            scroll_control_binding: self.scroll_control_binding,
             widget: Box::new(MappedWidget {
                 child: self.widget,
                 mapper: Rc::clone(mapper),
@@ -449,6 +463,10 @@ impl<Action> Element<Action> {
         self.focus_group_entry
     }
     #[must_use]
+    pub const fn scroll_control_binding(&self) -> Option<ScrollControlBinding> {
+        self.scroll_control_binding
+    }
+    #[must_use]
     pub const fn children(&self) -> &[Self] {
         self.children.as_slice()
     }
@@ -465,9 +483,12 @@ impl<Action> Element<Action> {
             .into_authored_fields(self.focusability, self.focus_scope);
         ElementParts::new(
             fields,
-            self.focus_group,
-            self.focus_group_entry,
-            self.focus_group_search_text,
+            ElementCompositionFields::new(
+                self.focus_group,
+                self.focus_group_entry,
+                self.focus_group_search_text,
+                self.scroll_control_binding,
+            ),
             MountedWidget::from_erased(self.widget),
             self.children,
             diagnostics,

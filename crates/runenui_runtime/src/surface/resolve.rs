@@ -9,19 +9,20 @@ use crate::mounted::SurfaceCapabilityPlan;
 use crate::scene::{HitTestRegion, HitTestSceneContent, PaintScene, PaintSceneItem, SceneClip};
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
-    __runtime::transform_rect_aabb, Color, ComputedStyle, ContributionClip, ElementId,
+    __runtime::transform_rect_aabb, Axis, Color, ComputedStyle, ContributionClip, ElementId,
     HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
     LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
-    PaintContributionItem, Radius, SceneShape, StyleEnvironment, StyleInteractionState,
-    StyleResolution, TextAffinity, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
-    style_effects_between,
+    PaintContributionItem, Radius, SceneShape, ScrollControlSnapshot, SemanticContributionContext,
+    StyleEnvironment, StyleInteractionState, StyleResolution, TextAffinity, WidgetDiagnostic,
+    WidgetTypeId, resolve_style_in_environment, style_effects_between,
 };
 use runenui_text::{ShapedTextLease, TextDisplaySelection, TextPreeditProjection, TextSystem};
 
 use super::{
-    SurfaceInteractionProjection, SurfaceScrollProjection,
+    DisplayedScrollMetrics, SurfaceInteractionProjection, SurfaceScrollProjection,
     cache::{
-        CachedLayoutFacts, CachedPresentationFacts, PresentationNodeFacts, TextEditingPaintInputs,
+        CachedLayoutFacts, CachedPresentationFacts, CachedScrollControlProjection,
+        PresentationNodeFacts, TextEditingPaintInputs,
     },
 };
 
@@ -309,22 +310,167 @@ impl ResolvedSurfaceNode {
 pub(super) fn paint_contexts(
     layout: &CachedLayoutFacts,
     effective: &CachedEffectiveFacts,
+    scroll_controls: &[Option<CachedScrollControlProjection>],
 ) -> Vec<PaintContributionContext> {
+    debug_assert_eq!(layout.bounds.len(), scroll_controls.len());
     layout
         .bounds
         .iter()
         .zip(&effective.nodes)
-        .map(|(bounds, node)| {
-            PaintContributionContext::__runtime_new(bounds.size(), node.computed_style().clone())
+        .zip(scroll_controls)
+        .map(|((bounds, node), scroll_control)| {
+            PaintContributionContext::__runtime_with_scroll_control(
+                bounds.size(),
+                node.computed_style().clone(),
+                scroll_control
+                    .as_ref()
+                    .map(|projection| projection.snapshot),
+            )
         })
         .collect()
 }
 
-pub(super) fn hit_contexts(layout: &CachedLayoutFacts) -> Vec<HitContributionContext> {
+pub(super) fn displayed_scroll_metrics(
+    topology: &SurfaceTopologySnapshot,
+    layout: &CachedLayoutFacts,
+    owner: &MountedNodeId,
+) -> Option<DisplayedScrollMetrics> {
+    let position = topology.nodes.iter().position(|node| &node.id == owner)?;
+    displayed_scroll_metrics_at(topology, layout, owner, position)
+}
+
+fn displayed_scroll_metrics_at(
+    topology: &SurfaceTopologySnapshot,
+    layout: &CachedLayoutFacts,
+    owner: &MountedNodeId,
+    position: usize,
+) -> Option<DisplayedScrollMetrics> {
+    let topology_node = topology.nodes.get(position)?;
+    if &topology_node.id != owner
+        || (topology_node.overflow.horizontal() != OverflowPolicy::Scroll
+            && topology_node.overflow.vertical() != OverflowPolicy::Scroll)
+    {
+        return None;
+    }
+    Some(DisplayedScrollMetrics {
+        overflow: topology_node.overflow,
+        viewport: layout.bounds.get(position)?.size(),
+        content: layout.report.node(owner)?.scrollable_extent(),
+    })
+}
+
+pub(super) fn scroll_control_projections<Action>(
+    tree: &crate::mounted::MountedTree<Action>,
+    topology: &SurfaceTopologySnapshot,
+    layout: &CachedLayoutFacts,
+    scroll: &SurfaceScrollProjection,
+) -> Result<Vec<Option<CachedScrollControlProjection>>, PresentationGeometryError> {
+    if topology.nodes.len() != layout.bounds.len() {
+        return Err(PresentationGeometryError);
+    }
+    let positions = topology
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(position, node)| (node.id.clone(), position))
+        .collect::<HashMap<_, _>>();
+
+    topology
+        .nodes
+        .iter()
+        .map(|node| {
+            let Some(binding) = tree
+                .node(&node.id)
+                .and_then(|mounted| mounted.scroll_control_binding)
+            else {
+                return Ok(None);
+            };
+
+            let mut ancestor = node.parent.as_ref();
+            while let Some(owner) = ancestor {
+                let owner_position = positions
+                    .get(owner)
+                    .copied()
+                    .ok_or(PresentationGeometryError)?;
+                let owner_topology = &topology.nodes[owner_position];
+                let scrollable = match binding.axis() {
+                    Axis::Horizontal => {
+                        owner_topology.overflow.horizontal() == OverflowPolicy::Scroll
+                    }
+                    Axis::Vertical => owner_topology.overflow.vertical() == OverflowPolicy::Scroll,
+                };
+                if scrollable {
+                    let metrics =
+                        displayed_scroll_metrics_at(topology, layout, owner, owner_position)
+                            .ok_or(PresentationGeometryError)?;
+                    let offset = scroll.offset(owner);
+                    let (offset, viewport, content) = match binding.axis() {
+                        Axis::Horizontal => {
+                            (offset.0, metrics.viewport.width(), metrics.content.width())
+                        }
+                        Axis::Vertical => (
+                            offset.1,
+                            metrics.viewport.height(),
+                            metrics.content.height(),
+                        ),
+                    };
+                    let snapshot = ScrollControlSnapshot::__runtime_from_metrics(
+                        binding.axis(),
+                        offset,
+                        viewport,
+                        content,
+                    )
+                    .ok_or(PresentationGeometryError)?;
+                    return Ok(Some(CachedScrollControlProjection {
+                        owner: owner.clone(),
+                        binding,
+                        snapshot,
+                    }));
+                }
+                ancestor = owner_topology.parent.as_ref();
+            }
+            Ok(None)
+        })
+        .collect()
+}
+
+pub(super) fn semantic_contexts(
+    topology: &SurfaceTopologySnapshot,
+    scroll_controls: &[Option<CachedScrollControlProjection>],
+) -> Vec<SemanticContributionContext> {
+    debug_assert_eq!(topology.nodes.len(), scroll_controls.len());
+    topology
+        .nodes
+        .iter()
+        .zip(scroll_controls)
+        .map(|(node, scroll_control)| {
+            SemanticContributionContext::__runtime_with_scroll_control(
+                node.children.len(),
+                scroll_control
+                    .as_ref()
+                    .map(|projection| projection.snapshot),
+            )
+        })
+        .collect()
+}
+
+pub(super) fn hit_contexts(
+    layout: &CachedLayoutFacts,
+    scroll_controls: &[Option<CachedScrollControlProjection>],
+) -> Vec<HitContributionContext> {
+    debug_assert_eq!(layout.bounds.len(), scroll_controls.len());
     layout
         .bounds
         .iter()
-        .map(|bounds| HitContributionContext::__runtime_new(bounds.size()))
+        .zip(scroll_controls)
+        .map(|(bounds, scroll_control)| {
+            HitContributionContext::__runtime_with_scroll_control(
+                bounds.size(),
+                scroll_control
+                    .as_ref()
+                    .map(|projection| projection.snapshot),
+            )
+        })
         .collect()
 }
 

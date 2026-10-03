@@ -317,12 +317,12 @@ pub use trace::{
     TracePublicationContext, TraceRecord, TraceRecordKind, TraceReplay, TraceReplayCompleteness,
     TraceReplayError, TraceReplayKind, TraceReplayRecord, TraceReplaySequence,
     TraceReplayWorkSequence, TraceRouteSnapshot, TraceRoutedAdmissionRejection,
-    TraceRoutedIntegrityFailure, TraceSemanticActionRejection, TraceSequence,
-    TraceSinkDeliveryOutcome, TraceSinkReceiveError, TraceSinkReceiver, TraceSpaceCleanupReason,
-    TraceSurfaceContext, TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind,
-    TraceTarget, TraceTargetRejection, TraceTargetTransition, TraceTextMetrics,
-    TraceTimerTerminalOutcome, TraceTouchGestureKind, TraceWorkFamily, TraceWorkIdentity,
-    TraceWorkOwner, TraceWorkStartRefusal,
+    TraceRoutedIntegrityFailure, TraceScrollControlBindingOutcome, TraceSemanticActionRejection,
+    TraceSequence, TraceSinkDeliveryOutcome, TraceSinkReceiveError, TraceSinkReceiver,
+    TraceSpaceCleanupReason, TraceSurfaceContext, TraceSurfaceIngressKind, TraceSurfaceRejection,
+    TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTargetTransition,
+    TraceTextMetrics, TraceTimerTerminalOutcome, TraceTouchGestureKind, TraceWorkFamily,
+    TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
 };
 pub use wake::{WakeRequestOutcome, WakeTransport};
 pub use work::framework_service::{FrameworkServiceRef, FrameworkServiceToken};

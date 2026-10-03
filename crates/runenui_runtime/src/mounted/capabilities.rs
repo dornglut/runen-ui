@@ -259,6 +259,11 @@ impl<Action> MountedTree<Action> {
             }
         };
 
+        self.node_mut(id)
+            .unwrap_or_else(|| unreachable!("semantic owner remains live"))
+            .caches
+            .semantic_context = Some(context);
+
         match evaluation {
             SemanticEvaluation::Ready {
                 contribution,

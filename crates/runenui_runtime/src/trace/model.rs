@@ -1,10 +1,11 @@
 use core::num::{NonZeroU64, NonZeroUsize};
 
 use runenui_core::{
-    ApplicationCommandId, ClipboardClassification, ClipboardWritePurpose, CommandOrigin, ElementId,
-    EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusReason, MonotonicInstant, MotionTarget,
-    PointerBoundaryKind, PointerCaptureKind, PointerId, PointerPhase, SemanticActionTarget,
-    SemanticCommand, TouchGestureThresholds, WidgetInvalidation, WorkKey,
+    ApplicationCommandId, Axis, ClipboardClassification, ClipboardWritePurpose, CommandOrigin,
+    ElementId, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusReason, MonotonicInstant,
+    MotionTarget, PointerBoundaryKind, PointerCaptureKind, PointerId, PointerPhase,
+    ScrollControlRequest, SemanticActionTarget, SemanticCommand, TouchGestureThresholds,
+    WidgetInvalidation, WorkKey,
 };
 
 use crate::{MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason, WorkSequence};
@@ -157,6 +158,17 @@ pub enum TraceApplicationCommandOutcome {
     Ambiguous,
     Unbound,
     Unknown,
+}
+
+/// Result of resolving one scroll-control request against current mounted/publication facts.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceScrollControlBindingOutcome {
+    Resolved,
+    MissingBinding,
+    Stale,
+    NonScrollable,
+    MetricsUnavailable,
 }
 
 /// Structured kind of one canonical trace record.
@@ -317,6 +329,11 @@ pub enum TraceRecordKind {
     },
     LogicalScrollChainCompleted {
         remainder: runenui_core::LogicalDelta,
+    },
+    ScrollControlBindingEvaluated {
+        request: ScrollControlRequest,
+        axis: Option<Axis>,
+        outcome: TraceScrollControlBindingOutcome,
     },
     PointerStationaryRehitQueued {
         hit_test_generation: u64,

@@ -3,7 +3,8 @@
 use crate::{
     ApplicationCommandId, CommittedTextEvent, CompositionEvent, DragDropPayloadMetadata,
     DragDropPhase, FocusDirection, FocusEvent, KeyboardEvent, LogicalScrollCommand,
-    PointerBoundaryEvent, PointerCaptureEvent, PointerEvent, SemanticActionTarget, SemanticNumber,
+    PointerBoundaryEvent, PointerCaptureEvent, PointerEvent, ScrollControlRequest,
+    SemanticActionTarget, SemanticNumber,
 };
 
 /// One host-neutral drag/drop offer routed to the exact physical hit target.
@@ -212,6 +213,8 @@ pub enum SemanticCommand {
     LogicalFocusScroll(FocusDirection),
     /// Scrolls the exact routed target into view using runtime-owned scroll state.
     ScrollIntoView,
+    /// Applies one request from a descendant control bound to the nearest scroll owner.
+    ScrollControl(ScrollControlRequest),
     MoveBackward,
     MoveForward,
     MoveUp,

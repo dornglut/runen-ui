@@ -4,6 +4,7 @@ use crate::{
     TraceMotionCollision, TraceMotionFact, TraceMotionInterpolation, TraceMotionLifecycle,
     TraceMotionPhase, TraceMotionPlanningRejection, TraceMotionPolicy,
     TraceMotionPreferenceDecision, TraceMotionSource, TraceRecordKind,
+    TraceScrollControlBindingOutcome,
 };
 
 use super::{json, tokens, value};
@@ -115,6 +116,9 @@ macro_rules! trace_kind_name {
             TraceRecordKind::TouchGestureCompleted { .. } => "touch_gesture_completed",
             TraceRecordKind::LogicalScrollOwnerApplied { .. } => "logical_scroll_owner_applied",
             TraceRecordKind::LogicalScrollChainCompleted { .. } => "logical_scroll_chain_completed",
+            TraceRecordKind::ScrollControlBindingEvaluated { .. } => {
+                "scroll_control_binding_evaluated"
+            }
             TraceRecordKind::PointerStationaryRehitQueued { .. } => {
                 "pointer_stationary_rehit_queued"
             }
@@ -247,10 +251,63 @@ fn encode_data_fields(output: &mut String, runtime: &RuntimeNamespace, kind: &Tr
     {
         return;
     }
-    if encode_routed_focus_data(output, kind) {
+    if encode_scroll_control_data(output, kind) || encode_routed_focus_data(output, kind) {
         return;
     }
     let _ = encode_runtime_data(output, kind);
+}
+
+fn encode_scroll_control_data(output: &mut String, kind: &TraceRecordKind) -> bool {
+    let TraceRecordKind::ScrollControlBindingEvaluated {
+        request,
+        axis,
+        outcome,
+    } = kind
+    else {
+        return false;
+    };
+
+    json::name(output, "operation");
+    let (operation, normalized) = match request {
+        runenui_core::ScrollControlRequest::SmallStepBackward => ("small_step_backward", None),
+        runenui_core::ScrollControlRequest::SmallStepForward => ("small_step_forward", None),
+        runenui_core::ScrollControlRequest::PageBackward => ("page_backward", None),
+        runenui_core::ScrollControlRequest::PageForward => ("page_forward", None),
+        runenui_core::ScrollControlRequest::ToStart => ("to_start", None),
+        runenui_core::ScrollControlRequest::ToEnd => ("to_end", None),
+        runenui_core::ScrollControlRequest::SetNormalized(value) => {
+            ("set_normalized", Some(value.get()))
+        }
+        _ => ("unknown", None),
+    };
+    json::string(output, operation);
+    output.push(',');
+    json::name(output, "axis");
+    match axis {
+        Some(runenui_core::Axis::Horizontal) => json::string(output, "horizontal"),
+        Some(runenui_core::Axis::Vertical) => json::string(output, "vertical"),
+        None => output.push_str("null"),
+    }
+    output.push(',');
+    json::name(output, "normalized");
+    if let Some(normalized) = normalized {
+        json::f32_value(output, normalized);
+    } else {
+        output.push_str("null");
+    }
+    output.push(',');
+    json::name(output, "outcome");
+    json::string(
+        output,
+        match outcome {
+            TraceScrollControlBindingOutcome::Resolved => "resolved",
+            TraceScrollControlBindingOutcome::MissingBinding => "missing_binding",
+            TraceScrollControlBindingOutcome::Stale => "stale",
+            TraceScrollControlBindingOutcome::NonScrollable => "non_scrollable",
+            TraceScrollControlBindingOutcome::MetricsUnavailable => "metrics_unavailable",
+        },
+    );
+    true
 }
 
 fn encode_motion_data(output: &mut String, kind: &TraceRecordKind) -> bool {

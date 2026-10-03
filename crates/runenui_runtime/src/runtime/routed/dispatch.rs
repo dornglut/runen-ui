@@ -1,5 +1,6 @@
 use runenui_core::{
-    __runtime::RoutedEventOutput, EventPhase, HostProtocol, PointerId, UiEvent, WidgetInvalidation,
+    __runtime::RoutedEventOutput, EventPhase, HostProtocol, PointerId, ScrollControlSnapshot,
+    UiEvent, WidgetInvalidation,
 };
 
 use super::{
@@ -106,6 +107,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         result
     }
 
+    fn routed_scroll_control_snapshot(
+        &self,
+        current: &MountedNodeId,
+    ) -> Option<ScrollControlSnapshot> {
+        self.resolve_scroll_control_context_snapshot(current)
+    }
+
     fn invoke_routed_callback(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
@@ -132,6 +140,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if self.test_seams.routed_callback_bridge_failure {
             return Err(TraceRoutedIntegrityFailure::CallbackBridgeFailure);
         }
+        let scroll_control = self.routed_scroll_control_snapshot(current);
         let invocation = match pointer {
             Some(pointer) => self.tree.invoke_pointer_event(
                 current,
@@ -145,6 +154,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 pointer.pointer_id,
                 pointer.physical_target,
                 pointer.physical_path,
+                scroll_control,
                 pointer.default_cancelable,
                 transaction.default_prevented,
                 transaction.propagation_stopped,
@@ -159,6 +169,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 transaction.origin,
                 transaction.sequence,
                 transaction.instant,
+                scroll_control,
                 transaction.propagation_stopped,
                 transaction.output_allowance(current),
             ),
@@ -170,6 +181,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 transaction.origin,
                 transaction.sequence,
                 transaction.instant,
+                scroll_control,
                 transaction.default_prevented,
                 transaction.propagation_stopped,
                 transaction.output_allowance(current),
