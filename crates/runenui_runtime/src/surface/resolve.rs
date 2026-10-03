@@ -12,7 +12,8 @@ use runenui_core::{
     __runtime::transform_rect_aabb, Axis, Color, ComputedStyle, ContributionClip, ElementId,
     HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
     LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
-    PaintContributionItem, Radius, SceneShape, ScrollControlSnapshot, SemanticContributionContext,
+    PaintContributionItem, Radius, SceneShape, ScrollControlBinding, ScrollControlSnapshot,
+    SemanticContributionContext,
     StyleEnvironment, StyleInteractionState, StyleResolution, TextAffinity, WidgetDiagnostic,
     WidgetTypeId, resolve_style_in_environment, style_effects_between,
 };
@@ -380,7 +381,9 @@ pub(super) fn resolve_scroll_control_owner(
     control: &MountedNodeId,
     binding: ScrollControlBinding,
 ) -> Result<Option<(MountedNodeId, usize)>, PresentationGeometryError> {
-    let control_position = topology.position(control).ok_or(PresentationGeometryError)?;
+    let control_position = topology
+        .position(control)
+        .ok_or(PresentationGeometryError)?;
     let mut ancestor = topology.nodes[control_position].parent.as_ref();
     while let Some(owner) = ancestor {
         let owner_position = topology.position(owner).ok_or(PresentationGeometryError)?;
@@ -424,13 +427,16 @@ pub(super) fn scroll_control_projections<Action>(
             else {
                 return Ok(None);
             };
-            let metrics =
-                displayed_scroll_metrics_at(topology, layout, &owner, owner_position)
-                    .ok_or(PresentationGeometryError)?;
+            let metrics = displayed_scroll_metrics_at(topology, layout, &owner, owner_position)
+                .ok_or(PresentationGeometryError)?;
             let offset = scroll.offset(&owner);
             let (offset, viewport, content) = match binding.axis() {
                 Axis::Horizontal => (offset.0, metrics.viewport.width(), metrics.content.width()),
-                Axis::Vertical => (offset.1, metrics.viewport.height(), metrics.content.height()),
+                Axis::Vertical => (
+                    offset.1,
+                    metrics.viewport.height(),
+                    metrics.content.height(),
+                ),
             };
             let snapshot = ScrollControlSnapshot::__runtime_from_metrics(
                 binding.axis(),
