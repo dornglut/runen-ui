@@ -188,6 +188,35 @@ pub(super) fn semantic_command(output: &mut String, command: SemanticCommand) {
             json::string(output, tokens::focus_direction(direction));
         }
         SemanticCommand::ScrollIntoView => json::string(output, "scroll_into_view"),
+        SemanticCommand::ScrollControl(request) => {
+            json::string(output, "scroll_control");
+            output.push(',');
+            json::name(output, "operation");
+            let (operation, normalized) = match request {
+                runenui_core::ScrollControlRequest::SmallStepBackward => {
+                    ("small_step_backward", None)
+                }
+                runenui_core::ScrollControlRequest::SmallStepForward => {
+                    ("small_step_forward", None)
+                }
+                runenui_core::ScrollControlRequest::PageBackward => ("page_backward", None),
+                runenui_core::ScrollControlRequest::PageForward => ("page_forward", None),
+                runenui_core::ScrollControlRequest::ToStart => ("to_start", None),
+                runenui_core::ScrollControlRequest::ToEnd => ("to_end", None),
+                runenui_core::ScrollControlRequest::SetNormalized(value) => {
+                    ("set_normalized", Some(value.get()))
+                }
+                _ => ("unknown", None),
+            };
+            json::string(output, operation);
+            output.push(',');
+            json::name(output, "normalized");
+            if let Some(normalized) = normalized {
+                json::f32_value(output, normalized);
+            } else {
+                output.push_str("null");
+            }
+        }
         SemanticCommand::Increment => json::string(output, "increment"),
         SemanticCommand::Decrement => json::string(output, "decrement"),
         SemanticCommand::SetValue(value) => {
@@ -240,9 +269,28 @@ pub(super) fn invalidation(output: &mut String, invalidation: WidgetInvalidation
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{SemanticAction, SemanticCommand, SemanticNumber};
+    use runenui_core::{
+        ScrollControlRequest, ScrollNormalizedValue, SemanticAction, SemanticCommand,
+        SemanticNumber,
+    };
 
     use super::{semantic_action, semantic_command};
+
+    #[test]
+    fn scroll_control_command_trace_token_is_structured_and_keeps_normalized_payload() {
+        let mut encoded = String::new();
+        semantic_command(
+            &mut encoded,
+            SemanticCommand::ScrollControl(ScrollControlRequest::SetNormalized(
+                ScrollNormalizedValue::new(0.5)
+                    .unwrap_or_else(|_| unreachable!("fixture value is normalized")),
+            )),
+        );
+        assert_eq!(
+            encoded,
+            r#"{"kind":"scroll_control","operation":"set_normalized","normalized":0.5}"#
+        );
+    }
 
     #[test]
     fn range_and_expansion_trace_tokens_are_stable_and_set_value_keeps_numeric_value() {
