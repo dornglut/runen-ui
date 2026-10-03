@@ -20,6 +20,10 @@ pub enum PhysicalKey {
     ArrowRight,
     ArrowUp,
     ArrowDown,
+    Home,
+    End,
+    PageUp,
+    PageDown,
     /// An owned host-neutral physical code.
     Code(String),
 }
@@ -38,6 +42,10 @@ pub enum LogicalKey {
     ArrowRight,
     ArrowUp,
     ArrowDown,
+    Home,
+    End,
+    PageUp,
+    PageDown,
     Character(String),
     /// A platform shortcut normalized by the host while preserving keyboard routing.
     Command(crate::SemanticCommand),
