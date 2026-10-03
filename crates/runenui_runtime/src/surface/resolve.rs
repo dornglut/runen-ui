@@ -657,7 +657,11 @@ pub(super) fn scroll_chrome_participates(
     layout: &CachedLayoutFacts,
     position: usize,
 ) -> bool {
-    match topology.nodes.get(position).and_then(|node| node.scroll_chrome) {
+    match topology
+        .nodes
+        .get(position)
+        .and_then(|node| node.scroll_chrome)
+    {
         None => true,
         Some(_) => layout
             .scroll_chrome
@@ -697,7 +701,10 @@ fn scroll_thumb_presentation_offset(
         .bounds
         .get(track_position)
         .ok_or(PresentationGeometryError)?;
-    let thumb = layout.bounds.get(position).ok_or(PresentationGeometryError)?;
+    let thumb = layout
+        .bounds
+        .get(position)
+        .ok_or(PresentationGeometryError)?;
     let viewport = owner_layout.scroll_viewport_extent();
     let content = owner_layout.scrollable_extent();
     let (travel, maximum, offset) = match axis {
@@ -730,7 +737,7 @@ fn scroll_thumb_presentation_offset(
 fn resolve_present_scroll_chrome(
     topology: &SurfaceTopologySnapshot,
     layout: &CachedLayoutFacts,
-    effective: &CachedEffectiveFacts,
+    effective: &EffectiveNodeFacts,
     scroll: &SurfaceScrollProjection,
     position: usize,
     bounds: LogicalRect,
@@ -754,15 +761,12 @@ fn resolve_present_scroll_chrome(
         .bounds
         .get(owner_position)
         .ok_or(PresentationGeometryError)?;
-    let owner_presentation = nodes
-        .get(owner_position)
-        .ok_or(PresentationGeometryError)?;
+    let owner_presentation = nodes.get(owner_position).ok_or(PresentationGeometryError)?;
     let owner_inherited_scroll = inherited_scroll_offsets
         .get(owner_position)
         .copied()
         .ok_or(PresentationGeometryError)?;
     let node_presentation = effective
-        .node(position)
         .computed_style()
         .presentation()
         .map_or(Ok(LogicalTransform::IDENTITY), |presentation| {

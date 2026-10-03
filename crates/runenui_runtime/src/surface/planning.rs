@@ -577,8 +577,7 @@ fn plan_structural_surface<'tree, Action>(
         &paint_contexts,
         &hit_contexts,
     );
-    let resolved_hit_test =
-        resolve_hit_test(&topology, &layout, &presentation, &capability_plan);
+    let resolved_hit_test = resolve_hit_test(&topology, &layout, &presentation, &capability_plan);
     let hit_test = resolved_hit_test.scene;
     let hit_diagnostics = Arc::new(resolved_hit_test.diagnostics);
     report.record(SurfacePhase::HitTesting);
@@ -774,7 +773,9 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
         .nodes
         .iter()
         .enumerate()
-        .filter(|(position, _)| scroll_chrome_participates(&cache.topology, &cache.layout, *position))
+        .filter(|(position, _)| {
+            scroll_chrome_participates(&cache.topology, &cache.layout, *position)
+        })
         .map(|(_, node)| &node.id);
     if cache.hit_test.membership().iter().ne(expected_membership) {
         return Err("surface hit membership is not aligned with participating topology");
