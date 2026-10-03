@@ -446,6 +446,78 @@ impl<'a, Action> EventContext<'a, Action> {
 
     #[allow(clippy::too_many_arguments)]
     #[must_use]
+    pub(crate) const fn new(
+        phase: EventPhase,
+        original_target: &'a MountedNodeId,
+        current_target: &'a MountedNodeId,
+        related_target: Option<&'a MountedNodeId>,
+        origin: CommandOrigin,
+        sequence: WorkSequence,
+        instant: MonotonicInstant,
+        drag_drop: Option<DragDropEvent>,
+        default_cancelable: bool,
+        default_prevented: bool,
+        propagation_stopped: bool,
+        output_allowance: usize,
+    ) -> Self {
+        Self::new_with_scroll_control(
+            phase,
+            original_target,
+            current_target,
+            related_target,
+            origin,
+            sequence,
+            instant,
+            drag_drop,
+            None,
+            default_cancelable,
+            default_prevented,
+            propagation_stopped,
+            output_allowance,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[must_use]
+    pub(crate) const fn new_pointer(
+        phase: EventPhase,
+        original_target: &'a MountedNodeId,
+        current_target: &'a MountedNodeId,
+        related_target: Option<&'a MountedNodeId>,
+        origin: CommandOrigin,
+        sequence: WorkSequence,
+        instant: MonotonicInstant,
+        drag_drop: Option<DragDropEvent>,
+        pointer_id: PointerId,
+        physical_target: Option<&'a MountedNodeId>,
+        physical_path: &'a [MountedNodeId],
+        default_cancelable: bool,
+        default_prevented: bool,
+        propagation_stopped: bool,
+        output_allowance: usize,
+    ) -> Self {
+        Self::new_pointer_with_scroll_control(
+            phase,
+            original_target,
+            current_target,
+            related_target,
+            origin,
+            sequence,
+            instant,
+            drag_drop,
+            pointer_id,
+            physical_target,
+            physical_path,
+            None,
+            default_cancelable,
+            default_prevented,
+            propagation_stopped,
+            output_allowance,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[must_use]
     pub(crate) const fn new_with_scroll_control(
         phase: EventPhase,
         original_target: &'a MountedNodeId,
@@ -874,14 +946,14 @@ mod tests {
         assert!(matches!(
             &output.ordered[1],
             RoutedEventOutput::Command { target: delegated, origin, .. }
-                if delegated == &target
+                if delegated == target
                     && origin.source() == EventSource::Controller
                     && origin.derivation() == CommandDerivation::Delegated
         ));
         assert!(matches!(
             &output.ordered[2],
             RoutedEventOutput::ApplicationCommand { target: delegated, command, origin }
-                if delegated == &target
+                if delegated == target
                     && command.as_str() == "save"
                     && origin.source() == EventSource::Controller
                     && origin.derivation() == CommandDerivation::Delegated
