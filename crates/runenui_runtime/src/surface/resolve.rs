@@ -11,12 +11,10 @@ use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
     __runtime::transform_rect_aabb, Axis, Color, ComputedStyle, ContributionClip, ElementId,
     HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
-    LogicalTransform,
-    OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
-    PaintContributionItem, Radius, SceneShape, ScrollControlSnapshot,
-    SemanticContributionContext, StyleEnvironment, StyleInteractionState, StyleResolution,
-    TextAffinity, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
-    style_effects_between,
+    LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
+    PaintContributionItem, Radius, SceneShape, ScrollControlSnapshot, SemanticContributionContext,
+    StyleEnvironment, StyleInteractionState, StyleResolution, TextAffinity, WidgetDiagnostic,
+    WidgetTypeId, resolve_style_in_environment, style_effects_between,
 };
 use runenui_text::{ShapedTextLease, TextDisplaySelection, TextPreeditProjection, TextSystem};
 
@@ -324,7 +322,9 @@ pub(super) fn paint_contexts(
             PaintContributionContext::__runtime_with_scroll_control(
                 bounds.size(),
                 node.computed_style().clone(),
-                scroll_control.as_ref().map(|projection| projection.snapshot),
+                scroll_control
+                    .as_ref()
+                    .map(|projection| projection.snapshot),
             )
         })
         .collect()
@@ -411,7 +411,9 @@ pub(super) fn semantic_contexts(
         .map(|(node, scroll_control)| {
             SemanticContributionContext::__runtime_with_scroll_control(
                 node.children.len(),
-                scroll_control.as_ref().map(|projection| projection.snapshot),
+                scroll_control
+                    .as_ref()
+                    .map(|projection| projection.snapshot),
             )
         })
         .collect()
@@ -429,7 +431,9 @@ pub(super) fn hit_contexts(
         .map(|(bounds, scroll_control)| {
             HitContributionContext::__runtime_with_scroll_control(
                 bounds.size(),
-                scroll_control.as_ref().map(|projection| projection.snapshot),
+                scroll_control
+                    .as_ref()
+                    .map(|projection| projection.snapshot),
             )
         })
         .collect()
