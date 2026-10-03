@@ -100,10 +100,8 @@ pub(super) fn layout_resolved_surface<Action>(
             {
                 continue;
             }
-            if axis_has_positive_range(
-                result.2.nodes().get(bar.owner_position),
-                bar.layout.axis(),
-            ) {
+            if axis_has_positive_range(result.2.nodes().get(bar.owner_position), bar.layout.axis())
+            {
                 reserved_present[bar_index] = true;
                 added = true;
             }
@@ -195,9 +193,10 @@ fn apply_scroll_chrome_geometry(
                 ScrollBarPlacement::Reserved => {
                     reserved_present.get(bar_index).copied().unwrap_or(false)
                 }
-                ScrollBarPlacement::Overlay => {
-                    axis_has_positive_range(report.nodes().get(bar.owner_position), bar.layout.axis())
-                }
+                ScrollBarPlacement::Overlay => axis_has_positive_range(
+                    report.nodes().get(bar.owner_position),
+                    bar.layout.axis(),
+                ),
                 _ => false,
             },
             _ => false,
@@ -235,18 +234,26 @@ fn apply_scroll_chrome_geometry(
     }
 
     for corner in &chrome_plan.corners {
-        let horizontal = chrome_plan.bars.iter().enumerate().find(|(bar_index, bar)| {
-            visible_bars[*bar_index]
-                && bar.owner_position == corner.owner_position
-                && bar.layout.axis() == Axis::Horizontal
-                && bar.layout.placement() == ScrollBarPlacement::Reserved
-        });
-        let vertical = chrome_plan.bars.iter().enumerate().find(|(bar_index, bar)| {
-            visible_bars[*bar_index]
-                && bar.owner_position == corner.owner_position
-                && bar.layout.axis() == Axis::Vertical
-                && bar.layout.placement() == ScrollBarPlacement::Reserved
-        });
+        let horizontal = chrome_plan
+            .bars
+            .iter()
+            .enumerate()
+            .find(|(bar_index, bar)| {
+                visible_bars[*bar_index]
+                    && bar.owner_position == corner.owner_position
+                    && bar.layout.axis() == Axis::Horizontal
+                    && bar.layout.placement() == ScrollBarPlacement::Reserved
+            });
+        let vertical = chrome_plan
+            .bars
+            .iter()
+            .enumerate()
+            .find(|(bar_index, bar)| {
+                visible_bars[*bar_index]
+                    && bar.owner_position == corner.owner_position
+                    && bar.layout.axis() == Axis::Vertical
+                    && bar.layout.placement() == ScrollBarPlacement::Reserved
+            });
         let rect = match (horizontal, vertical) {
             (Some(_), Some(_)) => {
                 let owner = bounds[corner.owner_position];
@@ -447,11 +454,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 root_max_bound(style.max_size.height, self.root_constraints.vertical());
         }
         if let Some(size) = self.custom_intrinsic_sizes[index] {
-            apply_custom_intrinsic_minimum(
-                &mut style,
-                size,
-                self.layout_padding(index),
-            );
+            apply_custom_intrinsic_minimum(&mut style, size, self.layout_padding(index));
         }
         style
     }
@@ -695,17 +698,15 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 (node_size.width() - gutter.right.get()).max(0.0),
                 (node_size.height() - gutter.bottom.get()).max(0.0),
             );
-            let raw_scrollable_width =
-                (layout.scrollable_overflow_rect.right - layout.scrollable_overflow_rect.left)
-                    .max(0.0);
-            let raw_scrollable_height =
-                (layout.scrollable_overflow_rect.bottom - layout.scrollable_overflow_rect.top)
-                    .max(0.0);
+            let raw_scrollable_width = (layout.scrollable_overflow_rect.right
+                - layout.scrollable_overflow_rect.left)
+                .max(0.0);
+            let raw_scrollable_height = (layout.scrollable_overflow_rect.bottom
+                - layout.scrollable_overflow_rect.top)
+                .max(0.0);
             let scrollable_extent = logical_size(
-                (raw_scrollable_width - gutter.right.get())
-                    .max(scroll_viewport_extent.width()),
-                (raw_scrollable_height - gutter.bottom.get())
-                    .max(scroll_viewport_extent.height()),
+                (raw_scrollable_width - gutter.right.get()).max(scroll_viewport_extent.width()),
+                (raw_scrollable_height - gutter.bottom.get()).max(scroll_viewport_extent.height()),
             );
             reports.push(
                 SurfaceLayoutNode::new(

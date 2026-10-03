@@ -14,8 +14,7 @@ use runenui_core::{
     LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
     PaintContributionItem, Radius, SceneShape, ScrollBarLayout, ScrollChrome,
     ScrollControlSnapshot, SemanticContributionContext, StyleEnvironment, StyleInteractionState,
-    StyleResolution,
-    TextAffinity, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
+    StyleResolution, TextAffinity, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
     style_effects_between,
 };
 use runenui_text::{ShapedTextLease, TextDisplaySelection, TextPreeditProjection, TextSystem};
@@ -456,8 +455,7 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
         let Some(ScrollChrome::Bar(layout)) = node.scroll_chrome else {
             continue;
         };
-        let Some((_, owner_position)) =
-            resolve_scroll_owner(topology, &node.id, layout.axis())?
+        let Some((_, owner_position)) = resolve_scroll_owner(topology, &node.id, layout.axis())?
         else {
             continue;
         };
@@ -485,9 +483,7 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
     for (position, node) in topology.nodes.iter().enumerate() {
         match node.scroll_chrome {
             Some(ScrollChrome::Thumb(axis)) => {
-                if let Some((_, owner_position)) =
-                    resolve_scroll_owner(topology, &node.id, axis)?
-                {
+                if let Some((_, owner_position)) = resolve_scroll_owner(topology, &node.id, axis)? {
                     thumbs.push(ResolvedScrollThumbChrome {
                         position,
                         owner_position,
