@@ -1883,9 +1883,9 @@ mod tests {
         SemanticCheckedState, SemanticContribution, SemanticContributionContext,
         SemanticContributionError, SemanticEditable, SemanticEditableMode, SemanticItem,
         SemanticKey, SemanticNodeContribution, SemanticNumber, SemanticNumberError,
-        SemanticPopupKind, SemanticPressedState, SemanticRange, SemanticRangeError,
-        SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole,
-        SemanticSelectionMode, SemanticState,
+        SemanticOrientation, SemanticPopupKind, SemanticPressedState, SemanticRange,
+        SemanticRangeError, SemanticReference, SemanticRelationship, SemanticRelationshipKind,
+        SemanticRole, SemanticSelectionMode, SemanticState,
     };
     use crate::{
         TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,

@@ -35,10 +35,6 @@ impl<Action> MountedTree<Action> {
         self.preorder_ids()
     }
 
-    pub(crate) fn index(&mut self) -> MountedTreeIndex<'_, Action> {
-        self.index_with_focus_eligibility(&FocusEligibilityProjection::default())
-    }
-
     pub(crate) fn index_with_focus_eligibility(
         &mut self,
         eligibility: &FocusEligibilityProjection,
