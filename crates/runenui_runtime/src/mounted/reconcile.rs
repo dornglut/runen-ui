@@ -163,6 +163,33 @@ struct PlanningState {
     moved: usize,
 }
 
+const fn scroll_control_binding_invalidation(changed: bool) -> WidgetInvalidation {
+    if changed {
+        WidgetInvalidation::HIT_TEST
+            | WidgetInvalidation::PAINT
+            | WidgetInvalidation::SEMANTICS
+    } else {
+        WidgetInvalidation::NONE
+    }
+}
+
+fn apply_retained_phase_changes<Action>(
+    node: &mut MountedNode<Action>,
+    tree_changed: bool,
+    style_changed: bool,
+    timelines_changed: bool,
+) {
+    if tree_changed {
+        node.dirty_phases.insert(DirtyPhases::TREE);
+    }
+    if style_changed {
+        node.dirty_phases.insert(DirtyPhases::STYLE);
+    }
+    if timelines_changed {
+        node.dirty_phases.insert(DirtyPhases::MOTION);
+    }
+}
+
 impl<Action> MountedTree<Action> {
     pub(crate) fn plan_reconciliation(
         &self,
@@ -566,28 +593,20 @@ impl<Action> MountedTree<Action> {
             // the widget explicitly invalidates semantics or mounted-child structure changes.
             node.caches.activation = CachedCapability::Unresolved;
             node.caches.text_input = CachedCapability::Unresolved;
-            let scroll_control_invalidation = if scroll_control_binding_changed {
-                WidgetInvalidation::HIT_TEST
-                    | WidgetInvalidation::PAINT
-                    | WidgetInvalidation::SEMANTICS
-            } else {
-                WidgetInvalidation::NONE
-            };
+            let scroll_control_invalidation =
+                scroll_control_binding_invalidation(scroll_control_binding_changed);
             apply_invalidation(
                 node,
                 update_context.__runtime_take_invalidation()
                     | common_invalidation
                     | scroll_control_invalidation,
             );
-            if tree_metadata_changed || topology_overflow_changed {
-                node.dirty_phases.insert(DirtyPhases::TREE);
-            }
-            if style_changed {
-                node.dirty_phases.insert(DirtyPhases::STYLE);
-            }
-            if timelines_changed {
-                node.dirty_phases.insert(DirtyPhases::MOTION);
-            }
+            apply_retained_phase_changes(
+                node,
+                tree_metadata_changed || topology_overflow_changed,
+                style_changed,
+                timelines_changed,
+            );
         }
         if update_context.__runtime_take_subscription_invalidation() {
             stats.subscription_invalidated.push(id.clone());
