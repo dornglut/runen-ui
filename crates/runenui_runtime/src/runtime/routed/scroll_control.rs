@@ -48,13 +48,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 owner: None,
             });
         };
-        if self.scroll_control_metrics_are_stale() {
-            return Err(scroll_control_failure(
-                binding.axis(),
-                None,
-                TraceScrollControlBindingOutcome::MetricsUnavailable,
-            ));
-        }
         let route = self.tree.event_route(target).map_err(|_| {
             scroll_control_failure(
                 binding.axis(),
@@ -64,6 +57,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         })?;
         let current_owner = self.current_scroll_owner(&route, binding.axis());
         let owner = self.resolve_published_scroll_owner(target, binding, current_owner.as_ref())?;
+        if self.scroll_control_metrics_are_stale() {
+            return Err(scroll_control_failure(
+                binding.axis(),
+                Some(owner),
+                TraceScrollControlBindingOutcome::MetricsUnavailable,
+            ));
+        }
         let snapshot = self.resolve_scroll_control_snapshot(&owner, binding)?;
         Ok(ResolvedScrollControl {
             owner,
