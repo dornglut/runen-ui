@@ -278,6 +278,7 @@ fn encode_scroll_control_data(output: &mut String, kind: &TraceRecordKind) -> bo
         runenui_core::ScrollControlRequest::SetNormalized(value) => {
             ("set_normalized", Some(value.get()))
         }
+        _ => ("unknown", None),
     };
     json::string(output, operation);
     output.push(',');
