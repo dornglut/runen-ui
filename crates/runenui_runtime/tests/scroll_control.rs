@@ -7,13 +7,13 @@ use runenui_core::{
     Axis, ChildBearingWidget, CommandOrigin, Element, EventContext, HitContribution,
     HitContributionContext, KeyModifiers, LayoutContainer, LayoutDimension, LayoutStyle,
     LogicalDelta, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, OverflowPolicy,
-    OverflowStyle,
-    PaintContribution, PaintContributionContext, PointerButton, PointerButtons, PointerDeviceKind,
-    PointerEvent, PointerId, PointerPhase, ScrollControlBinding, ScrollControlRequest,
-    ScrollControlSnapshot, ScrollNormalizedValue, SemanticCommand, SemanticContribution,
-    SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment, UiApp,
-    UiEvent, View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
-    WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, children, column, scroll_viewport,
+    OverflowStyle, PaintContribution, PaintContributionContext, PointerButton, PointerButtons,
+    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, ScrollControlBinding,
+    ScrollControlRequest, ScrollControlSnapshot, ScrollNormalizedValue, SemanticCommand,
+    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
+    StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
+    WidgetActivationOutput, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, children, column,
+    scroll_viewport,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits,
@@ -631,9 +631,16 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
     let clamped = runtime
         .trace()
         .records()
-        .filter(|record| matches!(record.kind(), TraceRecordKind::LogicalScrollOwnerApplied { .. }))
+        .filter(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::LogicalScrollOwnerApplied { .. }
+            )
+        })
         .last()
-        .unwrap_or_else(|| unreachable!("clamped scroll request retains the canonical owner trace"));
+        .unwrap_or_else(|| {
+            unreachable!("clamped scroll request retains the canonical owner trace")
+        });
     assert!(matches!(
         clamped.kind(),
         TraceRecordKind::LogicalScrollOwnerApplied {
