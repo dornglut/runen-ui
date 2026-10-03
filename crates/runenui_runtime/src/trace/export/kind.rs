@@ -302,6 +302,7 @@ fn encode_scroll_control_data(output: &mut String, kind: &TraceRecordKind) -> bo
         match outcome {
             TraceScrollControlBindingOutcome::Resolved => "resolved",
             TraceScrollControlBindingOutcome::MissingBinding => "missing_binding",
+            TraceScrollControlBindingOutcome::Stale => "stale",
             TraceScrollControlBindingOutcome::NonScrollable => "non_scrollable",
             TraceScrollControlBindingOutcome::MetricsUnavailable => "metrics_unavailable",
         },
