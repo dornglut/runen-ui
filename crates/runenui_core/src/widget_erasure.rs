@@ -505,6 +505,29 @@ impl<Action> MountedWidget<Action> {
     }
 }
 
+pub(crate) struct ElementCompositionFields {
+    pub(crate) focus_group: Option<FocusGroup>,
+    pub(crate) focus_group_entry: FocusGroupEntry,
+    pub(crate) focus_group_search_text: Option<String>,
+    pub(crate) scroll_control_binding: Option<ScrollControlBinding>,
+}
+
+impl ElementCompositionFields {
+    pub(crate) const fn new(
+        focus_group: Option<FocusGroup>,
+        focus_group_entry: FocusGroupEntry,
+        focus_group_search_text: Option<String>,
+        scroll_control_binding: Option<ScrollControlBinding>,
+    ) -> Self {
+        Self {
+            focus_group,
+            focus_group_entry,
+            focus_group_search_text,
+            scroll_control_binding,
+        }
+    }
+}
+
 /// Unstable consumed element parts used only by `runenui_runtime`.
 #[doc(hidden)]
 pub struct ElementParts<Action> {
@@ -541,10 +564,7 @@ pub type ElementRuntimeParts<Action> = (
 impl<Action> ElementParts<Action> {
     pub(crate) fn new(
         fields: AuthoredElementFields,
-        focus_group: Option<FocusGroup>,
-        focus_group_entry: FocusGroupEntry,
-        focus_group_search_text: Option<String>,
-        scroll_control_binding: Option<ScrollControlBinding>,
+        composition: ElementCompositionFields,
         widget: MountedWidget<Action>,
         children: Vec<Element<Action>>,
         authoring_diagnostics: Vec<AuthoringDiagnostic>,
@@ -557,10 +577,10 @@ impl<Action> ElementParts<Action> {
             timelines: fields.timelines,
             focusability: fields.focusability,
             focus_scope: fields.focus_scope,
-            focus_group,
-            focus_group_entry,
-            focus_group_search_text,
-            scroll_control_binding,
+            focus_group: composition.focus_group,
+            focus_group_entry: composition.focus_group_entry,
+            focus_group_search_text: composition.focus_group_search_text,
+            scroll_control_binding: composition.scroll_control_binding,
             widget,
             children,
             authoring_diagnostics,
