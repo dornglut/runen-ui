@@ -61,23 +61,60 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
             owner: None,
         })?;
-        let owner = route
-            .iter()
-            .rev()
-            .skip(1)
-            .find_map(|owner| {
-                let node = self.tree.node(owner)?;
-                let policy = match axis {
-                    Axis::Horizontal => node.layout.overflow().horizontal(),
-                    Axis::Vertical => node.layout.overflow().vertical(),
-                };
-                (policy == OverflowPolicy::Scroll).then(|| owner.clone())
-            })
-            .ok_or_else(|| ScrollControlResolutionFailure {
+        let published = self
+            .surface_publication
+            .current_scroll_control_binding(target)
+            .ok_or(ScrollControlResolutionFailure {
                 axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::NonScrollable,
+                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
                 owner: None,
             })?;
+        let Some((owner, published_binding)) = published else {
+            let has_current_candidate = route.iter().rev().skip(1).any(|candidate| {
+                self.tree.node(candidate).is_some_and(|node| {
+                    let policy = match axis {
+                        Axis::Horizontal => node.layout.overflow().horizontal(),
+                        Axis::Vertical => node.layout.overflow().vertical(),
+                    };
+                    policy == OverflowPolicy::Scroll
+                })
+            });
+            return Err(ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: if has_current_candidate {
+                    TraceScrollControlBindingOutcome::MetricsUnavailable
+                } else {
+                    TraceScrollControlBindingOutcome::NonScrollable
+                },
+                owner: None,
+            });
+        };
+        if published_binding != binding || !route.iter().any(|candidate| candidate == &owner) {
+            return Err(ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
+                owner: Some(owner),
+            });
+        }
+        let owner_node = self
+            .tree
+            .node(&owner)
+            .ok_or_else(|| ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
+                owner: Some(owner.clone()),
+            })?;
+        let current_policy = match axis {
+            Axis::Horizontal => owner_node.layout.overflow().horizontal(),
+            Axis::Vertical => owner_node.layout.overflow().vertical(),
+        };
+        if current_policy != OverflowPolicy::Scroll {
+            return Err(ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: TraceScrollControlBindingOutcome::NonScrollable,
+                owner: Some(owner),
+            });
+        }
         let metrics = self
             .surface_publication
             .current_scroll_metrics(&owner)
@@ -97,22 +134,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 owner: Some(owner),
             });
         }
-        let node = self
-            .tree
-            .node(&owner)
-            .ok_or_else(|| ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
-                owner: Some(owner.clone()),
-            })?;
         let (offset, viewport, content) = match axis {
             Axis::Horizontal => (
-                node.interaction.scroll_offset.0,
+                owner_node.interaction.scroll_offset.0,
                 metrics.viewport.width(),
                 metrics.content.width(),
             ),
             Axis::Vertical => (
-                node.interaction.scroll_offset.1,
+                owner_node.interaction.scroll_offset.1,
                 metrics.viewport.height(),
                 metrics.content.height(),
             ),
