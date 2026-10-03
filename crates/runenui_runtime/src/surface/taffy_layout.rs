@@ -35,6 +35,7 @@ use taffy::{
     },
 };
 
+use super::cache::CachedScrollChromeProjection;
 use super::resolve::{ResolvedSurfaceNode, ResolvedSurfaceTree, ScrollChromeLayoutPlan};
 use super::{LayoutOverflow, SurfaceLayoutNode, SurfaceLayoutReport, SurfaceTextMeasurementRecord};
 use crate::{AxisLimit, LayoutConstraints};
@@ -45,10 +46,18 @@ struct ScrollViewportGutter {
     bottom: LogicalLength,
 }
 
+type LayoutCoreResult = (
+    LogicalSize,
+    Vec<LogicalRect>,
+    SurfaceLayoutReport,
+    Vec<TextLayoutState>,
+);
+
 type LayoutResult = (
     LogicalSize,
     Vec<LogicalRect>,
     SurfaceLayoutReport,
+    Vec<Option<CachedScrollChromeProjection>>,
     Vec<TextLayoutState>,
 );
 
@@ -111,11 +120,12 @@ pub(super) fn layout_resolved_surface<Action>(
         }
     }
 
-    apply_scroll_chrome_geometry(chrome_plan, &reserved_present, &mut result.1, &mut result.2);
+    let scroll_chrome =
+        apply_scroll_chrome_geometry(chrome_plan, &reserved_present, &mut result.1, &mut result.2);
 
     #[cfg(feature = "internal-test-seams")]
     super::profile::record_layout(profile_started.elapsed());
-    Ok(result)
+    Ok((result.0, result.1, result.2, scroll_chrome, result.3))
 }
 
 fn layout_resolved_surface_once<Action>(
@@ -127,7 +137,7 @@ fn layout_resolved_surface_once<Action>(
     text_system: &mut TextSystem,
     preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
     prior_text_layouts: Option<&[TextLayoutState]>,
-) -> Result<LayoutResult, TextLayoutError> {
+) -> Result<LayoutCoreResult, TextLayoutError> {
     let mut kernel = LayoutKernel::new(
         resolved_tree,
         chrome_plan,
@@ -181,7 +191,8 @@ fn apply_scroll_chrome_geometry(
     reserved_present: &[bool],
     bounds: &mut [LogicalRect],
     report: &mut SurfaceLayoutReport,
-) {
+) -> Vec<Option<CachedScrollChromeProjection>> {
+    let mut projection = vec![None; bounds.len()];
     let visible_bars = chrome_plan
         .bars
         .iter()
@@ -215,12 +226,26 @@ fn apply_scroll_chrome_geometry(
             .flatten()
             .unwrap_or_else(|| zero_rect_at(owner_bounds.x(), owner_bounds.y()));
         replace_chrome_geometry(bounds, report, bar.position, rect);
+        projection[bar.position] = Some(CachedScrollChromeProjection::bar(
+            bar.owner_position,
+            bar.layout.axis(),
+            visible_bars[bar_index],
+        ));
     }
 
+    let bar_indexes = chrome_plan
+        .bars
+        .iter()
+        .enumerate()
+        .map(|(index, bar)| (bar.position, index))
+        .collect::<HashMap<_, _>>();
     for thumb in &chrome_plan.thumbs {
-        let matching_bar = chrome_plan.bars.iter().enumerate().find(|(_, bar)| {
-            bar.owner_position == thumb.owner_position && bar.layout.axis() == thumb.axis
-        });
+        let matching_bar = bar_indexes
+            .get(&thumb.bar_position)
+            .and_then(|index| chrome_plan.bars.get(*index).map(|bar| (*index, bar)));
+        let thumb_present = matching_bar
+            .as_ref()
+            .is_some_and(|(bar_index, _)| visible_bars[*bar_index]);
         let rect = matching_bar
             .filter(|(bar_index, _)| visible_bars[*bar_index])
             .and_then(|(_, bar)| {
@@ -235,6 +260,12 @@ fn apply_scroll_chrome_geometry(
                 )
             });
         replace_chrome_geometry(bounds, report, thumb.position, rect);
+        projection[thumb.position] = Some(CachedScrollChromeProjection::thumb(
+            thumb.owner_position,
+            thumb.axis,
+            thumb.bar_position,
+            thumb_present,
+        ));
     }
 
     for corner in &chrome_plan.corners {
@@ -278,8 +309,14 @@ fn apply_scroll_chrome_geometry(
                 |owner| zero_rect_at(owner.x(), owner.y()),
             )
         });
+        let corner_present = horizontal.is_some() && vertical.is_some();
         replace_chrome_geometry(bounds, report, corner.position, rect);
+        projection[corner.position] = Some(CachedScrollChromeProjection::corner(
+            corner.owner_position,
+            corner_present,
+        ));
     }
+    projection
 }
 
 fn thumb_bounds(

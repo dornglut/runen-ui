@@ -417,6 +417,7 @@ pub(super) struct ResolvedScrollThumbChrome {
     pub(super) position: usize,
     pub(super) owner_position: usize,
     pub(super) axis: Axis,
+    pub(super) bar_position: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -478,17 +479,28 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
         })
         .collect::<Vec<_>>();
 
-    let mut thumbs = Vec::new();
-    let mut corners = Vec::new();
+    let bar_positions = bars
+        .iter()
+        .map(|bar| {
+            (
+                (bar.owner_position, axis_key(bar.layout.axis())),
+                bar.position,
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    let mut thumb_candidates = Vec::new();
+    let mut thumb_counts = HashMap::<(usize, u8), usize>::new();
+    let mut corner_candidates = Vec::new();
+    let mut corner_counts = HashMap::<usize, usize>::new();
     for (position, node) in topology.nodes.iter().enumerate() {
         match node.scroll_chrome {
             Some(ScrollChrome::Thumb(axis)) => {
                 if let Some((_, owner_position)) = resolve_scroll_owner(topology, &node.id, axis)? {
-                    thumbs.push(ResolvedScrollThumbChrome {
-                        position,
-                        owner_position,
-                        axis,
-                    });
+                    *thumb_counts
+                        .entry((owner_position, axis_key(axis)))
+                        .or_default() += 1;
+                    thumb_candidates.push((position, owner_position, axis));
                 }
             }
             Some(ScrollChrome::Corner) => {
@@ -498,16 +510,43 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
                     (horizontal, vertical)
                     && horizontal_owner == vertical_owner
                 {
-                    corners.push(ResolvedScrollCornerChrome {
-                        position,
-                        owner_position,
-                    });
+                    *corner_counts.entry(owner_position).or_default() += 1;
+                    corner_candidates.push((position, owner_position));
                 }
             }
             Some(ScrollChrome::Bar(_)) | None => {}
             Some(_) => {}
         }
     }
+
+    let thumbs = thumb_candidates
+        .into_iter()
+        .filter_map(|(position, owner_position, axis)| {
+            let key = (owner_position, axis_key(axis));
+            (thumb_counts.get(&key).copied() == Some(1))
+                .then(|| bar_positions.get(&key).copied())
+                .flatten()
+                .map(|bar_position| ResolvedScrollThumbChrome {
+                    position,
+                    owner_position,
+                    axis,
+                    bar_position,
+                })
+        })
+        .collect();
+
+    let corners = corner_candidates
+        .into_iter()
+        .filter(|(_, owner_position)| {
+            corner_counts.get(owner_position).copied() == Some(1)
+                && bar_positions.contains_key(&(*owner_position, axis_key(Axis::Horizontal)))
+                && bar_positions.contains_key(&(*owner_position, axis_key(Axis::Vertical)))
+        })
+        .map(|(position, owner_position)| ResolvedScrollCornerChrome {
+            position,
+            owner_position,
+        })
+        .collect();
 
     Ok(ScrollChromeLayoutPlan {
         chrome_positions,

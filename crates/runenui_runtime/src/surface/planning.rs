@@ -207,7 +207,7 @@ fn resolve_layout_phase<Action>(
 ) -> Result<CachedLayoutFacts, SurfacePlanningError> {
     let resolved = ResolvedSurfaceTree::for_layout(&current.topology, &current.effective);
     let chrome_plan = resolve_scroll_chrome_layout_plan(&current.topology)?;
-    let (size, bounds, report, text_layouts) = layout_resolved_surface(
+    let (size, bounds, report, scroll_chrome, text_layouts) = layout_resolved_surface(
         &resolved,
         &chrome_plan,
         tree,
@@ -220,6 +220,7 @@ fn resolve_layout_phase<Action>(
         size,
         bounds,
         report,
+        scroll_chrome,
         text_layouts,
     })
 }
@@ -538,7 +539,7 @@ fn plan_structural_surface<'tree, Action>(
     tree.extend_surface_publication_capabilities(&mut capability_plan, DirtyPhases::ALL);
     let resolved = ResolvedSurfaceTree::for_layout(&topology, &effective);
     let chrome_plan = resolve_scroll_chrome_layout_plan(&topology)?;
-    let (size, bounds, layout_report, text_layouts) = layout_resolved_surface(
+    let (size, bounds, layout_report, scroll_chrome, text_layouts) = layout_resolved_surface(
         &resolved,
         &chrome_plan,
         tree,
@@ -551,6 +552,7 @@ fn plan_structural_surface<'tree, Action>(
         size,
         bounds,
         report: layout_report,
+        scroll_chrome,
         text_layouts,
     };
     report.record(SurfacePhase::Layout);
@@ -739,6 +741,7 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
         || cache.effective.nodes.len() != expected
         || cache.layout.bounds.len() != expected
         || cache.layout.report.nodes().len() != expected
+        || cache.layout.scroll_chrome.len() != expected
         || cache.layout.text_layouts.len() != expected
         || cache.presentation.nodes.len() != expected
         || cache.hit_test.membership().len() != expected

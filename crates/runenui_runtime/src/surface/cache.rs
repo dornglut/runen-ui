@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
-    LogicalTransform, ScrollControlBinding, ScrollControlSnapshot, StyleEnvironment,
+    Axis, LogicalTransform, ScrollControlBinding, ScrollControlSnapshot, StyleEnvironment,
     TextDocumentSnapshot, WidgetDiagnostic,
 };
 use runenui_text::{
@@ -210,12 +210,86 @@ pub(super) struct SurfaceContextKey {
     pub(super) font_source: FontSourceSnapshot,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum CachedScrollChromeKind {
+    Bar {
+        owner_position: usize,
+        axis: Axis,
+    },
+    Thumb {
+        owner_position: usize,
+        axis: Axis,
+        track_position: usize,
+    },
+    Corner {
+        owner_position: usize,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct CachedScrollChromeProjection {
+    kind: CachedScrollChromeKind,
+    present: bool,
+}
+
+impl CachedScrollChromeProjection {
+    #[must_use]
+    pub(super) const fn bar(owner_position: usize, axis: Axis, present: bool) -> Self {
+        Self {
+            kind: CachedScrollChromeKind::Bar {
+                owner_position,
+                axis,
+            },
+            present,
+        }
+    }
+
+    #[must_use]
+    pub(super) const fn thumb(
+        owner_position: usize,
+        axis: Axis,
+        track_position: usize,
+        present: bool,
+    ) -> Self {
+        Self {
+            kind: CachedScrollChromeKind::Thumb {
+                owner_position,
+                axis,
+                track_position,
+            },
+            present,
+        }
+    }
+
+    #[must_use]
+    pub(super) const fn corner(owner_position: usize, present: bool) -> Self {
+        Self {
+            kind: CachedScrollChromeKind::Corner { owner_position },
+            present,
+        }
+    }
+
+    #[must_use]
+    pub(super) const fn kind(self) -> CachedScrollChromeKind {
+        self.kind
+    }
+
+    #[must_use]
+    pub(super) const fn present(self) -> bool {
+        self.present
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct CachedLayoutFacts {
     // Layout-phase facts: invalid whenever layout executes.
     pub(super) size: LogicalSize,
     pub(super) bounds: Vec<LogicalRect>,
     pub(super) report: SurfaceLayoutReport,
+    // Exact layout-owned scroll-chrome validity/presence aligned with topology.
+    // Authored chrome with no entry failed structural validation and is
+    // non-participating in every downstream phase.
+    pub(super) scroll_chrome: Vec<Option<CachedScrollChromeProjection>>,
     // Runtime-owned reusable logical text state aligned exactly with topology.
     // Each state is cheap COW sharing so a staged reflow cannot mutate accepted
     // shaping/layout state before publication commit.
