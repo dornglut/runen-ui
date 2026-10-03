@@ -5,8 +5,8 @@ use core::fmt;
 use runenui_core::{
     __runtime::{MountedWidget, MountedWidgetState},
     AuthoringDiagnostic, ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry,
-    FocusScope, Focusability, LayoutStyle, ScrollControlBinding, ShortcutBinding, StyleIntent,
-    WidgetActivation, WidgetStateTypeId, WidgetTypeId,
+    FocusScope, Focusability, LayoutStyle, ScrollChrome, ScrollControlBinding, ShortcutBinding,
+    StyleIntent, WidgetActivation, WidgetStateTypeId, WidgetTypeId,
 };
 
 use super::{
@@ -30,6 +30,7 @@ pub(crate) struct MountedNode<Action> {
     pub(crate) focus_group_entry: FocusGroupEntry,
     pub(crate) focus_group_search_text: Option<String>,
     pub(crate) scroll_control_binding: Option<ScrollControlBinding>,
+    pub(crate) scroll_chrome: Option<ScrollChrome>,
     pub(crate) shortcut_bindings: Vec<ShortcutBinding>,
     pub(crate) authoring_diagnostics: Vec<AuthoringDiagnostic>,
     pub(crate) widget: MountedWidget<Action>,
@@ -63,6 +64,7 @@ impl<Action> fmt::Debug for MountedNode<Action> {
             .field("key", &self.key)
             .field("timeline_count", &self.timelines.len())
             .field("scroll_control_binding", &self.scroll_control_binding)
+            .field("scroll_chrome", &self.scroll_chrome)
             .field("shortcut_binding_count", &self.shortcut_bindings.len())
             .field("widget", &self.widget)
             .finish_non_exhaustive()
@@ -133,6 +135,10 @@ impl<'a, Action> MountedNodeRef<'a, Action> {
     #[must_use]
     pub const fn focusability(&self) -> Focusability {
         self.node.focusability
+    }
+    #[must_use]
+    pub const fn scroll_chrome(&self) -> Option<ScrollChrome> {
+        self.node.scroll_chrome
     }
     #[must_use]
     pub const fn focus_scope(&self) -> Option<FocusScope> {

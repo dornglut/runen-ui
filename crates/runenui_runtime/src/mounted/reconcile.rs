@@ -2,8 +2,9 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use runenui_core::{
     __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusGroup,
-    FocusGroupEntry, FocusScope, Focusability, LayoutStyle, ScrollControlBinding, ShortcutBinding,
-    StyleIntent, WidgetInvalidation, WidgetMountContext, WidgetUnmountReason, WidgetUpdateContext,
+    FocusGroupEntry, FocusScope, Focusability, LayoutStyle, ScrollChrome, ScrollControlBinding,
+    ShortcutBinding, StyleIntent, WidgetInvalidation, WidgetMountContext, WidgetUnmountReason,
+    WidgetUpdateContext,
 };
 
 use crate::ReconciliationDiagnostic;
@@ -74,6 +75,7 @@ pub(super) struct IncomingNode<Action> {
     focus_group_entry: FocusGroupEntry,
     focus_group_search_text: Option<String>,
     scroll_control_binding: Option<ScrollControlBinding>,
+    scroll_chrome: Option<ScrollChrome>,
     shortcut_bindings: Vec<ShortcutBinding>,
     authoring_diagnostics: Vec<runenui_core::AuthoringDiagnostic>,
     widget: MountedWidget<Action>,
@@ -87,6 +89,7 @@ impl<Action> IncomingNode<Action> {
         let focus_group_entry = parts.focus_group_entry();
         let focus_group_search_text = parts.focus_group_search_text().map(str::to_owned);
         let scroll_control_binding = parts.scroll_control_binding();
+        let scroll_chrome = parts.scroll_chrome();
         let (
             authored_id,
             key,
@@ -112,6 +115,7 @@ impl<Action> IncomingNode<Action> {
             focus_group_entry,
             focus_group_search_text,
             scroll_control_binding,
+            scroll_chrome,
             shortcut_bindings,
             authoring_diagnostics,
             widget,
@@ -262,6 +266,7 @@ impl<Action> MountedTree<Action> {
             focus_group_entry,
             focus_group_search_text,
             scroll_control_binding,
+            scroll_chrome,
             shortcut_bindings,
             authoring_diagnostics,
             widget,
@@ -284,6 +289,7 @@ impl<Action> MountedTree<Action> {
                 focus_group_entry,
                 focus_group_search_text,
                 scroll_control_binding,
+                scroll_chrome,
                 shortcut_bindings,
                 authoring_diagnostics,
                 widget,
@@ -524,6 +530,7 @@ impl<Action> MountedTree<Action> {
             focus_group_entry,
             focus_group_search_text,
             scroll_control_binding,
+            scroll_chrome,
             shortcut_bindings,
             authoring_diagnostics,
             widget,
@@ -558,6 +565,7 @@ impl<Action> MountedTree<Action> {
             let timelines_changed = node.timelines != timelines;
             let scroll_control_binding_changed =
                 node.scroll_control_binding != scroll_control_binding;
+            let scroll_chrome_changed = node.scroll_chrome != scroll_chrome;
             common_invalidation = common_field_invalidation(
                 node,
                 &CommonFieldRefs {
@@ -583,6 +591,7 @@ impl<Action> MountedTree<Action> {
             node.focus_group_entry = focus_group_entry;
             node.focus_group_search_text = focus_group_search_text;
             node.scroll_control_binding = scroll_control_binding;
+            node.scroll_chrome = scroll_chrome;
             node.shortcut_bindings = shortcut_bindings;
             node.authoring_diagnostics = authoring_diagnostics;
             node.widget = widget;
@@ -593,15 +602,25 @@ impl<Action> MountedTree<Action> {
             node.caches.text_input = CachedCapability::Unresolved;
             let scroll_control_invalidation =
                 scroll_control_binding_invalidation(scroll_control_binding_changed);
+            let scroll_chrome_invalidation = if scroll_chrome_changed {
+                WidgetInvalidation::LAYOUT
+                    | WidgetInvalidation::HIT_TEST
+                    | WidgetInvalidation::PAINT
+                    | WidgetInvalidation::SEMANTICS
+                    | WidgetInvalidation::INTERACTION
+            } else {
+                WidgetInvalidation::NONE
+            };
             apply_invalidation(
                 node,
                 update_context.__runtime_take_invalidation()
                     | common_invalidation
-                    | scroll_control_invalidation,
+                    | scroll_control_invalidation
+                    | scroll_chrome_invalidation,
             );
             apply_retained_phase_changes(
                 node,
-                tree_metadata_changed || topology_overflow_changed,
+                tree_metadata_changed || topology_overflow_changed || scroll_chrome_changed,
                 style_changed,
                 timelines_changed,
             );
@@ -635,6 +654,7 @@ impl<Action> MountedTree<Action> {
             focus_group_entry,
             focus_group_search_text,
             scroll_control_binding,
+            scroll_chrome,
             shortcut_bindings,
             authoring_diagnostics,
             widget,
@@ -664,6 +684,7 @@ impl<Action> MountedTree<Action> {
                     focus_group_entry,
                     focus_group_search_text,
                     scroll_control_binding,
+                    scroll_chrome,
                     shortcut_bindings,
                     authoring_diagnostics,
                     widget,

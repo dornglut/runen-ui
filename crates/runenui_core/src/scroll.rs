@@ -54,6 +54,124 @@ impl ScrollControlBinding {
     }
 }
 
+/// Neutral visibility policy for one authored scrollbar axis.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ScrollBarVisibility {
+    #[default]
+    Automatic,
+    Always,
+    Hidden,
+}
+
+/// Neutral layout placement for one visible scrollbar.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ScrollBarPlacement {
+    #[default]
+    Reserved,
+    Overlay,
+}
+
+/// Authored geometry and policy for one scrollbar root.
+///
+/// This is transient layout intent only. Runtime-owned scroll offset and current
+/// visibility remain derived from the bound scroll owner's accepted metrics.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollBarLayout {
+    axis: Axis,
+    visibility: ScrollBarVisibility,
+    placement: ScrollBarPlacement,
+    thickness: LogicalLength,
+    minimum_thumb_extent: LogicalLength,
+}
+
+impl ScrollBarLayout {
+    #[must_use]
+    pub const fn new(
+        axis: Axis,
+        thickness: LogicalLength,
+        minimum_thumb_extent: LogicalLength,
+    ) -> Self {
+        Self {
+            axis,
+            visibility: ScrollBarVisibility::Automatic,
+            placement: ScrollBarPlacement::Reserved,
+            thickness,
+            minimum_thumb_extent,
+        }
+    }
+
+    #[must_use]
+    pub const fn axis(self) -> Axis {
+        self.axis
+    }
+
+    #[must_use]
+    pub const fn visibility(self) -> ScrollBarVisibility {
+        self.visibility
+    }
+
+    #[must_use]
+    pub const fn placement(self) -> ScrollBarPlacement {
+        self.placement
+    }
+
+    #[must_use]
+    pub const fn thickness(self) -> LogicalLength {
+        self.thickness
+    }
+
+    #[must_use]
+    pub const fn minimum_thumb_extent(self) -> LogicalLength {
+        self.minimum_thumb_extent
+    }
+
+    #[must_use]
+    pub const fn with_visibility(mut self, visibility: ScrollBarVisibility) -> Self {
+        self.visibility = visibility;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_placement(mut self, placement: ScrollBarPlacement) -> Self {
+        self.placement = placement;
+        self
+    }
+}
+
+/// Structural scroll chrome authored on ordinary public elements.
+///
+/// Runtime interprets these facts through the same nearest-ancestor scroll
+/// ownership used by ScrollControlBinding. They carry no mounted identity,
+/// current offset, visibility cache, or renderer state.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ScrollChrome {
+    Bar(ScrollBarLayout),
+    Thumb(Axis),
+    Corner,
+}
+
+impl ScrollChrome {
+    #[must_use]
+    pub const fn axis(self) -> Option<Axis> {
+        match self {
+            Self::Bar(layout) => Some(layout.axis()),
+            Self::Thumb(axis) => Some(axis),
+            Self::Corner => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn bar_layout(self) -> Option<ScrollBarLayout> {
+        match self {
+            Self::Bar(layout) => Some(layout),
+            Self::Thumb(_) | Self::Corner => None,
+        }
+    }
+}
+
 /// Validation failure for one normalized scroll-control value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScrollNormalizedError {
@@ -249,8 +367,9 @@ pub enum ScrollControlRequest {
 #[cfg(test)]
 mod tests {
     use super::{
-        Axis, ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot,
-        ScrollNormalizedError, ScrollNormalizedValue,
+        Axis, ScrollBarLayout, ScrollBarPlacement, ScrollBarVisibility, ScrollChrome,
+        ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot, ScrollNormalizedError,
+        ScrollNormalizedValue,
     };
     use crate::LogicalLength;
 
@@ -261,6 +380,30 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("positive fixture step is valid"));
         assert_eq!(binding.axis(), Axis::Horizontal);
         assert_eq!(binding.small_step(), LogicalLength::from(8_u8));
+    }
+
+    #[test]
+    fn scrollbar_chrome_contract_is_typed_and_uses_neutral_defaults() {
+        let layout = ScrollBarLayout::new(
+            Axis::Vertical,
+            LogicalLength::from(12_u8),
+            LogicalLength::from(24_u8),
+        );
+        assert_eq!(layout.axis(), Axis::Vertical);
+        assert_eq!(layout.visibility(), ScrollBarVisibility::Automatic);
+        assert_eq!(layout.placement(), ScrollBarPlacement::Reserved);
+        assert_eq!(layout.thickness(), LogicalLength::from(12_u8));
+        assert_eq!(layout.minimum_thumb_extent(), LogicalLength::from(24_u8));
+
+        let overlay = layout
+            .with_visibility(ScrollBarVisibility::Always)
+            .with_placement(ScrollBarPlacement::Overlay);
+        assert_eq!(ScrollChrome::Bar(overlay).axis(), Some(Axis::Vertical));
+        assert_eq!(
+            ScrollChrome::Thumb(Axis::Horizontal).axis(),
+            Some(Axis::Horizontal)
+        );
+        assert_eq!(ScrollChrome::Corner.axis(), None);
     }
 
     #[test]

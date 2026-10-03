@@ -387,8 +387,9 @@ pub use scene_geometry::{
     SceneOpacityError, SceneShape,
 };
 pub use scroll::{
-    ScrollControlBinding, ScrollControlBindingError, ScrollControlRequest, ScrollControlSnapshot,
-    ScrollNormalizedError, ScrollNormalizedValue,
+    ScrollBarLayout, ScrollBarPlacement, ScrollBarVisibility, ScrollChrome, ScrollControlBinding,
+    ScrollControlBindingError, ScrollControlRequest, ScrollControlSnapshot, ScrollNormalizedError,
+    ScrollNormalizedValue,
 };
 pub use semantic::{
     SemanticAction, SemanticAutocomplete, SemanticBounds, SemanticCheckedState,

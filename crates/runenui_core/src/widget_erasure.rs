@@ -7,8 +7,9 @@ use crate::{
     CommandOrigin, EditableContribution, ElementId, ElementKey, EventContext, EventPhase,
     ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope, Focusability, HitContribution,
     HitContributionContext, LayoutStyle, MonotonicInstant, MountedNodeId, PaintContribution,
-    PaintContributionContext, PointerId, ScrollControlBinding, ScrollControlSnapshot,
-    SemanticContribution, SemanticContributionContext, ShortcutBinding, StyleIntent,
+    PaintContributionContext, PointerId, ScrollChrome, ScrollControlBinding,
+    ScrollControlSnapshot, SemanticContribution, SemanticContributionContext, ShortcutBinding,
+    StyleIntent,
     SubscriptionSet, UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetMountContext,
     WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
 };
@@ -510,6 +511,7 @@ pub struct ElementCompositionFields {
     focus_group_entry: FocusGroupEntry,
     focus_group_search_text: Option<String>,
     scroll_control_binding: Option<ScrollControlBinding>,
+    scroll_chrome: Option<ScrollChrome>,
 }
 
 impl ElementCompositionFields {
@@ -518,12 +520,14 @@ impl ElementCompositionFields {
         focus_group_entry: FocusGroupEntry,
         focus_group_search_text: Option<String>,
         scroll_control_binding: Option<ScrollControlBinding>,
+        scroll_chrome: Option<ScrollChrome>,
     ) -> Self {
         Self {
             focus_group,
             focus_group_entry,
             focus_group_search_text,
             scroll_control_binding,
+            scroll_chrome,
         }
     }
 }
@@ -542,6 +546,7 @@ pub struct ElementParts<Action> {
     focus_group_entry: FocusGroupEntry,
     focus_group_search_text: Option<String>,
     scroll_control_binding: Option<ScrollControlBinding>,
+    scroll_chrome: Option<ScrollChrome>,
     widget: MountedWidget<Action>,
     children: Vec<Element<Action>>,
     authoring_diagnostics: Vec<AuthoringDiagnostic>,
@@ -581,6 +586,7 @@ impl<Action> ElementParts<Action> {
             focus_group_entry: composition.focus_group_entry,
             focus_group_search_text: composition.focus_group_search_text,
             scroll_control_binding: composition.scroll_control_binding,
+            scroll_chrome: composition.scroll_chrome,
             widget,
             children,
             authoring_diagnostics,
@@ -629,6 +635,10 @@ impl<Action> ElementParts<Action> {
     #[must_use]
     pub const fn scroll_control_binding(&self) -> Option<ScrollControlBinding> {
         self.scroll_control_binding
+    }
+    #[must_use]
+    pub const fn scroll_chrome(&self) -> Option<ScrollChrome> {
+        self.scroll_chrome
     }
     #[must_use]
     pub const fn authoring_diagnostics(&self) -> &[AuthoringDiagnostic] {

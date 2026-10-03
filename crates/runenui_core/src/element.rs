@@ -10,7 +10,8 @@ use crate::widget_mapping::MappedWidget;
 use crate::widget_protocol::Widget;
 use crate::{
     ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope, Focusability,
-    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, ScrollControlBinding, StyleIntent,
+    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, ScrollChrome, ScrollControlBinding,
+    StyleIntent,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -210,6 +211,7 @@ pub struct Element<Action> {
     focus_group_entry: FocusGroupEntry,
     focus_group_search_text: Option<String>,
     scroll_control_binding: Option<ScrollControlBinding>,
+    scroll_chrome: Option<ScrollChrome>,
     widget: Box<dyn ErasedWidget<Action>>,
     children: Vec<Self>,
 }
@@ -260,6 +262,7 @@ impl<Action> fmt::Debug for Element<Action> {
             .field("focus_group", &self.focus_group)
             .field("focus_group_entry", &self.focus_group_entry)
             .field("scroll_control_binding", &self.scroll_control_binding)
+            .field("scroll_chrome", &self.scroll_chrome)
             .field("widget_type", &self.widget.widget_type_name())
             .field("children", &self.children)
             .field("authoring_diagnostics", &self.common.diagnostics)
@@ -286,6 +289,7 @@ impl<Action> Element<Action> {
             focus_group_entry: FocusGroupEntry::Automatic,
             focus_group_search_text: None,
             scroll_control_binding: None,
+            scroll_chrome: None,
             widget,
             children,
         }
@@ -307,6 +311,7 @@ impl<Action> Element<Action> {
             focus_group_entry: FocusGroupEntry::Automatic,
             focus_group_search_text: None,
             scroll_control_binding: None,
+            scroll_chrome: None,
             widget,
             children,
         }
@@ -384,6 +389,13 @@ impl<Action> Element<Action> {
         self
     }
 
+    /// Authors structural scroll chrome for the nearest eligible scroll owner.
+    #[must_use]
+    pub const fn scroll_chrome(mut self, chrome: ScrollChrome) -> Self {
+        self.scroll_chrome = Some(chrome);
+        self
+    }
+
     /// Maps every typed widget action in this subtree into a parent action.
     #[must_use]
     pub fn map_action<ParentAction>(
@@ -414,6 +426,7 @@ impl<Action> Element<Action> {
             focus_group_entry: self.focus_group_entry,
             focus_group_search_text: self.focus_group_search_text,
             scroll_control_binding: self.scroll_control_binding,
+            scroll_chrome: self.scroll_chrome,
             widget: Box::new(MappedWidget {
                 child: self.widget,
                 mapper: Rc::clone(mapper),
@@ -467,6 +480,10 @@ impl<Action> Element<Action> {
         self.scroll_control_binding
     }
     #[must_use]
+    pub const fn scroll_chrome_config(&self) -> Option<ScrollChrome> {
+        self.scroll_chrome
+    }
+    #[must_use]
     pub const fn children(&self) -> &[Self] {
         self.children.as_slice()
     }
@@ -488,6 +505,7 @@ impl<Action> Element<Action> {
                 self.focus_group_entry,
                 self.focus_group_search_text,
                 self.scroll_control_binding,
+                self.scroll_chrome,
             ),
             MountedWidget::from_erased(self.widget),
             self.children,
