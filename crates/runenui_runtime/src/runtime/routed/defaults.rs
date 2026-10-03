@@ -19,6 +19,67 @@ use crate::{
 
 const MAX_CLIPBOARD_BYTES: usize = 1_048_576;
 
+struct ScrollControlApplication {
+    offset: (f32, f32),
+    offered: LogicalDelta,
+    consumed: LogicalDelta,
+    remainder: LogicalDelta,
+    maximum: LogicalDelta,
+}
+
+fn scroll_control_application(
+    request: ScrollControlRequest,
+    binding: runenui_core::ScrollControlBinding,
+    snapshot: runenui_core::ScrollControlSnapshot,
+    before_pair: (f32, f32),
+) -> Option<ScrollControlApplication> {
+    let axis = snapshot.axis();
+    let before = snapshot.offset().get();
+    let viewport = snapshot.viewport_extent().get();
+    let maximum = snapshot.maximum_offset().get();
+    let offered_scalar = match request {
+        ScrollControlRequest::SmallStepBackward => -binding.small_step().get(),
+        ScrollControlRequest::SmallStepForward => binding.small_step().get(),
+        ScrollControlRequest::PageBackward => -viewport,
+        ScrollControlRequest::PageForward => viewport,
+        ScrollControlRequest::ToStart => -before,
+        ScrollControlRequest::ToEnd => maximum - before,
+        ScrollControlRequest::SetNormalized(normalized) => {
+            maximum.mul_add(normalized.get(), -before)
+        }
+        _ => return None,
+    };
+    let after = bounded_scroll_offset(before, offered_scalar, maximum);
+    let offset = match axis {
+        Axis::Horizontal => (after, before_pair.1),
+        Axis::Vertical => (before_pair.0, after),
+    };
+    let consumed_scalar = after - before;
+    let remainder_scalar = offered_scalar - consumed_scalar;
+    let axis_delta = |horizontal: f32, vertical: f32| LogicalDelta::new(horizontal, vertical).ok();
+    let (offered, consumed, remainder, maximum) = match axis {
+        Axis::Horizontal => (
+            axis_delta(offered_scalar, 0.0)?,
+            axis_delta(consumed_scalar, 0.0)?,
+            axis_delta(remainder_scalar, 0.0)?,
+            axis_delta(maximum, 0.0)?,
+        ),
+        Axis::Vertical => (
+            axis_delta(0.0, offered_scalar)?,
+            axis_delta(0.0, consumed_scalar)?,
+            axis_delta(0.0, remainder_scalar)?,
+            axis_delta(0.0, maximum)?,
+        ),
+    };
+    Some(ScrollControlApplication {
+        offset,
+        offered,
+        consumed,
+        remainder,
+        maximum,
+    })
+}
+
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     #[allow(clippy::too_many_lines)] // Keeps semantic default suppression, rejection, and dispatch ordered.
     pub(super) fn apply_semantic_default(
@@ -147,64 +208,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
         };
         let owner = resolved.owner;
-        let binding = resolved.binding;
-        let snapshot = resolved.snapshot;
-        let axis = snapshot.axis();
-        let before = snapshot.offset().get();
-        let viewport = snapshot.viewport_extent().get();
-        let maximum = snapshot.maximum_offset().get();
-        let before_pair = self
-            .tree
-            .node(&owner)
-            .map(|node| node.interaction.scroll_offset)
-            .unwrap_or_else(|| unreachable!("resolved scroll owner remains live"));
-        let offered = match request {
-            ScrollControlRequest::SmallStepBackward => -binding.small_step().get(),
-            ScrollControlRequest::SmallStepForward => binding.small_step().get(),
-            ScrollControlRequest::PageBackward => -viewport,
-            ScrollControlRequest::PageForward => viewport,
-            ScrollControlRequest::ToStart => -before,
-            ScrollControlRequest::ToEnd => maximum - before,
-            ScrollControlRequest::SetNormalized(normalized) => {
-                maximum.mul_add(normalized.get(), -before)
-            }
-            _ => {
-                self.record_scroll_control_binding(
-                    transaction,
-                    request,
-                    Some(axis),
-                    TraceScrollControlBindingOutcome::MetricsUnavailable,
-                    Some(&owner),
-                );
-                return;
-            }
-        };
-        let after = bounded_scroll_offset(before, offered, maximum);
-        let offset = match axis {
-            Axis::Horizontal => (after, before_pair.1),
-            Axis::Vertical => (before_pair.0, after),
-        };
-        let consumed_scalar = after - before;
-        let remainder_scalar = offered - consumed_scalar;
-        let (offered, consumed, remainder, maximum_delta, offset_delta) = match axis {
-            Axis::Horizontal => (
-                LogicalDelta::new(offered, 0.0),
-                LogicalDelta::new(consumed_scalar, 0.0),
-                LogicalDelta::new(remainder_scalar, 0.0),
-                LogicalDelta::new(maximum, 0.0),
-                LogicalDelta::new(offset.0, offset.1),
-            ),
-            Axis::Vertical => (
-                LogicalDelta::new(0.0, offered),
-                LogicalDelta::new(0.0, consumed_scalar),
-                LogicalDelta::new(0.0, remainder_scalar),
-                LogicalDelta::new(0.0, maximum),
-                LogicalDelta::new(offset.0, offset.1),
-            ),
-        };
-        let (Ok(offered), Ok(consumed), Ok(remainder), Ok(maximum_delta), Ok(offset_delta)) =
-            (offered, consumed, remainder, maximum_delta, offset_delta)
-        else {
+        let axis = resolved.snapshot.axis();
+        let before_pair = self.tree.node(&owner).map_or_else(
+            || unreachable!("resolved scroll owner remains live"),
+            |node| node.interaction.scroll_offset,
+        );
+        let Some(application) = scroll_control_application(
+            request,
+            resolved.binding,
+            resolved.snapshot,
+            before_pair,
+        ) else {
             self.record_scroll_control_binding(
                 transaction,
                 request,
@@ -222,24 +236,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             TraceScrollControlBindingOutcome::Resolved,
             Some(&owner),
         );
-        if offset != before_pair {
+        if application.offset != before_pair {
             transaction
                 .scroll_updates
                 .push(super::transaction::ScrollOffsetUpdate {
                     owner: owner.clone(),
-                    offset,
+                    offset: application.offset,
                 });
         }
+        let offset = LogicalDelta::new(application.offset.0, application.offset.1)
+            .unwrap_or_else(|_| unreachable!("validated scroll-control offset remains finite"));
         transaction
             .scroll_consumptions
             .push(super::transaction::ScrollOwnerConsumption {
                 owner,
                 evaluation_order: 0,
-                offered,
-                consumed,
-                remainder,
-                offset: offset_delta,
-                maximum: maximum_delta,
+                offered: application.offered,
+                consumed: application.consumed,
+                remainder: application.remainder,
+                offset,
+                maximum: application.maximum,
             });
     }
 
@@ -251,9 +267,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         outcome: TraceScrollControlBindingOutcome,
         owner: Option<&MountedNodeId>,
     ) {
-        let trace_target = owner
-            .map(|owner| self.tree.trace_target(owner))
-            .unwrap_or_else(|| transaction.target_trace.clone());
+        let trace_target = owner.map_or_else(
+            || transaction.target_trace.clone(),
+            |owner| self.tree.trace_target(owner),
+        );
         transaction.parent = self.trace.record_event(
             TraceRecordKind::ScrollControlBindingEvaluated {
                 request,
