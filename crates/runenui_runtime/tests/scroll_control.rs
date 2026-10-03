@@ -5,14 +5,13 @@ use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
     Axis, ChildBearingWidget, CommandOrigin, Element, EventContext, HitContribution,
-    HitContributionContext,
-    LayoutContainer, LayoutDimension, LayoutStyle, LogicalDelta, LogicalLength, LogicalPoint,
-    LogicalRect, NoHostProtocol, OverflowPolicy, OverflowStyle, PaintContribution,
-    PaintContributionContext, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
-    ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot, ScrollNormalizedValue,
-    SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
-    SemanticRole, StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure,
-    WidgetMeasureInput, children, column, scroll_viewport,
+    HitContributionContext, LayoutContainer, LayoutDimension, LayoutStyle, LogicalDelta,
+    LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, OverflowPolicy, OverflowStyle,
+    PaintContribution, PaintContributionContext, PointerDeviceKind, PointerEvent, PointerId,
+    PointerPhase, ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot,
+    ScrollNormalizedValue, SemanticCommand, SemanticContribution, SemanticContributionContext,
+    SemanticNodeContribution, SemanticRole, StyleEnvironment, UiApp, UiEvent, View, Widget,
+    WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, children, column, scroll_viewport,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits,
@@ -463,8 +462,7 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
         &mut runtime,
         bound.clone(),
         ScrollControlRequest::SetNormalized(
-            ScrollNormalizedValue::new(0.5)
-                .unwrap_or_else(|_| unreachable!("half is normalized")),
+            ScrollNormalizedValue::new(0.5).unwrap_or_else(|_| unreachable!("half is normalized")),
         ),
     );
     assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 30.0));
