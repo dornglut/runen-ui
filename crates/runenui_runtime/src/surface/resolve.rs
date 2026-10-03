@@ -375,6 +375,28 @@ fn displayed_scroll_metrics_at(
     })
 }
 
+pub(super) fn resolve_scroll_control_owner(
+    topology: &SurfaceTopologySnapshot,
+    control: &MountedNodeId,
+    binding: ScrollControlBinding,
+) -> Result<Option<(MountedNodeId, usize)>, PresentationGeometryError> {
+    let control_position = topology.position(control).ok_or(PresentationGeometryError)?;
+    let mut ancestor = topology.nodes[control_position].parent.as_ref();
+    while let Some(owner) = ancestor {
+        let owner_position = topology.position(owner).ok_or(PresentationGeometryError)?;
+        let owner_topology = &topology.nodes[owner_position];
+        let scrollable = match binding.axis() {
+            Axis::Horizontal => owner_topology.overflow.horizontal() == OverflowPolicy::Scroll,
+            Axis::Vertical => owner_topology.overflow.vertical() == OverflowPolicy::Scroll,
+        };
+        if scrollable {
+            return Ok(Some((owner.clone(), owner_position)));
+        }
+        ancestor = owner_topology.parent.as_ref();
+    }
+    Ok(None)
+}
+
 pub(super) fn scroll_control_projections<Action>(
     tree: &crate::mounted::MountedTree<Action>,
     topology: &SurfaceTopologySnapshot,
@@ -386,12 +408,6 @@ pub(super) fn scroll_control_projections<Action>(
     {
         return Err(PresentationGeometryError);
     }
-    let positions = topology
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(position, node)| (node.id.clone(), position))
-        .collect::<HashMap<_, _>>();
 
     topology
         .nodes
@@ -403,51 +419,31 @@ pub(super) fn scroll_control_projections<Action>(
             else {
                 return Ok(None);
             };
-
-            let mut ancestor = node.parent.as_ref();
-            while let Some(owner) = ancestor {
-                let owner_position = positions
-                    .get(owner)
-                    .copied()
+            let Some((owner, owner_position)) =
+                resolve_scroll_control_owner(topology, &node.id, binding)?
+            else {
+                return Ok(None);
+            };
+            let metrics =
+                displayed_scroll_metrics_at(topology, layout, &owner, owner_position)
                     .ok_or(PresentationGeometryError)?;
-                let owner_topology = &topology.nodes[owner_position];
-                let scrollable = match binding.axis() {
-                    Axis::Horizontal => {
-                        owner_topology.overflow.horizontal() == OverflowPolicy::Scroll
-                    }
-                    Axis::Vertical => owner_topology.overflow.vertical() == OverflowPolicy::Scroll,
-                };
-                if scrollable {
-                    let metrics =
-                        displayed_scroll_metrics_at(topology, layout, owner, owner_position)
-                            .ok_or(PresentationGeometryError)?;
-                    let offset = scroll.offset(owner);
-                    let (offset, viewport, content) = match binding.axis() {
-                        Axis::Horizontal => {
-                            (offset.0, metrics.viewport.width(), metrics.content.width())
-                        }
-                        Axis::Vertical => (
-                            offset.1,
-                            metrics.viewport.height(),
-                            metrics.content.height(),
-                        ),
-                    };
-                    let snapshot = ScrollControlSnapshot::__runtime_from_metrics(
-                        binding.axis(),
-                        offset,
-                        viewport,
-                        content,
-                    )
-                    .ok_or(PresentationGeometryError)?;
-                    return Ok(Some(CachedScrollControlProjection {
-                        owner: owner.clone(),
-                        binding,
-                        snapshot,
-                    }));
-                }
-                ancestor = owner_topology.parent.as_ref();
-            }
-            Ok(None)
+            let offset = scroll.offset(&owner);
+            let (offset, viewport, content) = match binding.axis() {
+                Axis::Horizontal => (offset.0, metrics.viewport.width(), metrics.content.width()),
+                Axis::Vertical => (offset.1, metrics.viewport.height(), metrics.content.height()),
+            };
+            let snapshot = ScrollControlSnapshot::__runtime_from_metrics(
+                binding.axis(),
+                offset,
+                viewport,
+                content,
+            )
+            .ok_or(PresentationGeometryError)?;
+            Ok(Some(CachedScrollControlProjection {
+                owner,
+                binding,
+                snapshot,
+            }))
         })
         .collect()
 }
