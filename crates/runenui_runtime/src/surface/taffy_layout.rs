@@ -299,9 +299,7 @@ fn thumb_bounds(
         1.0
     };
     let minimum = layout.minimum_thumb_extent().get().min(track_extent);
-    let thumb_extent = (track_extent * fraction)
-        .max(minimum)
-        .min(track_extent);
+    let thumb_extent = (track_extent * fraction).max(minimum).min(track_extent);
     match layout.axis() {
         Axis::Horizontal => {
             LogicalRect::try_new(track.x(), track.y(), thumb_extent, track.height()).ok()
