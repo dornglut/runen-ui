@@ -383,8 +383,8 @@ pub(super) fn scroll_control_projections<Action>(
                     .copied()
                     .ok_or(PresentationGeometryError)?;
                 let owner_topology = &topology.nodes[owner_position];
-                let metrics =
-                    displayed_scroll_metrics(topology, layout, owner).ok_or(PresentationGeometryError)?;
+                let metrics = displayed_scroll_metrics(topology, layout, owner)
+                    .ok_or(PresentationGeometryError)?;
                 let scrollable = match binding.axis() {
                     Axis::Horizontal => metrics.overflow.horizontal() == OverflowPolicy::Scroll,
                     Axis::Vertical => metrics.overflow.vertical() == OverflowPolicy::Scroll,
@@ -392,11 +392,9 @@ pub(super) fn scroll_control_projections<Action>(
                 if scrollable {
                     let offset = scroll.offset(owner);
                     let (offset, viewport, content) = match binding.axis() {
-                        Axis::Horizontal => (
-                            offset.0,
-                            metrics.viewport.width(),
-                            metrics.content.width(),
-                        ),
+                        Axis::Horizontal => {
+                            (offset.0, metrics.viewport.width(), metrics.content.width())
+                        }
                         Axis::Vertical => (
                             offset.1,
                             metrics.viewport.height(),
