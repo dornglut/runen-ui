@@ -1,8 +1,7 @@
 use runenui_core::{
     HitContribution, HitContributionContext, PaintContribution, PaintContributionContext,
-    SemanticContribution, SemanticContributionContext, SemanticContributionError,
-    WidgetActivation, WidgetDiagnostic,
-    WidgetTextInput,
+    SemanticContribution, SemanticContributionContext, SemanticContributionError, WidgetActivation,
+    WidgetDiagnostic, WidgetTextInput,
 };
 
 #[derive(Clone, Debug, Default)]
