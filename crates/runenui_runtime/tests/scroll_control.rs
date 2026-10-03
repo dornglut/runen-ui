@@ -751,6 +751,51 @@ impl UiApp for PerAxisApp {
 }
 
 #[test]
+fn bound_request_fails_closed_until_changed_layout_metrics_are_republished() {
+    let mut runtime = bound_runtime();
+    settle(&mut runtime);
+    let environment = StyleEnvironment::default();
+    runtime
+        .publish_surface(&bound_build(&environment))
+        .unwrap_or_else(|error| panic!("stale-metrics fixture publishes: {error:?}"));
+    let bound = node_id(&mut runtime, "bound");
+
+    runtime
+        .submit_action(BoundAction::ResizeInner)
+        .unwrap_or_else(|_| unreachable!("resize action is admitted"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+    submit_scroll(
+        &mut runtime,
+        bound.clone(),
+        ScrollControlRequest::PageForward,
+    );
+    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 0.0));
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::ScrollControlBindingEvaluated {
+            outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
+            axis: Some(Axis::Vertical),
+            ..
+        }
+    )));
+
+    runtime
+        .publish_surface(&bound_build(&environment))
+        .unwrap_or_else(|error| panic!("changed scroll metrics republish: {error:?}"));
+    submit_scroll(&mut runtime, bound, ScrollControlRequest::PageForward);
+    assert_eq!(
+        scroll_offset(&mut runtime, "inner"),
+        (0.0, 40.0),
+        "the same request uses the new viewport extent only after publication"
+    );
+}
+
+#[test]
 fn per_axis_binding_skips_nearer_nonmatching_scroll_owner() {
     let mut runtime = AppRuntime::<PerAxisApp>::mount(());
     settle(&mut runtime);
