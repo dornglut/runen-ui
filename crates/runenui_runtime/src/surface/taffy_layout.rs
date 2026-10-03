@@ -223,7 +223,11 @@ fn apply_scroll_chrome_geometry(
         });
         let rect = matching_bar
             .filter(|(bar_index, _)| visible_bars[*bar_index])
-            .and_then(|(_, bar)| bounds.get(bar.position).copied())
+            .and_then(|(_, bar)| {
+                let track = bounds.get(bar.position).copied()?;
+                let owner_layout = report.nodes().get(bar.owner_position)?;
+                thumb_bounds(track, owner_layout, bar.layout)
+            })
             .unwrap_or_else(|| {
                 bounds.get(thumb.owner_position).map_or_else(
                     || zero_rect_at(0.0, 0.0),
@@ -275,6 +279,36 @@ fn apply_scroll_chrome_geometry(
             )
         });
         replace_chrome_geometry(bounds, report, corner.position, rect);
+    }
+}
+
+fn thumb_bounds(
+    track: LogicalRect,
+    owner_layout: &SurfaceLayoutNode,
+    layout: runenui_core::ScrollBarLayout,
+) -> Option<LogicalRect> {
+    let viewport = owner_layout.scroll_viewport_extent();
+    let content = owner_layout.scrollable_extent();
+    let (track_extent, viewport_extent, content_extent) = match layout.axis() {
+        Axis::Horizontal => (track.width(), viewport.width(), content.width()),
+        Axis::Vertical => (track.height(), viewport.height(), content.height()),
+    };
+    let fraction = if content_extent > 0.0 {
+        (viewport_extent / content_extent).clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+    let minimum = layout.minimum_thumb_extent().get().min(track_extent);
+    let thumb_extent = (track_extent * fraction)
+        .max(minimum)
+        .min(track_extent);
+    match layout.axis() {
+        Axis::Horizontal => {
+            LogicalRect::try_new(track.x(), track.y(), thumb_extent, track.height()).ok()
+        }
+        Axis::Vertical => {
+            LogicalRect::try_new(track.x(), track.y(), track.width(), thumb_extent).ok()
+        }
     }
 }
 
