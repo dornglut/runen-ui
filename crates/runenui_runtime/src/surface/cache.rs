@@ -416,13 +416,13 @@ impl SurfaceCache {
         let Some(projection) = self.scroll_controls.get(position) else {
             return super::ScrollControlBindingLookup::Unavailable;
         };
-        match projection {
-            Some(projection) => super::ScrollControlBindingLookup::Bound {
+        projection.as_ref().map_or(
+            super::ScrollControlBindingLookup::Unbound,
+            |projection| super::ScrollControlBindingLookup::Bound {
                 owner: projection.owner.clone(),
                 binding: projection.binding,
             },
-            None => super::ScrollControlBindingLookup::Unbound,
-        }
+        )
     }
 
     pub(crate) fn current_scroll_metrics(
