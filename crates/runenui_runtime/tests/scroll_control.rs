@@ -695,6 +695,21 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
         "nearest eligible ancestor owns the request"
     );
 
+    submit_scroll(
+        &mut runtime,
+        bound.clone(),
+        ScrollControlRequest::SmallStepForward,
+    );
+    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 45.0));
+    assert_eq!(last_snapshot(&runtime.state().paint), accepted_snapshot);
+    assert_eq!(last_snapshot(&runtime.state().hit), accepted_snapshot);
+    assert_eq!(last_snapshot(&runtime.state().semantics), accepted_snapshot);
+    assert_eq!(
+        last_snapshot(&runtime.state().event),
+        accepted_snapshot,
+        "event contexts retain the accepted surface snapshot even after the mounted offset advances before republish"
+    );
+
     exercise_bound_requests(&mut runtime, &bound);
 
     runtime
