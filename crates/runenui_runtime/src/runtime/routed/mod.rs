@@ -187,13 +187,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 TraceScrollControlBindingOutcome::NonScrollable,
             ));
         }
-        let metrics = self.surface_publication.current_scroll_metrics(owner).ok_or_else(|| {
-            scroll_control_failure(
-                axis,
-                Some(owner.clone()),
-                TraceScrollControlBindingOutcome::MetricsUnavailable,
-            )
-        })?;
+        let metrics = self
+            .surface_publication
+            .current_scroll_metrics(owner)
+            .ok_or_else(|| {
+                scroll_control_failure(
+                    axis,
+                    Some(owner.clone()),
+                    TraceScrollControlBindingOutcome::MetricsUnavailable,
+                )
+            })?;
         let metrics_policy = match axis {
             Axis::Horizontal => metrics.overflow.horizontal(),
             Axis::Vertical => metrics.overflow.vertical(),
