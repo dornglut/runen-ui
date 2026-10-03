@@ -2,6 +2,7 @@
 
 use crate::{
     ContributionClip, LogicalRect, LogicalSize, LogicalTransform, Radius, SceneLayer, SceneShape,
+    ScrollControlSnapshot,
 };
 
 /// Read-only facts supplied while one mounted widget contributes physical hit geometry.
@@ -11,6 +12,7 @@ use crate::{
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HitContributionContext {
     local_size: LogicalSize,
+    scroll_control: Option<ScrollControlSnapshot>,
 }
 
 impl HitContributionContext {
@@ -20,10 +22,31 @@ impl HitContributionContext {
         self.local_size
     }
 
+    /// Returns the runtime-derived bound scroll snapshot when this owner is a bound control.
+    #[must_use]
+    pub const fn scroll_control_snapshot(self) -> Option<ScrollControlSnapshot> {
+        self.scroll_control
+    }
+
     #[doc(hidden)]
     #[must_use]
     pub const fn __runtime_new(local_size: LogicalSize) -> Self {
-        Self { local_size }
+        Self {
+            local_size,
+            scroll_control: None,
+        }
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn __runtime_with_scroll_control(
+        local_size: LogicalSize,
+        scroll_control: Option<ScrollControlSnapshot>,
+    ) -> Self {
+        Self {
+            local_size,
+            scroll_control,
+        }
     }
 }
 
