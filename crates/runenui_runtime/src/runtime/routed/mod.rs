@@ -99,6 +99,25 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 owner: Some(owner),
             });
         }
+        let owner_node = self
+            .tree
+            .node(&owner)
+            .ok_or_else(|| ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: TraceScrollControlBindingOutcome::Stale,
+                owner: Some(owner.clone()),
+            })?;
+        let owner_policy = match axis {
+            Axis::Horizontal => owner_node.layout.overflow().horizontal(),
+            Axis::Vertical => owner_node.layout.overflow().vertical(),
+        };
+        if owner_policy != OverflowPolicy::Scroll {
+            return Err(ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: TraceScrollControlBindingOutcome::NonScrollable,
+                owner: Some(owner),
+            });
+        }
         let Some(current_owner) = current_owner else {
             return Err(ScrollControlResolutionFailure {
                 axis: Some(axis),
@@ -113,14 +132,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 owner: Some(owner),
             });
         }
-        let owner_node = self
-            .tree
-            .node(&owner)
-            .ok_or_else(|| ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::Stale,
-                owner: Some(owner.clone()),
-            })?;
         let metrics = self
             .surface_publication
             .current_scroll_metrics(&owner)
