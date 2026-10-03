@@ -6,8 +6,7 @@ use runenui_core::{
     __runtime::{MountedWidget, MountedWidgetState},
     AuthoringDiagnostic, ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry,
     FocusScope, Focusability, LayoutStyle, ScrollControlBinding, ShortcutBinding, StyleIntent,
-    WidgetActivation,
-    WidgetStateTypeId, WidgetTypeId,
+    WidgetActivation, WidgetStateTypeId, WidgetTypeId,
 };
 
 use super::{
