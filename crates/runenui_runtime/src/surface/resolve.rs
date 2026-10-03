@@ -13,7 +13,7 @@ use runenui_core::{
     HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
     LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
     PaintContributionItem, Radius, SceneShape, ScrollControlSnapshot, ScrollNormalizedValue,
-    StyleEnvironment, StyleInteractionState,
+    SemanticContributionContext, StyleEnvironment, StyleInteractionState,
     StyleResolution, TextAffinity, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
     style_effects_between,
 };
@@ -414,6 +414,24 @@ pub(super) fn scroll_control_snapshots<Action>(
                 ancestor = owner_topology.parent.as_ref();
             }
             Ok(None)
+        })
+        .collect()
+}
+
+pub(super) fn semantic_contexts(
+    topology: &SurfaceTopologySnapshot,
+    scroll_controls: &[Option<ScrollControlSnapshot>],
+) -> Vec<SemanticContributionContext> {
+    debug_assert_eq!(topology.nodes.len(), scroll_controls.len());
+    topology
+        .nodes
+        .iter()
+        .zip(scroll_controls)
+        .map(|(node, scroll_control)| {
+            SemanticContributionContext::__runtime_with_scroll_control(
+                node.children.len(),
+                *scroll_control,
+            )
         })
         .collect()
 }
