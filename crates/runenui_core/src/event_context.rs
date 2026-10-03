@@ -447,42 +447,6 @@ impl<'a, Action> EventContext<'a, Action> {
 
     #[allow(clippy::too_many_arguments)]
     #[must_use]
-    pub(crate) const fn new(
-        phase: EventPhase,
-        original_target: &'a MountedNodeId,
-        current_target: &'a MountedNodeId,
-        related_target: Option<&'a MountedNodeId>,
-        origin: CommandOrigin,
-        sequence: WorkSequence,
-        instant: MonotonicInstant,
-        drag_drop: Option<DragDropEvent>,
-        default_cancelable: bool,
-        default_prevented: bool,
-        propagation_stopped: bool,
-        output_allowance: usize,
-    ) -> Self {
-        Self::new_with_pointer_facts(
-            phase,
-            original_target,
-            current_target,
-            related_target,
-            origin,
-            sequence,
-            instant,
-            drag_drop,
-            None,
-            None,
-            &[],
-            None,
-            default_cancelable,
-            default_prevented,
-            propagation_stopped,
-            output_allowance,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    #[must_use]
     pub(crate) const fn new_with_scroll_control(
         phase: EventPhase,
         original_target: &'a MountedNodeId,
@@ -511,45 +475,6 @@ impl<'a, Action> EventContext<'a, Action> {
             None,
             &[],
             scroll_control,
-            default_cancelable,
-            default_prevented,
-            propagation_stopped,
-            output_allowance,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    #[must_use]
-    pub(crate) const fn new_pointer(
-        phase: EventPhase,
-        original_target: &'a MountedNodeId,
-        current_target: &'a MountedNodeId,
-        related_target: Option<&'a MountedNodeId>,
-        origin: CommandOrigin,
-        sequence: WorkSequence,
-        instant: MonotonicInstant,
-        drag_drop: Option<DragDropEvent>,
-        pointer_id: PointerId,
-        physical_target: Option<&'a MountedNodeId>,
-        physical_path: &'a [MountedNodeId],
-        default_cancelable: bool,
-        default_prevented: bool,
-        propagation_stopped: bool,
-        output_allowance: usize,
-    ) -> Self {
-        Self::new_with_pointer_facts(
-            phase,
-            original_target,
-            current_target,
-            related_target,
-            origin,
-            sequence,
-            instant,
-            drag_drop,
-            Some(pointer_id),
-            physical_target,
-            physical_path,
-            None,
             default_cancelable,
             default_prevented,
             propagation_stopped,
@@ -688,7 +613,7 @@ mod tests {
         let original = namespace.__runtime_mounted_id(1, 1);
         let current = namespace.__runtime_mounted_id(2, 1);
         let origin = CommandOrigin::automation();
-        let mut context = EventContext::new(
+        let mut context = EventContext::new_with_scroll_control(
             EventPhase::Bubble,
             &original,
             &current,
@@ -696,6 +621,7 @@ mod tests {
             origin,
             sequence(7),
             MonotonicInstant::__runtime_from_nanos(11),
+            None,
             None,
             true,
             false,
