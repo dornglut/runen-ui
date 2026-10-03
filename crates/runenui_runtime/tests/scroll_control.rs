@@ -400,6 +400,7 @@ impl Widget<()> for SnapshotProbe {
 #[derive(Clone, Copy, Debug)]
 enum BoundAction {
     ResizeInner,
+    ExpandInnerToContent,
     EnableInnerScroll,
     DisableInnerScroll,
     ReplaceBound,
@@ -464,6 +465,7 @@ impl UiApp for BoundApp {
                     .with_width(dimension(30.0))
                     .with_height(dimension(60.0)),
             )
+            .scroll_control(binding)
             .map_action(|()| BoundAction::ReplaceBound);
         let outer_content = column(vec![inner, filler])
             .key("outer.content")
@@ -478,6 +480,7 @@ impl UiApp for BoundApp {
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
             BoundAction::ResizeInner => state.inner_height = 40.0,
+            BoundAction::ExpandInnerToContent => state.inner_height = 100.0,
             BoundAction::EnableInnerScroll => state.inner_scrollable = true,
             BoundAction::DisableInnerScroll => state.inner_scrollable = false,
             BoundAction::ReplaceBound => state.replaced = true,
@@ -665,6 +668,12 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
     runtime
         .publish_surface(&bound_build(&environment))
         .unwrap_or_else(|error| panic!("resized scroll surface publishes: {error:?}"));
+    let accepted_snapshot = last_snapshot(&runtime.state().paint);
+    assert_eq!(last_snapshot(&runtime.state().hit), accepted_snapshot);
+    assert_eq!(
+        last_snapshot(&runtime.state().semantics),
+        accepted_snapshot
+    );
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
@@ -677,6 +686,10 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
         "queued request re-reads the resized viewport at processing time"
     );
     let event = last_snapshot(&runtime.state().event);
+    assert_eq!(
+        event, accepted_snapshot,
+        "event callbacks observe the exact same accepted bound snapshot as paint, hit, and semantics"
+    );
     assert_eq!(event.viewport_extent().get(), 40.0);
     assert_eq!(event.maximum_offset().get(), 60.0);
     assert_eq!(
@@ -704,6 +717,107 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
     assert!(jsonl.contains("\"operation\":\"page_forward\""));
     assert!(jsonl.contains("\"axis\":\"vertical\""));
     assert!(jsonl.contains("\"outcome\":\"resolved\""));
+}
+
+#[test]
+fn nested_bound_controls_mutate_independent_existing_scroll_owners() {
+    let mut runtime = bound_runtime();
+    settle(&mut runtime);
+    let environment = StyleEnvironment::default();
+    runtime
+        .publish_surface(&bound_build(&environment))
+        .unwrap_or_else(|error| panic!("nested binding fixture publishes: {error:?}"));
+    let inner_control = node_id(&mut runtime, "bound");
+    let outer_control = node_id(&mut runtime, "outer.filler");
+
+    submit_scroll(
+        &mut runtime,
+        inner_control,
+        ScrollControlRequest::PageForward,
+    );
+    assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 30.0));
+    assert_eq!(
+        scroll_offset(&mut runtime, "outer"),
+        (0.0, 0.0),
+        "inner bound control mutates only the nearest inner M10 scroll owner"
+    );
+
+    submit_scroll(
+        &mut runtime,
+        outer_control,
+        ScrollControlRequest::PageForward,
+    );
+    assert_eq!(
+        scroll_offset(&mut runtime, "inner"),
+        (0.0, 30.0),
+        "outer bound control does not disturb the independently retained inner owner"
+    );
+    assert_eq!(
+        scroll_offset(&mut runtime, "outer"),
+        (0.0, 40.0),
+        "outer bound control mutates the existing outer M10 scroll owner"
+    );
+}
+
+#[test]
+fn zero_range_owner_stays_resolved_and_clamps_every_request_without_outer_retargeting() {
+    let mut runtime = bound_runtime();
+    settle(&mut runtime);
+    let environment = StyleEnvironment::default();
+    runtime
+        .publish_surface(&bound_build(&environment))
+        .unwrap_or_else(|error| panic!("zero-range fixture initially publishes: {error:?}"));
+    let bound = node_id(&mut runtime, "bound");
+
+    runtime
+        .submit_action(BoundAction::ExpandInnerToContent)
+        .unwrap_or_else(|_| unreachable!("zero-range resize is admitted"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+    runtime
+        .publish_surface(&bound_build(&environment))
+        .unwrap_or_else(|error| panic!("zero-range fixture republishes: {error:?}"));
+
+    let snapshot = last_snapshot(&runtime.state().paint);
+    assert_eq!(snapshot.maximum_offset().get(), 0.0);
+    assert_eq!(snapshot.normalized_position(), ScrollNormalizedValue::ZERO);
+    assert_eq!(snapshot.visible_fraction(), ScrollNormalizedValue::ONE);
+
+    for request in [
+        ScrollControlRequest::SmallStepForward,
+        ScrollControlRequest::PageForward,
+        ScrollControlRequest::ToEnd,
+        ScrollControlRequest::SetNormalized(ScrollNormalizedValue::ONE),
+    ] {
+        submit_scroll(&mut runtime, bound.clone(), request);
+        assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 0.0));
+        assert_eq!(
+            scroll_offset(&mut runtime, "outer"),
+            (0.0, 0.0),
+            "zero-range inner owner remains the exact resolved owner and never retargets outward"
+        );
+    }
+
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::ScrollControlBindingEvaluated {
+            outcome: TraceScrollControlBindingOutcome::Resolved,
+            axis: Some(Axis::Vertical),
+            ..
+        }
+    )));
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::LogicalScrollOwnerApplied {
+            offered,
+            consumed,
+            ..
+        } if offered.y() > 0.0 && consumed.y().to_bits() == 0.0_f32.to_bits()
+    )));
 }
 
 struct PerAxisApp;
