@@ -13,8 +13,7 @@ use runenui_core::{
     HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
     LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
     PaintContributionItem, Radius, SceneShape, ScrollChrome, ScrollControlSnapshot,
-    SemanticContributionContext,
-    StyleEnvironment, StyleInteractionState, StyleResolution,
+    SemanticContributionContext, StyleEnvironment, StyleInteractionState, StyleResolution,
     TextAffinity, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
     style_effects_between,
 };
