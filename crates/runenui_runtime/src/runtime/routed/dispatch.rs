@@ -111,9 +111,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &self,
         current: &MountedNodeId,
     ) -> Option<ScrollControlSnapshot> {
-        self.resolve_scroll_control(current)
-            .ok()
-            .map(|resolved| resolved.snapshot)
+        self.resolve_scroll_control_context_snapshot(current)
     }
 
     fn invoke_routed_callback(
