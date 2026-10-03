@@ -528,6 +528,7 @@ impl<Action> MountedTree<Action> {
                 .node_mut(id)
                 .unwrap_or_else(|| unreachable!("planned retained node remains live"));
             let tree_metadata_changed = node.authored_id != authored_id;
+            let topology_overflow_changed = node.layout.overflow() != layout.overflow();
             let style_changed = node.style != style;
             let timelines_changed = node.timelines != timelines;
             let scroll_control_binding_changed =
@@ -578,7 +579,7 @@ impl<Action> MountedTree<Action> {
                     | common_invalidation
                     | scroll_control_invalidation,
             );
-            if tree_metadata_changed {
+            if tree_metadata_changed || topology_overflow_changed {
                 node.dirty_phases.insert(DirtyPhases::TREE);
             }
             if style_changed {
