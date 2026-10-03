@@ -566,7 +566,9 @@ impl<Action> MountedTree<Action> {
             node.caches.activation = CachedCapability::Unresolved;
             node.caches.text_input = CachedCapability::Unresolved;
             let scroll_control_invalidation = if scroll_control_binding_changed {
-                WidgetInvalidation::PAINT | WidgetInvalidation::SEMANTICS
+                WidgetInvalidation::HIT_TEST
+                    | WidgetInvalidation::PAINT
+                    | WidgetInvalidation::SEMANTICS
             } else {
                 WidgetInvalidation::NONE
             };
