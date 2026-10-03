@@ -683,6 +683,11 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
             ..
         }
     )));
+    let jsonl = runtime.trace().export_jsonl();
+    assert!(jsonl.contains("\"name\":\"scroll_control_binding_evaluated\""));
+    assert!(jsonl.contains("\"operation\":\"page_forward\""));
+    assert!(jsonl.contains("\"axis\":\"vertical\""));
+    assert!(jsonl.contains("\"outcome\":\"resolved\""));
 }
 
 #[derive(Clone, Copy, Debug)]
