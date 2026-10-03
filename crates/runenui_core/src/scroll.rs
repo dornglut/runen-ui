@@ -242,8 +242,8 @@ pub enum ScrollControlRequest {
 #[cfg(test)]
 mod tests {
     use super::{
-        Axis, ScrollControlBinding, ScrollControlRequest, ScrollNormalizedError,
-        ScrollNormalizedValue,
+        Axis, ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot,
+        ScrollNormalizedError, ScrollNormalizedValue,
     };
     use crate::LogicalLength;
 
@@ -258,14 +258,18 @@ mod tests {
 
     #[test]
     fn normalized_values_are_closed_finite_and_hashable_command_payloads() {
-        assert_eq!(
-            ScrollNormalizedValue::new(f32::NAN),
-            Err(ScrollNormalizedError::NotFinite)
-        );
-        assert_eq!(
-            ScrollNormalizedValue::new(1.1),
-            Err(ScrollNormalizedError::OutOfRange)
-        );
+        for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert_eq!(
+                ScrollNormalizedValue::new(value),
+                Err(ScrollNormalizedError::NotFinite)
+            );
+        }
+        for value in [-0.1, 1.1] {
+            assert_eq!(
+                ScrollNormalizedValue::new(value),
+                Err(ScrollNormalizedError::OutOfRange)
+            );
+        }
         assert_eq!(
             ScrollNormalizedValue::new(-0.0)
                 .unwrap_or_else(|_| unreachable!("negative zero canonicalizes")),
@@ -277,6 +281,11 @@ mod tests {
         );
         assert!(
             matches!(request, ScrollControlRequest::SetNormalized(value) if value.get() == 0.5)
+        );
+        assert!(
+            ScrollControlSnapshot::__runtime_from_metrics(Axis::Vertical, 11.0, 10.0, 20.0)
+                .is_none(),
+            "runtime projection fails closed rather than repairing an offset beyond maximum"
         );
     }
 }
