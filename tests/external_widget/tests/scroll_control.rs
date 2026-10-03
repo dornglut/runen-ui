@@ -4,17 +4,14 @@ use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
     Axis, ChildBearingWidget, CommandOrigin, Element, EventContext, EventPhase, HitContribution,
-    HitContributionContext,
-    LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
-    NoHostProtocol, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
-    ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot, SemanticCommand,
-    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
-    StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure,
+    HitContributionContext, LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength,
+    LogicalPoint, LogicalRect, NoHostProtocol, OverflowPolicy, OverflowStyle, PaintContribution,
+    PaintContributionContext, ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot,
+    SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
+    SemanticRole, StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure,
     WidgetMeasureInput, children, container,
 };
-use runenui_runtime::{
-    AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext,
-};
+use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext};
 
 fn length(value: f32) -> LogicalLength {
     LogicalLength::new(value).unwrap_or_else(|_| unreachable!("fixture length is finite"))
@@ -222,7 +219,10 @@ fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_reques
     let control = node_id(&mut runtime, "external.control");
     let blank =
         LogicalPoint::new(25.0, 5.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
-    assert_eq!(publication.hit_test_scene().target_at(blank), Some(&viewport));
+    assert_eq!(
+        publication.hit_test_scene().target_at(blank),
+        Some(&viewport)
+    );
 
     let initial = *observed
         .borrow()
@@ -235,7 +235,11 @@ fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_reques
     assert_eq!(initial.content_extent().get(), 60.0);
 
     runtime
-        .submit_command(control, SemanticCommand::Activate, CommandOrigin::programmatic())
+        .submit_command(
+            control,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
         .unwrap_or_else(|_| unreachable!("downstream control trigger is admitted"));
     assert_eq!(
         runtime
