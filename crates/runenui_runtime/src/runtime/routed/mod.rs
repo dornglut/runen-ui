@@ -56,11 +56,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             });
         };
         let axis = binding.axis();
-        let route = self.tree.event_route(target).map_err(|_| ScrollControlResolutionFailure {
-            axis: Some(axis),
-            outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
-            owner: None,
-        })?;
+        let route = self
+            .tree
+            .event_route(target)
+            .map_err(|_| ScrollControlResolutionFailure {
+                axis: Some(axis),
+                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
+                owner: None,
+            })?;
         let published = self
             .surface_publication
             .current_scroll_control_binding(target)
@@ -153,12 +156,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 metrics.content.height(),
             ),
         };
-        let snapshot = ScrollControlSnapshot::__runtime_from_metrics(axis, offset, viewport, content)
-            .ok_or_else(|| ScrollControlResolutionFailure {
-                axis: Some(axis),
-                outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
-                owner: Some(owner.clone()),
-            })?;
+        let snapshot =
+            ScrollControlSnapshot::__runtime_from_metrics(axis, offset, viewport, content)
+                .ok_or_else(|| ScrollControlResolutionFailure {
+                    axis: Some(axis),
+                    outcome: TraceScrollControlBindingOutcome::MetricsUnavailable,
+                    owner: Some(owner.clone()),
+                })?;
         Ok(ResolvedScrollControl {
             owner,
             binding,
