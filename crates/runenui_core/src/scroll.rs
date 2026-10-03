@@ -2,15 +2,7 @@
 
 use core::{error::Error, fmt};
 
-use crate::LogicalLength;
-
-/// Logical axis owned by one scroll viewport/control binding.
-#[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum ScrollAxis {
-    Horizontal,
-    Vertical,
-}
+use crate::{Axis, LogicalLength};
 
 /// Error returned when a bound control uses a zero small-step extent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -30,7 +22,7 @@ impl Error for ScrollControlBindingError {}
 /// The binding never carries a mounted identity or mirrors the current offset.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollControlBinding {
-    axis: ScrollAxis,
+    axis: Axis,
     small_step: LogicalLength,
 }
 
@@ -39,7 +31,7 @@ impl ScrollControlBinding {
     ///
     /// Errors when the small step is zero.
     pub const fn new(
-        axis: ScrollAxis,
+        axis: Axis,
         small_step: LogicalLength,
     ) -> Result<Self, ScrollControlBindingError> {
         if small_step.get() == 0.0 {
@@ -50,7 +42,7 @@ impl ScrollControlBinding {
     }
 
     #[must_use]
-    pub const fn axis(self) -> ScrollAxis {
+    pub const fn axis(self) -> Axis {
         self.axis
     }
 
@@ -120,7 +112,7 @@ impl fmt::Debug for ScrollNormalizedValue {
 /// Read-only projection for one valid bound descendant scroll control.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollControlSnapshot {
-    axis: ScrollAxis,
+    axis: Axis,
     offset: LogicalLength,
     maximum_offset: LogicalLength,
     viewport_extent: LogicalLength,
@@ -133,7 +125,7 @@ impl ScrollControlSnapshot {
     #[doc(hidden)]
     #[must_use]
     pub const fn __runtime_new(
-        axis: ScrollAxis,
+        axis: Axis,
         offset: LogicalLength,
         maximum_offset: LogicalLength,
         viewport_extent: LogicalLength,
@@ -153,7 +145,7 @@ impl ScrollControlSnapshot {
     }
 
     #[must_use]
-    pub const fn axis(self) -> ScrollAxis {
+    pub const fn axis(self) -> Axis {
         self.axis
     }
 
@@ -204,17 +196,17 @@ pub enum ScrollControlRequest {
 #[cfg(test)]
 mod tests {
     use super::{
-        ScrollAxis, ScrollControlBinding, ScrollControlRequest, ScrollNormalizedError,
+        Axis, ScrollControlBinding, ScrollControlRequest, ScrollNormalizedError,
         ScrollNormalizedValue,
     };
     use crate::LogicalLength;
 
     #[test]
     fn binding_requires_a_positive_small_step() {
-        assert!(ScrollControlBinding::new(ScrollAxis::Vertical, LogicalLength::ZERO).is_err());
-        let binding = ScrollControlBinding::new(ScrollAxis::Horizontal, LogicalLength::from(8_u8))
+        assert!(ScrollControlBinding::new(Axis::Vertical, LogicalLength::ZERO).is_err());
+        let binding = ScrollControlBinding::new(Axis::Horizontal, LogicalLength::from(8_u8))
             .unwrap_or_else(|_| unreachable!("positive fixture step is valid"));
-        assert_eq!(binding.axis(), ScrollAxis::Horizontal);
+        assert_eq!(binding.axis(), Axis::Horizontal);
         assert_eq!(binding.small_step(), LogicalLength::from(8_u8));
     }
 
