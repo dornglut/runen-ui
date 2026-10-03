@@ -697,6 +697,89 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
     assert!(jsonl.contains("\"outcome\":\"resolved\""));
 }
 
+struct PerAxisApp;
+
+impl UiApp for PerAxisApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &Self::State) -> Element<Self::Action> {
+        let target = Element::new(Spacer)
+            .id("axis.bound")
+            .key("axis.bound")
+            .with_layout(
+                LayoutStyle::default()
+                    .with_width(dimension(80.0))
+                    .with_height(dimension(60.0)),
+            )
+            .scroll_control(
+                ScrollControlBinding::new(Axis::Horizontal, length(5.0))
+                    .unwrap_or_else(|_| unreachable!("fixture binding is valid")),
+            );
+        let inner = scroll_viewport(
+            target,
+            OverflowStyle::new(OverflowPolicy::Clip, OverflowPolicy::Scroll),
+        )
+        .id("axis.inner")
+        .key("axis.inner")
+        .with_layout(block_size(
+            80.0,
+            30.0,
+            OverflowStyle::new(OverflowPolicy::Clip, OverflowPolicy::Scroll),
+        ))
+        .into_element();
+        scroll_viewport(
+            inner,
+            OverflowStyle::new(OverflowPolicy::Scroll, OverflowPolicy::Clip),
+        )
+        .id("axis.outer")
+        .key("axis.outer")
+        .with_layout(block_size(
+            40.0,
+            30.0,
+            OverflowStyle::new(OverflowPolicy::Scroll, OverflowPolicy::Clip),
+        ))
+        .into_element()
+    }
+
+    fn update((): &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn per_axis_binding_skips_nearer_nonmatching_scroll_owner() {
+    let mut runtime = AppRuntime::<PerAxisApp>::mount(());
+    settle(&mut runtime);
+    let environment = StyleEnvironment::default();
+    runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &environment,
+            LogicalSize::try_new(40.0, 30.0)
+                .unwrap_or_else(|_| unreachable!("fixture surface is finite")),
+        ))
+        .unwrap_or_else(|error| panic!("per-axis fixture publishes: {error:?}"));
+    let bound = node_id(&mut runtime, "axis.bound");
+    runtime
+        .submit_command(
+            bound,
+            SemanticCommand::ScrollControl(ScrollControlRequest::PageForward),
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("per-axis scroll request is admitted"));
+    settle(&mut runtime);
+
+    assert_eq!(
+        scroll_offset(&mut runtime, "axis.inner"),
+        (0.0, 0.0),
+        "a nearer vertical-only viewport is ineligible for a horizontal binding"
+    );
+    assert_eq!(
+        scroll_offset(&mut runtime, "axis.outer"),
+        (40.0, 0.0),
+        "the nearest horizontal-eligible ancestor owns the request"
+    );
+}
+
 #[derive(Clone, Copy, Debug)]
 enum FailMode {
     Missing,
