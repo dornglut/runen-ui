@@ -213,12 +213,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             || unreachable!("resolved scroll owner remains live"),
             |node| node.interaction.scroll_offset,
         );
-        let Some(application) = scroll_control_application(
-            request,
-            resolved.binding,
-            resolved.snapshot,
-            before_pair,
-        ) else {
+        let Some(application) =
+            scroll_control_application(request, resolved.binding, resolved.snapshot, before_pair)
+        else {
             self.record_scroll_control_binding(
                 transaction,
                 request,
