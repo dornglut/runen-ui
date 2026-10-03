@@ -7,7 +7,10 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use super::repository_audit::{PublicConsumerPolicy, public_consumer_policy};
+use super::{
+    repository_audit::{PublicConsumerPolicy, public_consumer_policy},
+    validation_timing::ValidationTimings,
+};
 
 const PROBED_PRIVATE_FEATURE: &str = "internal-test-seams";
 const PRIVATE_METHOD: &str = "__seed_next_work_sequence_for_test";
@@ -15,7 +18,7 @@ const PROBE_MANIFEST: &str = "[package]\nname = \"runenui-public-feature-probe\"
 const PROBE_SOURCE: &str = "use runenui_core::UiApp;\nuse runenui_runtime::AppRuntime;\n\npub fn probe<App: UiApp>(runtime: &mut AppRuntime<App>) {\n    runtime.__seed_next_work_sequence_for_test(1);\n}\n";
 static NEXT_PROBE: AtomicUsize = AtomicUsize::new(0);
 
-pub fn validate(root: &Path) -> Result<(), String> {
+pub fn validate(root: &Path, timings: &mut ValidationTimings) -> Result<(), String> {
     let policy = public_consumer_policy(root)?;
     if !policy
         .private_features
@@ -28,14 +31,20 @@ pub fn validate(root: &Path) -> Result<(), String> {
     }
     let arguments = public_test_arguments(&policy.packages);
     let argument_refs = arguments.iter().map(String::as_str).collect::<Vec<_>>();
-    super::run_cargo_step(root, "stable", &argument_refs)?;
+    timings.measure("public-consumer package tests", || {
+        super::run_cargo_step(root, "stable", &argument_refs)
+    })?;
     // The following proofs intentionally run offline and resolve target-specific
     // dependencies as part of Cargo's normal resolver model. Prime the locked
     // dependency cache for every target first rather than relying on whatever
     // the host-only test build happened to download.
-    super::run_cargo_step(root, "stable", &["fetch", "--locked"])?;
-    validate_public_feature_graph(root, &policy)?;
-    validate_private_seam_isolation(root)
+    timings.measure("locked fetch", || {
+        super::run_cargo_step(root, "stable", &["fetch", "--locked"])
+    })?;
+    timings.measure("public-consumer feature graph", || {
+        validate_public_feature_graph(root, &policy)
+    })?;
+    validate_private_seam_isolation(root, timings)
 }
 
 fn public_test_arguments(packages: &[String]) -> Vec<String> {
@@ -99,7 +108,10 @@ impl Drop for ProbeDirectory {
     }
 }
 
-fn validate_private_seam_isolation(root: &Path) -> Result<(), String> {
+fn validate_private_seam_isolation(
+    root: &Path,
+    timings: &mut ValidationTimings,
+) -> Result<(), String> {
     let probe = ProbeDirectory::new(root)?;
     fs::create_dir(probe.0.join("src"))
         .map_err(|error| format!("failed to create probe source directory: {error}"))?;
@@ -112,40 +124,47 @@ fn validate_private_seam_isolation(root: &Path) -> Result<(), String> {
 
     // Update only the disposable copy of the workspace lockfile for its probe package.
     // Dependency resolution is offline; both actual compiler checks are locked.
-    let prepared = run_probe_cargo(
-        root,
-        &probe.manifest(),
-        &["metadata", "--offline", "--format-version", "1"],
-    )?;
-    require_success("prepare offline probe lockfile", &prepared)?;
+    timings.measure("private-seam probe metadata", || {
+        let prepared = run_probe_cargo(
+            root,
+            &probe.manifest(),
+            &["metadata", "--offline", "--format-version", "1"],
+        )?;
+        require_success("prepare offline probe lockfile", &prepared)
+    })?;
 
-    let enabled = run_probe_cargo(
-        root,
-        &probe.manifest(),
-        &[
-            "check",
-            "--lib",
-            "--offline",
-            "--locked",
-            "--features",
-            "seam-enabled",
-        ],
-    )?;
-    require_success("compile positive feature-enabled seam control", &enabled)?;
+    timings.measure("private-seam positive compile probe", || {
+        let enabled = run_probe_cargo(
+            root,
+            &probe.manifest(),
+            &[
+                "check",
+                "--lib",
+                "--offline",
+                "--locked",
+                "--features",
+                "seam-enabled",
+            ],
+        )?;
+        require_success("compile positive feature-enabled seam control", &enabled)
+    })?;
 
-    let disabled = run_probe_cargo(
-        root,
-        &probe.manifest(),
-        &["check", "--lib", "--offline", "--locked"],
-    )?;
-    let diagnostics = String::from_utf8_lossy(&disabled.stderr);
-    if disabled.status.success() || !is_expected_private_seam_rejection(&diagnostics) {
-        return Err(format!(
-            "public/default-feature seam probe did not reject the private method as expected (status {}):\n{diagnostics}",
-            disabled.status
-        ));
-    }
-    eprintln!("> public/default-feature probe rejected `{PRIVATE_METHOD}` as expected");
+    timings.measure("private-seam negative compile probe", || {
+        let disabled = run_probe_cargo(
+            root,
+            &probe.manifest(),
+            &["check", "--lib", "--offline", "--locked"],
+        )?;
+        let diagnostics = String::from_utf8_lossy(&disabled.stderr);
+        if disabled.status.success() || !is_expected_private_seam_rejection(&diagnostics) {
+            return Err(format!(
+                "public/default-feature seam probe did not reject the private method as expected (status {}):\n{diagnostics}",
+                disabled.status
+            ));
+        }
+        eprintln!("> public/default-feature probe rejected `{PRIVATE_METHOD}` as expected");
+        Ok(())
+    })?;
     Ok(())
 }
 
