@@ -602,7 +602,10 @@ fn supported_actions(
             SemanticAction::Increment | SemanticAction::Decrement | SemanticAction::SetValue => {
                 matches!(
                     authored.role(),
-                    SemanticRole::Slider | SemanticRole::SpinButton | SemanticRole::Splitter
+                    SemanticRole::Slider
+                        | SemanticRole::ScrollBar
+                        | SemanticRole::SpinButton
+                        | SemanticRole::Splitter
                 ) && authored.range().is_some()
             }
             SemanticAction::Expand | SemanticAction::Collapse => {

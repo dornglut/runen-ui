@@ -350,7 +350,10 @@ const fn semantic_command(
 const fn is_mutable_range_role(role: SemanticRole) -> bool {
     matches!(
         role,
-        SemanticRole::Slider | SemanticRole::SpinButton | SemanticRole::Splitter
+        SemanticRole::Slider
+            | SemanticRole::ScrollBar
+            | SemanticRole::SpinButton
+            | SemanticRole::Splitter
     )
 }
 

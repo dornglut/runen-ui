@@ -97,6 +97,7 @@ pub enum SemanticRole {
     Image,
     ComboBox,
     Slider,
+    ScrollBar,
     Progress,
     SpinButton,
     ListBox,
@@ -1615,7 +1616,7 @@ fn validate_range_contract(
     node: &SemanticNodeContribution,
 ) -> Result<(), SemanticContributionError> {
     match node.role() {
-        SemanticRole::Slider | SemanticRole::Splitter => {
+        SemanticRole::Slider | SemanticRole::ScrollBar | SemanticRole::Splitter => {
             let range = required_range(node)?;
             if range.minimum().is_none() {
                 return missing_property(node, "range.minimum");
@@ -1653,6 +1654,7 @@ fn validate_node_property_contract(
         && !matches!(
             role,
             SemanticRole::Slider
+                | SemanticRole::ScrollBar
                 | SemanticRole::ListBox
                 | SemanticRole::TabList
                 | SemanticRole::Toolbar
@@ -2097,6 +2099,30 @@ mod tests {
             SemanticContribution::single(slider)
                 .validate(context)
                 .is_ok()
+        );
+
+        let scrollbar = SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+            .with_range(
+                SemanticRange::new(Some(minimum), Some(maximum), Some(current))
+                    .unwrap_or_else(|_| unreachable!("controlled scrollbar range is valid")),
+            )
+            .with_orientation(SemanticOrientation::Vertical);
+        assert!(
+            SemanticContribution::single(scrollbar)
+                .validate(context)
+                .is_ok()
+        );
+
+        let missing_scrollbar_range =
+            SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+                .with_orientation(SemanticOrientation::Horizontal);
+        assert_eq!(
+            SemanticContribution::single(missing_scrollbar_range).validate(context),
+            Err(SemanticContributionError::MissingRequiredProperty {
+                key: SemanticKey::PRIMARY,
+                role: SemanticRole::ScrollBar,
+                property: "range",
+            })
         );
 
         let listbox = SemanticNodeContribution::primary(SemanticRole::ListBox)
