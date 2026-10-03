@@ -249,6 +249,7 @@ mod presentation_geometry;
 mod resource;
 mod runtime_protocol;
 mod scene_geometry;
+mod scroll;
 mod semantic;
 mod semantic_action;
 mod shortcut;
@@ -383,6 +384,10 @@ pub use runtime_protocol::{
 pub use scene_geometry::{
     ContributionClip, LogicalTransform, LogicalTransformError, SceneLayer, SceneOpacity,
     SceneOpacityError, SceneShape,
+};
+pub use scroll::{
+    ScrollAxis, ScrollControlBinding, ScrollControlBindingError, ScrollControlRequest,
+    ScrollControlSnapshot, ScrollNormalizedError, ScrollNormalizedValue,
 };
 pub use semantic::{
     SemanticAction, SemanticAutocomplete, SemanticBounds, SemanticCheckedState,
