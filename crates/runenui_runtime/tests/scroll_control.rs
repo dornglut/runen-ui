@@ -7,8 +7,9 @@ use runenui_core::{
     Axis, ChildBearingWidget, CommandOrigin, Element, EventContext, HitContribution,
     HitContributionContext, LayoutContainer, LayoutDimension, LayoutStyle, LogicalDelta,
     LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, OverflowPolicy, OverflowStyle,
-    PaintContribution, PaintContributionContext, PointerDeviceKind, PointerEvent, PointerId,
-    PointerPhase, ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot,
+    PaintContribution, PaintContributionContext, PointerButton, PointerButtons, PointerDeviceKind,
+    PointerEvent, PointerId, PointerPhase, ScrollControlBinding, ScrollControlRequest,
+    ScrollControlSnapshot,
     ScrollNormalizedValue, SemanticCommand, SemanticContribution, SemanticContributionContext,
     SemanticNodeContribution, SemanticRole, StyleEnvironment, UiApp, UiEvent, View, Widget,
     WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, children, column, scroll_viewport,
@@ -166,6 +167,78 @@ fn standard_viewport_hits_blank_area_without_stealing_child_and_wheel_scrolls() 
         .unwrap_or_else(|error| panic!("blank-area wheel is admitted: {error:?}"));
     settle(&mut runtime);
     assert_eq!(scroll_offset(&mut runtime, "viewport"), (0.0, 12.0));
+}
+
+#[test]
+fn blank_viewport_touch_pan_uses_the_existing_m10_scroll_gesture() {
+    let mut runtime = AppRuntime::<ViewportApp>::mount_with_config(
+        (),
+        RuntimeConfig::default().with_trace_config(TraceConfig::new(256)),
+    );
+    settle(&mut runtime);
+    let environment = StyleEnvironment::default();
+    let build = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::try_new(40.0, 30.0)
+            .unwrap_or_else(|_| unreachable!("fixture surface is finite")),
+    );
+    let publication = runtime
+        .publish_surface(&build)
+        .unwrap_or_else(|error| panic!("touch viewport publishes: {error:?}"));
+    let viewport = node_id(&mut runtime, "viewport");
+    let pointer_id =
+        PointerId::new(202).unwrap_or_else(|| unreachable!("fixture pointer id is nonzero"));
+    let down_point =
+        LogicalPoint::new(35.0, 20.0).unwrap_or_else(|_| unreachable!("point is finite"));
+    assert_eq!(
+        publication.hit_test_scene().target_at(down_point),
+        Some(&viewport),
+        "blank viewport area is the physical touch target"
+    );
+
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Touch,
+                PointerPhase::Down,
+                down_point,
+                publication.input_context().clone(),
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|error| panic!("blank-area touch down is admitted: {error:?}"));
+    settle(&mut runtime);
+
+    for point in [(29.0, 14.0), (28.0, 13.0)] {
+        runtime
+            .submit_pointer(
+                PointerEvent::new(
+                    pointer_id,
+                    PointerDeviceKind::Touch,
+                    PointerPhase::Move,
+                    LogicalPoint::new(point.0, point.1)
+                        .unwrap_or_else(|_| unreachable!("point is finite")),
+                    publication.input_context().clone(),
+                )
+                .with_buttons(PointerButtons::new([PointerButton::Primary])),
+            )
+            .unwrap_or_else(|error| panic!("blank-area touch move is admitted: {error:?}"));
+        settle(&mut runtime);
+    }
+
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::TouchGestureWon {
+            pointer_id: id,
+            gesture: runenui_runtime::TraceTouchGestureKind::Scroll,
+        } if *id == pointer_id
+    )));
+    assert!(
+        scroll_offset(&mut runtime, "viewport").1 > 0.0,
+        "the existing M10 touch-scroll winner mutates the viewport's canonical mounted offset"
+    );
 }
 
 #[derive(Debug)]
