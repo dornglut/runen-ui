@@ -934,11 +934,7 @@ mod tests {
         assert!(scroll_b_rows.iter().all(|row| {
             matches!(
                 row.cells[0].as_str(),
-                "M11CTRL-20"
-                    | "M11CTRL-21"
-                    | "M11CTRL-22"
-                    | "M11CTRL-23"
-                    | "M11CTRL-24"
+                "M11CTRL-20" | "M11CTRL-21" | "M11CTRL-22" | "M11CTRL-23" | "M11CTRL-24"
             ) && row.cells[6] == "implementation-complete"
                 && row.cells[7] == "Required"
         }));
