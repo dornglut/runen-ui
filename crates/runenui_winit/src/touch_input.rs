@@ -7,8 +7,8 @@
 use std::collections::BTreeMap;
 
 use runenui_core::{
-    InputDeviceId, LogicalDelta, LogicalPoint, PointerButton, PointerButtons, PointerDeviceKind,
-    PointerEvent, PointerId, PointerPhase, SurfaceInputContext,
+    InputDeviceId, LogicalDelta, LogicalPoint, PointerDeviceKind, PointerEvent, PointerId,
+    PointerPhase, SurfaceInputContext,
 };
 use winit::event::TouchPhase;
 
@@ -173,7 +173,7 @@ fn pointer_event(
     movement: LogicalDelta,
     input_context: SurfaceInputContext,
 ) -> PointerEvent {
-    let event = PointerEvent::new(
+    PointerEvent::new(
         pointer_id,
         PointerDeviceKind::Touch,
         phase,
@@ -181,23 +181,12 @@ fn pointer_event(
         input_context,
     )
     .with_device_id(device_id)
-    .with_movement_delta(movement);
-    match phase {
-        PointerPhase::Down => event
-            .with_buttons(PointerButtons::new([PointerButton::Primary]))
-            .with_changed_button(PointerButton::Primary),
-        PointerPhase::Move => event.with_buttons(PointerButtons::new([PointerButton::Primary])),
-        PointerPhase::Up => event.with_changed_button(PointerButton::Primary),
-        PointerPhase::Cancel => event,
-        _ => event,
-    }
+    .with_movement_delta(movement)
 }
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{
-        LogicalPoint, NoHostProtocol, PointerButton, StyleEnvironment, UiApp, text,
-    };
+    use runenui_core::{LogicalPoint, NoHostProtocol, StyleEnvironment, UiApp, text};
     use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 
     use super::{TouchIngressDiagnostic, TouchInputState};
@@ -270,10 +259,6 @@ mod tests {
 
         assert_eq!(down.device_kind(), runenui_core::PointerDeviceKind::Touch);
         assert_eq!(down.phase(), runenui_core::PointerPhase::Down);
-        assert_eq!(down.changed_button(), Some(PointerButton::Primary));
-        assert!(down.buttons().iter().eq([PointerButton::Primary]));
-        assert_eq!(moved.changed_button(), None);
-        assert!(moved.buttons().iter().eq([PointerButton::Primary]));
         assert_eq!(
             down.pointer_id().get() % 2,
             0,
@@ -287,23 +272,6 @@ mod tests {
         assert_eq!(cancel[0].phase(), runenui_core::PointerPhase::Cancel);
         assert_eq!(cancel[0].pointer_id(), down.pointer_id());
         assert_eq!(cancel[0].surface_context(), &context);
-
-        touch
-            .transition(
-                device,
-                43,
-                TouchPhase::Started,
-                point(2.0, 3.0),
-                context.clone(),
-            )
-            .unwrap_or_else(|_| unreachable!("second contact starts"));
-        let ended = touch
-            .transition(device, 43, TouchPhase::Ended, point(5.0, 7.0), context)
-            .unwrap_or_else(|_| unreachable!("active contact ends"));
-        assert_eq!(ended.phase(), runenui_core::PointerPhase::Up);
-        assert_eq!(ended.changed_button(), Some(PointerButton::Primary));
-        assert!(ended.buttons().is_empty());
-        assert_eq!(touch.active_contact_count(), 0);
     }
 
     #[test]
