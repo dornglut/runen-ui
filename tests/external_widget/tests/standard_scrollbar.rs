@@ -594,6 +594,82 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
 }
 
 #[test]
+fn standard_track_click_pages_once_toward_pointer_without_warping() {
+    let mut runtime = AppRuntime::<App>::mount(State {
+        content_width: 80.0,
+        content_height: 300.0,
+        horizontal: false,
+        vertical: true,
+        always: false,
+    });
+    settle(&mut runtime);
+    let environment = StyleEnvironment::default();
+    let initial = runtime
+        .publish_surface(&build(&environment))
+        .unwrap_or_else(|_| unreachable!("track paging fixture publishes"));
+    let owner = node_id(&mut runtime, "standard.container");
+
+    runtime
+        .submit_pointer(pointer(
+            51,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Down,
+            95.0,
+            90.0,
+            initial.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("after-thumb track down is admitted"));
+    settle(&mut runtime);
+    assert_eq!(
+        offset(&mut runtime, &owner).1,
+        100.0,
+        "track click advances exactly one page instead of warping toward the pointer"
+    );
+    runtime
+        .submit_pointer(pointer(
+            51,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Up,
+            95.0,
+            90.0,
+            initial.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("after-thumb track up is admitted"));
+    settle(&mut runtime);
+
+    let advanced = runtime
+        .publish_surface(&build(&environment))
+        .unwrap_or_else(|_| unreachable!("advanced track geometry republishes"));
+    runtime
+        .submit_pointer(pointer(
+            52,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Down,
+            95.0,
+            5.0,
+            advanced.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("before-thumb track down is admitted"));
+    settle(&mut runtime);
+    assert_eq!(
+        offset(&mut runtime, &owner).1,
+        0.0,
+        "track click before the thumb moves exactly one page backward"
+    );
+    runtime
+        .submit_pointer(pointer(
+            52,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Up,
+            95.0,
+            5.0,
+            advanced.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("before-thumb track up is admitted"));
+    settle(&mut runtime);
+}
+
+#[test]
 fn standard_thumb_capture_is_cleared_on_removal_and_does_not_retarget_after_replacement() {
     let mut runtime = scrollable_vertical_runtime();
     let environment = StyleEnvironment::default();
