@@ -143,7 +143,7 @@ impl ScrollBarLayout {
 /// Structural scroll chrome authored on ordinary public elements.
 ///
 /// Runtime interprets these facts through the same nearest-ancestor scroll
-/// ownership used by ScrollControlBinding. They carry no mounted identity,
+/// ownership used by `ScrollControlBinding`. They carry no mounted identity,
 /// current offset, visibility cache, or renderer state.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]

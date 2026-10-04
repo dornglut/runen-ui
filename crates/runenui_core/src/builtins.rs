@@ -1239,7 +1239,7 @@ impl ScrollBar {
     }
 }
 
-fn scroll_bar_axis_coordinate(point: LogicalPoint, axis: Axis) -> f32 {
+const fn scroll_bar_axis_coordinate(point: LogicalPoint, axis: Axis) -> f32 {
     match axis {
         Axis::Horizontal => point.x(),
         Axis::Vertical => point.y(),
@@ -1293,7 +1293,9 @@ fn scroll_bar_keyboard_request(
         LogicalKey::PageUp if modifiers == crate::KeyModifiers::NONE => {
             Some(ScrollControlRequest::PageBackward)
         }
-        LogicalKey::PageDown if modifiers == crate::KeyModifiers::NONE => {
+        LogicalKey::PageDown | LogicalKey::Space
+            if modifiers == crate::KeyModifiers::NONE =>
+        {
             Some(ScrollControlRequest::PageForward)
         }
         LogicalKey::Home if modifiers == crate::KeyModifiers::NONE => {
@@ -1301,9 +1303,6 @@ fn scroll_bar_keyboard_request(
         }
         LogicalKey::End if modifiers == crate::KeyModifiers::NONE => {
             Some(ScrollControlRequest::ToEnd)
-        }
-        LogicalKey::Space if modifiers == crate::KeyModifiers::NONE => {
-            Some(ScrollControlRequest::PageForward)
         }
         LogicalKey::Space if modifiers == crate::KeyModifiers::SHIFT => {
             Some(ScrollControlRequest::PageBackward)
@@ -1639,7 +1638,7 @@ pub fn scroll_bar(
 
 /// Standard scroll owner that composes content with ordinary public scrollbar views.
 ///
-/// Bars remain ordinary descendants bound through ScrollControlBinding. The
+/// Bars remain ordinary descendants bound through `ScrollControlBinding`. The
 /// optional reserved corner is an ordinary noninteractive styled node. Runtime
 /// derives all visibility, viewport geometry, ownership, and scroll state.
 pub struct ScrollContainer<Action> {
