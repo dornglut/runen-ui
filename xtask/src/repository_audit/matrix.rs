@@ -854,7 +854,7 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 19);
+        assert_eq!(rows.len(), 24);
 
         let baseline_rows = rows
             .iter()
@@ -879,6 +879,10 @@ mod tests {
         let semantic_action_rows = rows
             .iter()
             .filter(|row| row.cells[5] == "M11S2")
+            .collect::<Vec<_>>();
+        let scroll_b_rows = rows
+            .iter()
+            .filter(|row| row.cells[5] == "M11SCROLLB")
             .collect::<Vec<_>>();
 
         assert_eq!(baseline_rows.len(), 5);
@@ -926,11 +930,31 @@ mod tests {
             ) && row.cells[6] == "owner-accepted"
                 && row.cells[7] == "Required"
         }));
+        assert_eq!(scroll_b_rows.len(), 5);
+        assert!(scroll_b_rows.iter().all(|row| {
+            matches!(
+                row.cells[0].as_str(),
+                "M11CTRL-20"
+                    | "M11CTRL-21"
+                    | "M11CTRL-22"
+                    | "M11CTRL-23"
+                    | "M11CTRL-24"
+            ) && row.cells[6] == "implementation-complete"
+                && row.cells[7] == "Required"
+        }));
         assert_eq!(
             rows.iter()
                 .map(|row| row.cells[5].as_str())
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["M11A", "M11B", "M11C", "M11D2", "M11SEM1", "M11S2"])
+            BTreeSet::from([
+                "M11A",
+                "M11B",
+                "M11C",
+                "M11D2",
+                "M11SCROLLB",
+                "M11SEM1",
+                "M11S2",
+            ])
         );
 
         assert!(findings.is_empty(), "{findings:?}");
