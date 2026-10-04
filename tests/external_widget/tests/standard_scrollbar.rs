@@ -206,12 +206,16 @@ fn assert_pointer_down_default_committed_on(
 
 fn assert_pointer_stream_closed(runtime: &AppRuntime<App>, trace_start: usize, pointer_id: u64) {
     assert!(
-        runtime.trace().records().skip(trace_start).any(|record| matches!(
-            record.kind(),
-            TraceRecordKind::PointerStreamClosed {
-                pointer_id: current,
-            } if current.get() == pointer_id
-        )),
+        runtime
+            .trace()
+            .records()
+            .skip(trace_start)
+            .any(|record| matches!(
+                record.kind(),
+                TraceRecordKind::PointerStreamClosed {
+                    pointer_id: current,
+                } if current.get() == pointer_id
+            )),
         "terminal pointer input must close the canonical M4 pointer stream"
     );
 }
