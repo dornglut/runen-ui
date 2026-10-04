@@ -318,9 +318,6 @@ impl ResolvedSurfaceNode {
     pub(super) const fn layout(&self) -> &LayoutStyle {
         self.effective.layout()
     }
-    pub(super) const fn scroll_chrome(&self) -> Option<ScrollChrome> {
-        self.topology.scroll_chrome
-    }
     pub(super) const fn computed_style(&self) -> &ComputedStyle {
         self.effective.computed_style()
     }

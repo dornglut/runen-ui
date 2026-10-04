@@ -373,14 +373,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         physical_target: Option<&MountedNodeId>,
     ) -> Option<MountedNodeId> {
         let Some(gesture) = stream.touch_gesture() else {
-            return if event.phase() == PointerPhase::Cancel {
-                stream
-                    .capture_owner()
-                    .or_else(|| stream.pressed_owner())
-                    .cloned()
-            } else {
-                physical_target.cloned()
-            };
+            return Self::pointer_routed_target(event.phase(), stream, physical_target);
         };
         if gesture.cancelled() {
             return None;

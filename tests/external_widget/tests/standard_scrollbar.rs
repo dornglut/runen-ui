@@ -201,10 +201,13 @@ fn pointer(
     let point =
         LogicalPoint::new(x, y).unwrap_or_else(|_| unreachable!("fixture pointer point is finite"));
     let mut event = PointerEvent::new(pointer_id, device, phase, point, context);
-    if matches!(phase, PointerPhase::Down | PointerPhase::Up) {
+    if device != PointerDeviceKind::Touch && matches!(phase, PointerPhase::Down | PointerPhase::Up)
+    {
         event = event.with_changed_button(PointerButton::Primary);
     }
-    if matches!(phase, PointerPhase::Down | PointerPhase::Move) {
+    if device != PointerDeviceKind::Touch
+        && matches!(phase, PointerPhase::Down | PointerPhase::Move)
+    {
         event = event.with_buttons(PointerButtons::new([PointerButton::Primary]));
     }
     event
@@ -574,7 +577,9 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             25.0,
             touch_context.clone(),
         ))
-        .unwrap_or_else(|_| unreachable!("canonical touch thumb down is admitted"));
+        .unwrap_or_else(|_| {
+            unreachable!("buttonless native-style touch thumb down is admitted")
+        });
     settle(&mut runtime);
     runtime
         .submit_pointer(pointer(

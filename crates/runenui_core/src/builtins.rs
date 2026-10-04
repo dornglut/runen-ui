@@ -7,7 +7,7 @@ use crate::{
     LayoutContainer, LayoutStyle, LogicalKey, LogicalLength, LogicalPoint, LogicalRect,
     LogicalSize, OverflowStyle, PointerButton, PointerCaptureKind, PointerDeviceKind, PointerId,
     PointerPhase, ScrollBarLayout, ScrollBarPlacement, ScrollBarVisibility, ScrollChrome,
-    ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot, ScrollNormalizedValue,
+    ScrollControlBinding, ScrollControlRequest, ScrollNormalizedValue,
     SemanticAction, SemanticCheckedState, SemanticCommand, SemanticCommandEvent,
     SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticNumber,
     SemanticRole, SemanticState, SemanticText, ShortcutBinding, StyleIntent, UiEvent,
