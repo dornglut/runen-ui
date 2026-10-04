@@ -783,7 +783,7 @@ fn scroll_thumb_presentation_offset(
 fn resolve_present_scroll_chrome(
     topology: &SurfaceTopologySnapshot,
     layout: &CachedLayoutFacts,
-    effective: &EffectiveNodeFacts,
+    node_presentation: LogicalTransform,
     scroll: &SurfaceScrollProjection,
     position: usize,
     bounds: LogicalRect,
@@ -812,13 +812,6 @@ fn resolve_present_scroll_chrome(
         .get(owner_position)
         .copied()
         .ok_or(PresentationGeometryError)?;
-    let node_presentation = effective
-        .computed_style()
-        .presentation()
-        .map_or(Ok(LogicalTransform::IDENTITY), |presentation| {
-            presentation.resolve_in_box(bounds.size())
-        })
-        .map_err(|_| PresentationGeometryError)?;
     let (thumb_x, thumb_y) =
         scroll_thumb_presentation_offset(topology, layout, scroll, position, projection)?;
     let placement = LogicalTransform::translation(
@@ -912,12 +905,19 @@ pub(super) fn resolve_presentation(
             .and_then(|parent| positions.get(parent).copied());
         let (ancestor_x, ancestor_y) =
             parent_position.map_or((0.0, 0.0), |parent| child_offsets[parent]);
+        let node_presentation = effective
+            .computed_style()
+            .presentation()
+            .map_or(Ok(LogicalTransform::IDENTITY), |presentation| {
+                presentation.resolve_in_box(bounds.size())
+            })
+            .map_err(|_| PresentationGeometryError)?;
         if let Some(projection) = layout.scroll_chrome[position].filter(|chrome| chrome.present()) {
             let (presentation, child_offset, inherited_clips, inherited_clip_bounds) =
                 resolve_present_scroll_chrome(
                     topology,
                     layout,
-                    effective,
+                    node_presentation,
                     scroll,
                     position,
                     *bounds,
@@ -939,13 +939,6 @@ pub(super) fn resolve_presentation(
         let mut inherited_clip_bounds = parent_position
             .map(|parent| child_clip_bounds[parent].clone())
             .unwrap_or_default();
-        let node_presentation = effective
-            .computed_style()
-            .presentation()
-            .map_or(Ok(LogicalTransform::IDENTITY), |presentation| {
-                presentation.resolve_in_box(bounds.size())
-            })
-            .map_err(|_| PresentationGeometryError)?;
         let placement =
             LogicalTransform::translation(bounds.x() - ancestor_x, bounds.y() - ancestor_y)
                 .map_err(|_| PresentationGeometryError)?;
