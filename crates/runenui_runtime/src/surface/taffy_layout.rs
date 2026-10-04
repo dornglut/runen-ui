@@ -63,7 +63,6 @@ type LayoutResult = (
     Vec<TextLayoutState>,
 );
 
-#[derive(Clone, Copy)]
 struct LayoutPassInputs<'a, Action> {
     resolved_tree: &'a ResolvedSurfaceTree,
     chrome_plan: &'a ScrollChromeLayoutPlan,
@@ -104,18 +103,16 @@ pub(super) fn layout_resolved_surface<Action>(
     let mut result;
     loop {
         let gutters = reserved_gutters(resolved_tree.nodes().len(), chrome_plan, &reserved_present);
-        result = layout_resolved_surface_once(
-            LayoutPassInputs {
-                resolved_tree,
-                chrome_plan,
-                gutters: gutters.as_slice(),
-                mounted_tree,
-                root_constraints,
-                preedits,
-                prior_text_layouts,
-            },
-            text_system,
-        )?;
+        let inputs = LayoutPassInputs {
+            resolved_tree,
+            chrome_plan,
+            gutters: gutters.as_slice(),
+            mounted_tree,
+            root_constraints,
+            preedits,
+            prior_text_layouts,
+        };
+        result = layout_resolved_surface_once(&inputs, text_system)?;
         let mut added = false;
         for (bar_index, bar) in chrome_plan.bars.iter().enumerate() {
             if reserved_present[bar_index]
@@ -144,7 +141,7 @@ pub(super) fn layout_resolved_surface<Action>(
 }
 
 fn layout_resolved_surface_once<Action>(
-    inputs: LayoutPassInputs<'_, Action>,
+    inputs: &LayoutPassInputs<'_, Action>,
     text_system: &mut TextSystem,
 ) -> Result<LayoutCoreResult, TextLayoutError> {
     let root_constraints = inputs.root_constraints;
@@ -472,16 +469,14 @@ struct LayoutKernel<'a, Action> {
 }
 
 impl<'a, Action> LayoutKernel<'a, Action> {
-    fn new(inputs: LayoutPassInputs<'a, Action>, text_system: &'a mut TextSystem) -> Self {
-        let LayoutPassInputs {
-            resolved_tree: resolved,
-            chrome_plan,
-            gutters,
-            mounted_tree: mounted,
-            root_constraints,
-            preedits,
-            prior_text_layouts,
-        } = inputs;
+    fn new(inputs: &LayoutPassInputs<'a, Action>, text_system: &'a mut TextSystem) -> Self {
+        let resolved = inputs.resolved_tree;
+        let chrome_plan = inputs.chrome_plan;
+        let gutters = inputs.gutters;
+        let mounted = inputs.mounted_tree;
+        let root_constraints = inputs.root_constraints;
+        let preedits = inputs.preedits;
+        let prior_text_layouts = inputs.prior_text_layouts;
         let count = resolved.nodes().len();
         let text_layouts = prior_text_layouts
             .filter(|states| states.len() == count)
