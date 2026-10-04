@@ -8,6 +8,27 @@ license.workspace = true
 publish = false
 edition.workspace = true
 rust-version.workspace = true
+autotests = false
+
+[[test]]
+name = "semantic_application"
+path = "tests/suites/semantic_application.rs"
+
+[[test]]
+name = "input_control_editing"
+path = "tests/suites/input_control_editing.rs"
+
+[[test]]
+name = "scene_contracts"
+path = "tests/suites/scene_contracts.rs"
+
+[[test]]
+name = "presentation"
+path = "tests/suites/presentation.rs"
+
+[[test]]
+name = "harness_trace_identity"
+path = "tests/suites/harness_trace_identity.rs"
 
 [dependencies]
 runenui_core = { path = "../../crates/runenui_core", version = "0.1.0" }
