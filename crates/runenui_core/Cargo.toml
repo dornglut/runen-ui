@@ -8,6 +8,19 @@ license.workspace = true
 publish.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+autotests = false
+
+[[test]]
+name = "element_authoring"
+path = "tests/suites/element_authoring.rs"
+
+[[test]]
+name = "input_protocols"
+path = "tests/suites/input_protocols.rs"
+
+[[test]]
+name = "style_resolution"
+path = "tests/suites/style_resolution.rs"
 
 [dependencies]
 
