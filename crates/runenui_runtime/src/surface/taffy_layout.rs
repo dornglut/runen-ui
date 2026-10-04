@@ -63,6 +63,7 @@ type LayoutResult = (
     Vec<TextLayoutState>,
 );
 
+#[derive(Clone, Copy)]
 struct LayoutPassInputs<'a, Action> {
     resolved_tree: &'a ResolvedSurfaceTree,
     chrome_plan: &'a ScrollChromeLayoutPlan,

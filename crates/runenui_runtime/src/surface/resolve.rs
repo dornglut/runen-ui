@@ -809,6 +809,7 @@ struct ScrollChromePresentationContext<'a> {
     scroll: &'a SurfaceScrollProjection,
 }
 
+#[derive(Clone, Copy)]
 struct ScrollChromePresentationInput {
     node_presentation: LogicalTransform,
     position: usize,
