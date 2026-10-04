@@ -38,3 +38,6 @@ expect_used = "warn"
 panic = "warn"
 todo = "warn"
 unimplemented = "warn"
+
+[profile.test]
+debug = "line-tables-only"
