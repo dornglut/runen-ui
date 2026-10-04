@@ -1519,9 +1519,9 @@ impl<Action> Widget<Action> for ScrollBarThumbWidget {
                     return WidgetEventOutput::none();
                 };
                 let Some(geometry) = self
-            .layout
-            .thumb_geometry(snapshot, snapshot.viewport_extent())
-        else {
+                    .layout
+                    .thumb_geometry(snapshot, snapshot.viewport_extent())
+                else {
                     return WidgetEventOutput::none();
                 };
                 if snapshot.maximum_offset().get() == 0.0 || geometry.travel().get() == 0.0 {
@@ -1552,9 +1552,9 @@ impl<Action> Widget<Action> for ScrollBarThumbWidget {
                     return Self::fail_closed_drag(state, context);
                 };
                 let Some(geometry) = self
-            .layout
-            .thumb_geometry(snapshot, snapshot.viewport_extent())
-        else {
+                    .layout
+                    .thumb_geometry(snapshot, snapshot.viewport_extent())
+                else {
                     return Self::fail_closed_drag(state, context);
                 };
                 if geometry.travel().get() == 0.0 || snapshot.maximum_offset().get() == 0.0 {
