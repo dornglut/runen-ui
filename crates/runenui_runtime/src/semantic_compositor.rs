@@ -742,7 +742,7 @@ mod tests {
         __runtime::RuntimeNamespace, Axis, ElementId, Focusability, LogicalPoint, LogicalRect,
         LogicalSize, LogicalTransform, ScrollControlSnapshot, SemanticAction, SemanticBounds,
         SemanticContribution, SemanticItem, SemanticKey, SemanticNodeContribution,
-        SemanticOrientation, SemanticPopupKind, SemanticRange, SemanticReference,
+        SemanticNumber, SemanticOrientation, SemanticPopupKind, SemanticRange, SemanticReference,
         SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
         WidgetActivation,
     };
@@ -902,7 +902,7 @@ mod tests {
         ];
 
         let candidate = compose(&owners, Some(&root), None);
-        assert!(candidate.diagnostics.is_empty());
+        assert_eq!(candidate.diagnostics, Vec::new());
         assert_eq!(candidate.roots, vec![control_primary.clone()]);
         assert_eq!(
             candidate.nodes[0].children,
@@ -969,7 +969,7 @@ mod tests {
 
         let candidate = compose(&owners, Some(&owner), Some(&owner));
         assert!(candidate.roots.is_empty());
-        assert!(candidate.nodes.is_empty());
+        assert_eq!(candidate.nodes, Vec::new());
         assert!(candidate.focused.is_none());
         assert_eq!(
             candidate.diagnostics,
@@ -1406,9 +1406,9 @@ mod tests {
             .range
             .as_ref()
             .unwrap_or_else(|| unreachable!("runtime publishes scrollbar range"));
-        assert_eq!(range.minimum().map(|value| value.get()), Some(0.0));
-        assert_eq!(range.maximum().map(|value| value.get()), Some(100.0));
-        assert_eq!(range.current().map(|value| value.get()), Some(25.0));
+        assert_eq!(range.minimum().map(SemanticNumber::get), Some(0.0));
+        assert_eq!(range.maximum().map(SemanticNumber::get), Some(100.0));
+        assert_eq!(range.current().map(SemanticNumber::get), Some(25.0));
         assert_eq!(
             scrollbar.supported_actions,
             vec![
@@ -1483,8 +1483,9 @@ mod tests {
             .find(|node| node.id == scrollbar_id)
             .unwrap_or_else(|| unreachable!("zero-range scrollbar remains published"));
 
-        assert!(
-            scrollbar.supported_actions.is_empty(),
+        assert_eq!(
+            scrollbar.supported_actions,
+            Vec::new(),
             "authored mutable-range actions cannot recreate action authority when the runtime-derived scroll range is zero"
         );
     }
@@ -1542,13 +1543,13 @@ mod tests {
             .iter()
             .find(|node| node.id == scrollbar_id)
             .unwrap_or_else(|| unreachable!("Always scrollbar semantics remain representable"));
-        assert!(scrollbar.supported_actions.is_empty());
+        assert_eq!(scrollbar.supported_actions, Vec::new());
         assert_eq!(
             scrollbar
                 .range
                 .as_ref()
                 .and_then(SemanticRange::current)
-                .map(|value| value.get()),
+                .map(SemanticNumber::get),
             Some(0.0)
         );
     }
@@ -1641,7 +1642,7 @@ mod tests {
             .iter()
             .find(|node| node.id == scrollbar_id)
             .unwrap_or_else(|| unreachable!("bound scrollbar semantics remain published"));
-        assert!(scrollbar.relationships.is_empty());
+        assert_eq!(scrollbar.relationships, Vec::new());
         assert!(scrollbar.range.is_some());
         assert_eq!(
             candidate.diagnostics,
