@@ -253,6 +253,50 @@ fn downstream_widget_uses_public_pointer_capture_boundary_and_wheel_protocol() {
     );
 }
 
+fn assert_singular_capture_geometry(
+    runtime: &mut AppRuntime<App>,
+    build: &SurfaceBuildContext<'_>,
+    observations: &Rc<RefCell<Vec<Observation>>>,
+    outside_old_hit: LogicalPoint,
+) {
+    observations.borrow_mut().clear();
+    runtime
+        .submit_action(Action::MakePresentationSingular)
+        .unwrap_or_else(|_| unreachable!("singular presentation enters the FIFO"));
+    settle(runtime);
+    let singular = runtime
+        .publish_surface(build)
+        .unwrap_or_else(|_| unreachable!("singular pointer fixture republishes"));
+    runtime
+        .submit_pointer(pointer_event(
+            11,
+            PointerPhase::Move,
+            outside_old_hit,
+            singular.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("captured singular-context move is admitted"));
+    settle(runtime);
+    assert!(observations.borrow().iter().any(|observation| matches!(
+        observation,
+        Observation::Pointer {
+            phase: PointerPhase::Move,
+            callback_phase: EventPhase::Target,
+            local_position: None,
+            ..
+        }
+    )));
+
+    runtime
+        .submit_pointer(pointer_event(
+            11,
+            PointerPhase::Up,
+            outside_old_hit,
+            singular.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("captured pointer up is admitted"));
+    settle(runtime);
+}
+
 #[test]
 fn pointer_local_position_uses_retained_capture_geometry_and_rejects_singular_transform() {
     let observations = Rc::new(RefCell::new(Vec::new()));
@@ -334,40 +378,5 @@ fn pointer_local_position_uses_retained_capture_geometry_and_rejects_singular_tr
         );
     }
 
-    observations.borrow_mut().clear();
-    runtime
-        .submit_action(Action::MakePresentationSingular)
-        .unwrap_or_else(|_| unreachable!("singular presentation enters the FIFO"));
-    settle(&mut runtime);
-    let singular = runtime
-        .publish_surface(&build)
-        .unwrap_or_else(|_| unreachable!("singular pointer fixture republishes"));
-    runtime
-        .submit_pointer(pointer_event(
-            11,
-            PointerPhase::Move,
-            outside_old_hit,
-            singular.input_context().clone(),
-        ))
-        .unwrap_or_else(|_| unreachable!("captured singular-context move is admitted"));
-    settle(&mut runtime);
-    assert!(observations.borrow().iter().any(|observation| matches!(
-        observation,
-        Observation::Pointer {
-            phase: PointerPhase::Move,
-            callback_phase: EventPhase::Target,
-            local_position: None,
-            ..
-        }
-    )));
-
-    runtime
-        .submit_pointer(pointer_event(
-            11,
-            PointerPhase::Up,
-            outside_old_hit,
-            singular.input_context().clone(),
-        ))
-        .unwrap_or_else(|_| unreachable!("captured pointer up is admitted"));
-    settle(&mut runtime);
+    assert_singular_capture_geometry(&mut runtime, &build, &observations, outside_old_hit);
 }

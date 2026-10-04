@@ -139,7 +139,7 @@ fn settle(runtime: &mut AppRuntime<App>) {
     );
 }
 
-fn build<'a>(environment: &'a StyleEnvironment) -> SurfaceBuildContext<'a> {
+fn build(environment: &StyleEnvironment) -> SurfaceBuildContext<'_> {
     SurfaceBuildContext::tight(
         environment,
         LogicalSize::try_new(100.0, 100.0)
@@ -188,7 +188,7 @@ fn current_scrollbar_semantic_target(
     (semantics.surface_id().clone(), scrollbar.id().clone())
 }
 
-fn keyboard(
+const fn keyboard(
     logical: runenui_core::LogicalKey,
     physical: PhysicalKey,
     modifiers: KeyModifiers,
@@ -260,25 +260,7 @@ fn pump_one(runtime: &mut AppRuntime<App>) {
     );
 }
 
-#[test]
-fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() {
-    let mut runtime = scrollable_vertical_runtime();
-    let environment = StyleEnvironment::default();
-    runtime
-        .publish_surface(&build(&environment))
-        .unwrap_or_else(|_| unreachable!("standard scrollbar fixture publishes"));
-    let owner = node_id(&mut runtime, "standard.container");
-    let bar = node_id(&mut runtime, "standard.vertical");
-
-    runtime
-        .submit_command(
-            bar,
-            SemanticCommand::RequestFocus,
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("scrollbar focus request is accepted"));
-    settle(&mut runtime);
-
+fn assert_vertical_scrollbar_keyboard(runtime: &mut AppRuntime<App>, owner: &MountedNodeId) {
     for (logical, physical, modifiers, expected_y) in [
         (
             runenui_core::LogicalKey::ArrowDown,
@@ -314,8 +296,8 @@ fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() 
         runtime
             .submit_keyboard(keyboard(logical, physical, modifiers))
             .unwrap_or_else(|_| unreachable!("owned scrollbar key is accepted"));
-        settle(&mut runtime);
-        assert_eq!(offset(&mut runtime, &owner).1, expected_y);
+        settle(runtime);
+        assert_eq!(offset(runtime, owner).1, expected_y);
     }
 
     runtime
@@ -325,11 +307,17 @@ fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() 
             KeyModifiers::SHIFT,
         ))
         .unwrap_or_else(|_| unreachable!("unowned modified key is still valid ingress"));
-    settle(&mut runtime);
-    assert_eq!(offset(&mut runtime, &owner).1, 0.0);
+    settle(runtime);
+    assert_eq!(offset(runtime, owner).1, 0.0);
+}
 
+fn assert_vertical_scrollbar_accessibility(
+    runtime: &mut AppRuntime<App>,
+    environment: &StyleEnvironment,
+    owner: &MountedNodeId,
+) {
     let semantic_publication = runtime
-        .publish_surface(&build(&environment))
+        .publish_surface(&build(environment))
         .unwrap_or_else(|_| unreachable!("current scrollbar semantics republish"));
     let semantics = semantic_publication.semantic_publication().snapshot();
     let scrollbar = semantics
@@ -353,16 +341,16 @@ fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() 
 
     runtime
         .submit_semantic_action(SemanticActionRequest::new(
-            surface.clone(),
-            semantic_id.clone(),
+            surface,
+            semantic_id,
             SemanticAction::Increment,
         ))
         .unwrap_or_else(|_| unreachable!("current scrollbar increment is published"));
-    settle(&mut runtime);
-    assert_eq!(offset(&mut runtime, &owner).1, 5.0);
+    settle(runtime);
+    assert_eq!(offset(runtime, owner).1, 5.0);
 
     let (surface, semantic_id) =
-        current_scrollbar_semantic_target(&mut runtime, &environment, "Vertical scroll");
+        current_scrollbar_semantic_target(runtime, environment, "Vertical scroll");
     runtime
         .submit_semantic_action(SemanticActionRequest::set_value(
             surface,
@@ -370,11 +358,11 @@ fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() 
             number(50.0),
         ))
         .unwrap_or_else(|_| unreachable!("scrollbar set-value is published"));
-    settle(&mut runtime);
-    assert_eq!(offset(&mut runtime, &owner).1, 50.0);
+    settle(runtime);
+    assert_eq!(offset(runtime, owner).1, 50.0);
 
     let (surface, semantic_id) =
-        current_scrollbar_semantic_target(&mut runtime, &environment, "Vertical scroll");
+        current_scrollbar_semantic_target(runtime, environment, "Vertical scroll");
     runtime
         .submit_semantic_action(SemanticActionRequest::new(
             surface,
@@ -382,8 +370,31 @@ fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() 
             SemanticAction::Decrement,
         ))
         .unwrap_or_else(|_| unreachable!("scrollbar decrement is published"));
+    settle(runtime);
+    assert_eq!(offset(runtime, owner).1, 45.0);
+}
+
+#[test]
+fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() {
+    let mut runtime = scrollable_vertical_runtime();
+    let environment = StyleEnvironment::default();
+    runtime
+        .publish_surface(&build(&environment))
+        .unwrap_or_else(|_| unreachable!("standard scrollbar fixture publishes"));
+    let owner = node_id(&mut runtime, "standard.container");
+    let bar = node_id(&mut runtime, "standard.vertical");
+
+    runtime
+        .submit_command(
+            bar,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("scrollbar focus request is accepted"));
     settle(&mut runtime);
-    assert_eq!(offset(&mut runtime, &owner).1, 45.0);
+
+    assert_vertical_scrollbar_keyboard(&mut runtime, &owner);
+    assert_vertical_scrollbar_accessibility(&mut runtime, &environment, &owner);
 }
 
 #[test]
@@ -473,16 +484,31 @@ fn standard_horizontal_scrollbar_owns_horizontal_arrows_and_pages_along_its_axis
     assert_eq!(offset(&mut runtime, &owner).0, 0.0);
 }
 
-#[test]
-fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_mouse_and_touch() {
-    let mut runtime = scrollable_vertical_runtime();
-    let environment = StyleEnvironment::default();
-    let first = runtime
-        .publish_surface(&build(&environment))
-        .unwrap_or_else(|_| unreachable!("standard pointer fixture publishes"));
-    let owner = node_id(&mut runtime, "standard.container");
-    let bar = node_id(&mut runtime, "standard.vertical");
+fn reset_vertical_scrollbar(
+    runtime: &mut AppRuntime<App>,
+    bar: &MountedNodeId,
+    owner: &MountedNodeId,
+) {
+    runtime
+        .submit_command(
+            bar.clone(),
+            SemanticCommand::ScrollControl(ScrollControlRequest::ToStart),
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("standard bar accepts canonical reset request"));
+    settle(runtime);
+    assert_eq!(offset(runtime, owner).1, 0.0);
+}
 
+fn assert_mouse_scrollbar_track_and_thumb(
+    runtime: &mut AppRuntime<App>,
+    environment: &StyleEnvironment,
+    owner: &MountedNodeId,
+    bar: &MountedNodeId,
+) {
+    let first = runtime
+        .publish_surface(&build(environment))
+        .unwrap_or_else(|_| unreachable!("standard pointer fixture publishes"));
     let first_context = first.input_context().clone();
     runtime
         .submit_pointer(pointer(
@@ -494,8 +520,8 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             first_context.clone(),
         ))
         .unwrap_or_else(|_| unreachable!("track pointer down is admitted"));
-    settle(&mut runtime);
-    assert_eq!(offset(&mut runtime, &owner).1, 100.0);
+    settle(runtime);
+    assert_eq!(offset(runtime, owner).1, 100.0);
     runtime
         .submit_pointer(pointer(
             11,
@@ -506,20 +532,11 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             first_context,
         ))
         .unwrap_or_else(|_| unreachable!("track pointer up is admitted"));
-    settle(&mut runtime);
+    settle(runtime);
 
-    runtime
-        .submit_command(
-            bar.clone(),
-            SemanticCommand::ScrollControl(ScrollControlRequest::ToStart),
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("standard bar accepts canonical reset request"));
-    settle(&mut runtime);
-    assert_eq!(offset(&mut runtime, &owner).1, 0.0);
-
+    reset_vertical_scrollbar(runtime, bar, owner);
     let drag_start = runtime
-        .publish_surface(&build(&environment))
+        .publish_surface(&build(environment))
         .unwrap_or_else(|_| unreachable!("reset thumb geometry republishes"));
     let drag_context = drag_start.input_context().clone();
     runtime
@@ -532,7 +549,7 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             drag_context.clone(),
         ))
         .unwrap_or_else(|_| unreachable!("thumb mouse down is admitted"));
-    settle(&mut runtime);
+    settle(runtime);
     runtime
         .submit_pointer(pointer(
             12,
@@ -543,11 +560,11 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             drag_context,
         ))
         .unwrap_or_else(|_| unreachable!("captured thumb move is admitted"));
-    settle(&mut runtime);
-    assert_eq!(offset(&mut runtime, &owner).1, 50.0);
+    settle(runtime);
+    assert_eq!(offset(runtime, owner).1, 50.0);
 
     let moved = runtime
-        .publish_surface(&build(&environment))
+        .publish_surface(&build(environment))
         .unwrap_or_else(|_| unreachable!("mid-drag geometry republishes"));
     let moved_context = moved.input_context().clone();
     runtime
@@ -560,8 +577,8 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             moved_context.clone(),
         ))
         .unwrap_or_else(|_| unreachable!("captured move uses current thumb geometry"));
-    settle(&mut runtime);
-    assert_eq!(offset(&mut runtime, &owner).1, 100.0);
+    settle(runtime);
+    assert_eq!(offset(runtime, owner).1, 100.0);
     runtime
         .submit_pointer(pointer(
             12,
@@ -572,18 +589,18 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             moved_context,
         ))
         .unwrap_or_else(|_| unreachable!("captured mouse up is admitted"));
-    settle(&mut runtime);
+    settle(runtime);
+}
 
-    runtime
-        .submit_command(
-            bar,
-            SemanticCommand::ScrollControl(ScrollControlRequest::ToStart),
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("standard bar resets before touch proof"));
-    settle(&mut runtime);
+fn assert_touch_scrollbar_thumb(
+    runtime: &mut AppRuntime<App>,
+    environment: &StyleEnvironment,
+    owner: &MountedNodeId,
+    bar: &MountedNodeId,
+) {
+    reset_vertical_scrollbar(runtime, bar, owner);
     let touch_surface = runtime
-        .publish_surface(&build(&environment))
+        .publish_surface(&build(environment))
         .unwrap_or_else(|_| unreachable!("touch thumb geometry republishes"));
     let touch_context = touch_surface.input_context().clone();
     runtime
@@ -596,7 +613,7 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             touch_context.clone(),
         ))
         .unwrap_or_else(|_| unreachable!("canonical touch thumb down is admitted"));
-    settle(&mut runtime);
+    settle(runtime);
     runtime
         .submit_pointer(pointer(
             14,
@@ -607,8 +624,8 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             touch_context.clone(),
         ))
         .unwrap_or_else(|_| unreachable!("captured touch move is admitted"));
-    settle(&mut runtime);
-    assert_eq!(offset(&mut runtime, &owner).1, 50.0);
+    settle(runtime);
+    assert_eq!(offset(runtime, owner).1, 50.0);
     runtime
         .submit_pointer(pointer(
             14,
@@ -619,7 +636,18 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             touch_context,
         ))
         .unwrap_or_else(|_| unreachable!("touch cancel is admitted"));
-    settle(&mut runtime);
+    settle(runtime);
+}
+
+#[test]
+fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_mouse_and_touch() {
+    let mut runtime = scrollable_vertical_runtime();
+    let environment = StyleEnvironment::default();
+    let owner = node_id(&mut runtime, "standard.container");
+    let bar = node_id(&mut runtime, "standard.vertical");
+
+    assert_mouse_scrollbar_track_and_thumb(&mut runtime, &environment, &owner, &bar);
+    assert_touch_scrollbar_thumb(&mut runtime, &environment, &owner, &bar);
 }
 
 #[test]
@@ -824,13 +852,14 @@ fn standard_scrollbar_revalidates_current_metrics_before_semantic_scroll_and_set
         .clone();
     let semantic_id = scrollbar.id().clone();
 
-    let out_of_range = runtime
-        .submit_semantic_action(SemanticActionRequest::set_value(
-            surface.clone(),
-            semantic_id.clone(),
-            number(101.0),
-        ))
-        .expect_err("out-of-range scrollbar SetValue must reject");
+    let out_of_range = runtime.submit_semantic_action(SemanticActionRequest::set_value(
+        surface.clone(),
+        semantic_id.clone(),
+        number(101.0),
+    ));
+    let Err(out_of_range) = out_of_range else {
+        unreachable!("out-of-range scrollbar SetValue must reject");
+    };
     assert_eq!(
         out_of_range.kind(),
         SubmitSemanticActionErrorKind::UnavailableAction
