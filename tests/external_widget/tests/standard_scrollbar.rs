@@ -171,6 +171,28 @@ fn offset(runtime: &mut AppRuntime<App>, owner: &MountedNodeId) -> (f32, f32) {
         .scroll_offset()
 }
 
+fn only_child_id(runtime: &mut AppRuntime<App>, parent: &MountedNodeId) -> MountedNodeId {
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.parent() == Some(parent))
+        .unwrap_or_else(|| unreachable!("standard scrollbar has one mounted thumb child"))
+        .id()
+        .clone()
+}
+
+fn pressed(runtime: &mut AppRuntime<App>, target: &MountedNodeId) -> bool {
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.id() == target)
+        .unwrap_or_else(|| unreachable!("interaction target remains mounted"))
+        .interaction()
+        .pressed()
+}
+
 fn current_scrollbar_semantic_target(
     runtime: &mut AppRuntime<App>,
     environment: &StyleEnvironment,
@@ -539,6 +561,7 @@ fn assert_mouse_scrollbar_track_and_thumb(
         .publish_surface(&build(environment))
         .unwrap_or_else(|_| unreachable!("reset thumb geometry republishes"));
     let drag_context = drag_start.input_context().clone();
+    let thumb = only_child_id(runtime, bar);
     runtime
         .submit_pointer(pointer(
             12,
@@ -550,6 +573,10 @@ fn assert_mouse_scrollbar_track_and_thumb(
         ))
         .unwrap_or_else(|_| unreachable!("thumb mouse down is admitted"));
     settle(runtime);
+    assert!(
+        pressed(runtime, &thumb),
+        "thumb Down retains canonical M4 pressed interaction state while exact capture owns drag"
+    );
     runtime
         .submit_pointer(pointer(
             12,
@@ -590,6 +617,10 @@ fn assert_mouse_scrollbar_track_and_thumb(
         ))
         .unwrap_or_else(|_| unreachable!("captured mouse up is admitted"));
     settle(runtime);
+    assert!(
+        !pressed(runtime, &thumb),
+        "primary Up clears the canonical pressed interaction state"
+    );
 }
 
 fn assert_touch_scrollbar_thumb(
@@ -603,6 +634,7 @@ fn assert_touch_scrollbar_thumb(
         .publish_surface(&build(environment))
         .unwrap_or_else(|_| unreachable!("touch thumb geometry republishes"));
     let touch_context = touch_surface.input_context().clone();
+    let thumb = only_child_id(runtime, bar);
     runtime
         .submit_pointer(pointer(
             14,
@@ -614,6 +646,10 @@ fn assert_touch_scrollbar_thumb(
         ))
         .unwrap_or_else(|_| unreachable!("canonical touch thumb down is admitted"));
     settle(runtime);
+    assert!(
+        pressed(runtime, &thumb),
+        "touch capture retains the exact thumb's canonical pressed interaction state"
+    );
     runtime
         .submit_pointer(pointer(
             14,
@@ -637,6 +673,10 @@ fn assert_touch_scrollbar_thumb(
         ))
         .unwrap_or_else(|_| unreachable!("touch cancel is admitted"));
     settle(runtime);
+    assert!(
+        !pressed(runtime, &thumb),
+        "touch cancellation clears the canonical pressed interaction state"
+    );
 }
 
 #[test]

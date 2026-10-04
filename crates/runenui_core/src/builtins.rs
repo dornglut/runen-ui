@@ -1529,7 +1529,6 @@ impl<Action> Widget<Action> for ScrollBarThumbWidget {
                     grab_offset: coordinate.clamp(0.0, geometry.thumb_extent().get()),
                 });
                 context.capture_pointer();
-                context.prevent_default();
                 context.stop_propagation();
                 WidgetEventOutput::changed()
             }
