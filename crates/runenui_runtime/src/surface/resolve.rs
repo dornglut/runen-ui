@@ -1642,13 +1642,7 @@ pub(super) fn resolve_hit_test(
 ) -> ResolvedHitTest {
     #[cfg(test)]
     super::cache::note_hit_test_phase_execution();
-    let membership = topology
-        .nodes
-        .iter()
-        .enumerate()
-        .filter(|(position, _)| scroll_chrome_participates(topology, layout, *position))
-        .map(|(_, node)| node.id.clone())
-        .collect();
+    let membership = topology.nodes.iter().map(|node| node.id.clone()).collect();
     let mut diagnostics = empty_scene_diagnostics(topology);
     let mut ordered = Vec::new();
     for (mounted_preorder, node) in topology.nodes.iter().enumerate() {

@@ -552,12 +552,18 @@ impl Widget<()> for ChromeTrack {
         )])
     }
 
-    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+    fn semantics(
+        &self,
+        (): &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
         *self.semantic_callbacks.borrow_mut() += 1;
-        SemanticContribution::single(
-            SemanticNodeContribution::primary(SemanticRole::ScrollBar)
-                .with_action(SemanticAction::RequestFocus),
-        )
+        let mut node = SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+            .with_action(SemanticAction::RequestFocus);
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
+        SemanticContribution::single(node)
     }
 }
 
@@ -937,8 +943,18 @@ fn downstream_scroll_chrome_visibility_and_overlay_share_one_participation_autho
         let track = chrome_node_id(&mut runtime, "chrome.track");
         let thumb = chrome_node_id(&mut runtime, "chrome.thumb");
 
-        assert!(!publication.hit_test_scene().contains_mounted_target(&track));
-        assert!(!publication.hit_test_scene().contains_mounted_target(&thumb));
+        assert!(publication.hit_test_scene().contains_mounted_target(&track));
+        assert!(publication.hit_test_scene().contains_mounted_target(&thumb));
+        for point in [
+            LogicalPoint::new(95.0, 25.0)
+                .unwrap_or_else(|_| unreachable!("chrome hit sample is finite")),
+            LogicalPoint::new(95.0, 75.0)
+                .unwrap_or_else(|_| unreachable!("chrome hit sample is finite")),
+        ] {
+            let target = publication.hit_test_scene().target_at(point);
+            assert_ne!(target, Some(&track));
+            assert_ne!(target, Some(&thumb));
+        }
         assert!(publication.paint_scene().items().iter().all(|item| {
             !matches!(item_color(item), Some(color) if color == TRACK_COLOR || color == THUMB_COLOR)
         }));

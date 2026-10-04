@@ -790,17 +790,9 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
             return Err("surface cache node identity is not topology-aligned");
         }
     }
-    let expected_membership = cache
-        .topology
-        .nodes
-        .iter()
-        .enumerate()
-        .filter(|(position, _)| {
-            scroll_chrome_participates(&cache.topology, &cache.layout, *position)
-        })
-        .map(|(_, node)| &node.id);
+    let expected_membership = cache.topology.nodes.iter().map(|node| &node.id);
     if cache.hit_test.membership().iter().ne(expected_membership) {
-        return Err("surface hit membership is not aligned with participating topology");
+        return Err("surface hit membership is not aligned with mounted topology");
     }
     Ok(())
 }

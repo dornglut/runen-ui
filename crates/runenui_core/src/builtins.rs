@@ -1447,12 +1447,18 @@ impl<Action> Widget<Action> for ScrollBarWidget {
         HitContribution::single_rect(local_rect(context.local_size()))
     }
 
-    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
-        SemanticContribution::single(
-            SemanticNodeContribution::primary(SemanticRole::ScrollBar)
-                .with_name(self.label.clone())
-                .with_action(SemanticAction::RequestFocus),
-        )
+    fn semantics(
+        &self,
+        (): &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let mut node = SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+            .with_name(self.label.clone())
+            .with_action(SemanticAction::RequestFocus);
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
+        SemanticContribution::single(node)
     }
 }
 
