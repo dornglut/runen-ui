@@ -171,6 +171,23 @@ fn offset(runtime: &mut AppRuntime<App>, owner: &MountedNodeId) -> (f32, f32) {
         .scroll_offset()
 }
 
+fn current_scrollbar_semantic_target(
+    runtime: &mut AppRuntime<App>,
+    environment: &StyleEnvironment,
+    label: &str,
+) -> (runenui_core::SurfaceId, runenui_core::SemanticNodeId) {
+    let publication = runtime
+        .publish_surface(&build(environment))
+        .unwrap_or_else(|_| unreachable!("current scrollbar semantics republish"));
+    let semantics = publication.semantic_publication().snapshot();
+    let scrollbar = semantics
+        .nodes()
+        .iter()
+        .find(|node| node.name() == Some(label))
+        .unwrap_or_else(|| unreachable!("current scrollbar semantic node is published"));
+    (semantics.surface_id().clone(), scrollbar.id().clone())
+}
+
 fn keyboard(
     logical: runenui_core::LogicalKey,
     physical: PhysicalKey,
@@ -344,16 +361,20 @@ fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() 
     settle(&mut runtime);
     assert_eq!(offset(&mut runtime, &owner).1, 5.0);
 
+    let (surface, semantic_id) =
+        current_scrollbar_semantic_target(&mut runtime, &environment, "Vertical scroll");
     runtime
         .submit_semantic_action(SemanticActionRequest::set_value(
-            surface.clone(),
-            semantic_id.clone(),
+            surface,
+            semantic_id,
             number(50.0),
         ))
         .unwrap_or_else(|_| unreachable!("scrollbar set-value is published"));
     settle(&mut runtime);
     assert_eq!(offset(&mut runtime, &owner).1, 50.0);
 
+    let (surface, semantic_id) =
+        current_scrollbar_semantic_target(&mut runtime, &environment, "Vertical scroll");
     runtime
         .submit_semantic_action(SemanticActionRequest::new(
             surface,
