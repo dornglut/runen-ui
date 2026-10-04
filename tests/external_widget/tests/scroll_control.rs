@@ -295,6 +295,14 @@ fn assert_downstream_scrollbar_semantics(
     )
 }
 
+fn assert_initial_scroll_snapshot(initial: ScrollControlSnapshot) {
+    assert_eq!(initial.axis(), Axis::Vertical);
+    assert_eq!(initial.offset().get(), 0.0);
+    assert_eq!(initial.maximum_offset().get(), 30.0);
+    assert_eq!(initial.viewport_extent().get(), 30.0);
+    assert_eq!(initial.content_extent().get(), 60.0);
+}
+
 #[test]
 fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_request_contracts() {
     let observed = Rc::new(RefCell::new(Vec::new()));
@@ -333,11 +341,7 @@ fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_reques
         .borrow()
         .last()
         .unwrap_or_else(|| unreachable!("downstream paint observed scroll snapshot"));
-    assert_eq!(initial.axis(), Axis::Vertical);
-    assert_eq!(initial.offset().get(), 0.0);
-    assert_eq!(initial.maximum_offset().get(), 30.0);
-    assert_eq!(initial.viewport_extent().get(), 30.0);
-    assert_eq!(initial.content_extent().get(), 60.0);
+    assert_initial_scroll_snapshot(initial);
 
     let (semantic_surface, scrollbar_semantic) =
         assert_downstream_scrollbar_semantics(&mut runtime, &publication, &control);
