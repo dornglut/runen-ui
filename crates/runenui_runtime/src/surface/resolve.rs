@@ -781,11 +781,20 @@ fn scroll_thumb_presentation_offset(
     let offset = scroll.offset(&owner.id);
     let (offset, viewport_extent, content_extent, track_extent) = match axis {
         Axis::Horizontal => (offset.0, viewport.width(), content.width(), track.width()),
-        Axis::Vertical => (offset.1, viewport.height(), content.height(), track.height()),
+        Axis::Vertical => (
+            offset.1,
+            viewport.height(),
+            content.height(),
+            track.height(),
+        ),
     };
-    let snapshot =
-        ScrollControlSnapshot::__runtime_from_metrics(axis, offset, viewport_extent, content_extent)
-            .ok_or(PresentationGeometryError)?;
+    let snapshot = ScrollControlSnapshot::__runtime_from_metrics(
+        axis,
+        offset,
+        viewport_extent,
+        content_extent,
+    )
+    .ok_or(PresentationGeometryError)?;
     let geometry = bar_layout
         .thumb_geometry(
             snapshot,
