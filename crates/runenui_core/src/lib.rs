@@ -280,9 +280,9 @@ pub use application::{
 pub use application_command::{ApplicationCommand, ApplicationCommandDisposition};
 pub use builtins::{
     Button, Checkbox, CommandBinding, CommandScope, Container, RadioButton, RadioGroup, ScrollBar,
-    ScrollViewport, ShortcutScope, Switch, Text, button, checkbox, column, command_binding,
-    command_scope, container, radio_button, radio_group, row, scroll_bar, scroll_viewport,
-    shortcut_scope, switch, text,
+    ScrollContainer, ScrollViewport, ShortcutScope, Switch, Text, button, checkbox, column,
+    command_binding, command_scope, container, radio_button, radio_group, row, scroll_bar,
+    scroll_container, scroll_viewport, shortcut_scope, switch, text,
 };
 pub use computed_style::ComputedStyle;
 pub use editing::{

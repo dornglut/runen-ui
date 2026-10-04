@@ -1648,6 +1648,133 @@ pub fn scroll_bar(
     ScrollBar::new(label, binding, thickness, minimum_thumb_extent)
 }
 
+/// Standard scroll owner that composes content with ordinary public scrollbar views.
+///
+/// Bars remain ordinary descendants bound through ScrollControlBinding. The
+/// optional reserved corner is an ordinary noninteractive styled node. Runtime
+/// derives all visibility, viewport geometry, ownership, and scroll state.
+pub struct ScrollContainer<Action> {
+    content: Element<Action>,
+    scroll_bars: Vec<ScrollBar>,
+    corner_style: StyleIntent,
+    common: CommonNodeAuthoring,
+}
+
+impl<Action> fmt::Debug for ScrollContainer<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ScrollContainer")
+            .field("content", &self.content)
+            .field("scroll_bars", &self.scroll_bars)
+            .field("corner_style", &self.corner_style)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("layout", &self.common.layout)
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
+            .field("diagnostics", &self.common.diagnostics)
+            .finish()
+    }
+}
+
+impl<Action> ScrollContainer<Action> {
+    #[must_use]
+    pub fn new(content: impl View<Action>, overflow: OverflowStyle) -> Self {
+        Self {
+            content: content.into_element(),
+            scroll_bars: Vec::new(),
+            corner_style: StyleIntent::EMPTY,
+            common: CommonNodeAuthoring {
+                layout: LayoutStyle::default().with_overflow(overflow),
+                ..CommonNodeAuthoring::default()
+            },
+        }
+    }
+
+    common_node_builder_methods!();
+
+    /// Appends one standard bar. Axis ownership is taken from the bar's public
+    /// binding; duplicate same-axis bars remain explicit authored structure and
+    /// are rejected by the generic runtime chrome validation rather than being
+    /// silently overwritten here.
+    #[must_use]
+    pub fn scroll_bar(mut self, scroll_bar: ScrollBar) -> Self {
+        self.scroll_bars.push(scroll_bar);
+        self
+    }
+
+    /// Replaces the ordinary authored style used by the reserved two-axis corner.
+    #[must_use]
+    pub fn corner_style(mut self, style: StyleIntent) -> Self {
+        self.corner_style = style;
+        self
+    }
+}
+
+#[derive(Debug)]
+struct ScrollCornerWidget;
+
+impl<Action> Widget<Action> for ScrollCornerWidget {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+}
+
+impl<Action: 'static> View<Action> for ScrollContainer<Action> {
+    fn into_element(self) -> Element<Action> {
+        let has_horizontal = self
+            .scroll_bars
+            .iter()
+            .any(|bar| bar.binding().axis() == Axis::Horizontal);
+        let has_vertical = self
+            .scroll_bars
+            .iter()
+            .any(|bar| bar.binding().axis() == Axis::Vertical);
+
+        let mut children = Vec::with_capacity(
+            1 + self.scroll_bars.len() + usize::from(has_horizontal && has_vertical),
+        );
+        children.push(self.content);
+        children.extend(self.scroll_bars.into_iter().map(View::into_element));
+
+        if has_horizontal && has_vertical {
+            let corner_common = CommonNodeAuthoring {
+                style: self.corner_style,
+                ..CommonNodeAuthoring::default()
+            };
+            let (corner_fields, corner_diagnostics) =
+                corner_common.into_authored_fields(Focusability::NotFocusable, None);
+            children.push(
+                Element::from_authored_parts(
+                    corner_fields,
+                    Box::new(WidgetAdapter(ScrollCornerWidget)),
+                    Vec::new(),
+                    corner_diagnostics,
+                )
+                .scroll_chrome(ScrollChrome::Corner),
+            );
+        }
+
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(Focusability::Automatic, None);
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(ScrollViewportWidget)),
+            children,
+            diagnostics,
+        )
+    }
+}
+
+#[must_use]
+pub fn scroll_container<Action>(
+    content: impl View<Action>,
+    overflow: OverflowStyle,
+) -> ScrollContainer<Action> {
+    ScrollContainer::new(content, overflow)
+}
+
 pub struct ScrollViewport<Action> {
     content: Element<Action>,
     common: CommonNodeAuthoring,
