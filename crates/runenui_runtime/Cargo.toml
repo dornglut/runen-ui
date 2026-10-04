@@ -8,6 +8,51 @@ license.workspace = true
 publish.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+autotests = false
+
+[[test]]
+name = "application_command"
+path = "tests/suites/application_command.rs"
+
+[[test]]
+name = "focus_keyboard_input"
+path = "tests/suites/focus_keyboard_input.rs"
+
+[[test]]
+name = "pointer"
+path = "tests/suites/pointer.rs"
+
+[[test]]
+name = "motion"
+path = "tests/suites/motion.rs"
+
+[[test]]
+name = "presentation_style"
+path = "tests/suites/presentation_style.rs"
+
+[[test]]
+name = "m10_semantic_integrity"
+path = "tests/suites/m10_semantic_integrity.rs"
+
+[[test]]
+name = "trace"
+path = "tests/suites/trace.rs"
+
+[[test]]
+name = "surface_constraints"
+path = "tests/suites/surface_constraints.rs"
+
+[[test]]
+name = "scheduling_work"
+path = "tests/suites/scheduling_work.rs"
+
+[[test]]
+name = "lifecycle_identity"
+path = "tests/suites/lifecycle_identity.rs"
+
+[[test]]
+name = "surface_context"
+path = "tests/surface_context.rs"
 
 [dependencies]
 runenui_core = { path = "../runenui_core", version = "0.1.0" }
