@@ -430,6 +430,7 @@ pub(super) struct ScrollChromeLayoutPlan {
     pub(super) bars: Vec<ResolvedScrollBarChrome>,
     pub(super) thumbs: Vec<ResolvedScrollThumbChrome>,
     pub(super) corners: Vec<ResolvedScrollCornerChrome>,
+    pub(super) diagnostics: Vec<Vec<WidgetDiagnostic>>,
 }
 
 const fn axis_key(axis: Axis) -> u8 {
@@ -447,6 +448,7 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
         .iter()
         .map(|node| node.scroll_chrome.is_some())
         .collect::<Vec<_>>();
+    let mut diagnostics = vec![Vec::new(); topology.nodes.len()];
 
     let mut bar_candidates = Vec::new();
     let mut owner_axis_counts = HashMap::<(usize, u8), usize>::new();
@@ -456,6 +458,10 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
         };
         let Some((_, owner_position)) = resolve_scroll_owner(topology, &node.id, layout.axis())?
         else {
+            diagnostics[position].push(WidgetDiagnostic::new(
+                "runenui.scroll-chrome.missing-owner",
+                "scrollbar bar has no eligible ancestor scroll owner for its axis",
+            ));
             continue;
         };
         *owner_axis_counts
@@ -470,10 +476,17 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
     let bars = bar_candidates
         .into_iter()
         .filter(|bar| {
-            owner_axis_counts
+            let unique = owner_axis_counts
                 .get(&(bar.owner_position, axis_key(bar.layout.axis())))
                 .copied()
-                == Some(1)
+                == Some(1);
+            if !unique {
+                diagnostics[bar.position].push(WidgetDiagnostic::new(
+                    "runenui.scroll-chrome.duplicate-bar",
+                    "multiple scrollbar bars target the same scroll owner axis; all are withheld",
+                ));
+            }
+            unique
         })
         .collect::<Vec<_>>();
 
@@ -494,12 +507,18 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
     for (position, node) in topology.nodes.iter().enumerate() {
         match node.scroll_chrome {
             Some(ScrollChrome::Thumb(axis)) => {
-                if let Some((_, owner_position)) = resolve_scroll_owner(topology, &node.id, axis)? {
-                    *thumb_counts
-                        .entry((owner_position, axis_key(axis)))
-                        .or_default() += 1;
-                    thumb_candidates.push((position, owner_position, axis));
-                }
+                let Some((_, owner_position)) = resolve_scroll_owner(topology, &node.id, axis)?
+                else {
+                    diagnostics[position].push(WidgetDiagnostic::new(
+                        "runenui.scroll-chrome.missing-owner",
+                        "scrollbar thumb has no eligible ancestor scroll owner for its axis",
+                    ));
+                    continue;
+                };
+                *thumb_counts
+                    .entry((owner_position, axis_key(axis)))
+                    .or_default() += 1;
+                thumb_candidates.push((position, owner_position, axis));
             }
             Some(ScrollChrome::Corner) => {
                 let horizontal = resolve_scroll_owner(topology, &node.id, Axis::Horizontal)?;
@@ -510,6 +529,11 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
                 {
                     *corner_counts.entry(owner_position).or_default() += 1;
                     corner_candidates.push((position, owner_position));
+                } else {
+                    diagnostics[position].push(WidgetDiagnostic::new(
+                        "runenui.scroll-chrome.invalid-corner-owner",
+                        "scrollbar corner must resolve both axes to the same scroll owner",
+                    ));
                 }
             }
             Some(ScrollChrome::Bar(_)) | None => {}
@@ -521,28 +545,52 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
         .into_iter()
         .filter_map(|(position, owner_position, axis)| {
             let key = (owner_position, axis_key(axis));
-            (thumb_counts.get(&key).copied() == Some(1))
-                .then(|| bar_positions.get(&key).copied())
-                .flatten()
-                .map(|bar_position| ResolvedScrollThumbChrome {
-                    position,
-                    owner_position,
-                    axis,
-                    bar_position,
-                })
+            if thumb_counts.get(&key).copied() != Some(1) {
+                diagnostics[position].push(WidgetDiagnostic::new(
+                    "runenui.scroll-chrome.duplicate-thumb",
+                    "multiple scrollbar thumbs target the same scroll owner axis; all are withheld",
+                ));
+                return None;
+            }
+            let Some(bar_position) = bar_positions.get(&key).copied() else {
+                diagnostics[position].push(WidgetDiagnostic::new(
+                    "runenui.scroll-chrome.missing-bar",
+                    "scrollbar thumb has no unique scrollbar bar for its scroll owner axis",
+                ));
+                return None;
+            };
+            Some(ResolvedScrollThumbChrome {
+                position,
+                owner_position,
+                axis,
+                bar_position,
+            })
         })
         .collect();
 
     let corners = corner_candidates
         .into_iter()
-        .filter(|(_, owner_position)| {
-            corner_counts.get(owner_position).copied() == Some(1)
-                && bar_positions.contains_key(&(*owner_position, axis_key(Axis::Horizontal)))
-                && bar_positions.contains_key(&(*owner_position, axis_key(Axis::Vertical)))
-        })
-        .map(|(position, owner_position)| ResolvedScrollCornerChrome {
-            position,
-            owner_position,
+        .filter_map(|(position, owner_position)| {
+            if corner_counts.get(&owner_position).copied() != Some(1) {
+                diagnostics[position].push(WidgetDiagnostic::new(
+                    "runenui.scroll-chrome.duplicate-corner",
+                    "multiple scrollbar corners target the same scroll owner; all are withheld",
+                ));
+                return None;
+            }
+            if !bar_positions.contains_key(&(owner_position, axis_key(Axis::Horizontal)))
+                || !bar_positions.contains_key(&(owner_position, axis_key(Axis::Vertical)))
+            {
+                diagnostics[position].push(WidgetDiagnostic::new(
+                    "runenui.scroll-chrome.missing-corner-bars",
+                    "scrollbar corner requires unique horizontal and vertical bars for its owner",
+                ));
+                return None;
+            }
+            Some(ResolvedScrollCornerChrome {
+                position,
+                owner_position,
+            })
         })
         .collect();
 
@@ -551,6 +599,7 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
         bars,
         thumbs,
         corners,
+        diagnostics,
     })
 }
 

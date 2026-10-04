@@ -742,6 +742,124 @@ fn chrome_state(
     }
 }
 
+struct DuplicateChromeApp;
+
+impl UiApp for DuplicateChromeApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &Self::State) -> Element<Self::Action> {
+        let binding = ScrollControlBinding::new(Axis::Vertical, length(10.0))
+            .unwrap_or_else(|_| unreachable!("duplicate chrome binding is valid"));
+        let layout = ScrollBarLayout::new(Axis::Vertical, length(10.0), length(20.0))
+            .with_visibility(ScrollBarVisibility::Always)
+            .with_placement(ScrollBarPlacement::Reserved);
+        let track = |id: &'static str| {
+            Element::new(ChromeTrack {
+                semantic_callbacks: Rc::new(RefCell::new(0)),
+            })
+            .id(id)
+            .key(id)
+            .with_focusability(Focusability::Focusable)
+            .scroll_control(binding)
+            .scroll_chrome(ScrollChrome::Bar(layout))
+        };
+        let content = Element::new(ChromeContent {
+            height: length(200.0),
+        })
+        .with_layout(
+            LayoutStyle::default()
+                .with_width(dimension(80.0))
+                .with_height(dimension(200.0)),
+        );
+
+        container(
+            ChromeViewport,
+            children![
+                content,
+                track("chrome.duplicate-a"),
+                track("chrome.duplicate-b")
+            ],
+        )
+        .with_layout(
+            LayoutStyle::default()
+                .with_container(LayoutContainer::Block)
+                .with_width(dimension(100.0))
+                .with_height(dimension(100.0))
+                .with_overflow(OverflowStyle::new(
+                    OverflowPolicy::Clip,
+                    OverflowPolicy::Scroll,
+                )),
+        )
+        .into_element()
+    }
+
+    fn update((): &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn duplicate_scroll_chrome_is_rejected_and_diagnosed_without_losing_mounted_identity() {
+    let mut runtime = AppRuntime::<DuplicateChromeApp>::mount(());
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let environment = StyleEnvironment::default();
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &environment,
+            LogicalSize::try_new(100.0, 100.0)
+                .unwrap_or_else(|_| unreachable!("duplicate chrome surface is finite")),
+        ))
+        .unwrap_or_else(|error| panic!("duplicate chrome surface publishes: {error:?}"));
+    let expected = runenui_core::WidgetDiagnostic::new(
+        "runenui.scroll-chrome.duplicate-bar",
+        "multiple scrollbar bars target the same scroll owner axis; all are withheld",
+    );
+
+    for authored in ["chrome.duplicate-a", "chrome.duplicate-b"] {
+        let authored_id = runenui_core::ElementId::new(authored)
+            .unwrap_or_else(|_| unreachable!("duplicate chrome authored ID is valid"));
+        let mounted = runtime
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored_id))
+            .unwrap_or_else(|| unreachable!("duplicate chrome remains mounted"))
+            .id()
+            .clone();
+        let layout = publication
+            .layout_report()
+            .nodes()
+            .iter()
+            .find(|node| node.id() == &mounted)
+            .unwrap_or_else(|| unreachable!("duplicate chrome layout node is retained"));
+
+        assert!(layout.diagnostics().contains(&expected));
+        assert!(publication.hit_test_scene().contains_mounted_target(&mounted));
+        assert!(
+            runtime
+                .index()
+                .node(&mounted)
+                .is_some_and(|node| !node.is_focusable())
+        );
+    }
+    assert!(
+        publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .all(|node| node.role() != SemanticRole::ScrollBar)
+    );
+    assert!(publication.paint_scene().items().iter().all(|item| {
+        !matches!(item_color(item), Some(color) if color == TRACK_COLOR)
+    }));
+}
+
 fn item_color(item: &runenui_runtime::PaintSceneItem) -> Option<Color> {
     match item.primitive() {
         PaintPrimitive::Fill {

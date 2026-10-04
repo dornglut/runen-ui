@@ -7,8 +7,8 @@
 use std::collections::BTreeMap;
 
 use runenui_core::{
-    InputDeviceId, LogicalDelta, LogicalPoint, PointerDeviceKind, PointerEvent, PointerId,
-    PointerPhase, SurfaceInputContext,
+    InputDeviceId, LogicalDelta, LogicalPoint, PointerButton, PointerButtons, PointerDeviceKind,
+    PointerEvent, PointerId, PointerPhase, SurfaceInputContext,
 };
 use winit::event::TouchPhase;
 
@@ -173,7 +173,7 @@ fn pointer_event(
     movement: LogicalDelta,
     input_context: SurfaceInputContext,
 ) -> PointerEvent {
-    PointerEvent::new(
+    let event = PointerEvent::new(
         pointer_id,
         PointerDeviceKind::Touch,
         phase,
@@ -181,12 +181,23 @@ fn pointer_event(
         input_context,
     )
     .with_device_id(device_id)
-    .with_movement_delta(movement)
+    .with_movement_delta(movement);
+    match phase {
+        PointerPhase::Down => event
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        PointerPhase::Move => event.with_buttons(PointerButtons::new([PointerButton::Primary])),
+        PointerPhase::Up => event.with_changed_button(PointerButton::Primary),
+        PointerPhase::Cancel => event,
+        _ => event,
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{LogicalPoint, NoHostProtocol, StyleEnvironment, UiApp, text};
+    use runenui_core::{
+        LogicalPoint, NoHostProtocol, PointerButton, StyleEnvironment, UiApp, text,
+    };
     use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 
     use super::{TouchIngressDiagnostic, TouchInputState};
@@ -259,6 +270,10 @@ mod tests {
 
         assert_eq!(down.device_kind(), runenui_core::PointerDeviceKind::Touch);
         assert_eq!(down.phase(), runenui_core::PointerPhase::Down);
+        assert_eq!(down.changed_button(), Some(PointerButton::Primary));
+        assert!(down.buttons().iter().eq([PointerButton::Primary]));
+        assert_eq!(moved.changed_button(), None);
+        assert!(moved.buttons().iter().eq([PointerButton::Primary]));
         assert_eq!(
             down.pointer_id().get() % 2,
             0,

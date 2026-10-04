@@ -451,7 +451,8 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         let text_layouts = prior_text_layouts
             .filter(|states| states.len() == count)
             .map_or_else(|| vec![TextLayoutState::new(); count], ToOwned::to_owned);
-        let mut diagnostics = vec![Vec::new(); count];
+        let mut diagnostics = chrome_plan.diagnostics.clone();
+        debug_assert_eq!(diagnostics.len(), count);
         for (index, node) in resolved.nodes().iter().enumerate() {
             if !matches!(
                 node.layout().container(),
