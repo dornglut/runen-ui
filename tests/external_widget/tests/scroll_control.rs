@@ -552,11 +552,7 @@ impl Widget<()> for ChromeTrack {
         )])
     }
 
-    fn semantics(
-        &self,
-        (): &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         *self.semantic_callbacks.borrow_mut() += 1;
         SemanticContribution::single(
             SemanticNodeContribution::primary(SemanticRole::ScrollBar)
@@ -608,11 +604,7 @@ impl Widget<()> for ChromeThumb {
         )])
     }
 
-    fn semantics(
-        &self,
-        (): &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         *self.semantic_callbacks.borrow_mut() += 1;
         SemanticContribution::empty()
     }
@@ -807,8 +799,24 @@ fn downstream_reserved_scroll_chrome_is_viewport_attached_and_thumb_moves_in_pre
         .node(&thumb)
         .unwrap_or_else(|| unreachable!("thumb layout is published"))
         .bounds();
-    assert_eq!((track_bounds.x(), track_bounds.y(), track_bounds.width(), track_bounds.height()), (90.0, 0.0, 10.0, 100.0));
-    assert_eq!((thumb_bounds.x(), thumb_bounds.y(), thumb_bounds.width(), thumb_bounds.height()), (90.0, 0.0, 10.0, 50.0));
+    assert_eq!(
+        (
+            track_bounds.x(),
+            track_bounds.y(),
+            track_bounds.width(),
+            track_bounds.height()
+        ),
+        (90.0, 0.0, 10.0, 100.0)
+    );
+    assert_eq!(
+        (
+            thumb_bounds.x(),
+            thumb_bounds.y(),
+            thumb_bounds.width(),
+            thumb_bounds.height()
+        ),
+        (90.0, 0.0, 10.0, 50.0)
+    );
 
     assert!(initial.hit_test_scene().contains_mounted_target(&track));
     assert!(initial.hit_test_scene().contains_mounted_target(&thumb));
@@ -826,7 +834,10 @@ fn downstream_reserved_scroll_chrome_is_viewport_attached_and_thumb_moves_in_pre
         ),
         Some(&track)
     );
-    assert_eq!(translated_origin(colored_item(&initial, THUMB_COLOR)).y(), 0.0);
+    assert_eq!(
+        translated_origin(colored_item(&initial, THUMB_COLOR)).y(),
+        0.0
+    );
     assert!(*track_callbacks.borrow() > 0);
     assert!(*thumb_callbacks.borrow() > 0);
     assert_eq!(
@@ -860,7 +871,10 @@ fn downstream_reserved_scroll_chrome_is_viewport_attached_and_thumb_moves_in_pre
         .unwrap_or_else(|| unreachable!("thumb remains laid out"))
         .bounds();
     assert_eq!(scrolled_thumb_bounds, thumb_bounds);
-    assert_eq!(translated_origin(colored_item(&scrolled, THUMB_COLOR)).y(), 50.0);
+    assert_eq!(
+        translated_origin(colored_item(&scrolled, THUMB_COLOR)).y(),
+        50.0
+    );
     assert_eq!(
         scrolled.hit_test_scene().target_at(
             LogicalPoint::new(95.0, 75.0)
@@ -958,7 +972,11 @@ fn downstream_scroll_chrome_visibility_and_overlay_share_one_participation_autho
     ));
     let zero_publication = chrome_publish(&mut zero_range);
     let track = chrome_node_id(&mut zero_range, "chrome.track");
-    assert!(zero_publication.hit_test_scene().contains_mounted_target(&track));
+    assert!(
+        zero_publication
+            .hit_test_scene()
+            .contains_mounted_target(&track)
+    );
     assert!(
         zero_range
             .index()
@@ -981,4 +999,3 @@ fn downstream_scroll_chrome_visibility_and_overlay_share_one_participation_autho
         Some(0.0)
     );
 }
-
