@@ -79,9 +79,7 @@ impl UiApp for App {
                     .with_height(dimension(100.0))
                     .with_overflow(overflow),
             )
-            .corner_style(
-                StyleIntent::EMPTY.with_background(Color::rgba(30, 40, 50, 255)),
-            );
+            .corner_style(StyleIntent::EMPTY.with_background(Color::rgba(30, 40, 50, 255)));
 
         if state.vertical {
             let binding = ScrollControlBinding::new(Axis::Vertical, length(5.0))
@@ -158,7 +156,11 @@ fn offset(runtime: &mut AppRuntime<App>, owner: &MountedNodeId) -> (f32, f32) {
         .scroll_offset()
 }
 
-fn keyboard(logical: runenui_core::LogicalKey, physical: PhysicalKey, modifiers: KeyModifiers) -> KeyboardEvent {
+fn keyboard(
+    logical: runenui_core::LogicalKey,
+    physical: PhysicalKey,
+    modifiers: KeyModifiers,
+) -> KeyboardEvent {
     KeyboardEvent::new(
         KeyboardPhase::Down,
         physical,
@@ -179,16 +181,17 @@ fn pointer(
     y: f32,
     context: runenui_core::SurfaceInputContext,
 ) -> PointerEvent {
-    let pointer_id = PointerId::new(id)
-        .unwrap_or_else(|| unreachable!("fixture pointer identity is non-zero"));
-    let point = LogicalPoint::new(x, y)
-        .unwrap_or_else(|_| unreachable!("fixture pointer point is finite"));
+    let pointer_id =
+        PointerId::new(id).unwrap_or_else(|| unreachable!("fixture pointer identity is non-zero"));
+    let point =
+        LogicalPoint::new(x, y).unwrap_or_else(|_| unreachable!("fixture pointer point is finite"));
     let mut event = PointerEvent::new(pointer_id, device, phase, point, context);
     if device != PointerDeviceKind::Touch && matches!(phase, PointerPhase::Down | PointerPhase::Up)
     {
         event = event.with_changed_button(PointerButton::Primary);
     }
-    if device != PointerDeviceKind::Touch && matches!(phase, PointerPhase::Down | PointerPhase::Move)
+    if device != PointerDeviceKind::Touch
+        && matches!(phase, PointerPhase::Down | PointerPhase::Move)
     {
         event = event.with_buttons(PointerButtons::new([PointerButton::Primary]));
     }
@@ -438,7 +441,9 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             25.0,
             touch_context.clone(),
         ))
-        .unwrap_or_else(|_| unreachable!("touch thumb down is admitted without mouse button facts"));
+        .unwrap_or_else(|_| {
+            unreachable!("touch thumb down is admitted without mouse button facts")
+        });
     settle(&mut runtime);
     runtime
         .submit_pointer(pointer(
@@ -466,7 +471,8 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
 }
 
 #[test]
-fn standard_scroll_container_keeps_zero_range_bar_nonfocusable_and_composes_noninteractive_corner() {
+fn standard_scroll_container_keeps_zero_range_bar_nonfocusable_and_composes_noninteractive_corner()
+{
     let mut zero = AppRuntime::<App>::mount(State {
         content_width: 80.0,
         content_height: 100.0,
@@ -492,8 +498,16 @@ fn standard_scroll_container_keeps_zero_range_bar_nonfocusable_and_composes_noni
         .find(|node| node.name() == Some("Vertical scroll"))
         .unwrap_or_else(|| unreachable!("Always zero-range bar remains semantic"));
     assert_eq!(zero_bar.role(), SemanticRole::ScrollBar);
-    assert!(!zero_bar.supported_actions().contains(&SemanticAction::RequestFocus));
-    assert!(!zero_bar.supported_actions().contains(&SemanticAction::Increment));
+    assert!(
+        !zero_bar
+            .supported_actions()
+            .contains(&SemanticAction::RequestFocus)
+    );
+    assert!(
+        !zero_bar
+            .supported_actions()
+            .contains(&SemanticAction::Increment)
+    );
 
     let mut both = AppRuntime::<App>::mount(State {
         content_width: 200.0,
@@ -512,8 +526,8 @@ fn standard_scroll_container_keeps_zero_range_bar_nonfocusable_and_composes_noni
         7,
         "root + content + two tracks + two thumbs + one corner"
     );
-    let corner = LogicalPoint::new(95.0, 95.0)
-        .unwrap_or_else(|_| unreachable!("corner probe is finite"));
+    let corner =
+        LogicalPoint::new(95.0, 95.0).unwrap_or_else(|_| unreachable!("corner probe is finite"));
     assert_eq!(
         both_publication.hit_test_scene().target_at(corner),
         Some(&root),
