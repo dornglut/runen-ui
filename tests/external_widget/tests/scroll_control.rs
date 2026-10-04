@@ -746,7 +746,7 @@ struct DuplicateChromeApp;
 
 impl UiApp for DuplicateChromeApp {
     type State = ();
-    type Action = ();
+    type Action = ChromeAction;
     type HostProtocol = NoHostProtocol;
 
     fn root((): &Self::State) -> Element<Self::Action> {
@@ -795,7 +795,7 @@ impl UiApp for DuplicateChromeApp {
         .into_element()
     }
 
-    fn update((): &mut Self::State, (): Self::Action) {}
+    fn update((): &mut Self::State, _: Self::Action) {}
 }
 
 #[test]

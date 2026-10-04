@@ -264,7 +264,7 @@ fn pump_one(runtime: &mut AppRuntime<App>) {
 fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() {
     let mut runtime = scrollable_vertical_runtime();
     let environment = StyleEnvironment::default();
-    let publication = runtime
+    runtime
         .publish_surface(&build(&environment))
         .unwrap_or_else(|_| unreachable!("standard scrollbar fixture publishes"));
     let owner = node_id(&mut runtime, "standard.container");
