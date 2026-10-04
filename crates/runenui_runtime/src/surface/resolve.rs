@@ -745,7 +745,6 @@ fn scroll_thumb_presentation_offset(
     topology: &SurfaceTopologySnapshot,
     layout: &CachedLayoutFacts,
     scroll: &SurfaceScrollProjection,
-    position: usize,
     projection: CachedScrollChromeProjection,
 ) -> Result<(f32, f32), PresentationGeometryError> {
     let CachedScrollChromeKind::Thumb {
@@ -770,33 +769,30 @@ fn scroll_thumb_presentation_offset(
         .bounds
         .get(track_position)
         .ok_or(PresentationGeometryError)?;
-    let thumb = layout
-        .bounds
-        .get(position)
+    let bar_layout = topology
+        .nodes
+        .get(track_position)
+        .and_then(|node| node.scroll_chrome)
+        .and_then(ScrollChrome::bar_layout)
+        .filter(|bar_layout| bar_layout.axis() == axis)
         .ok_or(PresentationGeometryError)?;
     let viewport = owner_layout.scroll_viewport_extent();
     let content = owner_layout.scrollable_extent();
-    let (travel, maximum, offset) = match axis {
-        Axis::Horizontal => (
-            (track.width() - thumb.width()).max(0.0),
-            (content.width() - viewport.width()).max(0.0),
-            scroll.offset(&owner.id).0,
-        ),
-        Axis::Vertical => (
-            (track.height() - thumb.height()).max(0.0),
-            (content.height() - viewport.height()).max(0.0),
-            scroll.offset(&owner.id).1,
-        ),
+    let offset = scroll.offset(&owner.id);
+    let (offset, viewport_extent, content_extent, track_extent) = match axis {
+        Axis::Horizontal => (offset.0, viewport.width(), content.width(), track.width()),
+        Axis::Vertical => (offset.1, viewport.height(), content.height(), track.height()),
     };
-    let normalized = if maximum > 0.0 {
-        (offset / maximum).clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
-    let shift = travel * normalized;
-    if !shift.is_finite() {
-        return Err(PresentationGeometryError);
-    }
+    let snapshot =
+        ScrollControlSnapshot::__runtime_from_metrics(axis, offset, viewport_extent, content_extent)
+            .ok_or(PresentationGeometryError)?;
+    let geometry = bar_layout
+        .thumb_geometry(
+            snapshot,
+            LogicalLength::new(track_extent).map_err(|_| PresentationGeometryError)?,
+        )
+        .ok_or(PresentationGeometryError)?;
+    let shift = geometry.thumb_origin().get();
     Ok(match axis {
         Axis::Horizontal => (shift, 0.0),
         Axis::Vertical => (0.0, shift),
@@ -848,7 +844,6 @@ fn resolve_present_scroll_chrome(
         context.topology,
         context.layout,
         context.scroll,
-        input.position,
         input.projection,
     )?;
     let placement = LogicalTransform::translation(
