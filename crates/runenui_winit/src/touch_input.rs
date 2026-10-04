@@ -287,6 +287,29 @@ mod tests {
         assert_eq!(cancel[0].phase(), runenui_core::PointerPhase::Cancel);
         assert_eq!(cancel[0].pointer_id(), down.pointer_id());
         assert_eq!(cancel[0].surface_context(), &context);
+
+        touch
+            .transition(
+                device,
+                43,
+                TouchPhase::Started,
+                point(2.0, 3.0),
+                context.clone(),
+            )
+            .unwrap_or_else(|_| unreachable!("second contact starts"));
+        let ended = touch
+            .transition(
+                device,
+                43,
+                TouchPhase::Ended,
+                point(5.0, 7.0),
+                context,
+            )
+            .unwrap_or_else(|_| unreachable!("active contact ends"));
+        assert_eq!(ended.phase(), runenui_core::PointerPhase::Up);
+        assert_eq!(ended.changed_button(), Some(PointerButton::Primary));
+        assert!(ended.buttons().is_empty());
+        assert_eq!(touch.active_contact_count(), 0);
     }
 
     #[test]
