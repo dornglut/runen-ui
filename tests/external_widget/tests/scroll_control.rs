@@ -885,6 +885,32 @@ fn downstream_reserved_scroll_chrome_is_viewport_attached_and_thumb_moves_in_pre
 }
 
 #[test]
+fn downstream_scroll_chrome_clamps_thumb_to_authored_minimum_extent() {
+    let mut runtime = AppRuntime::<ChromeApp>::mount(chrome_state(
+        1_000.0,
+        ScrollBarVisibility::Automatic,
+        ScrollBarPlacement::Reserved,
+        false,
+    ));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let publication = chrome_publish(&mut runtime);
+    let thumb = chrome_node_id(&mut runtime, "chrome.thumb");
+    let thumb_bounds = publication
+        .frame()
+        .node(&thumb)
+        .unwrap_or_else(|| unreachable!("minimum-clamped thumb is laid out"))
+        .bounds();
+
+    assert_eq!(thumb_bounds.height(), 20.0);
+    assert_eq!(thumb_bounds.width(), 10.0);
+}
+
+#[test]
 fn downstream_scroll_chrome_visibility_and_overlay_share_one_participation_authority() {
     for visibility in [ScrollBarVisibility::Hidden, ScrollBarVisibility::Automatic] {
         let content_height = if visibility == ScrollBarVisibility::Hidden {

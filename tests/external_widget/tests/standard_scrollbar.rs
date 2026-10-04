@@ -710,6 +710,43 @@ fn standard_thumb_drag_recomputes_current_geometry_after_content_extent_changes(
 }
 
 #[test]
+fn automatic_reserved_bars_reach_the_two_axis_fixed_point_when_one_bar_causes_the_other() {
+    let mut runtime = AppRuntime::<App>::mount(State {
+        content_width: 95.0,
+        content_height: 110.0,
+        horizontal: true,
+        vertical: true,
+        always: false,
+    });
+    settle(&mut runtime);
+    let environment = StyleEnvironment::default();
+    let publication = runtime
+        .publish_surface(&build(&environment))
+        .unwrap_or_else(|_| unreachable!("automatic two-axis fixture publishes"));
+    let owner = node_id(&mut runtime, "standard.container");
+    let layout = publication
+        .layout_report()
+        .nodes()
+        .iter()
+        .find(|node| node.id() == &owner)
+        .unwrap_or_else(|| unreachable!("scroll owner layout is published"));
+
+    assert_eq!(layout.scroll_viewport_extent().width(), 90.0);
+    assert_eq!(layout.scroll_viewport_extent().height(), 90.0);
+    assert_eq!(
+        publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .filter(|node| node.role() == SemanticRole::ScrollBar)
+            .count(),
+        2,
+        "vertical overflow introduces the reserved width loss that makes the automatic horizontal bar necessary"
+    );
+}
+
+#[test]
 fn standard_scroll_container_keeps_zero_range_bar_nonfocusable_and_composes_noninteractive_corner()
 {
     let mut zero = AppRuntime::<App>::mount(State {
