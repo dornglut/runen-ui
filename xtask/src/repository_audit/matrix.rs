@@ -856,34 +856,18 @@ mod tests {
         assert_eq!(parse_schema_errors, 0);
         assert_eq!(rows.len(), 24);
 
-        let baseline_rows = rows
-            .iter()
-            .filter(|row| row.cells[5] == "M11A")
-            .collect::<Vec<_>>();
-        let semantic_rows = rows
-            .iter()
-            .filter(|row| row.cells[5] == "M11B")
-            .collect::<Vec<_>>();
-        let binary_control_rows = rows
-            .iter()
-            .filter(|row| row.cells[5] == "M11C")
-            .collect::<Vec<_>>();
-        let radio_rows = rows
-            .iter()
-            .filter(|row| row.cells[5] == "M11D2")
-            .collect::<Vec<_>>();
-        let extended_semantic_rows = rows
-            .iter()
-            .filter(|row| row.cells[5] == "M11SEM1")
-            .collect::<Vec<_>>();
-        let semantic_action_rows = rows
-            .iter()
-            .filter(|row| row.cells[5] == "M11S2")
-            .collect::<Vec<_>>();
-        let scroll_b_rows = rows
-            .iter()
-            .filter(|row| row.cells[5] == "M11SCROLLB")
-            .collect::<Vec<_>>();
+        let rows_for = |slice: &str| {
+            rows.iter()
+                .filter(|row| row.cells[5] == slice)
+                .collect::<Vec<_>>()
+        };
+        let baseline_rows = rows_for("M11A");
+        let semantic_rows = rows_for("M11B");
+        let binary_control_rows = rows_for("M11C");
+        let radio_rows = rows_for("M11D2");
+        let extended_semantic_rows = rows_for("M11SEM1");
+        let semantic_action_rows = rows_for("M11S2");
+        let scroll_b_rows = rows_for("M11SCROLLB");
 
         assert_eq!(baseline_rows.len(), 5);
         assert!(baseline_rows.iter().all(|row| {
