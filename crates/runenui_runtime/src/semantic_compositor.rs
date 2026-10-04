@@ -741,8 +741,8 @@ mod tests {
     use runenui_core::{
         __runtime::RuntimeNamespace, Axis, ElementId, Focusability, LogicalPoint, LogicalRect,
         LogicalSize, LogicalTransform, ScrollControlSnapshot, SemanticAction, SemanticBounds,
-        SemanticContribution, SemanticItem, SemanticKey, SemanticNodeContribution,
-        SemanticNumber, SemanticOrientation, SemanticPopupKind, SemanticRange, SemanticReference,
+        SemanticContribution, SemanticItem, SemanticKey, SemanticNodeContribution, SemanticNumber,
+        SemanticOrientation, SemanticPopupKind, SemanticRange, SemanticReference,
         SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
         WidgetActivation,
     };
