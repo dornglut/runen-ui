@@ -201,13 +201,10 @@ fn pointer(
     let point =
         LogicalPoint::new(x, y).unwrap_or_else(|_| unreachable!("fixture pointer point is finite"));
     let mut event = PointerEvent::new(pointer_id, device, phase, point, context);
-    if device != PointerDeviceKind::Touch && matches!(phase, PointerPhase::Down | PointerPhase::Up)
-    {
+    if matches!(phase, PointerPhase::Down | PointerPhase::Up) {
         event = event.with_changed_button(PointerButton::Primary);
     }
-    if device != PointerDeviceKind::Touch
-        && matches!(phase, PointerPhase::Down | PointerPhase::Move)
-    {
+    if matches!(phase, PointerPhase::Down | PointerPhase::Move) {
         event = event.with_buttons(PointerButtons::new([PointerButton::Primary]));
     }
     event
@@ -314,7 +311,10 @@ fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() 
     settle(&mut runtime);
     assert_eq!(offset(&mut runtime, &owner).1, 0.0);
 
-    let semantics = publication.semantic_publication().snapshot();
+    let semantic_publication = runtime
+        .publish_surface(&build(&environment))
+        .unwrap_or_else(|_| unreachable!("current scrollbar semantics republish"));
+    let semantics = semantic_publication.semantic_publication().snapshot();
     let scrollbar = semantics
         .nodes()
         .iter()
@@ -323,6 +323,16 @@ fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() 
     let surface = semantics.surface_id().clone();
     let semantic_id = scrollbar.id().clone();
     assert_eq!(scrollbar.role(), SemanticRole::ScrollBar);
+    for action in [
+        SemanticAction::Increment,
+        SemanticAction::Decrement,
+        SemanticAction::SetValue,
+    ] {
+        assert!(
+            scrollbar.supported_actions().contains(&action),
+            "current scrollable scrollbar publishes {action:?}"
+        );
+    }
 
     runtime
         .submit_semantic_action(SemanticActionRequest::new(
@@ -330,7 +340,7 @@ fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() 
             semantic_id.clone(),
             SemanticAction::Increment,
         ))
-        .unwrap_or_else(|_| unreachable!("scrollbar increment is published"));
+        .unwrap_or_else(|_| unreachable!("current scrollbar increment is published"));
     settle(&mut runtime);
     assert_eq!(offset(&mut runtime, &owner).1, 5.0);
 
@@ -565,7 +575,7 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             touch_context.clone(),
         ))
         .unwrap_or_else(|_| {
-            unreachable!("touch thumb down is admitted without mouse button facts")
+            unreachable!("canonical touch thumb down is admitted")
         });
     settle(&mut runtime);
     runtime
