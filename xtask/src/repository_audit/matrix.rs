@@ -25,7 +25,15 @@ const M7_DELIVERY_SLICES: &[&str] = &["M7A", "M7B", "M7C", "M7D"];
 const M8_DELIVERY_SLICES: &[&str] = &["M8A", "M8B", "M8C", "M8D"];
 const M9_DELIVERY_SLICES: &[&str] = &["M9A", "M9B", "M9C"];
 const M10_DELIVERY_SLICES: &[&str] = &["M10B", "M10C", "M10D", "M10E", "M10F"];
-const M11_DELIVERY_SLICES: &[&str] = &["M11A", "M11B", "M11C", "M11D2", "M11SEM1", "M11S2"];
+const M11_DELIVERY_SLICES: &[&str] = &[
+    "M11A",
+    "M11B",
+    "M11C",
+    "M11D2",
+    "M11SEM1",
+    "M11S2",
+    "M11SCROLLB",
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum GatePolicy {
