@@ -458,13 +458,9 @@ mod tests {
 
     #[test]
     fn thumb_geometry_is_shared_checked_and_track_relative() {
-        let snapshot = ScrollControlSnapshot::__runtime_from_metrics(
-            Axis::Vertical,
-            50.0,
-            100.0,
-            200.0,
-        )
-        .unwrap_or_else(|| unreachable!("fixture scroll metrics are valid"));
+        let snapshot =
+            ScrollControlSnapshot::__runtime_from_metrics(Axis::Vertical, 50.0, 100.0, 200.0)
+                .unwrap_or_else(|| unreachable!("fixture scroll metrics are valid"));
         let layout = ScrollBarLayout::new(
             Axis::Vertical,
             LogicalLength::from(10_u8),

@@ -1399,7 +1399,10 @@ impl<Action> Widget<Action> for ScrollBarWidget {
         if snapshot.maximum_offset().get() == 0.0 {
             return WidgetEventOutput::none();
         }
-        let Some(geometry) = self.layout.thumb_geometry(snapshot, snapshot.viewport_extent()) else {
+        let Some(geometry) = self
+            .layout
+            .thumb_geometry(snapshot, snapshot.viewport_extent())
+        else {
             return WidgetEventOutput::none();
         };
         let coordinate = scroll_bar_axis_coordinate(local, self.layout.axis());
@@ -1515,7 +1518,10 @@ impl<Action> Widget<Action> for ScrollBarThumbWidget {
                 ) else {
                     return WidgetEventOutput::none();
                 };
-                let Some(geometry) = self.layout.thumb_geometry(snapshot, snapshot.viewport_extent()) else {
+                let Some(geometry) = self
+            .layout
+            .thumb_geometry(snapshot, snapshot.viewport_extent())
+        else {
                     return WidgetEventOutput::none();
                 };
                 if snapshot.maximum_offset().get() == 0.0 || geometry.travel().get() == 0.0 {
@@ -1545,19 +1551,24 @@ impl<Action> Widget<Action> for ScrollBarThumbWidget {
                 ) else {
                     return Self::fail_closed_drag(state, context);
                 };
-                let Some(geometry) = self.layout.thumb_geometry(snapshot, snapshot.viewport_extent()) else {
+                let Some(geometry) = self
+            .layout
+            .thumb_geometry(snapshot, snapshot.viewport_extent())
+        else {
                     return Self::fail_closed_drag(state, context);
                 };
                 if geometry.travel().get() == 0.0 || snapshot.maximum_offset().get() == 0.0 {
                     return Self::fail_closed_drag(state, context);
                 }
                 let coordinate = scroll_bar_axis_coordinate(local, self.layout.axis());
-                let desired_origin = (geometry.thumb_origin().get() + coordinate - drag.grab_offset)
+                let desired_origin = (geometry.thumb_origin().get() + coordinate
+                    - drag.grab_offset)
                     .clamp(0.0, geometry.travel().get());
-                let normalized = ScrollNormalizedValue::new(desired_origin / geometry.travel().get())
-                    .unwrap_or_else(|_| {
-                        unreachable!("clamped thumb travel yields normalized value")
-                    });
+                let normalized =
+                    ScrollNormalizedValue::new(desired_origin / geometry.travel().get())
+                        .unwrap_or_else(|_| {
+                            unreachable!("clamped thumb travel yields normalized value")
+                        });
                 emit_scroll_bar_request(context, ScrollControlRequest::SetNormalized(normalized));
                 WidgetEventOutput::none()
             }

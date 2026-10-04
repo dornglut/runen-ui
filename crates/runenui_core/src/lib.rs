@@ -389,8 +389,7 @@ pub use scene_geometry::{
 pub use scroll::{
     ScrollBarLayout, ScrollBarPlacement, ScrollBarThumbGeometry, ScrollBarVisibility, ScrollChrome,
     ScrollControlBinding, ScrollControlBindingError, ScrollControlRequest, ScrollControlSnapshot,
-    ScrollNormalizedError,
-    ScrollNormalizedValue,
+    ScrollNormalizedError, ScrollNormalizedValue,
 };
 pub use semantic::{
     SemanticAction, SemanticAutocomplete, SemanticBounds, SemanticCheckedState,

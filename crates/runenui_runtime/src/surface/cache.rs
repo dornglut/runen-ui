@@ -2,8 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
     Axis, LogicalTransform, ScrollChrome, ScrollControlBinding, ScrollControlSnapshot,
-    StyleEnvironment,
-    TextDocumentSnapshot, WidgetDiagnostic,
+    StyleEnvironment, TextDocumentSnapshot, WidgetDiagnostic,
 };
 use runenui_text::{
     FontSourceSnapshot, TextCaretMap, TextCaretMapError, TextDisplaySelection, TextLayoutState,
