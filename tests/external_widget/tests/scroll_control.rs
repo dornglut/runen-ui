@@ -10,6 +10,7 @@ use runenui_core::{
     PaintPrimitive, SceneShape, ScrollBarLayout, ScrollBarPlacement, ScrollBarVisibility,
     ScrollChrome, ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot,
     ScrollNormalizedValue, SemanticAction, SemanticActionRequest, SemanticCommand,
+    SemanticCommandEvent,
     SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
     SemanticOrientation, SemanticRelationshipKind, SemanticRole, StyleEnvironment, UiApp, UiEvent,
     View, Widget, WidgetActivation, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, children,
@@ -102,7 +103,10 @@ impl Widget<()> for ExternalScrollControl {
         if context.phase() != EventPhase::Target {
             return WidgetEventOutput::none();
         }
-        let Some(command) = event.as_semantic_command().map(|event| event.command()) else {
+        let Some(command) = event
+            .as_semantic_command()
+            .map(SemanticCommandEvent::command)
+        else {
             return WidgetEventOutput::none();
         };
         let request = match command {
@@ -230,6 +234,67 @@ impl UiApp for App {
     fn update(_: &mut Self::State, (): Self::Action) {}
 }
 
+fn assert_downstream_scrollbar_semantics(
+    runtime: &mut AppRuntime<App>,
+    publication: &runenui_runtime::SurfacePublication,
+    control: &MountedNodeId,
+) -> (runenui_core::SurfaceId, runenui_core::SemanticNodeId) {
+    let semantic_snapshot = publication.semantic_publication().snapshot();
+    let scrollbar = semantic_snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::ScrollBar)
+        .unwrap_or_else(|| unreachable!("bound downstream scrollbar semantics are published"));
+    assert_eq!(scrollbar.orientation(), Some(SemanticOrientation::Vertical));
+    let range = scrollbar
+        .range()
+        .unwrap_or_else(|| unreachable!("scrollbar range is runtime-derived"));
+    assert_eq!(
+        range.minimum().map(runenui_core::SemanticNumber::get),
+        Some(0.0)
+    );
+    assert_eq!(
+        range.maximum().map(runenui_core::SemanticNumber::get),
+        Some(100.0)
+    );
+    assert_eq!(
+        range.current().map(runenui_core::SemanticNumber::get),
+        Some(0.0)
+    );
+    for action in [
+        SemanticAction::RequestFocus,
+        SemanticAction::Increment,
+        SemanticAction::Decrement,
+        SemanticAction::SetValue,
+    ] {
+        assert!(scrollbar.supported_actions().contains(&action));
+    }
+    let controls = scrollbar
+        .relationships()
+        .iter()
+        .filter(|relationship| relationship.kind() == SemanticRelationshipKind::Controls)
+        .collect::<Vec<_>>();
+    assert_eq!(controls.len(), 1);
+    assert_eq!(
+        semantic_snapshot
+            .node(controls[0].target())
+            .map(runenui_runtime::SemanticNode::role),
+        Some(SemanticRole::Group),
+        "Controls resolves to the exact published viewport owner"
+    );
+    assert!(
+        runtime
+            .index()
+            .node(control)
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable),
+        "positive accepted maximum offset makes Automatic bound control focusable"
+    );
+    (
+        semantic_snapshot.surface_id().clone(),
+        scrollbar.id().clone(),
+    )
+}
+
 #[test]
 fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_request_contracts() {
     let observed = Rc::new(RefCell::new(Vec::new()));
@@ -274,49 +339,8 @@ fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_reques
     assert_eq!(initial.viewport_extent().get(), 30.0);
     assert_eq!(initial.content_extent().get(), 60.0);
 
-    let semantic_snapshot = publication.semantic_publication().snapshot();
-    let scrollbar = semantic_snapshot
-        .nodes()
-        .iter()
-        .find(|node| node.role() == SemanticRole::ScrollBar)
-        .unwrap_or_else(|| unreachable!("bound downstream scrollbar semantics are published"));
-    assert_eq!(scrollbar.orientation(), Some(SemanticOrientation::Vertical));
-    let range = scrollbar
-        .range()
-        .unwrap_or_else(|| unreachable!("scrollbar range is runtime-derived"));
-    assert_eq!(range.minimum().map(|value| value.get()), Some(0.0));
-    assert_eq!(range.maximum().map(|value| value.get()), Some(100.0));
-    assert_eq!(range.current().map(|value| value.get()), Some(0.0));
-    for action in [
-        SemanticAction::RequestFocus,
-        SemanticAction::Increment,
-        SemanticAction::Decrement,
-        SemanticAction::SetValue,
-    ] {
-        assert!(scrollbar.supported_actions().contains(&action));
-    }
-    let controls = scrollbar
-        .relationships()
-        .iter()
-        .filter(|relationship| relationship.kind() == SemanticRelationshipKind::Controls)
-        .collect::<Vec<_>>();
-    assert_eq!(controls.len(), 1);
-    assert_eq!(
-        semantic_snapshot
-            .node(controls[0].target())
-            .map(|node| node.role()),
-        Some(SemanticRole::Group),
-        "Controls resolves to the exact published viewport owner"
-    );
-    let semantic_surface = semantic_snapshot.surface_id().clone();
-    let scrollbar_semantic = scrollbar.id().clone();
-    assert!(
-        runtime
-            .index()
-            .node(&control)
-            .is_some_and(|node| node.is_focusable()),
-        "positive accepted maximum offset makes Automatic bound control focusable"
-    );
+    let (semantic_surface, scrollbar_semantic) =
+        assert_downstream_scrollbar_semantics(&mut runtime, &publication, &control);
 
     runtime
         .submit_semantic_action(SemanticActionRequest::new(
@@ -430,7 +454,10 @@ fn non_scrollable_bound_scrollbar_remains_semantic_but_is_not_a_dead_focus_stop(
     let range = scrollbar
         .range()
         .unwrap_or_else(|| unreachable!("zero-range scrollbar still publishes its range"));
-    assert_eq!(range.current().map(|value| value.get()), Some(0.0));
+    assert_eq!(
+        range.current().map(runenui_core::SemanticNumber::get),
+        Some(0.0)
+    );
     assert!(
         !scrollbar
             .supported_actions()
@@ -723,7 +750,7 @@ fn chrome_publish(runtime: &mut AppRuntime<ChromeApp>) -> runenui_runtime::Surfa
             LogicalSize::try_new(100.0, 100.0)
                 .unwrap_or_else(|_| unreachable!("chrome fixture surface is finite")),
         ))
-        .unwrap_or_else(|error| panic!("chrome fixture publication is admitted: {error:?}"))
+        .unwrap_or_else(|_| unreachable!("chrome fixture publication is admitted"))
 }
 
 fn chrome_state(
@@ -814,7 +841,7 @@ fn duplicate_scroll_chrome_is_rejected_and_diagnosed_without_losing_mounted_iden
             LogicalSize::try_new(100.0, 100.0)
                 .unwrap_or_else(|_| unreachable!("duplicate chrome surface is finite")),
         ))
-        .unwrap_or_else(|error| panic!("duplicate chrome surface publishes: {error:?}"));
+        .unwrap_or_else(|_| unreachable!("duplicate chrome surface publishes"));
     let expected = runenui_core::WidgetDiagnostic::new(
         "runenui.scroll-chrome.duplicate-bar",
         "multiple scrollbar bars target the same scroll owner axis; all are withheld",
@@ -868,7 +895,7 @@ fn duplicate_scroll_chrome_is_rejected_and_diagnosed_without_losing_mounted_iden
     );
 }
 
-fn item_color(item: &runenui_runtime::PaintSceneItem) -> Option<Color> {
+const fn item_color(item: &runenui_runtime::PaintSceneItem) -> Option<Color> {
     match item.primitive() {
         PaintPrimitive::Fill {
             brush: Brush::Solid(color),
@@ -878,10 +905,10 @@ fn item_color(item: &runenui_runtime::PaintSceneItem) -> Option<Color> {
     }
 }
 
-fn colored_item<'a>(
-    publication: &'a runenui_runtime::SurfacePublication,
+fn colored_item(
+    publication: &runenui_runtime::SurfacePublication,
     color: Color,
-) -> &'a runenui_runtime::PaintSceneItem {
+) -> &runenui_runtime::PaintSceneItem {
     publication
         .paint_scene()
         .items()
@@ -897,6 +924,45 @@ fn translated_origin(item: &runenui_runtime::PaintSceneItem) -> LogicalPoint {
                 .unwrap_or_else(|_| unreachable!("fixture origin is finite")),
         )
         .unwrap_or_else(|| unreachable!("published chrome transform is finite"))
+}
+
+fn assert_thumb_moves_in_presentation_only(
+    runtime: &mut AppRuntime<ChromeApp>,
+    track: MountedNodeId,
+    thumb: &MountedNodeId,
+    thumb_bounds: LogicalRect,
+) {
+    runtime
+        .submit_command(
+            track,
+            SemanticCommand::ScrollControl(ScrollControlRequest::ToEnd),
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("direct bound scroll request is admitted"));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let scrolled = chrome_publish(runtime);
+    let scrolled_thumb_bounds = scrolled
+        .frame()
+        .node(thumb)
+        .unwrap_or_else(|| unreachable!("thumb remains laid out"))
+        .bounds();
+    assert_eq!(scrolled_thumb_bounds, thumb_bounds);
+    assert_eq!(
+        translated_origin(colored_item(&scrolled, THUMB_COLOR)).y(),
+        50.0
+    );
+    assert_eq!(
+        scrolled.hit_test_scene().target_at(
+            LogicalPoint::new(95.0, 75.0)
+                .unwrap_or_else(|_| unreachable!("translated thumb sample is finite"))
+        ),
+        Some(thumb)
+    );
 }
 
 #[test]
@@ -992,37 +1058,7 @@ fn downstream_reserved_scroll_chrome_is_viewport_attached_and_thumb_moves_in_pre
         1
     );
 
-    runtime
-        .submit_command(
-            track.clone(),
-            SemanticCommand::ScrollControl(ScrollControlRequest::ToEnd),
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("direct bound scroll request is admitted"));
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
-    let scrolled = chrome_publish(&mut runtime);
-    let scrolled_thumb_bounds = scrolled
-        .frame()
-        .node(&thumb)
-        .unwrap_or_else(|| unreachable!("thumb remains laid out"))
-        .bounds();
-    assert_eq!(scrolled_thumb_bounds, thumb_bounds);
-    assert_eq!(
-        translated_origin(colored_item(&scrolled, THUMB_COLOR)).y(),
-        50.0
-    );
-    assert_eq!(
-        scrolled.hit_test_scene().target_at(
-            LogicalPoint::new(95.0, 75.0)
-                .unwrap_or_else(|_| unreachable!("translated thumb sample is finite"))
-        ),
-        Some(&thumb)
-    );
+    assert_thumb_moves_in_presentation_only(&mut runtime, track, &thumb, thumb_bounds);
 }
 
 #[test]
@@ -1051,82 +1087,79 @@ fn downstream_scroll_chrome_clamps_thumb_to_authored_minimum_extent() {
     assert_eq!(thumb_bounds.width(), 10.0);
 }
 
-#[test]
-fn downstream_scroll_chrome_visibility_and_overlay_share_one_participation_authority() {
-    for visibility in [ScrollBarVisibility::Hidden, ScrollBarVisibility::Automatic] {
-        let content_height = if visibility == ScrollBarVisibility::Hidden {
-            200.0
-        } else {
-            100.0
-        };
-        let state = chrome_state(
-            content_height,
-            visibility,
-            ScrollBarPlacement::Reserved,
-            true,
-        );
-        let track_callbacks = Rc::clone(&state.track_semantics);
-        let thumb_callbacks = Rc::clone(&state.thumb_semantics);
-        let mut runtime = AppRuntime::<ChromeApp>::mount(state);
-        runtime.pump(PumpBudget::new(
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-        ));
-        let publication = chrome_publish(&mut runtime);
-        let track = chrome_node_id(&mut runtime, "chrome.track");
-        let thumb = chrome_node_id(&mut runtime, "chrome.thumb");
+fn assert_nonparticipating_reserved_chrome(
+    visibility: ScrollBarVisibility,
+    content_height: f32,
+) {
+    let state = chrome_state(
+        content_height,
+        visibility,
+        ScrollBarPlacement::Reserved,
+        true,
+    );
+    let track_callbacks = Rc::clone(&state.track_semantics);
+    let thumb_callbacks = Rc::clone(&state.thumb_semantics);
+    let mut runtime = AppRuntime::<ChromeApp>::mount(state);
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let publication = chrome_publish(&mut runtime);
+    let track = chrome_node_id(&mut runtime, "chrome.track");
+    let thumb = chrome_node_id(&mut runtime, "chrome.thumb");
 
-        assert!(publication.hit_test_scene().contains_mounted_target(&track));
-        assert!(publication.hit_test_scene().contains_mounted_target(&thumb));
-        for point in [
-            LogicalPoint::new(95.0, 25.0)
-                .unwrap_or_else(|_| unreachable!("chrome hit sample is finite")),
-            LogicalPoint::new(95.0, 75.0)
-                .unwrap_or_else(|_| unreachable!("chrome hit sample is finite")),
-        ] {
-            let target = publication.hit_test_scene().target_at(point);
-            assert_ne!(target, Some(&track));
-            assert_ne!(target, Some(&thumb));
-        }
-        assert!(publication.paint_scene().items().iter().all(|item| {
-            !matches!(item_color(item), Some(color) if color == TRACK_COLOR || color == THUMB_COLOR)
-        }));
-        assert_eq!(*track_callbacks.borrow(), 0);
-        assert_eq!(*thumb_callbacks.borrow(), 0);
-        assert!(
-            publication
-                .semantic_publication()
-                .snapshot()
-                .nodes()
-                .iter()
-                .all(|node| node.role() != SemanticRole::ScrollBar)
-        );
-        assert!(
-            runtime
-                .index()
-                .node(&track)
-                .is_some_and(|node| !node.is_focusable()),
-            "authored hidden/absent chrome cannot be reintroduced by explicit focusability"
-        );
+    assert!(publication.hit_test_scene().contains_mounted_target(&track));
+    assert!(publication.hit_test_scene().contains_mounted_target(&thumb));
+    for point in [
+        LogicalPoint::new(95.0, 25.0)
+            .unwrap_or_else(|_| unreachable!("chrome hit sample is finite")),
+        LogicalPoint::new(95.0, 75.0)
+            .unwrap_or_else(|_| unreachable!("chrome hit sample is finite")),
+    ] {
+        let target = publication.hit_test_scene().target_at(point);
+        assert_ne!(target, Some(&track));
+        assert_ne!(target, Some(&thumb));
     }
+    assert!(publication.paint_scene().items().iter().all(|item| {
+        !matches!(item_color(item), Some(color) if color == TRACK_COLOR || color == THUMB_COLOR)
+    }));
+    assert_eq!(*track_callbacks.borrow(), 0);
+    assert_eq!(*thumb_callbacks.borrow(), 0);
+    assert!(
+        publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .all(|node| node.role() != SemanticRole::ScrollBar)
+    );
+    assert!(
+        runtime
+            .index()
+            .node(&track)
+            .is_some_and(|node| !node.is_focusable()),
+        "authored hidden/absent chrome cannot be reintroduced by explicit focusability"
+    );
+}
 
-    let mut overlay = AppRuntime::<ChromeApp>::mount(chrome_state(
+fn assert_overlay_scrollbar_keeps_full_viewport() {
+    let mut runtime = AppRuntime::<ChromeApp>::mount(chrome_state(
         200.0,
         ScrollBarVisibility::Always,
         ScrollBarPlacement::Overlay,
         false,
     ));
-    overlay.pump(PumpBudget::new(
+    runtime.pump(PumpBudget::new(
         usize::MAX,
         usize::MAX,
         usize::MAX,
         usize::MAX,
     ));
-    let overlay_publication = chrome_publish(&mut overlay);
-    let viewport = chrome_node_id(&mut overlay, "chrome.viewport");
-    let layout = overlay_publication
+    let publication = chrome_publish(&mut runtime);
+    let viewport = chrome_node_id(&mut runtime, "chrome.viewport");
+    let layout = publication
         .layout_report()
         .nodes()
         .iter()
@@ -1134,34 +1167,32 @@ fn downstream_scroll_chrome_visibility_and_overlay_share_one_participation_autho
         .unwrap_or_else(|| unreachable!("overlay viewport layout is published"));
     assert_eq!(layout.scroll_viewport_extent().width(), 100.0);
     assert_eq!(layout.scroll_viewport_extent().height(), 100.0);
+}
 
-    let mut zero_range = AppRuntime::<ChromeApp>::mount(chrome_state(
+fn assert_present_zero_range_chrome_can_be_explicitly_focusable() {
+    let mut runtime = AppRuntime::<ChromeApp>::mount(chrome_state(
         100.0,
         ScrollBarVisibility::Always,
         ScrollBarPlacement::Reserved,
         true,
     ));
-    zero_range.pump(PumpBudget::new(
+    runtime.pump(PumpBudget::new(
         usize::MAX,
         usize::MAX,
         usize::MAX,
         usize::MAX,
     ));
-    let zero_publication = chrome_publish(&mut zero_range);
-    let track = chrome_node_id(&mut zero_range, "chrome.track");
+    let publication = chrome_publish(&mut runtime);
+    let track = chrome_node_id(&mut runtime, "chrome.track");
+    assert!(publication.hit_test_scene().contains_mounted_target(&track));
     assert!(
-        zero_publication
-            .hit_test_scene()
-            .contains_mounted_target(&track)
-    );
-    assert!(
-        zero_range
+        runtime
             .index()
             .node(&track)
-            .is_some_and(|node| node.is_focusable()),
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable),
         "present explicit Focusable chrome may override zero-range Automatic focus exclusion"
     );
-    let scrollbar = zero_publication
+    let scrollbar = publication
         .semantic_publication()
         .snapshot()
         .nodes()
@@ -1171,10 +1202,18 @@ fn downstream_scroll_chrome_visibility_and_overlay_share_one_participation_autho
     assert_eq!(
         scrollbar
             .range()
-            .and_then(|range| range.current())
-            .map(|value| value.get()),
+            .and_then(runenui_core::SemanticRange::current)
+            .map(runenui_core::SemanticNumber::get),
         Some(0.0)
     );
+}
+
+#[test]
+fn downstream_scroll_chrome_visibility_and_overlay_share_one_participation_authority() {
+    assert_nonparticipating_reserved_chrome(ScrollBarVisibility::Hidden, 200.0);
+    assert_nonparticipating_reserved_chrome(ScrollBarVisibility::Automatic, 100.0);
+    assert_overlay_scrollbar_keeps_full_viewport();
+    assert_present_zero_range_chrome_can_be_explicitly_focusable();
 }
 
 #[test]
