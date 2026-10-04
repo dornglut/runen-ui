@@ -4,14 +4,15 @@ use runenui_core::{
     Axis, Color, CommandOrigin, Element, KeyLocation, KeyModifiers, KeyboardCompositionState,
     KeyboardEvent, KeyboardPhase, LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength,
     LogicalPoint, NoHostProtocol, OverflowPolicy, OverflowStyle, PhysicalKey, PointerButton,
-    PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, ScrollBarVisibility,
-    ScrollControlBinding, ScrollControlRequest, SemanticAction, SemanticActionRequest,
+    PointerButtons, PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
+    ScrollBarVisibility, ScrollControlBinding, ScrollControlRequest, SemanticAction,
+    SemanticActionRequest,
     SemanticCommand, SemanticNumber, SemanticRole, StyleEnvironment, StyleIntent, UiApp, View,
     Widget, WidgetMeasure, WidgetMeasureInput, scroll_bar, scroll_container,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SubmitSemanticActionErrorKind,
-    SurfaceBuildContext,
+    SurfaceBuildContext, TraceRecordKind,
 };
 
 fn length(value: f32) -> LogicalLength {
@@ -29,6 +30,7 @@ fn number(value: f64) -> SemanticNumber {
 #[derive(Clone, Copy, Debug)]
 enum Action {
     SetContentHeight(f32),
+    SetVertical(bool),
 }
 
 #[derive(Debug)]
@@ -119,6 +121,7 @@ impl UiApp for App {
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
             Action::SetContentHeight(height) => state.content_height = height,
+            Action::SetVertical(vertical) => state.vertical = vertical,
         }
     }
 }
@@ -587,6 +590,110 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             touch_context,
         ))
         .unwrap_or_else(|_| unreachable!("touch cancel is admitted"));
+    settle(&mut runtime);
+}
+
+#[test]
+fn standard_thumb_capture_is_cleared_on_removal_and_does_not_retarget_after_replacement() {
+    let mut runtime = scrollable_vertical_runtime();
+    let environment = StyleEnvironment::default();
+    let first = runtime
+        .publish_surface(&build(&environment))
+        .unwrap_or_else(|_| unreachable!("capture-removal fixture publishes"));
+    let owner = node_id(&mut runtime, "standard.container");
+    let first_context = first.input_context().clone();
+
+    runtime
+        .submit_pointer(pointer(
+            41,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Down,
+            95.0,
+            25.0,
+            first_context,
+        ))
+        .unwrap_or_else(|_| unreachable!("thumb down is admitted before removal"));
+    settle(&mut runtime);
+
+    let trace_start = runtime.trace().len();
+    runtime
+        .submit_action(Action::SetVertical(false))
+        .unwrap_or_else(|_| unreachable!("bar removal enters the FIFO"));
+    settle(&mut runtime);
+    assert!(
+        runtime
+            .trace()
+            .records()
+            .skip(trace_start)
+            .any(|record| matches!(
+                record.kind(),
+                TraceRecordKind::PointerCaptureNotificationResolved {
+                    kind: PointerCaptureKind::Lost,
+                }
+            )),
+        "removing the captured thumb resolves the existing capture lifetime exactly once"
+    );
+
+    let without_bar = runtime
+        .publish_surface(&build(&environment))
+        .unwrap_or_else(|_| unreachable!("bar removal republishes"));
+    assert_eq!(
+        without_bar
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .filter(|node| node.role() == SemanticRole::ScrollBar)
+            .count(),
+        0
+    );
+    assert_eq!(offset(&mut runtime, &owner), (0.0, 0.0));
+
+    runtime
+        .submit_action(Action::SetVertical(true))
+        .unwrap_or_else(|_| unreachable!("bar replacement enters the FIFO"));
+    settle(&mut runtime);
+    let replacement = runtime
+        .publish_surface(&build(&environment))
+        .unwrap_or_else(|_| unreachable!("bar replacement republishes"));
+    assert_eq!(
+        replacement
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .filter(|node| node.role() == SemanticRole::ScrollBar)
+            .count(),
+        1
+    );
+
+    runtime
+        .submit_pointer(pointer(
+            41,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Move,
+            95.0,
+            25.0,
+            replacement.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("post-replacement move is admitted"));
+    settle(&mut runtime);
+    assert_eq!(
+        offset(&mut runtime, &owner),
+        (0.0, 0.0),
+        "the retired drag cannot transfer to the replacement thumb"
+    );
+
+    runtime
+        .submit_pointer(pointer(
+            41,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Up,
+            95.0,
+            25.0,
+            replacement.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("post-replacement pointer stream closes"));
     settle(&mut runtime);
 }
 
