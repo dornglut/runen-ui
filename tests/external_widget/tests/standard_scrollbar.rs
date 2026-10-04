@@ -182,15 +182,42 @@ fn only_child_id(runtime: &mut AppRuntime<App>, parent: &MountedNodeId) -> Mount
         .clone()
 }
 
-fn pressed(runtime: &mut AppRuntime<App>, target: &MountedNodeId) -> bool {
-    runtime
-        .index()
-        .nodes()
-        .iter()
-        .find(|node| node.id() == target)
-        .unwrap_or_else(|| unreachable!("interaction target remains mounted"))
-        .interaction()
-        .pressed()
+fn assert_pointer_down_default_committed_on(
+    runtime: &AppRuntime<App>,
+    trace_start: usize,
+    pointer_id: u64,
+    target: &MountedNodeId,
+) {
+    assert!(
+        runtime.trace().records().skip(trace_start).any(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::PointerDefaultApplied {
+                    pointer_id: current,
+                    phase: PointerPhase::Down,
+                } if current.get() == pointer_id
+            ) && record
+                .target()
+                .is_some_and(|trace_target| trace_target.mounted_node_id() == target)
+        }),
+        "primary Down must commit the canonical M4 pressed default on the exact thumb"
+    );
+}
+
+fn assert_pointer_stream_closed(
+    runtime: &AppRuntime<App>,
+    trace_start: usize,
+    pointer_id: u64,
+) {
+    assert!(
+        runtime.trace().records().skip(trace_start).any(|record| matches!(
+            record.kind(),
+            TraceRecordKind::PointerStreamClosed {
+                pointer_id: current,
+            } if current.get() == pointer_id
+        )),
+        "terminal pointer input must close the canonical M4 pointer stream"
+    );
 }
 
 fn current_scrollbar_semantic_target(
@@ -562,6 +589,7 @@ fn assert_mouse_scrollbar_track_and_thumb(
         .unwrap_or_else(|_| unreachable!("reset thumb geometry republishes"));
     let drag_context = drag_start.input_context().clone();
     let thumb = only_child_id(runtime, bar);
+    let mouse_down_trace = runtime.trace().len();
     runtime
         .submit_pointer(pointer(
             12,
@@ -573,10 +601,7 @@ fn assert_mouse_scrollbar_track_and_thumb(
         ))
         .unwrap_or_else(|_| unreachable!("thumb mouse down is admitted"));
     settle(runtime);
-    assert!(
-        pressed(runtime, &thumb),
-        "thumb Down retains canonical M4 pressed interaction state while exact capture owns drag"
-    );
+    assert_pointer_down_default_committed_on(runtime, mouse_down_trace, 12, &thumb);
     runtime
         .submit_pointer(pointer(
             12,
@@ -606,6 +631,7 @@ fn assert_mouse_scrollbar_track_and_thumb(
         .unwrap_or_else(|_| unreachable!("captured move uses current thumb geometry"));
     settle(runtime);
     assert_eq!(offset(runtime, owner).1, 100.0);
+    let mouse_up_trace = runtime.trace().len();
     runtime
         .submit_pointer(pointer(
             12,
@@ -617,10 +643,7 @@ fn assert_mouse_scrollbar_track_and_thumb(
         ))
         .unwrap_or_else(|_| unreachable!("captured mouse up is admitted"));
     settle(runtime);
-    assert!(
-        !pressed(runtime, &thumb),
-        "primary Up clears the canonical pressed interaction state"
-    );
+    assert_pointer_stream_closed(runtime, mouse_up_trace, 12);
 }
 
 fn assert_touch_scrollbar_thumb(
@@ -635,6 +658,7 @@ fn assert_touch_scrollbar_thumb(
         .unwrap_or_else(|_| unreachable!("touch thumb geometry republishes"));
     let touch_context = touch_surface.input_context().clone();
     let thumb = only_child_id(runtime, bar);
+    let touch_down_trace = runtime.trace().len();
     runtime
         .submit_pointer(pointer(
             14,
@@ -646,10 +670,7 @@ fn assert_touch_scrollbar_thumb(
         ))
         .unwrap_or_else(|_| unreachable!("canonical touch thumb down is admitted"));
     settle(runtime);
-    assert!(
-        pressed(runtime, &thumb),
-        "touch capture retains the exact thumb's canonical pressed interaction state"
-    );
+    assert_pointer_down_default_committed_on(runtime, touch_down_trace, 14, &thumb);
     runtime
         .submit_pointer(pointer(
             14,
@@ -662,6 +683,7 @@ fn assert_touch_scrollbar_thumb(
         .unwrap_or_else(|_| unreachable!("captured touch move is admitted"));
     settle(runtime);
     assert_eq!(offset(runtime, owner).1, 50.0);
+    let touch_cancel_trace = runtime.trace().len();
     runtime
         .submit_pointer(pointer(
             14,
@@ -673,10 +695,7 @@ fn assert_touch_scrollbar_thumb(
         ))
         .unwrap_or_else(|_| unreachable!("touch cancel is admitted"));
     settle(runtime);
-    assert!(
-        !pressed(runtime, &thumb),
-        "touch cancellation clears the canonical pressed interaction state"
-    );
+    assert_pointer_stream_closed(runtime, touch_cancel_trace, 14);
 }
 
 #[test]
