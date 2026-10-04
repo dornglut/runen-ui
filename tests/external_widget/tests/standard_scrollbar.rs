@@ -352,7 +352,6 @@ fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() 
     assert_eq!(offset(&mut runtime, &owner).1, 45.0);
 }
 
-
 #[test]
 fn standard_horizontal_scrollbar_owns_horizontal_arrows_and_pages_along_its_axis() {
     let mut runtime = scrollable_horizontal_runtime();
@@ -590,7 +589,6 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
         .unwrap_or_else(|_| unreachable!("touch cancel is admitted"));
     settle(&mut runtime);
 }
-
 
 #[test]
 fn standard_scrollbar_revalidates_current_metrics_before_semantic_scroll_and_set_value_range() {
