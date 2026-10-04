@@ -10,11 +10,10 @@ use runenui_core::{
     PaintPrimitive, SceneShape, ScrollBarLayout, ScrollBarPlacement, ScrollBarVisibility,
     ScrollChrome, ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot,
     ScrollNormalizedValue, SemanticAction, SemanticActionRequest, SemanticCommand,
-    SemanticCommandEvent,
-    SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
-    SemanticOrientation, SemanticRelationshipKind, SemanticRole, StyleEnvironment, UiApp, UiEvent,
-    View, Widget, WidgetActivation, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, children,
-    container,
+    SemanticCommandEvent, SemanticContribution, SemanticContributionContext,
+    SemanticNodeContribution, SemanticOrientation, SemanticRelationshipKind, SemanticRole,
+    StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetActivation, WidgetEventOutput,
+    WidgetMeasure, WidgetMeasureInput, children, container,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext};
 
@@ -1091,10 +1090,7 @@ fn downstream_scroll_chrome_clamps_thumb_to_authored_minimum_extent() {
     assert_eq!(thumb_bounds.width(), 10.0);
 }
 
-fn assert_nonparticipating_reserved_chrome(
-    visibility: ScrollBarVisibility,
-    content_height: f32,
-) {
+fn assert_nonparticipating_reserved_chrome(visibility: ScrollBarVisibility, content_height: f32) {
     let state = chrome_state(
         content_height,
         visibility,
