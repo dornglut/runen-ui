@@ -9,7 +9,10 @@ use runenui_core::{
     SemanticCommand, SemanticNumber, SemanticRole, StyleEnvironment, StyleIntent, UiApp, View,
     Widget, WidgetMeasure, WidgetMeasureInput, scroll_bar, scroll_container,
 };
-use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext};
+use runenui_runtime::{
+    AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SubmitSemanticActionErrorKind,
+    SurfaceBuildContext,
+};
 
 fn length(value: f32) -> LogicalLength {
     LogicalLength::new(value).unwrap_or_else(|_| unreachable!("fixture length is finite"))
@@ -23,13 +26,18 @@ fn number(value: f64) -> SemanticNumber {
     SemanticNumber::new(value).unwrap_or_else(|_| unreachable!("fixture number is finite"))
 }
 
+#[derive(Clone, Copy, Debug)]
+enum Action {
+    SetContentHeight(f32),
+}
+
 #[derive(Debug)]
 struct Content {
     width: LogicalLength,
     height: LogicalLength,
 }
 
-impl Widget<()> for Content {
+impl Widget<Action> for Content {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -52,7 +60,7 @@ struct App;
 
 impl UiApp for App {
     type State = State;
-    type Action = ();
+    type Action = Action;
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> impl View<Self::Action> {
@@ -108,7 +116,11 @@ impl UiApp for App {
         container
     }
 
-    fn update(_: &mut Self::State, (): Self::Action) {}
+    fn update(state: &mut Self::State, action: Self::Action) {
+        match action {
+            Action::SetContentHeight(height) => state.content_height = height,
+        }
+    }
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
@@ -208,6 +220,27 @@ fn scrollable_vertical_runtime() -> AppRuntime<App> {
     });
     settle(&mut runtime);
     runtime
+}
+
+fn scrollable_horizontal_runtime() -> AppRuntime<App> {
+    let mut runtime = AppRuntime::<App>::mount(State {
+        content_width: 200.0,
+        content_height: 80.0,
+        horizontal: true,
+        vertical: false,
+        always: false,
+    });
+    settle(&mut runtime);
+    runtime
+}
+
+fn pump_one(runtime: &mut AppRuntime<App>) {
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
 }
 
 #[test]
@@ -317,6 +350,94 @@ fn standard_scrollbar_keyboard_and_accessibility_converge_on_m10_scroll_state() 
         .unwrap_or_else(|_| unreachable!("scrollbar decrement is published"));
     settle(&mut runtime);
     assert_eq!(offset(&mut runtime, &owner).1, 45.0);
+}
+
+
+#[test]
+fn standard_horizontal_scrollbar_owns_horizontal_arrows_and_pages_along_its_axis() {
+    let mut runtime = scrollable_horizontal_runtime();
+    let environment = StyleEnvironment::default();
+    runtime
+        .publish_surface(&build(&environment))
+        .unwrap_or_else(|_| unreachable!("horizontal standard scrollbar publishes"));
+    let owner = node_id(&mut runtime, "standard.container");
+    let bar = node_id(&mut runtime, "standard.horizontal");
+
+    runtime
+        .submit_command(
+            bar,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("horizontal scrollbar focus request is accepted"));
+    settle(&mut runtime);
+
+    for (logical, physical, modifiers, expected_x) in [
+        (
+            runenui_core::LogicalKey::ArrowRight,
+            PhysicalKey::ArrowRight,
+            KeyModifiers::NONE,
+            5.0,
+        ),
+        (
+            runenui_core::LogicalKey::ArrowLeft,
+            PhysicalKey::ArrowLeft,
+            KeyModifiers::NONE,
+            0.0,
+        ),
+        (
+            runenui_core::LogicalKey::PageDown,
+            PhysicalKey::PageDown,
+            KeyModifiers::NONE,
+            100.0,
+        ),
+        (
+            runenui_core::LogicalKey::PageUp,
+            PhysicalKey::PageUp,
+            KeyModifiers::NONE,
+            0.0,
+        ),
+        (
+            runenui_core::LogicalKey::End,
+            PhysicalKey::End,
+            KeyModifiers::NONE,
+            100.0,
+        ),
+        (
+            runenui_core::LogicalKey::Home,
+            PhysicalKey::Home,
+            KeyModifiers::NONE,
+            0.0,
+        ),
+        (
+            runenui_core::LogicalKey::Space,
+            PhysicalKey::Space,
+            KeyModifiers::NONE,
+            100.0,
+        ),
+        (
+            runenui_core::LogicalKey::Space,
+            PhysicalKey::Space,
+            KeyModifiers::SHIFT,
+            0.0,
+        ),
+    ] {
+        runtime
+            .submit_keyboard(keyboard(logical, physical, modifiers))
+            .unwrap_or_else(|_| unreachable!("owned horizontal scrollbar key is accepted"));
+        settle(&mut runtime);
+        assert_eq!(offset(&mut runtime, &owner).0, expected_x);
+    }
+
+    runtime
+        .submit_keyboard(keyboard(
+            runenui_core::LogicalKey::ArrowUp,
+            PhysicalKey::ArrowUp,
+            KeyModifiers::NONE,
+        ))
+        .unwrap_or_else(|_| unreachable!("unowned vertical arrow remains valid ingress"));
+    settle(&mut runtime);
+    assert_eq!(offset(&mut runtime, &owner).0, 0.0);
 }
 
 #[test]
@@ -467,6 +588,126 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             touch_context,
         ))
         .unwrap_or_else(|_| unreachable!("touch cancel is admitted"));
+    settle(&mut runtime);
+}
+
+
+#[test]
+fn standard_scrollbar_revalidates_current_metrics_before_semantic_scroll_and_set_value_range() {
+    let mut runtime = scrollable_vertical_runtime();
+    let environment = StyleEnvironment::default();
+    let publication = runtime
+        .publish_surface(&build(&environment))
+        .unwrap_or_else(|_| unreachable!("semantic revalidation fixture publishes"));
+    let owner = node_id(&mut runtime, "standard.container");
+    let scrollbar = publication
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .iter()
+        .find(|node| node.name() == Some("Vertical scroll"))
+        .unwrap_or_else(|| unreachable!("standard scrollbar semantic node is published"));
+    let surface = publication
+        .semantic_publication()
+        .snapshot()
+        .surface_id()
+        .clone();
+    let semantic_id = scrollbar.id().clone();
+
+    let out_of_range = runtime
+        .submit_semantic_action(SemanticActionRequest::set_value(
+            surface.clone(),
+            semantic_id.clone(),
+            number(101.0),
+        ))
+        .expect_err("out-of-range scrollbar SetValue must reject");
+    assert_eq!(
+        out_of_range.kind(),
+        SubmitSemanticActionErrorKind::UnavailableAction
+    );
+
+    runtime
+        .submit_action(Action::SetContentHeight(100.0))
+        .unwrap_or_else(|_| unreachable!("zero-range reconfiguration enters FIFO"));
+    runtime
+        .submit_semantic_action(SemanticActionRequest::new(
+            surface,
+            semantic_id,
+            SemanticAction::Increment,
+        ))
+        .unwrap_or_else(|_| unreachable!("increment admits against current scrollable semantics"));
+
+    pump_one(&mut runtime);
+    assert_eq!(runtime.state().content_height, 100.0);
+    runtime
+        .publish_surface(&build(&environment))
+        .unwrap_or_else(|_| unreachable!("zero-range semantics republish"));
+
+    pump_one(&mut runtime);
+    assert_eq!(
+        offset(&mut runtime, &owner),
+        (0.0, 0.0),
+        "stale semantic increment cannot create a scroll request after current range disappears"
+    );
+}
+
+#[test]
+fn standard_thumb_drag_recomputes_current_geometry_after_content_extent_changes() {
+    let mut runtime = scrollable_vertical_runtime();
+    let environment = StyleEnvironment::default();
+    let first = runtime
+        .publish_surface(&build(&environment))
+        .unwrap_or_else(|_| unreachable!("dynamic drag fixture publishes"));
+    let owner = node_id(&mut runtime, "standard.container");
+    let first_context = first.input_context().clone();
+
+    runtime
+        .submit_pointer(pointer(
+            31,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Down,
+            95.0,
+            25.0,
+            first_context,
+        ))
+        .unwrap_or_else(|_| unreachable!("dynamic drag thumb down is admitted"));
+    settle(&mut runtime);
+
+    runtime
+        .submit_action(Action::SetContentHeight(300.0))
+        .unwrap_or_else(|_| unreachable!("content extent update enters FIFO"));
+    settle(&mut runtime);
+    let resized = runtime
+        .publish_surface(&build(&environment))
+        .unwrap_or_else(|_| unreachable!("resized content republishes during capture"));
+    let resized_context = resized.input_context().clone();
+
+    runtime
+        .submit_pointer(pointer(
+            31,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Move,
+            95.0,
+            50.0,
+            resized_context.clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("captured move after metric change is admitted"));
+    settle(&mut runtime);
+    assert!(
+        (offset(&mut runtime, &owner).1 - 75.0).abs() <= 1.0e-4,
+        "drag uses current 300px content / 100px viewport geometry, not stale 200px geometry"
+    );
+
+    runtime
+        .submit_pointer(pointer(
+            31,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Cancel,
+            95.0,
+            50.0,
+            resized_context,
+        ))
+        .unwrap_or_else(|_| unreachable!("dynamic drag cancel is admitted"));
     settle(&mut runtime);
 }
 
