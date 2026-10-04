@@ -11,13 +11,13 @@ use runenui_core::{
 use crate::{LogicalRect, MountedNodeId, mounted::MountedTree};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct FocusEligibilityProjection {
+pub struct FocusEligibilityProjection {
     scrollable_controls: HashSet<MountedNodeId>,
     participating_chrome: HashSet<MountedNodeId>,
 }
 
 impl FocusEligibilityProjection {
-    pub(crate) fn new(
+    pub fn new(
         scrollable_controls: impl IntoIterator<Item = MountedNodeId>,
         participating_chrome: impl IntoIterator<Item = MountedNodeId>,
     ) -> Self {
@@ -28,7 +28,7 @@ impl FocusEligibilityProjection {
     }
 
     #[must_use]
-    pub(crate) fn automatic_scroll_focusability(
+    pub fn automatic_scroll_focusability(
         &self,
         id: &MountedNodeId,
         has_scroll_binding: bool,
@@ -37,7 +37,7 @@ impl FocusEligibilityProjection {
     }
 
     #[must_use]
-    pub(crate) fn scroll_chrome_participates(
+    pub fn scroll_chrome_participates(
         &self,
         id: &MountedNodeId,
         has_scroll_chrome: bool,
@@ -47,7 +47,7 @@ impl FocusEligibilityProjection {
 }
 
 #[must_use]
-pub(crate) const fn focusability_is_eligible(
+pub const fn focusability_is_eligible(
     focusability: Focusability,
     activation: WidgetActivation,
     automatic_scroll_focusable: Option<bool>,
@@ -675,6 +675,15 @@ pub fn select_focus_group_member<Action>(
     })
 }
 
+struct FocusSelectionContext<'a> {
+    state: &'a FocusState,
+    command_target: &'a MountedNodeId,
+    navigation: FocusNavigation,
+    geometry: &'a [(MountedNodeId, LogicalRect)],
+    publication_order: &'a [MountedNodeId],
+    eligibility: &'a FocusEligibilityProjection,
+}
+
 pub fn select_focus<Action>(
     tree: &mut MountedTree<Action>,
     state: &FocusState,
@@ -691,28 +700,28 @@ pub fn select_focus<Action>(
             .or_else(|| nearest_scope(tree, command_target))?,
     };
     let publication_order = tree.publication_preorder_ids();
-    select_in_scope(
-        tree,
+    let context = FocusSelectionContext {
         state,
         command_target,
         navigation,
         geometry,
-        &publication_order,
-        initial_scope,
+        publication_order: &publication_order,
         eligibility,
-    )
+    };
+    select_in_scope(tree, &context, initial_scope)
 }
 
 fn select_in_scope<Action>(
     tree: &mut MountedTree<Action>,
-    state: &FocusState,
-    command_target: &MountedNodeId,
-    navigation: FocusNavigation,
-    geometry: &[(MountedNodeId, LogicalRect)],
-    publication_order: &[MountedNodeId],
+    context: &FocusSelectionContext<'_>,
     scope: MountedNodeId,
-    eligibility: &FocusEligibilityProjection,
 ) -> Option<FocusSelection> {
+    let state = context.state;
+    let command_target = context.command_target;
+    let navigation = context.navigation;
+    let geometry = context.geometry;
+    let publication_order = context.publication_order;
+    let eligibility = context.eligibility;
     let policy = scope_policy(tree, &scope);
     let candidates = candidates(tree, &scope, geometry, publication_order, eligibility);
     if navigation == FocusNavigation::Restore {
@@ -757,16 +766,7 @@ fn select_in_scope<Action>(
     match boundary {
         FocusBoundaryPolicy::Delegate => {
             if let Some(parent) = parent_scope(tree, &scope) {
-                let mut delegated = select_in_scope(
-                    tree,
-                    state,
-                    command_target,
-                    navigation,
-                    geometry,
-                    publication_order,
-                    parent,
-                    eligibility,
-                )?;
+                let mut delegated = select_in_scope(tree, context, parent)?;
                 if delegated.target.is_some() {
                     delegated.outcome = FocusBoundaryOutcome::Delegate;
                 }

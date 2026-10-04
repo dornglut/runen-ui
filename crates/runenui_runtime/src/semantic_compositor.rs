@@ -13,9 +13,9 @@ use runenui_core::{
 use crate::SemanticNodeId;
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SemanticScrollControlFacts {
-    pub(crate) owner: MountedNodeId,
-    pub(crate) snapshot: ScrollControlSnapshot,
+pub struct SemanticScrollControlFacts {
+    pub owner: MountedNodeId,
+    pub snapshot: ScrollControlSnapshot,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -28,7 +28,7 @@ pub struct SemanticOwnerFacts {
     pub bounds: LogicalRect,
     pub activation: WidgetActivation,
     pub focusability: Focusability,
-    pub(crate) scroll_control: Option<SemanticScrollControlFacts>,
+    pub scroll_control: Option<SemanticScrollControlFacts>,
     pub editable_source: Option<Arc<str>>,
     pub editable_selection: Option<runenui_core::TextSelection>,
     pub editable_caret_offsets: Option<Arc<[usize]>>,
@@ -316,18 +316,7 @@ impl<'a> SemanticCompositor<'a> {
             editable.__runtime_with_projection(source, selection, offsets)
         });
         let authored_editable = authored.editable().is_some();
-        let (range, orientation) = if authored.role() == SemanticRole::ScrollBar {
-            let scroll_control = owner
-                .scroll_control
-                .as_ref()
-                .unwrap_or_else(|| unreachable!("visible ScrollBar has a bound projection"));
-            (
-                Some(scrollbar_range(scroll_control.snapshot)),
-                Some(scrollbar_orientation(scroll_control.snapshot)),
-            )
-        } else {
-            (authored.range().cloned(), authored.orientation())
-        };
+        let (range, orientation) = semantic_range_and_orientation(authored, owner);
         let node = SemanticCandidateNode {
             id: id.clone(),
             parent: parent.cloned(),
@@ -621,6 +610,23 @@ fn contains_semantic_node(items: &[SemanticItem]) -> bool {
     items
         .iter()
         .any(|item| matches!(item, SemanticItem::Node(_)))
+}
+
+fn semantic_range_and_orientation(
+    authored: &SemanticNodeContribution,
+    owner: &SemanticOwnerFacts,
+) -> (Option<SemanticRange>, Option<SemanticOrientation>) {
+    if authored.role() != SemanticRole::ScrollBar {
+        return (authored.range().cloned(), authored.orientation());
+    }
+    let scroll_control = owner
+        .scroll_control
+        .as_ref()
+        .unwrap_or_else(|| unreachable!("visible ScrollBar has a bound projection"));
+    (
+        Some(scrollbar_range(scroll_control.snapshot)),
+        Some(scrollbar_orientation(scroll_control.snapshot)),
+    )
 }
 
 fn supported_actions(

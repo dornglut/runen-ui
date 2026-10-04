@@ -511,6 +511,32 @@ impl<Action> MountedTree<Action> {
         }
     }
 
+    fn prepare_retained_widget_update(
+        &mut self,
+        id: &MountedNodeId,
+        widget: &MountedWidget<Action>,
+        path: &str,
+        stats: &mut ReconcileStats<Action>,
+    ) -> Result<WidgetUpdateContext<Action>, ReconciliationApplyError> {
+        let mut update_context = WidgetUpdateContext::__runtime_new();
+        let node = self
+            .node_mut(id)
+            .unwrap_or_else(|| unreachable!("planned retained node remains live"));
+        if state_is_corrupted(node)
+            || !widget.event_bridge_matches(&node.state)
+            || widget.update(&mut node.state, &mut update_context).is_err()
+        {
+            node.integrity_failed = true;
+            stats
+                .diagnostics
+                .push(ReconciliationDiagnostic::StatePayloadMismatch {
+                    path: path.to_owned(),
+                });
+            return Err(ReconciliationApplyError);
+        }
+        Ok(update_context)
+    }
+
     fn update_retained_node(
         &mut self,
         id: &MountedNodeId,
@@ -536,24 +562,8 @@ impl<Action> MountedTree<Action> {
             widget,
             children: _,
         } = incoming;
-        let mut update_context = WidgetUpdateContext::__runtime_new();
-        {
-            let node = self
-                .node_mut(id)
-                .unwrap_or_else(|| unreachable!("planned retained node remains live"));
-            if state_is_corrupted(node)
-                || !widget.event_bridge_matches(&node.state)
-                || widget.update(&mut node.state, &mut update_context).is_err()
-            {
-                node.integrity_failed = true;
-                stats
-                    .diagnostics
-                    .push(ReconciliationDiagnostic::StatePayloadMismatch {
-                        path: path.to_owned(),
-                    });
-                return Err(ReconciliationApplyError);
-            }
-        }
+        let mut update_context =
+            self.prepare_retained_widget_update(id, &widget, path, stats)?;
         let common_invalidation;
         {
             let node = self
