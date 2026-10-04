@@ -574,9 +574,7 @@ fn standard_scrollbar_track_and_thumb_use_one_shot_paging_and_captured_drag_for_
             25.0,
             touch_context.clone(),
         ))
-        .unwrap_or_else(|_| {
-            unreachable!("canonical touch thumb down is admitted")
-        });
+        .unwrap_or_else(|_| unreachable!("canonical touch thumb down is admitted"));
     settle(&mut runtime);
     runtime
         .submit_pointer(pointer(
