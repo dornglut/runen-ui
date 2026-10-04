@@ -4,14 +4,15 @@ use crate::{
     ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandEvent, Axis, EventContext,
     EventPhase, FlexContainerStyle, FlexDirection, FocusGroup, FocusGroupActivationPolicy,
     FocusGroupBoundaryPolicy, Focusability, HitContribution, HitContributionContext, KeyboardPhase,
-    LayoutContainer, LayoutStyle, LogicalKey, LogicalLength, LogicalPoint, LogicalRect, LogicalSize,
-    OverflowStyle, PointerButton, PointerCaptureKind, PointerDeviceKind, PointerId, PointerPhase,
-    ScrollBarLayout, ScrollBarPlacement, ScrollBarVisibility, ScrollChrome, ScrollControlBinding,
-    ScrollControlRequest, ScrollControlSnapshot, ScrollNormalizedValue, SemanticAction,
-    SemanticCheckedState, SemanticCommand, SemanticCommandEvent, SemanticContribution,
-    SemanticContributionContext, SemanticNodeContribution, SemanticNumber, SemanticRole,
-    SemanticState, SemanticText, ShortcutBinding, StyleIntent, UiEvent, WidgetActivationContext,
-    WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetUpdateContext,
+    LayoutContainer, LayoutStyle, LogicalKey, LogicalLength, LogicalPoint, LogicalRect,
+    LogicalSize, OverflowStyle, PointerButton, PointerCaptureKind, PointerDeviceKind, PointerId,
+    PointerPhase, ScrollBarLayout, ScrollBarPlacement, ScrollBarVisibility, ScrollChrome,
+    ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot, ScrollNormalizedValue,
+    SemanticAction, SemanticCheckedState, SemanticCommand, SemanticCommandEvent,
+    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticNumber,
+    SemanticRole, SemanticState, SemanticText, ShortcutBinding, StyleIntent, UiEvent,
+    WidgetActivationContext, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation,
+    WidgetUpdateContext,
     element::{CommonNodeAuthoring, Element, View, Views, common_node_builder_methods},
     widget_erasure::{ErasedWidget, WidgetAdapter},
     widget_protocol::{
@@ -1355,8 +1356,9 @@ fn scroll_bar_semantic_request(command: SemanticCommand) -> Option<ScrollControl
     match command {
         SemanticCommand::Increment => Some(ScrollControlRequest::SmallStepForward),
         SemanticCommand::Decrement => Some(ScrollControlRequest::SmallStepBackward),
-        SemanticCommand::SetValue(value) => normalized_scroll_bar_percentage(value)
-            .map(ScrollControlRequest::SetNormalized),
+        SemanticCommand::SetValue(value) => {
+            normalized_scroll_bar_percentage(value).map(ScrollControlRequest::SetNormalized)
+        }
         _ => None,
     }
 }
@@ -1389,15 +1391,23 @@ impl<Action> Widget<Action> for ScrollBarWidget {
         if let Some(keyboard) = event.as_keyboard()
             && let Some(request) = scroll_bar_keyboard_request(keyboard, self.layout.axis())
         {
-            emit_scroll_bar_request(context, request);
+            if context.scroll_control_snapshot().is_some_and(|snapshot| {
+                snapshot.axis() == self.layout.axis() && snapshot.maximum_offset().get() > 0.0
+            }) {
+                emit_scroll_bar_request(context, request);
+            }
             return WidgetEventOutput::none();
         }
 
-        if let Some(command) = event
+        if let Some(request) = event
             .as_semantic_command()
             .and_then(|event| scroll_bar_semantic_request(event.command()))
         {
-            emit_scroll_bar_request(context, command);
+            if context.scroll_control_snapshot().is_some_and(|snapshot| {
+                snapshot.axis() == self.layout.axis() && snapshot.maximum_offset().get() > 0.0
+            }) {
+                emit_scroll_bar_request(context, request);
+            }
             return WidgetEventOutput::none();
         }
 
@@ -1437,11 +1447,7 @@ impl<Action> Widget<Action> for ScrollBarWidget {
         HitContribution::single_rect(local_rect(context.local_size()))
     }
 
-    fn semantics(
-        &self,
-        (): &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         SemanticContribution::single(
             SemanticNodeContribution::primary(SemanticRole::ScrollBar)
                 .with_name(self.label.clone())
@@ -1475,6 +1481,7 @@ impl ScrollBarThumbWidget {
     ) -> WidgetEventOutput {
         if state.drag.take().is_some() {
             context.release_pointer_capture();
+            context.prevent_default();
             context.stop_propagation();
             WidgetEventOutput::changed()
         } else {
@@ -1566,14 +1573,13 @@ impl<Action> Widget<Action> for ScrollBarThumbWidget {
                     return Self::fail_closed_drag(state, context);
                 }
                 let coordinate = scroll_bar_axis_coordinate(local, self.layout.axis());
-                let desired_origin =
-                    (geometry.thumb_origin + coordinate - drag.grab_offset).clamp(0.0, geometry.travel);
+                let desired_origin = (geometry.thumb_origin + coordinate - drag.grab_offset)
+                    .clamp(0.0, geometry.travel);
                 let normalized = ScrollNormalizedValue::new(desired_origin / geometry.travel)
-                    .unwrap_or_else(|_| unreachable!("clamped thumb travel yields normalized value"));
-                emit_scroll_bar_request(
-                    context,
-                    ScrollControlRequest::SetNormalized(normalized),
-                );
+                    .unwrap_or_else(|_| {
+                        unreachable!("clamped thumb travel yields normalized value")
+                    });
+                emit_scroll_bar_request(context, ScrollControlRequest::SetNormalized(normalized));
                 WidgetEventOutput::none()
             }
             PointerPhase::Up | PointerPhase::Cancel
