@@ -440,18 +440,15 @@ const fn axis_key(axis: Axis) -> u8 {
     }
 }
 
-pub(super) fn resolve_scroll_chrome_layout_plan(
-    topology: &SurfaceTopologySnapshot,
-) -> Result<ScrollChromeLayoutPlan, PresentationGeometryError> {
-    let chrome_positions = topology
-        .nodes
-        .iter()
-        .map(|node| node.scroll_chrome.is_some())
-        .collect::<Vec<_>>();
-    let mut diagnostics = vec![Vec::new(); topology.nodes.len()];
+type ScrollChromeOwnerAxis = (usize, u8);
+type ScrollChromeBarPositions = HashMap<ScrollChromeOwnerAxis, usize>;
 
-    let mut bar_candidates = Vec::new();
-    let mut owner_axis_counts = HashMap::<(usize, u8), usize>::new();
+fn resolve_scroll_bar_chrome(
+    topology: &SurfaceTopologySnapshot,
+    diagnostics: &mut [Vec<WidgetDiagnostic>],
+) -> Result<Vec<ResolvedScrollBarChrome>, PresentationGeometryError> {
+    let mut candidates = Vec::new();
+    let mut counts = HashMap::<ScrollChromeOwnerAxis, usize>::new();
     for (position, node) in topology.nodes.iter().enumerate() {
         let Some(ScrollChrome::Bar(layout)) = node.scroll_chrome else {
             continue;
@@ -464,19 +461,19 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
             ));
             continue;
         };
-        *owner_axis_counts
+        *counts
             .entry((owner_position, axis_key(layout.axis())))
             .or_default() += 1;
-        bar_candidates.push(ResolvedScrollBarChrome {
+        candidates.push(ResolvedScrollBarChrome {
             position,
             owner_position,
             layout,
         });
     }
-    let bars = bar_candidates
+    Ok(candidates
         .into_iter()
         .filter(|bar| {
-            let unique = owner_axis_counts
+            let unique = counts
                 .get(&(bar.owner_position, axis_key(bar.layout.axis())))
                 .copied()
                 == Some(1);
@@ -488,64 +485,49 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
             }
             unique
         })
-        .collect::<Vec<_>>();
+        .collect())
+}
 
-    let bar_positions = bars
-        .iter()
+fn scroll_chrome_bar_positions(bars: &[ResolvedScrollBarChrome]) -> ScrollChromeBarPositions {
+    bars.iter()
         .map(|bar| {
             (
                 (bar.owner_position, axis_key(bar.layout.axis())),
                 bar.position,
             )
         })
-        .collect::<HashMap<_, _>>();
+        .collect()
+}
 
-    let mut thumb_candidates = Vec::new();
-    let mut thumb_counts = HashMap::<(usize, u8), usize>::new();
-    let mut corner_candidates = Vec::new();
-    let mut corner_counts = HashMap::<usize, usize>::new();
+fn resolve_scroll_thumb_chrome(
+    topology: &SurfaceTopologySnapshot,
+    bar_positions: &ScrollChromeBarPositions,
+    diagnostics: &mut [Vec<WidgetDiagnostic>],
+) -> Result<Vec<ResolvedScrollThumbChrome>, PresentationGeometryError> {
+    let mut candidates = Vec::new();
+    let mut counts = HashMap::<ScrollChromeOwnerAxis, usize>::new();
     for (position, node) in topology.nodes.iter().enumerate() {
-        match node.scroll_chrome {
-            Some(ScrollChrome::Thumb(axis)) => {
-                let Some((_, owner_position)) = resolve_scroll_owner(topology, &node.id, axis)?
-                else {
-                    diagnostics[position].push(WidgetDiagnostic::new(
-                        "runenui.scroll-chrome.missing-owner",
-                        "scrollbar thumb has no eligible ancestor scroll owner for its axis",
-                    ));
-                    continue;
-                };
-                *thumb_counts
-                    .entry((owner_position, axis_key(axis)))
-                    .or_default() += 1;
-                thumb_candidates.push((position, owner_position, axis));
-            }
-            Some(ScrollChrome::Corner) => {
-                let horizontal = resolve_scroll_owner(topology, &node.id, Axis::Horizontal)?;
-                let vertical = resolve_scroll_owner(topology, &node.id, Axis::Vertical)?;
-                if let (Some((horizontal_owner, owner_position)), Some((vertical_owner, _))) =
-                    (horizontal, vertical)
-                    && horizontal_owner == vertical_owner
-                {
-                    *corner_counts.entry(owner_position).or_default() += 1;
-                    corner_candidates.push((position, owner_position));
-                } else {
-                    diagnostics[position].push(WidgetDiagnostic::new(
-                        "runenui.scroll-chrome.invalid-corner-owner",
-                        "scrollbar corner must resolve both axes to the same scroll owner",
-                    ));
-                }
-            }
-            Some(ScrollChrome::Bar(_)) | None => {}
-            Some(_) => {}
-        }
+        let Some(ScrollChrome::Thumb(axis)) = node.scroll_chrome else {
+            continue;
+        };
+        let Some((_, owner_position)) = resolve_scroll_owner(topology, &node.id, axis)? else {
+            diagnostics[position].push(WidgetDiagnostic::new(
+                "runenui.scroll-chrome.missing-owner",
+                "scrollbar thumb has no eligible ancestor scroll owner for its axis",
+            ));
+            continue;
+        };
+        *counts
+            .entry((owner_position, axis_key(axis)))
+            .or_default() += 1;
+        candidates.push((position, owner_position, axis));
     }
 
-    let thumbs = thumb_candidates
+    Ok(candidates
         .into_iter()
         .filter_map(|(position, owner_position, axis)| {
             let key = (owner_position, axis_key(axis));
-            if thumb_counts.get(&key).copied() != Some(1) {
+            if counts.get(&key).copied() != Some(1) {
                 diagnostics[position].push(WidgetDiagnostic::new(
                     "runenui.scroll-chrome.duplicate-thumb",
                     "multiple scrollbar thumbs target the same scroll owner axis; all are withheld",
@@ -566,12 +548,40 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
                 bar_position,
             })
         })
-        .collect();
+        .collect())
+}
 
-    let corners = corner_candidates
+fn resolve_scroll_corner_chrome(
+    topology: &SurfaceTopologySnapshot,
+    bar_positions: &ScrollChromeBarPositions,
+    diagnostics: &mut [Vec<WidgetDiagnostic>],
+) -> Result<Vec<ResolvedScrollCornerChrome>, PresentationGeometryError> {
+    let mut candidates = Vec::new();
+    let mut counts = HashMap::<usize, usize>::new();
+    for (position, node) in topology.nodes.iter().enumerate() {
+        if !matches!(node.scroll_chrome, Some(ScrollChrome::Corner)) {
+            continue;
+        }
+        let horizontal = resolve_scroll_owner(topology, &node.id, Axis::Horizontal)?;
+        let vertical = resolve_scroll_owner(topology, &node.id, Axis::Vertical)?;
+        if let (Some((horizontal_owner, owner_position)), Some((vertical_owner, _))) =
+            (horizontal, vertical)
+            && horizontal_owner == vertical_owner
+        {
+            *counts.entry(owner_position).or_default() += 1;
+            candidates.push((position, owner_position));
+        } else {
+            diagnostics[position].push(WidgetDiagnostic::new(
+                "runenui.scroll-chrome.invalid-corner-owner",
+                "scrollbar corner must resolve both axes to the same scroll owner",
+            ));
+        }
+    }
+
+    Ok(candidates
         .into_iter()
         .filter_map(|(position, owner_position)| {
-            if corner_counts.get(&owner_position).copied() != Some(1) {
+            if counts.get(&owner_position).copied() != Some(1) {
                 diagnostics[position].push(WidgetDiagnostic::new(
                     "runenui.scroll-chrome.duplicate-corner",
                     "multiple scrollbar corners target the same scroll owner; all are withheld",
@@ -592,7 +602,22 @@ pub(super) fn resolve_scroll_chrome_layout_plan(
                 owner_position,
             })
         })
-        .collect();
+        .collect())
+}
+
+pub(super) fn resolve_scroll_chrome_layout_plan(
+    topology: &SurfaceTopologySnapshot,
+) -> Result<ScrollChromeLayoutPlan, PresentationGeometryError> {
+    let chrome_positions = topology
+        .nodes
+        .iter()
+        .map(|node| node.scroll_chrome.is_some())
+        .collect::<Vec<_>>();
+    let mut diagnostics = vec![Vec::new(); topology.nodes.len()];
+    let bars = resolve_scroll_bar_chrome(topology, &mut diagnostics)?;
+    let bar_positions = scroll_chrome_bar_positions(&bars);
+    let thumbs = resolve_scroll_thumb_chrome(topology, &bar_positions, &mut diagnostics)?;
+    let corners = resolve_scroll_corner_chrome(topology, &bar_positions, &mut diagnostics)?;
 
     Ok(ScrollChromeLayoutPlan {
         chrome_positions,
@@ -780,51 +805,66 @@ fn scroll_thumb_presentation_offset(
     })
 }
 
-fn resolve_present_scroll_chrome(
-    topology: &SurfaceTopologySnapshot,
-    layout: &CachedLayoutFacts,
+struct ScrollChromePresentationContext<'a> {
+    topology: &'a SurfaceTopologySnapshot,
+    layout: &'a CachedLayoutFacts,
+    scroll: &'a SurfaceScrollProjection,
+}
+
+struct ScrollChromePresentationInput {
     node_presentation: LogicalTransform,
-    scroll: &SurfaceScrollProjection,
     position: usize,
     bounds: LogicalRect,
     projection: CachedScrollChromeProjection,
+}
+
+struct PresentedScrollChrome {
+    presentation: PresentationNodeFacts,
+    child_offset: (f32, f32),
+    child_clips: Vec<SceneClip>,
+    child_clip_bounds: Vec<LogicalRect>,
+}
+
+fn resolve_present_scroll_chrome(
+    context: &ScrollChromePresentationContext<'_>,
+    input: ScrollChromePresentationInput,
     nodes: &[PresentationNodeFacts],
     inherited_scroll_offsets: &[(f32, f32)],
-) -> Result<
-    (
-        PresentationNodeFacts,
-        (f32, f32),
-        Vec<SceneClip>,
-        Vec<LogicalRect>,
-    ),
-    PresentationGeometryError,
-> {
-    let owner_position = projection.owner_position();
-    if owner_position >= position {
+) -> Result<PresentedScrollChrome, PresentationGeometryError> {
+    let owner_position = input.projection.owner_position();
+    if owner_position >= input.position {
         return Err(PresentationGeometryError);
     }
-    let owner_bounds = *layout
+    let owner_bounds = *context
+        .layout
         .bounds
         .get(owner_position)
         .ok_or(PresentationGeometryError)?;
     let owner_presentation = nodes.get(owner_position).ok_or(PresentationGeometryError)?;
-    let owner_inherited_scroll = inherited_scroll_offsets
+    let child_offset = inherited_scroll_offsets
         .get(owner_position)
         .copied()
         .ok_or(PresentationGeometryError)?;
-    let (thumb_x, thumb_y) =
-        scroll_thumb_presentation_offset(topology, layout, scroll, position, projection)?;
+    let (thumb_x, thumb_y) = scroll_thumb_presentation_offset(
+        context.topology,
+        context.layout,
+        context.scroll,
+        input.position,
+        input.projection,
+    )?;
     let placement = LogicalTransform::translation(
-        bounds.x() - owner_bounds.x() + thumb_x,
-        bounds.y() - owner_bounds.y() + thumb_y,
+        input.bounds.x() - owner_bounds.x() + thumb_x,
+        input.bounds.y() - owner_bounds.y() + thumb_y,
     )
     .map_err(|_| PresentationGeometryError)?;
-    let owner_to_surface = node_presentation
+    let owner_to_surface = input
+        .node_presentation
         .then(placement)
         .and_then(|transform| transform.then(owner_presentation.owner_to_surface()))
         .map_err(|_| PresentationGeometryError)?;
-    let local_bounds = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
-        .unwrap_or_else(|_| unreachable!("published chrome layout size is valid"));
+    let local_bounds =
+        LogicalRect::try_new(0.0, 0.0, input.bounds.width(), input.bounds.height())
+            .unwrap_or_else(|_| unreachable!("published chrome layout size is valid"));
     let presented_bounds =
         transform_rect_aabb(owner_to_surface, local_bounds).ok_or(PresentationGeometryError)?;
     let visible_bounds = intersect_rects(presented_bounds, owner_presentation.visible_bounds());
@@ -832,26 +872,26 @@ fn resolve_present_scroll_chrome(
     let owner_clip_rect =
         LogicalRect::try_new(0.0, 0.0, owner_bounds.width(), owner_bounds.height())
             .unwrap_or_else(|_| unreachable!("published owner layout size is valid"));
-    let mut inherited_clips = owner_presentation.inherited_clips().to_vec();
-    inherited_clips.push(SceneClip::new(
+    let mut child_clips = owner_presentation.inherited_clips().to_vec();
+    child_clips.push(SceneClip::new(
         SceneShape::rect(owner_clip_rect),
         owner_presentation.owner_to_surface(),
     ));
-    let content_clips = inherited_clips.clone();
-    let clip_bounds = vec![owner_presentation.visible_bounds()];
-    Ok((
-        PresentationNodeFacts::new(
+    let content_clips = child_clips.clone();
+    let child_clip_bounds = vec![owner_presentation.visible_bounds()];
+    Ok(PresentedScrollChrome {
+        presentation: PresentationNodeFacts::new(
             owner_to_surface,
             owner_to_surface,
             presented_bounds,
             visible_bounds,
-            Arc::from(inherited_clips.clone()),
+            Arc::from(child_clips.clone()),
             Arc::from(content_clips),
         ),
-        owner_inherited_scroll,
-        inherited_clips,
-        clip_bounds,
-    ))
+        child_offset,
+        child_clips,
+        child_clip_bounds,
+    })
 }
 
 /// Recoverable failure to derive a finite node-presentation publication product.
@@ -881,6 +921,11 @@ pub(super) fn resolve_presentation(
         .enumerate()
         .map(|(position, node)| (node.id.clone(), position))
         .collect::<HashMap<_, _>>();
+    let chrome_context = ScrollChromePresentationContext {
+        topology,
+        layout,
+        scroll,
+    };
     let mut nodes = Vec::with_capacity(layout.bounds.len());
     let mut inherited_scroll_offsets = Vec::with_capacity(layout.bounds.len());
     let mut child_offsets = Vec::with_capacity(layout.bounds.len());
@@ -913,23 +958,22 @@ pub(super) fn resolve_presentation(
             })
             .map_err(|_| PresentationGeometryError)?;
         if let Some(projection) = layout.scroll_chrome[position].filter(|chrome| chrome.present()) {
-            let (presentation, child_offset, inherited_clips, inherited_clip_bounds) =
-                resolve_present_scroll_chrome(
-                    topology,
-                    layout,
+            let presented = resolve_present_scroll_chrome(
+                &chrome_context,
+                ScrollChromePresentationInput {
                     node_presentation,
-                    scroll,
                     position,
-                    *bounds,
+                    bounds: *bounds,
                     projection,
-                    &nodes,
-                    &inherited_scroll_offsets,
-                )?;
-            inherited_scroll_offsets.push(child_offset);
-            child_offsets.push(child_offset);
-            nodes.push(presentation);
-            child_clips.push(inherited_clips);
-            child_clip_bounds.push(inherited_clip_bounds);
+                },
+                &nodes,
+                &inherited_scroll_offsets,
+            )?;
+            inherited_scroll_offsets.push(presented.child_offset);
+            child_offsets.push(presented.child_offset);
+            nodes.push(presented.presentation);
+            child_clips.push(presented.child_clips);
+            child_clip_bounds.push(presented.child_clip_bounds);
             continue;
         }
         inherited_scroll_offsets.push((ancestor_x, ancestor_y));
