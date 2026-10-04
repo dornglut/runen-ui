@@ -1293,9 +1293,7 @@ fn scroll_bar_keyboard_request(
         LogicalKey::PageUp if modifiers == crate::KeyModifiers::NONE => {
             Some(ScrollControlRequest::PageBackward)
         }
-        LogicalKey::PageDown | LogicalKey::Space
-            if modifiers == crate::KeyModifiers::NONE =>
-        {
+        LogicalKey::PageDown | LogicalKey::Space if modifiers == crate::KeyModifiers::NONE => {
             Some(ScrollControlRequest::PageForward)
         }
         LogicalKey::Home if modifiers == crate::KeyModifiers::NONE => {
