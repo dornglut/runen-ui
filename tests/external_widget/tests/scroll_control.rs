@@ -839,7 +839,11 @@ fn duplicate_scroll_chrome_is_rejected_and_diagnosed_without_losing_mounted_iden
             .unwrap_or_else(|| unreachable!("duplicate chrome layout node is retained"));
 
         assert!(layout.diagnostics().contains(&expected));
-        assert!(publication.hit_test_scene().contains_mounted_target(&mounted));
+        assert!(
+            publication
+                .hit_test_scene()
+                .contains_mounted_target(&mounted)
+        );
         assert!(
             runtime
                 .index()
@@ -855,9 +859,13 @@ fn duplicate_scroll_chrome_is_rejected_and_diagnosed_without_losing_mounted_iden
             .iter()
             .all(|node| node.role() != SemanticRole::ScrollBar)
     );
-    assert!(publication.paint_scene().items().iter().all(|item| {
-        !matches!(item_color(item), Some(color) if color == TRACK_COLOR)
-    }));
+    assert!(
+        publication
+            .paint_scene()
+            .items()
+            .iter()
+            .all(|item| { !matches!(item_color(item), Some(color) if color == TRACK_COLOR) })
+    );
 }
 
 fn item_color(item: &runenui_runtime::PaintSceneItem) -> Option<Color> {
