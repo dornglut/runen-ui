@@ -37,11 +37,7 @@ impl FocusEligibilityProjection {
     }
 
     #[must_use]
-    pub fn scroll_chrome_participates(
-        &self,
-        id: &MountedNodeId,
-        has_scroll_chrome: bool,
-    ) -> bool {
+    pub fn scroll_chrome_participates(&self, id: &MountedNodeId, has_scroll_chrome: bool) -> bool {
         !has_scroll_chrome || self.participating_chrome.contains(id)
     }
 }

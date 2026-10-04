@@ -517,9 +517,7 @@ fn resolve_scroll_thumb_chrome(
             ));
             continue;
         };
-        *counts
-            .entry((owner_position, axis_key(axis)))
-            .or_default() += 1;
+        *counts.entry((owner_position, axis_key(axis))).or_default() += 1;
         candidates.push((position, owner_position, axis));
     }
 
@@ -862,9 +860,8 @@ fn resolve_present_scroll_chrome(
         .then(placement)
         .and_then(|transform| transform.then(owner_presentation.owner_to_surface()))
         .map_err(|_| PresentationGeometryError)?;
-    let local_bounds =
-        LogicalRect::try_new(0.0, 0.0, input.bounds.width(), input.bounds.height())
-            .unwrap_or_else(|_| unreachable!("published chrome layout size is valid"));
+    let local_bounds = LogicalRect::try_new(0.0, 0.0, input.bounds.width(), input.bounds.height())
+        .unwrap_or_else(|_| unreachable!("published chrome layout size is valid"));
     let presented_bounds =
         transform_rect_aabb(owner_to_surface, local_bounds).ok_or(PresentationGeometryError)?;
     let visible_bounds = intersect_rects(presented_bounds, owner_presentation.visible_bounds());

@@ -562,8 +562,7 @@ impl<Action> MountedTree<Action> {
             widget,
             children: _,
         } = incoming;
-        let mut update_context =
-            self.prepare_retained_widget_update(id, &widget, path, stats)?;
+        let mut update_context = self.prepare_retained_widget_update(id, &widget, path, stats)?;
         let common_invalidation;
         {
             let node = self

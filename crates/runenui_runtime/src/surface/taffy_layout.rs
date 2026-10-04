@@ -198,10 +198,9 @@ fn scroll_bar_is_visible(
             ScrollBarPlacement::Reserved => {
                 reserved_present.get(bar_index).copied().unwrap_or(false)
             }
-            ScrollBarPlacement::Overlay => axis_has_positive_range(
-                report.nodes().get(bar.owner_position),
-                bar.layout.axis(),
-            ),
+            ScrollBarPlacement::Overlay => {
+                axis_has_positive_range(report.nodes().get(bar.owner_position), bar.layout.axis())
+            }
             _ => false,
         },
         _ => false,
