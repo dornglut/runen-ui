@@ -13,8 +13,8 @@ use crate::{
     TraceRecordKind, TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSequence,
     TraceSpaceCleanupReason, TraceSurfaceContext, TraceTarget, TraceTargetTransition, WorkSequence,
     focus::{
-        FocusBoundaryOutcome, FocusGroupNavigation, FocusNavigation, FocusSelection,
-        is_focus_eligible, nearest_scope, select_focus, select_focus_group_member,
+        FocusBoundaryOutcome, FocusEligibilityProjection, FocusGroupNavigation, FocusNavigation,
+        FocusSelection, is_focus_eligible, nearest_scope, select_focus, select_focus_group_member,
     },
     mounted::{PlannedInvalidation, PlannedLifetimeReason, RouteBuildError, TargetStatus},
     trace::{MandatoryTracePlan, TraceRecordDraft, TraceReservation},
@@ -77,6 +77,48 @@ struct FocusNotificationPlan {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    fn current_scroll_chrome_participation(&self, target: &MountedNodeId) -> Option<bool> {
+        let authored = self.tree.node(target)?.scroll_chrome?;
+        self.surface_publication
+            .current_scroll_chrome_participation(target, authored)
+    }
+
+    pub(crate) fn current_automatic_scroll_focusability(
+        &self,
+        target: &MountedNodeId,
+    ) -> Option<bool> {
+        let node = self.tree.node(target)?;
+        node.scroll_control_binding?;
+        let chrome_participates = node.scroll_chrome.is_none()
+            || self.current_scroll_chrome_participation(target) == Some(true);
+        Some(
+            chrome_participates
+                && self
+                    .resolve_scroll_control_context_snapshot(target)
+                    .is_some_and(|snapshot| snapshot.maximum_offset().get() > 0.0),
+        )
+    }
+
+    pub(crate) fn focus_eligibility_projection(&self) -> FocusEligibilityProjection {
+        let ids = self.tree.publication_preorder_ids();
+        let scrollable_controls = ids
+            .iter()
+            .filter(|id| self.current_automatic_scroll_focusability(id) == Some(true))
+            .cloned()
+            .collect::<Vec<_>>();
+        let participating_chrome = ids
+            .iter()
+            .filter(|id| {
+                self.tree
+                    .node(id)
+                    .is_some_and(|node| node.scroll_chrome.is_some())
+                    && self.current_scroll_chrome_participation(id) == Some(true)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        FocusEligibilityProjection::new(scrollable_controls, participating_chrome)
+    }
+
     /// Applies input-lifetime revocation selected by the sole reconciliation
     /// plan while every old route is still live. The plan has already expanded
     /// subtree invalidation, so same-slot reuse can never be mistaken for the
@@ -387,9 +429,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             SemanticCommand::FocusGroupLast => FocusGroupNavigation::Last,
             _ => return Ok(()),
         };
-        let Some(selection) =
-            select_focus_group_member(&mut self.tree, &self.focus, &transaction.target, navigation)
-        else {
+        let eligibility = self.focus_eligibility_projection();
+        let Some(selection) = select_focus_group_member(
+            &mut self.tree,
+            &self.focus,
+            &transaction.target,
+            navigation,
+            &eligibility,
+        ) else {
             return Ok(());
         };
         let Some(target) = selection.target else {
@@ -439,7 +486,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) -> Result<(), TraceRoutedIntegrityFailure> {
         if command == SemanticCommand::RequestFocus {
             let target = transaction.target.clone();
-            if is_focus_eligible(&mut self.tree, &target) {
+            let eligibility = self.focus_eligibility_projection();
+            if is_focus_eligible(&mut self.tree, &target, &eligibility) {
                 return self.commit_focus_transition(
                     transaction,
                     Some(target),
@@ -484,12 +532,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             _ => return Ok(()),
         };
         let geometry = self.surface_publication.current_focus_geometry();
+        let eligibility = self.focus_eligibility_projection();
         let Some(selection) = select_focus(
             &mut self.tree,
             &self.focus,
             &transaction.target,
             navigation,
             &geometry,
+            &eligibility,
         ) else {
             return Ok(());
         };

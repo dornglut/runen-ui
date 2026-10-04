@@ -18,7 +18,8 @@ use super::motion::{self, MotionPlanningFailure};
 use super::resolve::{
     EffectiveEffects, PaintResolutionInput, PresentationGeometryError, ResolvedSurfaceTree,
     collect_topology, hit_contexts, normalize_scroll_projection, paint_contexts,
-    resolve_diagnostics, resolve_hit_test, resolve_paint, resolve_presentation, resolve_styles,
+    resolve_diagnostics, resolve_hit_test, resolve_paint, resolve_presentation,
+    resolve_scroll_chrome_layout_plan, resolve_styles, scroll_chrome_participates,
     scroll_control_projections, semantic_contexts,
 };
 use super::taffy_layout::layout_resolved_surface;
@@ -167,7 +168,12 @@ fn resolve_contribution_phases<Action>(
 
     let mut scene_diagnostics_changed = false;
     if publication_phases.contains(DirtyPhases::HIT_TEST) {
-        let resolved = resolve_hit_test(&current.topology, &current.presentation, capability_plan);
+        let resolved = resolve_hit_test(
+            &current.topology,
+            &current.layout,
+            &current.presentation,
+            capability_plan,
+        );
         current.hit_test = resolved.scene;
         scene_diagnostics_changed |= replace_scene_diagnostics_if_changed(
             &mut current.hit_diagnostics,
@@ -205,8 +211,10 @@ fn resolve_layout_phase<Action>(
     preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
 ) -> Result<CachedLayoutFacts, SurfacePlanningError> {
     let resolved = ResolvedSurfaceTree::for_layout(&current.topology, &current.effective);
-    let (size, bounds, report, text_layouts) = layout_resolved_surface(
+    let chrome_plan = resolve_scroll_chrome_layout_plan(&current.topology)?;
+    let (size, bounds, report, scroll_chrome, text_layouts) = layout_resolved_surface(
         &resolved,
+        &chrome_plan,
         tree,
         context.root_constraints(),
         text_system,
@@ -217,8 +225,21 @@ fn resolve_layout_phase<Action>(
         size,
         bounds,
         report,
+        scroll_chrome,
         text_layouts,
     })
+}
+
+fn semantic_participation(
+    topology: &super::resolve::SurfaceTopologySnapshot,
+    layout: &CachedLayoutFacts,
+) -> Vec<bool> {
+    topology
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(position, _)| scroll_chrome_participates(topology, layout, position))
+        .collect()
 }
 
 fn resolve_style_phase_if_dirty<Action>(
@@ -434,8 +455,14 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     )?);
     current.scroll_controls = Arc::clone(&scroll_controls);
     let semantic_contexts = semantic_contexts(&current.topology, scroll_controls.as_slice());
-    let semantic_capability_plan = semantic_dirty
-        .then(|| tree.plan_semantic_publication_capabilities(&capability_plan, &semantic_contexts));
+    let semantic_participation = semantic_participation(&current.topology, &current.layout);
+    let semantic_capability_plan = semantic_dirty.then(|| {
+        tree.plan_semantic_publication_capabilities(
+            &capability_plan,
+            &semantic_contexts,
+            &semantic_participation,
+        )
+    });
     if presentation_dirty {
         current.presentation = Arc::new(resolve_presentation(
             &current.topology,
@@ -534,8 +561,10 @@ fn plan_structural_surface<'tree, Action>(
     );
     tree.extend_surface_publication_capabilities(&mut capability_plan, DirtyPhases::ALL);
     let resolved = ResolvedSurfaceTree::for_layout(&topology, &effective);
-    let (size, bounds, layout_report, text_layouts) = layout_resolved_surface(
+    let chrome_plan = resolve_scroll_chrome_layout_plan(&topology)?;
+    let (size, bounds, layout_report, scroll_chrome, text_layouts) = layout_resolved_surface(
         &resolved,
+        &chrome_plan,
         tree,
         context.root_constraints(),
         text_system,
@@ -546,6 +575,7 @@ fn plan_structural_surface<'tree, Action>(
         size,
         bounds,
         report: layout_report,
+        scroll_chrome,
         text_layouts,
     };
     report.record(SurfacePhase::Layout);
@@ -554,8 +584,12 @@ fn plan_structural_surface<'tree, Action>(
         tree, &topology, &layout, &scroll,
     )?);
     let semantic_contexts = semantic_contexts(&topology, scroll_controls.as_slice());
-    let semantic_capability_plan =
-        tree.plan_semantic_publication_capabilities(&capability_plan, &semantic_contexts);
+    let semantic_participation = semantic_participation(&topology, &layout);
+    let semantic_capability_plan = tree.plan_semantic_publication_capabilities(
+        &capability_plan,
+        &semantic_contexts,
+        &semantic_participation,
+    );
     let presentation = resolve_presentation(&topology, &layout, &effective, &scroll)?;
 
     let paint_contexts = paint_contexts(&layout, &effective, scroll_controls.as_slice());
@@ -565,7 +599,7 @@ fn plan_structural_surface<'tree, Action>(
         &paint_contexts,
         &hit_contexts,
     );
-    let resolved_hit_test = resolve_hit_test(&topology, &presentation, &capability_plan);
+    let resolved_hit_test = resolve_hit_test(&topology, &layout, &presentation, &capability_plan);
     let hit_test = resolved_hit_test.scene;
     let hit_diagnostics = Arc::new(resolved_hit_test.diagnostics);
     report.record(SurfacePhase::HitTesting);
@@ -734,9 +768,9 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
         || cache.effective.nodes.len() != expected
         || cache.layout.bounds.len() != expected
         || cache.layout.report.nodes().len() != expected
+        || cache.layout.scroll_chrome.len() != expected
         || cache.layout.text_layouts.len() != expected
         || cache.presentation.nodes.len() != expected
-        || cache.hit_test.membership().len() != expected
         || cache.diagnostics.len() != expected
         || cache.hit_diagnostics.len() != expected
         || cache.paint_diagnostics.len() != expected
@@ -752,10 +786,13 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
             || layout.id() != &topology.id
             || layout.parent() != topology.parent.as_ref()
             || layout.authored_id() != topology.authored_id.as_ref()
-            || cache.hit_test.membership()[index] != topology.id
         {
             return Err("surface cache node identity is not topology-aligned");
         }
+    }
+    let expected_membership = cache.topology.nodes.iter().map(|node| &node.id);
+    if cache.hit_test.membership().iter().ne(expected_membership) {
+        return Err("surface hit membership is not aligned with mounted topology");
     }
     Ok(())
 }

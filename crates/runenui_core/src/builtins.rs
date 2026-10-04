@@ -1,13 +1,16 @@
 use core::fmt;
 
 use crate::{
-    ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandEvent, EventContext,
+    ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandEvent, Axis, EventContext,
     EventPhase, FlexContainerStyle, FlexDirection, FocusGroup, FocusGroupActivationPolicy,
-    FocusGroupBoundaryPolicy, Focusability, HitContribution, HitContributionContext,
-    LayoutContainer, LayoutStyle, LogicalLength, LogicalRect, LogicalSize, OverflowStyle,
-    SemanticAction, SemanticCheckedState, SemanticCommand, SemanticCommandEvent,
-    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
-    SemanticState, SemanticText, ShortcutBinding, UiEvent, WidgetActivationContext,
+    FocusGroupBoundaryPolicy, Focusability, HitContribution, HitContributionContext, KeyboardPhase,
+    LayoutContainer, LayoutStyle, LogicalKey, LogicalLength, LogicalPoint, LogicalRect,
+    LogicalSize, OverflowStyle, PointerButton, PointerCaptureKind, PointerDeviceKind, PointerId,
+    PointerPhase, ScrollBarLayout, ScrollBarPlacement, ScrollBarVisibility, ScrollChrome,
+    ScrollControlBinding, ScrollControlRequest, ScrollNormalizedValue, SemanticAction,
+    SemanticCheckedState, SemanticCommand, SemanticCommandEvent, SemanticContribution,
+    SemanticContributionContext, SemanticNodeContribution, SemanticNumber, SemanticRole,
+    SemanticState, SemanticText, ShortcutBinding, StyleIntent, UiEvent, WidgetActivationContext,
     WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetUpdateContext,
     element::{CommonNodeAuthoring, Element, View, Views, common_node_builder_methods},
     widget_erasure::{ErasedWidget, WidgetAdapter},
@@ -1151,6 +1154,610 @@ impl<Action: 'static> View<Action> for RadioGroup<Action> {
                 .with_activation(FocusGroupActivationPolicy::ActivateTarget),
         )
     }
+}
+
+/// Standard M11 scrollbar composed entirely from public scroll-control and chrome contracts.
+///
+/// The track is this view's ordinary node. The thumb is an ordinary child node
+/// using the same generic binding and styling/hit/pointer protocols available to
+/// downstream widgets. Neither node owns or mirrors logical scroll state.
+pub struct ScrollBar {
+    label: String,
+    binding: ScrollControlBinding,
+    layout: ScrollBarLayout,
+    thumb_style: StyleIntent,
+    common: CommonNodeAuthoring,
+}
+
+impl fmt::Debug for ScrollBar {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ScrollBar")
+            .field("label", &self.label)
+            .field("binding", &self.binding)
+            .field("layout", &self.layout)
+            .field("thumb_style", &self.thumb_style)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
+            .field("diagnostics", &self.common.diagnostics)
+            .finish()
+    }
+}
+
+impl ScrollBar {
+    #[must_use]
+    pub fn new(
+        label: impl Into<String>,
+        binding: ScrollControlBinding,
+        thickness: impl Into<LogicalLength>,
+        minimum_thumb_extent: impl Into<LogicalLength>,
+    ) -> Self {
+        Self {
+            label: label.into(),
+            binding,
+            layout: ScrollBarLayout::new(
+                binding.axis(),
+                thickness.into(),
+                minimum_thumb_extent.into(),
+            ),
+            thumb_style: StyleIntent::EMPTY,
+            common: CommonNodeAuthoring::default(),
+        }
+    }
+
+    common_node_builder_methods!();
+
+    #[must_use]
+    pub const fn visibility(mut self, visibility: ScrollBarVisibility) -> Self {
+        self.layout = self.layout.with_visibility(visibility);
+        self
+    }
+
+    #[must_use]
+    pub const fn placement(mut self, placement: ScrollBarPlacement) -> Self {
+        self.layout = self.layout.with_placement(placement);
+        self
+    }
+
+    /// Replaces the ordinary authored style of the interactive thumb child.
+    #[must_use]
+    pub fn thumb_style(mut self, style: StyleIntent) -> Self {
+        self.thumb_style = style;
+        self
+    }
+
+    #[must_use]
+    pub const fn binding(&self) -> ScrollControlBinding {
+        self.binding
+    }
+
+    #[must_use]
+    pub const fn scroll_bar_layout(&self) -> ScrollBarLayout {
+        self.layout
+    }
+}
+
+const fn scroll_bar_axis_coordinate(point: LogicalPoint, axis: Axis) -> f32 {
+    match axis {
+        Axis::Horizontal => point.x(),
+        Axis::Vertical => point.y(),
+    }
+}
+
+fn scroll_bar_pointer_down_is_primary(event: &crate::PointerEvent) -> bool {
+    event.phase() == PointerPhase::Down
+        && match event.device_kind() {
+            PointerDeviceKind::Touch => true,
+            _ => event.changed_button() == Some(PointerButton::Primary),
+        }
+}
+
+fn emit_scroll_bar_request<Action>(
+    context: &mut EventContext<'_, Action>,
+    request: ScrollControlRequest,
+) {
+    context.emit_command(SemanticCommand::ScrollControl(request));
+    context.prevent_default();
+    context.stop_propagation();
+}
+
+fn scroll_bar_keyboard_request(
+    event: &crate::KeyboardEvent,
+    axis: Axis,
+) -> Option<ScrollControlRequest> {
+    if event.phase() != KeyboardPhase::Down {
+        return None;
+    }
+    let modifiers = event.modifiers();
+    match event.logical_key() {
+        LogicalKey::ArrowLeft
+            if axis == Axis::Horizontal && modifiers == crate::KeyModifiers::NONE =>
+        {
+            Some(ScrollControlRequest::SmallStepBackward)
+        }
+        LogicalKey::ArrowRight
+            if axis == Axis::Horizontal && modifiers == crate::KeyModifiers::NONE =>
+        {
+            Some(ScrollControlRequest::SmallStepForward)
+        }
+        LogicalKey::ArrowUp if axis == Axis::Vertical && modifiers == crate::KeyModifiers::NONE => {
+            Some(ScrollControlRequest::SmallStepBackward)
+        }
+        LogicalKey::ArrowDown
+            if axis == Axis::Vertical && modifiers == crate::KeyModifiers::NONE =>
+        {
+            Some(ScrollControlRequest::SmallStepForward)
+        }
+        LogicalKey::PageUp if modifiers == crate::KeyModifiers::NONE => {
+            Some(ScrollControlRequest::PageBackward)
+        }
+        LogicalKey::PageDown | LogicalKey::Space if modifiers == crate::KeyModifiers::NONE => {
+            Some(ScrollControlRequest::PageForward)
+        }
+        LogicalKey::Home if modifiers == crate::KeyModifiers::NONE => {
+            Some(ScrollControlRequest::ToStart)
+        }
+        LogicalKey::End if modifiers == crate::KeyModifiers::NONE => {
+            Some(ScrollControlRequest::ToEnd)
+        }
+        LogicalKey::Space if modifiers == crate::KeyModifiers::SHIFT => {
+            Some(ScrollControlRequest::PageBackward)
+        }
+        _ => None,
+    }
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "the semantic percentage is range-checked to finite [0, 100] before normalization into the accepted f32 scroll protocol"
+)]
+fn normalized_scroll_bar_percentage(value: SemanticNumber) -> Option<ScrollNormalizedValue> {
+    let percentage = value.get();
+    if !(0.0..=100.0).contains(&percentage) {
+        return None;
+    }
+    ScrollNormalizedValue::new((percentage / 100.0) as f32).ok()
+}
+
+fn scroll_bar_semantic_request(command: SemanticCommand) -> Option<ScrollControlRequest> {
+    match command {
+        SemanticCommand::Increment => Some(ScrollControlRequest::SmallStepForward),
+        SemanticCommand::Decrement => Some(ScrollControlRequest::SmallStepBackward),
+        SemanticCommand::SetValue(value) => {
+            normalized_scroll_bar_percentage(value).map(ScrollControlRequest::SetNormalized)
+        }
+        _ => None,
+    }
+}
+
+#[derive(Debug)]
+struct ScrollBarWidget {
+    label: String,
+    layout: ScrollBarLayout,
+}
+
+impl<Action> Widget<Action> for ScrollBarWidget {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(true)
+    }
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        if context.phase() != EventPhase::Target {
+            return WidgetEventOutput::none();
+        }
+
+        if let Some(keyboard) = event.as_keyboard()
+            && let Some(request) = scroll_bar_keyboard_request(keyboard, self.layout.axis())
+        {
+            if context.scroll_control_snapshot().is_some_and(|snapshot| {
+                snapshot.axis() == self.layout.axis() && snapshot.maximum_offset().get() > 0.0
+            }) {
+                emit_scroll_bar_request(context, request);
+            }
+            return WidgetEventOutput::none();
+        }
+
+        if let Some(request) = event
+            .as_semantic_command()
+            .and_then(|event| scroll_bar_semantic_request(event.command()))
+        {
+            if context.scroll_control_snapshot().is_some_and(|snapshot| {
+                snapshot.axis() == self.layout.axis() && snapshot.maximum_offset().get() > 0.0
+            }) {
+                emit_scroll_bar_request(context, request);
+            }
+            return WidgetEventOutput::none();
+        }
+
+        let Some(pointer) = event.as_pointer() else {
+            return WidgetEventOutput::none();
+        };
+        if !scroll_bar_pointer_down_is_primary(pointer) {
+            return WidgetEventOutput::none();
+        }
+        let (Some(snapshot), Some(local)) = (
+            context.scroll_control_snapshot(),
+            context.pointer_local_position(),
+        ) else {
+            return WidgetEventOutput::none();
+        };
+        if snapshot.maximum_offset().get() == 0.0 {
+            return WidgetEventOutput::none();
+        }
+        let Some(geometry) = self
+            .layout
+            .thumb_geometry(snapshot, snapshot.viewport_extent())
+        else {
+            return WidgetEventOutput::none();
+        };
+        let coordinate = scroll_bar_axis_coordinate(local, self.layout.axis());
+        let request = if coordinate < geometry.thumb_origin().get() {
+            Some(ScrollControlRequest::PageBackward)
+        } else if coordinate > geometry.thumb_origin().get() + geometry.thumb_extent().get() {
+            Some(ScrollControlRequest::PageForward)
+        } else {
+            None
+        };
+        if let Some(request) = request {
+            emit_scroll_bar_request(context, request);
+        }
+        WidgetEventOutput::none()
+    }
+
+    fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
+        HitContribution::single_rect(local_rect(context.local_size()))
+    }
+
+    fn semantics(
+        &self,
+        (): &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let mut node = SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+            .with_name(self.label.clone())
+            .with_action(SemanticAction::RequestFocus);
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
+        SemanticContribution::single(node)
+    }
+}
+
+impl<Action> ChildBearingWidget<Action> for ScrollBarWidget {}
+
+#[derive(Clone, Copy, Debug)]
+struct ScrollBarDrag {
+    pointer_id: PointerId,
+    grab_offset: f32,
+}
+
+#[derive(Debug, Default)]
+struct ScrollBarThumbState {
+    drag: Option<ScrollBarDrag>,
+}
+
+#[derive(Debug)]
+struct ScrollBarThumbWidget {
+    layout: ScrollBarLayout,
+}
+
+impl ScrollBarThumbWidget {
+    fn fail_closed_drag<Action>(
+        state: &mut ScrollBarThumbState,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        if state.drag.take().is_some() {
+            context.release_pointer_capture();
+            context.prevent_default();
+            context.stop_propagation();
+            WidgetEventOutput::changed()
+        } else {
+            WidgetEventOutput::none()
+        }
+    }
+}
+
+impl<Action> Widget<Action> for ScrollBarThumbWidget {
+    type State = ScrollBarThumbState;
+
+    fn create_state(&self) -> Self::State {
+        ScrollBarThumbState::default()
+    }
+
+    fn activation(&self, _: &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(true)
+    }
+
+    fn event(
+        &mut self,
+        state: &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        if context.phase() != EventPhase::Target {
+            return WidgetEventOutput::none();
+        }
+
+        if let Some(capture) = event.as_pointer_capture()
+            && capture.kind() == PointerCaptureKind::Lost
+            && state
+                .drag
+                .is_some_and(|drag| drag.pointer_id == capture.pointer_id())
+        {
+            state.drag = None;
+            return WidgetEventOutput::changed();
+        }
+
+        let Some(pointer) = event.as_pointer() else {
+            return WidgetEventOutput::none();
+        };
+
+        match pointer.phase() {
+            PointerPhase::Down if scroll_bar_pointer_down_is_primary(pointer) => {
+                if state.drag.is_some() {
+                    return WidgetEventOutput::none();
+                }
+                let (Some(snapshot), Some(local)) = (
+                    context.scroll_control_snapshot(),
+                    context.pointer_local_position(),
+                ) else {
+                    return WidgetEventOutput::none();
+                };
+                let Some(geometry) = self
+                    .layout
+                    .thumb_geometry(snapshot, snapshot.viewport_extent())
+                else {
+                    return WidgetEventOutput::none();
+                };
+                if snapshot.maximum_offset().get() == 0.0 || geometry.travel().get() == 0.0 {
+                    return WidgetEventOutput::none();
+                }
+                let coordinate = scroll_bar_axis_coordinate(local, self.layout.axis());
+                state.drag = Some(ScrollBarDrag {
+                    pointer_id: pointer.pointer_id(),
+                    grab_offset: coordinate.clamp(0.0, geometry.thumb_extent().get()),
+                });
+                context.capture_pointer();
+                context.stop_propagation();
+                WidgetEventOutput::changed()
+            }
+            PointerPhase::Move
+                if state
+                    .drag
+                    .is_some_and(|drag| drag.pointer_id == pointer.pointer_id()) =>
+            {
+                let Some(drag) = state.drag else {
+                    return WidgetEventOutput::none();
+                };
+                let (Some(snapshot), Some(local)) = (
+                    context.scroll_control_snapshot(),
+                    context.pointer_local_position(),
+                ) else {
+                    return Self::fail_closed_drag(state, context);
+                };
+                let Some(geometry) = self
+                    .layout
+                    .thumb_geometry(snapshot, snapshot.viewport_extent())
+                else {
+                    return Self::fail_closed_drag(state, context);
+                };
+                if geometry.travel().get() == 0.0 || snapshot.maximum_offset().get() == 0.0 {
+                    return Self::fail_closed_drag(state, context);
+                }
+                let coordinate = scroll_bar_axis_coordinate(local, self.layout.axis());
+                let desired_origin = (geometry.thumb_origin().get() + coordinate
+                    - drag.grab_offset)
+                    .clamp(0.0, geometry.travel().get());
+                let normalized =
+                    ScrollNormalizedValue::new(desired_origin / geometry.travel().get())
+                        .unwrap_or_else(|_| {
+                            unreachable!("clamped thumb travel yields normalized value")
+                        });
+                emit_scroll_bar_request(context, ScrollControlRequest::SetNormalized(normalized));
+                WidgetEventOutput::none()
+            }
+            PointerPhase::Up | PointerPhase::Cancel
+                if state
+                    .drag
+                    .is_some_and(|drag| drag.pointer_id == pointer.pointer_id()) =>
+            {
+                state.drag = None;
+                context.prevent_default();
+                context.stop_propagation();
+                WidgetEventOutput::changed()
+            }
+            _ => WidgetEventOutput::none(),
+        }
+    }
+
+    fn hit_test(&self, _: &Self::State, context: HitContributionContext) -> HitContribution {
+        HitContribution::single_rect(local_rect(context.local_size()))
+    }
+}
+
+impl<Action: 'static> View<Action> for ScrollBar {
+    fn into_element(self) -> Element<Action> {
+        let axis = self.binding.axis();
+        let thumb_common = CommonNodeAuthoring {
+            style: self.thumb_style,
+            ..CommonNodeAuthoring::default()
+        };
+        let (thumb_fields, thumb_diagnostics) =
+            thumb_common.into_authored_fields(Focusability::NotFocusable, None);
+        let thumb = Element::from_authored_parts(
+            thumb_fields,
+            Box::new(WidgetAdapter(ScrollBarThumbWidget {
+                layout: self.layout,
+            })),
+            Vec::new(),
+            thumb_diagnostics,
+        )
+        .scroll_control(self.binding)
+        .scroll_chrome(ScrollChrome::Thumb(axis));
+
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(Focusability::Automatic, None);
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(ScrollBarWidget {
+                label: self.label,
+                layout: self.layout,
+            })),
+            vec![thumb],
+            diagnostics,
+        )
+        .scroll_control(self.binding)
+        .scroll_chrome(ScrollChrome::Bar(self.layout))
+    }
+}
+
+#[must_use]
+pub fn scroll_bar(
+    label: impl Into<String>,
+    binding: ScrollControlBinding,
+    thickness: impl Into<LogicalLength>,
+    minimum_thumb_extent: impl Into<LogicalLength>,
+) -> ScrollBar {
+    ScrollBar::new(label, binding, thickness, minimum_thumb_extent)
+}
+
+/// Standard scroll owner that composes content with ordinary public scrollbar views.
+///
+/// Bars remain ordinary descendants bound through `ScrollControlBinding`. The
+/// optional reserved corner is an ordinary noninteractive styled node. Runtime
+/// derives all visibility, viewport geometry, ownership, and scroll state.
+pub struct ScrollContainer<Action> {
+    content: Element<Action>,
+    scroll_bars: Vec<ScrollBar>,
+    corner_style: StyleIntent,
+    common: CommonNodeAuthoring,
+}
+
+impl<Action> fmt::Debug for ScrollContainer<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ScrollContainer")
+            .field("content", &self.content)
+            .field("scroll_bars", &self.scroll_bars)
+            .field("corner_style", &self.corner_style)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("layout", &self.common.layout)
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
+            .field("diagnostics", &self.common.diagnostics)
+            .finish()
+    }
+}
+
+impl<Action> ScrollContainer<Action> {
+    #[must_use]
+    pub fn new(content: impl View<Action>, overflow: OverflowStyle) -> Self {
+        Self {
+            content: content.into_element(),
+            scroll_bars: Vec::new(),
+            corner_style: StyleIntent::EMPTY,
+            common: CommonNodeAuthoring {
+                layout: LayoutStyle::default().with_overflow(overflow),
+                ..CommonNodeAuthoring::default()
+            },
+        }
+    }
+
+    common_node_builder_methods!();
+
+    /// Appends one standard bar. Axis ownership is taken from the bar's public
+    /// binding; duplicate same-axis bars remain explicit authored structure and
+    /// are rejected by the generic runtime chrome validation rather than being
+    /// silently overwritten here.
+    #[must_use]
+    pub fn scroll_bar(mut self, scroll_bar: ScrollBar) -> Self {
+        self.scroll_bars.push(scroll_bar);
+        self
+    }
+
+    /// Replaces the ordinary authored style used by the reserved two-axis corner.
+    #[must_use]
+    pub fn corner_style(mut self, style: StyleIntent) -> Self {
+        self.corner_style = style;
+        self
+    }
+}
+
+#[derive(Debug)]
+struct ScrollCornerWidget;
+
+impl<Action> Widget<Action> for ScrollCornerWidget {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+}
+
+impl<Action: 'static> View<Action> for ScrollContainer<Action> {
+    fn into_element(self) -> Element<Action> {
+        let has_horizontal = self
+            .scroll_bars
+            .iter()
+            .any(|bar| bar.binding().axis() == Axis::Horizontal);
+        let has_vertical = self
+            .scroll_bars
+            .iter()
+            .any(|bar| bar.binding().axis() == Axis::Vertical);
+
+        let mut children = Vec::with_capacity(
+            1 + self.scroll_bars.len() + usize::from(has_horizontal && has_vertical),
+        );
+        children.push(self.content);
+        children.extend(self.scroll_bars.into_iter().map(View::into_element));
+
+        if has_horizontal && has_vertical {
+            let corner_common = CommonNodeAuthoring {
+                style: self.corner_style,
+                ..CommonNodeAuthoring::default()
+            };
+            let (corner_fields, corner_diagnostics) =
+                corner_common.into_authored_fields(Focusability::NotFocusable, None);
+            children.push(
+                Element::from_authored_parts(
+                    corner_fields,
+                    Box::new(WidgetAdapter(ScrollCornerWidget)),
+                    Vec::new(),
+                    corner_diagnostics,
+                )
+                .scroll_chrome(ScrollChrome::Corner),
+            );
+        }
+
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(Focusability::Automatic, None);
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(ScrollViewportWidget)),
+            children,
+            diagnostics,
+        )
+    }
+}
+
+#[must_use]
+pub fn scroll_container<Action>(
+    content: impl View<Action>,
+    overflow: OverflowStyle,
+) -> ScrollContainer<Action> {
+    ScrollContainer::new(content, overflow)
 }
 
 pub struct ScrollViewport<Action> {

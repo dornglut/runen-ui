@@ -77,6 +77,12 @@ pub enum SemanticDiagnostic {
         target: SemanticNodeId,
     },
     FocusedOwnerMissingVisiblePrimary,
+    MissingScrollControlBinding {
+        source: SemanticNodeId,
+    },
+    MissingScrollControlTarget {
+        source: SemanticNodeId,
+    },
     OwnerWithdrawn {
         authored_id: Option<ElementId>,
         reason: SemanticOwnerWithdrawalReason,
@@ -135,6 +141,12 @@ impl From<SemanticCompositionDiagnostic> for SemanticDiagnostic {
             } => Self::ActiveDescendantOutsideControlledSubtree { source, target },
             SemanticCompositionDiagnostic::FocusedOwnerMissingVisiblePrimary => {
                 Self::FocusedOwnerMissingVisiblePrimary
+            }
+            SemanticCompositionDiagnostic::MissingScrollControlBinding { source } => {
+                Self::MissingScrollControlBinding { source }
+            }
+            SemanticCompositionDiagnostic::MissingScrollControlTarget { source } => {
+                Self::MissingScrollControlTarget { source }
             }
             SemanticCompositionDiagnostic::UnrepresentableBounds { .. } => {
                 unreachable!(

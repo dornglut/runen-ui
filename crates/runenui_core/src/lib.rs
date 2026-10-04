@@ -279,10 +279,10 @@ pub use application::{
 };
 pub use application_command::{ApplicationCommand, ApplicationCommandDisposition};
 pub use builtins::{
-    Button, Checkbox, CommandBinding, CommandScope, Container, RadioButton, RadioGroup,
-    ScrollViewport, ShortcutScope, Switch, Text, button, checkbox, column, command_binding,
-    command_scope, container, radio_button, radio_group, row, scroll_viewport, shortcut_scope,
-    switch, text,
+    Button, Checkbox, CommandBinding, CommandScope, Container, RadioButton, RadioGroup, ScrollBar,
+    ScrollContainer, ScrollViewport, ShortcutScope, Switch, Text, button, checkbox, column,
+    command_binding, command_scope, container, radio_button, radio_group, row, scroll_bar,
+    scroll_container, scroll_viewport, shortcut_scope, switch, text,
 };
 pub use computed_style::ComputedStyle;
 pub use editing::{
@@ -387,6 +387,7 @@ pub use scene_geometry::{
     SceneOpacityError, SceneShape,
 };
 pub use scroll::{
+    ScrollBarLayout, ScrollBarPlacement, ScrollBarThumbGeometry, ScrollBarVisibility, ScrollChrome,
     ScrollControlBinding, ScrollControlBindingError, ScrollControlRequest, ScrollControlSnapshot,
     ScrollNormalizedError, ScrollNormalizedValue,
 };

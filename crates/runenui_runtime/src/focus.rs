@@ -1,14 +1,66 @@
 //! Runtime-owned focus state, scope membership, and candidate selection.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use runenui_core::{
     FocusBoundaryPolicy, FocusDirection, FocusGroup, FocusGroupActivationPolicy,
     FocusGroupBoundaryPolicy, FocusGroupEntry, FocusGroupTypeAhead, FocusReason, FocusScope,
-    FocusScopePolicy, Focusability, InputModality,
+    FocusScopePolicy, Focusability, InputModality, WidgetActivation,
 };
 
 use crate::{LogicalRect, MountedNodeId, mounted::MountedTree};
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct FocusEligibilityProjection {
+    scrollable_controls: HashSet<MountedNodeId>,
+    participating_chrome: HashSet<MountedNodeId>,
+}
+
+impl FocusEligibilityProjection {
+    pub fn new(
+        scrollable_controls: impl IntoIterator<Item = MountedNodeId>,
+        participating_chrome: impl IntoIterator<Item = MountedNodeId>,
+    ) -> Self {
+        Self {
+            scrollable_controls: scrollable_controls.into_iter().collect(),
+            participating_chrome: participating_chrome.into_iter().collect(),
+        }
+    }
+
+    #[must_use]
+    pub fn automatic_scroll_focusability(
+        &self,
+        id: &MountedNodeId,
+        has_scroll_binding: bool,
+    ) -> Option<bool> {
+        has_scroll_binding.then(|| self.scrollable_controls.contains(id))
+    }
+
+    #[must_use]
+    pub fn scroll_chrome_participates(&self, id: &MountedNodeId, has_scroll_chrome: bool) -> bool {
+        !has_scroll_chrome || self.participating_chrome.contains(id)
+    }
+}
+
+#[must_use]
+pub const fn focusability_is_eligible(
+    focusability: Focusability,
+    activation: WidgetActivation,
+    automatic_scroll_focusable: Option<bool>,
+) -> bool {
+    match focusability {
+        Focusability::Automatic => {
+            activation.enabled()
+                && match automatic_scroll_focusable {
+                    Some(scrollable) => scrollable,
+                    None => activation.is_actionable(),
+                }
+        }
+        Focusability::Focusable => activation.enabled(),
+        Focusability::FocusableWhenDisabled => true,
+        _ => false,
+    }
+}
 
 /// Read-only inspection of the runtime's single focus authority.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -187,20 +239,30 @@ fn scope_remembers<Action>(tree: &MountedTree<Action>, scope: &MountedNodeId) ->
         .is_none_or(FocusScope::remembers_last)
 }
 
-pub fn is_focus_eligible<Action>(tree: &mut MountedTree<Action>, id: &MountedNodeId) -> bool {
-    let focusability = match tree.node(id) {
-        Some(node) => node.focusability,
+pub fn is_focus_eligible<Action>(
+    tree: &mut MountedTree<Action>,
+    id: &MountedNodeId,
+    eligibility: &FocusEligibilityProjection,
+) -> bool {
+    let (focusability, has_scroll_binding, has_scroll_chrome) = match tree.node(id) {
+        Some(node) => (
+            node.focusability,
+            node.scroll_control_binding.is_some(),
+            node.scroll_chrome.is_some(),
+        ),
         None => return false,
     };
+    if !eligibility.scroll_chrome_participates(id, has_scroll_chrome) {
+        return false;
+    }
     let Ok(activation) = tree.activation(id) else {
         return false;
     };
-    match focusability {
-        Focusability::Automatic => activation.enabled() && activation.is_actionable(),
-        Focusability::Focusable => activation.enabled(),
-        Focusability::FocusableWhenDisabled => true,
-        _ => false,
-    }
+    focusability_is_eligible(
+        focusability,
+        activation,
+        eligibility.automatic_scroll_focusability(id, has_scroll_binding),
+    )
 }
 
 fn nearest_group<Action>(tree: &MountedTree<Action>, id: &MountedNodeId) -> Option<MountedNodeId> {
@@ -250,6 +312,7 @@ struct FocusGroupMembers {
 fn collect_focus_group_members<Action>(
     tree: &mut MountedTree<Action>,
     id: &MountedNodeId,
+    eligibility: &FocusEligibilityProjection,
     members: &mut Vec<FocusGroupMember>,
     preferred: &mut Option<MountedNodeId>,
     multiple_preferred: &mut bool,
@@ -275,7 +338,7 @@ fn collect_focus_group_members<Action>(
     }
 
     if nested_group {
-        if let Some(target) = focus_group_entry_target(tree, id) {
+        if let Some(target) = focus_group_entry_target(tree, id, eligibility) {
             members.push(FocusGroupMember {
                 anchor: id.clone(),
                 target,
@@ -284,7 +347,7 @@ fn collect_focus_group_members<Action>(
         return;
     }
 
-    if is_focus_eligible(tree, id) {
+    if is_focus_eligible(tree, id, eligibility) {
         members.push(FocusGroupMember {
             anchor: id.clone(),
             target: id.clone(),
@@ -292,13 +355,21 @@ fn collect_focus_group_members<Action>(
     }
 
     for child in children {
-        collect_focus_group_members(tree, &child, members, preferred, multiple_preferred);
+        collect_focus_group_members(
+            tree,
+            &child,
+            eligibility,
+            members,
+            preferred,
+            multiple_preferred,
+        );
     }
 }
 
 fn focus_group_members<Action>(
     tree: &mut MountedTree<Action>,
     group: &MountedNodeId,
+    eligibility: &FocusEligibilityProjection,
 ) -> Option<FocusGroupMembers> {
     let children = tree.node(group)?.children.clone();
     let mut members = Vec::new();
@@ -309,6 +380,7 @@ fn focus_group_members<Action>(
         collect_focus_group_members(
             tree,
             &child,
+            eligibility,
             &mut members,
             &mut preferred,
             &mut multiple_preferred,
@@ -325,8 +397,9 @@ fn focus_group_members<Action>(
 fn focus_group_entry_target<Action>(
     tree: &mut MountedTree<Action>,
     group: &MountedNodeId,
+    eligibility: &FocusEligibilityProjection,
 ) -> Option<MountedNodeId> {
-    let resolved = focus_group_members(tree, group)?;
+    let resolved = focus_group_members(tree, group, eligibility)?;
     if let Some(preferred) = resolved.preferred.as_ref()
         && let Some(member) = resolved
             .members
@@ -355,6 +428,7 @@ fn candidates<Action>(
     scope: &MountedNodeId,
     geometry: &[(MountedNodeId, LogicalRect)],
     publication_order: &[MountedNodeId],
+    eligibility: &FocusEligibilityProjection,
 ) -> Vec<Candidate> {
     let mut output = Vec::new();
     for (order, id) in publication_order.iter().cloned().enumerate() {
@@ -368,7 +442,7 @@ fn candidates<Action>(
             if nearest_group(tree, &id).is_some() {
                 continue;
             }
-            let Some(target) = focus_group_entry_target(tree, &id) else {
+            let Some(target) = focus_group_entry_target(tree, &id, eligibility) else {
                 continue;
             };
             let rect = geometry
@@ -385,7 +459,7 @@ fn candidates<Action>(
         if nearest_group(tree, &id).is_some() {
             continue;
         }
-        if is_focus_eligible(tree, &id) {
+        if is_focus_eligible(tree, &id, eligibility) {
             output.push(Candidate {
                 rect: geometry
                     .iter()
@@ -493,11 +567,12 @@ pub fn select_focus_group_type_ahead_match<Action>(
     group: &MountedNodeId,
     query: &str,
     include_current: bool,
+    eligibility: &FocusEligibilityProjection,
 ) -> Option<MountedNodeId> {
     if query.is_empty() {
         return None;
     }
-    let resolved = focus_group_members(tree, group)?;
+    let resolved = focus_group_members(tree, group, eligibility)?;
     let members = resolved.members;
     if members.is_empty() {
         return None;
@@ -531,11 +606,12 @@ pub fn select_focus_group_member<Action>(
     state: &FocusState,
     command_target: &MountedNodeId,
     navigation: FocusGroupNavigation,
+    eligibility: &FocusEligibilityProjection,
 ) -> Option<FocusGroupSelection> {
     let current = state.focused_node().unwrap_or(command_target);
     let group = focus_group_for_command(tree, state, command_target)?;
     let config = tree.node(&group)?.focus_group?;
-    let resolved = focus_group_members(tree, &group)?;
+    let resolved = focus_group_members(tree, &group, eligibility)?;
     let members = resolved.members;
     if members.is_empty() {
         return Some(FocusGroupSelection {
@@ -595,12 +671,22 @@ pub fn select_focus_group_member<Action>(
     })
 }
 
+struct FocusSelectionContext<'a> {
+    state: &'a FocusState,
+    command_target: &'a MountedNodeId,
+    navigation: FocusNavigation,
+    geometry: &'a [(MountedNodeId, LogicalRect)],
+    publication_order: &'a [MountedNodeId],
+    eligibility: &'a FocusEligibilityProjection,
+}
+
 pub fn select_focus<Action>(
     tree: &mut MountedTree<Action>,
     state: &FocusState,
     command_target: &MountedNodeId,
     navigation: FocusNavigation,
     geometry: &[(MountedNodeId, LogicalRect)],
+    eligibility: &FocusEligibilityProjection,
 ) -> Option<FocusSelection> {
     let initial_scope = match navigation {
         FocusNavigation::Restore => nearest_scope(tree, command_target)?,
@@ -610,30 +696,39 @@ pub fn select_focus<Action>(
             .or_else(|| nearest_scope(tree, command_target))?,
     };
     let publication_order = tree.publication_preorder_ids();
-    select_in_scope(
-        tree,
+    let context = FocusSelectionContext {
         state,
         command_target,
         navigation,
         geometry,
-        &publication_order,
-        initial_scope,
-    )
+        publication_order: &publication_order,
+        eligibility,
+    };
+    select_in_scope(tree, &context, initial_scope)
 }
 
 fn select_in_scope<Action>(
     tree: &mut MountedTree<Action>,
-    state: &FocusState,
-    command_target: &MountedNodeId,
-    navigation: FocusNavigation,
-    geometry: &[(MountedNodeId, LogicalRect)],
-    publication_order: &[MountedNodeId],
+    context: &FocusSelectionContext<'_>,
     scope: MountedNodeId,
 ) -> Option<FocusSelection> {
+    let state = context.state;
+    let command_target = context.command_target;
+    let navigation = context.navigation;
+    let geometry = context.geometry;
+    let publication_order = context.publication_order;
+    let eligibility = context.eligibility;
     let policy = scope_policy(tree, &scope);
-    let candidates = candidates(tree, &scope, geometry, publication_order);
+    let candidates = candidates(tree, &scope, geometry, publication_order, eligibility);
     if navigation == FocusNavigation::Restore {
-        return Some(restore_selection(tree, state, scope, policy, &candidates));
+        return Some(restore_selection(
+            tree,
+            state,
+            scope,
+            policy,
+            &candidates,
+            eligibility,
+        ));
     }
 
     let current = state.focused_node().unwrap_or(command_target);
@@ -667,15 +762,7 @@ fn select_in_scope<Action>(
     match boundary {
         FocusBoundaryPolicy::Delegate => {
             if let Some(parent) = parent_scope(tree, &scope) {
-                let mut delegated = select_in_scope(
-                    tree,
-                    state,
-                    command_target,
-                    navigation,
-                    geometry,
-                    publication_order,
-                    parent,
-                )?;
+                let mut delegated = select_in_scope(tree, context, parent)?;
                 if delegated.target.is_some() {
                     delegated.outcome = FocusBoundaryOutcome::Delegate;
                 }
@@ -725,11 +812,12 @@ fn restore_selection<Action>(
     scope: MountedNodeId,
     policy: FocusScopePolicy,
     candidates: &[Candidate],
+    eligibility: &FocusEligibilityProjection,
 ) -> FocusSelection {
     let remembered = state.remembered(&scope).cloned();
     if scope_remembers(tree, &scope)
         && let Some(remembered) = remembered.as_ref()
-        && is_focus_eligible(tree, remembered)
+        && is_focus_eligible(tree, remembered, eligibility)
         && candidates
             .iter()
             .any(|candidate| candidate_contains(tree, candidate, remembered))

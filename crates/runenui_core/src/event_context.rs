@@ -4,9 +4,9 @@ use core::{fmt, future::Future};
 
 use crate::{
     ApplicationCommandDisposition, ApplicationCommandId, CommandOrigin, DragDropEvent,
-    DragDropPhase, EventPhase, MonotonicInstant, MountedNodeId, PointerId, ScrollControlSnapshot,
-    SemanticCommand, SendTaskStartFailure, TimerEffect, WidgetInvalidation, WorkFamily, WorkKey,
-    WorkSequence, effects::MountedEffect, widget_context::WidgetWorkCollector,
+    DragDropPhase, EventPhase, LogicalPoint, MonotonicInstant, MountedNodeId, PointerId,
+    ScrollControlSnapshot, SemanticCommand, SendTaskStartFailure, TimerEffect, WidgetInvalidation,
+    WorkFamily, WorkKey, WorkSequence, effects::MountedEffect, widget_context::WidgetWorkCollector,
 };
 
 /// One action or delegated command in exact callback emission order.
@@ -77,6 +77,7 @@ pub struct EventContext<'a, Action> {
     pointer_id: Option<PointerId>,
     physical_target: Option<&'a MountedNodeId>,
     physical_path: &'a [MountedNodeId],
+    pointer_local_position: Option<LogicalPoint>,
     scroll_control: Option<ScrollControlSnapshot>,
     pointer_capture: Vec<PointerCaptureRequest>,
     default_cancelable: bool,
@@ -106,6 +107,7 @@ impl<Action> fmt::Debug for EventContext<'_, Action> {
             .field("pointer_id", &self.pointer_id)
             .field("physical_target", &self.physical_target)
             .field("physical_path", &self.physical_path)
+            .field("pointer_local_position", &self.pointer_local_position)
             .field("default_cancelable", &self.default_cancelable)
             .field("default_prevented", &self.default_prevented)
             .field("propagation_stopped", &self.propagation_stopped)
@@ -182,6 +184,17 @@ impl<'a, Action> EventContext<'a, Action> {
     #[must_use]
     pub const fn physical_path(&self) -> &[MountedNodeId] {
         self.physical_path
+    }
+
+    /// Returns the current pointer position in the current routed target's exact
+    /// displayed owner-local coordinate space.
+    ///
+    /// Non-pointer callbacks, unavailable retained geometry, and singular
+    /// transforms return `None`. Captured pointer callbacks may return points
+    /// outside the owner's local bounds.
+    #[must_use]
+    pub const fn pointer_local_position(&self) -> Option<LogicalPoint> {
+        self.pointer_local_position
     }
 
     /// Returns the runtime-derived bound scroll snapshot for the current routed node.
@@ -389,6 +402,7 @@ impl<'a, Action> EventContext<'a, Action> {
             self.pointer_id,
             self.physical_target,
             self.physical_path,
+            self.pointer_local_position,
             self.scroll_control,
             self.default_cancelable,
             self.default_prevented,
@@ -511,6 +525,7 @@ impl<'a, Action> EventContext<'a, Action> {
             physical_target,
             physical_path,
             None,
+            None,
             default_cancelable,
             default_prevented,
             propagation_stopped,
@@ -547,6 +562,7 @@ impl<'a, Action> EventContext<'a, Action> {
             None,
             None,
             &[],
+            None,
             scroll_control,
             default_cancelable,
             default_prevented,
@@ -569,6 +585,7 @@ impl<'a, Action> EventContext<'a, Action> {
         pointer_id: PointerId,
         physical_target: Option<&'a MountedNodeId>,
         physical_path: &'a [MountedNodeId],
+        pointer_local_position: Option<LogicalPoint>,
         scroll_control: Option<ScrollControlSnapshot>,
         default_cancelable: bool,
         default_prevented: bool,
@@ -587,6 +604,7 @@ impl<'a, Action> EventContext<'a, Action> {
             Some(pointer_id),
             physical_target,
             physical_path,
+            pointer_local_position,
             scroll_control,
             default_cancelable,
             default_prevented,
@@ -608,6 +626,7 @@ impl<'a, Action> EventContext<'a, Action> {
         pointer_id: Option<PointerId>,
         physical_target: Option<&'a MountedNodeId>,
         physical_path: &'a [MountedNodeId],
+        pointer_local_position: Option<LogicalPoint>,
         scroll_control: Option<ScrollControlSnapshot>,
         default_cancelable: bool,
         default_prevented: bool,
@@ -627,6 +646,7 @@ impl<'a, Action> EventContext<'a, Action> {
             pointer_id,
             physical_target,
             physical_path,
+            pointer_local_position,
             scroll_control,
             pointer_capture: Vec::new(),
             default_cancelable,

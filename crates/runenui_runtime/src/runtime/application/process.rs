@@ -16,7 +16,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     pub(in crate::runtime) fn validate_focus(&mut self, id: &MountedNodeId) -> bool {
-        crate::focus::is_focus_eligible(&mut self.tree, id)
+        let eligibility = self.focus_eligibility_projection();
+        crate::focus::is_focus_eligible(&mut self.tree, id, &eligibility)
     }
 }
 

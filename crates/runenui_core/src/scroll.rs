@@ -54,6 +54,124 @@ impl ScrollControlBinding {
     }
 }
 
+/// Neutral visibility policy for one authored scrollbar axis.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ScrollBarVisibility {
+    #[default]
+    Automatic,
+    Always,
+    Hidden,
+}
+
+/// Neutral layout placement for one visible scrollbar.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ScrollBarPlacement {
+    #[default]
+    Reserved,
+    Overlay,
+}
+
+/// Authored geometry and policy for one scrollbar root.
+///
+/// This is transient layout intent only. Runtime-owned scroll offset and current
+/// visibility remain derived from the bound scroll owner's accepted metrics.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollBarLayout {
+    axis: Axis,
+    visibility: ScrollBarVisibility,
+    placement: ScrollBarPlacement,
+    thickness: LogicalLength,
+    minimum_thumb_extent: LogicalLength,
+}
+
+impl ScrollBarLayout {
+    #[must_use]
+    pub const fn new(
+        axis: Axis,
+        thickness: LogicalLength,
+        minimum_thumb_extent: LogicalLength,
+    ) -> Self {
+        Self {
+            axis,
+            visibility: ScrollBarVisibility::Automatic,
+            placement: ScrollBarPlacement::Reserved,
+            thickness,
+            minimum_thumb_extent,
+        }
+    }
+
+    #[must_use]
+    pub const fn axis(self) -> Axis {
+        self.axis
+    }
+
+    #[must_use]
+    pub const fn visibility(self) -> ScrollBarVisibility {
+        self.visibility
+    }
+
+    #[must_use]
+    pub const fn placement(self) -> ScrollBarPlacement {
+        self.placement
+    }
+
+    #[must_use]
+    pub const fn thickness(self) -> LogicalLength {
+        self.thickness
+    }
+
+    #[must_use]
+    pub const fn minimum_thumb_extent(self) -> LogicalLength {
+        self.minimum_thumb_extent
+    }
+
+    #[must_use]
+    pub const fn with_visibility(mut self, visibility: ScrollBarVisibility) -> Self {
+        self.visibility = visibility;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_placement(mut self, placement: ScrollBarPlacement) -> Self {
+        self.placement = placement;
+        self
+    }
+}
+
+/// Structural scroll chrome authored on ordinary public elements.
+///
+/// Runtime interprets these facts through the same nearest-ancestor scroll
+/// ownership used by `ScrollControlBinding`. They carry no mounted identity,
+/// current offset, visibility cache, or renderer state.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ScrollChrome {
+    Bar(ScrollBarLayout),
+    Thumb(Axis),
+    Corner,
+}
+
+impl ScrollChrome {
+    #[must_use]
+    pub const fn axis(self) -> Option<Axis> {
+        match self {
+            Self::Bar(layout) => Some(layout.axis()),
+            Self::Thumb(axis) => Some(axis),
+            Self::Corner => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn bar_layout(self) -> Option<ScrollBarLayout> {
+        match self {
+            Self::Bar(layout) => Some(layout),
+            Self::Thumb(_) | Self::Corner => None,
+        }
+    }
+}
+
 /// Validation failure for one normalized scroll-control value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScrollNormalizedError {
@@ -233,6 +351,56 @@ impl ScrollControlSnapshot {
     }
 }
 
+/// Canonical thumb geometry for one scrollbar track.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollBarThumbGeometry {
+    thumb_extent: LogicalLength,
+    travel: LogicalLength,
+    thumb_origin: LogicalLength,
+}
+
+impl ScrollBarThumbGeometry {
+    #[must_use]
+    pub const fn thumb_extent(self) -> LogicalLength {
+        self.thumb_extent
+    }
+
+    #[must_use]
+    pub const fn travel(self) -> LogicalLength {
+        self.travel
+    }
+
+    #[must_use]
+    pub const fn thumb_origin(self) -> LogicalLength {
+        self.thumb_origin
+    }
+}
+
+impl ScrollBarLayout {
+    /// Derives checked thumb extent, travel, and origin from the current bound snapshot.
+    #[must_use]
+    pub fn thumb_geometry(
+        self,
+        snapshot: ScrollControlSnapshot,
+        track_extent: LogicalLength,
+    ) -> Option<ScrollBarThumbGeometry> {
+        if snapshot.axis() != self.axis() {
+            return None;
+        }
+        let track_extent = track_extent.get();
+        let minimum = self.minimum_thumb_extent().get().min(track_extent);
+        let thumb_extent = (track_extent * snapshot.visible_fraction().get())
+            .max(minimum)
+            .min(track_extent);
+        let travel = (track_extent - thumb_extent).max(0.0);
+        Some(ScrollBarThumbGeometry {
+            thumb_extent: LogicalLength::new(thumb_extent).ok()?,
+            travel: LogicalLength::new(travel).ok()?,
+            thumb_origin: LogicalLength::new(travel * snapshot.normalized_position().get()).ok()?,
+        })
+    }
+}
+
 /// Device-independent request issued by one bound scroll control.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -249,8 +417,9 @@ pub enum ScrollControlRequest {
 #[cfg(test)]
 mod tests {
     use super::{
-        Axis, ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot,
-        ScrollNormalizedError, ScrollNormalizedValue,
+        Axis, ScrollBarLayout, ScrollBarPlacement, ScrollBarVisibility, ScrollChrome,
+        ScrollControlBinding, ScrollControlRequest, ScrollControlSnapshot, ScrollNormalizedError,
+        ScrollNormalizedValue,
     };
     use crate::LogicalLength;
 
@@ -261,6 +430,58 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("positive fixture step is valid"));
         assert_eq!(binding.axis(), Axis::Horizontal);
         assert_eq!(binding.small_step(), LogicalLength::from(8_u8));
+    }
+
+    #[test]
+    fn scrollbar_chrome_contract_is_typed_and_uses_neutral_defaults() {
+        let layout = ScrollBarLayout::new(
+            Axis::Vertical,
+            LogicalLength::from(12_u8),
+            LogicalLength::from(24_u8),
+        );
+        assert_eq!(layout.axis(), Axis::Vertical);
+        assert_eq!(layout.visibility(), ScrollBarVisibility::Automatic);
+        assert_eq!(layout.placement(), ScrollBarPlacement::Reserved);
+        assert_eq!(layout.thickness(), LogicalLength::from(12_u8));
+        assert_eq!(layout.minimum_thumb_extent(), LogicalLength::from(24_u8));
+
+        let overlay = layout
+            .with_visibility(ScrollBarVisibility::Always)
+            .with_placement(ScrollBarPlacement::Overlay);
+        assert_eq!(ScrollChrome::Bar(overlay).axis(), Some(Axis::Vertical));
+        assert_eq!(
+            ScrollChrome::Thumb(Axis::Horizontal).axis(),
+            Some(Axis::Horizontal)
+        );
+        assert_eq!(ScrollChrome::Corner.axis(), None);
+    }
+
+    #[test]
+    fn thumb_geometry_is_shared_checked_and_track_relative() {
+        let snapshot =
+            ScrollControlSnapshot::__runtime_from_metrics(Axis::Vertical, 50.0, 100.0, 200.0)
+                .unwrap_or_else(|| unreachable!("fixture scroll metrics are valid"));
+        let layout = ScrollBarLayout::new(
+            Axis::Vertical,
+            LogicalLength::from(10_u8),
+            LogicalLength::from(20_u8),
+        );
+        let geometry = layout
+            .thumb_geometry(snapshot, LogicalLength::from(100_u8))
+            .unwrap_or_else(|| unreachable!("matching axis geometry is valid"));
+
+        assert_eq!(geometry.thumb_extent().get(), 50.0);
+        assert_eq!(geometry.travel().get(), 50.0);
+        assert_eq!(geometry.thumb_origin().get(), 25.0);
+        assert!(
+            ScrollBarLayout::new(
+                Axis::Horizontal,
+                LogicalLength::from(10_u8),
+                LogicalLength::from(20_u8),
+            )
+            .thumb_geometry(snapshot, LogicalLength::from(100_u8))
+            .is_none()
+        );
     }
 
     #[test]

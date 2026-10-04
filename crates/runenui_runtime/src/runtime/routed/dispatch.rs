@@ -114,15 +114,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.resolve_scroll_control_context_snapshot(current)
     }
 
-    fn invoke_routed_callback(
+    fn record_routed_callback_invocation(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
-        event: &UiEvent,
-        pointer: Option<PointerDispatchFacts<'_>>,
-        focus_related: Option<&MountedNodeId>,
         phase: EventPhase,
         current: &MountedNodeId,
-    ) -> Result<(), TraceRoutedIntegrityFailure> {
+    ) {
         transaction.parent = self.trace.record_event(
             TraceRecordKind::EventPhaseInvoked { phase },
             transaction.sequence,
@@ -133,6 +130,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Some(current),
             transaction.origin,
         );
+    }
+
+    fn invoke_routed_callback(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        event: &UiEvent,
+        pointer: Option<PointerDispatchFacts<'_>>,
+        focus_related: Option<&MountedNodeId>,
+        phase: EventPhase,
+        current: &MountedNodeId,
+    ) -> Result<(), TraceRoutedIntegrityFailure> {
+        self.record_routed_callback_invocation(transaction, phase, current);
         let was_stopped = transaction.propagation_stopped;
         let was_prevented = transaction.default_prevented;
         let subscription_credit = transaction.subscription_credit(current);
@@ -141,6 +150,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(TraceRoutedIntegrityFailure::CallbackBridgeFailure);
         }
         let scroll_control = self.routed_scroll_control_snapshot(current);
+        let pointer_local_position = pointer.and_then(|_| event.as_pointer()).and_then(|event| {
+            self.surface_publication.pointer_local_position_at(
+                event.surface_context(),
+                current,
+                event.position(),
+            )
+        });
         let invocation = match pointer {
             Some(pointer) => self.tree.invoke_pointer_event(
                 current,
@@ -154,6 +170,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 pointer.pointer_id,
                 pointer.physical_target,
                 pointer.physical_path,
+                pointer_local_position,
                 scroll_control,
                 pointer.default_cancelable,
                 transaction.default_prevented,

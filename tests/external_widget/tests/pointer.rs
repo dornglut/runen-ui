@@ -5,8 +5,10 @@ use std::{cell::RefCell, rc::Rc};
 use runenui_core::{
     Element, EventContext, EventPhase, HitContribution, HitContributionContext, LogicalDelta,
     LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PointerButton, PointerButtons,
-    PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleEnvironment,
-    UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure,
+    PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
+    PresentationOrigin, PresentationRotation, PresentationScale, PresentationTransform,
+    PresentationTranslation, StyleEnvironment, UiApp, UiEvent, UnitInterval, View, Widget,
+    WidgetActivation, WidgetEventOutput, WidgetMeasure,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
 
@@ -16,6 +18,7 @@ enum Observation {
         phase: PointerPhase,
         callback_phase: EventPhase,
         physical_target: bool,
+        local_position: Option<[u32; 2]>,
     },
     Boundary,
     Capture(PointerCaptureKind),
@@ -28,11 +31,15 @@ struct ChildAction;
 #[derive(Debug)]
 enum Action {
     Child(ChildAction),
+    ShiftPresentation,
+    MakePresentationSingular,
 }
 
 #[derive(Clone)]
 struct State {
     observations: Rc<RefCell<Vec<Observation>>>,
+    translation: f32,
+    singular: bool,
 }
 
 #[derive(Debug)]
@@ -60,6 +67,9 @@ impl Widget<ChildAction> for ExternalPointerWidget {
                     phase: pointer.phase(),
                     callback_phase: context.phase(),
                     physical_target: context.physical_target().is_some(),
+                    local_position: context
+                        .pointer_local_position()
+                        .map(|point| [point.x().to_bits(), point.y().to_bits()]),
                 }
             }
             UiEvent::PointerBoundary(_) => Observation::Boundary,
@@ -78,6 +88,10 @@ impl Widget<ChildAction> for ExternalPointerWidget {
         WidgetEventOutput::none()
     }
 
+    fn activation(&self, _state: &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(true)
+    }
+
     fn measure(
         &self,
         _state: &Self::State,
@@ -94,6 +108,30 @@ impl Widget<ChildAction> for ExternalPointerWidget {
     }
 }
 
+fn unit(value: f32) -> UnitInterval {
+    UnitInterval::new(value).unwrap_or_else(|_| unreachable!("fixture unit is valid"))
+}
+
+fn local_position_is(local_position: Option<[u32; 2]>, expected: [f32; 2]) -> bool {
+    let Some([x, y]) = local_position else {
+        return false;
+    };
+    let [expected_x, expected_y] = expected;
+    (f32::from_bits(x) - expected_x).abs() <= 1.0e-4
+        && (f32::from_bits(y) - expected_y).abs() <= 1.0e-4
+}
+
+fn presentation(translation: f32, singular: bool) -> PresentationTransform {
+    PresentationTransform::new(
+        PresentationTranslation::new(translation, translation)
+            .unwrap_or_else(|_| unreachable!("fixture translation is finite")),
+        PresentationScale::new(if singular { 0.0 } else { 1.0 }, 1.0)
+            .unwrap_or_else(|_| unreachable!("fixture scale is finite")),
+        PresentationRotation::ZERO,
+        PresentationOrigin::new(unit(0.0), unit(0.0)),
+    )
+}
+
 struct App;
 
 impl UiApp for App {
@@ -106,12 +144,16 @@ impl UiApp for App {
             observations: Rc::clone(&state.observations),
         })
         .id("external.pointer")
+        .key("external.pointer")
+        .presentation(presentation(state.translation, state.singular))
         .map_action(Action::Child)
     }
 
-    fn update(_state: &mut Self::State, action: Self::Action) {
+    fn update(state: &mut Self::State, action: Self::Action) {
         match action {
             Action::Child(ChildAction) => {}
+            Action::ShiftPresentation => state.translation = 30.0,
+            Action::MakePresentationSingular => state.singular = true,
         }
     }
 }
@@ -158,6 +200,8 @@ fn downstream_widget_uses_public_pointer_capture_boundary_and_wheel_protocol() {
     let observations = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<App>::mount(State {
         observations: Rc::clone(&observations),
+        translation: 0.0,
+        singular: false,
     });
     settle(&mut runtime);
     let style_environment = StyleEnvironment::default();
@@ -191,11 +235,15 @@ fn downstream_widget_uses_public_pointer_capture_boundary_and_wheel_protocol() {
     assert!(observations.contains(&Observation::Boundary));
     assert!(observations.contains(&Observation::Capture(PointerCaptureKind::Gained)));
     assert!(observations.contains(&Observation::Capture(PointerCaptureKind::Lost)));
-    assert!(observations.contains(&Observation::Pointer {
-        phase: PointerPhase::Move,
-        callback_phase: EventPhase::Target,
-        physical_target: false,
-    }));
+    assert!(observations.iter().any(|observation| matches!(
+        observation,
+        Observation::Pointer {
+            phase: PointerPhase::Move,
+            callback_phase: EventPhase::Target,
+            physical_target: false,
+            local_position: Some([x, y]),
+        } if *x == 65.0_f32.to_bits() && *y == 65.0_f32.to_bits()
+    )));
     assert_eq!(
         observations
             .iter()
@@ -203,4 +251,132 @@ fn downstream_widget_uses_public_pointer_capture_boundary_and_wheel_protocol() {
             .count(),
         1
     );
+}
+
+fn assert_singular_capture_geometry(
+    runtime: &mut AppRuntime<App>,
+    build: &SurfaceBuildContext<'_>,
+    observations: &Rc<RefCell<Vec<Observation>>>,
+    outside_old_hit: LogicalPoint,
+) {
+    observations.borrow_mut().clear();
+    runtime
+        .submit_action(Action::MakePresentationSingular)
+        .unwrap_or_else(|_| unreachable!("singular presentation enters the FIFO"));
+    settle(runtime);
+    let singular = runtime
+        .publish_surface(build)
+        .unwrap_or_else(|_| unreachable!("singular pointer fixture republishes"));
+    runtime
+        .submit_pointer(pointer_event(
+            11,
+            PointerPhase::Move,
+            outside_old_hit,
+            singular.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("captured singular-context move is admitted"));
+    settle(runtime);
+    assert!(observations.borrow().iter().any(|observation| matches!(
+        observation,
+        Observation::Pointer {
+            phase: PointerPhase::Move,
+            callback_phase: EventPhase::Target,
+            local_position: None,
+            ..
+        }
+    )));
+
+    runtime
+        .submit_pointer(pointer_event(
+            11,
+            PointerPhase::Up,
+            outside_old_hit,
+            singular.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("captured pointer up is admitted"));
+    settle(runtime);
+}
+
+#[test]
+fn pointer_local_position_uses_retained_capture_geometry_and_rejects_singular_transform() {
+    let observations = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<App>::mount(State {
+        observations: Rc::clone(&observations),
+        translation: 10.0,
+        singular: false,
+    });
+    settle(&mut runtime);
+    let style_environment = StyleEnvironment::default();
+    let build = SurfaceBuildContext::tight(
+        &style_environment,
+        LogicalSize::try_new(80.0, 80.0)
+            .unwrap_or_else(|_| unreachable!("the surface size is finite")),
+    );
+    let initial = runtime
+        .publish_surface(&build)
+        .unwrap_or_else(|_| unreachable!("translated pointer fixture publishes"));
+    let retained_context = initial.input_context().clone();
+    let down =
+        LogicalPoint::new(12.0, 13.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
+
+    runtime
+        .submit_pointer(pointer_event(
+            11,
+            PointerPhase::Down,
+            down,
+            retained_context.clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("translated pointer down is admitted"));
+    settle(&mut runtime);
+    assert!(observations.borrow().iter().any(|observation| matches!(
+        observation,
+        Observation::Pointer {
+            phase: PointerPhase::Down,
+            callback_phase: EventPhase::Target,
+            physical_target: true,
+            local_position,
+        } if local_position_is(*local_position, [2.0, 3.0])
+    )));
+
+    observations.borrow_mut().clear();
+    runtime
+        .submit_action(Action::ShiftPresentation)
+        .unwrap_or_else(|_| unreachable!("presentation shift enters the FIFO"));
+    settle(&mut runtime);
+    let shifted = runtime
+        .publish_surface(&build)
+        .unwrap_or_else(|_| unreachable!("shifted pointer fixture republishes"));
+    assert_ne!(
+        shifted.input_context().coordinate_revision(),
+        retained_context.coordinate_revision()
+    );
+
+    let outside_old_hit =
+        LogicalPoint::new(120.0, 120.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
+    runtime
+        .submit_pointer(pointer_event(
+            11,
+            PointerPhase::Move,
+            outside_old_hit,
+            retained_context,
+        ))
+        .unwrap_or_else(|_| unreachable!("captured retained-context move is admitted"));
+    settle(&mut runtime);
+    {
+        let observations = observations.borrow();
+        assert!(
+            observations.iter().any(|observation| matches!(
+                observation,
+                Observation::Pointer {
+                    phase: PointerPhase::Move,
+                    callback_phase: EventPhase::Target,
+                    physical_target: false,
+                    local_position,
+                } if local_position_is(*local_position, [110.0, 110.0])
+            )),
+            "retained capture must use retained owner-local geometry: {observations:?}"
+        );
+    }
+
+    assert_singular_capture_geometry(&mut runtime, &build, &observations, outside_old_hit);
 }
