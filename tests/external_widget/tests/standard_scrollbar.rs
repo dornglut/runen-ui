@@ -204,11 +204,7 @@ fn assert_pointer_down_default_committed_on(
     );
 }
 
-fn assert_pointer_stream_closed(
-    runtime: &AppRuntime<App>,
-    trace_start: usize,
-    pointer_id: u64,
-) {
+fn assert_pointer_stream_closed(runtime: &AppRuntime<App>, trace_start: usize, pointer_id: u64) {
     assert!(
         runtime.trace().records().skip(trace_start).any(|record| matches!(
             record.kind(),
