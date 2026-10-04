@@ -954,7 +954,8 @@ mod tests {
         let finalized = tree
             .finalize_semantic_publication(initial)
             .unwrap_or_else(|_| unreachable!("initial semantic plan finalizes"));
-        tree.commit_semantic_publication(finalized.commit_store());
+        let semantic_commit = finalized.commit_store();
+        tree.commit_semantic_publication(semantic_commit);
         tree.commit_surface_publication_capabilities(surface_plan);
         assert_eq!(semantic_callbacks.load(Ordering::SeqCst), 1);
         assert_eq!(
