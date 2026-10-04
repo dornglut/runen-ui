@@ -1421,6 +1421,69 @@ mod tests {
     }
 
     #[test]
+    fn authored_scrollbar_mutable_range_actions_never_override_runtime_scrollability() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let root = runtime.__runtime_mounted_id(0, 1);
+        let viewport = runtime.__runtime_mounted_id(1, 1);
+        let scrollbar_owner_id = runtime.__runtime_mounted_id(2, 1);
+        let viewport_id = runtime.__runtime_semantic_id(0, 1);
+        let scrollbar_id = runtime.__runtime_semantic_id(1, 1);
+
+        let root_owner = semantic_owner(
+            root.clone(),
+            None,
+            vec![viewport.clone(), scrollbar_owner_id.clone()],
+            SemanticContribution::empty(),
+            Vec::new(),
+            rect(0.0, 0.0, 100.0, 100.0),
+        );
+        let viewport_owner = semantic_owner(
+            viewport.clone(),
+            None,
+            Vec::new(),
+            SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::Group)),
+            vec![(SemanticKey::PRIMARY, viewport_id)],
+            rect(0.0, 0.0, 80.0, 100.0),
+        );
+        let mut scrollbar_owner = semantic_owner(
+            scrollbar_owner_id,
+            None,
+            Vec::new(),
+            SemanticContribution::single(
+                SemanticNodeContribution::primary(SemanticRole::ScrollBar)
+                    .with_action(SemanticAction::Increment)
+                    .with_action(SemanticAction::Decrement)
+                    .with_action(SemanticAction::SetValue),
+            ),
+            vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
+            rect(80.0, 0.0, 20.0, 100.0),
+        );
+        scrollbar_owner.scroll_control = Some(scroll_projection(
+            viewport,
+            Axis::Vertical,
+            0.0,
+            100.0,
+            100.0,
+        ));
+
+        let candidate = compose(
+            &[root_owner, viewport_owner, scrollbar_owner],
+            Some(&root),
+            None,
+        );
+        let scrollbar = candidate
+            .nodes
+            .iter()
+            .find(|node| node.id == scrollbar_id)
+            .unwrap_or_else(|| unreachable!("zero-range scrollbar remains published"));
+
+        assert!(
+            scrollbar.supported_actions.is_empty(),
+            "authored mutable-range actions cannot recreate action authority when the runtime-derived scroll range is zero"
+        );
+    }
+
+    #[test]
     fn non_scrollable_scrollbar_withholds_runtime_mutable_actions() {
         let runtime = RuntimeNamespace::__runtime_new();
         let root = runtime.__runtime_mounted_id(0, 1);
