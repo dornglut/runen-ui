@@ -491,7 +491,7 @@ impl SurfaceLayoutReport {
         self.nodes.as_slice()
     }
 
-    fn nodes_mut(&mut self) -> &mut [SurfaceLayoutNode] {
+    const fn nodes_mut(&mut self) -> &mut [SurfaceLayoutNode] {
         self.nodes.as_mut_slice()
     }
 

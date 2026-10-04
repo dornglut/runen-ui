@@ -36,7 +36,9 @@ use taffy::{
 };
 
 use super::cache::CachedScrollChromeProjection;
-use super::resolve::{ResolvedSurfaceNode, ResolvedSurfaceTree, ScrollChromeLayoutPlan};
+use super::resolve::{
+    ResolvedScrollBarChrome, ResolvedSurfaceNode, ResolvedSurfaceTree, ScrollChromeLayoutPlan,
+};
 use super::{LayoutOverflow, SurfaceLayoutNode, SurfaceLayoutReport, SurfaceTextMeasurementRecord};
 use crate::{AxisLimit, LayoutConstraints};
 
@@ -60,6 +62,16 @@ type LayoutResult = (
     Vec<Option<CachedScrollChromeProjection>>,
     Vec<TextLayoutState>,
 );
+
+struct LayoutPassInputs<'a, Action> {
+    resolved_tree: &'a ResolvedSurfaceTree,
+    chrome_plan: &'a ScrollChromeLayoutPlan,
+    gutters: &'a [ScrollViewportGutter],
+    mounted_tree: &'a crate::mounted::MountedTree<Action>,
+    root_constraints: LayoutConstraints,
+    preedits: &'a HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
+    prior_text_layouts: Option<&'a [TextLayoutState]>,
+}
 
 #[allow(
     clippy::let_and_return,
@@ -92,14 +104,16 @@ pub(super) fn layout_resolved_surface<Action>(
     loop {
         let gutters = reserved_gutters(resolved_tree.nodes().len(), chrome_plan, &reserved_present);
         result = layout_resolved_surface_once(
-            resolved_tree,
-            chrome_plan,
-            gutters.as_slice(),
-            mounted_tree,
-            root_constraints,
+            LayoutPassInputs {
+                resolved_tree,
+                chrome_plan,
+                gutters: gutters.as_slice(),
+                mounted_tree,
+                root_constraints,
+                preedits,
+                prior_text_layouts,
+            },
             text_system,
-            preedits,
-            prior_text_layouts,
         )?;
         let mut added = false;
         for (bar_index, bar) in chrome_plan.bars.iter().enumerate() {
@@ -129,25 +143,11 @@ pub(super) fn layout_resolved_surface<Action>(
 }
 
 fn layout_resolved_surface_once<Action>(
-    resolved_tree: &ResolvedSurfaceTree,
-    chrome_plan: &ScrollChromeLayoutPlan,
-    gutters: &[ScrollViewportGutter],
-    mounted_tree: &crate::mounted::MountedTree<Action>,
-    root_constraints: LayoutConstraints,
+    inputs: LayoutPassInputs<'_, Action>,
     text_system: &mut TextSystem,
-    preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
-    prior_text_layouts: Option<&[TextLayoutState]>,
 ) -> Result<LayoutCoreResult, TextLayoutError> {
-    let mut kernel = LayoutKernel::new(
-        resolved_tree,
-        chrome_plan,
-        gutters,
-        mounted_tree,
-        text_system,
-        preedits,
-        prior_text_layouts,
-        root_constraints,
-    );
+    let root_constraints = inputs.root_constraints;
+    let mut kernel = LayoutKernel::new(inputs, text_system);
     let root = NodeId::from(0usize);
     compute_root_layout(&mut kernel, root, available_space(root_constraints));
     kernel.finish(root_constraints)
@@ -186,34 +186,35 @@ fn axis_has_positive_range(node: Option<&SurfaceLayoutNode>, axis: Axis) -> bool
     }
 }
 
-fn apply_scroll_chrome_geometry(
-    chrome_plan: &ScrollChromeLayoutPlan,
+fn scroll_bar_is_visible(
+    bar_index: usize,
+    bar: &ResolvedScrollBarChrome,
     reserved_present: &[bool],
+    report: &SurfaceLayoutReport,
+) -> bool {
+    match bar.layout.visibility() {
+        ScrollBarVisibility::Always => true,
+        ScrollBarVisibility::Automatic => match bar.layout.placement() {
+            ScrollBarPlacement::Reserved => {
+                reserved_present.get(bar_index).copied().unwrap_or(false)
+            }
+            ScrollBarPlacement::Overlay => axis_has_positive_range(
+                report.nodes().get(bar.owner_position),
+                bar.layout.axis(),
+            ),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+fn apply_scroll_bar_geometry(
+    chrome_plan: &ScrollChromeLayoutPlan,
+    visible_bars: &[bool],
     bounds: &mut [LogicalRect],
     report: &mut SurfaceLayoutReport,
-) -> Vec<Option<CachedScrollChromeProjection>> {
-    let mut projection = vec![None; bounds.len()];
-    let visible_bars = chrome_plan
-        .bars
-        .iter()
-        .enumerate()
-        .map(|(bar_index, bar)| match bar.layout.visibility() {
-            ScrollBarVisibility::Hidden => false,
-            ScrollBarVisibility::Always => true,
-            ScrollBarVisibility::Automatic => match bar.layout.placement() {
-                ScrollBarPlacement::Reserved => {
-                    reserved_present.get(bar_index).copied().unwrap_or(false)
-                }
-                ScrollBarPlacement::Overlay => axis_has_positive_range(
-                    report.nodes().get(bar.owner_position),
-                    bar.layout.axis(),
-                ),
-                _ => false,
-            },
-            _ => false,
-        })
-        .collect::<Vec<_>>();
-
+    projection: &mut [Option<CachedScrollChromeProjection>],
+) {
     for (bar_index, bar) in chrome_plan.bars.iter().enumerate() {
         let Some(owner_bounds) = bounds.get(bar.owner_position).copied() else {
             continue;
@@ -232,7 +233,15 @@ fn apply_scroll_chrome_geometry(
             visible_bars[bar_index],
         ));
     }
+}
 
+fn apply_scroll_thumb_geometry(
+    chrome_plan: &ScrollChromeLayoutPlan,
+    visible_bars: &[bool],
+    bounds: &mut [LogicalRect],
+    report: &mut SurfaceLayoutReport,
+    projection: &mut [Option<CachedScrollChromeProjection>],
+) {
     let bar_indexes = chrome_plan
         .bars
         .iter()
@@ -267,7 +276,15 @@ fn apply_scroll_chrome_geometry(
             thumb_present,
         ));
     }
+}
 
+fn apply_scroll_corner_geometry(
+    chrome_plan: &ScrollChromeLayoutPlan,
+    visible_bars: &[bool],
+    bounds: &mut [LogicalRect],
+    report: &mut SurfaceLayoutReport,
+    projection: &mut [Option<CachedScrollChromeProjection>],
+) {
     for corner in &chrome_plan.corners {
         let horizontal = chrome_plan
             .bars
@@ -316,6 +333,24 @@ fn apply_scroll_chrome_geometry(
             corner_present,
         ));
     }
+}
+
+fn apply_scroll_chrome_geometry(
+    chrome_plan: &ScrollChromeLayoutPlan,
+    reserved_present: &[bool],
+    bounds: &mut [LogicalRect],
+    report: &mut SurfaceLayoutReport,
+) -> Vec<Option<CachedScrollChromeProjection>> {
+    let visible_bars = chrome_plan
+        .bars
+        .iter()
+        .enumerate()
+        .map(|(bar_index, bar)| scroll_bar_is_visible(bar_index, bar, reserved_present, report))
+        .collect::<Vec<_>>();
+    let mut projection = vec![None; bounds.len()];
+    apply_scroll_bar_geometry(chrome_plan, &visible_bars, bounds, report, &mut projection);
+    apply_scroll_thumb_geometry(chrome_plan, &visible_bars, bounds, report, &mut projection);
+    apply_scroll_corner_geometry(chrome_plan, &visible_bars, bounds, report, &mut projection);
     projection
 }
 
@@ -437,16 +472,16 @@ struct LayoutKernel<'a, Action> {
 }
 
 impl<'a, Action> LayoutKernel<'a, Action> {
-    fn new(
-        resolved: &'a ResolvedSurfaceTree,
-        chrome_plan: &'a ScrollChromeLayoutPlan,
-        gutters: &'a [ScrollViewportGutter],
-        mounted: &'a crate::mounted::MountedTree<Action>,
-        text_system: &'a mut TextSystem,
-        preedits: &'a HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
-        prior_text_layouts: Option<&[TextLayoutState]>,
-        root_constraints: LayoutConstraints,
-    ) -> Self {
+    fn new(inputs: LayoutPassInputs<'a, Action>, text_system: &'a mut TextSystem) -> Self {
+        let LayoutPassInputs {
+            resolved_tree: resolved,
+            chrome_plan,
+            gutters,
+            mounted_tree: mounted,
+            root_constraints,
+            preedits,
+            prior_text_layouts,
+        } = inputs;
         let count = resolved.nodes().len();
         let text_layouts = prior_text_layouts
             .filter(|states| states.len() == count)
