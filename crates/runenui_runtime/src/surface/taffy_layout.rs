@@ -7,8 +7,8 @@ use runenui_core::{
     Axis, ComputedStyle, ContentAlignment, EdgeInsets, FlexBasis, FlexDirection, FlexWrap,
     ItemAlignment, LayoutBound, LayoutContainer, LayoutDimension, LayoutPosition, LayoutStyle,
     LogicalLength, LogicalPoint, LogicalRect, LogicalSize, MainAxisAlignment, OverflowPolicy,
-    ScrollBarPlacement, ScrollBarVisibility, Typography, WidgetAvailableSpace, WidgetMeasure,
-    WidgetMeasureInput, WidgetMeasuredSize,
+    ScrollBarPlacement, ScrollBarVisibility, ScrollControlSnapshot, Typography,
+    WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize,
 };
 use std::{collections::HashMap, sync::Arc};
 
@@ -330,13 +330,16 @@ fn thumb_bounds(
         Axis::Horizontal => (track.width(), viewport.width(), content.width()),
         Axis::Vertical => (track.height(), viewport.height(), content.height()),
     };
-    let fraction = if content_extent > 0.0 {
-        (viewport_extent / content_extent).clamp(0.0, 1.0)
-    } else {
-        1.0
-    };
-    let minimum = layout.minimum_thumb_extent().get().min(track_extent);
-    let thumb_extent = (track_extent * fraction).max(minimum).min(track_extent);
+    let snapshot = ScrollControlSnapshot::__runtime_from_metrics(
+        layout.axis(),
+        0.0,
+        viewport_extent,
+        content_extent,
+    )?;
+    let thumb_extent = layout
+        .thumb_geometry(snapshot, LogicalLength::new(track_extent).ok()?)?
+        .thumb_extent()
+        .get();
     match layout.axis() {
         Axis::Horizontal => {
             LogicalRect::try_new(track.x(), track.y(), thumb_extent, track.height()).ok()

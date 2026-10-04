@@ -77,21 +77,26 @@ struct FocusNotificationPlan {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    fn current_scroll_chrome_participation(&self, target: &MountedNodeId) -> Option<bool> {
+        let authored = self.tree.node(target)?.scroll_chrome?;
+        self.surface_publication
+            .current_scroll_chrome_participation(target, authored)
+    }
+
     pub(crate) fn current_automatic_scroll_focusability(
         &self,
         target: &MountedNodeId,
     ) -> Option<bool> {
-        self.tree
-            .node(target)
-            .and_then(|node| node.scroll_control_binding)
-            .map(|_| {
-                self.surface_publication
-                    .current_scroll_chrome_participation(target)
-                    != Some(false)
-                    && self
-                        .resolve_scroll_control_context_snapshot(target)
-                        .is_some_and(|snapshot| snapshot.maximum_offset().get() > 0.0)
-            })
+        let node = self.tree.node(target)?;
+        node.scroll_control_binding?;
+        let chrome_participates = node.scroll_chrome.is_none()
+            || self.current_scroll_chrome_participation(target) == Some(true);
+        Some(
+            chrome_participates
+                && self
+                    .resolve_scroll_control_context_snapshot(target)
+                    .is_some_and(|snapshot| snapshot.maximum_offset().get() > 0.0),
+        )
     }
 
     pub(crate) fn focus_eligibility_projection(&self) -> FocusEligibilityProjection {
@@ -101,16 +106,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .filter(|id| self.current_automatic_scroll_focusability(id) == Some(true))
             .cloned()
             .collect::<Vec<_>>();
-        let nonparticipating_chrome = ids
+        let participating_chrome = ids
             .iter()
             .filter(|id| {
-                self.surface_publication
-                    .current_scroll_chrome_participation(id)
-                    == Some(false)
+                self.tree
+                    .node(id)
+                    .is_some_and(|node| node.scroll_chrome.is_some())
+                    && self.current_scroll_chrome_participation(id) == Some(true)
             })
             .cloned()
             .collect::<Vec<_>>();
-        FocusEligibilityProjection::new(scrollable_controls, nonparticipating_chrome)
+        FocusEligibilityProjection::new(scrollable_controls, participating_chrome)
     }
 
     /// Applies input-lifetime revocation selected by the sole reconciliation

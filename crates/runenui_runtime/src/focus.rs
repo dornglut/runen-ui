@@ -13,17 +13,17 @@ use crate::{LogicalRect, MountedNodeId, mounted::MountedTree};
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct FocusEligibilityProjection {
     scrollable_controls: HashSet<MountedNodeId>,
-    nonparticipating_chrome: HashSet<MountedNodeId>,
+    participating_chrome: HashSet<MountedNodeId>,
 }
 
 impl FocusEligibilityProjection {
     pub(crate) fn new(
         scrollable_controls: impl IntoIterator<Item = MountedNodeId>,
-        nonparticipating_chrome: impl IntoIterator<Item = MountedNodeId>,
+        participating_chrome: impl IntoIterator<Item = MountedNodeId>,
     ) -> Self {
         Self {
             scrollable_controls: scrollable_controls.into_iter().collect(),
-            nonparticipating_chrome: nonparticipating_chrome.into_iter().collect(),
+            participating_chrome: participating_chrome.into_iter().collect(),
         }
     }
 
@@ -42,7 +42,7 @@ impl FocusEligibilityProjection {
         id: &MountedNodeId,
         has_scroll_chrome: bool,
     ) -> bool {
-        !has_scroll_chrome || !self.nonparticipating_chrome.contains(id)
+        !has_scroll_chrome || self.participating_chrome.contains(id)
     }
 }
 

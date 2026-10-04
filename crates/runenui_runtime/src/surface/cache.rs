@@ -1,7 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
-    Axis, LogicalTransform, ScrollControlBinding, ScrollControlSnapshot, StyleEnvironment,
+    Axis, LogicalTransform, ScrollChrome, ScrollControlBinding, ScrollControlSnapshot,
+    StyleEnvironment,
     TextDocumentSnapshot, WidgetDiagnostic,
 };
 use runenui_text::{
@@ -482,9 +483,12 @@ impl SurfaceCache {
     pub(crate) fn current_scroll_chrome_participation(
         &self,
         target: &MountedNodeId,
+        authored: ScrollChrome,
     ) -> Option<bool> {
         let position = self.topology.position(target)?;
-        self.topology.nodes.get(position)?.scroll_chrome?;
+        if self.topology.nodes.get(position)?.scroll_chrome != Some(authored) {
+            return None;
+        }
         Some(
             self.layout
                 .scroll_chrome

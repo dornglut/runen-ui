@@ -5,7 +5,7 @@ use std::{
 };
 
 use runenui_core::{
-    __runtime::RuntimeNamespace, LogicalTransform, MonotonicInstant, SurfaceId,
+    __runtime::RuntimeNamespace, LogicalTransform, MonotonicInstant, ScrollChrome, SurfaceId,
     SurfaceInputContext, TextDocumentSnapshot,
 };
 use runenui_text::{TextCaretMap, TextCaretMapError, TextLayoutError, TextSystem};
@@ -891,10 +891,11 @@ impl SurfacePublicationState {
     pub(crate) fn current_scroll_chrome_participation(
         &self,
         target: &MountedNodeId,
+        authored: ScrollChrome,
     ) -> Option<bool> {
         self.cache
             .as_ref()?
-            .current_scroll_chrome_participation(target)
+            .current_scroll_chrome_participation(target, authored)
     }
 
     pub(crate) fn current_scroll_control_projection(

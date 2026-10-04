@@ -466,7 +466,7 @@ struct ChromeContent {
     height: LogicalLength,
 }
 
-impl Widget<()> for ChromeContent {
+impl Widget<ChromeAction> for ChromeContent {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -479,7 +479,7 @@ impl Widget<()> for ChromeContent {
 #[derive(Debug)]
 struct ChromeViewport;
 
-impl Widget<()> for ChromeViewport {
+impl Widget<ChromeAction> for ChromeViewport {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -509,14 +509,14 @@ impl Widget<()> for ChromeViewport {
     }
 }
 
-impl ChildBearingWidget<()> for ChromeViewport {}
+impl ChildBearingWidget<ChromeAction> for ChromeViewport {}
 
 #[derive(Debug)]
 struct ChromeTrack {
     semantic_callbacks: Rc<RefCell<usize>>,
 }
 
-impl Widget<()> for ChromeTrack {
+impl Widget<ChromeAction> for ChromeTrack {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -567,14 +567,14 @@ impl Widget<()> for ChromeTrack {
     }
 }
 
-impl ChildBearingWidget<()> for ChromeTrack {}
+impl ChildBearingWidget<ChromeAction> for ChromeTrack {}
 
 #[derive(Debug)]
 struct ChromeThumb {
     semantic_callbacks: Rc<RefCell<usize>>,
 }
 
-impl Widget<()> for ChromeThumb {
+impl Widget<ChromeAction> for ChromeThumb {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -626,11 +626,16 @@ struct ChromeState {
     thumb_semantics: Rc<RefCell<usize>>,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum ChromeAction {
+    SetVisibility(ScrollBarVisibility),
+}
+
 struct ChromeApp;
 
 impl UiApp for ChromeApp {
     type State = ChromeState;
-    type Action = ();
+    type Action = ChromeAction;
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> Element<Self::Action> {
@@ -690,7 +695,11 @@ impl UiApp for ChromeApp {
             .into_element()
     }
 
-    fn update(_: &mut Self::State, (): Self::Action) {}
+    fn update(state: &mut Self::State, action: Self::Action) {
+        match action {
+            ChromeAction::SetVisibility(visibility) => state.visibility = visibility,
+        }
+    }
 }
 
 fn chrome_node_id(runtime: &mut AppRuntime<ChromeApp>, authored: &str) -> MountedNodeId {
@@ -1039,5 +1048,61 @@ fn downstream_scroll_chrome_visibility_and_overlay_share_one_participation_autho
             .and_then(|range| range.current())
             .map(|value| value.get()),
         Some(0.0)
+    );
+}
+
+#[test]
+fn live_chrome_change_clears_focus_before_surface_republication() {
+    let mut runtime = AppRuntime::<ChromeApp>::mount(chrome_state(
+        200.0,
+        ScrollBarVisibility::Always,
+        ScrollBarPlacement::Reserved,
+        true,
+    ));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let _publication = chrome_publish(&mut runtime);
+    let track = chrome_node_id(&mut runtime, "chrome.track");
+
+    runtime
+        .submit_command(
+            track.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("visible explicit chrome accepts focus request"));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    assert_eq!(runtime.focus().focused_node(), Some(&track));
+
+    runtime
+        .submit_action(ChromeAction::SetVisibility(ScrollBarVisibility::Hidden))
+        .unwrap_or_else(|_| unreachable!("chrome visibility change enters the application FIFO"));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+
+    assert_eq!(
+        runtime.focus().focused_node(),
+        None,
+        "live authored chrome that no longer matches retained participation fails closed before republish"
+    );
+    assert!(
+        runtime
+            .index()
+            .node(&track)
+            .is_some_and(|node| !node.is_focusable()),
+        "stale retained positive participation cannot keep explicitly focusable chrome eligible"
     );
 }

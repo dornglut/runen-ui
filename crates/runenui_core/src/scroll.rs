@@ -351,6 +351,56 @@ impl ScrollControlSnapshot {
     }
 }
 
+/// Canonical thumb geometry for one scrollbar track.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollBarThumbGeometry {
+    thumb_extent: LogicalLength,
+    travel: LogicalLength,
+    thumb_origin: LogicalLength,
+}
+
+impl ScrollBarThumbGeometry {
+    #[must_use]
+    pub const fn thumb_extent(self) -> LogicalLength {
+        self.thumb_extent
+    }
+
+    #[must_use]
+    pub const fn travel(self) -> LogicalLength {
+        self.travel
+    }
+
+    #[must_use]
+    pub const fn thumb_origin(self) -> LogicalLength {
+        self.thumb_origin
+    }
+}
+
+impl ScrollBarLayout {
+    /// Derives checked thumb extent, travel, and origin from the current bound snapshot.
+    #[must_use]
+    pub fn thumb_geometry(
+        self,
+        snapshot: ScrollControlSnapshot,
+        track_extent: LogicalLength,
+    ) -> Option<ScrollBarThumbGeometry> {
+        if snapshot.axis() != self.axis() {
+            return None;
+        }
+        let track_extent = track_extent.get();
+        let minimum = self.minimum_thumb_extent().get().min(track_extent);
+        let thumb_extent = (track_extent * snapshot.visible_fraction().get())
+            .max(minimum)
+            .min(track_extent);
+        let travel = (track_extent - thumb_extent).max(0.0);
+        Some(ScrollBarThumbGeometry {
+            thumb_extent: LogicalLength::new(thumb_extent).ok()?,
+            travel: LogicalLength::new(travel).ok()?,
+            thumb_origin: LogicalLength::new(travel * snapshot.normalized_position().get()).ok()?,
+        })
+    }
+}
+
 /// Device-independent request issued by one bound scroll control.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -404,6 +454,38 @@ mod tests {
             Some(Axis::Horizontal)
         );
         assert_eq!(ScrollChrome::Corner.axis(), None);
+    }
+
+    #[test]
+    fn thumb_geometry_is_shared_checked_and_track_relative() {
+        let snapshot = ScrollControlSnapshot::__runtime_from_metrics(
+            Axis::Vertical,
+            50.0,
+            100.0,
+            200.0,
+        )
+        .unwrap_or_else(|| unreachable!("fixture scroll metrics are valid"));
+        let layout = ScrollBarLayout::new(
+            Axis::Vertical,
+            LogicalLength::from(10_u8),
+            LogicalLength::from(20_u8),
+        );
+        let geometry = layout
+            .thumb_geometry(snapshot, LogicalLength::from(100_u8))
+            .unwrap_or_else(|| unreachable!("matching axis geometry is valid"));
+
+        assert_eq!(geometry.thumb_extent().get(), 50.0);
+        assert_eq!(geometry.travel().get(), 50.0);
+        assert_eq!(geometry.thumb_origin().get(), 25.0);
+        assert!(
+            ScrollBarLayout::new(
+                Axis::Horizontal,
+                LogicalLength::from(10_u8),
+                LogicalLength::from(20_u8),
+            )
+            .thumb_geometry(snapshot, LogicalLength::from(100_u8))
+            .is_none()
+        );
     }
 
     #[test]
