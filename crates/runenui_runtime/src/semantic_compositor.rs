@@ -902,7 +902,7 @@ mod tests {
         ];
 
         let candidate = compose(&owners, Some(&root), None);
-        assert_eq!(candidate.diagnostics, Vec::new());
+        assert!(candidate.diagnostics.is_empty());
         assert_eq!(candidate.roots, vec![control_primary.clone()]);
         assert_eq!(
             candidate.nodes[0].children,
@@ -969,7 +969,7 @@ mod tests {
 
         let candidate = compose(&owners, Some(&owner), Some(&owner));
         assert!(candidate.roots.is_empty());
-        assert_eq!(candidate.nodes, Vec::new());
+        assert!(candidate.nodes.is_empty());
         assert!(candidate.focused.is_none());
         assert_eq!(
             candidate.diagnostics,
@@ -1395,7 +1395,7 @@ mod tests {
             Some(&root),
             None,
         );
-        assert!(candidate.diagnostics.is_empty());
+        assert_eq!(candidate.diagnostics, Vec::new());
         let scrollbar = candidate
             .nodes
             .iter()
@@ -1581,7 +1581,7 @@ mod tests {
         );
 
         let candidate = compose(&[root_owner, scrollbar_owner], Some(&root), None);
-        assert!(candidate.nodes.is_empty());
+        assert_eq!(candidate.nodes, Vec::new());
         assert_eq!(
             candidate.diagnostics,
             vec![SemanticCompositionDiagnostic::MissingScrollControlBinding {
