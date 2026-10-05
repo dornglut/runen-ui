@@ -1,0 +1,126 @@
+name: CI linker diagnostic
+
+on:
+  push:
+    branches:
+      - codex/issue-383-mold-diagnostic
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: ${{ matrix.order }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        order:
+          - default-then-mold
+          - mold-then-default
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: never
+    steps:
+      - name: Check out exact diagnostic revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install stable Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+
+      - name: Install pinned mold
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          apt-cache policy mold
+          sudo apt-get install -y --no-install-recommends mold=2.30.0+dfsg-1build1
+
+      - name: Record environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "IMAGE_OS=${ImageOS:-unknown}"
+          echo "IMAGE_VERSION=${ImageVersion:-unknown}"
+          rustc +stable -vV
+          cargo +stable -V
+          mold --version
+          cc --version | head -n 1
+          sysroot="$(rustc +stable --print sysroot)"
+          rust_lld="${sysroot}/lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-lld"
+          if [[ -x "${rust_lld}" ]]; then
+            "${rust_lld}" --version
+          fi
+
+      - name: Fetch locked dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +stable fetch --locked
+
+      - name: Compare source-fresh test builds
+        shell: bash
+        env:
+          ORDER: ${{ matrix.order }}
+        run: |
+          set -euo pipefail
+
+          run_sample() {
+            local mode="$1"
+            local log="${RUNNER_TEMP}/linker-${mode}.log"
+
+            cargo +stable clean
+            local started ended elapsed status
+            started="$(date +%s%N)"
+            set +e
+            if [[ "${mode}" == "mold" ]]; then
+              RUSTFLAGS="-C link-arg=-fuse-ld=mold" \
+                cargo +stable test --workspace --all-features --locked --no-run \
+                >"${log}" 2>&1
+              status=$?
+            else
+              env -u RUSTFLAGS \
+                cargo +stable test --workspace --all-features --locked --no-run \
+                >"${log}" 2>&1
+              status=$?
+            fi
+            set -e
+            ended="$(date +%s%N)"
+            elapsed="$(python - "${started}" "${ended}" <<'PY'
+import sys
+start = int(sys.argv[1])
+end = int(sys.argv[2])
+print(f"{(end - start) / 1_000_000_000:.3f}")
+PY
+)"
+            echo "RESULT order=${ORDER} mode=${mode} seconds=${elapsed} status=${status}"
+            echo "--- ${mode} final log ---"
+            tail -n 20 "${log}" || true
+            echo "--- end ${mode} final log ---"
+            if [[ "${status}" -ne 0 ]]; then
+              exit "${status}"
+            fi
+          }
+
+          case "${ORDER}" in
+            default-then-mold)
+              run_sample default
+              run_sample mold
+              ;;
+            mold-then-default)
+              run_sample mold
+              run_sample default
+              ;;
+            *)
+              echo "unknown order: ${ORDER}" >&2
+              exit 2
+              ;;
+          esac
