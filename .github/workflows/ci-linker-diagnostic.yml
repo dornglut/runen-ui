@@ -36,13 +36,20 @@ jobs:
           set -euo pipefail
           rustup toolchain install stable --profile minimal
 
-      - name: Install pinned mold
+      - name: Install pinned upstream mold
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          apt-cache policy mold
-          sudo apt-get install -y --no-install-recommends mold=2.30.0+dfsg-1build1
+          archive="${RUNNER_TEMP}/mold-2.42.1-x86_64-linux.tar.gz"
+          root="${RUNNER_TEMP}/mold-2.42.1-x86_64-linux"
+          curl --fail --location --silent --show-error \
+            https://github.com/rui314/mold/releases/download/v2.42.1/mold-2.42.1-x86_64-linux.tar.gz \
+            --output "${archive}"
+          echo "6ff270c9bf07d2bec5c98aa324eb7c4daf6a1a4d815c05ff1708049616047855  ${archive}" | sha256sum --check -
+          tar -xzf "${archive}" -C "${RUNNER_TEMP}"
+          mold_bin="$(find "${root}" -type f -name mold -perm -u+x -print -quit)"
+          [[ -n "${mold_bin}" ]]
+          echo "$(dirname "${mold_bin}")" >> "${GITHUB_PATH}"
 
       - name: Record environment
         shell: bash
