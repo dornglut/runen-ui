@@ -1335,12 +1335,7 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
             );
         }
         if state.actionable != self.actionable {
-            context.invalidate(
-                WidgetInvalidation::INTERACTION
-                    | WidgetInvalidation::PAINT
-                    | WidgetInvalidation::SEMANTICS
-                    | WidgetInvalidation::HIT_TEST,
-            );
+            context.invalidate(WidgetInvalidation::INTERACTION | WidgetInvalidation::SEMANTICS);
         }
         state.label.clone_from(&self.label);
         state.selected = self.selected;
