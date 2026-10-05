@@ -1,9 +1,8 @@
 use runenui_core::{
     Axis, Focusability, HitContributionContext, ListBoxSelectionMode, LogicalSize,
-    SemanticCheckedState,
-    SemanticContributionContext, SemanticOrientation, SemanticRole, SemanticSelectionMode, View,
-    WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput, button, checkbox, children, column,
-    list_box, option_item, radio_button, radio_group, switch, text,
+    SemanticCheckedState, SemanticContributionContext, SemanticOrientation, SemanticRole,
+    SemanticSelectionMode, View, WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput, button,
+    checkbox, children, column, list_box, option_item, radio_button, radio_group, switch, text,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -254,7 +253,6 @@ fn radio_controls_use_public_semantics_and_typed_group_authoring() {
     );
 }
 
-
 #[test]
 fn list_box_and_option_item_use_typed_public_authoring_and_exact_semantics() {
     let option: runenui_core::Element<Action> = option_item("One", true)
@@ -302,11 +300,8 @@ fn list_box_and_option_item_use_typed_public_authoring_and_exact_semantics() {
     assert_eq!(node.orientation(), Some(SemanticOrientation::Horizontal));
     assert_eq!(node.selection_mode(), Some(SemanticSelectionMode::Multiple));
 
-    let invalid_single: runenui_core::Element<Action> = list_box([
-        option_item("One", true),
-        option_item("Two", true),
-    ])
-    .into_element();
+    let invalid_single: runenui_core::Element<Action> =
+        list_box([option_item("One", true), option_item("Two", true)]).into_element();
     assert!(
         invalid_single
             .children()

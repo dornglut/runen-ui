@@ -4,16 +4,16 @@ use crate::{
     ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandEvent, Axis, EventContext,
     EventPhase, FlexContainerStyle, FlexDirection, FocusGroup, FocusGroupActivationPolicy,
     FocusGroupBoundaryPolicy, FocusGroupTypeAhead, Focusability, HitContribution,
-    HitContributionContext, KeyboardPhase,
-    LayoutContainer, LayoutStyle, LogicalKey, LogicalLength, LogicalPoint, LogicalRect,
-    LogicalSize, OverflowStyle, PointerButton, PointerCaptureKind, PointerDeviceKind, PointerId,
-    PointerPhase, ScrollBarLayout, ScrollBarPlacement, ScrollBarVisibility, ScrollChrome,
-    ScrollControlBinding, ScrollControlRequest, ScrollNormalizedValue, SemanticAction,
-    SemanticCheckedState, SemanticCollectionPosition, SemanticCommand, SemanticCommandEvent,
-    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticNumber,
-    SemanticOrientation, SemanticRole, SemanticSelectionMode, SemanticState, SemanticText,
-    ShortcutBinding, StyleIntent, UiEvent, WidgetActivationContext,
-    WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetUpdateContext,
+    HitContributionContext, KeyboardPhase, LayoutContainer, LayoutStyle, LogicalKey, LogicalLength,
+    LogicalPoint, LogicalRect, LogicalSize, OverflowStyle, PointerButton, PointerCaptureKind,
+    PointerDeviceKind, PointerId, PointerPhase, ScrollBarLayout, ScrollBarPlacement,
+    ScrollBarVisibility, ScrollChrome, ScrollControlBinding, ScrollControlRequest,
+    ScrollNormalizedValue, SemanticAction, SemanticCheckedState, SemanticCollectionPosition,
+    SemanticCommand, SemanticCommandEvent, SemanticContribution, SemanticContributionContext,
+    SemanticNodeContribution, SemanticNumber, SemanticOrientation, SemanticRole,
+    SemanticSelectionMode, SemanticState, SemanticText, ShortcutBinding, StyleIntent, UiEvent,
+    WidgetActivationContext, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation,
+    WidgetUpdateContext,
     element::{CommonNodeAuthoring, Element, View, Views, common_node_builder_methods},
     widget_erasure::{ErasedWidget, WidgetAdapter},
     widget_protocol::{
@@ -1158,7 +1158,6 @@ impl<Action: 'static> View<Action> for RadioGroup<Action> {
     }
 }
 
-
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ListBoxSelectionMode {
     Single,
@@ -1199,7 +1198,10 @@ impl<Action> fmt::Debug for OptionItem<Action> {
             .field("key", &self.common.key)
             .field("layout", &self.common.layout)
             .field("enabled", &self.enabled)
-            .field("discoverable_when_disabled", &self.discoverable_when_disabled)
+            .field(
+                "discoverable_when_disabled",
+                &self.discoverable_when_disabled,
+            )
             .field("actionable", &self.actionable)
             .field("has_callback", &self.activation_factory.is_some())
             .field("collection_position", &self.collection_position)
@@ -1324,7 +1326,8 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
                     | WidgetInvalidation::SEMANTICS,
             );
         }
-        if state.selected != self.selected || state.collection_position != self.collection_position {
+        if state.selected != self.selected || state.collection_position != self.collection_position
+        {
             context.invalidate(WidgetInvalidation::SEMANTICS);
         }
         if state.enabled != self.enabled {
@@ -1662,7 +1665,11 @@ impl<Action> ChildBearingWidget<Action> for ListBoxWidget {}
 
 impl<Action: 'static> View<Action> for ListBox<Action> {
     fn into_element(self) -> Element<Action> {
-        let selected_count = self.children.iter().filter(|child| child.selected()).count();
+        let selected_count = self
+            .children
+            .iter()
+            .filter(|child| child.selected())
+            .count();
         let multiple_selected_in_single =
             self.selection_mode == ListBoxSelectionMode::Single && selected_count > 1;
         let follow_focus_in_multiple =
