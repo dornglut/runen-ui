@@ -1267,7 +1267,6 @@ impl<Action> OptionItem<Action> {
     }
 }
 
-#[derive(Debug)]
 struct OptionItemWidget<Action> {
     label: String,
     selected: bool,
@@ -1275,6 +1274,21 @@ struct OptionItemWidget<Action> {
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
     collection_position: Option<SemanticCollectionPosition>,
+}
+
+
+impl<Action> fmt::Debug for OptionItemWidget<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OptionItemWidget")
+            .field("label", &self.label)
+            .field("selected", &self.selected)
+            .field("enabled", &self.enabled)
+            .field("actionable", &self.actionable)
+            .field("has_callback", &self.activation_factory.is_some())
+            .field("collection_position", &self.collection_position)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

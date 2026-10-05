@@ -143,8 +143,7 @@ impl UiApp for DownstreamApp {
             .map(|(index, (label, value))| {
                 let selected = state.selected == value;
                 let position = SemanticCollectionPosition::new(
-                    u64::try_from(index)
-                        .unwrap_or_else(|_| unreachable!("fixture index fits u64")),
+                    u64::try_from(index).unwrap_or_else(|_| unreachable!("fixture index fits u64")),
                     Some(known_size),
                 )
                 .unwrap_or_else(|_| unreachable!("fixture collection position is valid"));

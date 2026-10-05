@@ -340,14 +340,23 @@ fn removal_and_application_rebuild_recompute_entry_and_collection_metadata_witho
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Alpha");
 
-    let snapshot = harness.semantic_snapshot().unwrap_or_else(|_| unreachable!("publication exists"));
-    let options = snapshot.nodes().iter().filter(|node| node.role() == SemanticRole::Option).collect::<Vec<_>>();
+    let snapshot = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("publication exists"));
+    let options = snapshot
+        .nodes()
+        .iter()
+        .filter(|node| node.role() == SemanticRole::Option)
+        .collect::<Vec<_>>();
     assert_eq!(options.len(), 2);
     assert!(options.iter().all(|node| {
-        node.collection_position().is_some_and(|position| position.known_size() == Some(2))
+        node.collection_position()
+            .is_some_and(|position| position.known_size() == Some(2))
     }));
 
-    harness.submit_action(Action::Select(3)).unwrap_or_else(|_| unreachable!("selection rebuild is admitted"));
+    harness
+        .submit_action(Action::Select(3))
+        .unwrap_or_else(|_| unreachable!("selection rebuild is admitted"));
     settle(&mut harness);
     assert!(harness.publish().is_ok());
     command(&mut harness, "before", SemanticCommand::RequestFocus);
@@ -379,7 +388,6 @@ fn keyed_replacement_rebuilds_selected_preferred_entry_without_realization_ident
     assert_eq!(harness.state().selected, vec![2]);
 }
 
-
 #[test]
 fn horizontal_list_box_maps_horizontal_but_not_vertical_directional_commands() {
     struct Horizontal;
@@ -391,37 +399,66 @@ fn horizontal_list_box_maps_horizontal_but_not_vertical_directional_commands() {
             list_box([
                 option_item("One", true).id("h.one").on_activate(|| ()),
                 option_item("Two", false).id("h.two").on_activate(|| ()),
-            ]).id("h.list").orientation(Axis::Horizontal)
+            ])
+            .id("h.list")
+            .orientation(Axis::Horizontal)
         }
         fn update(_: &mut Self::State, _: Self::Action) {}
     }
 
     let mut harness = TestHarness::<Horizontal>::mount(());
     assert!(harness.publish().is_ok());
-    harness.submit_automation_command(element_id("h.one"), SemanticCommand::RequestFocus)
+    harness
+        .submit_automation_command(element_id("h.one"), SemanticCommand::RequestFocus)
         .unwrap_or_else(|error| unreachable!("focus is accepted: {error:?}"));
-    assert_eq!(harness.run_until_idle(budget()).outcome(), SettleOutcome::Idle);
+    assert_eq!(
+        harness.run_until_idle(budget()).outcome(),
+        SettleOutcome::Idle
+    );
 
-    harness.submit_automation_command(element_id("h.one"), SemanticCommand::FocusDown)
+    harness
+        .submit_automation_command(element_id("h.one"), SemanticCommand::FocusDown)
         .unwrap_or_else(|error| unreachable!("vertical command is admitted: {error:?}"));
-    assert_eq!(harness.run_until_idle(budget()).outcome(), SettleOutcome::Idle);
+    assert_eq!(
+        harness.run_until_idle(budget()).outcome(),
+        SettleOutcome::Idle
+    );
     assert!(harness.publish().is_ok());
-    let one = harness.unique_semantic_target(
-        &SemanticQuery::new().with_role(SemanticRole::Option).with_name("One")
-    ).unwrap_or_else(|error| unreachable!("first Option is unique: {error:?}"));
-    let snapshot = harness.semantic_snapshot().unwrap_or_else(|_| unreachable!("publication exists"));
+    let one = harness
+        .unique_semantic_target(
+            &SemanticQuery::new()
+                .with_role(SemanticRole::Option)
+                .with_name("One"),
+        )
+        .unwrap_or_else(|error| unreachable!("first Option is unique: {error:?}"));
+    let snapshot = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("publication exists"));
     assert_eq!(snapshot.focused(), Some(one.node_id()));
 
-    harness.submit_automation_command(element_id("h.one"), SemanticCommand::FocusRight)
+    harness
+        .submit_automation_command(element_id("h.one"), SemanticCommand::FocusRight)
         .unwrap_or_else(|error| unreachable!("horizontal navigation is accepted: {error:?}"));
-    assert_eq!(harness.run_until_idle(budget()).outcome(), SettleOutcome::Idle);
+    assert_eq!(
+        harness.run_until_idle(budget()).outcome(),
+        SettleOutcome::Idle
+    );
     assert!(harness.publish().is_ok());
-    let two = harness.unique_semantic_target(
-        &SemanticQuery::new().with_role(SemanticRole::Option).with_name("Two")
-    ).unwrap_or_else(|error| unreachable!("second Option is unique: {error:?}"));
-    let snapshot = harness.semantic_snapshot().unwrap_or_else(|_| unreachable!("publication exists"));
+    let two = harness
+        .unique_semantic_target(
+            &SemanticQuery::new()
+                .with_role(SemanticRole::Option)
+                .with_name("Two"),
+        )
+        .unwrap_or_else(|error| unreachable!("second Option is unique: {error:?}"));
+    let snapshot = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("publication exists"));
     assert_eq!(snapshot.focused(), Some(two.node_id()));
-    let list = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::ListBox)
+    let list = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::ListBox)
         .unwrap_or_else(|| unreachable!("ListBox is published"));
     assert_eq!(list.orientation(), Some(SemanticOrientation::Horizontal));
 }
