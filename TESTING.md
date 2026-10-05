@@ -6,7 +6,7 @@ The canonical merge-readiness command is:
 cargo validate
 ```
 
-It is repository-owned, deterministic, read-only, and used by the repository's thin GitHub Actions caller. The baseline covers stable formatting checks, locked workspace tests, Clippy with warnings denied, Rust 1.93.0 MSRV tests, repository metadata and authority invariants, and repository-relative Markdown links.
+It is repository-owned, deterministic, read-only, and used by the repository's thin GitHub Actions caller. The baseline covers stable formatting checks, locked stable workspace tests, Clippy with warnings denied, repository metadata and authority invariants, public-consumer isolation proofs, and repository-relative Markdown links. The current 0.x support policy is stable-only; no separate MSRV lane or older-compiler guarantee is part of merge readiness.
 
 For intentional Rust edits, format first with:
 

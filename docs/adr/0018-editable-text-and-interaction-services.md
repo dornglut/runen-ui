@@ -363,7 +363,7 @@ owner after commitment.
 External API/metadata reviewed on 2026-09-17. Versions and MSRVs below are
 **candidate evidence**, not an instruction to upgrade or add a dependency;
 reverify exact resolved graph, supported platforms and licenses before each
-implementation slice. RunenUI's declared MSRV is Rust 1.93.0.
+implementation slice. At this ADR's reviewed 2026-09-17 baseline, RunenUI's declared MSRV was Rust 1.93.0.
 
 | Option | Observed version, MSRV, license | Ownership fit / consequence |
 |---|---|---|

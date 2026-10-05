@@ -1,14 +1,17 @@
-# Toolchain and MSRV Policy
+# Toolchain Support Policy
 
 > **Category: Current contract**
 
-RunenUI validates two Rust channels:
+RunenUI's current 0.x compiler support policy is **latest stable Rust only**.
 
-- **MSRV:** Rust 1.93.0, declared by `rust-version` and pinned in `rust-toolchain.toml` for reproducible contributor commands.
-- **Stable:** the latest stable Rust channel installed through `rustup`, used for formatting, normal workspace tests, and Clippy.
+- **Supported:** the latest stable Rust channel used by repository validation and CI.
+- **MSRV:** none is currently declared. Workspace packages intentionally omit `rust-version`.
+- **Contributor default:** `rust-toolchain.toml` selects the `stable` channel with `rustfmt` and `clippy`.
 
-`cargo validate` invokes both channels explicitly. Contributors need the stable toolchain with `rustfmt` and `clippy` plus the minimal 1.93.0 toolchain. CI installs the same channels and calls the same validation entry point. Intentional formatting must use `cargo +stable fmt --all`; the default MSRV toolchain must not produce formatting that differs from the stable rustfmt check enforced by validation.
+`cargo validate` invokes stable Rust explicitly for formatting, locked workspace tests, Clippy, public-consumer validation, and the repository's remaining checks. Contributors need the stable toolchain with `rustfmt` and `clippy`; CI installs the same supported channel and calls the same repository-owned validation entry point.
 
-The MSRV may increase during 0.x only in an intentional pull request that explains the need, updates `rust-version`, `rust-toolchain.toml`, CI, this policy, release notes, and validation, and proves all workspace packages on the new version. A dependency that requires a newer compiler is not silently accepted.
+Older Rust versions may continue to work accidentally, but they are **unsupported and unvalidated**. No compatibility promise may be inferred from a historical milestone, a dependency's own MSRV, or a previously declared RunenUI MSRV.
 
-Before 1.0, the release policy will define an MSRV support window. Until then, the repository guarantees only that the current revision passes the declared MSRV and latest stable checks.
+Dependency reviews may still record upstream MSRVs as maintenance and upgrade evidence. A dependency must remain usable on RunenUI's supported stable toolchain, and a dependency requiring nightly, beta-only behavior, or otherwise unsupported compiler behavior is not silently accepted.
+
+Before 1.0, the release policy requires an explicit compiler-support policy. A formal MSRV or support window may be introduced later only through an intentional policy change that updates package metadata, toolchain configuration, validation, CI expectations, documentation, and release notes together.

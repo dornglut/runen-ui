@@ -53,11 +53,6 @@ const VALIDATE_STEPS: &[(&str, &str, &[&str])] = &[
             "warnings",
         ],
     ),
-    (
-        "MSRV workspace all-feature tests",
-        "1.93.0",
-        &["test", "--workspace", "--all-features", "--locked"],
-    ),
 ];
 
 fn main() -> ExitCode {
