@@ -57,7 +57,7 @@ jobs:
           sysroot="$(rustc +stable --print sysroot)"
           rust_lld="${sysroot}/lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-lld"
           if [[ -x "${rust_lld}" ]]; then
-            "${rust_lld}" --version
+            "${rust_lld}" -flavor gnu --version
           fi
 
       - name: Fetch locked dependencies
