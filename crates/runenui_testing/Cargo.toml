@@ -8,6 +8,27 @@ license.workspace = true
 publish.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+autotests = false
+
+[[test]]
+name = "counter"
+path = "tests/counter.rs"
+
+[[test]]
+name = "m5e_counter_origins"
+path = "tests/m5e_counter_origins.rs"
+
+[[test]]
+name = "controls_semantics"
+path = "tests/suites/controls_semantics.rs"
+
+[[test]]
+name = "motion_time"
+path = "tests/suites/motion_time.rs"
+
+[[test]]
+name = "harness_boundary"
+path = "tests/suites/harness_boundary.rs"
 
 [dependencies]
 runenui_core = { path = "../runenui_core", version = "0.1.0" }
