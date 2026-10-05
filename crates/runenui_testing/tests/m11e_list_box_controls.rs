@@ -26,6 +26,7 @@ struct State {
     follow_focus: bool,
     disable_two: bool,
     discover_two: bool,
+    passive_two: bool,
     show_two: bool,
     replace_two: bool,
     activations: Vec<u8>,
@@ -53,8 +54,10 @@ impl UiApp for ListBoxApp {
             };
             let mut two = option_item(label, state.selected.contains(&2))
                 .id("option.two")
-                .key(key)
-                .on_activate(|| Action::Select(2));
+                .key(key);
+            if !state.passive_two {
+                two = two.on_activate(|| Action::Select(2));
+            }
             if state.disable_two {
                 two = two.disabled();
             }
@@ -116,6 +119,7 @@ fn fixture(selected: Vec<u8>) -> State {
         follow_focus: false,
         disable_two: false,
         discover_two: false,
+        passive_two: false,
         show_two: true,
         replace_two: false,
         activations: Vec::new(),
@@ -337,6 +341,45 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
     assert!(discoverable.publish().is_ok());
     assert_focus_name(&discoverable, "Bravo");
     assert_eq!(discoverable.state().selected, vec![1]);
+
+    let mut passive_skipped_state = fixture(vec![1]);
+    passive_skipped_state.disable_two = true;
+    passive_skipped_state.passive_two = true;
+    let mut passive_skipped = TestHarness::<ListBoxApp>::mount(passive_skipped_state);
+    assert!(passive_skipped.publish().is_ok());
+    command(
+        &mut passive_skipped,
+        "option.one",
+        SemanticCommand::RequestFocus,
+    );
+    command(
+        &mut passive_skipped,
+        "option.one",
+        SemanticCommand::FocusDown,
+    );
+    assert!(passive_skipped.publish().is_ok());
+    assert_focus_name(&passive_skipped, "Charlie");
+
+    let mut passive_discoverable_state = fixture(vec![1]);
+    passive_discoverable_state.disable_two = true;
+    passive_discoverable_state.discover_two = true;
+    passive_discoverable_state.passive_two = true;
+    let mut passive_discoverable =
+        TestHarness::<ListBoxApp>::mount(passive_discoverable_state);
+    assert!(passive_discoverable.publish().is_ok());
+    command(
+        &mut passive_discoverable,
+        "option.one",
+        SemanticCommand::RequestFocus,
+    );
+    command(
+        &mut passive_discoverable,
+        "option.one",
+        SemanticCommand::FocusDown,
+    );
+    assert!(passive_discoverable.publish().is_ok());
+    assert_focus_name(&passive_discoverable, "Bravo");
+    assert_eq!(passive_discoverable.state().selected, vec![1]);
 
     let mut follow_state = fixture(vec![1]);
     follow_state.follow_focus = true;

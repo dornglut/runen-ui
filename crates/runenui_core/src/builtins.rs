@@ -510,8 +510,10 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
     fn activation(&self, _: &Self::State) -> WidgetActivation {
         if self.actionable {
             WidgetActivation::actionable(self.enabled)
-        } else {
+        } else if self.enabled {
             WidgetActivation::NONE
+        } else {
+            WidgetActivation::disabled()
         }
     }
     fn activate(

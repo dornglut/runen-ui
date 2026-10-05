@@ -274,6 +274,28 @@ fn list_box_and_option_item_use_typed_public_authoring_and_exact_semantics() {
     assert_eq!(node.state().selected(), Some(true));
     assert!(node.state().disabled());
 
+    let passive_disabled: runenui_core::Element<Action> =
+        option_item("Passive disabled", false).disabled().into_element();
+    let (_, _, _, _, _, _, _, _, passive_disabled_widget, _) =
+        passive_disabled.into_runtime_parts().into_parts();
+    let passive_disabled_state = passive_disabled_widget.create_state();
+    let passive_disabled_activation = passive_disabled_widget
+        .activation(&passive_disabled_state)
+        .unwrap_or_else(|_| unreachable!("passive disabled activation is inspectable"));
+    assert!(!passive_disabled_activation.enabled());
+    assert!(!passive_disabled_activation.is_actionable());
+
+    let passive_enabled: runenui_core::Element<Action> =
+        option_item("Passive enabled", false).into_element();
+    let (_, _, _, _, _, _, _, _, passive_enabled_widget, _) =
+        passive_enabled.into_runtime_parts().into_parts();
+    let passive_enabled_state = passive_enabled_widget.create_state();
+    let passive_enabled_activation = passive_enabled_widget
+        .activation(&passive_enabled_state)
+        .unwrap_or_else(|_| unreachable!("passive enabled activation is inspectable"));
+    assert!(passive_enabled_activation.enabled());
+    assert!(!passive_enabled_activation.is_actionable());
+
     let list: runenui_core::Element<Action> = list_box([
         option_item("One", true).id("list.one"),
         option_item("Two", false).id("list.two"),
