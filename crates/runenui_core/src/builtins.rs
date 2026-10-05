@@ -1257,6 +1257,10 @@ impl<Action> OptionItem<Action> {
         self.selected
     }
 
+    fn focus_eligible_for_list_box_entry(&self) -> bool {
+        self.enabled || self.discoverable_when_disabled
+    }
+
     fn search_text(&self) -> &str {
         &self.label
     }
@@ -1275,7 +1279,6 @@ struct OptionItemWidget<Action> {
     actionable: bool,
     collection_position: Option<SemanticCollectionPosition>,
 }
-
 
 impl<Action> fmt::Debug for OptionItemWidget<Action> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1679,8 +1682,9 @@ impl<Action: 'static> View<Action> for ListBox<Action> {
             .enumerate()
             .map(|(index, child)| {
                 let selected = child.selected();
+                let entry_eligible = child.focus_eligible_for_list_box_entry();
                 let search_text = child.search_text().to_owned();
-                let preferred = selected && !preferred_assigned;
+                let preferred = selected && entry_eligible && !preferred_assigned;
                 if preferred {
                     preferred_assigned = true;
                 }

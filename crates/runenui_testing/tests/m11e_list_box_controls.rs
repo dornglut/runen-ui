@@ -353,6 +353,18 @@ fn multi_selection_keeps_first_selected_entry_and_focus_distinct_from_selection(
     assert_focus_name(&harness, "Bravo");
     assert_eq!(harness.state().selected, vec![1, 3]);
     assert!(harness.state().activations.is_empty());
+
+    let mut state = fixture(vec![2, 3]);
+    state.multiple = true;
+    state.disable_two = true;
+    let mut harness = TestHarness::<ListBoxApp>::mount(state);
+    assert!(harness.publish().is_ok());
+    command(&mut harness, "before", SemanticCommand::RequestFocus);
+    command(&mut harness, "before", SemanticCommand::FocusNext);
+    assert!(harness.publish().is_ok());
+    assert_focus_name(&harness, "Charlie");
+    assert_eq!(harness.state().selected, vec![2, 3]);
+    assert!(harness.state().activations.is_empty());
 }
 
 #[test]
