@@ -39,4 +39,4 @@ todo = "warn"
 unimplemented = "warn"
 
 [profile.test]
-debug = "line-tables-only"
+debug = false
