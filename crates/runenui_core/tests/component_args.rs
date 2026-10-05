@@ -1,7 +1,9 @@
 use runenui_core::{
-    HitContributionContext, LogicalSize, SemanticCheckedState, SemanticContributionContext,
-    SemanticRole, View, WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput, button, checkbox,
-    children, column, radio_button, radio_group, switch, text,
+    Axis, Focusability, HitContributionContext, ListBoxSelectionMode, LogicalSize,
+    SemanticCheckedState,
+    SemanticContributionContext, SemanticOrientation, SemanticRole, SemanticSelectionMode, View,
+    WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput, button, checkbox, children, column,
+    list_box, option_item, radio_button, radio_group, switch, text,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -249,5 +251,120 @@ fn radio_controls_use_public_semantics_and_typed_group_authoring() {
     assert_eq!(
         diagnostics[0].code(),
         "runenui.control.radio-group.multiple-checked"
+    );
+}
+
+
+#[test]
+fn list_box_and_option_item_use_typed_public_authoring_and_exact_semantics() {
+    let option: runenui_core::Element<Action> = option_item("One", true)
+        .id("option.one")
+        .disabled()
+        .discoverable_when_disabled(true)
+        .on_activate(|| Action::Save)
+        .into_element();
+    let (_, _, _, _, _, _, _, _, option_widget, _) = option.into_runtime_parts().into_parts();
+    let option_state = option_widget.create_state();
+    let semantics = option_widget
+        .semantics(&option_state, SemanticContributionContext::default())
+        .unwrap_or_else(|_| unreachable!("OptionItem semantics are valid"));
+    let node = semantics.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("OptionItem contributes one semantic node"));
+    assert_eq!(node.role(), SemanticRole::Option);
+    assert_eq!(node.name(), Some("One"));
+    assert_eq!(node.state().selected(), Some(true));
+    assert!(node.state().disabled());
+
+    let list: runenui_core::Element<Action> = list_box([
+        option_item("One", true).id("list.one"),
+        option_item("Two", false).id("list.two"),
+    ])
+    .id("list")
+    .orientation(Axis::Horizontal)
+    .selection_mode(ListBoxSelectionMode::Multiple)
+    .gap(4_u16)
+    .into_element();
+    assert_eq!(list.children().len(), 2);
+    assert!(matches!(
+        list.layout().container(),
+        runenui_core::LayoutContainer::Flex(_)
+    ));
+    let (_, _, _, _, _, _, _, _, list_widget, _) = list.into_runtime_parts().into_parts();
+    let list_state = list_widget.create_state();
+    let semantics = list_widget
+        .semantics(&list_state, SemanticContributionContext::__runtime_new(2))
+        .unwrap_or_else(|_| unreachable!("ListBox semantics are valid"));
+    let node = semantics.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("ListBox contributes one semantic node"));
+    assert_eq!(node.role(), SemanticRole::ListBox);
+    assert_eq!(node.orientation(), Some(SemanticOrientation::Horizontal));
+    assert_eq!(node.selection_mode(), Some(SemanticSelectionMode::Multiple));
+
+    let invalid_single: runenui_core::Element<Action> = list_box([
+        option_item("One", true),
+        option_item("Two", true),
+    ])
+    .into_element();
+    assert!(
+        invalid_single
+            .children()
+            .iter()
+            .all(|child| child.focusability() == Focusability::Hidden)
+    );
+    let (_, _, _, _, _, _, _, _, widget, _) = invalid_single.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    assert!(
+        widget
+            .semantics(
+                &state,
+                SemanticContributionContext::__runtime_new(2),
+            )
+            .unwrap_or_else(|_| unreachable!("invalid ListBox semantics are inspectable"))
+            .roots()
+            .is_empty()
+    );
+    let diagnostics = widget
+        .diagnostics(&state)
+        .unwrap_or_else(|_| unreachable!("invalid ListBox diagnostics are inspectable"));
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].code(),
+        "runenui.control.list-box.multiple-selected-single"
+    );
+
+    let invalid_multi: runenui_core::Element<Action> = list_box([
+        option_item("One", true),
+        option_item("Two", false),
+    ])
+    .selection_mode(ListBoxSelectionMode::Multiple)
+    .selection_follows_focus(true)
+    .into_element();
+    assert!(
+        invalid_multi
+            .children()
+            .iter()
+            .all(|child| child.focusability() == Focusability::Hidden)
+    );
+    let (_, _, _, _, _, _, _, _, widget, _) = invalid_multi.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    assert!(
+        widget
+            .semantics(
+                &state,
+                SemanticContributionContext::__runtime_new(2),
+            )
+            .unwrap_or_else(|_| unreachable!("invalid ListBox semantics are inspectable"))
+            .roots()
+            .is_empty()
+    );
+    let diagnostics = widget
+        .diagnostics(&state)
+        .unwrap_or_else(|_| unreachable!("invalid ListBox diagnostics are inspectable"));
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].code(),
+        "runenui.control.list-box.multiple-follow-focus"
     );
 }

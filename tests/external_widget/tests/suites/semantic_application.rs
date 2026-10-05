@@ -6,6 +6,8 @@ mod m11_semantic_actions;
 mod m11_semantic_vocabulary;
 #[path = "../radio.rs"]
 mod radio;
+#[path = "../list_box.rs"]
+mod list_box;
 #[path = "../semantic_m5a.rs"]
 mod semantic_m5a;
 #[path = "../semantic_m5b_adapter.rs"]
