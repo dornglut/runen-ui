@@ -94,13 +94,7 @@ jobs:
             fi
             set -e
             ended="$(date +%s%N)"
-            elapsed="$(python - "${started}" "${ended}" <<'PY'
-import sys
-start = int(sys.argv[1])
-end = int(sys.argv[2])
-print(f"{(end - start) / 1_000_000_000:.3f}")
-PY
-)"
+            elapsed="$(python -c 'import sys; print(f"{(int(sys.argv[2]) - int(sys.argv[1])) / 1_000_000_000:.3f}")' "${started}" "${ended}")"
             echo "RESULT order=${ORDER} mode=${mode} seconds=${elapsed} status=${status}"
             echo "--- ${mode} final log ---"
             tail -n 20 "${log}" || true
