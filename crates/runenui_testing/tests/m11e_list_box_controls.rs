@@ -216,24 +216,32 @@ fn manual_list_box_entry_navigation_home_end_and_type_ahead_do_not_mutate_select
     assert_eq!(harness.state().selected, vec![2]);
     assert!(harness.state().activations.is_empty());
 
-    harness.submit_keyboard(key(PhysicalKey::Home, LogicalKey::Home, KeyboardPhase::Down))
+    harness
+        .submit_keyboard(key(
+            PhysicalKey::Home,
+            LogicalKey::Home,
+            KeyboardPhase::Down,
+        ))
         .unwrap_or_else(|error| unreachable!("Home is accepted: {error:?}"));
     settle(&mut harness);
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Alpha");
 
-    harness.submit_keyboard(key(PhysicalKey::End, LogicalKey::End, KeyboardPhase::Down))
+    harness
+        .submit_keyboard(key(PhysicalKey::End, LogicalKey::End, KeyboardPhase::Down))
         .unwrap_or_else(|error| unreachable!("End is accepted: {error:?}"));
     settle(&mut harness);
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Charlie");
 
     command(&mut harness, "option.one", SemanticCommand::RequestFocus);
-    harness.submit_keyboard(key(
-        PhysicalKey::Code(String::from("KeyC")),
-        LogicalKey::Character(String::from("c")),
-        KeyboardPhase::Down,
-    )).unwrap_or_else(|error| unreachable!("type-ahead character is accepted: {error:?}"));
+    harness
+        .submit_keyboard(key(
+            PhysicalKey::Code(String::from("KeyC")),
+            LogicalKey::Character(String::from("c")),
+            KeyboardPhase::Down,
+        ))
+        .unwrap_or_else(|error| unreachable!("type-ahead character is accepted: {error:?}"));
     settle(&mut harness);
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Charlie");
@@ -247,12 +255,22 @@ fn ordinary_space_activation_emits_only_the_application_selection_action() {
     assert!(harness.publish().is_ok());
     command(&mut harness, "option.three", SemanticCommand::RequestFocus);
 
-    harness.submit_keyboard(key(PhysicalKey::Space, LogicalKey::Space, KeyboardPhase::Down))
+    harness
+        .submit_keyboard(key(
+            PhysicalKey::Space,
+            LogicalKey::Space,
+            KeyboardPhase::Down,
+        ))
         .unwrap_or_else(|error| unreachable!("Space down is accepted: {error:?}"));
     settle(&mut harness);
     assert_eq!(harness.state().selected, vec![1]);
 
-    harness.submit_keyboard(key(PhysicalKey::Space, LogicalKey::Space, KeyboardPhase::Up))
+    harness
+        .submit_keyboard(key(
+            PhysicalKey::Space,
+            LogicalKey::Space,
+            KeyboardPhase::Up,
+        ))
         .unwrap_or_else(|error| unreachable!("Space up is accepted: {error:?}"));
     settle(&mut harness);
     assert_eq!(harness.state().selected, vec![3]);
@@ -277,7 +295,11 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
     discoverable_state.discover_two = true;
     let mut discoverable = TestHarness::<ListBoxApp>::mount(discoverable_state);
     assert!(discoverable.publish().is_ok());
-    command(&mut discoverable, "option.one", SemanticCommand::RequestFocus);
+    command(
+        &mut discoverable,
+        "option.one",
+        SemanticCommand::RequestFocus,
+    );
     command(&mut discoverable, "option.one", SemanticCommand::FocusDown);
     assert!(discoverable.publish().is_ok());
     assert_focus_name(&discoverable, "Bravo");
@@ -301,13 +323,25 @@ fn multi_selection_keeps_first_selected_entry_and_focus_distinct_from_selection(
     state.multiple = true;
     let mut harness = TestHarness::<ListBoxApp>::mount(state);
     assert!(harness.publish().is_ok());
-    let snapshot = harness.semantic_snapshot().unwrap_or_else(|_| unreachable!("publication exists"));
-    let list = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::ListBox)
+    let snapshot = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("publication exists"));
+    let list = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::ListBox)
         .unwrap_or_else(|| unreachable!("ListBox is published"));
     assert_eq!(list.selection_mode(), Some(SemanticSelectionMode::Multiple));
-    assert_eq!(snapshot.nodes().iter().filter(|node| {
-        node.role() == SemanticRole::Option && node.state().selected() == Some(true)
-    }).count(), 2);
+    assert_eq!(
+        snapshot
+            .nodes()
+            .iter()
+            .filter(|node| {
+                node.role() == SemanticRole::Option && node.state().selected() == Some(true)
+            })
+            .count(),
+        2
+    );
 
     command(&mut harness, "before", SemanticCommand::RequestFocus);
     command(&mut harness, "before", SemanticCommand::FocusNext);
@@ -322,7 +356,8 @@ fn multi_selection_keeps_first_selected_entry_and_focus_distinct_from_selection(
 }
 
 #[test]
-fn removal_and_application_rebuild_recompute_entry_and_collection_metadata_without_rewriting_selection() {
+fn removal_and_application_rebuild_recompute_entry_and_collection_metadata_without_rewriting_selection()
+ {
     let mut harness = TestHarness::<ListBoxApp>::mount(fixture(vec![2]));
     assert!(harness.publish().is_ok());
     command(&mut harness, "before", SemanticCommand::RequestFocus);
@@ -330,7 +365,9 @@ fn removal_and_application_rebuild_recompute_entry_and_collection_metadata_witho
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Bravo");
 
-    harness.submit_action(Action::RemoveTwo).unwrap_or_else(|_| unreachable!("removal is admitted"));
+    harness
+        .submit_action(Action::RemoveTwo)
+        .unwrap_or_else(|_| unreachable!("removal is admitted"));
     settle(&mut harness);
     assert_eq!(harness.state().selected, vec![2]);
     assert!(harness.publish().is_ok());
