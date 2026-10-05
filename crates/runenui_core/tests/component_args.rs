@@ -317,10 +317,7 @@ fn list_box_and_option_item_use_typed_public_authoring_and_exact_semantics() {
     let state = widget.create_state();
     assert!(
         widget
-            .semantics(
-                &state,
-                SemanticContributionContext::__runtime_new(2),
-            )
+            .semantics(&state, SemanticContributionContext::__runtime_new(2),)
             .unwrap_or_else(|_| unreachable!("invalid ListBox semantics are inspectable"))
             .roots()
             .is_empty()
@@ -334,13 +331,11 @@ fn list_box_and_option_item_use_typed_public_authoring_and_exact_semantics() {
         "runenui.control.list-box.multiple-selected-single"
     );
 
-    let invalid_multi: runenui_core::Element<Action> = list_box([
-        option_item("One", true),
-        option_item("Two", false),
-    ])
-    .selection_mode(ListBoxSelectionMode::Multiple)
-    .selection_follows_focus(true)
-    .into_element();
+    let invalid_multi: runenui_core::Element<Action> =
+        list_box([option_item("One", true), option_item("Two", false)])
+            .selection_mode(ListBoxSelectionMode::Multiple)
+            .selection_follows_focus(true)
+            .into_element();
     assert!(
         invalid_multi
             .children()
@@ -351,10 +346,7 @@ fn list_box_and_option_item_use_typed_public_authoring_and_exact_semantics() {
     let state = widget.create_state();
     assert!(
         widget
-            .semantics(
-                &state,
-                SemanticContributionContext::__runtime_new(2),
-            )
+            .semantics(&state, SemanticContributionContext::__runtime_new(2),)
             .unwrap_or_else(|_| unreachable!("invalid ListBox semantics are inspectable"))
             .roots()
             .is_empty()

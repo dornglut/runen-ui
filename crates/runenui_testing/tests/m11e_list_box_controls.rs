@@ -87,7 +87,11 @@ impl UiApp for ListBoxApp {
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
             Action::Select(value) if state.multiple => {
-                if let Some(index) = state.selected.iter().position(|selected| *selected == value) {
+                if let Some(index) = state
+                    .selected
+                    .iter()
+                    .position(|selected| *selected == value)
+                {
                     state.selected.remove(index);
                 } else {
                     state.selected.push(value);
@@ -126,7 +130,10 @@ fn budget() -> SettleBudget {
 }
 
 fn settle(harness: &mut TestHarness<ListBoxApp>) {
-    assert_eq!(harness.run_until_idle(budget()).outcome(), SettleOutcome::Idle);
+    assert_eq!(
+        harness.run_until_idle(budget()).outcome(),
+        SettleOutcome::Idle
+    );
 }
 
 fn element_id(value: &str) -> ElementId {
@@ -142,17 +149,29 @@ fn command(harness: &mut TestHarness<ListBoxApp>, target: &str, command: Semanti
 
 fn assert_focus_name(harness: &TestHarness<ListBoxApp>, name: &str) {
     let target = harness
-        .unique_semantic_target(&SemanticQuery::new().with_role(SemanticRole::Option).with_name(name))
+        .unique_semantic_target(
+            &SemanticQuery::new()
+                .with_role(SemanticRole::Option)
+                .with_name(name),
+        )
         .unwrap_or_else(|error| unreachable!("Option target is unique: {error:?}"));
-    let snapshot = harness.semantic_snapshot().unwrap_or_else(|_| unreachable!("publication exists"));
+    let snapshot = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("publication exists"));
     assert_eq!(snapshot.focused(), Some(target.node_id()));
 }
 
 fn assert_button_focus(harness: &TestHarness<ListBoxApp>, name: &str) {
     let target = harness
-        .unique_semantic_target(&SemanticQuery::new().with_role(SemanticRole::Button).with_name(name))
+        .unique_semantic_target(
+            &SemanticQuery::new()
+                .with_role(SemanticRole::Button)
+                .with_name(name),
+        )
         .unwrap_or_else(|error| unreachable!("Button target is unique: {error:?}"));
-    let snapshot = harness.semantic_snapshot().unwrap_or_else(|_| unreachable!("publication exists"));
+    let snapshot = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("publication exists"));
     assert_eq!(snapshot.focused(), Some(target.node_id()));
 }
 
@@ -173,20 +192,34 @@ fn key(physical: PhysicalKey, logical: LogicalKey, phase: KeyboardPhase) -> Keyb
 fn list_box_publishes_exact_selection_orientation_and_collection_metadata() {
     let mut harness = TestHarness::<ListBoxApp>::mount(fixture(vec![2]));
     assert!(harness.publish().is_ok());
-    let snapshot = harness.semantic_snapshot().unwrap_or_else(|_| unreachable!("publication exists"));
-    let list = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::ListBox)
+    let snapshot = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("publication exists"));
+    let list = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::ListBox)
         .unwrap_or_else(|| unreachable!("ListBox is published"));
     assert_eq!(list.orientation(), Some(SemanticOrientation::Vertical));
     assert_eq!(list.selection_mode(), Some(SemanticSelectionMode::Single));
     assert_eq!(list.children().len(), 3);
     for (index, child) in list.children().iter().enumerate() {
-        let option = snapshot.node(child).unwrap_or_else(|| unreachable!("ListBox child is published"));
+        let option = snapshot
+            .node(child)
+            .unwrap_or_else(|| unreachable!("ListBox child is published"));
         assert_eq!(option.role(), SemanticRole::Option);
-        let position = option.collection_position().unwrap_or_else(|| unreachable!("position is published"));
-        assert_eq!(position.index(), u64::try_from(index).unwrap_or_else(|_| unreachable!()));
+        let position = option
+            .collection_position()
+            .unwrap_or_else(|| unreachable!("position is published"));
+        assert_eq!(
+            position.index(),
+            u64::try_from(index).unwrap_or_else(|_| unreachable!())
+        );
         assert_eq!(position.known_size(), Some(3));
     }
-    let selected = snapshot.nodes().iter()
+    let selected = snapshot
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::Option && node.name() == Some("Bravo"))
         .unwrap_or_else(|| unreachable!("selected Option is published"));
     assert_eq!(selected.state().selected(), Some(true));
