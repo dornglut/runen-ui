@@ -1,3 +1,5 @@
+#![allow(refining_impl_trait)]
+
 use core::time::Duration;
 
 use runenui_core::{
@@ -180,7 +182,7 @@ impl UiApp for DownstreamApp {
     }
 }
 
-fn id<App: UiApp>(runtime: &AppRuntime<App>, authored: &str) -> MountedNodeId {
+fn id<App: UiApp>(runtime: &mut AppRuntime<App>, authored: &str) -> MountedNodeId {
     let authored = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
     runtime
         .index()
@@ -220,8 +222,8 @@ fn command<App: UiApp>(
 fn downstream_list_box_matches_public_focus_semantic_and_application_selection_contracts() {
     let mut runtime = AppRuntime::<DownstreamApp>::mount(State { selected: 1 });
     settle(&mut runtime);
-    let one = id(&runtime, "downstream.option.1");
-    let two = id(&runtime, "downstream.option.2");
+    let one = id(&mut runtime, "downstream.option.1");
+    let two = id(&mut runtime, "downstream.option.2");
 
     command(&mut runtime, one.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, one, SemanticCommand::FocusDown);
@@ -309,10 +311,10 @@ fn standard_list_box_navigation_reveals_through_existing_scroll_container_author
         ))
         .unwrap_or_else(|error| unreachable!("standard ListBox publishes: {error:?}"));
 
-    let one = id(&runtime, "standard.option.one");
-    let two = id(&runtime, "standard.option.two");
-    let three = id(&runtime, "standard.option.three");
-    let viewport = id(&runtime, "standard.viewport");
+    let one = id(&mut runtime, "standard.option.one");
+    let two = id(&mut runtime, "standard.option.two");
+    let three = id(&mut runtime, "standard.option.three");
+    let viewport = id(&mut runtime, "standard.viewport");
 
     command(&mut runtime, one.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, one, SemanticCommand::FocusDown);
