@@ -322,7 +322,10 @@ fn list_box_and_option_item_use_typed_public_authoring_and_exact_semantics() {
     assert_eq!(node.role(), SemanticRole::ListBox);
     assert_eq!(node.orientation(), Some(SemanticOrientation::Horizontal));
     assert_eq!(node.selection_mode(), Some(SemanticSelectionMode::Multiple));
+}
 
+#[test]
+fn list_box_invalid_selection_authoring_fails_closed_with_exact_diagnostics() {
     let invalid_single: runenui_core::Element<Action> =
         list_box([option_item("One", true), option_item("Two", true)]).into_element();
     assert!(
@@ -333,12 +336,13 @@ fn list_box_and_option_item_use_typed_public_authoring_and_exact_semantics() {
     );
     let (_, _, _, _, _, _, _, _, widget, _) = invalid_single.into_runtime_parts().into_parts();
     let state = widget.create_state();
-    assert!(
+    assert_eq!(
         widget
             .semantics(&state, SemanticContributionContext::__runtime_new(2),)
             .unwrap_or_else(|_| unreachable!("invalid ListBox semantics are inspectable"))
             .roots()
-            .is_empty()
+            .len(),
+        0
     );
     let diagnostics = widget
         .diagnostics(&state)
@@ -362,12 +366,13 @@ fn list_box_and_option_item_use_typed_public_authoring_and_exact_semantics() {
     );
     let (_, _, _, _, _, _, _, _, widget, _) = invalid_multi.into_runtime_parts().into_parts();
     let state = widget.create_state();
-    assert!(
+    assert_eq!(
         widget
             .semantics(&state, SemanticContributionContext::__runtime_new(2),)
             .unwrap_or_else(|_| unreachable!("invalid ListBox semantics are inspectable"))
             .roots()
-            .is_empty()
+            .len(),
+        0
     );
     let diagnostics = widget
         .diagnostics(&state)
