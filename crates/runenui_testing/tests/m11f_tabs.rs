@@ -118,7 +118,7 @@ impl UiApp for TabsApp {
     }
 }
 
-fn fixture(selected: u8) -> State {
+const fn fixture(selected: u8) -> State {
     State {
         selected,
         activation: ActivationMode::Manual,

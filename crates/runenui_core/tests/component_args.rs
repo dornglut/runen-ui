@@ -433,7 +433,7 @@ fn tabs_use_typed_public_authoring_and_exact_semantic_relationships() {
     assert_eq!(node.relationships().len(), 0);
 
     let invalid_controls: runenui_core::Element<Action> =
-        tab("Invalid", false).controls("invalid id").into_element();
+        tab("Invalid", false).controls(" ").into_element();
     assert_eq!(invalid_controls.authoring_diagnostics().len(), 1);
     assert_eq!(
         invalid_controls.authoring_diagnostics()[0].field(),
@@ -441,7 +441,7 @@ fn tabs_use_typed_public_authoring_and_exact_semantic_relationships() {
     );
 
     let invalid_panel: runenui_core::Element<Action> =
-        tab_panel("invalid id", [text("content")]).into_element();
+        tab_panel("", [text("content")]).into_element();
     assert_eq!(invalid_panel.authoring_diagnostics().len(), 1);
     assert_eq!(
         invalid_panel.authoring_diagnostics()[0].field(),
