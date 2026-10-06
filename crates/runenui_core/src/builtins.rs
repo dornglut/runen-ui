@@ -1,20 +1,23 @@
 use core::fmt;
 
 use crate::{
-    ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandEvent, Axis, EventContext,
-    EventPhase, FlexContainerStyle, FlexDirection, FocusGroup, FocusGroupActivationPolicy,
-    FocusGroupBoundaryPolicy, FocusGroupTypeAhead, Focusability, HitContribution,
-    HitContributionContext, KeyboardPhase, LayoutContainer, LayoutStyle, LogicalKey, LogicalLength,
-    LogicalPoint, LogicalRect, LogicalSize, OverflowStyle, PointerButton, PointerCaptureKind,
-    PointerDeviceKind, PointerId, PointerPhase, ScrollBarLayout, ScrollBarPlacement,
-    ScrollBarVisibility, ScrollChrome, ScrollControlBinding, ScrollControlRequest,
-    ScrollNormalizedValue, SemanticAction, SemanticCheckedState, SemanticCollectionPosition,
-    SemanticCommand, SemanticCommandEvent, SemanticContribution, SemanticContributionContext,
-    SemanticNodeContribution, SemanticNumber, SemanticOrientation, SemanticRole,
+    ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandEvent, Axis, ElementId,
+    EventContext, EventPhase, FlexContainerStyle, FlexDirection, FocusGroup,
+    FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, FocusGroupTypeAhead, Focusability,
+    HitContribution, HitContributionContext, IntoElementId, KeyboardPhase, LayoutContainer,
+    LayoutStyle, LogicalKey, LogicalLength, LogicalPoint, LogicalRect, LogicalSize, OverflowStyle,
+    PointerButton, PointerCaptureKind, PointerDeviceKind, PointerId, PointerPhase, ScrollBarLayout,
+    ScrollBarPlacement, ScrollBarVisibility, ScrollChrome, ScrollControlBinding,
+    ScrollControlRequest, ScrollNormalizedValue, SemanticAction, SemanticCheckedState,
+    SemanticCollectionPosition, SemanticCommand, SemanticCommandEvent, SemanticContribution,
+    SemanticContributionContext, SemanticNodeContribution, SemanticNumber, SemanticOrientation,
+    SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole,
     SemanticSelectionMode, SemanticState, SemanticText, ShortcutBinding, StyleIntent, UiEvent,
     WidgetActivationContext, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation,
     WidgetUpdateContext,
-    element::{CommonNodeAuthoring, Element, View, Views, common_node_builder_methods},
+    element::{
+        AuthoringDiagnostic, CommonNodeAuthoring, Element, View, Views, common_node_builder_methods,
+    },
     widget_erasure::{ErasedWidget, WidgetAdapter},
     widget_protocol::{
         ChildBearingWidget, Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure,
@@ -1736,6 +1739,615 @@ impl<Action: 'static> View<Action> for ListBox<Action> {
     }
 }
 
+fn authored_relationship_target(
+    common: &mut CommonNodeAuthoring,
+    field: &'static str,
+    value: impl IntoElementId,
+) -> Option<ElementId> {
+    match value.into_element_id() {
+        Ok(id) => Some(id),
+        Err((value, error)) => {
+            common.diagnostics.push(AuthoringDiagnostic {
+                field,
+                value,
+                error,
+            });
+            None
+        }
+    }
+}
+
+/// One application-controlled tab.
+///
+/// Durable selection remains application state. A panel relationship is optional
+/// so applications may conditionally mount panel content without coupling focus
+/// eligibility to semantic target realization.
+pub struct Tab<Action> {
+    label: String,
+    selected: bool,
+    controls: Option<ElementId>,
+    common: CommonNodeAuthoring,
+    enabled: bool,
+    activation_factory: Option<Box<dyn FnMut() -> Action>>,
+}
+
+impl<Action> fmt::Debug for Tab<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Tab")
+            .field("label", &self.label)
+            .field("selected", &self.selected)
+            .field("controls", &self.controls)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("layout", &self.common.layout)
+            .field("enabled", &self.enabled)
+            .field("actionable", &self.activation_factory.is_some())
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
+            .field("diagnostics", &self.common.diagnostics)
+            .finish()
+    }
+}
+
+impl<Action> Tab<Action> {
+    #[must_use]
+    pub fn new(label: impl Into<String>, selected: bool) -> Self {
+        Self {
+            label: label.into(),
+            selected,
+            controls: None,
+            common: CommonNodeAuthoring::default(),
+            enabled: true,
+            activation_factory: None,
+        }
+    }
+
+    common_node_builder_methods!();
+
+    /// Authors the currently mounted panel controlled by this tab.
+    #[must_use]
+    pub fn controls(mut self, panel: impl IntoElementId) -> Self {
+        self.controls = authored_relationship_target(&mut self.common, "controls", panel);
+        self
+    }
+
+    #[must_use]
+    pub const fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    #[must_use]
+    pub const fn disabled(self) -> Self {
+        self.enabled(false)
+    }
+
+    #[must_use]
+    pub fn on_activate(mut self, callback: impl FnMut() -> Action + 'static) -> Self {
+        self.activation_factory = Some(Box::new(callback));
+        self
+    }
+
+    #[must_use]
+    pub const fn selected(&self) -> bool {
+        self.selected
+    }
+
+    const fn focus_eligible_for_tab_entry(&self) -> bool {
+        self.enabled
+    }
+}
+
+struct TabWidget<Action> {
+    label: String,
+    selected: bool,
+    controls: Option<ElementId>,
+    enabled: bool,
+    activation_factory: Option<Box<dyn FnMut() -> Action>>,
+}
+
+impl<Action> fmt::Debug for TabWidget<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TabWidget")
+            .field("label", &self.label)
+            .field("selected", &self.selected)
+            .field("controls", &self.controls)
+            .field("enabled", &self.enabled)
+            .field("actionable", &self.activation_factory.is_some())
+            .finish()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TabWidgetState {
+    label: String,
+    selected: bool,
+    controls: Option<ElementId>,
+    enabled: bool,
+    actionable: bool,
+}
+
+impl<Action> Widget<Action> for TabWidget<Action> {
+    type State = TabWidgetState;
+
+    fn create_state(&self) -> Self::State {
+        TabWidgetState {
+            label: self.label.clone(),
+            selected: self.selected,
+            controls: self.controls.clone(),
+            enabled: self.enabled,
+            actionable: self.activation_factory.is_some(),
+        }
+    }
+
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
+        if state.label != self.label {
+            context.invalidate(
+                WidgetInvalidation::LAYOUT
+                    | WidgetInvalidation::PAINT
+                    | WidgetInvalidation::SEMANTICS,
+            );
+        }
+        if state.selected != self.selected || state.controls != self.controls {
+            context.invalidate(WidgetInvalidation::SEMANTICS);
+        }
+        if state.enabled != self.enabled {
+            context.invalidate(
+                WidgetInvalidation::INTERACTION
+                    | WidgetInvalidation::PAINT
+                    | WidgetInvalidation::SEMANTICS,
+            );
+        }
+        let actionable = self.activation_factory.is_some();
+        if state.actionable != actionable {
+            context.invalidate(WidgetInvalidation::INTERACTION | WidgetInvalidation::SEMANTICS);
+        }
+        state.label.clone_from(&self.label);
+        state.selected = self.selected;
+        state.controls.clone_from(&self.controls);
+        state.enabled = self.enabled;
+        state.actionable = actionable;
+    }
+
+    fn activation(&self, _: &Self::State) -> WidgetActivation {
+        if self.activation_factory.is_some() {
+            WidgetActivation::actionable(self.enabled)
+        } else if self.enabled {
+            WidgetActivation::NONE
+        } else {
+            WidgetActivation::disabled()
+        }
+    }
+
+    fn activate(
+        &mut self,
+        _: &mut Self::State,
+        _: &mut WidgetActivationContext<Action>,
+    ) -> WidgetActivationOutput<Action> {
+        if !self.enabled {
+            return WidgetActivationOutput::none();
+        }
+        self.activation_factory
+            .as_mut()
+            .map_or_else(WidgetActivationOutput::none, |factory| {
+                WidgetActivationOutput::action(factory())
+            })
+    }
+
+    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::Text {
+            content: self.label.clone(),
+        }
+    }
+
+    fn hit_test(&self, _: &Self::State, context: HitContributionContext) -> HitContribution {
+        HitContribution::single_rect(local_rect(context.local_size()))
+    }
+
+    fn semantics(
+        &self,
+        state: &Self::State,
+        _: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let mut node = SemanticNodeContribution::primary(SemanticRole::Tab)
+            .with_name(state.label.clone())
+            .with_state(
+                SemanticState::ENABLED
+                    .with_disabled(!state.enabled)
+                    .with_selected(state.selected),
+            )
+            .with_action(SemanticAction::RequestFocus);
+        if let Some(panel) = state.controls.clone() {
+            node = node.with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::Controls,
+                SemanticReference::Authored {
+                    element_id: panel,
+                    semantic_key: None,
+                },
+            ));
+        }
+        if state.actionable {
+            node = node.with_action(SemanticAction::Activate);
+        }
+        SemanticContribution::single(node)
+    }
+}
+
+impl<Action: 'static> View<Action> for Tab<Action> {
+    fn into_element(self) -> Element<Action> {
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(Focusability::Focusable, None);
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(TabWidget {
+                label: self.label,
+                selected: self.selected,
+                controls: self.controls,
+                enabled: self.enabled,
+                activation_factory: self.activation_factory,
+            })),
+            Vec::new(),
+            diagnostics,
+        )
+    }
+}
+
+/// Application-controlled tab-list composition over the accepted focus-group authority.
+pub struct TabList<Action> {
+    children: Vec<Tab<Action>>,
+    common: CommonNodeAuthoring,
+    orientation: Axis,
+    automatic_activation: bool,
+}
+
+impl<Action> fmt::Debug for TabList<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TabList")
+            .field("children", &self.children)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("layout", &self.common.layout)
+            .field("orientation", &self.orientation)
+            .field("automatic_activation", &self.automatic_activation)
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
+            .field("diagnostics", &self.common.diagnostics)
+            .finish()
+    }
+}
+
+impl<Action> TabList<Action> {
+    #[must_use]
+    pub fn new(children: impl IntoIterator<Item = Tab<Action>>) -> Self {
+        Self {
+            children: children.into_iter().collect(),
+            common: CommonNodeAuthoring {
+                layout: LayoutStyle::default().with_container(LayoutContainer::Flex(
+                    FlexContainerStyle::default().with_direction(FlexDirection::Row),
+                )),
+                ..CommonNodeAuthoring::default()
+            },
+            orientation: Axis::Horizontal,
+            automatic_activation: false,
+        }
+    }
+
+    common_node_builder_methods!();
+
+    #[must_use]
+    pub fn gap(mut self, gap: impl Into<LogicalLength>) -> Self {
+        self.common.layout = self.common.layout.with_gap(gap);
+        self
+    }
+
+    #[must_use]
+    pub fn orientation(mut self, orientation: Axis) -> Self {
+        self.orientation = orientation;
+        let direction = match orientation {
+            Axis::Horizontal => FlexDirection::Row,
+            Axis::Vertical => FlexDirection::Column,
+        };
+        self.common.layout = self.common.layout.with_container(LayoutContainer::Flex(
+            FlexContainerStyle::default().with_direction(direction),
+        ));
+        self
+    }
+
+    /// Activates the newly focused tab through the accepted focus-group policy.
+    ///
+    /// Manual activation is the default.
+    #[must_use]
+    pub const fn automatic_activation(mut self, enabled: bool) -> Self {
+        self.automatic_activation = enabled;
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TabListWidgetState {
+    orientation: Axis,
+    multiple_selected: bool,
+}
+
+#[derive(Debug)]
+struct TabListWidget {
+    orientation: Axis,
+    multiple_selected: bool,
+}
+
+impl<Action> Widget<Action> for TabListWidget {
+    type State = TabListWidgetState;
+
+    fn create_state(&self) -> Self::State {
+        TabListWidgetState {
+            orientation: self.orientation,
+            multiple_selected: self.multiple_selected,
+        }
+    }
+
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
+        if state.orientation != self.orientation {
+            context.invalidate(WidgetInvalidation::SEMANTICS);
+        }
+        if state.multiple_selected != self.multiple_selected {
+            context.invalidate(WidgetInvalidation::SEMANTICS | WidgetInvalidation::DIAGNOSTICS);
+        }
+        state.orientation = self.orientation;
+        state.multiple_selected = self.multiple_selected;
+    }
+
+    fn event(
+        &mut self,
+        _: &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        if self.multiple_selected
+            || context.phase() != EventPhase::Bubble
+            || context.default_is_prevented()
+        {
+            return WidgetEventOutput::none();
+        }
+        let delegated = if let Some(command) = event
+            .as_semantic_command()
+            .map(SemanticCommandEvent::command)
+        {
+            match (self.orientation, command) {
+                (Axis::Horizontal, SemanticCommand::FocusLeft)
+                | (Axis::Vertical, SemanticCommand::FocusUp) => {
+                    Some(SemanticCommand::FocusGroupPrevious)
+                }
+                (Axis::Horizontal, SemanticCommand::FocusRight)
+                | (Axis::Vertical, SemanticCommand::FocusDown) => {
+                    Some(SemanticCommand::FocusGroupNext)
+                }
+                _ => None,
+            }
+        } else if let Some(keyboard) = event.as_keyboard() {
+            if keyboard.phase() == KeyboardPhase::Down
+                && keyboard.modifiers() == crate::KeyModifiers::NONE
+            {
+                match keyboard.logical_key() {
+                    LogicalKey::Home => Some(SemanticCommand::FocusGroupFirst),
+                    LogicalKey::End => Some(SemanticCommand::FocusGroupLast),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if let Some(delegated) = delegated {
+            context.prevent_default();
+            context.stop_propagation();
+            context.emit_command(delegated);
+        }
+        WidgetEventOutput::none()
+    }
+
+    fn semantics(
+        &self,
+        state: &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        if state.multiple_selected {
+            return SemanticContribution::empty();
+        }
+        let orientation = match state.orientation {
+            Axis::Horizontal => SemanticOrientation::Horizontal,
+            Axis::Vertical => SemanticOrientation::Vertical,
+        };
+        let mut node =
+            SemanticNodeContribution::primary(SemanticRole::TabList).with_orientation(orientation);
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
+        SemanticContribution::single(node)
+    }
+
+    fn diagnostics(&self, state: &Self::State) -> Vec<WidgetDiagnostic> {
+        if state.multiple_selected {
+            vec![WidgetDiagnostic::new(
+                "runenui.control.tab-list.multiple-selected",
+                "TabList requires at most one selected Tab",
+            )]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+impl<Action> ChildBearingWidget<Action> for TabListWidget {}
+
+impl<Action: 'static> View<Action> for TabList<Action> {
+    fn into_element(self) -> Element<Action> {
+        let multiple_selected = self
+            .children
+            .iter()
+            .filter(|child| child.selected())
+            .count()
+            > 1;
+        let mut preferred_assigned = false;
+        let children = self
+            .children
+            .into_iter()
+            .map(|child| {
+                let preferred =
+                    child.selected() && child.focus_eligible_for_tab_entry() && !preferred_assigned;
+                if preferred {
+                    preferred_assigned = true;
+                }
+                let element = child.into_element().focus_group_preferred(preferred);
+                if multiple_selected {
+                    element.with_focusability(Focusability::Hidden)
+                } else {
+                    element
+                }
+            })
+            .collect();
+
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(Focusability::Automatic, None);
+        let element = Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(TabListWidget {
+                orientation: self.orientation,
+                multiple_selected,
+            })),
+            children,
+            diagnostics,
+        );
+        if multiple_selected {
+            return element;
+        }
+        let activation = if self.automatic_activation {
+            FocusGroupActivationPolicy::ActivateTarget
+        } else {
+            FocusGroupActivationPolicy::Manual
+        };
+        element.focus_group(
+            FocusGroup::new()
+                .with_boundary(FocusGroupBoundaryPolicy::Wrap)
+                .with_activation(activation),
+        )
+    }
+}
+
+/// Semantic tab-panel wrapper; application composition owns visibility and lifetime.
+pub struct TabPanel<Action> {
+    labelled_by: Option<ElementId>,
+    children: Vec<Element<Action>>,
+    common: CommonNodeAuthoring,
+}
+
+impl<Action> fmt::Debug for TabPanel<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TabPanel")
+            .field("labelled_by", &self.labelled_by)
+            .field("children", &self.children)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("layout", &self.common.layout)
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
+            .field("diagnostics", &self.common.diagnostics)
+            .finish()
+    }
+}
+
+impl<Action> TabPanel<Action> {
+    #[must_use]
+    pub fn new(labelled_by: impl IntoElementId, children: impl Views<Action>) -> Self {
+        let mut common = CommonNodeAuthoring {
+            layout: LayoutStyle::default().with_container(LayoutContainer::Block),
+            ..CommonNodeAuthoring::default()
+        };
+        let labelled_by = authored_relationship_target(&mut common, "labelled_by", labelled_by);
+        Self {
+            labelled_by,
+            children: children.into_elements(),
+            common,
+        }
+    }
+
+    common_node_builder_methods!();
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TabPanelWidgetState {
+    labelled_by: Option<ElementId>,
+}
+
+#[derive(Debug)]
+struct TabPanelWidget {
+    labelled_by: Option<ElementId>,
+}
+
+impl<Action> Widget<Action> for TabPanelWidget {
+    type State = TabPanelWidgetState;
+
+    fn create_state(&self) -> Self::State {
+        TabPanelWidgetState {
+            labelled_by: self.labelled_by.clone(),
+        }
+    }
+
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
+        if state.labelled_by != self.labelled_by {
+            context.invalidate(WidgetInvalidation::SEMANTICS);
+        }
+        state.labelled_by.clone_from(&self.labelled_by);
+    }
+
+    fn semantics(
+        &self,
+        state: &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let Some(labelled_by) = state.labelled_by.clone() else {
+            return SemanticContribution::empty();
+        };
+        let mut node = SemanticNodeContribution::primary(SemanticRole::TabPanel).with_relationship(
+            SemanticRelationship::new(
+                SemanticRelationshipKind::LabelledBy,
+                SemanticReference::Authored {
+                    element_id: labelled_by,
+                    semantic_key: None,
+                },
+            ),
+        );
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
+        SemanticContribution::single(node)
+    }
+}
+
+impl<Action> ChildBearingWidget<Action> for TabPanelWidget {}
+
+impl<Action: 'static> View<Action> for TabPanel<Action> {
+    fn into_element(self) -> Element<Action> {
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(Focusability::Automatic, None);
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(TabPanelWidget {
+                labelled_by: self.labelled_by,
+            })),
+            self.children,
+            diagnostics,
+        )
+    }
+}
+
 /// Standard M11 scrollbar composed entirely from public scroll-control and chrome contracts.
 ///
 /// The track is this view's ordinary node. The thumb is an ordinary child node
@@ -2516,6 +3128,21 @@ pub fn option_item<Action>(label: impl Into<String>, selected: bool) -> OptionIt
 #[must_use]
 pub fn list_box<Action>(children: impl IntoIterator<Item = OptionItem<Action>>) -> ListBox<Action> {
     ListBox::new(children)
+}
+#[must_use]
+pub fn tab<Action>(label: impl Into<String>, selected: bool) -> Tab<Action> {
+    Tab::new(label, selected)
+}
+#[must_use]
+pub fn tab_list<Action>(children: impl IntoIterator<Item = Tab<Action>>) -> TabList<Action> {
+    TabList::new(children)
+}
+#[must_use]
+pub fn tab_panel<Action>(
+    labelled_by: impl IntoElementId,
+    children: impl Views<Action>,
+) -> TabPanel<Action> {
+    TabPanel::new(labelled_by, children)
 }
 #[must_use]
 pub fn text(content: impl Into<String>) -> Text {

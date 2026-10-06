@@ -8,5 +8,7 @@ mod m11c_binary_controls;
 mod m11d_radio_controls;
 #[path = "../m11e_list_box_controls.rs"]
 mod m11e_list_box_controls;
+#[path = "../m11f_tabs.rs"]
+mod m11f_tabs;
 #[path = "../semantic_state.rs"]
 mod semantic_state;

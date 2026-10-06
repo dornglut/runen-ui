@@ -281,9 +281,9 @@ pub use application_command::{ApplicationCommand, ApplicationCommandDisposition}
 pub use builtins::{
     Button, Checkbox, CommandBinding, CommandScope, Container, ListBox, ListBoxSelectionMode,
     OptionItem, RadioButton, RadioGroup, ScrollBar, ScrollContainer, ScrollViewport, ShortcutScope,
-    Switch, Text, button, checkbox, column, command_binding, command_scope, container, list_box,
-    option_item, radio_button, radio_group, row, scroll_bar, scroll_container, scroll_viewport,
-    shortcut_scope, switch, text,
+    Switch, Tab, TabList, TabPanel, Text, button, checkbox, column, command_binding, command_scope,
+    container, list_box, option_item, radio_button, radio_group, row, scroll_bar, scroll_container,
+    scroll_viewport, shortcut_scope, switch, tab, tab_list, tab_panel, text,
 };
 pub use computed_style::ComputedStyle;
 pub use editing::{
