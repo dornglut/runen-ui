@@ -14,13 +14,14 @@ Run the complete repository baseline with:
 cargo validate
 ```
 
-The Cargo alias executes `cargo run --locked --package xtask -- validate`. The locked outer invocation and every checked-in workspace Cargo check use `--locked`; validation must not update the repository's `Cargo.lock`, manifests, formatting, or source. The task is the single implementation used locally and by CI.
+The Cargo alias executes `cargo run --locked --package xtask -- validate`. The locked outer invocation and every checked-in workspace Cargo check use `--locked`; validation must not update the repository's `Cargo.lock`, manifests, formatting, or source. `xtask` is the single semantic implementation: local merge readiness uses the complete command, while hosted CI may execute repository-owned `--partition <id>` projections of that same plan in parallel.
 
 `xtask` derives the RunenUI workspace root from its compile-time `CARGO_MANIFEST_DIR`, verifies the root `Cargo.toml`, runs Cargo subprocesses from that root, and scans repository documentation from that root. Calling `cargo validate` within a workspace package therefore cannot reduce validation to that package subtree.
 
 The baseline runs, in order:
 
 ```powershell
+cargo +stable metadata --locked --no-deps
 cargo +stable fmt --all --check
 cargo +stable test --workspace --all-features --locked
 cargo +stable clippy --workspace --all-targets --all-features --locked -- -D warnings
@@ -31,6 +32,14 @@ cargo +stable fetch --locked
 # repository-relative Markdown links from the resolved workspace root
 # deterministic fatal repository structure and authority audit
 ```
+
+For hosted execution, the repository-owned plan exposes exactly three partitions:
+
+- `workspace-tests`: the unchanged stable workspace all-feature test command;
+- `public-contract`: the complete existing public-consumer isolation proof;
+- `repository-quality`: metadata, formatting, Clippy, licensing/publish policy, documentation links, and fatal repository audit.
+
+The authoritative ordered registry lives in `xtask`. Root `validation-partitions.txt` is only a scheduling projection for the shared workflow. Both complete `cargo validate` and every `cargo validate --partition <id>` invocation exact-check that file against the registry before any partition-specific work. Missing, added, renamed, reordered, or unknown partitions therefore fail closed rather than silently reducing validation.
 
 The package-selected public-consumer lane deliberately omits `--workspace` and `--all-features`. It derives `runenui_testing` plus every workspace member under `tests/` from the canonical workspace inventory and tests them with ordinary dependency features rather than inheriting internal test seams enabled elsewhere in the all-features lane. Before the intentionally offline Cargo proofs, validation runs locked `cargo fetch` without a target override so the local cache contains the complete locked dependency graph, including target-specific packages that a host-only test build need not download. The same inventory derives every declared `internal-*` feature from workspace member manifests; a matching locked, offline `cargo tree --edges features` inspection rejects any of them in the public consumers' resolved feature graph. Adding a conformance fixture or private feature therefore expands the proof automatically rather than relying on a second hand-maintained list. A separate, disposable standalone Cargo workspace under ignored `target/` compiles a known runtime `__..._for_test` method successfully with `internal-test-seams` explicitly enabled, then requires that same method to be unavailable under default features. The probe copies the lockfile into its temporary directory, resolves that copy offline, and runs both compiler checks offline and locked; it does not change tracked repository files. The positive control prevents unrelated compilation failures from masquerading as proof of isolation. The stable all-feature lane remains mandatory.
 
@@ -54,8 +63,10 @@ findings. Record the reviewed feature head and accepted squash merge separately,
 then inspect accepted-main push validation at the exact squash commit when required.
 
 The shared CI workflow is read-only and requires no repository write permission.
-Shared CI owns checkout, toolchain, cache, and bounded-diagnostics orchestration;
-RunenUI owns validation semantics. The checked-out exact source and `cargo validate`
+Shared CI owns checkout, toolchain, cache, bounded partition scheduling, aggregation,
+and bounded-diagnostics orchestration; RunenUI owns validation semantics. The planner
+selects the exact caller revision and each partition runner independently checks out
+and proves that same revision. The checked-out exact source and complete `cargo validate`
 remain authoritative, and a restored caller workspace `target/` tree must never
 substitute for them. Successful validation prints a compact evidence summary rather
 than the complete command output. Failed validation preserves the canonical

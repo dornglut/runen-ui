@@ -2,6 +2,7 @@
 
 mod public_consumer;
 mod repository_audit;
+mod validation_plan;
 mod validation_timing;
 
 use std::{
@@ -27,39 +28,26 @@ const EXPECTED_POLICY_MARKERS: &[&str] = &[
     "external pull requests contributing tracked repository content",
     "Issue reports, design discussion, reviews, and reproducible cases",
 ];
-const VALIDATE_STEPS: &[(&str, &str, &[&str])] = &[
-    (
-        "stable metadata",
-        "stable",
-        &["metadata", "--locked", "--no-deps"],
-    ),
-    ("stable formatting", "stable", &["fmt", "--all", "--check"]),
-    (
-        "stable workspace all-feature tests",
-        "stable",
-        &["test", "--workspace", "--all-features", "--locked"],
-    ),
-    (
-        "stable workspace all-target Clippy",
-        "stable",
-        &[
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--all-features",
-            "--locked",
-            "--",
-            "-D",
-            "warnings",
-        ],
-    ),
+const STABLE_METADATA_ARGUMENTS: &[&str] = &["metadata", "--locked", "--no-deps"];
+const STABLE_FORMATTING_ARGUMENTS: &[&str] = &["fmt", "--all", "--check"];
+const STABLE_WORKSPACE_TEST_ARGUMENTS: &[&str] =
+    &["test", "--workspace", "--all-features", "--locked"];
+const STABLE_CLIPPY_ARGUMENTS: &[&str] = &[
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--all-features",
+    "--locked",
+    "--",
+    "-D",
+    "warnings",
 ];
 
 fn main() -> ExitCode {
     let mut arguments = env::args().skip(1);
 
     match arguments.next().as_deref() {
-        Some("validate") => validate(),
+        Some("validate") => validate(arguments),
         Some("check-links") => check_links(),
         Some("audit-repository") => audit_repository(arguments),
         Some("help" | "--help" | "-h") | None => {
@@ -74,9 +62,22 @@ fn main() -> ExitCode {
     }
 }
 
-fn validate() -> ExitCode {
+fn validate(arguments: impl Iterator<Item = String>) -> ExitCode {
+    let selection = match validation_plan::parse_selection(arguments) {
+        Ok(selection) => selection,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
     let mut timings = validation_timing::ValidationTimings::start();
-    let result = validate_inner(&mut timings);
+    let result = workspace_root().and_then(|root| {
+        timings.measure("validation partition inventory", || {
+            validation_plan::validate_manifest(&root)
+        })?;
+        validate_selection(&root, selection, &mut timings)
+    });
     timings.report(result.is_ok());
 
     match result {
@@ -88,22 +89,115 @@ fn validate() -> ExitCode {
     }
 }
 
-fn validate_inner(timings: &mut validation_timing::ValidationTimings) -> Result<(), String> {
-    let root = workspace_root()?;
-
-    for (label, toolchain, arguments) in VALIDATE_STEPS {
-        timings.measure(label, || run_cargo_step(&root, toolchain, arguments))?;
+fn validate_selection(
+    root: &Path,
+    selection: validation_plan::ValidationSelection,
+    timings: &mut validation_timing::ValidationTimings,
+) -> Result<(), String> {
+    match selection {
+        validation_plan::ValidationSelection::Complete => validate_complete(root, timings),
+        validation_plan::ValidationSelection::Partition(
+            validation_plan::ValidationPartition::WorkspaceTests,
+        ) => run_workspace_tests(root, timings),
+        validation_plan::ValidationSelection::Partition(
+            validation_plan::ValidationPartition::PublicContract,
+        ) => public_consumer::validate(root, timings),
+        validation_plan::ValidationSelection::Partition(
+            validation_plan::ValidationPartition::RepositoryQuality,
+        ) => validate_repository_quality(root, timings),
     }
+}
 
-    public_consumer::validate(&root, timings)?;
+fn validate_complete(
+    root: &Path,
+    timings: &mut validation_timing::ValidationTimings,
+) -> Result<(), String> {
+    run_metadata(root, timings)?;
+    run_formatting(root, timings)?;
+    run_workspace_tests(root, timings)?;
+    run_clippy(root, timings)?;
+    public_consumer::validate(root, timings)?;
+    run_repository_policy_checks(root, timings)
+}
+
+fn validate_repository_quality(
+    root: &Path,
+    timings: &mut validation_timing::ValidationTimings,
+) -> Result<(), String> {
+    run_metadata(root, timings)?;
+    run_formatting(root, timings)?;
+    run_clippy(root, timings)?;
+    run_repository_policy_checks(root, timings)
+}
+
+fn run_metadata(
+    root: &Path,
+    timings: &mut validation_timing::ValidationTimings,
+) -> Result<(), String> {
+    run_stable_validation_step(
+        root,
+        timings,
+        "stable metadata",
+        STABLE_METADATA_ARGUMENTS,
+    )
+}
+
+fn run_formatting(
+    root: &Path,
+    timings: &mut validation_timing::ValidationTimings,
+) -> Result<(), String> {
+    run_stable_validation_step(
+        root,
+        timings,
+        "stable formatting",
+        STABLE_FORMATTING_ARGUMENTS,
+    )
+}
+
+fn run_workspace_tests(
+    root: &Path,
+    timings: &mut validation_timing::ValidationTimings,
+) -> Result<(), String> {
+    run_stable_validation_step(
+        root,
+        timings,
+        "stable workspace all-feature tests",
+        STABLE_WORKSPACE_TEST_ARGUMENTS,
+    )
+}
+
+fn run_clippy(
+    root: &Path,
+    timings: &mut validation_timing::ValidationTimings,
+) -> Result<(), String> {
+    run_stable_validation_step(
+        root,
+        timings,
+        "stable workspace all-target Clippy",
+        STABLE_CLIPPY_ARGUMENTS,
+    )
+}
+
+fn run_stable_validation_step(
+    root: &Path,
+    timings: &mut validation_timing::ValidationTimings,
+    label: &'static str,
+    arguments: &[&str],
+) -> Result<(), String> {
+    timings.measure(label, || run_cargo_step(root, "stable", arguments))
+}
+
+fn run_repository_policy_checks(
+    root: &Path,
+    timings: &mut validation_timing::ValidationTimings,
+) -> Result<(), String> {
     timings.measure("licensing and publish policy", || {
-        validate_current_licensing(&root)
+        validate_current_licensing(root)
     })?;
-    timings.measure("documentation links", || check_repository_links(&root))?;
+    timings.measure("documentation links", || check_repository_links(root))?;
     timings.measure("fatal repository audit", || {
-        repository_audit::validate_fatal(&root)
+        repository_audit::validate_fatal(root)
     })?;
-
     Ok(())
 }
 
@@ -414,7 +508,7 @@ fn package_manifest_field<'a>(manifest: &'a str, field: &str) -> Option<&'a str>
 }
 
 fn print_usage() {
-    eprintln!("usage: cargo validate");
+    eprintln!("{}", validation_plan::usage());
     eprintln!("       cargo xtask check-links");
     eprintln!("       cargo xtask audit-repository [--format json]");
 }

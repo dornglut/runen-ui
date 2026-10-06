@@ -6,7 +6,9 @@ The canonical merge-readiness command is:
 cargo validate
 ```
 
-It is repository-owned, deterministic, read-only, and used by the repository's thin GitHub Actions caller. The baseline covers stable formatting checks, locked stable workspace tests, Clippy with warnings denied, repository metadata and authority invariants, public-consumer isolation proofs, and repository-relative Markdown links. The current 0.x support policy is stable-only; no separate MSRV lane or older-compiler guarantee is part of merge readiness.
+It is repository-owned, deterministic, read-only, and remains the complete local merge-readiness baseline. The same validation plan also exposes bounded hosted-execution partitions to the thin GitHub Actions caller; those partitions are execution projections of `cargo validate`, not separate validation authorities. The baseline covers stable formatting checks, locked stable workspace tests, Clippy with warnings denied, repository metadata and authority invariants, public-consumer isolation proofs, and repository-relative Markdown links. The current 0.x support policy is stable-only; no separate MSRV lane or older-compiler guarantee is part of merge readiness.
+
+The checked-in `validation-partitions.txt` file is only the shared workflow's scheduling projection. `xtask` owns the authoritative ordered partition registry and validates the complete manifest before either complete validation or any `--partition` body executes. Hosted CI currently projects the plan as `workspace-tests`, `public-contract`, and `repository-quality`; changing that manifest without changing the repository-owned plan fails closed.
 
 For intentional Rust edits, format first with:
 
@@ -41,4 +43,4 @@ The current testing surface reflects implemented framework behavior only. Accept
 
 Detailed procedures are in [validation](docs/tooling/validation.md) and the [repository audit](docs/tooling/repository-audit.md). Permanent behavior/proof contracts are indexed under [conformance](docs/conformance/README.md).
 
-Shared CI orchestration may invoke `cargo validate`, but it does not recreate RunenUI validation semantics or mutate repository contents.
+Shared CI orchestration may invoke complete `cargo validate` or one repository-owned `cargo validate --partition <id>` projection, but it does not recreate RunenUI validation semantics or mutate repository contents. The aggregate hosted result succeeds only when the complete scheduled partition set succeeds.
