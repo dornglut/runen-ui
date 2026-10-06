@@ -76,9 +76,7 @@ impl UiApp for ListBoxApp {
                 SecondOptionFixture::Standard | SecondOptionFixture::Replacement => {
                     two.on_activate(|| Action::Select(2))
                 }
-                SecondOptionFixture::Disabled => {
-                    two.on_activate(|| Action::Select(2)).disabled()
-                }
+                SecondOptionFixture::Disabled => two.on_activate(|| Action::Select(2)).disabled(),
                 SecondOptionFixture::DisabledDiscoverable => two
                     .on_activate(|| Action::Select(2))
                     .disabled()
@@ -383,8 +381,7 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
     assert_focus_name(&passive_skipped, "Charlie");
 
     let mut passive_discoverable_state = fixture(vec![1]);
-    passive_discoverable_state.second_option =
-        SecondOptionFixture::PassiveDisabledDiscoverable;
+    passive_discoverable_state.second_option = SecondOptionFixture::PassiveDisabledDiscoverable;
     let mut passive_discoverable = TestHarness::<ListBoxApp>::mount(passive_discoverable_state);
     assert!(passive_discoverable.publish().is_ok());
     command(
