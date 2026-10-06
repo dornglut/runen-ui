@@ -100,9 +100,7 @@ pub(crate) fn parse_selection(
     }
 }
 
-pub(crate) fn phases(
-    selection: ValidationSelection,
-) -> impl Iterator<Item = ValidationPhase> {
+pub(crate) fn phases(selection: ValidationSelection) -> impl Iterator<Item = ValidationPhase> {
     VALIDATION_PHASES
         .iter()
         .copied()
@@ -206,10 +204,8 @@ mod tests {
     #[test]
     fn manifest_reordering_fails_closed() {
         assert!(
-            validate_manifest_contents(
-                "public-contract\nworkspace-tests\nrepository-quality\n"
-            )
-            .is_err()
+            validate_manifest_contents("public-contract\nworkspace-tests\nrepository-quality\n")
+                .is_err()
         );
     }
 
@@ -229,14 +225,8 @@ mod tests {
 
     #[test]
     fn unknown_partition_fails_closed() {
-        let result = parse_selection(
-            ["--partition", "missing"]
-                .into_iter()
-                .map(str::to_owned),
-        );
-        assert!(
-            matches!(result, Err(ref error) if error.contains("unknown validation partition"))
-        );
+        let result = parse_selection(["--partition", "missing"].into_iter().map(str::to_owned));
+        assert!(matches!(result, Err(ref error) if error.contains("unknown validation partition")));
     }
 
     #[test]

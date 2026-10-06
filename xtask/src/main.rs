@@ -110,16 +110,20 @@ fn validate_phase(
         validation_plan::ValidationPhase::StableFormatting => run_formatting(root, timings),
         validation_plan::ValidationPhase::WorkspaceTests => run_workspace_tests(root, timings),
         validation_plan::ValidationPhase::StableClippy => run_clippy(root, timings),
-        validation_plan::ValidationPhase::PublicContract => public_consumer::validate(root, timings),
-        validation_plan::ValidationPhase::LicensingAndPublishPolicy => {
-            timings.measure("licensing and publish policy", || validate_current_licensing(root))
+        validation_plan::ValidationPhase::PublicContract => {
+            public_consumer::validate(root, timings)
         }
+        validation_plan::ValidationPhase::LicensingAndPublishPolicy => timings
+            .measure("licensing and publish policy", || {
+                validate_current_licensing(root)
+            }),
         validation_plan::ValidationPhase::DocumentationLinks => {
             timings.measure("documentation links", || check_repository_links(root))
         }
-        validation_plan::ValidationPhase::RepositoryAudit => {
-            timings.measure("fatal repository audit", || repository_audit::validate_fatal(root))
-        }
+        validation_plan::ValidationPhase::RepositoryAudit => timings
+            .measure("fatal repository audit", || {
+                repository_audit::validate_fatal(root)
+            }),
     }
 }
 
@@ -127,12 +131,7 @@ fn run_metadata(
     root: &Path,
     timings: &mut validation_timing::ValidationTimings,
 ) -> Result<(), String> {
-    run_stable_validation_step(
-        root,
-        timings,
-        "stable metadata",
-        STABLE_METADATA_ARGUMENTS,
-    )
+    run_stable_validation_step(root, timings, "stable metadata", STABLE_METADATA_ARGUMENTS)
 }
 
 fn run_formatting(
