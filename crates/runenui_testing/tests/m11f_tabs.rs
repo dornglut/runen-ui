@@ -195,7 +195,7 @@ fn manual_tabs_enter_selected_wrap_home_end_and_activate_without_selection_on_fo
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Three");
     assert_eq!(harness.state().selected, 2);
-    assert_eq!(harness.state().activations.as_slice(), &[]);
+    assert!(harness.state().activations.is_empty());
 
     command(&mut harness, "tab.three", SemanticCommand::FocusRight);
     assert!(harness.publish().is_ok());
@@ -276,7 +276,7 @@ fn automatic_tabs_activate_only_after_successful_focus_movement() {
     command(&mut harness, "before", SemanticCommand::FocusNext);
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "One");
-    assert_eq!(harness.state().activations.as_slice(), &[]);
+    assert!(harness.state().activations.is_empty());
 
     command(&mut harness, "tab.one", SemanticCommand::FocusRight);
     assert_eq!(harness.state().selected, 2);
