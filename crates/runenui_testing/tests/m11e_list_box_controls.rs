@@ -19,16 +19,29 @@ enum Action {
     Noop,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SelectionFixture {
+    SingleManual,
+    SingleFollowFocus,
+    Multiple,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SecondOptionFixture {
+    Standard,
+    Disabled,
+    DisabledDiscoverable,
+    PassiveDisabled,
+    PassiveDisabledDiscoverable,
+    Removed,
+    Replacement,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct State {
     selected: Vec<u8>,
-    multiple: bool,
-    follow_focus: bool,
-    disable_two: bool,
-    discover_two: bool,
-    passive_two: bool,
-    show_two: bool,
-    replace_two: bool,
+    selection: SelectionFixture,
+    second_option: SecondOptionFixture,
     activations: Vec<u8>,
 }
 
@@ -45,25 +58,39 @@ impl UiApp for ListBoxApp {
                 .id("option.one")
                 .on_activate(|| Action::Select(1)),
         ];
-        if state.show_two {
-            let label = if state.replace_two { "Delta" } else { "Bravo" };
-            let key = if state.replace_two {
+        if state.second_option != SecondOptionFixture::Removed {
+            let label = if state.second_option == SecondOptionFixture::Replacement {
+                "Delta"
+            } else {
+                "Bravo"
+            };
+            let key = if state.second_option == SecondOptionFixture::Replacement {
                 "option.two.replacement"
             } else {
                 "option.two.original"
             };
-            let mut two = option_item(label, state.selected.contains(&2))
+            let two = option_item(label, state.selected.contains(&2))
                 .id("option.two")
                 .key(key);
-            if !state.passive_two {
-                two = two.on_activate(|| Action::Select(2));
-            }
-            if state.disable_two {
-                two = two.disabled();
-            }
-            if state.discover_two {
-                two = two.discoverable_when_disabled(true);
-            }
+            let two = match state.second_option {
+                SecondOptionFixture::Standard | SecondOptionFixture::Replacement => {
+                    two.on_activate(|| Action::Select(2))
+                }
+                SecondOptionFixture::Disabled => {
+                    two.on_activate(|| Action::Select(2)).disabled()
+                }
+                SecondOptionFixture::DisabledDiscoverable => two
+                    .on_activate(|| Action::Select(2))
+                    .disabled()
+                    .discoverable_when_disabled(true),
+                SecondOptionFixture::PassiveDisabled => two.disabled(),
+                SecondOptionFixture::PassiveDisabledDiscoverable => {
+                    two.disabled().discoverable_when_disabled(true)
+                }
+                SecondOptionFixture::Removed => {
+                    unreachable!("removed second option is excluded before construction")
+                }
+            };
             options.push(two);
         }
         options.push(
@@ -72,13 +99,15 @@ impl UiApp for ListBoxApp {
                 .on_activate(|| Action::Select(3)),
         );
 
-        let mut list = list_box(options).id("list");
-        if state.multiple {
-            list = list.selection_mode(ListBoxSelectionMode::Multiple);
-        }
-        if state.follow_focus {
-            list = list.selection_follows_focus(true);
-        }
+        let list = match state.selection {
+            SelectionFixture::SingleManual => list_box(options).id("list"),
+            SelectionFixture::SingleFollowFocus => {
+                list_box(options).id("list").selection_follows_focus(true)
+            }
+            SelectionFixture::Multiple => list_box(options)
+                .id("list")
+                .selection_mode(ListBoxSelectionMode::Multiple),
+        };
 
         column(children![
             button("Before").id("before").on_activate(|| Action::Noop),
@@ -89,7 +118,7 @@ impl UiApp for ListBoxApp {
 
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
-            Action::Select(value) if state.multiple => {
+            Action::Select(value) if state.selection == SelectionFixture::Multiple => {
                 if let Some(index) = state
                     .selected
                     .iter()
@@ -105,23 +134,18 @@ impl UiApp for ListBoxApp {
                 state.selected = vec![value];
                 state.activations.push(value);
             }
-            Action::RemoveTwo => state.show_two = false,
-            Action::ReplaceTwo => state.replace_two = true,
+            Action::RemoveTwo => state.second_option = SecondOptionFixture::Removed,
+            Action::ReplaceTwo => state.second_option = SecondOptionFixture::Replacement,
             Action::Noop => {}
         }
     }
 }
 
-fn fixture(selected: Vec<u8>) -> State {
+const fn fixture(selected: Vec<u8>) -> State {
     State {
         selected,
-        multiple: false,
-        follow_focus: false,
-        disable_two: false,
-        discover_two: false,
-        passive_two: false,
-        show_two: true,
-        replace_two: false,
+        selection: SelectionFixture::SingleManual,
+        second_option: SecondOptionFixture::Standard,
         activations: Vec::new(),
     }
 }
@@ -179,7 +203,7 @@ fn assert_button_focus(harness: &TestHarness<ListBoxApp>, name: &str) {
     assert_eq!(snapshot.focused(), Some(target.node_id()));
 }
 
-fn key(physical: PhysicalKey, logical: LogicalKey, phase: KeyboardPhase) -> KeyboardEvent {
+const fn key(physical: PhysicalKey, logical: LogicalKey, phase: KeyboardPhase) -> KeyboardEvent {
     KeyboardEvent::new(
         phase,
         physical,
@@ -251,7 +275,7 @@ fn manual_list_box_entry_navigation_home_end_and_type_ahead_do_not_mutate_select
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Charlie");
     assert_eq!(harness.state().selected, vec![2]);
-    assert!(harness.state().activations.is_empty());
+    assert_eq!(harness.state().activations.as_slice(), &[]);
 
     harness
         .submit_keyboard(key(
@@ -283,7 +307,7 @@ fn manual_list_box_entry_navigation_home_end_and_type_ahead_do_not_mutate_select
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Charlie");
     assert_eq!(harness.state().selected, vec![2]);
-    assert!(harness.state().activations.is_empty());
+    assert_eq!(harness.state().activations.as_slice(), &[]);
 }
 
 #[test]
@@ -319,7 +343,7 @@ fn ordinary_space_activation_emits_only_the_application_selection_action() {
 #[test]
 fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority() {
     let mut skipped_state = fixture(vec![1]);
-    skipped_state.disable_two = true;
+    skipped_state.second_option = SecondOptionFixture::Disabled;
     let mut skipped = TestHarness::<ListBoxApp>::mount(skipped_state);
     assert!(skipped.publish().is_ok());
     command(&mut skipped, "option.one", SemanticCommand::RequestFocus);
@@ -328,8 +352,7 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
     assert_focus_name(&skipped, "Charlie");
 
     let mut discoverable_state = fixture(vec![1]);
-    discoverable_state.disable_two = true;
-    discoverable_state.discover_two = true;
+    discoverable_state.second_option = SecondOptionFixture::DisabledDiscoverable;
     let mut discoverable = TestHarness::<ListBoxApp>::mount(discoverable_state);
     assert!(discoverable.publish().is_ok());
     command(
@@ -343,8 +366,7 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
     assert_eq!(discoverable.state().selected, vec![1]);
 
     let mut passive_skipped_state = fixture(vec![1]);
-    passive_skipped_state.disable_two = true;
-    passive_skipped_state.passive_two = true;
+    passive_skipped_state.second_option = SecondOptionFixture::PassiveDisabled;
     let mut passive_skipped = TestHarness::<ListBoxApp>::mount(passive_skipped_state);
     assert!(passive_skipped.publish().is_ok());
     command(
@@ -361,9 +383,8 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
     assert_focus_name(&passive_skipped, "Charlie");
 
     let mut passive_discoverable_state = fixture(vec![1]);
-    passive_discoverable_state.disable_two = true;
-    passive_discoverable_state.discover_two = true;
-    passive_discoverable_state.passive_two = true;
+    passive_discoverable_state.second_option =
+        SecondOptionFixture::PassiveDisabledDiscoverable;
     let mut passive_discoverable = TestHarness::<ListBoxApp>::mount(passive_discoverable_state);
     assert!(passive_discoverable.publish().is_ok());
     command(
@@ -381,7 +402,7 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
     assert_eq!(passive_discoverable.state().selected, vec![1]);
 
     let mut follow_state = fixture(vec![1]);
-    follow_state.follow_focus = true;
+    follow_state.selection = SelectionFixture::SingleFollowFocus;
     let mut follow = TestHarness::<ListBoxApp>::mount(follow_state);
     assert!(follow.publish().is_ok());
     command(&mut follow, "option.one", SemanticCommand::RequestFocus);
@@ -395,7 +416,7 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
 #[test]
 fn multi_selection_keeps_first_selected_entry_and_focus_distinct_from_selection() {
     let mut state = fixture(vec![1, 3]);
-    state.multiple = true;
+    state.selection = SelectionFixture::Multiple;
     let mut harness = TestHarness::<ListBoxApp>::mount(state);
     assert!(harness.publish().is_ok());
     let snapshot = harness
@@ -427,11 +448,11 @@ fn multi_selection_keeps_first_selected_entry_and_focus_distinct_from_selection(
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Bravo");
     assert_eq!(harness.state().selected, vec![1, 3]);
-    assert!(harness.state().activations.is_empty());
+    assert_eq!(harness.state().activations.as_slice(), &[]);
 
     let mut state = fixture(vec![2, 3]);
-    state.multiple = true;
-    state.disable_two = true;
+    state.selection = SelectionFixture::Multiple;
+    state.second_option = SecondOptionFixture::Disabled;
     let mut harness = TestHarness::<ListBoxApp>::mount(state);
     assert!(harness.publish().is_ok());
     command(&mut harness, "before", SemanticCommand::RequestFocus);
@@ -439,7 +460,7 @@ fn multi_selection_keeps_first_selected_entry_and_focus_distinct_from_selection(
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Charlie");
     assert_eq!(harness.state().selected, vec![2, 3]);
-    assert!(harness.state().activations.is_empty());
+    assert_eq!(harness.state().activations.as_slice(), &[]);
 }
 
 #[test]
@@ -519,7 +540,7 @@ fn horizontal_list_box_maps_horizontal_but_not_vertical_directional_commands() {
         type State = ();
         type Action = ();
         type HostProtocol = NoHostProtocol;
-        fn root(_: &Self::State) -> impl View<Self::Action> {
+        fn root((): &Self::State) -> impl View<Self::Action> {
             list_box([
                 option_item("One", true).id("h.one").on_activate(|| ()),
                 option_item("Two", false).id("h.two").on_activate(|| ()),
@@ -527,7 +548,7 @@ fn horizontal_list_box_maps_horizontal_but_not_vertical_directional_commands() {
             .id("h.list")
             .orientation(Axis::Horizontal)
         }
-        fn update(_: &mut Self::State, _: Self::Action) {}
+        fn update((): &mut Self::State, (): Self::Action) {}
     }
 
     let mut harness = TestHarness::<Horizontal>::mount(());
