@@ -846,7 +846,7 @@ mod tests {
     }
 
     fn assert_m11_slice(
-        rows: &[MatrixRow],
+        rows: &[super::MatrixRow],
         slice: &str,
         expected_ids: &[&str],
         status: &str,
@@ -886,7 +886,13 @@ mod tests {
         assert_m11_slice(
             &rows,
             "M11A",
-            &["M11CTRL-01", "M11CTRL-02", "M11CTRL-03", "M11CTRL-04", "M11CTRL-05"],
+            &[
+                "M11CTRL-01",
+                "M11CTRL-02",
+                "M11CTRL-03",
+                "M11CTRL-04",
+                "M11CTRL-05",
+            ],
             "owner-accepted",
         );
         assert_m11_slice(
