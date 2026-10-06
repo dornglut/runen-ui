@@ -273,7 +273,7 @@ fn manual_list_box_entry_navigation_home_end_and_type_ahead_do_not_mutate_select
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Charlie");
     assert_eq!(harness.state().selected, vec![2]);
-    assert_eq!(harness.state().activations.as_slice(), &[]);
+    assert_eq!(harness.state().activations, Vec::<u8>::new());
 
     harness
         .submit_keyboard(key(
@@ -305,7 +305,7 @@ fn manual_list_box_entry_navigation_home_end_and_type_ahead_do_not_mutate_select
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Charlie");
     assert_eq!(harness.state().selected, vec![2]);
-    assert_eq!(harness.state().activations.as_slice(), &[]);
+    assert_eq!(harness.state().activations, Vec::<u8>::new());
 }
 
 #[test]
@@ -445,7 +445,7 @@ fn multi_selection_keeps_first_selected_entry_and_focus_distinct_from_selection(
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Bravo");
     assert_eq!(harness.state().selected, vec![1, 3]);
-    assert_eq!(harness.state().activations.as_slice(), &[]);
+    assert_eq!(harness.state().activations, Vec::<u8>::new());
 
     let mut state = fixture(vec![2, 3]);
     state.selection = SelectionFixture::Multiple;
@@ -457,7 +457,7 @@ fn multi_selection_keeps_first_selected_entry_and_focus_distinct_from_selection(
     assert!(harness.publish().is_ok());
     assert_focus_name(&harness, "Charlie");
     assert_eq!(harness.state().selected, vec![2, 3]);
-    assert_eq!(harness.state().activations.as_slice(), &[]);
+    assert_eq!(harness.state().activations, Vec::<u8>::new());
 }
 
 #[test]
