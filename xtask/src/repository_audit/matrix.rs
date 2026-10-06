@@ -33,6 +33,7 @@ const M11_DELIVERY_SLICES: &[&str] = &[
     "M11SEM1",
     "M11S2",
     "M11SCROLLB",
+    "M11COLL2",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -854,7 +855,7 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 24);
+        assert_eq!(rows.len(), 28);
 
         let rows_for = |slice: &str| {
             rows.iter()
@@ -868,6 +869,7 @@ mod tests {
         let extended_semantic_rows = rows_for("M11SEM1");
         let semantic_action_rows = rows_for("M11S2");
         let scroll_b_rows = rows_for("M11SCROLLB");
+        let collection_rows = rows_for("M11COLL2");
 
         assert_eq!(baseline_rows.len(), 5);
         assert!(baseline_rows.iter().all(|row| {
@@ -922,6 +924,14 @@ mod tests {
             ) && row.cells[6] == "owner-accepted"
                 && row.cells[7] == "Required"
         }));
+        assert_eq!(collection_rows.len(), 4);
+        assert!(collection_rows.iter().all(|row| {
+            matches!(
+                row.cells[0].as_str(),
+                "M11CTRL-25" | "M11CTRL-26" | "M11CTRL-27" | "M11CTRL-28"
+            ) && row.cells[6] == "owner-accepted"
+                && row.cells[7] == "Required"
+        }));
         assert_eq!(
             rows.iter()
                 .map(|row| row.cells[5].as_str())
@@ -931,6 +941,7 @@ mod tests {
                 "M11B",
                 "M11C",
                 "M11D2",
+                "M11COLL2",
                 "M11SCROLLB",
                 "M11SEM1",
                 "M11S2",
@@ -1028,7 +1039,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 466);
+        assert_eq!(total, 470);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }

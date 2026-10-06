@@ -3,15 +3,17 @@ use core::fmt;
 use crate::{
     ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandEvent, Axis, EventContext,
     EventPhase, FlexContainerStyle, FlexDirection, FocusGroup, FocusGroupActivationPolicy,
-    FocusGroupBoundaryPolicy, Focusability, HitContribution, HitContributionContext, KeyboardPhase,
-    LayoutContainer, LayoutStyle, LogicalKey, LogicalLength, LogicalPoint, LogicalRect,
-    LogicalSize, OverflowStyle, PointerButton, PointerCaptureKind, PointerDeviceKind, PointerId,
-    PointerPhase, ScrollBarLayout, ScrollBarPlacement, ScrollBarVisibility, ScrollChrome,
-    ScrollControlBinding, ScrollControlRequest, ScrollNormalizedValue, SemanticAction,
-    SemanticCheckedState, SemanticCommand, SemanticCommandEvent, SemanticContribution,
-    SemanticContributionContext, SemanticNodeContribution, SemanticNumber, SemanticRole,
-    SemanticState, SemanticText, ShortcutBinding, StyleIntent, UiEvent, WidgetActivationContext,
-    WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetUpdateContext,
+    FocusGroupBoundaryPolicy, FocusGroupTypeAhead, Focusability, HitContribution,
+    HitContributionContext, KeyboardPhase, LayoutContainer, LayoutStyle, LogicalKey, LogicalLength,
+    LogicalPoint, LogicalRect, LogicalSize, OverflowStyle, PointerButton, PointerCaptureKind,
+    PointerDeviceKind, PointerId, PointerPhase, ScrollBarLayout, ScrollBarPlacement,
+    ScrollBarVisibility, ScrollChrome, ScrollControlBinding, ScrollControlRequest,
+    ScrollNormalizedValue, SemanticAction, SemanticCheckedState, SemanticCollectionPosition,
+    SemanticCommand, SemanticCommandEvent, SemanticContribution, SemanticContributionContext,
+    SemanticNodeContribution, SemanticNumber, SemanticOrientation, SemanticRole,
+    SemanticSelectionMode, SemanticState, SemanticText, ShortcutBinding, StyleIntent, UiEvent,
+    WidgetActivationContext, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation,
+    WidgetUpdateContext,
     element::{CommonNodeAuthoring, Element, View, Views, common_node_builder_methods},
     widget_erasure::{ErasedWidget, WidgetAdapter},
     widget_protocol::{
@@ -1156,6 +1158,584 @@ impl<Action: 'static> View<Action> for RadioGroup<Action> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ListBoxSelectionMode {
+    Single,
+    Multiple,
+}
+
+impl ListBoxSelectionMode {
+    const fn semantic(self) -> SemanticSelectionMode {
+        match self {
+            Self::Single => SemanticSelectionMode::Single,
+            Self::Multiple => SemanticSelectionMode::Multiple,
+        }
+    }
+}
+
+/// Reusable standard option authoring for `ListBox` and later choice composites.
+///
+/// `RunenUI` deliberately stores no durable application item identity here.
+/// Capture application-domain IDs or values in the ordinary activation callback.
+pub struct OptionItem<Action> {
+    label: String,
+    selected: bool,
+    common: CommonNodeAuthoring,
+    enabled: bool,
+    discoverable_when_disabled: bool,
+    activation_factory: Option<Box<dyn FnMut() -> Action>>,
+    collection_position: Option<SemanticCollectionPosition>,
+}
+
+impl<Action> fmt::Debug for OptionItem<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OptionItem")
+            .field("label", &self.label)
+            .field("selected", &self.selected)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("layout", &self.common.layout)
+            .field("enabled", &self.enabled)
+            .field(
+                "discoverable_when_disabled",
+                &self.discoverable_when_disabled,
+            )
+            .field("actionable", &self.activation_factory.is_some())
+            .field("has_callback", &self.activation_factory.is_some())
+            .field("collection_position", &self.collection_position)
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
+            .field("diagnostics", &self.common.diagnostics)
+            .finish()
+    }
+}
+
+impl<Action> OptionItem<Action> {
+    #[must_use]
+    pub fn new(label: impl Into<String>, selected: bool) -> Self {
+        Self {
+            label: label.into(),
+            selected,
+            common: CommonNodeAuthoring::default(),
+            enabled: true,
+            discoverable_when_disabled: false,
+            activation_factory: None,
+            collection_position: None,
+        }
+    }
+
+    common_node_builder_methods!();
+
+    #[must_use]
+    pub const fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    #[must_use]
+    pub const fn disabled(self) -> Self {
+        self.enabled(false)
+    }
+
+    /// Keeps a disabled option in focus-group discovery while activation stays disabled.
+    #[must_use]
+    pub const fn discoverable_when_disabled(mut self, discoverable: bool) -> Self {
+        self.discoverable_when_disabled = discoverable;
+        self
+    }
+
+    #[must_use]
+    pub fn on_activate(mut self, callback: impl FnMut() -> Action + 'static) -> Self {
+        self.activation_factory = Some(Box::new(callback));
+        self
+    }
+
+    #[must_use]
+    pub const fn selected(&self) -> bool {
+        self.selected
+    }
+
+    const fn focus_eligible_for_list_box_entry(&self) -> bool {
+        self.enabled || self.discoverable_when_disabled
+    }
+
+    fn search_text(&self) -> &str {
+        &self.label
+    }
+
+    const fn with_collection_position(mut self, position: SemanticCollectionPosition) -> Self {
+        self.collection_position = Some(position);
+        self
+    }
+}
+
+struct OptionItemWidget<Action> {
+    label: String,
+    selected: bool,
+    enabled: bool,
+    activation_factory: Option<Box<dyn FnMut() -> Action>>,
+    collection_position: Option<SemanticCollectionPosition>,
+}
+
+impl<Action> fmt::Debug for OptionItemWidget<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OptionItemWidget")
+            .field("label", &self.label)
+            .field("selected", &self.selected)
+            .field("enabled", &self.enabled)
+            .field("actionable", &self.activation_factory.is_some())
+            .field("has_callback", &self.activation_factory.is_some())
+            .field("collection_position", &self.collection_position)
+            .finish()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct OptionItemWidgetState {
+    label: String,
+    selected: bool,
+    enabled: bool,
+    actionable: bool,
+    collection_position: Option<SemanticCollectionPosition>,
+}
+
+impl<Action> Widget<Action> for OptionItemWidget<Action> {
+    type State = OptionItemWidgetState;
+
+    fn create_state(&self) -> Self::State {
+        OptionItemWidgetState {
+            label: self.label.clone(),
+            selected: self.selected,
+            enabled: self.enabled,
+            actionable: self.activation_factory.is_some(),
+            collection_position: self.collection_position,
+        }
+    }
+
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
+        if state.label != self.label {
+            context.invalidate(
+                WidgetInvalidation::LAYOUT
+                    | WidgetInvalidation::PAINT
+                    | WidgetInvalidation::SEMANTICS,
+            );
+        }
+        if state.selected != self.selected || state.collection_position != self.collection_position
+        {
+            context.invalidate(WidgetInvalidation::SEMANTICS);
+        }
+        if state.enabled != self.enabled {
+            context.invalidate(
+                WidgetInvalidation::INTERACTION
+                    | WidgetInvalidation::PAINT
+                    | WidgetInvalidation::SEMANTICS,
+            );
+        }
+        let actionable = self.activation_factory.is_some();
+        if state.actionable != actionable {
+            context.invalidate(WidgetInvalidation::INTERACTION | WidgetInvalidation::SEMANTICS);
+        }
+        state.label.clone_from(&self.label);
+        state.selected = self.selected;
+        state.enabled = self.enabled;
+        state.actionable = actionable;
+        state.collection_position = self.collection_position;
+    }
+
+    fn activation(&self, _: &Self::State) -> WidgetActivation {
+        if self.activation_factory.is_some() {
+            WidgetActivation::actionable(self.enabled)
+        } else if self.enabled {
+            WidgetActivation::NONE
+        } else {
+            WidgetActivation::disabled()
+        }
+    }
+
+    fn activate(
+        &mut self,
+        _: &mut Self::State,
+        _: &mut WidgetActivationContext<Action>,
+    ) -> WidgetActivationOutput<Action> {
+        if !self.enabled {
+            return WidgetActivationOutput::none();
+        }
+        self.activation_factory
+            .as_mut()
+            .map_or_else(WidgetActivationOutput::none, |factory| {
+                WidgetActivationOutput::action(factory())
+            })
+    }
+
+    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::Text {
+            content: self.label.clone(),
+        }
+    }
+
+    fn hit_test(&self, _: &Self::State, context: HitContributionContext) -> HitContribution {
+        HitContribution::single_rect(local_rect(context.local_size()))
+    }
+
+    fn semantics(
+        &self,
+        state: &Self::State,
+        _: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let mut node = SemanticNodeContribution::primary(SemanticRole::Option)
+            .with_name(state.label.clone())
+            .with_state(
+                SemanticState::ENABLED
+                    .with_disabled(!state.enabled)
+                    .with_selected(state.selected),
+            )
+            .with_action(SemanticAction::RequestFocus);
+        if let Some(position) = state.collection_position {
+            node = node.with_collection_position(position);
+        }
+        if state.actionable {
+            node = node.with_action(SemanticAction::Activate);
+        }
+        SemanticContribution::single(node)
+    }
+}
+
+impl<Action: 'static> View<Action> for OptionItem<Action> {
+    fn into_element(self) -> Element<Action> {
+        let focusability = if self.discoverable_when_disabled {
+            Focusability::FocusableWhenDisabled
+        } else {
+            Focusability::Focusable
+        };
+        let (fields, diagnostics) = self.common.into_authored_fields(focusability, None);
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(OptionItemWidget {
+                label: self.label,
+                selected: self.selected,
+                enabled: self.enabled,
+                activation_factory: self.activation_factory,
+                collection_position: self.collection_position,
+            })),
+            Vec::new(),
+            diagnostics,
+        )
+    }
+}
+
+pub struct ListBox<Action> {
+    children: Vec<OptionItem<Action>>,
+    common: CommonNodeAuthoring,
+    orientation: Axis,
+    selection_mode: ListBoxSelectionMode,
+    selection_follows_focus: bool,
+    type_ahead: FocusGroupTypeAhead,
+}
+
+impl<Action> fmt::Debug for ListBox<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ListBox")
+            .field("children", &self.children)
+            .field("id", &self.common.id)
+            .field("key", &self.common.key)
+            .field("layout", &self.common.layout)
+            .field("orientation", &self.orientation)
+            .field("selection_mode", &self.selection_mode)
+            .field("selection_follows_focus", &self.selection_follows_focus)
+            .field("type_ahead", &self.type_ahead)
+            .field("style", &self.common.style)
+            .field("timelines", &self.common.timelines)
+            .field("diagnostics", &self.common.diagnostics)
+            .finish()
+    }
+}
+
+fn default_list_box_type_ahead() -> FocusGroupTypeAhead {
+    FocusGroupTypeAhead::new(core::time::Duration::from_millis(500))
+        .unwrap_or_else(|_| unreachable!("the standard ListBox timeout is bounded"))
+}
+
+impl<Action> ListBox<Action> {
+    #[must_use]
+    pub fn new(children: impl IntoIterator<Item = OptionItem<Action>>) -> Self {
+        Self {
+            children: children.into_iter().collect(),
+            common: CommonNodeAuthoring {
+                layout: LayoutStyle::default().with_container(LayoutContainer::Flex(
+                    FlexContainerStyle::default().with_direction(FlexDirection::Column),
+                )),
+                ..CommonNodeAuthoring::default()
+            },
+            orientation: Axis::Vertical,
+            selection_mode: ListBoxSelectionMode::Single,
+            selection_follows_focus: false,
+            type_ahead: default_list_box_type_ahead(),
+        }
+    }
+
+    common_node_builder_methods!();
+
+    #[must_use]
+    pub fn gap(mut self, gap: impl Into<LogicalLength>) -> Self {
+        self.common.layout = self.common.layout.with_gap(gap);
+        self
+    }
+
+    #[must_use]
+    pub fn orientation(mut self, orientation: Axis) -> Self {
+        self.orientation = orientation;
+        let direction = match orientation {
+            Axis::Horizontal => FlexDirection::Row,
+            Axis::Vertical => FlexDirection::Column,
+        };
+        self.common.layout = self.common.layout.with_container(LayoutContainer::Flex(
+            FlexContainerStyle::default().with_direction(direction),
+        ));
+        self
+    }
+
+    #[must_use]
+    pub const fn selection_mode(mut self, selection_mode: ListBoxSelectionMode) -> Self {
+        self.selection_mode = selection_mode;
+        self
+    }
+
+    /// Uses the existing focus-group `ActivateTarget` policy after successful movement.
+    ///
+    /// This is only valid for single-selection authoring. Multi-selection keeps
+    /// focus and durable application selection separate.
+    #[must_use]
+    pub const fn selection_follows_focus(mut self, enabled: bool) -> Self {
+        self.selection_follows_focus = enabled;
+        self
+    }
+
+    /// Overrides the standard 500 ms bounded type-ahead policy.
+    #[must_use]
+    pub const fn type_ahead(mut self, policy: FocusGroupTypeAhead) -> Self {
+        self.type_ahead = policy;
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ListBoxWidgetState {
+    orientation: Axis,
+    selection_mode: ListBoxSelectionMode,
+    multiple_selected_in_single: bool,
+    follow_focus_in_multiple: bool,
+}
+
+#[derive(Debug)]
+struct ListBoxWidget {
+    orientation: Axis,
+    selection_mode: ListBoxSelectionMode,
+    multiple_selected_in_single: bool,
+    follow_focus_in_multiple: bool,
+}
+
+impl ListBoxWidget {
+    const fn invalid_authoring(&self) -> bool {
+        self.multiple_selected_in_single || self.follow_focus_in_multiple
+    }
+}
+
+impl<Action> Widget<Action> for ListBoxWidget {
+    type State = ListBoxWidgetState;
+
+    fn create_state(&self) -> Self::State {
+        ListBoxWidgetState {
+            orientation: self.orientation,
+            selection_mode: self.selection_mode,
+            multiple_selected_in_single: self.multiple_selected_in_single,
+            follow_focus_in_multiple: self.follow_focus_in_multiple,
+        }
+    }
+
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
+        if state.orientation != self.orientation || state.selection_mode != self.selection_mode {
+            context.invalidate(WidgetInvalidation::SEMANTICS);
+        }
+        if state.multiple_selected_in_single != self.multiple_selected_in_single
+            || state.follow_focus_in_multiple != self.follow_focus_in_multiple
+        {
+            context.invalidate(WidgetInvalidation::SEMANTICS | WidgetInvalidation::DIAGNOSTICS);
+        }
+        state.orientation = self.orientation;
+        state.selection_mode = self.selection_mode;
+        state.multiple_selected_in_single = self.multiple_selected_in_single;
+        state.follow_focus_in_multiple = self.follow_focus_in_multiple;
+    }
+
+    fn event(
+        &mut self,
+        _: &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        if self.invalid_authoring()
+            || context.phase() != EventPhase::Bubble
+            || context.default_is_prevented()
+        {
+            return WidgetEventOutput::none();
+        }
+        let delegated = if let Some(command) = event
+            .as_semantic_command()
+            .map(SemanticCommandEvent::command)
+        {
+            match (self.orientation, command) {
+                (Axis::Vertical, SemanticCommand::FocusUp)
+                | (Axis::Horizontal, SemanticCommand::FocusLeft) => {
+                    Some(SemanticCommand::FocusGroupPrevious)
+                }
+                (Axis::Vertical, SemanticCommand::FocusDown)
+                | (Axis::Horizontal, SemanticCommand::FocusRight) => {
+                    Some(SemanticCommand::FocusGroupNext)
+                }
+                _ => None,
+            }
+        } else if let Some(keyboard) = event.as_keyboard() {
+            if keyboard.phase() == KeyboardPhase::Down
+                && keyboard.modifiers() == crate::KeyModifiers::NONE
+            {
+                match keyboard.logical_key() {
+                    LogicalKey::Home => Some(SemanticCommand::FocusGroupFirst),
+                    LogicalKey::End => Some(SemanticCommand::FocusGroupLast),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if let Some(delegated) = delegated {
+            context.prevent_default();
+            context.stop_propagation();
+            context.emit_command(delegated);
+        }
+        WidgetEventOutput::none()
+    }
+
+    fn semantics(
+        &self,
+        state: &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        if state.multiple_selected_in_single || state.follow_focus_in_multiple {
+            return SemanticContribution::empty();
+        }
+        let orientation = match state.orientation {
+            Axis::Horizontal => SemanticOrientation::Horizontal,
+            Axis::Vertical => SemanticOrientation::Vertical,
+        };
+        let mut node = SemanticNodeContribution::primary(SemanticRole::ListBox)
+            .with_orientation(orientation)
+            .with_selection_mode(state.selection_mode.semantic());
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
+        SemanticContribution::single(node)
+    }
+
+    fn diagnostics(&self, state: &Self::State) -> Vec<WidgetDiagnostic> {
+        let mut diagnostics = Vec::new();
+        if state.multiple_selected_in_single {
+            diagnostics.push(WidgetDiagnostic::new(
+                "runenui.control.list-box.multiple-selected-single",
+                "single-selection ListBox requires at most one selected OptionItem",
+            ));
+        }
+        if state.follow_focus_in_multiple {
+            diagnostics.push(WidgetDiagnostic::new(
+                "runenui.control.list-box.multiple-follow-focus",
+                "multi-selection ListBox cannot use selection-follows-focus",
+            ));
+        }
+        diagnostics
+    }
+}
+
+impl<Action> ChildBearingWidget<Action> for ListBoxWidget {}
+
+impl<Action: 'static> View<Action> for ListBox<Action> {
+    fn into_element(self) -> Element<Action> {
+        let selected_count = self
+            .children
+            .iter()
+            .filter(|child| child.selected())
+            .count();
+        let multiple_selected_in_single =
+            self.selection_mode == ListBoxSelectionMode::Single && selected_count > 1;
+        let follow_focus_in_multiple =
+            self.selection_mode == ListBoxSelectionMode::Multiple && self.selection_follows_focus;
+        let invalid_authoring = multiple_selected_in_single || follow_focus_in_multiple;
+        let known_size = u64::try_from(self.children.len())
+            .unwrap_or_else(|_| unreachable!("mounted ListBox length fits semantic u64 size"));
+        let mut preferred_assigned = false;
+        let children = self
+            .children
+            .into_iter()
+            .enumerate()
+            .map(|(index, child)| {
+                let selected = child.selected();
+                let entry_eligible = child.focus_eligible_for_list_box_entry();
+                let search_text = child.search_text().to_owned();
+                let preferred = selected && entry_eligible && !preferred_assigned;
+                if preferred {
+                    preferred_assigned = true;
+                }
+                let index = u64::try_from(index)
+                    .unwrap_or_else(|_| unreachable!("mounted ListBox index fits semantic u64"));
+                let position = SemanticCollectionPosition::new(index, Some(known_size))
+                    .unwrap_or_else(|_| unreachable!("ListBox collection metadata is coherent"));
+                let element = child
+                    .with_collection_position(position)
+                    .into_element()
+                    .focus_group_preferred(preferred)
+                    .focus_group_search_text(search_text);
+                if invalid_authoring {
+                    element.with_focusability(Focusability::Hidden)
+                } else {
+                    element
+                }
+            })
+            .collect();
+
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(Focusability::Automatic, None);
+        let element = Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(ListBoxWidget {
+                orientation: self.orientation,
+                selection_mode: self.selection_mode,
+                multiple_selected_in_single,
+                follow_focus_in_multiple,
+            })),
+            children,
+            diagnostics,
+        );
+        if invalid_authoring {
+            return element;
+        }
+        let activation = if self.selection_follows_focus {
+            FocusGroupActivationPolicy::ActivateTarget
+        } else {
+            FocusGroupActivationPolicy::Manual
+        };
+        element.focus_group(
+            FocusGroup::new()
+                .with_boundary(FocusGroupBoundaryPolicy::Stop)
+                .with_activation(activation)
+                .with_type_ahead(self.type_ahead),
+        )
+    }
+}
+
 /// Standard M11 scrollbar composed entirely from public scroll-control and chrome contracts.
 ///
 /// The track is this view's ordinary node. The thumb is an ordinary child node
@@ -1928,6 +2508,14 @@ pub fn radio_group<Action>(
     children: impl IntoIterator<Item = RadioButton<Action>>,
 ) -> RadioGroup<Action> {
     RadioGroup::new(children)
+}
+#[must_use]
+pub fn option_item<Action>(label: impl Into<String>, selected: bool) -> OptionItem<Action> {
+    OptionItem::new(label, selected)
+}
+#[must_use]
+pub fn list_box<Action>(children: impl IntoIterator<Item = OptionItem<Action>>) -> ListBox<Action> {
+    ListBox::new(children)
 }
 #[must_use]
 pub fn text(content: impl Into<String>) -> Text {
