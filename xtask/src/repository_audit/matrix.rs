@@ -845,6 +845,31 @@ mod tests {
         Ok(())
     }
 
+    fn assert_m11_slice(
+        rows: &[MatrixRow],
+        slice: &str,
+        expected_ids: &[&str],
+        status: &str,
+    ) {
+        let matching = rows
+            .iter()
+            .filter(|row| row.cells[5] == slice)
+            .collect::<Vec<_>>();
+        assert_eq!(matching.len(), expected_ids.len());
+        assert_eq!(
+            matching
+                .iter()
+                .map(|row| row.cells[0].as_str())
+                .collect::<BTreeSet<_>>(),
+            expected_ids.iter().copied().collect::<BTreeSet<_>>()
+        );
+        assert!(
+            matching
+                .iter()
+                .all(|row| row.cells[6] == status && row.cells[7] == "Required")
+        );
+    }
+
     #[test]
     #[allow(clippy::assert_is_empty)]
     fn m11_inventory_accepts_current_control_contracts() -> Result<(), String> {
@@ -858,90 +883,66 @@ mod tests {
         assert_eq!(parse_schema_errors, 0);
         assert_eq!(rows.len(), 32);
 
-        let rows_for = |slice: &str| {
-            rows.iter()
-                .filter(|row| row.cells[5] == slice)
-                .collect::<Vec<_>>()
-        };
-        let baseline_rows = rows_for("M11A");
-        let semantic_rows = rows_for("M11B");
-        let binary_control_rows = rows_for("M11C");
-        let radio_rows = rows_for("M11D2");
-        let extended_semantic_rows = rows_for("M11SEM1");
-        let semantic_action_rows = rows_for("M11S2");
-        let scroll_b_rows = rows_for("M11SCROLLB");
-        let collection_rows = rows_for("M11COLL2");
-        let tabs_rows = rows_for("M11TABS");
-
-        assert_eq!(baseline_rows.len(), 5);
-        assert!(baseline_rows.iter().all(|row| {
-            row.cells[0].starts_with("M11CTRL-")
-                && row.cells[6] == "owner-accepted"
-                && row.cells[7] == "Required"
-        }));
-
-        assert_eq!(semantic_rows.len(), 3);
-        assert!(semantic_rows.iter().all(|row| {
-            row.cells[0].starts_with("M11CTRL-")
-                && row.cells[6] == "owner-accepted"
-                && row.cells[7] == "Required"
-        }));
-
-        assert_eq!(binary_control_rows.len(), 2);
-        assert!(binary_control_rows.iter().all(|row| {
-            matches!(row.cells[0].as_str(), "M11CTRL-09" | "M11CTRL-10")
-                && row.cells[6] == "owner-accepted"
-                && row.cells[7] == "Required"
-        }));
-
-        assert_eq!(radio_rows.len(), 3);
-        assert!(radio_rows.iter().all(|row| {
-            matches!(
-                row.cells[0].as_str(),
-                "M11CTRL-11" | "M11CTRL-12" | "M11CTRL-13"
-            ) && row.cells[6] == "owner-accepted"
-                && row.cells[7] == "Required"
-        }));
-        assert_eq!(extended_semantic_rows.len(), 3);
-        assert!(extended_semantic_rows.iter().all(|row| {
-            matches!(
-                row.cells[0].as_str(),
-                "M11CTRL-14" | "M11CTRL-15" | "M11CTRL-16"
-            ) && row.cells[6] == "owner-accepted"
-                && row.cells[7] == "Required"
-        }));
-        assert_eq!(semantic_action_rows.len(), 3);
-        assert!(semantic_action_rows.iter().all(|row| {
-            matches!(
-                row.cells[0].as_str(),
-                "M11CTRL-17" | "M11CTRL-18" | "M11CTRL-19"
-            ) && row.cells[6] == "owner-accepted"
-                && row.cells[7] == "Required"
-        }));
-        assert_eq!(scroll_b_rows.len(), 5);
-        assert!(scroll_b_rows.iter().all(|row| {
-            matches!(
-                row.cells[0].as_str(),
-                "M11CTRL-20" | "M11CTRL-21" | "M11CTRL-22" | "M11CTRL-23" | "M11CTRL-24"
-            ) && row.cells[6] == "owner-accepted"
-                && row.cells[7] == "Required"
-        }));
-        assert_eq!(collection_rows.len(), 4);
-        assert!(collection_rows.iter().all(|row| {
-            matches!(
-                row.cells[0].as_str(),
-                "M11CTRL-25" | "M11CTRL-26" | "M11CTRL-27" | "M11CTRL-28"
-            ) && row.cells[6] == "owner-accepted"
-                && row.cells[7] == "Required"
-        }));
-        assert_eq!(tabs_rows.len(), 4);
-        assert!(tabs_rows.iter().all(|row| {
-            matches!(
-                row.cells[0].as_str(),
-                "M11CTRL-29" | "M11CTRL-30" | "M11CTRL-31" | "M11CTRL-32"
-            ) && row.cells[6] == "implementation-complete"
-                && row.cells[7] == "Required"
-        }));
+        assert_m11_slice(
+            &rows,
+            "M11A",
+            &["M11CTRL-01", "M11CTRL-02", "M11CTRL-03", "M11CTRL-04", "M11CTRL-05"],
+            "owner-accepted",
+        );
+        assert_m11_slice(
+            &rows,
+            "M11B",
+            &["M11CTRL-06", "M11CTRL-07", "M11CTRL-08"],
+            "owner-accepted",
+        );
+        assert_m11_slice(
+            &rows,
+            "M11C",
+            &["M11CTRL-09", "M11CTRL-10"],
+            "owner-accepted",
+        );
+        assert_m11_slice(
+            &rows,
+            "M11D2",
+            &["M11CTRL-11", "M11CTRL-12", "M11CTRL-13"],
+            "owner-accepted",
+        );
+        assert_m11_slice(
+            &rows,
+            "M11SEM1",
+            &["M11CTRL-14", "M11CTRL-15", "M11CTRL-16"],
+            "owner-accepted",
+        );
+        assert_m11_slice(
+            &rows,
+            "M11S2",
+            &["M11CTRL-17", "M11CTRL-18", "M11CTRL-19"],
+            "owner-accepted",
+        );
+        assert_m11_slice(
+            &rows,
+            "M11SCROLLB",
+            &[
+                "M11CTRL-20",
+                "M11CTRL-21",
+                "M11CTRL-22",
+                "M11CTRL-23",
+                "M11CTRL-24",
+            ],
+            "owner-accepted",
+        );
+        assert_m11_slice(
+            &rows,
+            "M11COLL2",
+            &["M11CTRL-25", "M11CTRL-26", "M11CTRL-27", "M11CTRL-28"],
+            "owner-accepted",
+        );
+        assert_m11_slice(
+            &rows,
+            "M11TABS",
+            &["M11CTRL-29", "M11CTRL-30", "M11CTRL-31", "M11CTRL-32"],
+            "implementation-complete",
+        );
         assert_eq!(
             rows.iter()
                 .map(|row| row.cells[5].as_str())
@@ -958,7 +959,6 @@ mod tests {
                 "M11S2",
             ])
         );
-
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }
