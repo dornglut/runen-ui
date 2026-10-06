@@ -85,7 +85,7 @@ impl Widget<Action> for DownstreamListBox {
 
     fn event(
         &mut self,
-        _: &mut Self::State,
+        (): &mut Self::State,
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
@@ -113,7 +113,7 @@ impl Widget<Action> for DownstreamListBox {
 
     fn semantics(
         &self,
-        _: &Self::State,
+        (): &Self::State,
         context: SemanticContributionContext,
     ) -> SemanticContribution {
         let mut node = SemanticNodeContribution::primary(SemanticRole::ListBox)
@@ -295,7 +295,7 @@ impl UiApp for StandardScrollApp {
             )
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update(_: &mut Self::State, (): Self::Action) {}
 }
 
 #[test]
