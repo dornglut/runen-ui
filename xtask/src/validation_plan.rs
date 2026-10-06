@@ -2,17 +2,17 @@
 
 use std::{fs, path::Path};
 
-pub const PARTITION_MANIFEST_PATH: &str = "validation-partitions.txt";
+pub(crate) const PARTITION_MANIFEST_PATH: &str = "validation-partitions.txt";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ValidationPartition {
+pub(crate) enum ValidationPartition {
     WorkspaceTests,
     PublicContract,
     RepositoryQuality,
 }
 
 impl ValidationPartition {
-    pub const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::WorkspaceTests => "workspace-tests",
             Self::PublicContract => "public-contract",
@@ -29,9 +29,45 @@ impl ValidationPartition {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ValidationSelection {
+pub(crate) enum ValidationPhase {
+    StableMetadata,
+    StableFormatting,
+    WorkspaceTests,
+    StableClippy,
+    PublicContract,
+    LicensingAndPublishPolicy,
+    DocumentationLinks,
+    RepositoryAudit,
+}
+
+impl ValidationPhase {
+    const fn partition(self) -> ValidationPartition {
+        match self {
+            Self::WorkspaceTests => ValidationPartition::WorkspaceTests,
+            Self::PublicContract => ValidationPartition::PublicContract,
+            Self::StableMetadata
+            | Self::StableFormatting
+            | Self::StableClippy
+            | Self::LicensingAndPublishPolicy
+            | Self::DocumentationLinks
+            | Self::RepositoryAudit => ValidationPartition::RepositoryQuality,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ValidationSelection {
     Complete,
     Partition(ValidationPartition),
+}
+
+impl ValidationSelection {
+    fn includes(self, phase: ValidationPhase) -> bool {
+        match self {
+            Self::Complete => true,
+            Self::Partition(partition) => phase.partition() == partition,
+        }
+    }
 }
 
 const PARTITIONS: &[ValidationPartition] = &[
@@ -40,7 +76,18 @@ const PARTITIONS: &[ValidationPartition] = &[
     ValidationPartition::RepositoryQuality,
 ];
 
-pub fn parse_selection(
+const VALIDATION_PHASES: &[ValidationPhase] = &[
+    ValidationPhase::StableMetadata,
+    ValidationPhase::StableFormatting,
+    ValidationPhase::WorkspaceTests,
+    ValidationPhase::StableClippy,
+    ValidationPhase::PublicContract,
+    ValidationPhase::LicensingAndPublishPolicy,
+    ValidationPhase::DocumentationLinks,
+    ValidationPhase::RepositoryAudit,
+];
+
+pub(crate) fn parse_selection(
     arguments: impl Iterator<Item = String>,
 ) -> Result<ValidationSelection, String> {
     let arguments = arguments.collect::<Vec<_>>();
@@ -53,7 +100,16 @@ pub fn parse_selection(
     }
 }
 
-pub fn usage() -> String {
+pub(crate) fn phases(
+    selection: ValidationSelection,
+) -> impl Iterator<Item = ValidationPhase> {
+    VALIDATION_PHASES
+        .iter()
+        .copied()
+        .filter(move |phase| selection.includes(*phase))
+}
+
+pub(crate) fn usage() -> String {
     let partitions = PARTITIONS
         .iter()
         .map(|partition| partition.as_str())
@@ -62,11 +118,21 @@ pub fn usage() -> String {
     format!("usage: cargo validate [--partition <{partitions}>]")
 }
 
-pub fn validate_manifest(root: &Path) -> Result<(), String> {
+pub(crate) fn validate_manifest(root: &Path) -> Result<(), String> {
     let path = root.join(PARTITION_MANIFEST_PATH);
     let actual = fs::read_to_string(&path)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
     validate_manifest_contents(&actual)
+}
+
+pub(crate) fn expected_manifest() -> String {
+    let mut manifest = PARTITIONS
+        .iter()
+        .map(|partition| partition.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    manifest.push('\n');
+    manifest
 }
 
 fn validate_manifest_contents(actual: &str) -> Result<(), String> {
@@ -80,21 +146,11 @@ fn validate_manifest_contents(actual: &str) -> Result<(), String> {
     }
 }
 
-fn expected_manifest() -> String {
-    let mut manifest = PARTITIONS
-        .iter()
-        .map(|partition| partition.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-    manifest.push('\n');
-    manifest
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        ValidationPartition, ValidationSelection, expected_manifest, parse_selection,
-        validate_manifest_contents,
+        VALIDATION_PHASES, ValidationPartition, ValidationPhase, ValidationSelection,
+        expected_manifest, parse_selection, phases, validate_manifest_contents,
     };
 
     #[test]
@@ -107,10 +163,34 @@ mod tests {
     }
 
     #[test]
-    fn manifest_omission_fails_closed() {
-        assert!(
-            validate_manifest_contents("workspace-tests\npublic-contract\n").is_err()
+    fn complete_selection_preserves_the_accepted_serial_phase_order() {
+        assert_eq!(
+            phases(ValidationSelection::Complete).collect::<Vec<_>>(),
+            VALIDATION_PHASES
         );
+    }
+
+    #[test]
+    fn repository_quality_membership_is_owned_by_the_phase_registry() {
+        assert_eq!(
+            phases(ValidationSelection::Partition(
+                ValidationPartition::RepositoryQuality
+            ))
+            .collect::<Vec<_>>(),
+            [
+                ValidationPhase::StableMetadata,
+                ValidationPhase::StableFormatting,
+                ValidationPhase::StableClippy,
+                ValidationPhase::LicensingAndPublishPolicy,
+                ValidationPhase::DocumentationLinks,
+                ValidationPhase::RepositoryAudit,
+            ]
+        );
+    }
+
+    #[test]
+    fn manifest_omission_fails_closed() {
+        assert!(validate_manifest_contents("workspace-tests\npublic-contract\n").is_err());
     }
 
     #[test]
@@ -149,20 +229,19 @@ mod tests {
 
     #[test]
     fn unknown_partition_fails_closed() {
-        let error = parse_selection(
+        let result = parse_selection(
             ["--partition", "missing"]
                 .into_iter()
                 .map(str::to_owned),
-        )
-        .expect_err("unknown partition must fail");
-        assert!(error.contains("unknown validation partition"));
+        );
+        assert!(
+            matches!(result, Err(ref error) if error.contains("unknown validation partition"))
+        );
     }
 
     #[test]
     fn malformed_partition_arguments_fail_closed() {
-        assert!(
-            parse_selection(["--partition"].into_iter().map(str::to_owned)).is_err()
-        );
+        assert!(parse_selection(["--partition"].into_iter().map(str::to_owned)).is_err());
         assert!(
             parse_selection(
                 ["--partition", "workspace-tests", "extra"]

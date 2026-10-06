@@ -263,6 +263,14 @@ fn build_report(root: &Path) -> Result<AuditReport, String> {
         ));
     }
 
+    if let Err(error) = super::validation_plan::validate_manifest(root) {
+        report.findings.push(Finding::fatal(
+            "repository.validation_partition_inventory",
+            Some(super::validation_plan::PARTITION_MANIFEST_PATH.to_owned()),
+            error,
+        ));
+    }
+
     audit_repository_governance(root, &mut report.findings)?;
     audit_documentation_authority(root, &mut report.findings)?;
     context::audit(root, &mut report.findings)?;

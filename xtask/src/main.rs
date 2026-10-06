@@ -94,40 +94,33 @@ fn validate_selection(
     selection: validation_plan::ValidationSelection,
     timings: &mut validation_timing::ValidationTimings,
 ) -> Result<(), String> {
-    match selection {
-        validation_plan::ValidationSelection::Complete => validate_complete(root, timings),
-        validation_plan::ValidationSelection::Partition(
-            validation_plan::ValidationPartition::WorkspaceTests,
-        ) => run_workspace_tests(root, timings),
-        validation_plan::ValidationSelection::Partition(
-            validation_plan::ValidationPartition::PublicContract,
-        ) => public_consumer::validate(root, timings),
-        validation_plan::ValidationSelection::Partition(
-            validation_plan::ValidationPartition::RepositoryQuality,
-        ) => validate_repository_quality(root, timings),
+    for phase in validation_plan::phases(selection) {
+        validate_phase(root, phase, timings)?;
     }
+    Ok(())
 }
 
-fn validate_complete(
+fn validate_phase(
     root: &Path,
+    phase: validation_plan::ValidationPhase,
     timings: &mut validation_timing::ValidationTimings,
 ) -> Result<(), String> {
-    run_metadata(root, timings)?;
-    run_formatting(root, timings)?;
-    run_workspace_tests(root, timings)?;
-    run_clippy(root, timings)?;
-    public_consumer::validate(root, timings)?;
-    run_repository_policy_checks(root, timings)
-}
-
-fn validate_repository_quality(
-    root: &Path,
-    timings: &mut validation_timing::ValidationTimings,
-) -> Result<(), String> {
-    run_metadata(root, timings)?;
-    run_formatting(root, timings)?;
-    run_clippy(root, timings)?;
-    run_repository_policy_checks(root, timings)
+    match phase {
+        validation_plan::ValidationPhase::StableMetadata => run_metadata(root, timings),
+        validation_plan::ValidationPhase::StableFormatting => run_formatting(root, timings),
+        validation_plan::ValidationPhase::WorkspaceTests => run_workspace_tests(root, timings),
+        validation_plan::ValidationPhase::StableClippy => run_clippy(root, timings),
+        validation_plan::ValidationPhase::PublicContract => public_consumer::validate(root, timings),
+        validation_plan::ValidationPhase::LicensingAndPublishPolicy => {
+            timings.measure("licensing and publish policy", || validate_current_licensing(root))
+        }
+        validation_plan::ValidationPhase::DocumentationLinks => {
+            timings.measure("documentation links", || check_repository_links(root))
+        }
+        validation_plan::ValidationPhase::RepositoryAudit => {
+            timings.measure("fatal repository audit", || repository_audit::validate_fatal(root))
+        }
+    }
 }
 
 fn run_metadata(
@@ -185,20 +178,6 @@ fn run_stable_validation_step(
     arguments: &[&str],
 ) -> Result<(), String> {
     timings.measure(label, || run_cargo_step(root, "stable", arguments))
-}
-
-fn run_repository_policy_checks(
-    root: &Path,
-    timings: &mut validation_timing::ValidationTimings,
-) -> Result<(), String> {
-    timings.measure("licensing and publish policy", || {
-        validate_current_licensing(root)
-    })?;
-    timings.measure("documentation links", || check_repository_links(root))?;
-    timings.measure("fatal repository audit", || {
-        repository_audit::validate_fatal(root)
-    })?;
-    Ok(())
 }
 
 fn check_links() -> ExitCode {

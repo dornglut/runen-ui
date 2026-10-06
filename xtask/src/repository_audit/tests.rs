@@ -66,6 +66,10 @@ impl Fixture {
         self.write(
             "LICENSE",
             "MIT License\n\nCopyright (c) 2026 Crystonix\n\nPermission is hereby granted, free of charge\nTHE SOFTWARE IS PROVIDED \"AS IS\"\n",
+        )?;
+        self.write(
+            crate::validation_plan::PARTITION_MANIFEST_PATH,
+            &crate::validation_plan::expected_manifest(),
         )
     }
 
@@ -388,6 +392,18 @@ fn ci_contract_drift_is_fatal() -> Result<(), String> {
     fixture.write(".github/workflows/ci.yml", "name: Other\n")?;
     let report = build_report(fixture.path())?;
     assert_fatal_code(&report, "repository.workflow_contract");
+    Ok(())
+}
+
+#[test]
+fn validation_partition_inventory_drift_is_fatal() -> Result<(), String> {
+    let fixture = Fixture::new("partition-inventory-drift")?;
+    fixture.write(
+        crate::validation_plan::PARTITION_MANIFEST_PATH,
+        "workspace-tests\npublic-contract\n",
+    )?;
+    let report = build_report(fixture.path())?;
+    assert_fatal_code(&report, "repository.validation_partition_inventory");
     Ok(())
 }
 
