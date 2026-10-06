@@ -36,7 +36,7 @@ const PRIVATE_ARCHIVE_URL: &str = "github.com/Crystonix/runen-ui-private-archive
 const HISTORICAL_OWNER_TOKEN: &str = "Crystonix/runen-ui";
 const CURRENT_REPOSITORY_DECLARATION: &str =
     "repository = \"https://github.com/dornglut/runen-ui\"";
-const ACCEPTED_REUSABLE_WORKFLOW_REVISION: &str = "8df7328bb0c3997f2562e7498e97124e3be94d73";
+const ACCEPTED_REUSABLE_WORKFLOW_REVISION: &str = "718f53a5601f4fc89d8a8b1deab89550d36b70a9";
 const REUSABLE_WORKFLOW_OWNER_AND_DIRECTORY: &str = "dornglut/github-workflows/.github/workflows";
 const REUSABLE_RUST_WORKFLOW: &str = "reusable-rust-cargo-validate.yml";
 const ACTIVE_WORKFLOW_DIRECTORY: &str = ".github/workflows";
@@ -259,6 +259,14 @@ fn build_report(root: &Path) -> Result<AuditReport, String> {
         report.findings.push(Finding::fatal(
             "metadata.license_or_publish_policy",
             Some("Cargo.toml".to_owned()),
+            error,
+        ));
+    }
+
+    if let Err(error) = super::validation_plan::validate_manifest(root) {
+        report.findings.push(Finding::fatal(
+            "repository.validation_partition_inventory",
+            Some(super::validation_plan::PARTITION_MANIFEST_PATH.to_owned()),
             error,
         ));
     }

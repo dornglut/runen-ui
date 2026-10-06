@@ -1,0 +1,3 @@
+workspace-tests
+public-contract
+repository-quality
