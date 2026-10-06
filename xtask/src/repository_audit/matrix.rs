@@ -929,7 +929,7 @@ mod tests {
             matches!(
                 row.cells[0].as_str(),
                 "M11CTRL-25" | "M11CTRL-26" | "M11CTRL-27" | "M11CTRL-28"
-            ) && row.cells[6] == "implementation-complete"
+            ) && row.cells[6] == "owner-accepted"
                 && row.cells[7] == "Required"
         }));
         assert_eq!(
