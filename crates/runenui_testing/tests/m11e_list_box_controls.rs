@@ -364,8 +364,7 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
     passive_discoverable_state.disable_two = true;
     passive_discoverable_state.discover_two = true;
     passive_discoverable_state.passive_two = true;
-    let mut passive_discoverable =
-        TestHarness::<ListBoxApp>::mount(passive_discoverable_state);
+    let mut passive_discoverable = TestHarness::<ListBoxApp>::mount(passive_discoverable_state);
     assert!(passive_discoverable.publish().is_ok());
     command(
         &mut passive_discoverable,

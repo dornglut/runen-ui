@@ -274,8 +274,9 @@ fn list_box_and_option_item_use_typed_public_authoring_and_exact_semantics() {
     assert_eq!(node.state().selected(), Some(true));
     assert!(node.state().disabled());
 
-    let passive_disabled: runenui_core::Element<Action> =
-        option_item("Passive disabled", false).disabled().into_element();
+    let passive_disabled: runenui_core::Element<Action> = option_item("Passive disabled", false)
+        .disabled()
+        .into_element();
     let (_, _, _, _, _, _, _, _, passive_disabled_widget, _) =
         passive_disabled.into_runtime_parts().into_parts();
     let passive_disabled_state = passive_disabled_widget.create_state();
