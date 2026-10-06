@@ -1173,9 +1173,9 @@ impl ListBoxSelectionMode {
     }
 }
 
-/// Reusable standard option authoring for ListBox and later choice composites.
+/// Reusable standard option authoring for `ListBox` and later choice composites.
 ///
-/// RunenUI deliberately stores no durable application item identity here.
+/// `RunenUI` deliberately stores no durable application item identity here.
 /// Capture application-domain IDs or values in the ordinary activation callback.
 pub struct OptionItem<Action> {
     label: String,
@@ -1184,7 +1184,6 @@ pub struct OptionItem<Action> {
     enabled: bool,
     discoverable_when_disabled: bool,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
-    actionable: bool,
     collection_position: Option<SemanticCollectionPosition>,
 }
 
@@ -1202,7 +1201,7 @@ impl<Action> fmt::Debug for OptionItem<Action> {
                 "discoverable_when_disabled",
                 &self.discoverable_when_disabled,
             )
-            .field("actionable", &self.actionable)
+            .field("actionable", &self.activation_factory.is_some())
             .field("has_callback", &self.activation_factory.is_some())
             .field("collection_position", &self.collection_position)
             .field("style", &self.common.style)
@@ -1222,7 +1221,6 @@ impl<Action> OptionItem<Action> {
             enabled: true,
             discoverable_when_disabled: false,
             activation_factory: None,
-            actionable: false,
             collection_position: None,
         }
     }
@@ -1250,7 +1248,6 @@ impl<Action> OptionItem<Action> {
     #[must_use]
     pub fn on_activate(mut self, callback: impl FnMut() -> Action + 'static) -> Self {
         self.activation_factory = Some(Box::new(callback));
-        self.actionable = true;
         self
     }
 
@@ -1259,7 +1256,7 @@ impl<Action> OptionItem<Action> {
         self.selected
     }
 
-    fn focus_eligible_for_list_box_entry(&self) -> bool {
+    const fn focus_eligible_for_list_box_entry(&self) -> bool {
         self.enabled || self.discoverable_when_disabled
     }
 
@@ -1267,7 +1264,7 @@ impl<Action> OptionItem<Action> {
         &self.label
     }
 
-    fn with_collection_position(mut self, position: SemanticCollectionPosition) -> Self {
+    const fn with_collection_position(mut self, position: SemanticCollectionPosition) -> Self {
         self.collection_position = Some(position);
         self
     }
@@ -1278,7 +1275,6 @@ struct OptionItemWidget<Action> {
     selected: bool,
     enabled: bool,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
-    actionable: bool,
     collection_position: Option<SemanticCollectionPosition>,
 }
 
@@ -1289,7 +1285,7 @@ impl<Action> fmt::Debug for OptionItemWidget<Action> {
             .field("label", &self.label)
             .field("selected", &self.selected)
             .field("enabled", &self.enabled)
-            .field("actionable", &self.actionable)
+            .field("actionable", &self.activation_factory.is_some())
             .field("has_callback", &self.activation_factory.is_some())
             .field("collection_position", &self.collection_position)
             .finish()
@@ -1313,7 +1309,7 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
             label: self.label.clone(),
             selected: self.selected,
             enabled: self.enabled,
-            actionable: self.actionable,
+            actionable: self.activation_factory.is_some(),
             collection_position: self.collection_position,
         }
     }
@@ -1337,18 +1333,19 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
                     | WidgetInvalidation::SEMANTICS,
             );
         }
-        if state.actionable != self.actionable {
+        let actionable = self.activation_factory.is_some();
+        if state.actionable != actionable {
             context.invalidate(WidgetInvalidation::INTERACTION | WidgetInvalidation::SEMANTICS);
         }
         state.label.clone_from(&self.label);
         state.selected = self.selected;
         state.enabled = self.enabled;
-        state.actionable = self.actionable;
+        state.actionable = actionable;
         state.collection_position = self.collection_position;
     }
 
     fn activation(&self, _: &Self::State) -> WidgetActivation {
-        if self.actionable {
+        if self.activation_factory.is_some() {
             WidgetActivation::actionable(self.enabled)
         } else if self.enabled {
             WidgetActivation::NONE
@@ -1420,7 +1417,6 @@ impl<Action: 'static> View<Action> for OptionItem<Action> {
                 selected: self.selected,
                 enabled: self.enabled,
                 activation_factory: self.activation_factory,
-                actionable: self.actionable,
                 collection_position: self.collection_position,
             })),
             Vec::new(),
@@ -1507,7 +1503,7 @@ impl<Action> ListBox<Action> {
         self
     }
 
-    /// Uses the existing focus-group ActivateTarget policy after successful movement.
+    /// Uses the existing focus-group `ActivateTarget` policy after successful movement.
     ///
     /// This is only valid for single-selection authoring. Multi-selection keeps
     /// focus and durable application selection separate.
