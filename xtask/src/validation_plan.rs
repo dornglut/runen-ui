@@ -2,17 +2,17 @@
 
 use std::{fs, path::Path};
 
-pub(crate) const PARTITION_MANIFEST_PATH: &str = "validation-partitions.txt";
+pub const PARTITION_MANIFEST_PATH: &str = "validation-partitions.txt";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ValidationPartition {
+pub enum ValidationPartition {
     WorkspaceTests,
     PublicContract,
     RepositoryQuality,
 }
 
 impl ValidationPartition {
-    pub(crate) const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::WorkspaceTests => "workspace-tests",
             Self::PublicContract => "public-contract",
@@ -29,7 +29,7 @@ impl ValidationPartition {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ValidationPhase {
+pub enum ValidationPhase {
     StableMetadata,
     StableFormatting,
     WorkspaceTests,
@@ -56,7 +56,7 @@ impl ValidationPhase {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ValidationSelection {
+pub enum ValidationSelection {
     Complete,
     Partition(ValidationPartition),
 }
@@ -87,7 +87,7 @@ const VALIDATION_PHASES: &[ValidationPhase] = &[
     ValidationPhase::RepositoryAudit,
 ];
 
-pub(crate) fn parse_selection(
+pub fn parse_selection(
     arguments: impl Iterator<Item = String>,
 ) -> Result<ValidationSelection, String> {
     let arguments = arguments.collect::<Vec<_>>();
@@ -100,14 +100,14 @@ pub(crate) fn parse_selection(
     }
 }
 
-pub(crate) fn phases(selection: ValidationSelection) -> impl Iterator<Item = ValidationPhase> {
+pub fn phases(selection: ValidationSelection) -> impl Iterator<Item = ValidationPhase> {
     VALIDATION_PHASES
         .iter()
         .copied()
         .filter(move |phase| selection.includes(*phase))
 }
 
-pub(crate) fn usage() -> String {
+pub fn usage() -> String {
     let partitions = PARTITIONS
         .iter()
         .map(|partition| partition.as_str())
@@ -116,14 +116,14 @@ pub(crate) fn usage() -> String {
     format!("usage: cargo validate [--partition <{partitions}>]")
 }
 
-pub(crate) fn validate_manifest(root: &Path) -> Result<(), String> {
+pub fn validate_manifest(root: &Path) -> Result<(), String> {
     let path = root.join(PARTITION_MANIFEST_PATH);
     let actual = fs::read_to_string(&path)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
     validate_manifest_contents(&actual)
 }
 
-pub(crate) fn expected_manifest() -> String {
+pub fn expected_manifest() -> String {
     let mut manifest = PARTITIONS
         .iter()
         .map(|partition| partition.as_str())
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn malformed_partition_arguments_fail_closed() {
-        assert!(parse_selection(["--partition"].into_iter().map(str::to_owned)).is_err());
+        assert!(parse_selection(std::iter::once("--partition".to_owned())).is_err());
         assert!(
             parse_selection(
                 ["--partition", "workspace-tests", "extra"]
