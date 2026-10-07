@@ -34,6 +34,66 @@ impl<Action> MountedTree<Action> {
     pub(crate) fn publication_preorder_ids(&self) -> Vec<MountedNodeId> {
         self.preorder_ids()
     }
+    pub(crate) fn is_descendant_or_self(
+        &self,
+        target: &MountedNodeId,
+        ancestor: &MountedNodeId,
+    ) -> bool {
+        let mut current = Some(target.clone());
+        let mut remaining = self.live_count().saturating_add(1);
+        while let Some(id) = current {
+            if &id == ancestor {
+                return true;
+            }
+            if remaining == 0 {
+                return false;
+            }
+            remaining -= 1;
+            current = self.node(&id).and_then(|node| node.parent.clone());
+        }
+        false
+    }
+
+    /// Tests the logical interaction family defined by one presentation root.
+    ///
+    /// The family includes the projected root subtree, the exact logical owner
+    /// subtree, and presentation ancestors in the same mounted chain. It never
+    /// invents identity relationships from authored IDs or projected geometry.
+    pub(crate) fn presentation_family_contains(
+        &self,
+        root: &MountedNodeId,
+        target: &MountedNodeId,
+    ) -> bool {
+        if self.is_descendant_or_self(target, root) {
+            return true;
+        }
+        let Some(mut current) = self.node(root).and_then(|node| node.parent.clone()) else {
+            return false;
+        };
+        if self.is_descendant_or_self(target, &current) {
+            return true;
+        }
+        let mut remaining = self.live_count().saturating_add(1);
+        loop {
+            if remaining == 0 {
+                return false;
+            }
+            remaining -= 1;
+            let Some(node) = self.node(&current) else {
+                return false;
+            };
+            if node.surface_presentation.is_some()
+                && self.is_descendant_or_self(target, &current)
+            {
+                return true;
+            }
+            let Some(parent) = node.parent.clone() else {
+                return false;
+            };
+            current = parent;
+        }
+    }
+
 
     #[cfg(test)]
     pub(crate) fn index(&mut self) -> MountedTreeIndex<'_, Action> {

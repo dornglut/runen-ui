@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
     Axis, LogicalTransform, ScrollChrome, ScrollControlBinding, ScrollControlSnapshot,
-    StyleEnvironment, TextDocumentSnapshot, WidgetDiagnostic,
+    StyleEnvironment, SurfacePresentation, TextDocumentSnapshot, WidgetDiagnostic,
 };
 use runenui_text::{
     FontSourceSnapshot, TextCaretMap, TextCaretMapError, TextDisplaySelection, TextLayoutState,
@@ -427,6 +427,13 @@ impl CachedPresentationFacts {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PresentationInteractionRoot {
+    pub(crate) root: MountedNodeId,
+    pub(crate) owner: Option<MountedNodeId>,
+    pub(crate) presentation: SurfacePresentation,
+}
+
 /// Exact derived binding for one scroll-control owner in the accepted surface projection.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct CachedScrollControlProjection {
@@ -485,6 +492,29 @@ pub(crate) struct SurfaceCache {
 }
 
 impl SurfaceCache {
+    /// Returns published presentation roots from visual topmost to bottommost.
+    ///
+    /// Ordering is derived from the accepted #341 mounted-preorder presentation band;
+    /// this retains no separate "latest popup" state.
+    pub(crate) fn presentation_interaction_roots(&self) -> Vec<PresentationInteractionRoot> {
+        self.topology
+            .nodes
+            .iter()
+            .enumerate()
+            .rev()
+            .filter_map(|(position, node)| {
+                let presentation = node.surface_presentation.as_ref()?;
+                (self.presentation.published(position)
+                    && self.presentation.stack_root(position) == Some(position))
+                    .then(|| PresentationInteractionRoot {
+                        root: node.id.clone(),
+                        owner: node.parent.clone(),
+                        presentation: presentation.clone(),
+                    })
+            })
+            .collect()
+    }
+
     pub(crate) fn scroll_target_geometry(
         &self,
         target: &MountedNodeId,

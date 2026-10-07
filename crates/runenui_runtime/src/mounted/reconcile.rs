@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use runenui_core::{
     __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusGroup,
-    FocusGroupEntry, FocusScope, Focusability, LayoutStyle, ScrollChrome, ScrollControlBinding,
-    ShortcutBinding, StyleIntent, SurfacePresentation, WidgetInvalidation, WidgetMountContext,
-    WidgetUnmountReason, WidgetUpdateContext,
+    FocusGroupEntry, FocusScope, Focusability, LayoutStyle, PresentationFocusEntry, ScrollChrome,
+    ScrollControlBinding, ShortcutBinding, StyleIntent, SurfacePresentation, WidgetInvalidation,
+    WidgetMountContext, WidgetUnmountReason, WidgetUpdateContext,
 };
 
 use crate::ReconciliationDiagnostic;
@@ -74,6 +74,7 @@ pub(super) struct IncomingNode<Action> {
     focus_scope: Option<FocusScope>,
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
+    presentation_focus_entry: PresentationFocusEntry,
     focus_group_search_text: Option<String>,
     scroll_control_binding: Option<ScrollControlBinding>,
     scroll_chrome: Option<ScrollChrome>,
@@ -89,6 +90,7 @@ impl<Action> IncomingNode<Action> {
         let surface_presentation = parts.surface_presentation().cloned();
         let focus_group = parts.focus_group();
         let focus_group_entry = parts.focus_group_entry();
+        let presentation_focus_entry = parts.presentation_focus_entry();
         let focus_group_search_text = parts.focus_group_search_text().map(str::to_owned);
         let scroll_control_binding = parts.scroll_control_binding();
         let scroll_chrome = parts.scroll_chrome();
@@ -116,6 +118,7 @@ impl<Action> IncomingNode<Action> {
             focus_scope,
             focus_group,
             focus_group_entry,
+            presentation_focus_entry,
             focus_group_search_text,
             scroll_control_binding,
             scroll_chrome,
@@ -293,6 +296,7 @@ impl<Action> MountedTree<Action> {
             focus_scope,
             focus_group,
             focus_group_entry,
+            presentation_focus_entry,
             focus_group_search_text,
             scroll_control_binding,
             scroll_chrome,
@@ -585,6 +589,7 @@ impl<Action> MountedTree<Action> {
             focus_scope,
             focus_group,
             focus_group_entry,
+            presentation_focus_entry,
             focus_group_search_text,
             scroll_control_binding,
             scroll_chrome,
@@ -605,6 +610,8 @@ impl<Action> MountedTree<Action> {
             let topology_overflow_changed = node.layout.overflow() != layout.overflow();
             let style_changed = node.style != style;
             let timelines_changed = node.timelines != timelines;
+            let presentation_focus_entry_changed =
+                node.presentation_focus_entry != presentation_focus_entry;
             let scroll_control_binding_changed =
                 node.scroll_control_binding != scroll_control_binding;
             let scroll_chrome_changed = node.scroll_chrome != scroll_chrome;
@@ -618,6 +625,7 @@ impl<Action> MountedTree<Action> {
                     focus_scope,
                     focus_group,
                     focus_group_entry,
+                    presentation_focus_entry,
                     focus_group_search_text: focus_group_search_text.as_deref(),
                     diagnostics: &authoring_diagnostics,
                 },
@@ -632,6 +640,7 @@ impl<Action> MountedTree<Action> {
             node.focus_scope = focus_scope;
             node.focus_group = focus_group;
             node.focus_group_entry = focus_group_entry;
+            node.presentation_focus_entry = presentation_focus_entry;
             node.focus_group_search_text = focus_group_search_text;
             node.scroll_control_binding = scroll_control_binding;
             node.scroll_chrome = scroll_chrome;
@@ -645,6 +654,11 @@ impl<Action> MountedTree<Action> {
             node.caches.text_input = CachedCapability::Unresolved;
             let surface_presentation_invalidation =
                 surface_presentation_invalidation(surface_presentation_changed);
+            let presentation_focus_invalidation = if presentation_focus_entry_changed {
+                WidgetInvalidation::INTERACTION | WidgetInvalidation::DIAGNOSTICS
+            } else {
+                WidgetInvalidation::NONE
+            };
             let scroll_control_invalidation =
                 scroll_control_binding_invalidation(scroll_control_binding_changed);
             let scroll_chrome_invalidation = scroll_chrome_invalidation(scroll_chrome_changed);
@@ -653,6 +667,7 @@ impl<Action> MountedTree<Action> {
                 update_context.__runtime_take_invalidation()
                     | common_invalidation
                     | surface_presentation_invalidation
+                    | presentation_focus_invalidation
                     | scroll_control_invalidation
                     | scroll_chrome_invalidation,
             );
@@ -691,6 +706,7 @@ impl<Action> MountedTree<Action> {
             focus_scope,
             focus_group,
             focus_group_entry,
+            presentation_focus_entry,
             focus_group_search_text,
             scroll_control_binding,
             scroll_chrome,
@@ -872,6 +888,7 @@ struct CommonFieldRefs<'a> {
     focus_scope: Option<FocusScope>,
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
+    presentation_focus_entry: PresentationFocusEntry,
     focus_group_search_text: Option<&'a str>,
     diagnostics: &'a [runenui_core::AuthoringDiagnostic],
 }
@@ -899,6 +916,7 @@ fn common_field_invalidation<Action>(
         || node.focus_scope != incoming.focus_scope
         || node.focus_group != incoming.focus_group
         || node.focus_group_entry != incoming.focus_group_entry
+        || node.presentation_focus_entry != incoming.presentation_focus_entry
         || node.focus_group_search_text.as_deref() != incoming.focus_group_search_text
     {
         invalidation |= WidgetInvalidation::INTERACTION;

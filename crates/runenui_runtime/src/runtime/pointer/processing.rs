@@ -71,6 +71,8 @@ struct PreparedPointer {
     geometry: PointerGeometry,
     boundary_plan: PointerBoundaryPlan,
     routed_target: Option<MountedNodeId>,
+    presentation_block_root: Option<MountedNodeId>,
+    presentation_dismiss: Option<MountedNodeId>,
     parent: Option<TraceSequence>,
     selection_cancelled: bool,
     selection_tracking: bool,
@@ -167,7 +169,29 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let previous_path = prepared_stream.stream.physical_path().to_vec();
         let previous_capture_owner = prepared_stream.stream.capture_owner().cloned();
-        let boundary_plan = if geometry.snapshot.is_some() {
+        let retained_barrier = prepared_stream
+            .stream
+            .presentation_barrier()
+            .filter(|owner| {
+                self.tree.target_status(owner) == crate::mounted::TargetStatus::Live
+            })
+            .cloned();
+        let presentation_block = if previous_capture_owner.is_some() {
+            None
+        } else if let Some(root) = retained_barrier {
+            Some(crate::runtime::presentation::PresentationPointerBlock {
+                root,
+                dismiss: false,
+            })
+        } else {
+            self.presentation_pointer_block(
+                geometry.physical_target.as_ref(),
+                work.event.phase() == PointerPhase::Down,
+            )
+        };
+        let boundary_plan = if presentation_block.is_some() {
+            PointerBoundaryPlan::unchanged(previous_path)
+        } else if geometry.snapshot.is_some() {
             notifications::plan_boundary_transition(
                 work.event.pointer_id(),
                 previous_path,
@@ -181,16 +205,27 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let mut stream = prepared_stream.stream;
         stream.update_observation(
             work.event.position(),
-            geometry.physical_path.clone(),
+            if presentation_block.is_some() {
+                Vec::new()
+            } else {
+                geometry.physical_path.clone()
+            },
             work.event.buttons().clone(),
         );
+        if work.event.phase() == PointerPhase::Down {
+            stream.set_presentation_barrier(
+                presentation_block.as_ref().map(|block| block.root.clone()),
+            );
+        }
         stream.set_surface_context(work.event.surface_context().clone());
         let owner_cleanup = self.clear_non_live_pointer_owners(&mut stream);
         let touch_proposal = (work.event.device_kind() == PointerDeviceKind::Touch
             && work.event.phase() == PointerPhase::Move)
             .then(|| self.touch_gesture_proposal(&work.event, &stream))
             .flatten();
-        let routed_target = if work.event.device_kind() == PointerDeviceKind::Touch {
+        let routed_target = if presentation_block.is_some() {
+            None
+        } else if work.event.device_kind() == PointerDeviceKind::Touch {
             Self::touch_routed_target(&work.event, &stream, geometry.physical_target.as_ref())
         } else if work.event.drag_drop().is_some() {
             geometry.physical_target.clone()
@@ -218,6 +253,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             geometry,
             boundary_plan,
             routed_target,
+            presentation_block_root: presentation_block.as_ref().map(|block| block.root.clone()),
+            presentation_dismiss: presentation_block
+                .filter(|block| block.dismiss && work.event.phase() == PointerPhase::Down)
+                .map(|block| block.root),
             parent,
             selection_cancelled: owner_cleanup.selection_cancelled,
             selection_tracking: true,

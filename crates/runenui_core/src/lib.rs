@@ -333,8 +333,9 @@ pub use paint_group::{PaintContributionEntry, PaintContributionGroup};
 pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
 pub use standard_content::{Image, Separator, image, separator};
 pub use surface_presentation::{
-    SurfacePresentation, SurfacePresentationAlignment, SurfacePresentationAnchor,
-    SurfacePresentationPlacement, SurfacePresentationSide,
+    PresentationDismissReason, PresentationFocusEntry, PresentationFocusPolicy,
+    PresentationOutsidePointerPolicy, SurfacePresentation, SurfacePresentationAlignment,
+    SurfacePresentationAnchor, SurfacePresentationPlacement, SurfacePresentationSide,
 };
 pub use widget_protocol::{
     ChildBearingWidget, Widget, WidgetActivation, WidgetActivationOutput, WidgetAvailableSpace,

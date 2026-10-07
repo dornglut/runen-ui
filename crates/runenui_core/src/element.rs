@@ -10,8 +10,8 @@ use crate::widget_mapping::MappedWidget;
 use crate::widget_protocol::Widget;
 use crate::{
     ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope, Focusability,
-    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, ScrollChrome,
-    ScrollControlBinding, StyleIntent, SurfacePresentation,
+    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, PresentationFocusEntry,
+    ScrollChrome, ScrollControlBinding, StyleIntent, SurfacePresentation,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -217,6 +217,7 @@ pub struct Element<Action> {
     focus_scope: Option<FocusScope>,
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
+    presentation_focus_entry: PresentationFocusEntry,
     focus_group_search_text: Option<String>,
     scroll_control_binding: Option<ScrollControlBinding>,
     scroll_chrome: Option<ScrollChrome>,
@@ -272,6 +273,7 @@ impl<Action> fmt::Debug for Element<Action> {
             .field("focus_scope", &self.focus_scope)
             .field("focus_group", &self.focus_group)
             .field("focus_group_entry", &self.focus_group_entry)
+            .field("presentation_focus_entry", &self.presentation_focus_entry)
             .field("scroll_control_binding", &self.scroll_control_binding)
             .field("scroll_chrome", &self.scroll_chrome)
             .field("widget_type", &self.widget.widget_type_name())
@@ -298,6 +300,7 @@ impl<Action> Element<Action> {
             focus_scope: None,
             focus_group: None,
             focus_group_entry: FocusGroupEntry::Automatic,
+            presentation_focus_entry: PresentationFocusEntry::Automatic,
             focus_group_search_text: None,
             scroll_control_binding: None,
             scroll_chrome: None,
@@ -320,6 +323,7 @@ impl<Action> Element<Action> {
             focus_scope,
             focus_group: None,
             focus_group_entry: FocusGroupEntry::Automatic,
+            presentation_focus_entry: PresentationFocusEntry::Automatic,
             focus_group_search_text: None,
             scroll_control_binding: None,
             scroll_chrome: None,
@@ -386,6 +390,17 @@ impl<Action> Element<Action> {
         self
     }
 
+    /// Marks this node as the preferred initial focus target of its nearest presentation root.
+    #[must_use]
+    pub const fn presentation_focus_preferred(mut self, preferred: bool) -> Self {
+        self.presentation_focus_entry = if preferred {
+            PresentationFocusEntry::Preferred
+        } else {
+            PresentationFocusEntry::Automatic
+        };
+        self
+    }
+
     /// Authors neutral type-ahead search text for this logical focus-group member.
     #[must_use]
     pub fn focus_group_search_text(mut self, search_text: impl Into<String>) -> Self {
@@ -435,6 +450,7 @@ impl<Action> Element<Action> {
             focus_scope: self.focus_scope,
             focus_group: self.focus_group,
             focus_group_entry: self.focus_group_entry,
+            presentation_focus_entry: self.presentation_focus_entry,
             focus_group_search_text: self.focus_group_search_text,
             scroll_control_binding: self.scroll_control_binding,
             scroll_chrome: self.scroll_chrome,
@@ -491,6 +507,10 @@ impl<Action> Element<Action> {
         self.focus_group_entry
     }
     #[must_use]
+    pub const fn presentation_focus_entry(&self) -> PresentationFocusEntry {
+        self.presentation_focus_entry
+    }
+    #[must_use]
     pub const fn scroll_control_binding(&self) -> Option<ScrollControlBinding> {
         self.scroll_control_binding
     }
@@ -518,6 +538,7 @@ impl<Action> Element<Action> {
             ElementCompositionFields::new(
                 self.focus_group,
                 self.focus_group_entry,
+                self.presentation_focus_entry,
                 self.focus_group_search_text,
                 self.scroll_control_binding,
                 self.scroll_chrome,

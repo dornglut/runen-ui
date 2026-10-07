@@ -1,7 +1,8 @@
 use runenui_core::{
     __runtime::PointerCaptureRequest, CommandOrigin, HostProtocol, LogicalDelta,
     LogicalScrollCommand, MonotonicInstant, PointerButton, PointerDeviceKind, PointerId,
-    PointerPhase, SemanticCommand, TextDisplayPosition, TextSelection, UiEvent,
+    PointerPhase, PresentationDismissReason, SemanticCommand, TextDisplayPosition, TextSelection,
+    UiEvent,
 };
 
 use super::super::{PointerTextSelectionGesture, TouchGestureState};
@@ -31,6 +32,8 @@ struct PendingPointerCommit {
     previous_capture_owner: Option<MountedNodeId>,
     geometry: PointerGeometry,
     routed_target: Option<MountedNodeId>,
+    presentation_block_root: Option<MountedNodeId>,
+    presentation_dismiss: Option<MountedNodeId>,
     kind: StreamCommitKind,
     selection_cancelled: bool,
     selection_tracking: bool,
@@ -82,6 +85,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             geometry,
             boundary_plan,
             routed_target,
+            presentation_block_root,
+            presentation_dismiss,
             parent,
             selection_cancelled,
             selection_tracking,
@@ -97,6 +102,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .collect::<Vec<_>>();
         let anchor = routed_target
             .clone()
+            .or_else(|| presentation_block_root.clone())
             .or_else(|| boundary_targets.first().cloned());
         let Some(anchor) = anchor else {
             return self.commit_unrouted_pointer(PendingUnroutedPointerCommit {
@@ -170,6 +176,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 previous_capture_owner,
                 geometry,
                 routed_target,
+                presentation_block_root,
+                presentation_dismiss,
                 kind,
                 selection_cancelled,
                 selection_tracking,
@@ -208,6 +216,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             explicit_capture_request_applied,
         );
         let default_outputs_before = transaction.default_outputs.len();
+        if let Some(root) = pending.presentation_dismiss.as_ref() {
+            if transaction.consume_mandatory_default_output().is_err() {
+                self.poison_transaction(
+                    &transaction,
+                    TraceRoutedIntegrityFailure::OutputAllowanceExceeded,
+                    Some(root),
+                );
+                return self.pointer_runtime_outcome();
+            }
+            transaction.default_outputs.push(CollectedRoutedOutput::Command {
+                target: root.clone(),
+                command: SemanticCommand::PresentationDismiss(
+                    PresentationDismissReason::OutsidePointer,
+                ),
+                origin: CommandOrigin::__runtime_semantic_default(transaction.origin.source()),
+                causal_parent: transaction.parent,
+            });
+        }
         let pointer_focus = match self.apply_pointer_defaults(
             &pending.work.event,
             &pending.geometry.physical_path,
@@ -250,13 +276,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let default_applied = match pending.work.event.phase() {
             PointerPhase::Move | PointerPhase::Cancel => true,
             PointerPhase::Down => {
-                !transaction.default_prevented
+                pending.presentation_block_root.is_some()
+                    || (!transaction.default_prevented
                     && pending.work.event.changed_button() == Some(PointerButton::Primary)
                     && pending
                         .geometry
                         .physical_target
                         .as_ref()
-                        .is_some_and(|target| pending.stream.pressed_owner() == Some(target))
+                        .is_some_and(|target| pending.stream.pressed_owner() == Some(target)))
             }
             PointerPhase::Up | PointerPhase::Wheel => {
                 transaction.default_outputs.len() > default_outputs_before

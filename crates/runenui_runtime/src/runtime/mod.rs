@@ -11,6 +11,7 @@ mod ingress;
 mod lifecycle;
 mod mount;
 mod pointer;
+pub(in crate::runtime) mod presentation;
 mod routed;
 mod scheduler;
 mod surface_publication;
