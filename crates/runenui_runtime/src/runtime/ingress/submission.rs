@@ -5,7 +5,10 @@ use runenui_core::{
 use crate::{
     TraceActionCategory, TraceActionIdentity, TraceContext, TraceSurfaceContext,
     TraceSurfaceIngressKind,
-    queue::{ApplicationActionOrigin, FocusRequestOverride, SemanticCommandQueueTarget},
+    queue::{
+        ApplicationActionOrigin, FocusRequestOverride, SemanticCommandQueuePayload,
+        SemanticCommandQueueTarget,
+    },
     trace::{TraceRecordDraft, TraceReservation},
 };
 
@@ -300,15 +303,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         semantic_target: SemanticActionTarget,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         self.command_preflight(target)?;
-        self.commit_preflighted_command(
+        self.commit_preflighted_command(PreflightedCommand {
             target,
             command,
-            CommandOrigin::accessibility(),
-            Some(semantic_target),
-            None,
-            self.now(),
-            CommandTrace::Direct { parent: None },
-        )
+            origin: CommandOrigin::accessibility(),
+            semantic_target: Some(semantic_target),
+            focus_request_override: None,
+            instant: self.now(),
+            trace: CommandTrace::Direct { parent: None },
+        })
     }
 
     fn submit_command_inner(
@@ -319,7 +322,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         trace: CommandTrace,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         self.command_preflight(target)?;
-        self.commit_preflighted_command(target, command, origin, None, None, self.now(), trace)
+        self.commit_preflighted_command(PreflightedCommand {
+            target,
+            command,
+            origin,
+            semantic_target: None,
+            focus_request_override: None,
+            instant: self.now(),
+            trace,
+        })
     }
 
     fn command_preflight(&self, target: &MountedNodeId) -> Result<(), SubmitCommandErrorKind> {
@@ -348,41 +359,41 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         instant: MonotonicInstant,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         self.command_preflight(target)?;
-        self.commit_preflighted_command(
+        self.commit_preflighted_command(PreflightedCommand {
             target,
             command,
             origin,
-            None,
-            None,
+            semantic_target: None,
+            focus_request_override: None,
             instant,
-            CommandTrace::Direct {
+            trace: CommandTrace::Direct {
                 parent: causal_parent,
             },
-        )
+        })
     }
 
     pub(in crate::runtime) fn submit_presentation_focus_request(
         &mut self,
-        routing_target: MountedNodeId,
+        routing_target: &MountedNodeId,
         focus_target: Option<MountedNodeId>,
         reason: FocusReason,
         causal_parent: Option<TraceSequence>,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
-        let result = self.command_preflight(&routing_target).and_then(|()| {
-            self.commit_preflighted_command(
-                &routing_target,
-                SemanticCommand::RequestFocus,
-                CommandOrigin::__runtime_semantic_default(EventSource::Programmatic),
-                None,
-                Some(FocusRequestOverride {
+        let result = self.command_preflight(routing_target).and_then(|()| {
+            self.commit_preflighted_command(PreflightedCommand {
+                target: routing_target,
+                command: SemanticCommand::RequestFocus,
+                origin: CommandOrigin::__runtime_semantic_default(EventSource::Programmatic),
+                semantic_target: None,
+                focus_request_override: Some(FocusRequestOverride {
                     target: focus_target,
                     reason,
                 }),
-                self.now(),
-                CommandTrace::Direct {
+                instant: self.now(),
+                trace: CommandTrace::Direct {
                     parent: causal_parent,
                 },
-            )
+            })
         });
         if let Err(kind) = result {
             self.handle_mandatory_presentation_command_failure(kind);
@@ -392,22 +403,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     pub(in crate::runtime) fn submit_presentation_dismiss_request(
         &mut self,
-        target: MountedNodeId,
+        target: &MountedNodeId,
         reason: runenui_core::PresentationDismissReason,
         causal_parent: Option<TraceSequence>,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
-        let result = self.command_preflight(&target).and_then(|()| {
-            self.commit_preflighted_command(
-                &target,
-                SemanticCommand::PresentationDismiss(reason),
-                CommandOrigin::__runtime_semantic_default(EventSource::Programmatic),
-                None,
-                None,
-                self.now(),
-                CommandTrace::Direct {
+        let result = self.command_preflight(target).and_then(|()| {
+            self.commit_preflighted_command(PreflightedCommand {
+                target,
+                command: SemanticCommand::PresentationDismiss(reason),
+                origin: CommandOrigin::__runtime_semantic_default(EventSource::Programmatic),
+                semantic_target: None,
+                focus_request_override: None,
+                instant: self.now(),
+                trace: CommandTrace::Direct {
                     parent: causal_parent,
                 },
-            )
+            })
         });
         if let Err(kind) = result {
             self.handle_mandatory_presentation_command_failure(kind);
@@ -479,23 +490,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     fn commit_preflighted_command(
         &mut self,
-        target: &MountedNodeId,
-        command: SemanticCommand,
-        origin: CommandOrigin,
-        semantic_target: Option<SemanticActionTarget>,
-        focus_request_override: Option<FocusRequestOverride>,
-        instant: MonotonicInstant,
-        trace: CommandTrace,
+        command: PreflightedCommand<'_>,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
-        let command = PreflightedCommand {
-            target,
-            command,
-            origin,
-            semantic_target,
-            focus_request_override,
-            instant,
-            trace,
-        };
         let trace_reservation = self.reserve_command_processing_outcome(&command)?;
         let sequence = self
             .queue
@@ -517,7 +513,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             |semantic_target| SemanticCommandQueueTarget::semantic(target.clone(), semantic_target),
         );
         self.queue
-            .push_command_preflighted(
+            .push_command_preflighted(SemanticCommandQueuePayload {
                 queued_target,
                 command,
                 origin,
@@ -525,7 +521,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 instant,
                 causal_parent,
                 trace_reservation,
-            )
+            })
             .unwrap_or_else(|_| unreachable!("command queue was preflighted"));
         self.external_queue_commit_accepted();
         Ok(CommandSubmission::new(sequence))

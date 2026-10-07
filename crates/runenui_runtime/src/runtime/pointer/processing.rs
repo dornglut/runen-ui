@@ -155,6 +155,31 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    fn presentation_block_for_pointer(
+        &self,
+        work: &PointerWork,
+        stream: &PointerStreamState,
+        geometry: &PointerGeometry,
+    ) -> Option<crate::runtime::presentation::PresentationPointerBlock> {
+        if stream.capture_owner().is_some() {
+            return None;
+        }
+        if let Some(root) = stream
+            .presentation_barrier()
+            .filter(|owner| self.tree.target_status(owner) == crate::mounted::TargetStatus::Live)
+            .cloned()
+        {
+            return Some(crate::runtime::presentation::PresentationPointerBlock {
+                root,
+                dismiss: false,
+            });
+        }
+        self.presentation_pointer_block(
+            geometry.physical_target.as_ref(),
+            work.event.phase() == PointerPhase::Down,
+        )
+    }
+
     pub(super) fn process_pointer_work(
         &mut self,
         work: PointerWork,
@@ -169,24 +194,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let previous_path = prepared_stream.stream.physical_path().to_vec();
         let previous_capture_owner = prepared_stream.stream.capture_owner().cloned();
-        let retained_barrier = prepared_stream
-            .stream
-            .presentation_barrier()
-            .filter(|owner| self.tree.target_status(owner) == crate::mounted::TargetStatus::Live)
-            .cloned();
-        let presentation_block = if previous_capture_owner.is_some() {
-            None
-        } else if let Some(root) = retained_barrier {
-            Some(crate::runtime::presentation::PresentationPointerBlock {
-                root,
-                dismiss: false,
-            })
-        } else {
-            self.presentation_pointer_block(
-                geometry.physical_target.as_ref(),
-                work.event.phase() == PointerPhase::Down,
-            )
-        };
+        let presentation_block =
+            self.presentation_block_for_pointer(&work, &prepared_stream.stream, &geometry);
         let boundary_plan = if presentation_block.is_some() {
             PointerBoundaryPlan::unchanged(previous_path)
         } else if geometry.snapshot.is_some() {

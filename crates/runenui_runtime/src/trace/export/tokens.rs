@@ -2,6 +2,7 @@ use runenui_core::{
     ClipboardWritePurpose, CommandDerivation, CompositionCancelReason, EventPhase, EventSource,
     FocusBoundaryPolicy, FocusDirection, FocusEventKind, FocusReason, FrameworkServiceFailure,
     InputModality, PointerBoundaryKind, PointerCaptureKind, PointerDeviceKind, PointerPhase,
+    PresentationDismissReason,
 };
 
 use crate::{
@@ -90,6 +91,17 @@ pub(super) const fn focus_reason(value: FocusReason) -> &'static str {
         FocusReason::RememberedRestoration => "remembered_restoration",
         FocusReason::PresentationRestoration => "presentation_restoration",
         FocusReason::Shutdown => "shutdown",
+        _ => "unknown",
+    }
+}
+
+pub(super) const fn presentation_dismiss_reason(
+    value: PresentationDismissReason,
+) -> &'static str {
+    match value {
+        PresentationDismissReason::OutsidePointer => "outside_pointer",
+        PresentationDismissReason::CancelOrBack => "cancel_or_back",
+        PresentationDismissReason::AnchorUnavailable => "anchor_unavailable",
         _ => "unknown",
     }
 }

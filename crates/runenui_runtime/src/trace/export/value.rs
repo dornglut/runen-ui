@@ -158,6 +158,12 @@ pub(super) fn semantic_command(output: &mut String, command: SemanticCommand) {
     match command {
         SemanticCommand::Activate => json::string(output, "activate"),
         SemanticCommand::CancelOrBack => json::string(output, "cancel_or_back"),
+        SemanticCommand::PresentationDismiss(reason) => {
+            json::string(output, "presentation_dismiss");
+            output.push(',');
+            json::name(output, "reason");
+            json::string(output, tokens::presentation_dismiss_reason(reason));
+        }
         SemanticCommand::OpenMenu => json::string(output, "open_menu"),
         SemanticCommand::OpenContextMenu => json::string(output, "open_context_menu"),
         SemanticCommand::LogicalScroll(scroll) => {

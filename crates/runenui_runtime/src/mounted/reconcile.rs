@@ -194,6 +194,18 @@ fn surface_presentation_invalidation(changed: bool) -> WidgetInvalidation {
     }
 }
 
+fn presentation_authoring_invalidation(
+    surface_changed: bool,
+    focus_entry_changed: bool,
+) -> WidgetInvalidation {
+    let focus = if focus_entry_changed {
+        WidgetInvalidation::INTERACTION | WidgetInvalidation::DIAGNOSTICS
+    } else {
+        WidgetInvalidation::NONE
+    };
+    surface_presentation_invalidation(surface_changed) | focus
+}
+
 fn scroll_chrome_invalidation(changed: bool) -> WidgetInvalidation {
     if changed {
         WidgetInvalidation::LAYOUT
@@ -653,13 +665,10 @@ impl<Action> MountedTree<Action> {
             // the widget explicitly invalidates semantics or mounted-child structure changes.
             node.caches.activation = CachedCapability::Unresolved;
             node.caches.text_input = CachedCapability::Unresolved;
-            let surface_presentation_invalidation =
-                surface_presentation_invalidation(surface_presentation_changed);
-            let presentation_focus_invalidation = if presentation_focus_entry_changed {
-                WidgetInvalidation::INTERACTION | WidgetInvalidation::DIAGNOSTICS
-            } else {
-                WidgetInvalidation::NONE
-            };
+            let presentation_invalidation = presentation_authoring_invalidation(
+                surface_presentation_changed,
+                presentation_focus_entry_changed,
+            );
             let scroll_control_invalidation =
                 scroll_control_binding_invalidation(scroll_control_binding_changed);
             let scroll_chrome_invalidation = scroll_chrome_invalidation(scroll_chrome_changed);
@@ -667,8 +676,7 @@ impl<Action> MountedTree<Action> {
                 node,
                 update_context.__runtime_take_invalidation()
                     | common_invalidation
-                    | surface_presentation_invalidation
-                    | presentation_focus_invalidation
+                    | presentation_invalidation
                     | scroll_control_invalidation
                     | scroll_chrome_invalidation,
             );

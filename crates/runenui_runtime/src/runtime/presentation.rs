@@ -85,7 +85,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 continue;
             }
             match policy {
-                PresentationOutsidePointerPolicy::Ignore => {}
                 PresentationOutsidePointerPolicy::Block => {
                     return Some(PresentationPointerBlock {
                         root: candidate.root,
@@ -114,15 +113,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     .dismisses_on_cancel_or_back()
                     .then_some(candidate.root)
             })
-    }
-
-    pub(in crate::runtime) fn presentation_config(
-        &self,
-        root: &MountedNodeId,
-    ) -> Option<&SurfacePresentation> {
-        self.tree
-            .node(root)
-            .and_then(|node| node.surface_presentation.as_ref())
     }
 
     pub(in crate::runtime) fn presentation_focus_membership(
@@ -203,16 +193,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .iter()
             .map(|candidate| candidate.root.clone())
             .collect::<HashSet<_>>();
-        let authored = self
-            .tree
-            .publication_preorder_ids()
-            .into_iter()
-            .filter_map(|root| {
-                let node = self.tree.node(&root)?;
-                let presentation = node.surface_presentation.clone()?;
-                Some((root, node.parent.clone(), presentation))
-            })
-            .collect::<Vec<_>>();
+        let authored = self.authored_presentations();
         let authored_roots = authored
             .iter()
             .map(|(root, _, _)| root.clone())
@@ -221,7 +202,43 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         lifecycle
             .lifetimes
             .retain(|root, _| authored_roots.contains(root));
+        if !self.synchronize_published_presentation_lifetimes(
+            &mut lifecycle,
+            published,
+            causal_parent,
+        ) {
+            self.presentation_lifecycle = lifecycle;
+            return;
+        }
+        let _ = self.synchronize_unpublished_presentation_lifetimes(
+            &mut lifecycle,
+            authored,
+            &published_roots,
+            causal_parent,
+        );
+        self.presentation_lifecycle = lifecycle;
+    }
 
+    fn authored_presentations(
+        &self,
+    ) -> Vec<(MountedNodeId, Option<MountedNodeId>, SurfacePresentation)> {
+        self.tree
+            .publication_preorder_ids()
+            .into_iter()
+            .filter_map(|root| {
+                let node = self.tree.node(&root)?;
+                let presentation = node.surface_presentation.clone()?;
+                Some((root, node.parent.clone(), presentation))
+            })
+            .collect()
+    }
+
+    fn synchronize_published_presentation_lifetimes(
+        &mut self,
+        lifecycle: &mut PresentationLifecycleState,
+        published: Vec<crate::surface::PresentationInteractionRoot>,
+        causal_parent: Option<crate::TraceSequence>,
+    ) -> bool {
         let mut prospective_focus = self.focus.focused_node().cloned();
         for candidate in published.into_iter().rev() {
             let previous_policy = lifecycle
@@ -243,7 +260,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             if should_enter
                 && candidate.presentation.focus_policy() == PresentationFocusPolicy::EnterAndRestore
             {
-                restoration_target = prospective_focus.clone();
+                restoration_target.clone_from(&prospective_focus);
                 restoration_scopes =
                     self.presentation_scope_chain(candidate.owner.as_ref(), &candidate.root);
                 match self.presentation_initial_focus_target(&candidate.root) {
@@ -251,14 +268,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         prospective_focus = Some(target.clone());
                         if self
                             .submit_presentation_focus_request(
-                                target.clone(),
+                                &target,
                                 Some(target),
                                 FocusReason::ProgrammaticRequest,
                                 causal_parent,
                             )
                             .is_err()
                         {
-                            break;
+                            return false;
                         }
                     }
                     InitialFocusSelection::AmbiguousPreferred => {
@@ -294,7 +311,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             lifetime.focus_policy = candidate.presentation.focus_policy();
             lifetime.published = true;
         }
+        true
+    }
 
+    fn synchronize_unpublished_presentation_lifetimes(
+        &mut self,
+        lifecycle: &mut PresentationLifecycleState,
+        authored: Vec<(MountedNodeId, Option<MountedNodeId>, SurfacePresentation)>,
+        published_roots: &HashSet<MountedNodeId>,
+        causal_parent: Option<crate::TraceSequence>,
+    ) -> bool {
         for (root, owner, presentation) in authored {
             if published_roots.contains(&root) {
                 continue;
@@ -329,13 +355,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
             if let Some(snapshot) = restore_snapshot
                 && let Some(plan) = self.presentation_restoration_plan(&snapshot)
+                && self
+                    .submit_presentation_focus_request(
+                        &plan.routing_target,
+                        plan.focus_target,
+                        FocusReason::PresentationRestoration,
+                        causal_parent,
+                    )
+                    .is_err()
             {
-                let _ = self.submit_presentation_focus_request(
-                    plan.routing_target,
-                    plan.focus_target,
-                    FocusReason::PresentationRestoration,
-                    causal_parent,
-                );
+                return false;
             }
 
             let owner_relative = matches!(
@@ -346,18 +375,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 lifetime.anchor_unavailable_requested = true;
                 if self
                     .submit_presentation_dismiss_request(
-                        root.clone(),
+                        &root,
                         PresentationDismissReason::AnchorUnavailable,
                         causal_parent,
                     )
                     .is_err()
                 {
-                    break;
+                    return false;
                 }
             }
         }
-
-        self.presentation_lifecycle = lifecycle;
+        true
     }
 
     fn presentation_initial_focus_target(&mut self, root: &MountedNodeId) -> InitialFocusSelection {
