@@ -61,7 +61,7 @@ impl UiApp for PlacementApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root((): &Self::State) -> impl View<Self::Action> {
         let popup = button("popup")
             .on_activate(|| ())
             .id("popup")
@@ -89,7 +89,7 @@ impl UiApp for PlacementApp {
         column(vec![spacer, owner])
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update((): &mut Self::State, (): Self::Action) {}
 }
 
 #[test]
@@ -160,7 +160,7 @@ impl UiApp for AnchorApp {
         column(vec![popup]).id("owner")
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update(_: &mut Self::State, (): Self::Action) {}
 }
 
 #[test]
@@ -218,11 +218,11 @@ impl Widget<()> for LayerProbe {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+    fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::measured(LogicalLength::from(40_u8), LogicalLength::from(40_u8))
     }
 
-    fn paint(&self, _: &Self::State, _: PaintContributionContext) -> PaintContribution {
+    fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {
         let rect = LogicalRect::try_new(0.0, 0.0, 40.0, 40.0)
             .unwrap_or_else(|_| unreachable!("fixture rect is valid"));
         PaintContribution::single(
@@ -231,7 +231,7 @@ impl Widget<()> for LayerProbe {
         )
     }
 
-    fn hit_test(&self, _: &Self::State, _: HitContributionContext) -> HitContribution {
+    fn hit_test(&self, (): &Self::State, _: HitContributionContext) -> HitContribution {
         let rect = LogicalRect::try_new(0.0, 0.0, 40.0, 40.0)
             .unwrap_or_else(|_| unreachable!("fixture rect is valid"));
         HitContribution::new(vec![HitRegion::rect(rect).with_layer(self.layer)])
@@ -248,7 +248,7 @@ impl UiApp for StackingApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root((): &Self::State) -> impl View<Self::Action> {
         let ordinary = Element::new(LayerProbe {
             layer: SceneLayer::new(10_000),
             color: Color::WHITE,
@@ -269,7 +269,7 @@ impl UiApp for StackingApp {
         column(vec![ordinary, presentation])
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update((): &mut Self::State, (): Self::Action) {}
 }
 
 #[test]
@@ -316,7 +316,7 @@ impl UiApp for SingularAnchorApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root((): &Self::State) -> impl View<Self::Action> {
         let popup = button("withheld")
             .on_activate(|| ())
             .id("withheld")
@@ -331,7 +331,7 @@ impl UiApp for SingularAnchorApp {
             .presentation(singular_presentation())
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update((): &mut Self::State, (): Self::Action) {}
 }
 
 #[test]
@@ -371,11 +371,11 @@ impl Widget<()> for ClipProbe {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+    fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::measured(LogicalLength::from(80_u8), LogicalLength::from(20_u8))
     }
 
-    fn hit_test(&self, _: &Self::State, _: HitContributionContext) -> HitContribution {
+    fn hit_test(&self, (): &Self::State, _: HitContributionContext) -> HitContribution {
         let full = LogicalRect::try_new(0.0, 0.0, 80.0, 20.0)
             .unwrap_or_else(|_| unreachable!("fixture rect is valid"));
         let local_clip = LogicalRect::try_new(0.0, 0.0, 50.0, 20.0)
@@ -394,7 +394,7 @@ impl UiApp for ClipEscapeApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root((): &Self::State) -> impl View<Self::Action> {
         let popup = Element::new(ClipProbe)
             .id("clip-popup")
             .surface_presentation(SurfacePresentation::new(
@@ -413,7 +413,7 @@ impl UiApp for ClipEscapeApp {
         column(vec![owner])
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update((): &mut Self::State, (): Self::Action) {}
 }
 
 #[test]
@@ -466,7 +466,7 @@ impl UiApp for NestedStackingApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root((): &Self::State) -> impl View<Self::Action> {
         let nested = Element::new(LayerProbe {
             layer: SceneLayer::new(-500),
             color: Color::BLACK,
@@ -499,7 +499,7 @@ impl UiApp for NestedStackingApp {
         column(vec![ancestor.into_element()])
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update((): &mut Self::State, (): Self::Action) {}
 }
 
 #[test]

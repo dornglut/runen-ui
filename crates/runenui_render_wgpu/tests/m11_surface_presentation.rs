@@ -31,11 +31,11 @@ impl Widget<()> for PaintProbe {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+    fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::measured(LogicalLength::from(40_u8), LogicalLength::from(40_u8))
     }
 
-    fn paint(&self, _: &Self::State, _: PaintContributionContext) -> PaintContribution {
+    fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {
         let rect = LogicalRect::try_new(0.0, 0.0, 40.0, 40.0)
             .unwrap_or_else(|_| unreachable!("fixture rect is valid"));
         PaintContribution::single(
@@ -52,7 +52,7 @@ impl UiApp for PresentationRenderApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> Element<Self::Action> {
+    fn root((): &Self::State) -> Element<Self::Action> {
         let ordinary = Element::new(PaintProbe {
             color: Color::WHITE,
             layer: SceneLayer::new(10_000),
@@ -73,7 +73,7 @@ impl UiApp for PresentationRenderApp {
         column(vec![ordinary, presentation]).into_element()
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update((): &mut Self::State, (): Self::Action) {}
 }
 
 struct NoResources;
