@@ -16,5 +16,9 @@ mod m9_static_node_effect_groups;
 mod m9c_integration;
 #[path = "../m9c_presentation_order.rs"]
 mod m9c_presentation_order;
+#[path = "../m11_presentation_lifecycle.rs"]
+mod m11_presentation_lifecycle;
+#[path = "../m11_presentation_focus_lifecycle.rs"]
+mod m11_presentation_focus_lifecycle;
 #[path = "../style_preferences.rs"]
 mod style_preferences;
