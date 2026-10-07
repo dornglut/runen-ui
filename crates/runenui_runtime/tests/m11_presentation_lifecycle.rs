@@ -4,14 +4,16 @@ use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
     CommandOrigin, Element, EventContext, EventPhase, FocusReason, HitContribution,
-    HitContributionContext, LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
-    LogicalSize, NoHostProtocol, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent,
-    PointerId, PointerPhase, PresentationDismissReason, PresentationFocusPolicy,
-    PresentationOrigin, PresentationOutsidePointerPolicy, PresentationRotation, PresentationScale,
-    PresentationTransform, PresentationTranslation, SemanticCommand, StyleEnvironment,
-    SurfacePresentation, SurfacePresentationAnchor, SurfacePresentationPlacement,
-    SurfacePresentationSide, UiApp, UiEvent, UnitInterval, View, Widget, WidgetEventOutput,
-    WidgetMeasure, WidgetMeasureInput, button, column,
+    HitContributionContext, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
+    KeyboardPhase, LayoutDimension, LayoutStyle, LogicalKey, LogicalLength, LogicalPoint,
+    LogicalRect, LogicalSize, NoHostProtocol, PhysicalKey, PointerButton, PointerButtons,
+    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, PresentationDismissReason,
+    PresentationFocusPolicy, PresentationOrigin, PresentationOutsidePointerPolicy,
+    PresentationRotation, PresentationScale, PresentationTransform, PresentationTranslation,
+    SemanticCommand, StyleEnvironment, SurfacePresentation, SurfacePresentationAnchor,
+    SurfacePresentationPlacement, SurfacePresentationSide, UiApp, UiEvent, UnitInterval, View,
+    Widget, WidgetActivation, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput,
+    WidgetTextInput, button, column,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, ReconciliationDiagnostic,
@@ -839,4 +841,164 @@ fn active_pointer_capture_remains_authoritative_after_modal_presentation_opens()
         [(capture, Some(modal))],
         "new modal presentation may be the physical target but must not steal the active capture"
     );
+}
+
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompositionPresentationAction {
+    Dismissed,
+}
+
+#[derive(Clone, Debug)]
+struct CompositionPresentationProbe {
+    text_input: bool,
+    dismiss_target: bool,
+}
+
+impl Widget<CompositionPresentationAction> for CompositionPresentationProbe {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        event_context: &mut EventContext<'_, CompositionPresentationAction>,
+    ) -> WidgetEventOutput {
+        if self.dismiss_target
+            && event_context.phase() == EventPhase::Target
+            && event.as_semantic_command().is_some_and(|command| {
+                matches!(
+                    command.command(),
+                    SemanticCommand::PresentationDismiss(PresentationDismissReason::CancelOrBack)
+                )
+            })
+        {
+            event_context.emit(CompositionPresentationAction::Dismissed);
+        }
+        WidgetEventOutput::none()
+    }
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        if self.text_input {
+            WidgetActivation::actionable(true)
+        } else {
+            WidgetActivation::NONE
+        }
+    }
+
+    fn text_input(&self, (): &Self::State) -> WidgetTextInput {
+        if self.text_input {
+            WidgetTextInput::new(true, true)
+        } else {
+            WidgetTextInput::NONE
+        }
+    }
+
+    fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(20_u8), LogicalLength::from(20_u8))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CompositionPresentationState {
+    open: bool,
+    dismissals: usize,
+}
+
+struct CompositionPresentationApp;
+
+impl UiApp for CompositionPresentationApp {
+    type State = CompositionPresentationState;
+    type Action = CompositionPresentationAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        let editor = Element::new(CompositionPresentationProbe {
+            text_input: true,
+            dismiss_target: false,
+        })
+        .id("composition-editor")
+        .key("composition-editor")
+        .focusable(true)
+        .with_layout(fixed(20, 20));
+
+        let mut children = vec![editor];
+        if state.open {
+            children.push(
+                Element::new(CompositionPresentationProbe {
+                    text_input: false,
+                    dismiss_target: true,
+                })
+                .id("composition-popup")
+                .key("composition-popup")
+                .with_layout(fixed(20, 20))
+                .surface_presentation(
+                    SurfacePresentation::new(
+                        SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
+                    )
+                    .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                        LogicalPoint::new(70.0, 20.0)
+                            .unwrap_or_else(|_| unreachable!("fixture anchor is finite")),
+                    ))
+                    .dismiss_on_cancel_or_back(true),
+                ),
+            );
+        }
+        column(children)
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        match action {
+            CompositionPresentationAction::Dismissed => {
+                state.dismissals += 1;
+                state.open = false;
+            }
+        }
+    }
+}
+
+#[test]
+fn composition_active_escape_remains_text_owned_and_does_not_dismiss_presentation() {
+    let environment = StyleEnvironment::default();
+    let mut runtime =
+        AppRuntime::<CompositionPresentationApp>::mount(CompositionPresentationState {
+            open: true,
+            dismissals: 0,
+        });
+    let publication = runtime
+        .publish_surface(&context(&environment, 100, 60))
+        .unwrap_or_else(|_| unreachable!("composition presentation publishes"));
+    let editor = node_id(&publication, "composition-editor");
+    runtime
+        .submit_command(
+            editor,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("editor focus request is accepted"));
+    settle(&mut runtime);
+
+    runtime
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("focused text owner accepts composition start"));
+    settle(&mut runtime);
+
+    runtime
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("Escape")),
+            LogicalKey::Escape,
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Active,
+            None,
+        ))
+        .unwrap_or_else(|_| unreachable!("composition-active Escape is accepted"));
+    settle(&mut runtime);
+
+    assert!(runtime.state().open);
+    assert_eq!(runtime.state().dismissals, 0);
 }
