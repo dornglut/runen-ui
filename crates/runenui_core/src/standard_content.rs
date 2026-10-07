@@ -25,14 +25,16 @@ pub struct Separator {
 impl Separator {
     #[must_use]
     pub fn new(orientation: SemanticOrientation) -> Self {
-        let mut common = CommonNodeAuthoring::default();
-        common.layout = match orientation {
-            SemanticOrientation::Horizontal => {
-                LayoutStyle::default().with_width(LayoutDimension::Fill)
-            }
-            SemanticOrientation::Vertical => {
-                LayoutStyle::default().with_height(LayoutDimension::Fill)
-            }
+        let common = CommonNodeAuthoring {
+            layout: match orientation {
+                SemanticOrientation::Horizontal => {
+                    LayoutStyle::default().with_width(LayoutDimension::Fill)
+                }
+                SemanticOrientation::Vertical => {
+                    LayoutStyle::default().with_height(LayoutDimension::Fill)
+                }
+            },
+            ..CommonNodeAuthoring::default()
         };
         Self {
             orientation,
@@ -145,9 +147,9 @@ impl Image {
     }
 
     /// Selects ordinary fit without rewriting the image's opaque resource identity.
-    /// Switching from NineSlice starts with the default full-source centered fit.
+    /// Switching from `NineSlice` starts with the default full-source centered fit.
     #[must_use]
-    pub fn fit(mut self, fit: ImageFit) -> Self {
+    pub const fn fit(mut self, fit: ImageFit) -> Self {
         let (crop, alignment) = match self.mapping {
             ImageMapping::Fit {
                 crop, alignment, ..
