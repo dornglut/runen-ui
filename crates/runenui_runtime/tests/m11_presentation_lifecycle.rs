@@ -1227,3 +1227,126 @@ fn nested_presentation_owner_chain_is_inside_and_unrelated_content_dismisses_onl
     );
     assert!(!runtime.state().inner_open);
 }
+
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ClickThroughAction {
+    Dismiss,
+    ActivateUnderlying,
+}
+
+#[derive(Clone, Debug)]
+struct ClickThroughState {
+    open: bool,
+    activations: usize,
+}
+
+#[derive(Clone, Debug)]
+struct ClickThroughDismissProbe;
+
+impl Widget<ClickThroughAction> for ClickThroughDismissProbe {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ClickThroughAction>,
+    ) -> WidgetEventOutput {
+        if context.phase() == EventPhase::Target
+            && event.as_semantic_command().is_some_and(|command| {
+                command.command()
+                    == SemanticCommand::PresentationDismiss(
+                        PresentationDismissReason::OutsidePointer,
+                    )
+            })
+        {
+            context.emit(ClickThroughAction::Dismiss);
+        }
+        WidgetEventOutput::none()
+    }
+
+    fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(20_u8), LogicalLength::from(20_u8))
+    }
+}
+
+struct ClickThroughApp;
+
+impl UiApp for ClickThroughApp {
+    type State = ClickThroughState;
+    type Action = ClickThroughAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        let underlying = button("underlying")
+            .on_activate(|| ClickThroughAction::ActivateUnderlying)
+            .id("click-through-underlying")
+            .key("click-through-underlying")
+            .with_layout(fixed(20, 20))
+            .into_element();
+        let mut children = vec![underlying];
+        if state.open {
+            children.push(
+                Element::new(ClickThroughDismissProbe)
+                    .id("click-through-presentation")
+                    .key("click-through-presentation")
+                    .with_layout(fixed(20, 20))
+                    .surface_presentation(
+                        SurfacePresentation::new(
+                            SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
+                        )
+                        .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                            LogicalPoint::new(70.0, 30.0)
+                                .unwrap_or_else(|_| unreachable!("fixture anchor is finite")),
+                        ))
+                        .with_outside_pointer(
+                            PresentationOutsidePointerPolicy::DismissAndBlock,
+                        ),
+                    ),
+            );
+        }
+        column(children)
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        match action {
+            ClickThroughAction::Dismiss => state.open = false,
+            ClickThroughAction::ActivateUnderlying => state.activations += 1,
+        }
+    }
+}
+
+#[test]
+fn dismissed_outside_pointer_stream_cannot_activate_underlying_button_on_matching_up() {
+    let environment = StyleEnvironment::default();
+    let mut runtime = AppRuntime::<ClickThroughApp>::mount(ClickThroughState {
+        open: true,
+        activations: 0,
+    });
+    let first = runtime
+        .publish_surface(&context(&environment, 100, 60))
+        .unwrap_or_else(|_| unreachable!("click-through baseline publishes"));
+    let point = node_center(&first, "click-through-underlying");
+    runtime
+        .submit_pointer(pointer(first.input_context(), point, PointerPhase::Down))
+        .unwrap_or_else(|_| unreachable!("blocked outside Down is accepted"));
+    settle(&mut runtime);
+    assert!(!runtime.state().open);
+    assert_eq!(runtime.state().activations, 0);
+
+    let second = runtime
+        .publish_surface(&context(&environment, 100, 60))
+        .unwrap_or_else(|_| unreachable!("post-dismiss surface publishes"));
+    runtime
+        .submit_pointer(pointer(second.input_context(), point, PointerPhase::Up))
+        .unwrap_or_else(|_| unreachable!("matching pointer Up is accepted"));
+    settle(&mut runtime);
+    assert_eq!(
+        runtime.state().activations,
+        0,
+        "a blocked outside Down must not seed standard Button pressed ownership that could activate on the matching Up"
+    );
+}

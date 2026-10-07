@@ -1,6 +1,6 @@
 use runenui_core::{
-    Element, LogicalPoint, PresentationOrigin, PresentationRotation, PresentationScale,
-    PresentationFocusEntry, PresentationFocusPolicy, PresentationOutsidePointerPolicy,
+    Element, LogicalPoint, PresentationFocusEntry, PresentationFocusPolicy, PresentationOrigin,
+    PresentationOutsidePointerPolicy, PresentationRotation, PresentationScale,
     PresentationTransform, PresentationTranslation, PresentationValue, SurfacePresentation,
     SurfacePresentationAnchor, SurfacePresentationPlacement, SurfacePresentationSide, UnitInterval,
     Widget,
@@ -59,7 +59,6 @@ fn downstream_custom_widget_can_author_same_surface_presentation_without_runtime
     assert_eq!(element.surface_presentation_config(), Some(&authored));
     assert_eq!(authored.candidates(), [first, fallback]);
 }
-
 
 #[test]
 fn downstream_custom_widget_can_author_presentation_lifecycle_without_runtime_identity() {
