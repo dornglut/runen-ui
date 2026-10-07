@@ -76,8 +76,16 @@ impl OrderedPaintItem {
         }
     }
 
-    pub(super) const fn ordering_key(&self) -> (SceneLayer, usize, usize) {
+    pub(super) fn ordering_key(
+        &self,
+        presentation: &CachedPresentationFacts,
+    ) -> (u8, usize, SceneLayer, usize, usize) {
+        let (band, root) = presentation
+            .stack_root(self.mounted_preorder)
+            .map_or((0, 0), |root| (1, root));
         (
+            band,
+            root,
             self.layer,
             self.mounted_preorder,
             self.contribution_local_order,
@@ -103,14 +111,22 @@ struct CompositionEntries {
     root: Vec<(usize, PaintSceneEntry)>,
 }
 
-fn topology_parents(topology: &SurfaceTopologySnapshot) -> Vec<Option<usize>> {
+fn topology_parents(
+    topology: &SurfaceTopologySnapshot,
+    presentation: &CachedPresentationFacts,
+) -> Vec<Option<usize>> {
     topology
         .nodes
         .iter()
-        .map(|node| {
-            node.parent
-                .as_ref()
-                .and_then(|parent| topology.position(parent))
+        .enumerate()
+        .map(|(position, node)| {
+            if presentation.stack_root(position) == Some(position) {
+                None
+            } else {
+                node.parent
+                    .as_ref()
+                    .and_then(|parent| topology.position(parent))
+            }
         })
         .collect()
 }
@@ -131,12 +147,13 @@ const fn nearest_node_group(
 
 fn derive_group_plan(
     topology: &SurfaceTopologySnapshot,
+    presentation: &CachedPresentationFacts,
     effective: &CachedEffectiveFacts,
     explicit_groups: &[ResolvedExplicitGroup],
     item_owners: &[usize],
     item_explicit_groups: &[Option<ExplicitGroupId>],
 ) -> GroupPlan {
-    let topology_parent = topology_parents(topology);
+    let topology_parent = topology_parents(topology, presentation);
     let requires_node_group = effective
         .nodes
         .iter()
@@ -344,6 +361,7 @@ pub(super) fn derive_composition_groups(
         item_groups,
     } = derive_group_plan(
         topology,
+        presentation,
         effective,
         explicit_groups,
         &item_owners,

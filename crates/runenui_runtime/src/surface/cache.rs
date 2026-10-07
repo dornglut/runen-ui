@@ -78,8 +78,8 @@ impl TextEditingPaintKey {
 }
 
 use super::{
-    SurfaceBuildContext, SurfaceInteractionProjection, SurfaceLayoutReport, SurfacePublication,
-    resolve::{
+    SurfaceBuildContext, SurfaceInteractionProjection, SurfaceLayoutReport, SurfacePresentationSnapshot,
+    SurfacePublication, resolve::{
         CachedEffectiveFacts, CachedStyleFacts, SurfaceTopologySnapshot, displayed_scroll_metrics,
     },
 };
@@ -314,6 +314,10 @@ pub(super) struct PresentationNodeFacts {
     visible_bounds: LogicalRect,
     inherited_clips: Arc<[SceneClip]>,
     content_clips: Arc<[SceneClip]>,
+    published: bool,
+    stack_root: Option<usize>,
+    root_snapshot: Option<SurfacePresentationSnapshot>,
+    diagnostics: Arc<[WidgetDiagnostic]>,
 }
 
 impl PresentationNodeFacts {
@@ -325,6 +329,10 @@ impl PresentationNodeFacts {
         visible_bounds: LogicalRect,
         inherited_clips: Arc<[SceneClip]>,
         content_clips: Arc<[SceneClip]>,
+        published: bool,
+        stack_root: Option<usize>,
+        root_snapshot: Option<SurfacePresentationSnapshot>,
+        diagnostics: Arc<[WidgetDiagnostic]>,
     ) -> Self {
         Self {
             owner_to_surface,
@@ -333,6 +341,10 @@ impl PresentationNodeFacts {
             visible_bounds,
             inherited_clips,
             content_clips,
+            published,
+            stack_root,
+            root_snapshot,
+            diagnostics,
         }
     }
 
@@ -347,8 +359,33 @@ impl PresentationNodeFacts {
     }
 
     #[must_use]
+    pub(super) const fn owner_bounds(&self) -> LogicalRect {
+        self.owner_bounds
+    }
+
+    #[must_use]
     pub(super) const fn visible_bounds(&self) -> LogicalRect {
         self.visible_bounds
+    }
+
+    #[must_use]
+    pub(super) const fn published(&self) -> bool {
+        self.published
+    }
+
+    #[must_use]
+    pub(super) const fn stack_root(&self) -> Option<usize> {
+        self.stack_root
+    }
+
+    #[must_use]
+    pub(super) const fn root_snapshot(&self) -> Option<SurfacePresentationSnapshot> {
+        self.root_snapshot
+    }
+
+    #[must_use]
+    pub(super) fn diagnostics(&self) -> &[WidgetDiagnostic] {
+        &self.diagnostics
     }
 
     #[must_use]
@@ -374,6 +411,16 @@ impl CachedPresentationFacts {
         self.nodes
             .get(position)
             .unwrap_or_else(|| unreachable!("presentation facts remain topology-aligned"))
+    }
+
+    #[must_use]
+    pub(super) fn published(&self, position: usize) -> bool {
+        self.node(position).published()
+    }
+
+    #[must_use]
+    pub(super) fn stack_root(&self, position: usize) -> Option<usize> {
+        self.node(position).stack_root()
     }
 }
 
@@ -584,6 +631,9 @@ impl SurfaceCache {
         };
         let local = map.candidate_rect(&active)?;
         let presentation = self.presentation.node(position);
+        if !presentation.published() {
+            return Err(TextCaretMapError::InvalidGeometry);
+        }
         let padding = self
             .effective
             .node(position)
@@ -630,6 +680,7 @@ impl SurfaceCache {
             .nodes
             .iter()
             .zip(&self.presentation.nodes)
+            .filter(|(_, presentation)| presentation.published())
             .map(|(node, presentation)| (node.id.clone(), presentation.visible_bounds()))
             .collect()
     }
@@ -653,6 +704,10 @@ impl SurfaceCache {
                 *bounds,
                 Arc::clone(&current.inherited_clips),
                 Arc::clone(&current.content_clips),
+                current.published,
+                current.stack_root,
+                current.root_snapshot,
+                Arc::clone(&current.diagnostics),
             );
         }
     }

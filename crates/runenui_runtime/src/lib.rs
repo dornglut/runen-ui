@@ -295,7 +295,7 @@ pub use surface::SurfacePublicationTestProfile;
 pub use surface::{
     LayoutOverflow, RasterScale, RasterScaleError, SurfaceBuildContext, SurfaceFrame,
     SurfaceLayoutNode, SurfaceLayoutReport, SurfaceNode, SurfacePhase, SurfacePhaseReport,
-    SurfaceTextMeasurementRecord,
+    SurfacePresentationSnapshot, SurfaceTextMeasurementRecord,
 };
 pub use surface_command::{
     SubmitSurfaceCommandError, SubmitSurfaceCommandErrorKind, UnacceptedSurfaceCommand,

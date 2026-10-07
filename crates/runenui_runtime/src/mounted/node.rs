@@ -6,7 +6,7 @@ use runenui_core::{
     __runtime::{MountedWidget, MountedWidgetState},
     AuthoringDiagnostic, ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry,
     FocusScope, Focusability, LayoutStyle, ScrollChrome, ScrollControlBinding, ShortcutBinding,
-    StyleIntent, WidgetActivation, WidgetStateTypeId, WidgetTypeId,
+    StyleIntent, SurfacePresentation, WidgetActivation, WidgetStateTypeId, WidgetTypeId,
 };
 
 use super::{
@@ -24,6 +24,7 @@ pub(crate) struct MountedNode<Action> {
     pub(crate) layout: LayoutStyle,
     pub(crate) style: StyleIntent,
     pub(crate) timelines: Vec<ExplicitTimeline>,
+    pub(crate) surface_presentation: Option<SurfacePresentation>,
     pub(crate) focusability: Focusability,
     pub(crate) focus_scope: Option<FocusScope>,
     pub(crate) focus_group: Option<FocusGroup>,
@@ -63,6 +64,7 @@ impl<Action> fmt::Debug for MountedNode<Action> {
             .field("authored_id", &self.authored_id)
             .field("key", &self.key)
             .field("timeline_count", &self.timelines.len())
+            .field("surface_presentation", &self.surface_presentation)
             .field("scroll_control_binding", &self.scroll_control_binding)
             .field("scroll_chrome", &self.scroll_chrome)
             .field("shortcut_binding_count", &self.shortcut_bindings.len())

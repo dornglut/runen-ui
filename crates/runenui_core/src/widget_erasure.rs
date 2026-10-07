@@ -9,7 +9,8 @@ use crate::{
     HitContributionContext, LayoutStyle, LogicalPoint, MonotonicInstant, MountedNodeId,
     PaintContribution, PaintContributionContext, PointerId, ScrollChrome, ScrollControlBinding,
     ScrollControlSnapshot, SemanticContribution, SemanticContributionContext, ShortcutBinding,
-    StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext, WidgetEventOutput,
+    StyleIntent, SubscriptionSet, SurfacePresentation, UiEvent, WidgetActivationContext,
+    WidgetEventOutput,
     WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
 };
 use core::{any::Any, fmt};
@@ -541,6 +542,7 @@ pub struct ElementParts<Action> {
     layout: LayoutStyle,
     style: StyleIntent,
     timelines: Vec<ExplicitTimeline>,
+    surface_presentation: Option<SurfacePresentation>,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
     focus_group: Option<FocusGroup>,
@@ -581,6 +583,7 @@ impl<Action> ElementParts<Action> {
             layout: fields.layout,
             style: fields.style,
             timelines: fields.timelines,
+            surface_presentation: fields.surface_presentation,
             focusability: fields.focusability,
             focus_scope: fields.focus_scope,
             focus_group: composition.focus_group,
@@ -612,6 +615,10 @@ impl<Action> ElementParts<Action> {
     #[must_use]
     pub const fn timelines(&self) -> &[ExplicitTimeline] {
         self.timelines.as_slice()
+    }
+    #[must_use]
+    pub const fn surface_presentation(&self) -> Option<&SurfacePresentation> {
+        self.surface_presentation.as_ref()
     }
     #[must_use]
     pub const fn focusability(&self) -> Focusability {

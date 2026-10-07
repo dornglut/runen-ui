@@ -211,6 +211,9 @@ impl<'a> PlannedSurfacePublication<'a> {
         });
         let mut targets = HashMap::new();
         for (position, topology) in self.cache.topology.nodes.iter().enumerate() {
+            if !self.cache.presentation.published(position) {
+                continue;
+            }
             let Some(projected) = editing.get(&topology.id) else {
                 continue;
             };
@@ -269,6 +272,7 @@ impl<'a> PlannedSurfacePublication<'a> {
             .nodes
             .iter()
             .enumerate()
+            .filter(|(position, _)| self.cache.presentation.published(*position))
             .map(|(position, topology)| {
                 (
                     topology.id.clone(),

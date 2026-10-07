@@ -254,6 +254,7 @@ mod semantic;
 mod semantic_action;
 mod shortcut;
 mod standard_content;
+mod surface_presentation;
 mod style;
 mod style_effects;
 mod style_environment;
@@ -331,6 +332,10 @@ pub use paint::{
 pub use paint_group::{PaintContributionEntry, PaintContributionGroup};
 pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
 pub use standard_content::{Image, Separator, image, separator};
+pub use surface_presentation::{
+    SurfacePresentation, SurfacePresentationAlignment, SurfacePresentationAnchor,
+    SurfacePresentationPlacement, SurfacePresentationSide,
+};
 pub use widget_protocol::{
     ChildBearingWidget, Widget, WidgetActivation, WidgetActivationOutput, WidgetAvailableSpace,
     WidgetDiagnostic, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId,
