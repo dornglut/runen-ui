@@ -16,11 +16,11 @@ impl Widget<()> for DownstreamSeparator {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+    fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::measured(LogicalLength::ZERO, LogicalLength::from(1_u16))
     }
 
-    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         SemanticContribution::single(
             SemanticNodeContribution::primary(SemanticRole::Separator)
                 .with_orientation(SemanticOrientation::Horizontal),
@@ -97,7 +97,7 @@ impl UiApp for ContentParityApp {
 
     fn update(
         _: &mut Self::State,
-        _: Self::Action,
+        (): Self::Action,
     ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
