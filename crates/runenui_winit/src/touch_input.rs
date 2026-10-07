@@ -7,8 +7,8 @@
 use std::collections::BTreeMap;
 
 use runenui_core::{
-    InputDeviceId, LogicalDelta, LogicalPoint, PointerDeviceKind, PointerEvent, PointerId,
-    PointerPhase, SurfaceInputContext,
+    InputDeviceId, LogicalDelta, LogicalPoint, PointerButton, PointerButtons, PointerDeviceKind,
+    PointerEvent, PointerId, PointerPhase, SurfaceInputContext,
 };
 use winit::event::TouchPhase;
 
@@ -173,7 +173,7 @@ fn pointer_event(
     movement: LogicalDelta,
     input_context: SurfaceInputContext,
 ) -> PointerEvent {
-    PointerEvent::new(
+    let event = PointerEvent::new(
         pointer_id,
         PointerDeviceKind::Touch,
         phase,
@@ -181,13 +181,31 @@ fn pointer_event(
         input_context,
     )
     .with_device_id(device_id)
-    .with_movement_delta(movement)
+    .with_movement_delta(movement);
+
+    // Native contact phases use the same single-Primary neutral button protocol
+    // that runtime pointer admission requires; Cancel closes the existing stream.
+    match phase {
+        PointerPhase::Down => event
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        PointerPhase::Move => event.with_buttons(PointerButtons::new([PointerButton::Primary])),
+        PointerPhase::Up => event.with_changed_button(PointerButton::Primary),
+        PointerPhase::Cancel => event,
+        _ => unreachable!("native touch normalization produces only contact phases"),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{LogicalPoint, NoHostProtocol, StyleEnvironment, UiApp, text};
-    use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
+    use runenui_core::{
+        InputDeviceId, LogicalPoint, NoHostProtocol, PointerButton, PointerDeviceKind,
+        PointerEvent, PointerPhase, StyleEnvironment, SurfaceInputContext, UiApp, text,
+    };
+    use runenui_runtime::{
+        AppRuntime, LayoutConstraints, PumpBudget, RuntimeConfig, SurfaceBuildContext, TraceConfig,
+        TracePointerRejection, TraceRecordKind,
+    };
 
     use super::{TouchIngressDiagnostic, TouchInputState};
     use winit::event::TouchPhase;
@@ -334,5 +352,198 @@ mod tests {
         );
         assert_eq!(touch.active_contact_count(), 1);
         assert_eq!(touch.cancel_all().len(), 1);
+    }
+
+    fn traced_runtime_and_context() -> (AppRuntime<App>, SurfaceInputContext) {
+        let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(1024));
+        let mut runtime = AppRuntime::<App>::mount_with_config((), config);
+        let styles = StyleEnvironment::default();
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::new(
+                &styles,
+                LayoutConstraints::unbounded(),
+            ))
+            .unwrap_or_else(|_| unreachable!("touch test surface publishes"));
+        (runtime, publication.input_context().clone())
+    }
+
+    fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) {
+        runtime
+            .submit_pointer(event)
+            .unwrap_or_else(|_| unreachable!("the neutral pointer queue admits touch work"));
+        let _ = runtime.pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ));
+    }
+
+    #[test]
+    fn native_touch_phases_have_exact_primary_contact_button_facts() {
+        let (_, context) = traced_runtime_and_context();
+        let device =
+            InputDeviceId::new(21).unwrap_or_else(|| unreachable!("fixture device is nonzero"));
+        let mut touch = TouchInputState::default();
+
+        let down = touch
+            .transition(
+                device,
+                7,
+                TouchPhase::Started,
+                point(1.0, 2.0),
+                context.clone(),
+            )
+            .unwrap_or_else(|_| unreachable!("contact starts"));
+        assert_eq!(down.phase(), PointerPhase::Down);
+        assert_eq!(down.changed_button(), Some(PointerButton::Primary));
+        assert_eq!(
+            down.buttons().iter().collect::<Vec<_>>(),
+            [PointerButton::Primary]
+        );
+        assert_eq!(down.device_kind(), PointerDeviceKind::Touch);
+        assert_eq!(down.device_id(), Some(device));
+
+        let moved = touch
+            .transition(
+                device,
+                7,
+                TouchPhase::Moved,
+                point(3.0, 4.0),
+                context.clone(),
+            )
+            .unwrap_or_else(|_| unreachable!("contact moves"));
+        assert_eq!(moved.phase(), PointerPhase::Move);
+        assert_eq!(moved.changed_button(), None);
+        assert_eq!(
+            moved.buttons().iter().collect::<Vec<_>>(),
+            [PointerButton::Primary]
+        );
+
+        let up = touch
+            .transition(
+                device,
+                7,
+                TouchPhase::Ended,
+                point(3.0, 4.0),
+                context.clone(),
+            )
+            .unwrap_or_else(|_| unreachable!("contact ends"));
+        assert_eq!(up.phase(), PointerPhase::Up);
+        assert_eq!(up.changed_button(), Some(PointerButton::Primary));
+        assert!(up.buttons().is_empty());
+
+        let _ = touch
+            .transition(
+                device,
+                8,
+                TouchPhase::Started,
+                point(5.0, 6.0),
+                context.clone(),
+            )
+            .unwrap_or_else(|_| unreachable!("second contact starts"));
+        let cancel = touch
+            .transition(device, 8, TouchPhase::Cancelled, point(5.0, 6.0), context)
+            .unwrap_or_else(|_| unreachable!("second contact cancels"));
+        assert_eq!(cancel.phase(), PointerPhase::Cancel);
+        assert_eq!(cancel.changed_button(), None);
+        assert!(cancel.buttons().is_empty());
+        assert_eq!(touch.active_contact_count(), 0);
+    }
+
+    #[test]
+    fn translated_concurrent_native_contacts_reach_runtime_without_profile_rejection() {
+        let (mut runtime, context) = traced_runtime_and_context();
+        let device =
+            InputDeviceId::new(22).unwrap_or_else(|| unreachable!("fixture device is nonzero"));
+        let mut touch = TouchInputState::default();
+        let mut started_ids = Vec::new();
+
+        for (contact, phase, position) in [
+            (10, TouchPhase::Started, point(1.0, 2.0)),
+            (11, TouchPhase::Started, point(4.0, 5.0)),
+            (10, TouchPhase::Moved, point(2.0, 3.0)),
+            (11, TouchPhase::Moved, point(5.0, 6.0)),
+            (10, TouchPhase::Ended, point(2.0, 3.0)),
+            (11, TouchPhase::Cancelled, point(5.0, 6.0)),
+            (12, TouchPhase::Started, point(7.0, 8.0)),
+        ] {
+            let event = touch
+                .transition(device, contact, phase, position, context.clone())
+                .unwrap_or_else(|_| unreachable!("native contact transition is valid"));
+            if matches!(phase, TouchPhase::Started) {
+                started_ids.push(event.pointer_id().get());
+            }
+            submit_and_pump(&mut runtime, event);
+        }
+
+        assert_eq!(touch.active_contact_count(), 1);
+        for event in touch.cancel_all() {
+            assert_eq!(event.phase(), PointerPhase::Cancel);
+            submit_and_pump(&mut runtime, event);
+        }
+        assert_eq!(touch.active_contact_count(), 0);
+
+        let mut registered = Vec::new();
+        let mut closed = Vec::new();
+        for record in runtime.trace().records() {
+            match record.kind() {
+                TraceRecordKind::PointerIngressRejected { .. } => {
+                    unreachable!("all native touch transitions must satisfy runtime admission");
+                }
+                TraceRecordKind::PointerStreamRegistered { pointer_id, .. } => {
+                    registered.push(pointer_id.get());
+                }
+                TraceRecordKind::PointerStreamClosed { pointer_id } => {
+                    closed.push(pointer_id.get());
+                }
+                _ => {}
+            }
+        }
+        started_ids.sort_unstable();
+        registered.sort_unstable();
+        closed.sort_unstable();
+        assert_eq!(registered, started_ids);
+        assert_eq!(closed, started_ids);
+    }
+
+    #[test]
+    fn buttonless_touch_dialect_rejects_without_registering_a_pointer_stream() {
+        let (mut runtime, context) = traced_runtime_and_context();
+        let device =
+            InputDeviceId::new(23).unwrap_or_else(|| unreachable!("fixture device is nonzero"));
+        let mut touch = TouchInputState::default();
+        let valid = touch
+            .transition(device, 16, TouchPhase::Started, point(1.0, 2.0), context)
+            .unwrap_or_else(|_| unreachable!("native contact starts"));
+        let invalid = PointerEvent::new(
+            valid.pointer_id(),
+            PointerDeviceKind::Touch,
+            PointerPhase::Down,
+            valid.position(),
+            valid.surface_context().clone(),
+        )
+        .with_device_id(device);
+
+        submit_and_pump(&mut runtime, invalid);
+        assert!(runtime.trace().records().any(|record| matches!(
+            record.kind(),
+            TraceRecordKind::PointerIngressRejected {
+                pointer_id,
+                phase: PointerPhase::Down,
+                outcome: TracePointerRejection::TouchProfileUnsupported,
+            } if *pointer_id == valid.pointer_id()
+        )));
+        assert!(!runtime.trace().records().any(|record| matches!(
+            record.kind(),
+            TraceRecordKind::PointerStreamRegistered { pointer_id, .. }
+                if *pointer_id == valid.pointer_id()
+        )));
+
+        submit_and_pump(&mut runtime, valid);
+        assert!(runtime.trace().records().any(|record| matches!(
+            record.kind(),
+            TraceRecordKind::PointerStreamRegistered { .. }
+        )));
     }
 }
