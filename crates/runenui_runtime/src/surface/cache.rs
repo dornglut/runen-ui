@@ -78,8 +78,9 @@ impl TextEditingPaintKey {
 }
 
 use super::{
-    SurfaceBuildContext, SurfaceInteractionProjection, SurfaceLayoutReport, SurfacePresentationSnapshot,
-    SurfacePublication, resolve::{
+    SurfaceBuildContext, SurfaceInteractionProjection, SurfaceLayoutReport,
+    SurfacePresentationSnapshot, SurfacePublication,
+    resolve::{
         CachedEffectiveFacts, CachedStyleFacts, SurfaceTopologySnapshot, displayed_scroll_metrics,
     },
 };

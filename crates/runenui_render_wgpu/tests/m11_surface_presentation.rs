@@ -62,9 +62,9 @@ impl UiApp for PresentationRenderApp {
             layer: SceneLayer::new(-10_000),
         })
         .surface_presentation(
-            SurfacePresentation::new(
-                SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-            )
+            SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Center,
+            ))
             .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                 LogicalPoint::new(20.0, 20.0)
                     .unwrap_or_else(|_| unreachable!("fixture point is finite")),

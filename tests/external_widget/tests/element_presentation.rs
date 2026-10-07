@@ -41,7 +41,6 @@ fn downstream_custom_widget_can_author_generic_element_presentation() {
     );
 }
 
-
 #[test]
 fn downstream_custom_widget_can_author_same_surface_presentation_without_runtime_identity() {
     let anchor = SurfacePresentationAnchor::SurfacePoint(
@@ -54,8 +53,7 @@ fn downstream_custom_widget_can_author_same_surface_presentation_without_runtime
         .with_anchor(anchor)
         .with_fallback(fallback);
 
-    let element: Element<()> =
-        Element::new(ExternalWidget).surface_presentation(authored.clone());
+    let element: Element<()> = Element::new(ExternalWidget).surface_presentation(authored.clone());
 
     assert_eq!(element.surface_presentation_config(), Some(&authored));
     assert_eq!(authored.candidates(), [first, fallback]);

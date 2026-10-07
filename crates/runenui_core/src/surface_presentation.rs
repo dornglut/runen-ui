@@ -44,7 +44,7 @@ pub enum SurfacePresentationAlignment {
 /// `gap` separates the presentation from the selected anchor side. `offset` is
 /// then applied in surface-logical x/y coordinates. Center placement ignores
 /// cross-axis alignment but retains offset.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SurfacePresentationPlacement {
     side: SurfacePresentationSide,
     alignment: SurfacePresentationAlignment,

@@ -149,7 +149,10 @@ fn layout_resolved_surface_once<Action>(
     let root = NodeId::from(0usize);
     compute_root_layout(&mut kernel, root, available_space(root_constraints));
     for index in 1..kernel.resolved.nodes().len() {
-        if kernel.resolved.nodes()[index].surface_presentation().is_some() {
+        if kernel.resolved.nodes()[index]
+            .surface_presentation()
+            .is_some()
+        {
             compute_root_layout(
                 &mut kernel,
                 NodeId::from(index),
@@ -564,7 +567,10 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 root_max_bound(style.max_size.width, self.root_constraints.horizontal());
             style.max_size.height =
                 root_max_bound(style.max_size.height, self.root_constraints.vertical());
-        } else if self.resolved.nodes()[index].surface_presentation().is_some() {
+        } else if self.resolved.nodes()[index]
+            .surface_presentation()
+            .is_some()
+        {
             style.max_size.width =
                 root_max_bound(style.max_size.width, self.root_constraints.horizontal());
             style.max_size.height =

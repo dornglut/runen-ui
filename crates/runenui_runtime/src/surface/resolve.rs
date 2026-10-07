@@ -18,8 +18,7 @@ use runenui_core::{
     PaintContributionItem, Radius, SceneShape, ScrollBarLayout, ScrollChrome,
     ScrollControlSnapshot, SemanticContributionContext, StyleEnvironment, StyleInteractionState,
     StyleResolution, SurfacePresentation, TextAffinity, WidgetDiagnostic, WidgetTypeId,
-    resolve_style_in_environment,
-    style_effects_between,
+    resolve_style_in_environment, style_effects_between,
 };
 use runenui_text::{ShapedTextLease, TextDisplaySelection, TextPreeditProjection, TextSystem};
 

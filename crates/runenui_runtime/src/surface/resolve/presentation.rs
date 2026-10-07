@@ -111,7 +111,10 @@ fn aligned(
         SurfacePresentationAlignment::End => start + anchor_extent - extent,
         _ => return Err(PresentationGeometryError),
     };
-    value.is_finite().then_some(value).ok_or(PresentationGeometryError)
+    value
+        .is_finite()
+        .then_some(value)
+        .ok_or(PresentationGeometryError)
 }
 
 fn candidate_rect(
@@ -161,7 +164,10 @@ fn intersection_area(rect: LogicalRect, surface: LogicalRect) -> f32 {
     width * height
 }
 
-fn clamp(rect: LogicalRect, surface: LogicalRect) -> Result<LogicalRect, PresentationGeometryError> {
+fn clamp(
+    rect: LogicalRect,
+    surface: LogicalRect,
+) -> Result<LogicalRect, PresentationGeometryError> {
     let x = if rect.width() <= surface.width() {
         rect.x().clamp(surface.x(), surface.max_x() - rect.width())
     } else {
@@ -236,10 +242,7 @@ impl LoopState {
     }
 }
 
-fn local_scroll(
-    node: &SurfaceTopologyNode,
-    scroll: &SurfaceScrollProjection,
-) -> (f32, f32) {
+fn local_scroll(node: &SurfaceTopologyNode, scroll: &SurfaceScrollProjection) -> (f32, f32) {
     let local = scroll.offset(&node.id);
     (
         if node.overflow.horizontal() == OverflowPolicy::Scroll {
@@ -375,8 +378,8 @@ pub(super) fn resolve_presentation(
                 .map_err(|_| PresentationGeometryError)?;
             let local_bounds = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
                 .unwrap_or_else(|_| unreachable!("layout size is valid"));
-            let owner_bounds =
-                transform_rect_aabb(owner_to_surface, local_bounds).ok_or(PresentationGeometryError)?;
+            let owner_bounds = transform_rect_aabb(owner_to_surface, local_bounds)
+                .ok_or(PresentationGeometryError)?;
             let visible_bounds = intersect_rects(owner_bounds, surface);
             let (scroll_x, scroll_y) = local_scroll(node, scroll);
             let content_translation = LogicalTransform::translation(-scroll_x, -scroll_y)
@@ -478,7 +481,9 @@ pub(super) fn resolve_presentation(
             transform_rect_aabb(owner_to_surface, local_bounds).ok_or(PresentationGeometryError)?;
         let visible_bounds = inherited_clip_bounds
             .iter()
-            .fold(owner_bounds, |visible, clip| intersect_rects(visible, *clip));
+            .fold(owner_bounds, |visible, clip| {
+                intersect_rects(visible, *clip)
+            });
         let (scroll_x, scroll_y) = local_scroll(node, scroll);
         let content_translation = LogicalTransform::translation(-scroll_x, -scroll_y)
             .map_err(|_| PresentationGeometryError)?;
@@ -517,7 +522,6 @@ pub(super) fn resolve_presentation(
     Ok(CachedPresentationFacts { nodes: state.nodes })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -534,13 +538,19 @@ mod tests {
 
     #[test]
     fn authored_order_selects_first_full_fit_before_later_candidates() {
-        let authored = SurfacePresentation::new(
-            SurfacePresentationPlacement::new(SurfacePresentationSide::Bottom),
+        let authored = SurfacePresentation::new(SurfacePresentationPlacement::new(
+            SurfacePresentationSide::Bottom,
+        ))
+        .with_fallback(SurfacePresentationPlacement::new(
+            SurfacePresentationSide::Top,
+        ));
+        let (index, placement, resolved) = choose(
+            &authored,
+            rect(20.0, 20.0, 20.0, 20.0),
+            size(10, 10),
+            rect(0.0, 0.0, 80.0, 80.0),
         )
-        .with_fallback(SurfacePresentationPlacement::new(SurfacePresentationSide::Top));
-        let (index, placement, resolved) =
-            choose(&authored, rect(20.0, 20.0, 20.0, 20.0), size(10, 10), rect(0.0, 0.0, 80.0, 80.0))
-                .unwrap_or_else(|_| unreachable!("fixture placement resolves"));
+        .unwrap_or_else(|_| unreachable!("fixture placement resolves"));
         assert_eq!(index, 0);
         assert_eq!(placement.side(), SurfacePresentationSide::Bottom);
         assert_eq!(resolved, rect(25.0, 40.0, 10.0, 10.0));
@@ -548,13 +558,19 @@ mod tests {
 
     #[test]
     fn greatest_visible_area_wins_then_clamps_when_no_candidate_fully_fits() {
-        let authored = SurfacePresentation::new(
-            SurfacePresentationPlacement::new(SurfacePresentationSide::Right),
+        let authored = SurfacePresentation::new(SurfacePresentationPlacement::new(
+            SurfacePresentationSide::Right,
+        ))
+        .with_fallback(SurfacePresentationPlacement::new(
+            SurfacePresentationSide::Left,
+        ));
+        let (index, placement, resolved) = choose(
+            &authored,
+            rect(35.0, 15.0, 10.0, 10.0),
+            size(40, 20),
+            rect(0.0, 0.0, 60.0, 40.0),
         )
-        .with_fallback(SurfacePresentationPlacement::new(SurfacePresentationSide::Left));
-        let (index, placement, resolved) =
-            choose(&authored, rect(35.0, 15.0, 10.0, 10.0), size(40, 20), rect(0.0, 0.0, 60.0, 40.0))
-                .unwrap_or_else(|_| unreachable!("fixture placement resolves"));
+        .unwrap_or_else(|_| unreachable!("fixture placement resolves"));
         assert_eq!(index, 1, "left has greater visible intersection than right");
         assert_eq!(placement.side(), SurfacePresentationSide::Left);
         assert_eq!(resolved, rect(0.0, 10.0, 40.0, 20.0));
@@ -562,16 +578,26 @@ mod tests {
 
     #[test]
     fn equal_visible_area_keeps_authored_order_and_oversized_axis_pins_to_surface_start() {
-        let authored = SurfacePresentation::new(
-            SurfacePresentationPlacement::new(SurfacePresentationSide::Top),
+        let authored = SurfacePresentation::new(SurfacePresentationPlacement::new(
+            SurfacePresentationSide::Top,
+        ))
+        .with_fallback(SurfacePresentationPlacement::new(
+            SurfacePresentationSide::Bottom,
+        ));
+        let (index, placement, resolved) = choose(
+            &authored,
+            rect(20.0, 10.0, 20.0, 20.0),
+            size(80, 20),
+            rect(0.0, 0.0, 60.0, 40.0),
         )
-        .with_fallback(SurfacePresentationPlacement::new(SurfacePresentationSide::Bottom));
-        let (index, placement, resolved) =
-            choose(&authored, rect(20.0, 10.0, 20.0, 20.0), size(80, 20), rect(0.0, 0.0, 60.0, 40.0))
-                .unwrap_or_else(|_| unreachable!("fixture placement resolves"));
+        .unwrap_or_else(|_| unreachable!("fixture placement resolves"));
         assert_eq!(index, 0);
         assert_eq!(placement.side(), SurfacePresentationSide::Top);
-        assert_eq!(resolved.x(), 0.0, "oversized horizontal axis pins to surface start");
+        assert_eq!(
+            resolved.x(),
+            0.0,
+            "oversized horizontal axis pins to surface start"
+        );
         assert_eq!(resolved.y(), 0.0);
         assert_eq!(resolved.width(), 80.0);
     }
