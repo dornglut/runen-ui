@@ -96,6 +96,26 @@ fn semantic_separator_and_meaningful_image_publish_via_ordinary_runtime() {
         .unwrap_or_else(|| unreachable!("image remains mounted in ordinary frame"));
     assert!(node.bounds().width() > 0.0);
     assert!(node.bounds().height() > 0.0);
+    for (id, cross_axis_is_height) in [
+        ("separator.horizontal", true),
+        ("separator.vertical", false),
+    ] {
+        let id = ElementId::new(id).unwrap_or_else(|_| unreachable!("separator ID valid"));
+        let separator = publication
+            .frame()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&id))
+            .unwrap_or_else(|| unreachable!("separator is mounted"));
+        let rect = separator.bounds();
+        let (span, thickness) = if cross_axis_is_height {
+            (rect.width(), rect.height())
+        } else {
+            (rect.height(), rect.width())
+        };
+        assert_eq!(thickness, 1.0, "intrinsic separator cross-axis thickness");
+        assert!(span > 1.0, "separator stretches on its requested fill axis");
+    }
     let painted = publication
         .paint_scene()
         .items()

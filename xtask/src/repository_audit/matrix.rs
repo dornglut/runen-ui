@@ -35,6 +35,7 @@ const M11_DELIVERY_SLICES: &[&str] = &[
     "M11SCROLLB",
     "M11COLL2",
     "M11TABS",
+    "M11CONTENT",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -953,7 +954,7 @@ mod tests {
             &rows,
             "M11CONTENT",
             &["M11CTRL-33", "M11CTRL-34", "M11CTRL-35"],
-            "owner-accepted",
+            "implementation-complete",
         );
         assert_eq!(
             rows.iter()
