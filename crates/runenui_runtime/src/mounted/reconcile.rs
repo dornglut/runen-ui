@@ -235,6 +235,89 @@ const fn apply_retained_phase_changes<Action>(
     }
 }
 
+fn apply_retained_authoring<Action>(
+    node: &mut MountedNode<Action>,
+    incoming: IncomingNode<Action>,
+    widget_invalidation: WidgetInvalidation,
+) {
+    let IncomingNode {
+        authored_id,
+        key,
+        layout,
+        style,
+        timelines,
+        surface_presentation,
+        focusability,
+        focus_scope,
+        focus_group,
+        focus_group_entry,
+        presentation_focus_entry,
+        focus_group_search_text,
+        scroll_control_binding,
+        scroll_chrome,
+        shortcut_bindings,
+        authoring_diagnostics,
+        widget,
+        children: _,
+    } = incoming;
+    let surface_presentation_changed = node.surface_presentation != surface_presentation;
+    let presentation_focus_entry_changed =
+        node.presentation_focus_entry != presentation_focus_entry;
+    let tree_changed = node.authored_id != authored_id
+        || surface_presentation_changed
+        || node.layout.overflow() != layout.overflow();
+    let style_changed = node.style != style;
+    let timelines_changed = node.timelines != timelines;
+    let scroll_control_binding_changed = node.scroll_control_binding != scroll_control_binding;
+    let scroll_chrome_changed = node.scroll_chrome != scroll_chrome;
+    let common_invalidation = common_field_invalidation(
+        node,
+        &CommonFieldRefs {
+            authored_id: authored_id.as_ref(),
+            layout: &layout,
+            style: &style,
+            focusability,
+            focus_scope,
+            focus_group,
+            focus_group_entry,
+            presentation_focus_entry,
+            focus_group_search_text: focus_group_search_text.as_deref(),
+            diagnostics: &authoring_diagnostics,
+        },
+    );
+    node.authored_id = authored_id;
+    node.key = key;
+    node.layout = layout;
+    node.style = style;
+    node.timelines = timelines;
+    node.surface_presentation = surface_presentation;
+    node.focusability = focusability;
+    node.focus_scope = focus_scope;
+    node.focus_group = focus_group;
+    node.focus_group_entry = focus_group_entry;
+    node.presentation_focus_entry = presentation_focus_entry;
+    node.focus_group_search_text = focus_group_search_text;
+    node.scroll_control_binding = scroll_control_binding;
+    node.scroll_chrome = scroll_chrome;
+    node.shortcut_bindings = shortcut_bindings;
+    node.authoring_diagnostics = authoring_diagnostics;
+    node.widget = widget;
+    node.caches.activation = CachedCapability::Unresolved;
+    node.caches.text_input = CachedCapability::Unresolved;
+    apply_invalidation(
+        node,
+        widget_invalidation
+            | common_invalidation
+            | presentation_authoring_invalidation(
+                surface_presentation_changed,
+                presentation_focus_entry_changed,
+            )
+            | scroll_control_binding_invalidation(scroll_control_binding_changed)
+            | scroll_chrome_invalidation(scroll_chrome_changed),
+    );
+    apply_retained_phase_changes(node, tree_changed, style_changed, timelines_changed);
+}
+
 impl<Action> MountedTree<Action> {
     pub(crate) fn plan_reconciliation(
         &self,
@@ -591,102 +674,13 @@ impl<Action> MountedTree<Action> {
         path: &str,
         stats: &mut ReconcileStats<Action>,
     ) -> Result<(), ReconciliationApplyError> {
-        let IncomingNode {
-            authored_id,
-            key,
-            layout,
-            style,
-            timelines,
-            surface_presentation,
-            focusability,
-            focus_scope,
-            focus_group,
-            focus_group_entry,
-            presentation_focus_entry,
-            focus_group_search_text,
-            scroll_control_binding,
-            scroll_chrome,
-            shortcut_bindings,
-            authoring_diagnostics,
-            widget,
-            children: _,
-        } = incoming;
-        let mut update_context = self.prepare_retained_widget_update(id, &widget, path, stats)?;
-        let common_invalidation;
-        {
-            let node = self
-                .node_mut(id)
-                .unwrap_or_else(|| unreachable!("planned retained node remains live"));
-            let surface_presentation_changed = node.surface_presentation != surface_presentation;
-            let tree_metadata_changed =
-                node.authored_id != authored_id || surface_presentation_changed;
-            let topology_overflow_changed = node.layout.overflow() != layout.overflow();
-            let style_changed = node.style != style;
-            let timelines_changed = node.timelines != timelines;
-            let presentation_focus_entry_changed =
-                node.presentation_focus_entry != presentation_focus_entry;
-            let scroll_control_binding_changed =
-                node.scroll_control_binding != scroll_control_binding;
-            let scroll_chrome_changed = node.scroll_chrome != scroll_chrome;
-            common_invalidation = common_field_invalidation(
-                node,
-                &CommonFieldRefs {
-                    authored_id: authored_id.as_ref(),
-                    layout: &layout,
-                    style: &style,
-                    focusability,
-                    focus_scope,
-                    focus_group,
-                    focus_group_entry,
-                    presentation_focus_entry,
-                    focus_group_search_text: focus_group_search_text.as_deref(),
-                    diagnostics: &authoring_diagnostics,
-                },
-            );
-            node.authored_id = authored_id;
-            node.key = key;
-            node.layout = layout;
-            node.style = style;
-            node.timelines = timelines;
-            node.surface_presentation = surface_presentation;
-            node.focusability = focusability;
-            node.focus_scope = focus_scope;
-            node.focus_group = focus_group;
-            node.focus_group_entry = focus_group_entry;
-            node.presentation_focus_entry = presentation_focus_entry;
-            node.focus_group_search_text = focus_group_search_text;
-            node.scroll_control_binding = scroll_control_binding;
-            node.scroll_chrome = scroll_chrome;
-            node.shortcut_bindings = shortcut_bindings;
-            node.authoring_diagnostics = authoring_diagnostics;
-            node.widget = widget;
-            // Input capability declarations belong to the incoming widget instance,
-            // not the retained state. Semantic contribution remains cached unless
-            // the widget explicitly invalidates semantics or mounted-child structure changes.
-            node.caches.activation = CachedCapability::Unresolved;
-            node.caches.text_input = CachedCapability::Unresolved;
-            let presentation_invalidation = presentation_authoring_invalidation(
-                surface_presentation_changed,
-                presentation_focus_entry_changed,
-            );
-            let scroll_control_invalidation =
-                scroll_control_binding_invalidation(scroll_control_binding_changed);
-            let scroll_chrome_invalidation = scroll_chrome_invalidation(scroll_chrome_changed);
-            apply_invalidation(
-                node,
-                update_context.__runtime_take_invalidation()
-                    | common_invalidation
-                    | presentation_invalidation
-                    | scroll_control_invalidation
-                    | scroll_chrome_invalidation,
-            );
-            apply_retained_phase_changes(
-                node,
-                tree_metadata_changed || topology_overflow_changed,
-                style_changed,
-                timelines_changed,
-            );
-        }
+        let mut update_context =
+            self.prepare_retained_widget_update(id, &incoming.widget, path, stats)?;
+        let widget_invalidation = update_context.__runtime_take_invalidation();
+        let node = self
+            .node_mut(id)
+            .unwrap_or_else(|| unreachable!("planned retained node remains live"));
+        apply_retained_authoring(node, incoming, widget_invalidation);
         if update_context.__runtime_take_subscription_invalidation() {
             stats.subscription_invalidated.push(id.clone());
         }
