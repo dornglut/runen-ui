@@ -101,6 +101,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             geometry,
             boundary_plan,
             routed_target: None,
+            presentation_block_root: None,
+            presentation_dismiss: None,
             parent,
             selection_cancelled: owner_cleanup.selection_cancelled,
             selection_tracking: false,

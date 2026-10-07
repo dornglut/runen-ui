@@ -245,6 +245,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Ok(parent) => parent,
             Err(outcome) => return outcome,
         };
+        let presentation_dismiss = presentation_block
+            .as_ref()
+            .filter(|block| block.dismiss && work.event.phase() == PointerPhase::Down)
+            .map(|block| block.root.clone());
         self.dispatch_prepared_pointer(PreparedPointer {
             work,
             is_new: prepared_stream.is_new,
@@ -254,9 +258,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             boundary_plan,
             routed_target,
             presentation_block_root: presentation_block.as_ref().map(|block| block.root.clone()),
-            presentation_dismiss: presentation_block
-                .filter(|block| block.dismiss && work.event.phase() == PointerPhase::Down)
-                .map(|block| block.root),
+            presentation_dismiss,
             parent,
             selection_cancelled: owner_cleanup.selection_cancelled,
             selection_tracking: true,
