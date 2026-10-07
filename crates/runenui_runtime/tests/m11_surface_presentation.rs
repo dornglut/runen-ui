@@ -1,18 +1,22 @@
 #![allow(refining_impl_trait)]
 
+use std::{cell::RefCell, rc::Rc};
+
 use runenui_core::{
-    ChildBearingWidget, Color, ContributionClip, Element, HitContribution, HitContributionContext,
-    HitRegion, LayoutDimension, LayoutStyle, LogicalDelta, LogicalLength, LogicalPoint,
-    LogicalRect, LogicalSize, NoHostProtocol, OverflowPolicy, OverflowStyle, PaintContribution,
-    PaintContributionContext,
-    PaintContributionItem, PresentationOrigin, PresentationRotation, PresentationScale,
-    PresentationTransform, PresentationTranslation, SceneLayer, SceneShape, StyleEnvironment,
+    ChildBearingWidget, Color, CommandOrigin, ContributionClip, Element, EventContext, EventPhase,
+    HitContribution, HitContributionContext, HitRegion, LayoutDimension, LayoutStyle, LogicalDelta,
+    LogicalLength, LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol, OverflowPolicy,
+    OverflowStyle, PaintContribution, PaintContributionContext, PaintContributionItem,
+    PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
+    PresentationOrigin, PresentationRotation, PresentationScale, PresentationTransform,
+    PresentationTranslation, SceneLayer, SceneShape, SemanticCommand, StyleEnvironment,
     SurfacePresentation, SurfacePresentationAlignment, SurfacePresentationAnchor,
-    SurfacePresentationPlacement, SurfacePresentationSide, UiApp, UnitInterval, View, Widget,
-    WidgetMeasure, WidgetMeasureInput, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
-    button, column, container, text,
+    SurfacePresentationPlacement, SurfacePresentationSide, UiApp, UiEvent, UnitInterval, View,
+    Widget, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, button, column, container, text,
 };
-use runenui_runtime::{AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext};
+use runenui_runtime::{
+    AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, SurfaceBuildContext,
+};
 
 fn fixed(width: u16, height: u16) -> LayoutStyle {
     LayoutStyle::default()
@@ -715,4 +719,424 @@ fn owner_anchor_follows_accepted_scroll_without_inflating_scroll_extent() {
     assert_eq!(scrolled_anchor.y(), initial_anchor.y() - 10.0);
     assert_eq!(scrolled_anchor.width(), initial_anchor.width());
     assert_eq!(scrolled_anchor.height(), initial_anchor.height());
+}
+
+
+#[derive(Clone, Copy)]
+enum SiblingStackAction {
+    Reverse,
+}
+
+struct SiblingStackApp;
+
+fn sibling_presentation(id: &'static str, color: Color) -> Element<SiblingStackAction> {
+    Element::new(LayerProbe {
+        layer: SceneLayer::ZERO,
+        color,
+    })
+    .id(id)
+    .key(id)
+    .surface_presentation(
+        SurfacePresentation::new(
+            SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
+        )
+        .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+            LogicalPoint::new(20.0, 20.0)
+                .unwrap_or_else(|_| unreachable!("fixture point is finite")),
+        )),
+    )
+}
+
+impl UiApp for SiblingStackApp {
+    type State = bool;
+    type Action = SiblingStackAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(reversed: &Self::State) -> impl View<Self::Action> {
+        let first = sibling_presentation("sibling-first", Color::WHITE);
+        let second = sibling_presentation("sibling-second", Color::BLACK);
+        if *reversed {
+            column(vec![second, first])
+        } else {
+            column(vec![first, second])
+        }
+    }
+
+    fn update(reversed: &mut Self::State, action: Self::Action) {
+        match action {
+            SiblingStackAction::Reverse => *reversed = true,
+        }
+    }
+}
+
+#[test]
+fn direct_presentation_siblings_follow_current_keyed_mounted_preorder() {
+    let mut runtime = AppRuntime::<SiblingStackApp>::mount(false);
+    let environment = StyleEnvironment::default();
+    let context = tight_context(&environment, 80, 80);
+    let point = LogicalPoint::new(10.0, 10.0)
+        .unwrap_or_else(|_| unreachable!("fixture point is finite"));
+
+    let initial = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("initial sibling publication is admitted"));
+    let first_id = node(&initial, "sibling-first").id().clone();
+    let second_id = node(&initial, "sibling-second").id().clone();
+    assert_eq!(initial.hit_test_scene().target_at(point), Some(&second_id));
+
+    runtime
+        .submit_action(SiblingStackAction::Reverse)
+        .unwrap_or_else(|_| unreachable!("application reorder action is admitted"));
+    assert!(
+        runtime
+            .pump(PumpBudget::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ))
+            .is_quiescent()
+    );
+
+    let reordered = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("reordered sibling publication is admitted"));
+    assert_eq!(node(&reordered, "sibling-first").id(), &first_id);
+    assert_eq!(node(&reordered, "sibling-second").id(), &second_id);
+    assert_eq!(
+        reordered.hit_test_scene().target_at(point),
+        Some(&first_id),
+        "only the accepted keyed mounted preorder changes sibling presentation stacking"
+    );
+}
+
+struct FocusProjectionApp;
+
+impl UiApp for FocusProjectionApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &Self::State) -> impl View<Self::Action> {
+        let start = button("focus start")
+            .on_activate(|| ())
+            .id("focus-start")
+            .with_layout(fixed(20, 20))
+            .into_element();
+        let projected = button("focus projected")
+            .on_activate(|| ())
+            .id("focus-projected")
+            .with_layout(fixed(20, 20))
+            .surface_presentation(
+                SurfacePresentation::new(
+                    SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
+                )
+                .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                    LogicalPoint::new(70.0, 10.0)
+                        .unwrap_or_else(|_| unreachable!("fixture point is finite")),
+                )),
+            )
+            .into_element();
+        column(vec![start, projected])
+    }
+
+    fn update((): &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn directional_focus_uses_projected_presentation_geometry() {
+    let mut runtime = AppRuntime::<FocusProjectionApp>::mount(());
+    let environment = StyleEnvironment::default();
+    let publication = runtime
+        .publish_surface(&tight_context(&environment, 100, 60))
+        .unwrap_or_else(|_| unreachable!("focus presentation publication is admitted"));
+    let start = node(&publication, "focus-start").id().clone();
+    let projected = node(&publication, "focus-projected").id().clone();
+    let projected_snapshot = node(&publication, "focus-projected")
+        .surface_presentation()
+        .unwrap_or_else(|| unreachable!("projected focus target has placement facts"));
+    assert!(projected_snapshot.visible_bounds().x() > node(&publication, "focus-start").bounds().max_x());
+
+    runtime
+        .submit_command(
+            start.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus request is admitted"));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.focus().focused_node(), Some(&start));
+
+    runtime
+        .submit_command(
+            start,
+            SemanticCommand::FocusRight,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("directional focus command is admitted"));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&projected),
+        "directional focus must rank the same projected geometry used by paint/hit/semantics"
+    );
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RouteFact {
+    widget: &'static str,
+    phase: EventPhase,
+}
+
+#[derive(Clone, Debug)]
+struct RouteProbe {
+    name: &'static str,
+    facts: Rc<RefCell<Vec<RouteFact>>>,
+}
+
+impl Widget<()> for RouteProbe {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ()>,
+    ) -> WidgetEventOutput {
+        if event
+            .as_semantic_command()
+            .is_some_and(|command| command.command() == SemanticCommand::OpenMenu)
+        {
+            self.facts.borrow_mut().push(RouteFact {
+                widget: self.name,
+                phase: context.phase(),
+            });
+        }
+        WidgetEventOutput::none()
+    }
+
+    fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(20_u8), LogicalLength::from(20_u8))
+    }
+}
+
+impl ChildBearingWidget<()> for RouteProbe {}
+
+struct RouteProjectionApp;
+
+impl UiApp for RouteProjectionApp {
+    type State = Rc<RefCell<Vec<RouteFact>>>;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(facts: &Self::State) -> impl View<Self::Action> {
+        let target = Element::new(RouteProbe {
+            name: "target",
+            facts: Rc::clone(facts),
+        })
+        .id("route-target")
+        .surface_presentation(
+            SurfacePresentation::new(
+                SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
+            )
+            .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                LogicalPoint::new(60.0, 20.0)
+                    .unwrap_or_else(|_| unreachable!("fixture point is finite")),
+            )),
+        );
+        container(
+            RouteProbe {
+                name: "owner",
+                facts: Rc::clone(facts),
+            },
+            vec![target],
+        )
+        .id("route-owner")
+    }
+
+    fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn projected_target_keeps_ordinary_logical_routed_ancestry() {
+    let facts = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<RouteProjectionApp>::mount(Rc::clone(&facts));
+    let environment = StyleEnvironment::default();
+    let publication = runtime
+        .publish_surface(&tight_context(&environment, 100, 60))
+        .unwrap_or_else(|_| unreachable!("route presentation publication is admitted"));
+    let target = node(&publication, "route-target").id().clone();
+
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::OpenMenu,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("route command is admitted"));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+
+    assert_eq!(
+        facts.borrow().as_slice(),
+        [
+            RouteFact {
+                widget: "owner",
+                phase: EventPhase::Capture,
+            },
+            RouteFact {
+                widget: "target",
+                phase: EventPhase::Target,
+            },
+            RouteFact {
+                widget: "owner",
+                phase: EventPhase::Bubble,
+            },
+        ],
+        "visual projection must not rewrite the ordinary mounted route"
+    );
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CaptureMoveFact {
+    routed_target: MountedNodeId,
+    physical_target: Option<MountedNodeId>,
+}
+
+#[derive(Clone, Debug)]
+struct CaptureProjectionProbe {
+    capture_on_down: bool,
+    moves: Rc<RefCell<Vec<CaptureMoveFact>>>,
+}
+
+impl Widget<()> for CaptureProjectionProbe {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ()>,
+    ) -> WidgetEventOutput {
+        match event {
+            UiEvent::Pointer(pointer)
+                if self.capture_on_down && pointer.phase() == PointerPhase::Down =>
+            {
+                context.capture_pointer();
+            }
+            UiEvent::Pointer(pointer)
+                if self.capture_on_down && pointer.phase() == PointerPhase::Move =>
+            {
+                self.moves.borrow_mut().push(CaptureMoveFact {
+                    routed_target: context.original_target().clone(),
+                    physical_target: context.physical_target().cloned(),
+                });
+            }
+            _ => {}
+        }
+        WidgetEventOutput::none()
+    }
+
+    fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(20_u8), LogicalLength::from(20_u8))
+    }
+
+    fn hit_test(&self, (): &Self::State, _: HitContributionContext) -> HitContribution {
+        let rect = LogicalRect::try_new(0.0, 0.0, 20.0, 20.0)
+            .unwrap_or_else(|_| unreachable!("fixture rect is valid"));
+        HitContribution::new(vec![HitRegion::rect(rect)])
+    }
+}
+
+struct CaptureProjectionApp;
+
+impl UiApp for CaptureProjectionApp {
+    type State = Rc<RefCell<Vec<CaptureMoveFact>>>;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(moves: &Self::State) -> impl View<Self::Action> {
+        let capture = Element::new(CaptureProjectionProbe {
+            capture_on_down: true,
+            moves: Rc::clone(moves),
+        })
+        .id("capture-owner");
+        let projected = Element::new(CaptureProjectionProbe {
+            capture_on_down: false,
+            moves: Rc::clone(moves),
+        })
+        .id("capture-projected")
+        .surface_presentation(
+            SurfacePresentation::new(
+                SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
+            )
+            .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                LogicalPoint::new(60.0, 10.0)
+                    .unwrap_or_else(|_| unreachable!("fixture point is finite")),
+            )),
+        );
+        column(vec![capture, projected])
+    }
+
+    fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn projected_physical_target_does_not_steal_existing_pointer_capture() {
+    let moves = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<CaptureProjectionApp>::mount(Rc::clone(&moves));
+    let environment = StyleEnvironment::default();
+    let publication = runtime
+        .publish_surface(&tight_context(&environment, 100, 60))
+        .unwrap_or_else(|_| unreachable!("capture presentation publication is admitted"));
+    let capture = node(&publication, "capture-owner").id().clone();
+    let projected = node(&publication, "capture-projected").id().clone();
+    let context = publication.input_context().clone();
+
+    let pointer_id = PointerId::new(341)
+        .unwrap_or_else(|| unreachable!("fixture pointer identity is non-zero"));
+    let down_point = LogicalPoint::new(10.0, 10.0)
+        .unwrap_or_else(|_| unreachable!("fixture down point is finite"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                down_point,
+                context.clone(),
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|_| unreachable!("capture-start pointer is admitted"));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+
+    let move_point = LogicalPoint::new(60.0, 10.0)
+        .unwrap_or_else(|_| unreachable!("fixture move point is finite"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Move,
+                move_point,
+                context,
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|_| unreachable!("captured move is admitted"));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+
+    assert_eq!(
+        moves.borrow().as_slice(),
+        [CaptureMoveFact {
+            routed_target: capture,
+            physical_target: Some(projected),
+        }],
+        "presentation hit testing may update the physical target but must not steal capture routing"
+    );
 }
