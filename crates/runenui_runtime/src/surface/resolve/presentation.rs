@@ -409,18 +409,20 @@ pub(in crate::surface) fn resolve_presentation(
                 placed,
                 visible_bounds,
             );
-            state.nodes.push(PresentationNodeFacts::new(PresentationNodeFactsInit {
-                owner_to_surface,
-                content_to_surface,
-                owner_bounds,
-                visible_bounds,
-                inherited_clips: Arc::from(inherited_clips),
-                content_clips: Arc::from(content_clips.clone()),
-                published: true,
-                stack_root,
-                root_snapshot: Some(snapshot),
-                diagnostics: Arc::from(Vec::<WidgetDiagnostic>::new()),
-            }));
+            state
+                .nodes
+                .push(PresentationNodeFacts::new(PresentationNodeFactsInit {
+                    owner_to_surface,
+                    content_to_surface,
+                    owner_bounds,
+                    visible_bounds,
+                    inherited_clips: Arc::from(inherited_clips),
+                    content_clips: Arc::from(content_clips.clone()),
+                    published: true,
+                    stack_root,
+                    root_snapshot: Some(snapshot),
+                    diagnostics: Arc::from(Vec::<WidgetDiagnostic>::new()),
+                }));
             state.child_clips.push(content_clips);
             state.child_clip_bounds.push(inherited_clip_bounds);
             continue;
@@ -507,18 +509,20 @@ pub(in crate::surface) fn resolve_presentation(
             &mut inherited_clip_bounds,
             &mut content_clips,
         )?;
-        state.nodes.push(PresentationNodeFacts::new(PresentationNodeFactsInit {
-            owner_to_surface,
-            content_to_surface,
-            owner_bounds,
-            visible_bounds,
-            inherited_clips: Arc::from(inherited_clips),
-            content_clips: Arc::from(content_clips.clone()),
-            published: true,
-            stack_root,
-            root_snapshot: None,
-            diagnostics: Arc::from(Vec::<WidgetDiagnostic>::new()),
-        }));
+        state
+            .nodes
+            .push(PresentationNodeFacts::new(PresentationNodeFactsInit {
+                owner_to_surface,
+                content_to_surface,
+                owner_bounds,
+                visible_bounds,
+                inherited_clips: Arc::from(inherited_clips),
+                content_clips: Arc::from(content_clips.clone()),
+                published: true,
+                stack_root,
+                root_snapshot: None,
+                diagnostics: Arc::from(Vec::<WidgetDiagnostic>::new()),
+            }));
         state.child_clips.push(content_clips);
         state.child_clip_bounds.push(inherited_clip_bounds);
     }

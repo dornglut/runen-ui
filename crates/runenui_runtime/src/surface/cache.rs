@@ -336,7 +336,7 @@ pub(super) struct PresentationNodeFactsInit {
 
 impl PresentationNodeFacts {
     #[must_use]
-    pub(super) const fn new(init: PresentationNodeFactsInit) -> Self {
+    pub(super) fn new(init: PresentationNodeFactsInit) -> Self {
         Self {
             owner_to_surface: init.owner_to_surface,
             content_to_surface: init.content_to_surface,
