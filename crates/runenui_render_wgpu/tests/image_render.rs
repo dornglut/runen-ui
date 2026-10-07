@@ -10,10 +10,10 @@ use std::{
 
 use runenui_core::{
     Brush, Color, ContributionClip, Element, ImageDescriptor, ImageIntrinsicSize, ImageMapping,
-    ImagePaintDescriptor, LogicalLength, LogicalRect, LogicalSize, LogicalTransform,
-    NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionItem, Radius,
-    ResourceKind, ResourceRef, SceneOpacity, SceneShape, StyleEnvironment, UiApp, Widget,
-    WidgetMeasure, WidgetUpdateContext,
+    ImagePaintDescriptor, LayoutDimension, LayoutStyle, LogicalLength, LogicalRect, LogicalSize,
+    LogicalTransform, NoHostProtocol, PaintContribution, PaintContributionContext,
+    PaintContributionItem, Radius, ResourceKind, ResourceRef, SceneOpacity, SceneShape,
+    StyleEnvironment, UiApp, Widget, WidgetMeasure, WidgetUpdateContext,
 };
 use runenui_render_wgpu::{
     BackendSelection, ImagePayload, Renderer, RendererInitError, RendererOptions, ResourcePayload,
@@ -78,6 +78,30 @@ impl UiApp for FixtureApp {
 
     fn update(items: &mut Self::State, replacement: Self::Action) {
         *items = replacement;
+    }
+}
+
+struct StandardImageApp;
+
+impl UiApp for StandardImageApp {
+    type State = ImageDescriptor;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(descriptor: &Self::State) -> impl runenui_core::View<Self::Action> {
+        runenui_core::image(descriptor.clone())
+            .alt_text("Standard image")
+            .with_layout(
+                LayoutStyle::default()
+                    .with_width(LayoutDimension::Length(LogicalLength::from(16_u16)))
+                    .with_height(LayoutDimension::Length(LogicalLength::from(12_u16))),
+            )
+    }
+
+    fn update(
+        _: &mut Self::State,
+        (): Self::Action,
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
@@ -154,6 +178,53 @@ impl ResourceProvider for CountingImageProvider {
         }
         Ok(ResourcePayload::Image(self.payload.clone()))
     }
+}
+
+#[test]
+fn standard_image_view_renders_real_wgpu_pixels() -> Result<(), Box<dyn Error>> {
+    let Some(mut renderer) = renderer_or_adapterless()? else {
+        return Ok(());
+    };
+
+    let resource = ResourceRef::new(ResourceKind::Image);
+    let descriptor = ImageDescriptor::new(
+        resource.clone(),
+        ImageIntrinsicSize::new(2, 2).unwrap_or_else(|| unreachable!("fixture image size nonzero")),
+    )
+    .unwrap_or_else(|_| unreachable!("fixture reference has image kind"));
+    let provider = CountingImageProvider::new(resource)?;
+    let mut runtime = AppRuntime::<StandardImageApp>::mount(descriptor);
+    let style = StyleEnvironment::default();
+    let size = LogicalSize::try_new(16.0, 12.0)
+        .unwrap_or_else(|_| unreachable!("test surface is nonzero and finite"));
+    let scale = RasterScale::new(2.0)
+        .unwrap_or_else(|_| unreachable!("test raster scale is positive and finite"));
+    let context =
+        SurfaceBuildContext::new(&style, LayoutConstraints::tight(size)).with_raster_scale(scale);
+    let surface = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("standard Image surface publication succeeds"));
+    assert!(
+        surface
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .any(|node| node.role() == runenui_core::SemanticRole::Image
+                && node.name() == Some("Standard image"))
+    );
+    let output = renderer.render_offscreen_publication(surface.paint_publication(), &provider)?;
+    assert_eq!(
+        output.readback().extent(),
+        runenui_render_wgpu::OffscreenExtent::new(32, 24)?
+    );
+    assert_eq!(provider.loads(), 1);
+    let readback = output.readback();
+    assert_eq!(pixel(readback, 10, 5), [255, 0, 0, 255]);
+    assert_eq!(pixel(readback, 22, 5), [0, 255, 0, 255]);
+    assert_eq!(pixel(readback, 10, 19), [0, 0, 255, 255]);
+    assert_eq!(pixel(readback, 22, 19), [255, 255, 255, 255]);
+    Ok(())
 }
 
 struct PngImageProvider {

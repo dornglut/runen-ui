@@ -35,6 +35,7 @@ const M11_DELIVERY_SLICES: &[&str] = &[
     "M11SCROLLB",
     "M11COLL2",
     "M11TABS",
+    "M11CONTENT",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -881,7 +882,7 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 32);
+        assert_eq!(rows.len(), 35);
 
         assert_m11_slice(
             &rows,
@@ -949,6 +950,12 @@ mod tests {
             &["M11CTRL-29", "M11CTRL-30", "M11CTRL-31", "M11CTRL-32"],
             "owner-accepted",
         );
+        assert_m11_slice(
+            &rows,
+            "M11CONTENT",
+            &["M11CTRL-33", "M11CTRL-34", "M11CTRL-35"],
+            "owner-accepted",
+        );
         assert_eq!(
             rows.iter()
                 .map(|row| row.cells[5].as_str())
@@ -959,6 +966,7 @@ mod tests {
                 "M11C",
                 "M11D2",
                 "M11COLL2",
+                "M11CONTENT",
                 "M11SCROLLB",
                 "M11SEM1",
                 "M11TABS",
@@ -1056,7 +1064,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 474);
+        assert_eq!(total, 477);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }
