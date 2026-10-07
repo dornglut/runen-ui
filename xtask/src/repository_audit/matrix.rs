@@ -954,7 +954,7 @@ mod tests {
             &rows,
             "M11CONTENT",
             &["M11CTRL-33", "M11CTRL-34", "M11CTRL-35"],
-            "implementation-complete",
+            "owner-accepted",
         );
         assert_eq!(
             rows.iter()
