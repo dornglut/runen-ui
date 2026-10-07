@@ -284,10 +284,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     (Some(owner), _) => self.pointer_owner_is_ineligible(owner, unmounted),
                     (None, _) => false,
                 };
-                let presentation_barrier = snapshot
-                    .presentation_barrier
-                    .as_ref()
-                    .is_some_and(|owner| {
+                let presentation_barrier =
+                    snapshot.presentation_barrier.as_ref().is_some_and(|owner| {
                         unmounted.contains(owner)
                             || self.tree.target_status(owner) != TargetStatus::Live
                     });

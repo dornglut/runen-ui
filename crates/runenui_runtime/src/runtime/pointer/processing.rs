@@ -172,9 +172,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let retained_barrier = prepared_stream
             .stream
             .presentation_barrier()
-            .filter(|owner| {
-                self.tree.target_status(owner) == crate::mounted::TargetStatus::Live
-            })
+            .filter(|owner| self.tree.target_status(owner) == crate::mounted::TargetStatus::Live)
             .cloned();
         let presentation_block = if previous_capture_owner.is_some() {
             None

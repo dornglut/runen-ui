@@ -225,14 +225,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 );
                 return self.pointer_runtime_outcome();
             }
-            transaction.default_outputs.push(CollectedRoutedOutput::Command {
-                target: root.clone(),
-                command: SemanticCommand::PresentationDismiss(
-                    PresentationDismissReason::OutsidePointer,
-                ),
-                origin: CommandOrigin::__runtime_semantic_default(transaction.origin.source()),
-                causal_parent: transaction.parent,
-            });
+            transaction
+                .default_outputs
+                .push(CollectedRoutedOutput::Command {
+                    target: root.clone(),
+                    command: SemanticCommand::PresentationDismiss(
+                        PresentationDismissReason::OutsidePointer,
+                    ),
+                    origin: CommandOrigin::__runtime_semantic_default(transaction.origin.source()),
+                    causal_parent: transaction.parent,
+                });
         }
         let pointer_focus = match self.apply_pointer_defaults(
             &pending.work.event,
@@ -278,12 +280,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             PointerPhase::Down => {
                 pending.presentation_block_root.is_some()
                     || (!transaction.default_prevented
-                    && pending.work.event.changed_button() == Some(PointerButton::Primary)
-                    && pending
-                        .geometry
-                        .physical_target
-                        .as_ref()
-                        .is_some_and(|target| pending.stream.pressed_owner() == Some(target)))
+                        && pending.work.event.changed_button() == Some(PointerButton::Primary)
+                        && pending
+                            .geometry
+                            .physical_target
+                            .as_ref()
+                            .is_some_and(|target| pending.stream.pressed_owner() == Some(target)))
             }
             PointerPhase::Up | PointerPhase::Wheel => {
                 transaction.default_outputs.len() > default_outputs_before

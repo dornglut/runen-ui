@@ -506,11 +506,11 @@ impl SurfaceCache {
                 let presentation = node.surface_presentation.as_ref()?;
                 (self.presentation.published(position)
                     && self.presentation.stack_root(position) == Some(position))
-                    .then(|| PresentationInteractionRoot {
-                        root: node.id.clone(),
-                        owner: node.parent.clone(),
-                        presentation: presentation.clone(),
-                    })
+                .then(|| PresentationInteractionRoot {
+                    root: node.id.clone(),
+                    owner: node.parent.clone(),
+                    presentation: presentation.clone(),
+                })
             })
             .collect()
     }

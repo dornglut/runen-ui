@@ -1,6 +1,4 @@
-use runenui_core::{
-    PresentationOutsidePointerPolicy, SurfacePresentation,
-};
+use runenui_core::{PresentationOutsidePointerPolicy, SurfacePresentation};
 
 use super::{HostProtocol, Runtime};
 use crate::MountedNodeId;
@@ -25,7 +23,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 self.tree
                     .presentation_family_contains(&candidate.root, target)
             }) {
-                return None;
+                continue;
             }
 
             let policy = candidate.presentation.outside_pointer();

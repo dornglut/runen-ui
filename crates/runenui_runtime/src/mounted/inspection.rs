@@ -82,9 +82,7 @@ impl<Action> MountedTree<Action> {
             let Some(node) = self.node(&current) else {
                 return false;
             };
-            if node.surface_presentation.is_some()
-                && self.is_descendant_or_self(target, &current)
-            {
+            if node.surface_presentation.is_some() && self.is_descendant_or_self(target, &current) {
                 return true;
             }
             let Some(parent) = node.parent.clone() else {
@@ -93,7 +91,6 @@ impl<Action> MountedTree<Action> {
             current = parent;
         }
     }
-
 
     #[cfg(test)]
     pub(crate) fn index(&mut self) -> MountedTreeIndex<'_, Action> {

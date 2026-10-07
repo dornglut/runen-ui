@@ -4,9 +4,8 @@ use runenui_core::{
         WidgetActivationContextOutputOrder, WidgetActivationContextOutputs,
     },
     ApplicationCommandId, Axis, ClipboardWritePurpose, CommandOrigin, FocusDirection,
-    FrameworkServiceRequest, HostProtocol, LogicalDelta, OverflowPolicy,
-    PresentationDismissReason, ScrollControlRequest, SemanticActionData, SemanticCommand,
-    TextSensitivity,
+    FrameworkServiceRequest, HostProtocol, LogicalDelta, OverflowPolicy, PresentationDismissReason,
+    ScrollControlRequest, SemanticActionData, SemanticCommand, TextSensitivity,
 };
 
 use super::{
@@ -120,14 +119,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             self.record_semantic_default_applied(transaction, command);
             transaction.consume_mandatory_default_output()?;
-            transaction.default_outputs.push(CollectedRoutedOutput::Command {
-                target: root,
-                command: SemanticCommand::PresentationDismiss(
-                    PresentationDismissReason::CancelOrBack,
-                ),
-                origin: CommandOrigin::__runtime_semantic_default(transaction.origin.source()),
-                causal_parent: transaction.parent,
-            });
+            transaction
+                .default_outputs
+                .push(CollectedRoutedOutput::Command {
+                    target: root,
+                    command: SemanticCommand::PresentationDismiss(
+                        PresentationDismissReason::CancelOrBack,
+                    ),
+                    origin: CommandOrigin::__runtime_semantic_default(transaction.origin.source()),
+                    causal_parent: transaction.parent,
+                });
             return Ok(());
         }
         if matches!(
