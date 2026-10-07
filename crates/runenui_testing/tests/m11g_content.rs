@@ -39,7 +39,7 @@ impl UiApp for ContentApp {
 
     fn update(
         _: &mut Self::State,
-        _: Self::Action,
+        (): Self::Action,
     ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
