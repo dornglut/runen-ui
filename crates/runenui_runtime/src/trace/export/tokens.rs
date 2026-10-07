@@ -95,9 +95,7 @@ pub(super) const fn focus_reason(value: FocusReason) -> &'static str {
     }
 }
 
-pub(super) const fn presentation_dismiss_reason(
-    value: PresentationDismissReason,
-) -> &'static str {
+pub(super) const fn presentation_dismiss_reason(value: PresentationDismissReason) -> &'static str {
     match value {
         PresentationDismissReason::OutsidePointer => "outside_pointer",
         PresentationDismissReason::CancelOrBack => "cancel_or_back",
