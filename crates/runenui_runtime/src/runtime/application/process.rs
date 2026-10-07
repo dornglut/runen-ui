@@ -337,7 +337,7 @@ pub(crate) fn process_application_action<App: UiApp>(
     for restoration in presentation_restorations {
         if runtime
             .submit_presentation_focus_request(
-                restoration.routing_target,
+                &restoration.routing_target,
                 restoration.focus_target,
                 FocusReason::PresentationRestoration,
                 tree_reconciled,

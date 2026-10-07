@@ -269,7 +269,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         if self
                             .submit_presentation_focus_request(
                                 &target,
-                                Some(target),
+                                Some(target.clone()),
                                 FocusReason::ProgrammaticRequest,
                                 causal_parent,
                             )
