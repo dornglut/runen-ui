@@ -147,18 +147,15 @@ fn layout_resolved_surface_once<Action>(
     let root_constraints = inputs.root_constraints;
     let mut kernel = LayoutKernel::new(inputs, text_system);
     let root = NodeId::from(0usize);
-    compute_root_layout(&mut kernel, root, available_space(root_constraints));
-    for index in 1..kernel.resolved.nodes().len() {
-        if kernel.resolved.nodes()[index]
-            .surface_presentation()
-            .is_some()
-        {
-            compute_root_layout(
-                &mut kernel,
-                NodeId::from(index),
-                available_space(root_constraints),
-            );
-        }
+    let presentation_roots = (1..kernel.resolved.nodes().len())
+        .filter(|index| {
+            kernel.resolved.nodes()[*index]
+                .surface_presentation()
+                .is_some()
+        })
+        .map(NodeId::from);
+    for root in std::iter::once(root).chain(presentation_roots) {
+        compute_root_layout(&mut kernel, root, available_space(root_constraints));
     }
     kernel.finish(root_constraints)
 }
