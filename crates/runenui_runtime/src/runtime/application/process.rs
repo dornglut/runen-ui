@@ -1,4 +1,4 @@
-use runenui_core::CommandOrigin;
+use runenui_core::{CommandOrigin, FocusReason};
 
 use super::{
     ApplicationActionEnvelope, ApplicationActionOrigin, ApplicationTraceTransaction,
@@ -97,6 +97,8 @@ pub(crate) fn process_application_action<App: UiApp>(
     );
     let transient = App::root(app_state).into_element();
     let previous_focus = runtime.focus.focused_node().cloned();
+    let presentation_focus_membership =
+        runtime.presentation_focus_membership(previous_focus.as_ref());
     let previous_focus_trace = runtime.trace.is_enabled().then(|| {
         let target = previous_focus
             .as_ref()
@@ -244,6 +246,8 @@ pub(crate) fn process_application_action<App: UiApp>(
             cancelled: 0,
         };
     }
+    let presentation_restorations = runtime
+        .retire_presentation_lifetimes_after_reconciliation(&presentation_focus_membership);
     let retained_focus = previous_focus
         .as_ref()
         .is_some_and(|id| runtime.validate_focus(id));
@@ -330,6 +334,26 @@ pub(crate) fn process_application_action<App: UiApp>(
             .with_reconciliation(Some(before), Some(after))
             .with_target(target),
     );
+    for restoration in presentation_restorations {
+        if runtime
+            .submit_presentation_focus_request(
+                restoration.routing_target,
+                restoration.focus_target,
+                FocusReason::PresentationRestoration,
+                tree_reconciled,
+            )
+            .is_err()
+        {
+            let reason = match runtime.status {
+                RuntimeStatus::Terminal(reason) => reason,
+                RuntimeStatus::Running | RuntimeStatus::Closed => {
+                    mutation_phase.terminal_reason(RuntimeTerminalReason::Poisoned)
+                }
+            };
+            let cancelled = runtime.enter_terminal(reason, 0);
+            return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+        }
+    }
     if runtime
         .reconcile_pointer_lifetimes(sequence, tree_reconciled, &unmounted_work_owners)
         .is_err()

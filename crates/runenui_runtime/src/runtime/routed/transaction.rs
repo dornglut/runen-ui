@@ -7,7 +7,9 @@ use runenui_core::{
 
 use super::super::CollectedRoutedOutput;
 use crate::trace::TraceReservation;
-use crate::{MountedNodeId, TraceEventContext, TraceSequence, TraceTarget};
+use crate::{
+    MountedNodeId, TraceEventContext, TraceSequence, TraceTarget, queue::FocusRequestOverride,
+};
 use runenui_text::TextCaretMap;
 
 #[derive(Clone, Copy)]
@@ -34,6 +36,7 @@ pub(crate) struct RoutedIngressFacts {
     pub(crate) causal_parent: Option<TraceSequence>,
     pub(crate) trace_reservation: TraceReservation,
     pub(crate) semantic_target: Option<SemanticActionTarget>,
+    pub(crate) focus_request_override: Option<FocusRequestOverride>,
 }
 
 impl RoutedIngressFacts {
@@ -55,11 +58,17 @@ impl RoutedIngressFacts {
             causal_parent,
             trace_reservation,
             semantic_target: None,
+            focus_request_override: None,
         }
     }
 
     pub(crate) fn with_semantic_target(mut self, target: SemanticActionTarget) -> Self {
         self.semantic_target = Some(target);
+        self
+    }
+
+    pub(crate) fn with_focus_request_override(mut self, request: FocusRequestOverride) -> Self {
+        self.focus_request_override = Some(request);
         self
     }
 }
@@ -106,6 +115,7 @@ pub(crate) struct RoutedTransaction<Action> {
     pub(crate) target: MountedNodeId,
     pub(crate) origin: CommandOrigin,
     pub(crate) semantic_target: Option<SemanticActionTarget>,
+    pub(crate) focus_request_override: Option<FocusRequestOverride>,
     pub(crate) instant: MonotonicInstant,
     pub(in crate::runtime) route: Vec<MountedNodeId>,
     pub(in crate::runtime) pointer_callback_targets: Vec<MountedNodeId>,

@@ -10,8 +10,8 @@ use crate::{
     PaintContribution, PaintContributionContext, PointerId, PresentationFocusEntry, ScrollChrome,
     ScrollControlBinding, ScrollControlSnapshot, SemanticContribution, SemanticContributionContext,
     ShortcutBinding, StyleIntent, SubscriptionSet, SurfacePresentation, UiEvent,
-    WidgetActivationContext,
-    WidgetEventOutput, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
+    WidgetActivationContext, WidgetEventOutput, WidgetMountContext, WidgetUnmountContext,
+    WidgetUpdateContext, WorkSequence,
 };
 use core::{any::Any, fmt};
 

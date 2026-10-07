@@ -6,7 +6,7 @@ use core::{fmt, num::NonZeroU64};
 use std::collections::VecDeque;
 
 use runenui_core::{
-    ApplicationCommandId, CommandOrigin, CommittedTextEvent, CompositionEvent,
+    ApplicationCommandId, CommandOrigin, CommittedTextEvent, CompositionEvent, FocusReason,
     FrameworkServiceResponse, KeyboardEvent, PointerEvent, SemanticActionTarget, SemanticCommand,
     SurfaceInputContext,
 };
@@ -119,12 +119,19 @@ pub(crate) struct ApplicationCommandEnvelope {
     pub(crate) trace_reservation: TraceReservation,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct FocusRequestOverride {
+    pub(crate) target: Option<MountedNodeId>,
+    pub(crate) reason: FocusReason,
+}
+
 pub(crate) struct SemanticCommandEnvelope {
     pub(crate) sequence: WorkSequence,
     pub(crate) target: MountedNodeId,
     pub(crate) command: SemanticCommand,
     pub(crate) origin: CommandOrigin,
     pub(crate) semantic_target: Option<SemanticActionTarget>,
+    pub(crate) focus_request_override: Option<FocusRequestOverride>,
     pub(crate) instant: MonotonicInstant,
     pub(crate) causal_parent: Option<TraceSequence>,
     pub(crate) trace_reservation: TraceReservation,
@@ -313,6 +320,7 @@ impl<Action> WorkQueue<Action> {
         queued_target: SemanticCommandQueueTarget,
         command: SemanticCommand,
         origin: CommandOrigin,
+        focus_request_override: Option<FocusRequestOverride>,
         instant: MonotonicInstant,
         causal_parent: Option<TraceSequence>,
         trace_reservation: TraceReservation,
@@ -328,6 +336,7 @@ impl<Action> WorkQueue<Action> {
                 command,
                 origin,
                 semantic_target,
+                focus_request_override,
                 instant,
                 causal_parent,
                 trace_reservation,

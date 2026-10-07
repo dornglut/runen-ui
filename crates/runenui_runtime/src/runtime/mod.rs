@@ -84,6 +84,7 @@ pub use model::{
     TimerStartOutcome,
 };
 use pointer::PointerRegistry;
+use presentation::PresentationLifecycleState;
 pub(crate) use routed::PointerDispatchFacts;
 pub(crate) use routed::{RoutedFailureLineage, RoutedIngressFacts, RoutedTransaction};
 use surface_publication::SurfacePublicationState;
@@ -97,6 +98,7 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     text_system: TextSystem,
     pub(crate) focus: FocusState,
     pub(crate) focus_group_type_ahead: FocusGroupTypeAheadState,
+    pub(crate) presentation_lifecycle: PresentationLifecycleState,
     pointer_registry: PointerRegistry,
     pub(crate) space_ownership: Option<SpaceOwnership>,
     pub(crate) composition: CompositionState,

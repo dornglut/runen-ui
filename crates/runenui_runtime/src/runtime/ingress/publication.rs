@@ -270,6 +270,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             instant,
             &publication,
         );
+        self.synchronize_presentation_lifecycle_after_publication(published);
+        if let RuntimeStatus::Terminal(reason) = self.status {
+            return Err(PublishSurfaceError::Terminal(reason));
+        }
         if admission.stationary_rehit {
             self.commit_stationary_pointer_rehit(&publication, instant, published);
         }

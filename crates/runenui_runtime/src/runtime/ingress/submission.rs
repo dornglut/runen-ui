@@ -1,9 +1,11 @@
-use runenui_core::{ApplicationCommandId, MonotonicInstant, SemanticActionTarget};
+use runenui_core::{
+    ApplicationCommandId, EventSource, FocusReason, MonotonicInstant, SemanticActionTarget,
+};
 
 use crate::{
     TraceActionCategory, TraceActionIdentity, TraceContext, TraceSurfaceContext,
     TraceSurfaceIngressKind,
-    queue::{ApplicationActionOrigin, SemanticCommandQueueTarget},
+    queue::{ApplicationActionOrigin, FocusRequestOverride, SemanticCommandQueueTarget},
     trace::{TraceRecordDraft, TraceReservation},
 };
 
@@ -41,6 +43,7 @@ struct PreflightedCommand<'a> {
     command: SemanticCommand,
     origin: CommandOrigin,
     semantic_target: Option<SemanticActionTarget>,
+    focus_request_override: Option<FocusRequestOverride>,
     instant: MonotonicInstant,
     trace: CommandTrace,
 }
@@ -302,6 +305,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             command,
             CommandOrigin::accessibility(),
             Some(semantic_target),
+            None,
             self.now(),
             CommandTrace::Direct { parent: None },
         )
@@ -315,7 +319,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         trace: CommandTrace,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         self.command_preflight(target)?;
-        self.commit_preflighted_command(target, command, origin, None, self.now(), trace)
+        self.commit_preflighted_command(target, command, origin, None, None, self.now(), trace)
     }
 
     fn command_preflight(&self, target: &MountedNodeId) -> Result<(), SubmitCommandErrorKind> {
@@ -349,11 +353,84 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             command,
             origin,
             None,
+            None,
             instant,
             CommandTrace::Direct {
                 parent: causal_parent,
             },
         )
+    }
+
+    pub(in crate::runtime) fn submit_presentation_focus_request(
+        &mut self,
+        routing_target: MountedNodeId,
+        focus_target: Option<MountedNodeId>,
+        reason: FocusReason,
+        causal_parent: Option<TraceSequence>,
+    ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
+        let result = self.command_preflight(&routing_target).and_then(|()| {
+            self.commit_preflighted_command(
+                &routing_target,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::__runtime_semantic_default(EventSource::Programmatic),
+                None,
+                Some(FocusRequestOverride {
+                    target: focus_target,
+                    reason,
+                }),
+                self.now(),
+                CommandTrace::Direct {
+                    parent: causal_parent,
+                },
+            )
+        });
+        if let Err(kind) = result {
+            self.handle_mandatory_presentation_command_failure(kind);
+        }
+        result
+    }
+
+    pub(in crate::runtime) fn submit_presentation_dismiss_request(
+        &mut self,
+        target: MountedNodeId,
+        reason: runenui_core::PresentationDismissReason,
+        causal_parent: Option<TraceSequence>,
+    ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
+        let result = self.command_preflight(&target).and_then(|()| {
+            self.commit_preflighted_command(
+                &target,
+                SemanticCommand::PresentationDismiss(reason),
+                CommandOrigin::__runtime_semantic_default(EventSource::Programmatic),
+                None,
+                None,
+                self.now(),
+                CommandTrace::Direct {
+                    parent: causal_parent,
+                },
+            )
+        });
+        if let Err(kind) = result {
+            self.handle_mandatory_presentation_command_failure(kind);
+        }
+        result
+    }
+
+    fn handle_mandatory_presentation_command_failure(&mut self, kind: SubmitCommandErrorKind) {
+        match kind {
+            SubmitCommandErrorKind::WorkSequenceExhausted
+            | SubmitCommandErrorKind::TraceSequenceExhausted => {
+                self.terminalize_command_failure(kind);
+            }
+            SubmitCommandErrorKind::Closed | SubmitCommandErrorKind::Terminal(_) => {}
+            SubmitCommandErrorKind::Full
+            | SubmitCommandErrorKind::ForeignTarget
+            | SubmitCommandErrorKind::StaleTarget
+            | SubmitCommandErrorKind::MissingTarget => {
+                if matches!(self.status, RuntimeStatus::Running) {
+                    self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                }
+            }
+        }
     }
 
     pub(in crate::runtime) fn commit_preflighted_routed_application_command(
@@ -406,6 +483,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         command: SemanticCommand,
         origin: CommandOrigin,
         semantic_target: Option<SemanticActionTarget>,
+        focus_request_override: Option<FocusRequestOverride>,
         instant: MonotonicInstant,
         trace: CommandTrace,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
@@ -414,6 +492,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             command,
             origin,
             semantic_target,
+            focus_request_override,
             instant,
             trace,
         };
@@ -429,6 +508,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             command,
             origin,
             semantic_target,
+            focus_request_override,
             instant,
             trace: _,
         } = command;
@@ -441,6 +521,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 queued_target,
                 command,
                 origin,
+                focus_request_override,
                 instant,
                 causal_parent,
                 trace_reservation,

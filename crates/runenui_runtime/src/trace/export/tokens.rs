@@ -88,6 +88,7 @@ pub(super) const fn focus_reason(value: FocusReason) -> &'static str {
         FocusReason::Removal => "removal",
         FocusReason::Disablement => "disablement",
         FocusReason::RememberedRestoration => "remembered_restoration",
+        FocusReason::PresentationRestoration => "presentation_restoration",
         FocusReason::Shutdown => "shutdown",
         _ => "unknown",
     }

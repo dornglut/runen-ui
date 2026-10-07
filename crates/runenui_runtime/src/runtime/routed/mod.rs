@@ -98,6 +98,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             command,
             origin,
             semantic_target,
+            focus_request_override,
             instant,
             causal_parent,
             trace_reservation,
@@ -120,6 +121,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             command,
             origin,
             semantic_target,
+            focus_request_override,
             instant,
             causal_parent,
             trace_reservation,
@@ -175,6 +177,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         command: runenui_core::SemanticCommand,
         origin: runenui_core::CommandOrigin,
         semantic_target: Option<runenui_core::SemanticActionTarget>,
+        focus_request_override: Option<crate::queue::FocusRequestOverride>,
         instant: MonotonicInstant,
         causal_parent: Option<TraceSequence>,
         trace_reservation: crate::trace::TraceReservation,
@@ -190,6 +193,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         if let Some(semantic_target) = semantic_target {
             facts = facts.with_semantic_target(semantic_target);
+        }
+        if let Some(focus_request_override) = focus_request_override {
+            facts = facts.with_focus_request_override(focus_request_override);
         }
         let default_outputs = usize::from(matches!(
             command,
@@ -232,7 +238,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 )
             },
         ));
-        let routed = self.invoke_routed_callbacks(&mut transaction, &event, None);
+        let routed = if transaction.focus_request_override.is_some() {
+            Ok(())
+        } else {
+            self.invoke_routed_callbacks(&mut transaction, &event, None)
+        };
         let defaulted =
             routed.and_then(|()| self.apply_semantic_default(&mut transaction, command));
         if let Err(failure) = defaulted {
@@ -372,6 +382,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             target: facts.target,
             origin: facts.origin,
             semantic_target: facts.semantic_target,
+            focus_request_override: facts.focus_request_override,
             instant: facts.instant,
             route,
             pointer_callback_targets,

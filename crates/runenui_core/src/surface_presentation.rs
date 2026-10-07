@@ -102,7 +102,6 @@ impl SurfacePresentationPlacement {
     }
 }
 
-
 /// Generic pointer policy for input outside one live presentation interaction family.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
