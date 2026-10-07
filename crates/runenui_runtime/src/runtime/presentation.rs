@@ -636,14 +636,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     break;
                 }
             }
-            if let Some(target) = fallback {
-                (
-                    Some(target),
-                    TracePresentationRestorationOutcome::ScopeFallback,
-                )
-            } else {
-                (None, TracePresentationRestorationOutcome::Cleared)
-            }
+            fallback.map_or(
+                (None, TracePresentationRestorationOutcome::Cleared),
+                |target| {
+                    (
+                        Some(target),
+                        TracePresentationRestorationOutcome::ScopeFallback,
+                    )
+                },
+            )
         };
 
         let routing_target = focus_target
