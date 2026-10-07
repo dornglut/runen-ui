@@ -2,13 +2,15 @@
 
 use runenui_core::{
     ChildBearingWidget, Color, ContributionClip, Element, HitContribution, HitContributionContext,
-    HitRegion, LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect, LogicalSize,
-    NoHostProtocol, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
+    HitRegion, LayoutDimension, LayoutStyle, LogicalDelta, LogicalLength, LogicalPoint,
+    LogicalRect, LogicalSize, NoHostProtocol, OverflowPolicy, OverflowStyle, PaintContribution,
+    PaintContributionContext,
     PaintContributionItem, PresentationOrigin, PresentationRotation, PresentationScale,
     PresentationTransform, PresentationTranslation, SceneLayer, SceneShape, StyleEnvironment,
     SurfacePresentation, SurfacePresentationAlignment, SurfacePresentationAnchor,
     SurfacePresentationPlacement, SurfacePresentationSide, UiApp, UnitInterval, View, Widget,
-    WidgetMeasure, WidgetMeasureInput, button, column, container, text,
+    WidgetMeasure, WidgetMeasureInput, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
+    button, column, container, text,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext};
 
@@ -615,4 +617,102 @@ fn placement_rebuild_retains_one_mounted_and_semantic_lifetime() {
     assert_eq!(second_semantic.id(), &semantic_id);
     assert_ne!(first_snapshot.placed_bounds(), second_snapshot.placed_bounds());
     assert_eq!(second_snapshot.anchor_bounds().x(), 60.0);
+}
+
+
+struct ScrollAnchorApp;
+
+impl UiApp for ScrollAnchorApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &Self::State) -> impl View<Self::Action> {
+        let popup = button("scroll popup")
+            .on_activate(|| ())
+            .id("scroll-popup")
+            .with_layout(fixed(20, 10))
+            .surface_presentation(SurfacePresentation::new(
+                SurfacePresentationPlacement::new(SurfacePresentationSide::Bottom),
+            ))
+            .into_element();
+        let owner = column(vec![popup])
+            .id("scroll-owner")
+            .with_layout(fixed(20, 20))
+            .into_element();
+        let filler = Element::new(LayerProbe {
+            layer: SceneLayer::ZERO,
+            color: Color::WHITE,
+        })
+        .id("scroll-filler")
+        .with_layout(fixed(40, 60));
+
+        column(vec![filler, owner])
+            .id("scroll-root")
+            .with_layout(
+                fixed(40, 40).with_overflow(OverflowStyle::all(OverflowPolicy::Scroll)),
+            )
+    }
+
+    fn update((): &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn owner_anchor_follows_accepted_scroll_without_inflating_scroll_extent() {
+    let mut runtime = AppRuntime::<ScrollAnchorApp>::mount(());
+    let environment = StyleEnvironment::default();
+    let context = tight_context(&environment, 40, 40);
+    let initial = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("initial scroll presentation is admitted"));
+
+    let scroll_root = node(&initial, "scroll-root");
+    let layout = initial
+        .layout_report()
+        .nodes()
+        .iter()
+        .find(|layout| layout.id() == scroll_root.id())
+        .unwrap_or_else(|| unreachable!("scroll root has one layout report node"));
+    assert_eq!(layout.scroll_viewport_extent().height(), 40.0);
+    assert_eq!(
+        layout.scrollable_extent().height(),
+        80.0,
+        "out-of-flow presentation content must not enlarge logical scroll extent"
+    );
+
+    let initial_anchor = node(&initial, "scroll-popup")
+        .surface_presentation()
+        .unwrap_or_else(|| unreachable!("initial owner anchor resolves"))
+        .anchor_bounds();
+
+    let point = LogicalPoint::new(5.0, 5.0)
+        .unwrap_or_else(|_| unreachable!("wheel point is finite"));
+    let wheel = PointerEvent::new(
+        PointerId::new(341).unwrap_or_else(|| unreachable!("fixture pointer is non-zero")),
+        PointerDeviceKind::Mouse,
+        PointerPhase::Wheel,
+        point,
+        initial.input_context().clone(),
+    )
+    .with_scroll_delta(
+        LogicalDelta::new(0.0, 10.0)
+            .unwrap_or_else(|_| unreachable!("wheel delta is finite")),
+    );
+    runtime
+        .submit_pointer(wheel)
+        .unwrap_or_else(|_| unreachable!("wheel is admitted"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+
+    let scrolled = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("scrolled presentation is admitted"));
+    let scrolled_anchor = node(&scrolled, "scroll-popup")
+        .surface_presentation()
+        .unwrap_or_else(|| unreachable!("scrolled owner anchor resolves"))
+        .anchor_bounds();
+
+    assert_eq!(scrolled_anchor.x(), initial_anchor.x());
+    assert_eq!(scrolled_anchor.y(), initial_anchor.y() - 10.0);
+    assert_eq!(scrolled_anchor.width(), initial_anchor.width());
+    assert_eq!(scrolled_anchor.height(), initial_anchor.height());
 }
