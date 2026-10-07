@@ -486,10 +486,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) -> Result<(), TraceRoutedIntegrityFailure> {
         if command == SemanticCommand::RequestFocus {
             let (target, reason) = transaction.focus_request_override.as_ref().map_or_else(
-                || (
-                    Some(transaction.target.clone()),
-                    FocusReason::ProgrammaticRequest,
-                ),
+                || {
+                    (
+                        Some(transaction.target.clone()),
+                        FocusReason::ProgrammaticRequest,
+                    )
+                },
                 |request| (request.target.clone(), request.reason),
             );
             if let Some(target) = target {

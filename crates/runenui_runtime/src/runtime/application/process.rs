@@ -246,8 +246,8 @@ pub(crate) fn process_application_action<App: UiApp>(
             cancelled: 0,
         };
     }
-    let presentation_restorations = runtime
-        .retire_presentation_lifetimes_after_reconciliation(&presentation_focus_membership);
+    let presentation_restorations =
+        runtime.retire_presentation_lifetimes_after_reconciliation(&presentation_focus_membership);
     let retained_focus = previous_focus
         .as_ref()
         .is_some_and(|id| runtime.validate_focus(id));

@@ -241,8 +241,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             let mut restoration_scopes = Vec::new();
             let mut ambiguous_preferred_focus = false;
             if should_enter
-                && candidate.presentation.focus_policy()
-                    == PresentationFocusPolicy::EnterAndRestore
+                && candidate.presentation.focus_policy() == PresentationFocusPolicy::EnterAndRestore
             {
                 restoration_target = prospective_focus.clone();
                 restoration_scopes =
@@ -300,18 +299,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             if published_roots.contains(&root) {
                 continue;
             }
-            let lifetime = lifecycle
-                .lifetimes
-                .entry(root.clone())
-                .or_insert_with(|| PresentationLifetime {
-                    owner: owner.clone(),
-                    focus_policy: presentation.focus_policy(),
-                    restoration_target: None,
-                    restoration_scopes: Vec::new(),
-                    published: false,
-                    anchor_unavailable_requested: false,
-                    ambiguous_preferred_focus: false,
-                });
+            let lifetime =
+                lifecycle
+                    .lifetimes
+                    .entry(root.clone())
+                    .or_insert_with(|| PresentationLifetime {
+                        owner: owner.clone(),
+                        focus_policy: presentation.focus_policy(),
+                        restoration_target: None,
+                        restoration_scopes: Vec::new(),
+                        published: false,
+                        anchor_unavailable_requested: false,
+                        ambiguous_preferred_focus: false,
+                    });
 
             let was_published = lifetime.published;
             let should_restore = was_published
@@ -360,10 +360,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.presentation_lifecycle = lifecycle;
     }
 
-    fn presentation_initial_focus_target(
-        &mut self,
-        root: &MountedNodeId,
-    ) -> InitialFocusSelection {
+    fn presentation_initial_focus_target(&mut self, root: &MountedNodeId) -> InitialFocusSelection {
         let descendants = self
             .tree
             .publication_preorder_ids()
@@ -412,7 +409,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let mut remaining = self.tree.live_count().saturating_add(1);
         while remaining != 0 {
             remaining -= 1;
-            let Some(parent) = self.tree.node(&current).and_then(|node| node.parent.clone()) else {
+            let Some(parent) = self
+                .tree
+                .node(&current)
+                .and_then(|node| node.parent.clone())
+            else {
                 return false;
             };
             if &parent == root {
@@ -459,14 +460,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         lifetime: &PresentationLifetime,
     ) -> Option<PresentationRestorationPlan> {
         let eligibility = self.focus_eligibility_projection();
-        let exact = [lifetime.restoration_target.as_ref(), lifetime.owner.as_ref()]
-            .into_iter()
-            .flatten()
-            .find(|candidate| {
-                self.tree.target_status(candidate) == TargetStatus::Live
-                    && is_focus_eligible(&mut self.tree, candidate, &eligibility)
-            })
-            .cloned();
+        let exact = [
+            lifetime.restoration_target.as_ref(),
+            lifetime.owner.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|candidate| {
+            self.tree.target_status(candidate) == TargetStatus::Live
+                && is_focus_eligible(&mut self.tree, candidate, &eligibility)
+        })
+        .cloned();
 
         let focus_target = exact.or_else(|| {
             let geometry = self.surface_publication.current_focus_geometry();
