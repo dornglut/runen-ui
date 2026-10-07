@@ -171,6 +171,35 @@ pub enum TraceScrollControlBindingOutcome {
     MetricsUnavailable,
 }
 
+/// Runtime decision for one outside-pointer presentation candidate.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TracePresentationOutsideDecision {
+    Ignored,
+    Blocked,
+    DismissRequested,
+}
+
+/// Runtime resolution of one presentation's initial-focus policy.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TracePresentationInitialFocusOutcome {
+    Preferred,
+    FirstEligible,
+    NoneEligible,
+    AmbiguousPreferred,
+}
+
+/// Runtime resolution of one presentation focus-restoration attempt.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TracePresentationRestorationOutcome {
+    Exact,
+    OwnerFallback,
+    ScopeFallback,
+    Cleared,
+}
+
 /// Structured kind of one canonical trace record.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -353,6 +382,19 @@ pub enum TraceRecordKind {
         outcome: TraceSurfaceRejection,
     },
     SurfacePublished,
+    PresentationOutsideDecision {
+        outcome: TracePresentationOutsideDecision,
+    },
+    PresentationCancelOrBackDecision {
+        claimed: bool,
+    },
+    PresentationInitialFocusResolved {
+        outcome: TracePresentationInitialFocusOutcome,
+    },
+    PresentationRestorationResolved {
+        outcome: TracePresentationRestorationOutcome,
+    },
+    PresentationAnchorUnavailableRetired,
     Motion {
         target: MotionTarget,
         fact: TraceMotionFact,

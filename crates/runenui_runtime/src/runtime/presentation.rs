@@ -10,7 +10,8 @@ use runenui_core::{
 
 use super::{HostProtocol, Runtime};
 use crate::{
-    MountedNodeId,
+    MountedNodeId, TracePresentationInitialFocusOutcome, TracePresentationOutsideDecision,
+    TracePresentationRestorationOutcome, TraceRecordKind,
     focus::{FocusNavigation, is_focus_eligible, select_focus},
     mounted::TargetStatus,
 };
@@ -19,6 +20,18 @@ use crate::{
 pub(in crate::runtime) struct PresentationPointerBlock {
     pub(in crate::runtime) root: MountedNodeId,
     pub(in crate::runtime) dismiss: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::runtime) struct PresentationPointerObservation {
+    pub(in crate::runtime) root: MountedNodeId,
+    pub(in crate::runtime) outcome: TracePresentationOutsideDecision,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::runtime) struct PresentationPointerResolution {
+    pub(in crate::runtime) block: Option<PresentationPointerBlock>,
+    pub(in crate::runtime) observations: Vec<PresentationPointerObservation>,
 }
 
 #[derive(Clone, Debug)]
@@ -45,23 +58,29 @@ impl PresentationLifecycleState {
 
 #[derive(Clone, Debug)]
 pub(in crate::runtime) struct PresentationRestorationPlan {
+    pub(in crate::runtime) presentation_root: MountedNodeId,
     pub(in crate::runtime) routing_target: MountedNodeId,
     pub(in crate::runtime) focus_target: Option<MountedNodeId>,
+    pub(in crate::runtime) outcome: TracePresentationRestorationOutcome,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum InitialFocusSelection {
     None,
-    Target(MountedNodeId),
+    Target {
+        target: MountedNodeId,
+        outcome: TracePresentationInitialFocusOutcome,
+    },
     AmbiguousPreferred,
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(in crate::runtime) fn presentation_pointer_block(
+    pub(in crate::runtime) fn presentation_pointer_resolution(
         &self,
         physical_target: Option<&MountedNodeId>,
         include_nonmodal_policy: bool,
-    ) -> Option<PresentationPointerBlock> {
+    ) -> PresentationPointerResolution {
+        let mut observations = Vec::new();
         for candidate in self
             .surface_publication
             .current_presentation_interaction_roots()
@@ -75,32 +94,67 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
             let policy = candidate.presentation.outside_pointer();
             if candidate.presentation.is_modal() {
-                return Some(PresentationPointerBlock {
-                    root: candidate.root,
-                    dismiss: include_nonmodal_policy
-                        && policy == PresentationOutsidePointerPolicy::DismissAndBlock,
+                let dismiss = include_nonmodal_policy
+                    && policy == PresentationOutsidePointerPolicy::DismissAndBlock;
+                observations.push(PresentationPointerObservation {
+                    root: candidate.root.clone(),
+                    outcome: if dismiss {
+                        TracePresentationOutsideDecision::DismissRequested
+                    } else {
+                        TracePresentationOutsideDecision::Blocked
+                    },
                 });
+                return PresentationPointerResolution {
+                    block: Some(PresentationPointerBlock {
+                        root: candidate.root,
+                        dismiss,
+                    }),
+                    observations,
+                };
             }
             if !include_nonmodal_policy {
                 continue;
             }
             match policy {
-                PresentationOutsidePointerPolicy::Block => {
-                    return Some(PresentationPointerBlock {
+                PresentationOutsidePointerPolicy::Ignore => {
+                    observations.push(PresentationPointerObservation {
                         root: candidate.root,
-                        dismiss: false,
+                        outcome: TracePresentationOutsideDecision::Ignored,
                     });
                 }
-                PresentationOutsidePointerPolicy::DismissAndBlock => {
-                    return Some(PresentationPointerBlock {
-                        root: candidate.root,
-                        dismiss: true,
+                PresentationOutsidePointerPolicy::Block => {
+                    observations.push(PresentationPointerObservation {
+                        root: candidate.root.clone(),
+                        outcome: TracePresentationOutsideDecision::Blocked,
                     });
+                    return PresentationPointerResolution {
+                        block: Some(PresentationPointerBlock {
+                            root: candidate.root,
+                            dismiss: false,
+                        }),
+                        observations,
+                    };
+                }
+                PresentationOutsidePointerPolicy::DismissAndBlock => {
+                    observations.push(PresentationPointerObservation {
+                        root: candidate.root.clone(),
+                        outcome: TracePresentationOutsideDecision::DismissRequested,
+                    });
+                    return PresentationPointerResolution {
+                        block: Some(PresentationPointerBlock {
+                            root: candidate.root,
+                            dismiss: true,
+                        }),
+                        observations,
+                    };
                 }
                 _ => {}
             }
         }
-        None
+        PresentationPointerResolution {
+            block: None,
+            observations,
+        }
     }
 
     pub(in crate::runtime) fn topmost_cancel_presentation(&self) -> Option<MountedNodeId> {
@@ -155,7 +209,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         .node(root)
                         .is_some_and(|node| node.surface_presentation.is_some());
                 (!still_authored)
-                    .then(|| lifecycle.lifetimes.get(root).cloned())
+                    .then(|| {
+                        lifecycle
+                            .lifetimes
+                            .get(root)
+                            .cloned()
+                            .map(|lifetime| (root.clone(), lifetime))
+                    })
                     .flatten()
             })
             .collect::<Vec<_>>();
@@ -168,10 +228,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         });
 
         let mut restorations = Vec::new();
-        for lifetime in removed {
+        for (root, lifetime) in removed {
             if lifetime.published
                 && lifetime.focus_policy == PresentationFocusPolicy::EnterAndRestore
-                && let Some(plan) = self.presentation_restoration_plan(&lifetime)
+                && let Some(plan) = self.presentation_restoration_plan(&root, &lifetime)
             {
                 restorations.push(plan);
             }
@@ -263,8 +323,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 restoration_target.clone_from(&prospective_focus);
                 restoration_scopes =
                     self.presentation_scope_chain(candidate.owner.as_ref(), &candidate.root);
-                match self.presentation_initial_focus_target(&candidate.root) {
-                    InitialFocusSelection::Target(target) => {
+                let selection = self.presentation_initial_focus_target(&candidate.root);
+                let trace_outcome = match &selection {
+                    InitialFocusSelection::Target { outcome, .. } => *outcome,
+                    InitialFocusSelection::AmbiguousPreferred => {
+                        TracePresentationInitialFocusOutcome::AmbiguousPreferred
+                    }
+                    InitialFocusSelection::None => {
+                        TracePresentationInitialFocusOutcome::NoneEligible
+                    }
+                };
+                self.record_optional(
+                    TraceRecordKind::PresentationInitialFocusResolved {
+                        outcome: trace_outcome,
+                    },
+                    None,
+                    causal_parent,
+                    Some(self.tree.trace_target(&candidate.root)),
+                );
+                match selection {
+                    InitialFocusSelection::Target { target, .. } => {
                         prospective_focus = Some(target.clone());
                         if self
                             .submit_presentation_focus_request(
@@ -354,8 +432,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             lifetime.restoration_scopes.clear();
 
             if let Some(snapshot) = restore_snapshot
-                && let Some(plan) = self.presentation_restoration_plan(&snapshot)
-                && self
+                && let Some(plan) = self.presentation_restoration_plan(&root, &snapshot)
+            {
+                self.record_optional(
+                    TraceRecordKind::PresentationRestorationResolved {
+                        outcome: plan.outcome,
+                    },
+                    None,
+                    causal_parent,
+                    Some(self.tree.trace_target(&root)),
+                );
+                if self
                     .submit_presentation_focus_request(
                         &plan.routing_target,
                         plan.focus_target,
@@ -363,8 +450,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         causal_parent,
                     )
                     .is_err()
-            {
-                return false;
+                {
+                    return false;
+                }
             }
 
             let owner_relative = matches!(
@@ -373,6 +461,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
             if owner_relative && !lifetime.anchor_unavailable_requested {
                 lifetime.anchor_unavailable_requested = true;
+                self.record_optional(
+                    TraceRecordKind::PresentationAnchorUnavailableRetired,
+                    None,
+                    causal_parent,
+                    Some(self.tree.trace_target(&root)),
+                );
                 if self
                     .submit_presentation_dismiss_request(
                         &root,
@@ -412,12 +506,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if let Some(preferred) = preferred.first()
             && is_focus_eligible(&mut self.tree, preferred, &eligibility)
         {
-            return InitialFocusSelection::Target(preferred.clone());
+            return InitialFocusSelection::Target {
+                target: preferred.clone(),
+                outcome: TracePresentationInitialFocusOutcome::Preferred,
+            };
         }
         descendants
             .into_iter()
             .find(|candidate| is_focus_eligible(&mut self.tree, candidate, &eligibility))
-            .map_or(InitialFocusSelection::None, InitialFocusSelection::Target)
+            .map_or(InitialFocusSelection::None, |target| {
+                InitialFocusSelection::Target {
+                    target,
+                    outcome: TracePresentationInitialFocusOutcome::FirstEligible,
+                }
+            })
     }
 
     fn exact_presentation_descendant(
@@ -485,41 +587,64 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     fn presentation_restoration_plan(
         &mut self,
+        presentation_root: &MountedNodeId,
         lifetime: &PresentationLifetime,
     ) -> Option<PresentationRestorationPlan> {
         let eligibility = self.focus_eligibility_projection();
-        let exact = [
-            lifetime.restoration_target.as_ref(),
-            lifetime.owner.as_ref(),
-        ]
-        .into_iter()
-        .flatten()
-        .find(|candidate| {
-            self.tree.target_status(candidate) == TargetStatus::Live
-                && is_focus_eligible(&mut self.tree, candidate, &eligibility)
-        })
-        .cloned();
-
-        let focus_target = exact.or_else(|| {
+        let (focus_target, outcome) = if let Some(target) = lifetime
+            .restoration_target
+            .as_ref()
+            .filter(|candidate| {
+                self.tree.target_status(candidate) == TargetStatus::Live
+                    && is_focus_eligible(&mut self.tree, candidate, &eligibility)
+            })
+            .cloned()
+        {
+            (Some(target), TracePresentationRestorationOutcome::Exact)
+        } else if let Some(owner) = lifetime
+            .owner
+            .as_ref()
+            .filter(|candidate| {
+                self.tree.target_status(candidate) == TargetStatus::Live
+                    && is_focus_eligible(&mut self.tree, candidate, &eligibility)
+            })
+            .cloned()
+        {
+            (
+                Some(owner),
+                TracePresentationRestorationOutcome::OwnerFallback,
+            )
+        } else {
             let geometry = self.surface_publication.current_focus_geometry();
+            let mut fallback = None;
             for scope in &lifetime.restoration_scopes {
                 if self.tree.target_status(scope) != TargetStatus::Live {
                     continue;
                 }
-                let selection = select_focus(
+                let Some(selection) = select_focus(
                     &mut self.tree,
                     &self.focus,
                     scope,
                     FocusNavigation::Restore,
                     &geometry,
                     &eligibility,
-                )?;
+                ) else {
+                    continue;
+                };
                 if let Some(target) = selection.target {
-                    return Some(target);
+                    fallback = Some(target);
+                    break;
                 }
             }
-            None
-        });
+            if let Some(target) = fallback {
+                (
+                    Some(target),
+                    TracePresentationRestorationOutcome::ScopeFallback,
+                )
+            } else {
+                (None, TracePresentationRestorationOutcome::Cleared)
+            }
+        };
 
         let routing_target = focus_target
             .clone()
@@ -540,8 +665,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .or_else(|| self.tree.root_id().cloned())?;
 
         Some(PresentationRestorationPlan {
+            presentation_root: presentation_root.clone(),
             routing_target,
             focus_target,
+            outcome,
         })
     }
+
 }

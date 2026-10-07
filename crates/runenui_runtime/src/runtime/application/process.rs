@@ -335,6 +335,14 @@ pub(crate) fn process_application_action<App: UiApp>(
             .with_target(target),
     );
     for restoration in presentation_restorations {
+        runtime.record_optional(
+            TraceRecordKind::PresentationRestorationResolved {
+                outcome: restoration.outcome,
+            },
+            Some(sequence),
+            tree_reconciled,
+            Some(runtime.tree.trace_target(&restoration.presentation_root)),
+        );
         if runtime
             .submit_presentation_focus_request(
                 &restoration.routing_target,

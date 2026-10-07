@@ -337,6 +337,7 @@ impl<Action> MountedTree<Action> {
             moved: 0,
         };
         collect_focus_group_diagnostics(&root, "root", &mut planning.diagnostics);
+        collect_presentation_focus_diagnostics(&root, "root", &mut planning.diagnostics);
         let root = self.plan_existing(Some(old_root), None, root, "root".to_owned(), &mut planning);
         Ok(ReconciliationPlan {
             root,
@@ -783,6 +784,54 @@ impl<Action> MountedTree<Action> {
             .unwrap_or_else(|| unreachable!("new mounted node remains live"))
             .children = mounted_children;
         id
+    }
+}
+
+pub(super) fn collect_presentation_focus_diagnostics<Action>(
+    node: &IncomingNode<Action>,
+    path: &str,
+    diagnostics: &mut Vec<ReconciliationDiagnostic>,
+) {
+    if node.surface_presentation.is_some() {
+        let mut preferred_target_paths = Vec::new();
+        collect_nearest_presentation_preferred_targets(
+            node,
+            path,
+            &mut preferred_target_paths,
+        );
+        if preferred_target_paths.len() > 1 {
+            diagnostics.push(
+                ReconciliationDiagnostic::MultiplePreferredPresentationFocusTargets {
+                    presentation_path: path.to_owned(),
+                    preferred_target_paths,
+                },
+            );
+        }
+    }
+    for (position, child) in node.children.iter().enumerate() {
+        let child_path = format!("{path}/{position}");
+        collect_presentation_focus_diagnostics(child, &child_path, diagnostics);
+    }
+}
+
+fn collect_nearest_presentation_preferred_targets<Action>(
+    presentation: &IncomingNode<Action>,
+    presentation_path: &str,
+    preferred_target_paths: &mut Vec<String>,
+) {
+    for (position, child) in presentation.children.iter().enumerate() {
+        let child_path = format!("{presentation_path}/{position}");
+        if child.surface_presentation.is_some() {
+            continue;
+        }
+        if child.presentation_focus_entry == PresentationFocusEntry::Preferred {
+            preferred_target_paths.push(child_path.clone());
+        }
+        collect_nearest_presentation_preferred_targets(
+            child,
+            &child_path,
+            preferred_target_paths,
+        );
     }
 }
 

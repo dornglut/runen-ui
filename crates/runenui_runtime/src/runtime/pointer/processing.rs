@@ -155,29 +155,46 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
-    fn presentation_block_for_pointer(
-        &self,
+    fn presentation_resolution_for_pointer(
+        &mut self,
         work: &PointerWork,
         stream: &PointerStreamState,
         geometry: &PointerGeometry,
-    ) -> Option<crate::runtime::presentation::PresentationPointerBlock> {
+    ) -> crate::runtime::presentation::PresentationPointerResolution {
         if stream.capture_owner().is_some() {
-            return None;
+            return crate::runtime::presentation::PresentationPointerResolution {
+                block: None,
+                observations: Vec::new(),
+            };
         }
         if let Some(root) = stream
             .presentation_barrier()
             .filter(|owner| self.tree.target_status(owner) == crate::mounted::TargetStatus::Live)
             .cloned()
         {
-            return Some(crate::runtime::presentation::PresentationPointerBlock {
-                root,
-                dismiss: false,
-            });
+            return crate::runtime::presentation::PresentationPointerResolution {
+                block: Some(crate::runtime::presentation::PresentationPointerBlock {
+                    root,
+                    dismiss: false,
+                }),
+                observations: Vec::new(),
+            };
         }
-        self.presentation_pointer_block(
+        let resolution = self.presentation_pointer_resolution(
             geometry.physical_target.as_ref(),
             work.event.phase() == PointerPhase::Down,
-        )
+        );
+        for observation in &resolution.observations {
+            self.record_optional(
+                crate::TraceRecordKind::PresentationOutsideDecision {
+                    outcome: observation.outcome,
+                },
+                Some(work.sequence),
+                work.causal_parent,
+                Some(self.tree.trace_target(&observation.root)),
+            );
+        }
+        resolution
     }
 
     pub(super) fn process_pointer_work(
@@ -194,8 +211,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let previous_path = prepared_stream.stream.physical_path().to_vec();
         let previous_capture_owner = prepared_stream.stream.capture_owner().cloned();
-        let presentation_block =
-            self.presentation_block_for_pointer(&work, &prepared_stream.stream, &geometry);
+        let presentation_resolution =
+            self.presentation_resolution_for_pointer(&work, &prepared_stream.stream, &geometry);
+        let presentation_block = presentation_resolution.block;
         let boundary_plan = if presentation_block.is_some() {
             PointerBoundaryPlan::unchanged(previous_path)
         } else if geometry.snapshot.is_some() {
