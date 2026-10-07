@@ -34,7 +34,10 @@ impl Separator {
                 LayoutStyle::default().with_height(LayoutDimension::Fill)
             }
         };
-        Self { orientation, common }
+        Self {
+            orientation,
+            common,
+        }
     }
 
     common_node_builder_methods!();
@@ -80,8 +83,7 @@ impl<Action> Widget<Action> for SeparatorWidget {
         _: SemanticContributionContext,
     ) -> SemanticContribution {
         SemanticContribution::single(
-            SemanticNodeContribution::primary(SemanticRole::Separator)
-                .with_orientation(*state),
+            SemanticNodeContribution::primary(SemanticRole::Separator).with_orientation(*state),
         )
     }
 }
@@ -147,7 +149,9 @@ impl Image {
     #[must_use]
     pub fn fit(mut self, fit: ImageFit) -> Self {
         let (crop, alignment) = match self.mapping {
-            ImageMapping::Fit { crop, alignment, .. } => (crop, alignment),
+            ImageMapping::Fit {
+                crop, alignment, ..
+            } => (crop, alignment),
             ImageMapping::NineSlice { .. } => (ImageCrop::FULL, ImageAlignment::CENTER),
         };
         self.mapping = ImageMapping::Fit {
@@ -235,12 +239,9 @@ impl<Action> Widget<Action> for ImageWidget {
         let size = context.local_size();
         let destination = LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
             .unwrap_or_else(|_| unreachable!("final widget size is finite and nonnegative"));
-        let policy = ImagePaintDescriptor::new(
-            state.descriptor.clone(),
-            destination,
-            state.mapping,
-        )
-        .unwrap_or_else(|_| unreachable!("image mapping was validated when authored"));
+        let policy =
+            ImagePaintDescriptor::new(state.descriptor.clone(), destination, state.mapping)
+                .unwrap_or_else(|_| unreachable!("image mapping was validated when authored"));
         PaintContribution::single(PaintContributionItem::image(policy))
     }
 
@@ -252,8 +253,8 @@ impl<Action> Widget<Action> for ImageWidget {
         let Some(alternative) = &state.alternative else {
             return SemanticContribution::empty();
         };
-        let mut image = SemanticNodeContribution::primary(SemanticRole::Image)
-            .with_name(alternative.clone());
+        let mut image =
+            SemanticNodeContribution::primary(SemanticRole::Image).with_name(alternative.clone());
         if let Some(description) = &state.description {
             image = image.with_description(description.clone());
         }
@@ -298,10 +299,11 @@ pub fn image(descriptor: ImageDescriptor) -> Image {
 mod tests {
     use super::{image, separator};
     use crate::{
-        ImageAlignment, ImageCrop, ImageDescriptor, ImageFit, ImageIntrinsicSize, ImageMapping,
-        ImageSourceInsets, ImageDestinationInsets, LogicalSize, PaintContributionContext,
-        PaintPrimitive, ResourceKind, ResourceRef, SemanticContributionContext, SemanticOrientation,
-        SemanticRole, View, WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput,
+        ImageAlignment, ImageCrop, ImageDescriptor, ImageDestinationInsets, ImageFit,
+        ImageIntrinsicSize, ImageMapping, ImageSourceInsets, LogicalSize, PaintContributionContext,
+        PaintPrimitive, ResourceKind, ResourceRef, SemanticContributionContext,
+        SemanticOrientation, SemanticRole, View, WidgetAvailableSpace, WidgetMeasure,
+        WidgetMeasureInput,
     };
 
     fn fixture_image() -> (ImageDescriptor, ResourceRef) {
@@ -315,33 +317,49 @@ mod tests {
 
     fn measurement() -> WidgetMeasureInput {
         WidgetMeasureInput::new(
-            None, None, WidgetAvailableSpace::MaxContent, WidgetAvailableSpace::MaxContent
+            None,
+            None,
+            WidgetAvailableSpace::MaxContent,
+            WidgetAvailableSpace::MaxContent,
         )
     }
 
     #[test]
     fn separator_is_semantic_oriented_passive_and_intrinsically_thin() {
-        for orientation in [SemanticOrientation::Horizontal, SemanticOrientation::Vertical] {
+        for orientation in [
+            SemanticOrientation::Horizontal,
+            SemanticOrientation::Vertical,
+        ] {
             let element: crate::Element<()> = separator(orientation).into_element();
-            let (_, _, _, _, _, _, _, _, widget, _) =
-                element.into_runtime_parts().into_parts();
+            let (_, _, _, _, _, _, _, _, widget, _) = element.into_runtime_parts().into_parts();
             let state = widget.create_state();
-            let semantic = widget.semantics(&state, SemanticContributionContext::default())
+            let semantic = widget
+                .semantics(&state, SemanticContributionContext::default())
                 .unwrap_or_else(|_| unreachable!("separator contribution is valid"));
-            let node = semantic.roots()[0].as_node()
+            let node = semantic.roots()[0]
+                .as_node()
                 .unwrap_or_else(|| unreachable!("separator has one primary role"));
             assert_eq!(node.role(), SemanticRole::Separator);
             assert_eq!(node.orientation(), Some(orientation));
             assert!(node.actions().is_empty());
-            assert!(!widget.activation(&state).unwrap_or_else(|_| unreachable!()).is_actionable());
+            assert!(
+                !widget
+                    .activation(&state)
+                    .unwrap_or_else(|_| unreachable!())
+                    .is_actionable()
+            );
             assert_eq!(
-                widget.measure(&state, measurement()).unwrap_or_else(|_| unreachable!()),
+                widget
+                    .measure(&state, measurement())
+                    .unwrap_or_else(|_| unreachable!()),
                 match orientation {
                     SemanticOrientation::Horizontal => WidgetMeasure::measured(
-                        crate::LogicalLength::ZERO, crate::LogicalLength::from(1_u16)
+                        crate::LogicalLength::ZERO,
+                        crate::LogicalLength::from(1_u16)
                     ),
                     SemanticOrientation::Vertical => WidgetMeasure::measured(
-                        crate::LogicalLength::from(1_u16), crate::LogicalLength::ZERO
+                        crate::LogicalLength::from(1_u16),
+                        crate::LogicalLength::ZERO
                     ),
                 }
             );
@@ -357,38 +375,46 @@ mod tests {
             fit: ImageFit::Contain,
         };
         let element: crate::Element<()> = image(descriptor)
-            .with_mapping(mapping).unwrap_or_else(|_| unreachable!("valid fit mapping"))
+            .with_mapping(mapping)
+            .unwrap_or_else(|_| unreachable!("valid fit mapping"))
             .into_element();
-        let (_, _, _, _, _, _, _, _, widget, _) =
-            element.into_runtime_parts().into_parts();
+        let (_, _, _, _, _, _, _, _, widget, _) = element.into_runtime_parts().into_parts();
         let state = widget.create_state();
-        let semantics = widget.semantics(&state, SemanticContributionContext::default())
+        let semantics = widget
+            .semantics(&state, SemanticContributionContext::default())
             .unwrap_or_else(|_| unreachable!("decorative semantics valid"));
-        assert!(semantics.is_empty());
-        let paint = widget.paint(
-            &state,
-            PaintContributionContext::__runtime_new(
-                LogicalSize::try_new(120.0, 60.0)
-                    .unwrap_or_else(|_| unreachable!("valid fixture size")),
-                crate::ComputedStyle::default()
+        assert!(semantics.roots().is_empty());
+        let paint = widget
+            .paint(
+                &state,
+                PaintContributionContext::__runtime_new(
+                    LogicalSize::try_new(120.0, 60.0)
+                        .unwrap_or_else(|_| unreachable!("valid fixture size")),
+                    crate::ComputedStyle::default(),
+                ),
             )
-        ).unwrap_or_else(|_| unreachable!("image paint valid"));
+            .unwrap_or_else(|_| unreachable!("image paint valid"));
         assert_eq!(paint.items().len(), 1);
         let PaintPrimitive::Image(primitive) = paint.items()[0].primitive() else {
             unreachable!("standard image uses generic image primitive")
         };
         assert_eq!(primitive.resource_ref(), &resource);
-        let policy = primitive.authored_descriptor()
+        let policy = primitive
+            .authored_descriptor()
             .unwrap_or_else(|| unreachable!("authoring contains descriptor"));
         assert_eq!(policy.mapping(), mapping);
         assert_eq!(policy.destination().width(), 120.0);
         assert_eq!(policy.destination().height(), 60.0);
         assert_eq!(policy.image().resource_ref(), &resource);
-        assert_eq!(widget.measure(&state, measurement()).unwrap_or_else(|_| unreachable!()),
+        assert_eq!(
+            widget
+                .measure(&state, measurement())
+                .unwrap_or_else(|_| unreachable!()),
             WidgetMeasure::measured(
                 crate::LogicalLength::from(48_u16),
                 crate::LogicalLength::from(24_u16)
-            ));
+            )
+        );
     }
 
     #[test]
@@ -398,12 +424,13 @@ mod tests {
             .alt_text("Atlas")
             .description("A map")
             .into_element();
-        let (_, _, _, _, _, _, _, _, widget, _) =
-            meaningful.into_runtime_parts().into_parts();
+        let (_, _, _, _, _, _, _, _, widget, _) = meaningful.into_runtime_parts().into_parts();
         let state = widget.create_state();
-        let semantics = widget.semantics(&state, SemanticContributionContext::default())
+        let semantics = widget
+            .semantics(&state, SemanticContributionContext::default())
             .unwrap_or_else(|_| unreachable!("meaningful image is valid"));
-        let node = semantics.roots()[0].as_node()
+        let node = semantics.roots()[0]
+            .as_node()
             .unwrap_or_else(|| unreachable!("meaningful image semantic node"));
         assert_eq!(node.role(), SemanticRole::Image);
         assert_eq!(node.name(), Some("Atlas"));
@@ -411,12 +438,18 @@ mod tests {
         assert!(node.actions().is_empty());
 
         let decorative: crate::Element<()> = image(descriptor.clone())
-            .alt_text("Atlas").alt_text("").into_element();
-        let (_, _, _, _, _, _, _, _, widget, _) =
-            decorative.into_runtime_parts().into_parts();
+            .alt_text("Atlas")
+            .alt_text("")
+            .into_element();
+        let (_, _, _, _, _, _, _, _, widget, _) = decorative.into_runtime_parts().into_parts();
         let state = widget.create_state();
-        assert!(widget.semantics(&state, SemanticContributionContext::default())
-            .unwrap_or_else(|_| unreachable!()).is_empty());
+        assert!(
+            widget
+                .semantics(&state, SemanticContributionContext::default())
+                .unwrap_or_else(|_| unreachable!())
+                .roots()
+                .is_empty()
+        );
 
         let source_insets = ImageSourceInsets::new(50.0, 0.0, 0.0, 50.0)
             .unwrap_or_else(|_| unreachable!("insets finite but overlapping"));

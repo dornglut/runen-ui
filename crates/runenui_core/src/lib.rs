@@ -287,7 +287,6 @@ pub use builtins::{
     scroll_viewport, shortcut_scope, switch, tab, tab_list, tab_panel, text,
 };
 pub use computed_style::ComputedStyle;
-pub use standard_content::{Image, Separator, image, separator};
 pub use editing::{
     EditChangeMap, EditGroupHint, EditIntent, EditInverse, EditKind, EditRequestId, EditResolution,
     EditResolutionOutcome, EditSelection, EditableContribution, EditableContributionError,
@@ -331,6 +330,7 @@ pub use paint::{
 };
 pub use paint_group::{PaintContributionEntry, PaintContributionGroup};
 pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
+pub use standard_content::{Image, Separator, image, separator};
 pub use widget_protocol::{
     ChildBearingWidget, Widget, WidgetActivation, WidgetActivationOutput, WidgetAvailableSpace,
     WidgetDiagnostic, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId,
