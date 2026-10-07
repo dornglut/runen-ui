@@ -17,7 +17,7 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, ReconciliationDiagnostic,
-    SurfaceBuildContext, SurfaceInputContext,
+    RuntimeConfig, SurfaceBuildContext, SurfaceInputContext, TraceConfig,
 };
 
 fn fixed(width: u16, height: u16) -> LayoutStyle {
@@ -1349,4 +1349,76 @@ fn dismissed_outside_pointer_stream_cannot_activate_underlying_button_on_matchin
         0,
         "a blocked outside Down must not seed standard Button pressed ownership that could activate on the matching Up"
     );
+}
+
+
+#[test]
+fn presentation_lifecycle_trace_export_uses_bounded_stable_tokens() {
+    let trace_config = || RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
+
+    let mut outside = AppRuntime::<InteractionApp>::mount_with_config(
+        interaction_state(PresentationOutsidePointerPolicy::DismissAndBlock),
+        trace_config(),
+    );
+    outside_down(&mut outside);
+    let outside_json = outside.trace().export_jsonl();
+    assert!(outside_json.contains("presentation_outside_decision"));
+    assert!(outside_json.contains("dismiss_requested"));
+    assert!(outside_json.contains("presentation_dismiss"));
+    assert!(outside_json.contains("outside_pointer"));
+
+    let mut cancel_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
+    cancel_state.cancel_a = true;
+    let mut cancel = AppRuntime::<InteractionApp>::mount_with_config(cancel_state, trace_config());
+    let environment = StyleEnvironment::default();
+    let publication = cancel
+        .publish_surface(&context(&environment, 100, 60))
+        .unwrap_or_else(|_| unreachable!("trace cancel publication is admitted"));
+    let outside_target = node_id(&publication, "outside");
+    cancel
+        .submit_command(
+            outside_target,
+            SemanticCommand::CancelOrBack,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("trace cancel command is accepted"));
+    settle(&mut cancel);
+    let cancel_json = cancel.trace().export_jsonl();
+    assert!(cancel_json.contains("presentation_cancel_or_back_decision"));
+    assert!(cancel_json.contains("\"claimed\":true"));
+    assert!(cancel_json.contains("cancel_or_back"));
+
+    let mut focus = AppRuntime::<FocusLifecycleApp>::mount_with_config(
+        FocusModel {
+            open: false,
+            policy: PresentationFocusPolicy::EnterAndRestore,
+            duplicate_preferred: false,
+            preferred: true,
+        },
+        trace_config(),
+    );
+    focus_trigger(&mut focus, &environment);
+    let _ = open_and_publish(&mut focus, &environment);
+    focus
+        .submit_action(FocusAction::Close)
+        .unwrap_or_else(|_| unreachable!("trace focus close is accepted"));
+    settle(&mut focus);
+    let focus_json = focus.trace().export_jsonl();
+    assert!(focus_json.contains("presentation_initial_focus_resolved"));
+    assert!(focus_json.contains("\"outcome\":\"preferred\""));
+    assert!(focus_json.contains("presentation_restoration_resolved"));
+    assert!(focus_json.contains("\"outcome\":\"exact\""));
+    assert!(focus_json.contains("presentation_restoration"));
+
+    let mut anchor = AppRuntime::<AnchorUnavailableApp>::mount_with_config(
+        AnchorState { requests: 0 },
+        trace_config(),
+    );
+    let _ = anchor
+        .publish_surface(&context(&environment, 80, 60))
+        .unwrap_or_else(|_| unreachable!("trace unavailable-anchor surface publishes"));
+    settle(&mut anchor);
+    let anchor_json = anchor.trace().export_jsonl();
+    assert!(anchor_json.contains("presentation_anchor_unavailable_retired"));
+    assert!(anchor_json.contains("anchor_unavailable"));
 }
