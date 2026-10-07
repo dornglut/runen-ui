@@ -25,14 +25,15 @@ pub struct Separator {
 impl Separator {
     #[must_use]
     pub fn new(orientation: SemanticOrientation) -> Self {
+        let thickness = LayoutDimension::Length(LogicalLength::from(1_u16));
         let common = CommonNodeAuthoring {
             layout: match orientation {
-                SemanticOrientation::Horizontal => {
-                    LayoutStyle::default().with_width(LayoutDimension::Fill)
-                }
-                SemanticOrientation::Vertical => {
-                    LayoutStyle::default().with_height(LayoutDimension::Fill)
-                }
+                SemanticOrientation::Horizontal => LayoutStyle::default()
+                    .with_width(LayoutDimension::Fill)
+                    .with_height(thickness),
+                SemanticOrientation::Vertical => LayoutStyle::default()
+                    .with_width(thickness)
+                    .with_height(LayoutDimension::Fill),
             },
             ..CommonNodeAuthoring::default()
         };

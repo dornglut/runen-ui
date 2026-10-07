@@ -11,10 +11,9 @@ use std::{
 use runenui_core::{
     Brush, Color, ContributionClip, Element, ImageDescriptor, ImageIntrinsicSize, ImageMapping,
     ImagePaintDescriptor, LayoutDimension, LayoutStyle, LogicalLength, LogicalRect, LogicalSize,
-    LogicalTransform,
-    NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionItem, Radius,
-    ResourceKind, ResourceRef, SceneOpacity, SceneShape, StyleEnvironment, UiApp, Widget,
-    WidgetMeasure, WidgetUpdateContext,
+    LogicalTransform, NoHostProtocol, PaintContribution, PaintContributionContext,
+    PaintContributionItem, Radius, ResourceKind, ResourceRef, SceneOpacity, SceneShape,
+    StyleEnvironment, UiApp, Widget, WidgetMeasure, WidgetUpdateContext,
 };
 use runenui_render_wgpu::{
     BackendSelection, ImagePayload, Renderer, RendererInitError, RendererOptions, ResourcePayload,
@@ -190,8 +189,7 @@ fn standard_image_view_renders_real_wgpu_pixels() -> Result<(), Box<dyn Error>> 
     let resource = ResourceRef::new(ResourceKind::Image);
     let descriptor = ImageDescriptor::new(
         resource.clone(),
-        ImageIntrinsicSize::new(2, 2)
-            .unwrap_or_else(|| unreachable!("fixture image size nonzero")),
+        ImageIntrinsicSize::new(2, 2).unwrap_or_else(|| unreachable!("fixture image size nonzero")),
     )
     .unwrap_or_else(|_| unreachable!("fixture reference has image kind"));
     let provider = CountingImageProvider::new(resource)?;
@@ -201,18 +199,20 @@ fn standard_image_view_renders_real_wgpu_pixels() -> Result<(), Box<dyn Error>> 
         .unwrap_or_else(|_| unreachable!("test surface is nonzero and finite"));
     let scale = RasterScale::new(2.0)
         .unwrap_or_else(|_| unreachable!("test raster scale is positive and finite"));
-    let context = SurfaceBuildContext::new(&style, LayoutConstraints::tight(size))
-        .with_raster_scale(scale);
+    let context =
+        SurfaceBuildContext::new(&style, LayoutConstraints::tight(size)).with_raster_scale(scale);
     let surface = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("standard Image surface publication succeeds"));
-    assert!(surface
-        .semantic_publication()
-        .snapshot()
-        .nodes()
-        .iter()
-        .any(|node| node.role() == runenui_core::SemanticRole::Image
-            && node.name() == Some("Standard image")));
+    assert!(
+        surface
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .any(|node| node.role() == runenui_core::SemanticRole::Image
+                && node.name() == Some("Standard image"))
+    );
     let output = renderer.render_offscreen_publication(surface.paint_publication(), &provider)?;
     assert_eq!(
         output.readback().extent(),
