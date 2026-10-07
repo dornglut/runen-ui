@@ -9,8 +9,7 @@ const COMPUTED_STYLE: &str = "crates/runenui_core/src/computed_style.rs";
 const IMAGE: &str = "crates/runenui_core/src/visual/image.rs";
 const PRESENTATION: &str = "crates/runenui_core/src/visual/presentation.rs";
 const RUNTIME_RESOLVE: &str = "crates/runenui_runtime/src/surface/resolve.rs";
-const RUNTIME_PRESENTATION: &str =
-    "crates/runenui_runtime/src/surface/resolve/presentation.rs";
+const RUNTIME_PRESENTATION: &str = "crates/runenui_runtime/src/surface/resolve/presentation.rs";
 const RENDERER_ROOT: &str = "crates/runenui_render_wgpu/src";
 
 #[test]

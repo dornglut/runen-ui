@@ -888,17 +888,45 @@ mod tests {
         let expected: &[(&str, &[&str], &str)] = &[
             (
                 "M11A",
-                &["M11CTRL-01", "M11CTRL-02", "M11CTRL-03", "M11CTRL-04", "M11CTRL-05"],
+                &[
+                    "M11CTRL-01",
+                    "M11CTRL-02",
+                    "M11CTRL-03",
+                    "M11CTRL-04",
+                    "M11CTRL-05",
+                ],
                 "owner-accepted",
             ),
-            ("M11B", &["M11CTRL-06", "M11CTRL-07", "M11CTRL-08"], "owner-accepted"),
+            (
+                "M11B",
+                &["M11CTRL-06", "M11CTRL-07", "M11CTRL-08"],
+                "owner-accepted",
+            ),
             ("M11C", &["M11CTRL-09", "M11CTRL-10"], "owner-accepted"),
-            ("M11D2", &["M11CTRL-11", "M11CTRL-12", "M11CTRL-13"], "owner-accepted"),
-            ("M11SEM1", &["M11CTRL-14", "M11CTRL-15", "M11CTRL-16"], "owner-accepted"),
-            ("M11S2", &["M11CTRL-17", "M11CTRL-18", "M11CTRL-19"], "owner-accepted"),
+            (
+                "M11D2",
+                &["M11CTRL-11", "M11CTRL-12", "M11CTRL-13"],
+                "owner-accepted",
+            ),
+            (
+                "M11SEM1",
+                &["M11CTRL-14", "M11CTRL-15", "M11CTRL-16"],
+                "owner-accepted",
+            ),
+            (
+                "M11S2",
+                &["M11CTRL-17", "M11CTRL-18", "M11CTRL-19"],
+                "owner-accepted",
+            ),
             (
                 "M11SCROLLB",
-                &["M11CTRL-20", "M11CTRL-21", "M11CTRL-22", "M11CTRL-23", "M11CTRL-24"],
+                &[
+                    "M11CTRL-20",
+                    "M11CTRL-21",
+                    "M11CTRL-22",
+                    "M11CTRL-23",
+                    "M11CTRL-24",
+                ],
                 "owner-accepted",
             ),
             (
@@ -911,7 +939,11 @@ mod tests {
                 &["M11CTRL-29", "M11CTRL-30", "M11CTRL-31", "M11CTRL-32"],
                 "owner-accepted",
             ),
-            ("M11CONTENT", &["M11CTRL-33", "M11CTRL-34", "M11CTRL-35"], "owner-accepted"),
+            (
+                "M11CONTENT",
+                &["M11CTRL-33", "M11CTRL-34", "M11CTRL-35"],
+                "owner-accepted",
+            ),
             (
                 "M11PRES1",
                 &[

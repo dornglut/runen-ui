@@ -19,9 +19,8 @@ use crate::{
 
 use super::{
     CachedEffectiveFacts, EffectiveNodeFacts, PresentationGeometryError,
-    ScrollChromePresentationContext,
-    ScrollChromePresentationInput, SurfaceTopologyNode, SurfaceTopologySnapshot, intersect_rects,
-    resolve_present_scroll_chrome,
+    ScrollChromePresentationContext, ScrollChromePresentationInput, SurfaceTopologyNode,
+    SurfaceTopologySnapshot, intersect_rects, resolve_present_scroll_chrome,
 };
 
 #[derive(Clone, Copy)]
