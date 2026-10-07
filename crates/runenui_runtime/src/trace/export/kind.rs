@@ -133,9 +133,7 @@ macro_rules! trace_kind_name {
             TraceRecordKind::SurfaceTargetBound => "surface_target_bound",
             TraceRecordKind::SurfaceCommandRejected { .. } => "surface_command_rejected",
             TraceRecordKind::SurfacePublished => "surface_published",
-            TraceRecordKind::PresentationOutsideDecision { .. } => {
-                "presentation_outside_decision"
-            }
+            TraceRecordKind::PresentationOutsideDecision { .. } => "presentation_outside_decision",
             TraceRecordKind::PresentationCancelOrBackDecision { .. } => {
                 "presentation_cancel_or_back_decision"
             }

@@ -794,11 +794,7 @@ pub(super) fn collect_presentation_focus_diagnostics<Action>(
 ) {
     if node.surface_presentation.is_some() {
         let mut preferred_target_paths = Vec::new();
-        collect_nearest_presentation_preferred_targets(
-            node,
-            path,
-            &mut preferred_target_paths,
-        );
+        collect_nearest_presentation_preferred_targets(node, path, &mut preferred_target_paths);
         if preferred_target_paths.len() > 1 {
             diagnostics.push(
                 ReconciliationDiagnostic::MultiplePreferredPresentationFocusTargets {
@@ -827,11 +823,7 @@ fn collect_nearest_presentation_preferred_targets<Action>(
         if child.presentation_focus_entry == PresentationFocusEntry::Preferred {
             preferred_target_paths.push(child_path.clone());
         }
-        collect_nearest_presentation_preferred_targets(
-            child,
-            &child_path,
-            preferred_target_paths,
-        );
+        collect_nearest_presentation_preferred_targets(child, &child_path, preferred_target_paths);
     }
 }
 

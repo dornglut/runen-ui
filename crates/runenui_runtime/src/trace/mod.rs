@@ -37,11 +37,10 @@ pub use model::{
     TracePointerRejection, TracePresentationInitialFocusOutcome, TracePresentationOutsideDecision,
     TracePresentationRestorationOutcome, TraceRecord, TraceRecordKind,
     TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceScrollControlBindingOutcome,
-    TraceSemanticActionRejection,
-    TraceSequence, TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind,
-    TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection,
-    TraceTimerTerminalOutcome, TraceTouchGestureKind, TraceWorkFamily, TraceWorkIdentity,
-    TraceWorkOwner, TraceWorkStartRefusal,
+    TraceSemanticActionRejection, TraceSequence, TraceSinkDeliveryOutcome, TraceSpaceCleanupReason,
+    TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget,
+    TraceTargetRejection, TraceTimerTerminalOutcome, TraceTouchGestureKind, TraceWorkFamily,
+    TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
 };
 pub(crate) use motion::StagedMotionTraceFact;
 pub use motion::{

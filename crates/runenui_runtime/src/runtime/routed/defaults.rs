@@ -116,11 +116,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         if command == SemanticCommand::CancelOrBack {
             let presentation = self.topmost_cancel_presentation();
-            let trace_target = presentation
-                .as_ref()
-                .map_or_else(|| transaction.target_trace.clone(), |root| {
-                    self.tree.trace_target(root)
-                });
+            let trace_target = presentation.as_ref().map_or_else(
+                || transaction.target_trace.clone(),
+                |root| self.tree.trace_target(root),
+            );
             self.record_optional(
                 TraceRecordKind::PresentationCancelOrBackDecision {
                     claimed: presentation.is_some(),

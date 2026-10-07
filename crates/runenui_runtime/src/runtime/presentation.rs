@@ -671,5 +671,4 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             outcome,
         })
     }
-
 }
