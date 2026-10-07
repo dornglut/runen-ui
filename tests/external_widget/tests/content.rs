@@ -1,3 +1,4 @@
+use runenui_core::StyleEnvironment;
 use runenui_core::{
     Element, ImageDescriptor, ImageIntrinsicSize, ImageMapping, ImagePaintDescriptor,
     LogicalLength, LogicalRect, NoHostProtocol, PaintContribution, PaintContributionContext,
@@ -6,7 +7,6 @@ use runenui_core::{
     UiApp, View, Widget, WidgetMeasure, WidgetMeasureInput, column, image, separator,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
-use runenui_core::StyleEnvironment;
 
 #[derive(Debug)]
 struct DownstreamSeparator;
@@ -56,22 +56,16 @@ impl Widget<()> for DownstreamImage {
 
     fn paint(&self, state: &Self::State, context: PaintContributionContext) -> PaintContribution {
         let size = context.local_size();
-        let destination =
-            LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
-                .unwrap_or_else(|_| unreachable!("final size is finite"));
-        let policy = ImagePaintDescriptor::new(
-            state.clone(),
-            destination,
-            ImageMapping::default(),
-        )
-        .unwrap_or_else(|_| unreachable!("default image mapping is valid"));
+        let destination = LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+            .unwrap_or_else(|_| unreachable!("final size is finite"));
+        let policy = ImagePaintDescriptor::new(state.clone(), destination, ImageMapping::default())
+            .unwrap_or_else(|_| unreachable!("default image mapping is valid"));
         PaintContribution::single(PaintContributionItem::image(policy))
     }
 
     fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         SemanticContribution::single(
-            SemanticNodeContribution::primary(SemanticRole::Image)
-                .with_name("Downstream image"),
+            SemanticNodeContribution::primary(SemanticRole::Image).with_name("Downstream image"),
         )
     }
 }
@@ -111,8 +105,8 @@ impl UiApp for ContentParityApp {
 #[test]
 fn downstream_standard_content_parity_requires_no_builtin_runtime_path() {
     let resource = ResourceRef::new(ResourceKind::Image);
-    let intrinsic = ImageIntrinsicSize::new(24, 12)
-        .unwrap_or_else(|| unreachable!("fixture pixels nonzero"));
+    let intrinsic =
+        ImageIntrinsicSize::new(24, 12).unwrap_or_else(|| unreachable!("fixture pixels nonzero"));
     let descriptor = ImageDescriptor::new(resource.clone(), intrinsic)
         .unwrap_or_else(|_| unreachable!("fixture resource image-kind"));
     let mut runtime = AppRuntime::<ContentParityApp>::mount(descriptor);
