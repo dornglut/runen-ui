@@ -1,8 +1,9 @@
 use runenui_core::{
     Axis, Focusability, HitContributionContext, ListBoxSelectionMode, LogicalSize,
-    SemanticCheckedState, SemanticContributionContext, SemanticOrientation, SemanticRole,
-    SemanticSelectionMode, View, WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput, button,
-    checkbox, children, column, list_box, option_item, radio_button, radio_group, switch, text,
+    SemanticCheckedState, SemanticContributionContext, SemanticOrientation, SemanticReference,
+    SemanticRelationshipKind, SemanticRole, SemanticSelectionMode, View, WidgetAvailableSpace,
+    WidgetMeasure, WidgetMeasureInput, button, checkbox, children, column, list_box, option_item,
+    radio_button, radio_group, switch, tab, tab_list, tab_panel, text,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -381,5 +382,138 @@ fn list_box_invalid_selection_authoring_fails_closed_with_exact_diagnostics() {
     assert_eq!(
         diagnostics[0].code(),
         "runenui.control.list-box.multiple-follow-focus"
+    );
+}
+
+#[test]
+fn tabs_use_typed_public_authoring_and_exact_semantic_relationships() {
+    let tab_element: runenui_core::Element<Action> = tab("General", true)
+        .id("tab.general")
+        .controls("panel.general")
+        .on_activate(|| Action::Save)
+        .into_element();
+    let (_, _, _, _, _, _, _, _, widget, _) = tab_element.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    let semantics = widget
+        .semantics(&state, SemanticContributionContext::default())
+        .unwrap_or_else(|_| unreachable!("Tab semantics are inspectable"));
+    let node = semantics.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("Tab contributes one semantic node"));
+    assert_eq!(node.role(), SemanticRole::Tab);
+    assert_eq!(node.name(), Some("General"));
+    assert_eq!(node.state().selected(), Some(true));
+    let relationship = node
+        .relationships()
+        .first()
+        .unwrap_or_else(|| unreachable!("Tab Controls relationship exists"));
+    assert_eq!(relationship.kind(), SemanticRelationshipKind::Controls);
+    assert_eq!(
+        relationship.target(),
+        &SemanticReference::Authored {
+            element_id: runenui_core::ElementId::new("panel.general")
+                .unwrap_or_else(|_| unreachable!("fixture panel id is valid")),
+            semantic_key: None,
+        }
+    );
+
+    let conditional_tab: runenui_core::Element<Action> = tab("Conditional", false)
+        .id("tab.conditional")
+        .into_element();
+    assert_eq!(conditional_tab.focusability(), Focusability::Focusable);
+    let (_, _, _, _, _, _, _, _, widget, _) = conditional_tab.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    let semantics = widget
+        .semantics(&state, SemanticContributionContext::default())
+        .unwrap_or_else(|_| unreachable!("conditional Tab semantics are inspectable"));
+    let node = semantics.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("conditional Tab remains semantic"));
+    assert_eq!(node.role(), SemanticRole::Tab);
+    assert_eq!(node.relationships().len(), 0);
+
+    let invalid_controls: runenui_core::Element<Action> =
+        tab("Invalid", false).controls(" ").into_element();
+    assert_eq!(invalid_controls.authoring_diagnostics().len(), 1);
+    assert_eq!(
+        invalid_controls.authoring_diagnostics()[0].field(),
+        "controls"
+    );
+
+    let invalid_panel: runenui_core::Element<Action> =
+        tab_panel("", [text("content")]).into_element();
+    assert_eq!(invalid_panel.authoring_diagnostics().len(), 1);
+    assert_eq!(
+        invalid_panel.authoring_diagnostics()[0].field(),
+        "labelled_by"
+    );
+
+    let list_element: runenui_core::Element<Action> = tab_list([
+        tab("General", true).id("tab.general"),
+        tab("Input", false).id("tab.input"),
+    ])
+    .orientation(Axis::Vertical)
+    .into_element();
+    assert_eq!(list_element.children().len(), 2);
+    let (_, _, _, _, _, _, _, _, widget, _) = list_element.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    let semantics = widget
+        .semantics(&state, SemanticContributionContext::__runtime_new(2))
+        .unwrap_or_else(|_| unreachable!("TabList semantics are inspectable"));
+    let node = semantics.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("TabList contributes one semantic node"));
+    assert_eq!(node.role(), SemanticRole::TabList);
+    assert_eq!(node.orientation(), Some(SemanticOrientation::Vertical));
+
+    let panel_element: runenui_core::Element<Action> =
+        tab_panel("tab.general", [text("General content")])
+            .id("panel.general")
+            .into_element();
+    assert_eq!(panel_element.children().len(), 1);
+    let (_, _, _, _, _, _, _, _, widget, _) = panel_element.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    let semantics = widget
+        .semantics(&state, SemanticContributionContext::__runtime_new(1))
+        .unwrap_or_else(|_| unreachable!("TabPanel semantics are inspectable"));
+    let node = semantics.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("TabPanel contributes one semantic node"));
+    assert_eq!(node.role(), SemanticRole::TabPanel);
+    assert_eq!(
+        node.relationships()[0].kind(),
+        SemanticRelationshipKind::LabelledBy
+    );
+}
+
+#[test]
+fn tab_list_multiple_selected_authoring_fails_closed() {
+    let list: runenui_core::Element<Action> = tab_list([
+        tab("One", true).id("tab.one"),
+        tab("Two", true).id("tab.two"),
+    ])
+    .into_element();
+    assert!(
+        list.children()
+            .iter()
+            .all(|child| child.focusability() == Focusability::Hidden)
+    );
+    let (_, _, _, _, _, _, _, _, widget, _) = list.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    assert_eq!(
+        widget
+            .semantics(&state, SemanticContributionContext::__runtime_new(2))
+            .unwrap_or_else(|_| unreachable!("invalid TabList semantics are inspectable"))
+            .roots()
+            .len(),
+        0
+    );
+    let diagnostics = widget
+        .diagnostics(&state)
+        .unwrap_or_else(|_| unreachable!("invalid TabList diagnostics are inspectable"));
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].code(),
+        "runenui.control.tab-list.multiple-selected"
     );
 }

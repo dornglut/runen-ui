@@ -18,3 +18,5 @@ mod semantic_m5b_conformance;
 mod semantic_m5c_action_readiness;
 #[path = "../semantic_m5c_conformance.rs"]
 mod semantic_m5c_conformance;
+#[path = "../tabs.rs"]
+mod tabs;
