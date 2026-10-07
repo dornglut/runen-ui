@@ -219,7 +219,7 @@ struct LayerProbe {
     color: Color,
 }
 
-impl Widget<()> for LayerProbe {
+impl<Action> Widget<Action> for LayerProbe {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -244,7 +244,7 @@ impl Widget<()> for LayerProbe {
     }
 }
 
-impl ChildBearingWidget<()> for LayerProbe {}
+impl<Action> ChildBearingWidget<Action> for LayerProbe {}
 
 
 struct StackingApp;
