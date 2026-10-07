@@ -954,7 +954,7 @@ mod tests {
                 &["M11CTRL-33", "M11CTRL-34", "M11CTRL-35"],
                 "owner-accepted",
             ),
-            ("M11PRES1", M11_PRESENTATION_IDS, "implementation-complete"),
+            ("M11PRES1", M11_PRESENTATION_IDS, "owner-accepted"),
         ];
         for (slice, ids, status) in expected {
             assert_m11_slice(&rows, slice, ids, status);
