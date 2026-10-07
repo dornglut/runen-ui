@@ -344,7 +344,7 @@ mod tests {
                 .unwrap_or_else(|| unreachable!("separator has one primary role"));
             assert_eq!(node.role(), SemanticRole::Separator);
             assert_eq!(node.orientation(), Some(orientation));
-            assert!(node.actions().is_empty());
+            assert_eq!(node.actions(), []);
             assert!(
                 !widget
                     .activation(&state)
@@ -386,7 +386,7 @@ mod tests {
         let semantics = widget
             .semantics(&state, SemanticContributionContext::default())
             .unwrap_or_else(|_| unreachable!("decorative semantics valid"));
-        assert!(semantics.roots().is_empty());
+        assert_eq!(semantics.roots(), []);
         let paint = widget
             .paint(
                 &state,
@@ -438,7 +438,7 @@ mod tests {
         assert_eq!(node.role(), SemanticRole::Image);
         assert_eq!(node.name(), Some("Atlas"));
         assert_eq!(node.description(), Some("A map"));
-        assert!(node.actions().is_empty());
+        assert_eq!(node.actions(), []);
 
         let decorative: crate::Element<()> = image(descriptor.clone())
             .alt_text("Atlas")
@@ -446,12 +446,12 @@ mod tests {
             .into_element();
         let (_, _, _, _, _, _, _, _, widget, _) = decorative.into_runtime_parts().into_parts();
         let state = widget.create_state();
-        assert!(
+        assert_eq!(
             widget
                 .semantics(&state, SemanticContributionContext::default())
                 .unwrap_or_else(|_| unreachable!())
-                .roots()
-                .is_empty()
+                .roots(),
+            []
         );
 
         let source_insets = ImageSourceInsets::new(50.0, 0.0, 0.0, 50.0)
