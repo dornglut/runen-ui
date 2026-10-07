@@ -334,6 +334,10 @@ fn outside_pointer_policies_are_exact_and_never_click_through_after_dismissal() 
     assert_eq!(ignore.state().outside_presses, 1);
     assert!(ignore.state().dismissals.is_empty());
     assert!(ignore.state().open_a);
+    assert!(
+        ignore.focus().focused_node().is_none(),
+        "Ignore + nonmodal + default Preserve must permit a Tooltip-style nonfocusable presentation without proxy focus"
+    );
 
     let mut block = AppRuntime::<InteractionApp>::mount(interaction_state(
         PresentationOutsidePointerPolicy::Block,
@@ -406,6 +410,31 @@ fn cancel_or_back_claim_is_suppressed_by_prior_routed_prevent_default() {
         [("presentation-a", PresentationDismissReason::CancelOrBack)]
     );
 
+    let mut topmost_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
+    topmost_state.open_b = true;
+    topmost_state.cancel_a = true;
+    topmost_state.cancel_b = true;
+    let mut topmost = AppRuntime::<InteractionApp>::mount(topmost_state);
+    let publication = topmost
+        .publish_surface(&context(&environment, 100, 60))
+        .unwrap_or_else(|_| unreachable!("topmost cancel publication is admitted"));
+    let outside = node_id(&publication, "outside");
+    topmost
+        .submit_command(
+            outside,
+            SemanticCommand::CancelOrBack,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("topmost cancel command is accepted"));
+    settle(&mut topmost);
+    assert_eq!(
+        topmost.state().dismissals,
+        [("presentation-b", PresentationDismissReason::CancelOrBack)],
+        "CancelOrBack must be claimed by the visually topmost eligible presentation"
+    );
+    assert!(topmost.state().open_a);
+    assert!(!topmost.state().open_b);
+
     let mut prevented_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
     prevented_state.cancel_a = true;
     prevented_state.prevent_cancel = true;
@@ -424,6 +453,26 @@ fn cancel_or_back_claim_is_suppressed_by_prior_routed_prevent_default() {
     settle(&mut prevented);
     assert!(prevented.state().dismissals.is_empty());
     assert!(prevented.state().open_a);
+
+    let fallback_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
+    let mut fallback = AppRuntime::<InteractionApp>::mount(fallback_state);
+    let publication = fallback
+        .publish_surface(&context(&environment, 100, 60))
+        .unwrap_or_else(|_| unreachable!("fallback cancel publication is admitted"));
+    let outside = node_id(&publication, "outside");
+    fallback
+        .submit_command(
+            outside,
+            SemanticCommand::CancelOrBack,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("unclaimed cancel command is accepted"));
+    settle(&mut fallback);
+    assert!(fallback.state().dismissals.is_empty());
+    assert!(
+        fallback.state().open_a,
+        "when no presentation claims CancelOrBack, presentation lifecycle must leave the existing default path untouched"
+    );
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -437,6 +486,7 @@ struct FocusModel {
     open: bool,
     policy: PresentationFocusPolicy,
     duplicate_preferred: bool,
+    preferred: bool,
 }
 
 struct FocusLifecycleApp;
@@ -473,7 +523,7 @@ impl UiApp for FocusLifecycleApp {
                 .id("focus-preferred")
                 .key("focus-preferred")
                 .with_layout(fixed(20, 20))
-                .presentation_focus_preferred(true)
+                .presentation_focus_preferred(state.preferred)
                 .into_element();
             children.push(
                 column(vec![first, preferred])
@@ -540,6 +590,7 @@ fn preserve_focus_never_moves_real_focus_when_presentation_activates() {
         open: false,
         policy: PresentationFocusPolicy::Preserve,
         duplicate_preferred: false,
+        preferred: true,
     });
     focus_trigger(&mut runtime, &environment);
     let trigger = runtime
@@ -558,6 +609,7 @@ fn enter_and_restore_uses_preferred_focus_and_exact_restoration() {
         open: false,
         policy: PresentationFocusPolicy::EnterAndRestore,
         duplicate_preferred: false,
+        preferred: true,
     });
     focus_trigger(&mut runtime, &environment);
     let trigger = runtime
@@ -581,12 +633,32 @@ fn enter_and_restore_uses_preferred_focus_and_exact_restoration() {
 }
 
 #[test]
+fn enter_and_restore_falls_back_to_first_eligible_when_no_preferred_target_is_authored() {
+    let environment = StyleEnvironment::default();
+    let mut runtime = AppRuntime::<FocusLifecycleApp>::mount(FocusModel {
+        open: false,
+        policy: PresentationFocusPolicy::EnterAndRestore,
+        duplicate_preferred: false,
+        preferred: false,
+    });
+    focus_trigger(&mut runtime, &environment);
+    let publication = open_and_publish(&mut runtime, &environment);
+    let first = node_id(&publication, "focus-first");
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&first),
+        "without one preferred marker, entry must choose the deterministic first eligible descendant"
+    );
+}
+
+#[test]
 fn duplicate_preferred_focus_fails_closed_and_diagnoses() {
     let environment = StyleEnvironment::default();
     let mut runtime = AppRuntime::<FocusLifecycleApp>::mount(FocusModel {
         open: false,
         policy: PresentationFocusPolicy::EnterAndRestore,
         duplicate_preferred: true,
+        preferred: true,
     });
     focus_trigger(&mut runtime, &environment);
     let trigger = runtime
@@ -612,6 +684,7 @@ fn intentional_focus_move_outside_is_not_stolen_back_when_presentation_closes() 
         open: false,
         policy: PresentationFocusPolicy::EnterAndRestore,
         duplicate_preferred: false,
+        preferred: true,
     });
     focus_trigger(&mut runtime, &environment);
     let publication = open_and_publish(&mut runtime, &environment);
@@ -1001,4 +1074,156 @@ fn composition_active_escape_remains_text_owned_and_does_not_dismiss_presentatio
 
     assert!(runtime.state().open);
     assert_eq!(runtime.state().dismissals, 0);
+}
+
+
+#[derive(Clone, Debug)]
+struct NestedInteractionState {
+    inner_open: bool,
+    interaction_presses: usize,
+    dismissals: Vec<(&'static str, PresentationDismissReason)>,
+    moves: Rc<RefCell<Vec<(MountedNodeId, Option<MountedNodeId>)>>>,
+}
+
+struct NestedInteractionApp;
+
+impl UiApp for NestedInteractionApp {
+    type State = NestedInteractionState;
+    type Action = InteractionAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        let outside = Element::new(InteractionProbe {
+            name: "nested-outside",
+            outside: true,
+            prevent_cancel: false,
+            capture_on_down: false,
+            moves: Rc::clone(&state.moves),
+        })
+        .id("nested-outside")
+        .key("nested-outside")
+        .with_layout(fixed(20, 20));
+
+        let owner_content = Element::new(InteractionProbe {
+            name: "nested-owner-content",
+            outside: true,
+            prevent_cancel: false,
+            capture_on_down: false,
+            moves: Rc::clone(&state.moves),
+        })
+        .id("nested-owner-content")
+        .key("nested-owner-content")
+        .with_layout(fixed(20, 20));
+
+        let mut outer_children = vec![owner_content];
+        if state.inner_open {
+            outer_children.push(presentation_probe(
+                "nested-inner",
+                75.0,
+                PresentationOutsidePointerPolicy::DismissAndBlock,
+                false,
+                false,
+                Rc::clone(&state.moves),
+            ));
+        }
+        let outer = column(outer_children)
+            .id("nested-outer")
+            .key("nested-outer")
+            .with_layout(fixed(40, 30))
+            .surface_presentation(
+                SurfacePresentation::new(
+                    SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
+                )
+                .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                    LogicalPoint::new(60.0, 35.0)
+                        .unwrap_or_else(|_| unreachable!("nested outer anchor is finite")),
+                ))
+                .with_outside_pointer(PresentationOutsidePointerPolicy::Block),
+            )
+            .into_element();
+
+        column(vec![outside, outer])
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        match action {
+            InteractionAction::OutsidePressed => state.interaction_presses += 1,
+            InteractionAction::Dismissed { name, reason } => {
+                state.dismissals.push((name, reason));
+                if name == "nested-inner" {
+                    state.inner_open = false;
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn nested_presentation_owner_chain_is_inside_and_unrelated_content_dismisses_only_topmost() {
+    let environment = StyleEnvironment::default();
+    let mut runtime = AppRuntime::<NestedInteractionApp>::mount(NestedInteractionState {
+        inner_open: true,
+        interaction_presses: 0,
+        dismissals: Vec::new(),
+        moves: Rc::new(RefCell::new(Vec::new())),
+    });
+    let publication = runtime
+        .publish_surface(&context(&environment, 110, 80))
+        .unwrap_or_else(|_| unreachable!("nested interaction publication is admitted"));
+    settle(&mut runtime);
+
+    let outer = publication
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "nested-outer")
+        })
+        .unwrap_or_else(|| unreachable!("nested outer presentation is published"));
+    let placed = outer
+        .surface_presentation()
+        .unwrap_or_else(|| unreachable!("nested outer placement resolves"))
+        .placed_bounds();
+    let owner_point = LogicalPoint::new(placed.x() + 10.0, placed.y() + 10.0)
+        .unwrap_or_else(|_| unreachable!("nested owner point is finite"));
+    runtime
+        .submit_pointer(pointer(
+            publication.input_context(),
+            owner_point,
+            PointerPhase::Down,
+        ))
+        .unwrap_or_else(|_| unreachable!("owner-family pointer down is accepted"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().interaction_presses, 1);
+    assert!(runtime.state().dismissals.is_empty());
+    assert!(runtime.state().inner_open);
+
+    let publication = runtime
+        .publish_surface(&context(&environment, 110, 80))
+        .unwrap_or_else(|_| unreachable!("nested interaction republishes"));
+    let outside_point = node_center(&publication, "nested-outside");
+    runtime
+        .submit_pointer(pointer(
+            publication.input_context(),
+            outside_point,
+            PointerPhase::Down,
+        ))
+        .unwrap_or_else(|_| unreachable!("unrelated outside pointer down is accepted"));
+    settle(&mut runtime);
+
+    assert_eq!(
+        runtime.state().interaction_presses,
+        1,
+        "unrelated outside input must be blocked rather than click through"
+    );
+    assert_eq!(
+        runtime.state().dismissals,
+        [(
+            "nested-inner",
+            PresentationDismissReason::OutsidePointer,
+        )],
+        "the visually topmost nested presentation owns the outside decision"
+    );
+    assert!(!runtime.state().inner_open);
 }

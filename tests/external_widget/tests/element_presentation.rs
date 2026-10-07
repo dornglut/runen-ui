@@ -1,5 +1,6 @@
 use runenui_core::{
     Element, LogicalPoint, PresentationOrigin, PresentationRotation, PresentationScale,
+    PresentationFocusEntry, PresentationFocusPolicy, PresentationOutsidePointerPolicy,
     PresentationTransform, PresentationTranslation, PresentationValue, SurfacePresentation,
     SurfacePresentationAnchor, SurfacePresentationPlacement, SurfacePresentationSide, UnitInterval,
     Widget,
@@ -57,4 +58,47 @@ fn downstream_custom_widget_can_author_same_surface_presentation_without_runtime
 
     assert_eq!(element.surface_presentation_config(), Some(&authored));
     assert_eq!(authored.candidates(), [first, fallback]);
+}
+
+
+#[test]
+fn downstream_custom_widget_can_author_presentation_lifecycle_without_runtime_identity() {
+    let placement = SurfacePresentationPlacement::new(SurfacePresentationSide::Bottom);
+    let authored = SurfacePresentation::new(placement)
+        .with_outside_pointer(PresentationOutsidePointerPolicy::DismissAndBlock)
+        .modal(true)
+        .dismiss_on_cancel_or_back(true)
+        .with_focus_policy(PresentationFocusPolicy::EnterAndRestore);
+
+    let element: Element<()> = Element::new(ExternalWidget)
+        .presentation_focus_preferred(true)
+        .surface_presentation(authored.clone());
+
+    assert_eq!(element.surface_presentation_config(), Some(&authored));
+    assert_eq!(
+        element.presentation_focus_entry(),
+        PresentationFocusEntry::Preferred
+    );
+    assert_eq!(
+        authored.outside_pointer(),
+        PresentationOutsidePointerPolicy::DismissAndBlock
+    );
+    assert!(authored.is_modal());
+    assert!(authored.dismisses_on_cancel_or_back());
+    assert_eq!(
+        authored.focus_policy(),
+        PresentationFocusPolicy::EnterAndRestore
+    );
+
+    let tooltip_style = SurfacePresentation::new(placement);
+    assert_eq!(
+        tooltip_style.outside_pointer(),
+        PresentationOutsidePointerPolicy::Ignore
+    );
+    assert!(!tooltip_style.is_modal());
+    assert!(!tooltip_style.dismisses_on_cancel_or_back());
+    assert_eq!(
+        tooltip_style.focus_policy(),
+        PresentationFocusPolicy::Preserve
+    );
 }

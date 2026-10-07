@@ -37,6 +37,7 @@ const M11_DELIVERY_SLICES: &[&str] = &[
     "M11TABS",
     "M11CONTENT",
     "M11PRES1",
+    "M11PRES2",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -881,6 +882,17 @@ mod tests {
         "M11CTRL-41",
         "M11CTRL-42",
     ];
+    const M11_PRESENTATION_LIFECYCLE_IDS: &[&str] = &[
+        "M11CTRL-43",
+        "M11CTRL-44",
+        "M11CTRL-45",
+        "M11CTRL-46",
+        "M11CTRL-47",
+        "M11CTRL-48",
+        "M11CTRL-49",
+        "M11CTRL-50",
+        "M11CTRL-51",
+    ];
 
     #[test]
     #[allow(clippy::assert_is_empty)]
@@ -893,7 +905,7 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 42);
+        assert_eq!(rows.len(), 51);
 
         let expected: &[(&str, &[&str], &str)] = &[
             (
@@ -955,6 +967,11 @@ mod tests {
                 "owner-accepted",
             ),
             ("M11PRES1", M11_PRESENTATION_IDS, "owner-accepted"),
+            (
+                "M11PRES2",
+                M11_PRESENTATION_LIFECYCLE_IDS,
+                "implementation-complete",
+            ),
         ];
         for (slice, ids, status) in expected {
             assert_m11_slice(&rows, slice, ids, status);
@@ -971,6 +988,7 @@ mod tests {
                 "M11COLL2",
                 "M11CONTENT",
                 "M11PRES1",
+                "M11PRES2",
                 "M11SCROLLB",
                 "M11SEM1",
                 "M11TABS",
@@ -1068,7 +1086,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 484);
+        assert_eq!(total, 493);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }
