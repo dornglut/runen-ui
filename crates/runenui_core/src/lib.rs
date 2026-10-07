@@ -253,6 +253,7 @@ mod scroll;
 mod semantic;
 mod semantic_action;
 mod shortcut;
+mod standard_content;
 mod style;
 mod style_effects;
 mod style_environment;
@@ -286,6 +287,7 @@ pub use builtins::{
     scroll_viewport, shortcut_scope, switch, tab, tab_list, tab_panel, text,
 };
 pub use computed_style::ComputedStyle;
+pub use standard_content::{Image, Separator, image, separator};
 pub use editing::{
     EditChangeMap, EditGroupHint, EditIntent, EditInverse, EditKind, EditRequestId, EditResolution,
     EditResolutionOutcome, EditSelection, EditableContribution, EditableContributionError,
