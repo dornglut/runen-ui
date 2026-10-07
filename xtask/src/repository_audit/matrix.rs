@@ -872,6 +872,16 @@ mod tests {
         );
     }
 
+    const M11_PRESENTATION_IDS: &[&str] = &[
+        "M11CTRL-36",
+        "M11CTRL-37",
+        "M11CTRL-38",
+        "M11CTRL-39",
+        "M11CTRL-40",
+        "M11CTRL-41",
+        "M11CTRL-42",
+    ];
+
     #[test]
     #[allow(clippy::assert_is_empty)]
     fn m11_inventory_accepts_current_control_contracts() -> Result<(), String> {
@@ -944,19 +954,7 @@ mod tests {
                 &["M11CTRL-33", "M11CTRL-34", "M11CTRL-35"],
                 "owner-accepted",
             ),
-            (
-                "M11PRES1",
-                &[
-                    "M11CTRL-36",
-                    "M11CTRL-37",
-                    "M11CTRL-38",
-                    "M11CTRL-39",
-                    "M11CTRL-40",
-                    "M11CTRL-41",
-                    "M11CTRL-42",
-                ],
-                "implementation-complete",
-            ),
+            ("M11PRES1", M11_PRESENTATION_IDS, "implementation-complete"),
         ];
         for (slice, ids, status) in expected {
             assert_m11_slice(&rows, slice, ids, status);
