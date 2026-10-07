@@ -260,6 +260,7 @@ mod style_environment;
 mod style_resolution;
 mod style_tokens;
 mod subscription;
+mod surface_presentation;
 mod text_coordinates;
 mod typography;
 mod value;
@@ -331,6 +332,10 @@ pub use paint::{
 pub use paint_group::{PaintContributionEntry, PaintContributionGroup};
 pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
 pub use standard_content::{Image, Separator, image, separator};
+pub use surface_presentation::{
+    SurfacePresentation, SurfacePresentationAlignment, SurfacePresentationAnchor,
+    SurfacePresentationPlacement, SurfacePresentationSide,
+};
 pub use widget_protocol::{
     ChildBearingWidget, Widget, WidgetActivation, WidgetActivationOutput, WidgetAvailableSpace,
     WidgetDiagnostic, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId,

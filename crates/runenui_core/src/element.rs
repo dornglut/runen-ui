@@ -11,7 +11,7 @@ use crate::widget_protocol::Widget;
 use crate::{
     ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope, Focusability,
     IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, ScrollChrome,
-    ScrollControlBinding, StyleIntent,
+    ScrollControlBinding, StyleIntent, SurfacePresentation,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -21,6 +21,7 @@ pub struct CommonNodeAuthoring {
     pub layout: LayoutStyle,
     pub style: StyleIntent,
     pub timelines: Vec<ExplicitTimeline>,
+    pub surface_presentation: Option<SurfacePresentation>,
     pub diagnostics: Vec<AuthoringDiagnostic>,
 }
 
@@ -32,6 +33,7 @@ impl Default for CommonNodeAuthoring {
             layout: LayoutStyle::default(),
             style: StyleIntent::EMPTY,
             timelines: Vec::new(),
+            surface_presentation: None,
             diagnostics: Vec::new(),
         }
     }
@@ -49,6 +51,7 @@ impl CommonNodeAuthoring {
                 layout: fields.layout,
                 style: fields.style,
                 timelines: fields.timelines,
+                surface_presentation: fields.surface_presentation,
                 diagnostics,
             },
             fields.focusability,
@@ -61,18 +64,17 @@ impl CommonNodeAuthoring {
         focusability: Focusability,
         focus_scope: Option<FocusScope>,
     ) -> (AuthoredElementFields, Vec<AuthoringDiagnostic>) {
-        (
-            AuthoredElementFields::new(
-                self.id,
-                self.key,
-                self.layout,
-                self.style,
-                self.timelines,
-                focusability,
-                focus_scope,
-            ),
-            self.diagnostics,
-        )
+        let mut fields = AuthoredElementFields::new(
+            self.id,
+            self.key,
+            self.layout,
+            self.style,
+            self.timelines,
+            focusability,
+            focus_scope,
+        );
+        fields.surface_presentation = self.surface_presentation;
+        (fields, self.diagnostics)
     }
 
     pub fn assign_id(&mut self, value: impl IntoElementId) {
@@ -113,6 +115,12 @@ macro_rules! common_node_builder_methods {
         #[must_use]
         pub fn with_layout(mut self, layout: $crate::LayoutStyle) -> Self {
             self.common.layout = layout;
+            self
+        }
+        /// Projects this mounted subtree into the same-surface presentation band.
+        #[must_use]
+        pub fn surface_presentation(mut self, presentation: $crate::SurfacePresentation) -> Self {
+            self.common.surface_presentation = Some(presentation);
             self
         }
         #[must_use]
@@ -222,6 +230,7 @@ pub struct AuthoredElementFields {
     pub layout: LayoutStyle,
     pub style: StyleIntent,
     pub timelines: Vec<ExplicitTimeline>,
+    pub surface_presentation: Option<SurfacePresentation>,
     pub focusability: Focusability,
     pub focus_scope: Option<FocusScope>,
 }
@@ -242,6 +251,7 @@ impl AuthoredElementFields {
             layout,
             style,
             timelines,
+            surface_presentation: None,
             focusability,
             focus_scope,
         }
@@ -257,6 +267,7 @@ impl<Action> fmt::Debug for Element<Action> {
             .field("layout", &self.common.layout)
             .field("style", &self.common.style)
             .field("timelines", &self.common.timelines)
+            .field("surface_presentation", &self.common.surface_presentation)
             .field("focusability", &self.focusability)
             .field("focus_scope", &self.focus_scope)
             .field("focus_group", &self.focus_group)
@@ -458,6 +469,10 @@ impl<Action> Element<Action> {
     #[must_use]
     pub const fn timelines(&self) -> &[ExplicitTimeline] {
         self.common.timelines.as_slice()
+    }
+    #[must_use]
+    pub const fn surface_presentation_config(&self) -> Option<&SurfacePresentation> {
+        self.common.surface_presentation.as_ref()
     }
     #[must_use]
     pub const fn focusability(&self) -> Focusability {

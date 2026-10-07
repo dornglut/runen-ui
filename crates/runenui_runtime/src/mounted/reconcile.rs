@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use runenui_core::{
     __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusGroup,
     FocusGroupEntry, FocusScope, Focusability, LayoutStyle, ScrollChrome, ScrollControlBinding,
-    ShortcutBinding, StyleIntent, WidgetInvalidation, WidgetMountContext, WidgetUnmountReason,
-    WidgetUpdateContext,
+    ShortcutBinding, StyleIntent, SurfacePresentation, WidgetInvalidation, WidgetMountContext,
+    WidgetUnmountReason, WidgetUpdateContext,
 };
 
 use crate::ReconciliationDiagnostic;
@@ -69,6 +69,7 @@ pub(super) struct IncomingNode<Action> {
     layout: LayoutStyle,
     style: StyleIntent,
     timelines: Vec<ExplicitTimeline>,
+    surface_presentation: Option<SurfacePresentation>,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
     focus_group: Option<FocusGroup>,
@@ -85,6 +86,7 @@ pub(super) struct IncomingNode<Action> {
 impl<Action> IncomingNode<Action> {
     pub(super) fn from_element(element: Element<Action>) -> Self {
         let parts = element.into_runtime_parts();
+        let surface_presentation = parts.surface_presentation().cloned();
         let focus_group = parts.focus_group();
         let focus_group_entry = parts.focus_group_entry();
         let focus_group_search_text = parts.focus_group_search_text().map(str::to_owned);
@@ -109,6 +111,7 @@ impl<Action> IncomingNode<Action> {
             layout,
             style,
             timelines,
+            surface_presentation,
             focusability,
             focus_scope,
             focus_group,
@@ -170,6 +173,31 @@ struct PlanningState {
 fn scroll_control_binding_invalidation(changed: bool) -> WidgetInvalidation {
     if changed {
         WidgetInvalidation::HIT_TEST | WidgetInvalidation::PAINT | WidgetInvalidation::SEMANTICS
+    } else {
+        WidgetInvalidation::NONE
+    }
+}
+
+fn surface_presentation_invalidation(changed: bool) -> WidgetInvalidation {
+    if changed {
+        WidgetInvalidation::LAYOUT
+            | WidgetInvalidation::HIT_TEST
+            | WidgetInvalidation::PAINT
+            | WidgetInvalidation::SEMANTICS
+            | WidgetInvalidation::INTERACTION
+            | WidgetInvalidation::DIAGNOSTICS
+    } else {
+        WidgetInvalidation::NONE
+    }
+}
+
+fn scroll_chrome_invalidation(changed: bool) -> WidgetInvalidation {
+    if changed {
+        WidgetInvalidation::LAYOUT
+            | WidgetInvalidation::HIT_TEST
+            | WidgetInvalidation::PAINT
+            | WidgetInvalidation::SEMANTICS
+            | WidgetInvalidation::INTERACTION
     } else {
         WidgetInvalidation::NONE
     }
@@ -260,6 +288,7 @@ impl<Action> MountedTree<Action> {
             layout,
             style,
             timelines,
+            surface_presentation,
             focusability,
             focus_scope,
             focus_group,
@@ -283,6 +312,7 @@ impl<Action> MountedTree<Action> {
                 layout,
                 style,
                 timelines,
+                surface_presentation,
                 focusability,
                 focus_scope,
                 focus_group,
@@ -550,6 +580,7 @@ impl<Action> MountedTree<Action> {
             layout,
             style,
             timelines,
+            surface_presentation,
             focusability,
             focus_scope,
             focus_group,
@@ -568,7 +599,9 @@ impl<Action> MountedTree<Action> {
             let node = self
                 .node_mut(id)
                 .unwrap_or_else(|| unreachable!("planned retained node remains live"));
-            let tree_metadata_changed = node.authored_id != authored_id;
+            let surface_presentation_changed = node.surface_presentation != surface_presentation;
+            let tree_metadata_changed =
+                node.authored_id != authored_id || surface_presentation_changed;
             let topology_overflow_changed = node.layout.overflow() != layout.overflow();
             let style_changed = node.style != style;
             let timelines_changed = node.timelines != timelines;
@@ -594,6 +627,7 @@ impl<Action> MountedTree<Action> {
             node.layout = layout;
             node.style = style;
             node.timelines = timelines;
+            node.surface_presentation = surface_presentation;
             node.focusability = focusability;
             node.focus_scope = focus_scope;
             node.focus_group = focus_group;
@@ -609,21 +643,16 @@ impl<Action> MountedTree<Action> {
             // the widget explicitly invalidates semantics or mounted-child structure changes.
             node.caches.activation = CachedCapability::Unresolved;
             node.caches.text_input = CachedCapability::Unresolved;
+            let surface_presentation_invalidation =
+                surface_presentation_invalidation(surface_presentation_changed);
             let scroll_control_invalidation =
                 scroll_control_binding_invalidation(scroll_control_binding_changed);
-            let scroll_chrome_invalidation = if scroll_chrome_changed {
-                WidgetInvalidation::LAYOUT
-                    | WidgetInvalidation::HIT_TEST
-                    | WidgetInvalidation::PAINT
-                    | WidgetInvalidation::SEMANTICS
-                    | WidgetInvalidation::INTERACTION
-            } else {
-                WidgetInvalidation::NONE
-            };
+            let scroll_chrome_invalidation = scroll_chrome_invalidation(scroll_chrome_changed);
             apply_invalidation(
                 node,
                 update_context.__runtime_take_invalidation()
                     | common_invalidation
+                    | surface_presentation_invalidation
                     | scroll_control_invalidation
                     | scroll_chrome_invalidation,
             );
@@ -657,6 +686,7 @@ impl<Action> MountedTree<Action> {
             layout,
             style,
             timelines,
+            surface_presentation,
             focusability,
             focus_scope,
             focus_group,
@@ -687,6 +717,7 @@ impl<Action> MountedTree<Action> {
                     layout,
                     style,
                     timelines,
+                    surface_presentation,
                     focusability,
                     focus_scope,
                     focus_group,

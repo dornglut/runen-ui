@@ -3,6 +3,9 @@ use std::{collections::HashMap, sync::Arc};
 mod explicit_groups;
 mod groups;
 mod image_mapping;
+mod presentation;
+
+pub(super) use presentation::resolve_presentation;
 
 use crate::MountedNodeId;
 use crate::mounted::SurfaceCapabilityPlan;
@@ -14,8 +17,8 @@ use runenui_core::{
     LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
     PaintContributionItem, Radius, SceneShape, ScrollBarLayout, ScrollChrome,
     ScrollControlSnapshot, SemanticContributionContext, StyleEnvironment, StyleInteractionState,
-    StyleResolution, TextAffinity, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
-    style_effects_between,
+    StyleResolution, SurfacePresentation, TextAffinity, WidgetDiagnostic, WidgetTypeId,
+    resolve_style_in_environment, style_effects_between,
 };
 use runenui_text::{ShapedTextLease, TextDisplaySelection, TextPreeditProjection, TextSystem};
 
@@ -24,7 +27,7 @@ use super::{
     cache::{
         CachedLayoutFacts, CachedPresentationFacts, CachedScrollChromeKind,
         CachedScrollChromeProjection, CachedScrollControlProjection, PresentationNodeFacts,
-        TextEditingPaintInputs,
+        PresentationNodeFactsInit, TextEditingPaintInputs,
     },
 };
 
@@ -52,6 +55,7 @@ pub(super) struct SurfaceTopologyNode {
     pub(super) children: Vec<MountedNodeId>,
     pub(super) overflow: OverflowStyle,
     pub(super) scroll_chrome: Option<ScrollChrome>,
+    pub(super) surface_presentation: Option<SurfacePresentation>,
 }
 
 pub(super) fn collect_topology<Action>(
@@ -74,6 +78,7 @@ pub(super) fn collect_topology<Action>(
                 children: node.children.clone(),
                 overflow: node.layout.overflow(),
                 scroll_chrome: node.scroll_chrome,
+                surface_presentation: node.surface_presentation.clone(),
             }
         })
         .collect::<Vec<_>>();
@@ -314,6 +319,9 @@ impl ResolvedSurfaceNode {
     }
     pub(super) const fn children(&self) -> &[MountedNodeId] {
         self.topology.children.as_slice()
+    }
+    pub(super) const fn surface_presentation(&self) -> Option<&SurfacePresentation> {
+        self.topology.surface_presentation.as_ref()
     }
     pub(super) const fn layout(&self) -> &LayoutStyle {
         self.effective.layout()
@@ -882,14 +890,18 @@ fn resolve_present_scroll_chrome(
     let content_clips = child_clips.clone();
     let child_clip_bounds = vec![owner_presentation.visible_bounds()];
     Ok(PresentedScrollChrome {
-        presentation: PresentationNodeFacts::new(
+        presentation: PresentationNodeFacts::new(PresentationNodeFactsInit {
             owner_to_surface,
-            owner_to_surface,
-            presented_bounds,
+            content_to_surface: owner_to_surface,
+            owner_bounds: presented_bounds,
             visible_bounds,
-            Arc::from(child_clips.clone()),
-            Arc::from(content_clips),
-        ),
+            inherited_clips: Arc::from(child_clips.clone()),
+            content_clips: Arc::from(content_clips),
+            published: owner_presentation.published(),
+            stack_root: owner_presentation.stack_root(),
+            root_snapshot: None,
+            diagnostics: Arc::from(Vec::<WidgetDiagnostic>::new()),
+        }),
         child_offset,
         child_clips,
         child_clip_bounds,
@@ -899,158 +911,6 @@ fn resolve_present_scroll_chrome(
 /// Recoverable failure to derive a finite node-presentation publication product.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct PresentationGeometryError;
-
-#[allow(
-    clippy::too_many_lines,
-    reason = "the single preorder pass keeps owner and scrolling content geometry aligned"
-)]
-pub(super) fn resolve_presentation(
-    topology: &SurfaceTopologySnapshot,
-    layout: &CachedLayoutFacts,
-    effective: &CachedEffectiveFacts,
-    scroll: &SurfaceScrollProjection,
-) -> Result<CachedPresentationFacts, PresentationGeometryError> {
-    if layout.bounds.len() != effective.nodes.len()
-        || layout.bounds.len() != topology.nodes.len()
-        || layout.report.nodes().len() != topology.nodes.len()
-        || layout.scroll_chrome.len() != topology.nodes.len()
-    {
-        return Err(PresentationGeometryError);
-    }
-    let positions = topology
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(position, node)| (node.id.clone(), position))
-        .collect::<HashMap<_, _>>();
-    let chrome_context = ScrollChromePresentationContext {
-        topology,
-        layout,
-        scroll,
-    };
-    let mut nodes = Vec::with_capacity(layout.bounds.len());
-    let mut inherited_scroll_offsets = Vec::with_capacity(layout.bounds.len());
-    let mut child_offsets = Vec::with_capacity(layout.bounds.len());
-    let mut child_clips = Vec::<Vec<SceneClip>>::with_capacity(layout.bounds.len());
-    let mut child_clip_bounds = Vec::<Vec<LogicalRect>>::with_capacity(layout.bounds.len());
-    for (position, ((bounds, effective), topology_node)) in layout
-        .bounds
-        .iter()
-        .zip(&effective.nodes)
-        .zip(&topology.nodes)
-        .enumerate()
-    {
-        let layout_node = layout
-            .report
-            .nodes()
-            .get(position)
-            .filter(|layout_node| layout_node.id() == &topology_node.id)
-            .ok_or(PresentationGeometryError)?;
-        let parent_position = topology_node
-            .parent
-            .as_ref()
-            .and_then(|parent| positions.get(parent).copied());
-        let (ancestor_x, ancestor_y) =
-            parent_position.map_or((0.0, 0.0), |parent| child_offsets[parent]);
-        let node_presentation = effective
-            .computed_style()
-            .presentation()
-            .map_or(Ok(LogicalTransform::IDENTITY), |presentation| {
-                presentation.resolve_in_box(bounds.size())
-            })
-            .map_err(|_| PresentationGeometryError)?;
-        if let Some(projection) = layout.scroll_chrome[position].filter(|chrome| chrome.present()) {
-            let presented = resolve_present_scroll_chrome(
-                &chrome_context,
-                ScrollChromePresentationInput {
-                    node_presentation,
-                    position,
-                    bounds: *bounds,
-                    projection,
-                },
-                &nodes,
-                &inherited_scroll_offsets,
-            )?;
-            inherited_scroll_offsets.push(presented.child_offset);
-            child_offsets.push(presented.child_offset);
-            nodes.push(presented.presentation);
-            child_clips.push(presented.child_clips);
-            child_clip_bounds.push(presented.child_clip_bounds);
-            continue;
-        }
-        inherited_scroll_offsets.push((ancestor_x, ancestor_y));
-        let inherited_clips = parent_position
-            .map(|parent| child_clips[parent].clone())
-            .unwrap_or_default();
-        let mut inherited_clip_bounds = parent_position
-            .map(|parent| child_clip_bounds[parent].clone())
-            .unwrap_or_default();
-        let placement =
-            LogicalTransform::translation(bounds.x() - ancestor_x, bounds.y() - ancestor_y)
-                .map_err(|_| PresentationGeometryError)?;
-        let owner_to_surface = node_presentation
-            .then(placement)
-            .map_err(|_| PresentationGeometryError)?;
-        let local_bounds = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
-            .unwrap_or_else(|_| unreachable!("published layout size is valid"));
-        let owner_bounds =
-            transform_rect_aabb(owner_to_surface, local_bounds).ok_or(PresentationGeometryError)?;
-        let visible_bounds = inherited_clip_bounds
-            .iter()
-            .fold(owner_bounds, |visible, clip| {
-                intersect_rects(visible, *clip)
-            });
-        let local_scroll = scroll.offset(&topology_node.id);
-        let scroll_x = if topology_node.overflow.horizontal() == OverflowPolicy::Scroll {
-            local_scroll.0
-        } else {
-            0.0
-        };
-        let scroll_y = if topology_node.overflow.vertical() == OverflowPolicy::Scroll {
-            local_scroll.1
-        } else {
-            0.0
-        };
-        let content_translation = LogicalTransform::translation(-scroll_x, -scroll_y)
-            .map_err(|_| PresentationGeometryError)?;
-        let content_to_surface = content_translation
-            .then(owner_to_surface)
-            .map_err(|_| PresentationGeometryError)?;
-        let child_x = ancestor_x + scroll_x;
-        let child_y = ancestor_y + scroll_y;
-        if !child_x.is_finite() || !child_y.is_finite() {
-            return Err(PresentationGeometryError);
-        }
-        child_offsets.push((child_x, child_y));
-
-        let mut content_clips = inherited_clips.clone();
-        if topology_node.overflow.horizontal() == OverflowPolicy::Scroll
-            || topology_node.overflow.vertical() == OverflowPolicy::Scroll
-        {
-            let viewport = layout_node.scroll_viewport_extent();
-            let clip_rect = LogicalRect::try_new(0.0, 0.0, viewport.width(), viewport.height())
-                .unwrap_or_else(|_| unreachable!("published viewport extent is valid"));
-            let clip_bounds = transform_rect_aabb(owner_to_surface, clip_rect)
-                .ok_or(PresentationGeometryError)?;
-            content_clips.push(SceneClip::new(
-                SceneShape::rect(clip_rect),
-                owner_to_surface,
-            ));
-            inherited_clip_bounds.push(clip_bounds);
-        }
-        nodes.push(PresentationNodeFacts::new(
-            owner_to_surface,
-            content_to_surface,
-            owner_bounds,
-            visible_bounds,
-            Arc::from(inherited_clips),
-            Arc::from(content_clips.clone()),
-        ));
-        child_clips.push(content_clips);
-        child_clip_bounds.push(inherited_clip_bounds);
-    }
-    Ok(CachedPresentationFacts { nodes })
-}
 
 pub(super) fn normalize_scroll_projection(
     topology: &SurfaceTopologySnapshot,
@@ -1622,7 +1482,9 @@ pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
     let mut explicit_groups = Vec::new();
     let mut shaped_text_leases = Vec::new();
     for (mounted_preorder, node) in topology.nodes.iter().enumerate() {
-        if !scroll_chrome_participates(topology, layout, mounted_preorder) {
+        if !scroll_chrome_participates(topology, layout, mounted_preorder)
+            || !presentation.published(mounted_preorder)
+        {
             continue;
         }
         let owner = owner_paint_context(presentation, mounted_preorder);
@@ -1697,7 +1559,7 @@ pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
             &mut ordered,
         );
     }
-    ordered.sort_by_key(groups::OrderedPaintItem::ordering_key);
+    ordered.sort_by_key(|item| item.ordering_key(presentation));
     let (items, composition) = groups::derive_composition_groups(
         topology,
         effective,
@@ -1731,7 +1593,9 @@ pub(super) fn resolve_hit_test(
     let mut diagnostics = empty_scene_diagnostics(topology);
     let mut ordered = Vec::new();
     for (mounted_preorder, node) in topology.nodes.iter().enumerate() {
-        if !scroll_chrome_participates(topology, layout, mounted_preorder) {
+        if !scroll_chrome_participates(topology, layout, mounted_preorder)
+            || !presentation.published(mounted_preorder)
+        {
             continue;
         }
         let Some(contribution) = capabilities.hit_test_at(mounted_preorder, &node.id) else {
@@ -1784,7 +1648,16 @@ pub(super) fn resolve_hit_test(
         }
     }
     ordered.sort_by_key(|(layer, mounted_preorder, contribution_local_order, _)| {
-        (*layer, *mounted_preorder, *contribution_local_order)
+        let (band, root) = presentation
+            .stack_root(*mounted_preorder)
+            .map_or((0, 0), |root| (1, root));
+        (
+            band,
+            root,
+            *layer,
+            *mounted_preorder,
+            *contribution_local_order,
+        )
     });
     ResolvedHitTest {
         scene: HitTestSceneContent::new(

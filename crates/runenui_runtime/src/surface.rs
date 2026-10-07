@@ -41,7 +41,8 @@ pub(crate) use transaction::{
 
 use runenui_core::{
     ComputedStyle, ElementId, LogicalRect, LogicalSize, ResourceRef, ScrollControlBinding,
-    ScrollControlSnapshot, WidgetDiagnostic, WidgetMeasureInput, WidgetTypeId,
+    ScrollControlSnapshot, SurfacePresentationPlacement, WidgetDiagnostic, WidgetMeasureInput,
+    WidgetTypeId,
 };
 use runenui_text::{TextConstraints, TextLayoutDecision};
 
@@ -91,6 +92,67 @@ impl SurfaceMotionActivity {
     }
 }
 
+/// Runtime-resolved same-surface placement for one presentation root.
+///
+/// This is immutable publication evidence, not application state. The mounted
+/// root remains the lifetime identity and ordinary logical ancestry is unchanged.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SurfacePresentationSnapshot {
+    candidate_index: usize,
+    placement: SurfacePresentationPlacement,
+    anchor_bounds: LogicalRect,
+    placed_bounds: LogicalRect,
+    visible_bounds: LogicalRect,
+}
+
+impl SurfacePresentationSnapshot {
+    pub(crate) const fn new(
+        candidate_index: usize,
+        placement: SurfacePresentationPlacement,
+        anchor_bounds: LogicalRect,
+        placed_bounds: LogicalRect,
+        visible_bounds: LogicalRect,
+    ) -> Self {
+        Self {
+            candidate_index,
+            placement,
+            anchor_bounds,
+            placed_bounds,
+            visible_bounds,
+        }
+    }
+
+    /// Returns the authored candidate index selected by deterministic fallback.
+    #[must_use]
+    pub const fn candidate_index(self) -> usize {
+        self.candidate_index
+    }
+
+    /// Returns the exact authored candidate that resolved this placement.
+    #[must_use]
+    pub const fn placement(self) -> SurfacePresentationPlacement {
+        self.placement
+    }
+
+    /// Returns the exact surface-logical anchor bounds used for this publication.
+    #[must_use]
+    pub const fn anchor_bounds(self) -> LogicalRect {
+        self.anchor_bounds
+    }
+
+    /// Returns the untransformed measured presentation rectangle after fallback/clamp.
+    #[must_use]
+    pub const fn placed_bounds(self) -> LogicalRect {
+        self.placed_bounds
+    }
+
+    /// Returns the final surface-clipped projected root bounds.
+    #[must_use]
+    pub const fn visible_bounds(self) -> LogicalRect {
+        self.visible_bounds
+    }
+}
+
 /// One ordered node in the non-renderer layout/debug surface frame.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceNode {
@@ -98,6 +160,7 @@ pub struct SurfaceNode {
     parent: Option<MountedNodeId>,
     authored_id: Option<ElementId>,
     bounds: LogicalRect,
+    surface_presentation: Option<SurfacePresentationSnapshot>,
     widget_debug: SurfaceWidgetDebug,
     computed_style: ComputedStyle,
 }
@@ -115,6 +178,7 @@ impl SurfaceNode {
         parent: Option<MountedNodeId>,
         authored_id: Option<ElementId>,
         bounds: LogicalRect,
+        surface_presentation: Option<SurfacePresentationSnapshot>,
         widget_debug: SurfaceWidgetDebug,
         computed_style: &ComputedStyle,
     ) -> Self {
@@ -123,6 +187,7 @@ impl SurfaceNode {
             parent,
             authored_id,
             bounds,
+            surface_presentation,
             widget_debug,
             computed_style: computed_style.clone(),
         }
@@ -146,6 +211,13 @@ impl SurfaceNode {
     #[must_use]
     pub const fn bounds(&self) -> LogicalRect {
         self.bounds
+    }
+
+    /// Returns runtime-resolved same-surface presentation placement when this
+    /// exact node is a published presentation root.
+    #[must_use]
+    pub const fn surface_presentation(&self) -> Option<SurfacePresentationSnapshot> {
+        self.surface_presentation
     }
 
     /// Returns process-local widget identity for diagnostics only.

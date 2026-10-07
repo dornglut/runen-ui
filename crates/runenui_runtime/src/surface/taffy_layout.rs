@@ -40,7 +40,7 @@ use super::resolve::{
     ResolvedScrollBarChrome, ResolvedSurfaceNode, ResolvedSurfaceTree, ScrollChromeLayoutPlan,
 };
 use super::{LayoutOverflow, SurfaceLayoutNode, SurfaceLayoutReport, SurfaceTextMeasurementRecord};
-use crate::{AxisLimit, LayoutConstraints};
+use crate::{AxisConstraints, AxisLimit, LayoutConstraints};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct ScrollViewportGutter {
@@ -147,7 +147,16 @@ fn layout_resolved_surface_once<Action>(
     let root_constraints = inputs.root_constraints;
     let mut kernel = LayoutKernel::new(inputs, text_system);
     let root = NodeId::from(0usize);
-    compute_root_layout(&mut kernel, root, available_space(root_constraints));
+    let presentation_roots = (1..kernel.resolved.nodes().len())
+        .filter(|index| {
+            kernel.resolved.nodes()[*index]
+                .surface_presentation()
+                .is_some()
+        })
+        .map(NodeId::from);
+    for root in std::iter::once(root).chain(presentation_roots) {
+        compute_root_layout(&mut kernel, root, available_space(root_constraints));
+    }
     kernel.finish(root_constraints)
 }
 
@@ -555,6 +564,14 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 root_max_bound(style.max_size.width, self.root_constraints.horizontal());
             style.max_size.height =
                 root_max_bound(style.max_size.height, self.root_constraints.vertical());
+        } else if self.resolved.nodes()[index]
+            .surface_presentation()
+            .is_some()
+        {
+            style.max_size.width =
+                root_max_bound(style.max_size.width, self.root_constraints.horizontal());
+            style.max_size.height =
+                root_max_bound(style.max_size.height, self.root_constraints.vertical());
         }
         if let Some(size) = self.custom_intrinsic_sizes[index] {
             apply_custom_intrinsic_minimum(&mut style, size, self.layout_padding(index));
@@ -733,10 +750,17 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 ));
                 Layout::default()
             };
-            let parent_origin = self.resolved.nodes()[index]
-                .parent()
-                .and_then(|id| self.resolved.position(id))
-                .map_or(Point { x: 0.0, y: 0.0 }, |p| absolute[p]);
+            let parent_origin = if self.resolved.nodes()[index]
+                .surface_presentation()
+                .is_some()
+            {
+                Point { x: 0.0, y: 0.0 }
+            } else {
+                self.resolved.nodes()[index]
+                    .parent()
+                    .and_then(|id| self.resolved.position(id))
+                    .map_or(Point { x: 0.0, y: 0.0 }, |p| absolute[p])
+            };
             let candidate_origin = Point {
                 x: parent_origin.x + layout.location.x,
                 y: parent_origin.y + layout.location.y,
@@ -765,13 +789,21 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 )
             });
             let node = &self.resolved.nodes()[index];
-            let outer = constraints_for_node(index, root_constraints, node_size);
+            let outer = constraints_for_node(
+                index,
+                node.surface_presentation().is_some(),
+                root_constraints,
+                node_size,
+            );
             let padding = self.layout_padding(index);
             let content = content_constraints(outer, padding);
             let mut desired_content = self.intrinsic_sizes[index];
             for child_id in node.children() {
                 if let Some(child_index) = self.resolved.position(child_id)
                     && !self.chrome_plan.chrome_positions[child_index]
+                    && self.resolved.nodes()[child_index]
+                        .surface_presentation()
+                        .is_none()
                 {
                     let child_layout = self.layouts[child_index];
                     desired_content = logical_size(
@@ -857,7 +889,12 @@ impl<Action> TraversePartialTree for LayoutKernel<'_, Action> {
             .children()
             .iter()
             .filter_map(|id| self.resolved.position(id))
-            .filter(|position| !self.chrome_plan.chrome_positions[*position])
+            .filter(|position| {
+                !self.chrome_plan.chrome_positions[*position]
+                    && self.resolved.nodes()[*position]
+                        .surface_presentation()
+                        .is_none()
+            })
             .map(NodeId::from)
             .collect::<Vec<_>>()
             .into_iter()
@@ -1408,13 +1445,19 @@ fn text_baselines(artifact: &runenui_text::TextArtifact, padding: EdgeInsets) ->
             .map(|line| line.metrics().baseline() + padding.top().get()),
     }
 }
-const fn constraints_for_node(
+fn constraints_for_node(
     index: usize,
+    presentation_root: bool,
     root: LayoutConstraints,
     size: LogicalSize,
 ) -> LayoutConstraints {
     if index == 0 {
         root
+    } else if presentation_root {
+        LayoutConstraints::new(
+            AxisConstraints::new(LogicalLength::ZERO, root.horizontal().max()),
+            AxisConstraints::new(LogicalLength::ZERO, root.vertical().max()),
+        )
     } else {
         LayoutConstraints::tight(size)
     }

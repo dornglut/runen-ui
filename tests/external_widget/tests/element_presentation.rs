@@ -1,6 +1,8 @@
 use runenui_core::{
-    Element, PresentationOrigin, PresentationRotation, PresentationScale, PresentationTransform,
-    PresentationTranslation, PresentationValue, UnitInterval, Widget,
+    Element, LogicalPoint, PresentationOrigin, PresentationRotation, PresentationScale,
+    PresentationTransform, PresentationTranslation, PresentationValue, SurfacePresentation,
+    SurfacePresentationAnchor, SurfacePresentationPlacement, SurfacePresentationSide, UnitInterval,
+    Widget,
 };
 
 #[derive(Debug)]
@@ -37,4 +39,22 @@ fn downstream_custom_widget_can_author_generic_element_presentation() {
             .and_then(PresentationValue::as_literal),
         Some(expected)
     );
+}
+
+#[test]
+fn downstream_custom_widget_can_author_same_surface_presentation_without_runtime_identity() {
+    let anchor = SurfacePresentationAnchor::SurfacePoint(
+        LogicalPoint::new(12.0, 18.0)
+            .unwrap_or_else(|_| unreachable!("controlled point is finite")),
+    );
+    let first = SurfacePresentationPlacement::new(SurfacePresentationSide::Bottom);
+    let fallback = SurfacePresentationPlacement::new(SurfacePresentationSide::Top);
+    let authored = SurfacePresentation::new(first)
+        .with_anchor(anchor)
+        .with_fallback(fallback);
+
+    let element: Element<()> = Element::new(ExternalWidget).surface_presentation(authored.clone());
+
+    assert_eq!(element.surface_presentation_config(), Some(&authored));
+    assert_eq!(authored.candidates(), [first, fallback]);
 }

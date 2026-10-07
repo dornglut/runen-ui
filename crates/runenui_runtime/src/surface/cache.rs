@@ -78,7 +78,8 @@ impl TextEditingPaintKey {
 }
 
 use super::{
-    SurfaceBuildContext, SurfaceInteractionProjection, SurfaceLayoutReport, SurfacePublication,
+    SurfaceBuildContext, SurfaceInteractionProjection, SurfaceLayoutReport,
+    SurfacePresentationSnapshot, SurfacePublication,
     resolve::{
         CachedEffectiveFacts, CachedStyleFacts, SurfaceTopologySnapshot, displayed_scroll_metrics,
     },
@@ -314,25 +315,39 @@ pub(super) struct PresentationNodeFacts {
     visible_bounds: LogicalRect,
     inherited_clips: Arc<[SceneClip]>,
     content_clips: Arc<[SceneClip]>,
+    published: bool,
+    stack_root: Option<usize>,
+    root_snapshot: Option<SurfacePresentationSnapshot>,
+    diagnostics: Arc<[WidgetDiagnostic]>,
+}
+
+pub(super) struct PresentationNodeFactsInit {
+    pub(super) owner_to_surface: LogicalTransform,
+    pub(super) content_to_surface: LogicalTransform,
+    pub(super) owner_bounds: LogicalRect,
+    pub(super) visible_bounds: LogicalRect,
+    pub(super) inherited_clips: Arc<[SceneClip]>,
+    pub(super) content_clips: Arc<[SceneClip]>,
+    pub(super) published: bool,
+    pub(super) stack_root: Option<usize>,
+    pub(super) root_snapshot: Option<SurfacePresentationSnapshot>,
+    pub(super) diagnostics: Arc<[WidgetDiagnostic]>,
 }
 
 impl PresentationNodeFacts {
     #[must_use]
-    pub(super) const fn new(
-        owner_to_surface: LogicalTransform,
-        content_to_surface: LogicalTransform,
-        owner_bounds: LogicalRect,
-        visible_bounds: LogicalRect,
-        inherited_clips: Arc<[SceneClip]>,
-        content_clips: Arc<[SceneClip]>,
-    ) -> Self {
+    pub(super) fn new(init: PresentationNodeFactsInit) -> Self {
         Self {
-            owner_to_surface,
-            content_to_surface,
-            owner_bounds,
-            visible_bounds,
-            inherited_clips,
-            content_clips,
+            owner_to_surface: init.owner_to_surface,
+            content_to_surface: init.content_to_surface,
+            owner_bounds: init.owner_bounds,
+            visible_bounds: init.visible_bounds,
+            inherited_clips: init.inherited_clips,
+            content_clips: init.content_clips,
+            published: init.published,
+            stack_root: init.stack_root,
+            root_snapshot: init.root_snapshot,
+            diagnostics: init.diagnostics,
         }
     }
 
@@ -347,8 +362,33 @@ impl PresentationNodeFacts {
     }
 
     #[must_use]
+    pub(super) const fn owner_bounds(&self) -> LogicalRect {
+        self.owner_bounds
+    }
+
+    #[must_use]
     pub(super) const fn visible_bounds(&self) -> LogicalRect {
         self.visible_bounds
+    }
+
+    #[must_use]
+    pub(super) const fn published(&self) -> bool {
+        self.published
+    }
+
+    #[must_use]
+    pub(super) const fn stack_root(&self) -> Option<usize> {
+        self.stack_root
+    }
+
+    #[must_use]
+    pub(super) const fn root_snapshot(&self) -> Option<SurfacePresentationSnapshot> {
+        self.root_snapshot
+    }
+
+    #[must_use]
+    pub(super) fn diagnostics(&self) -> &[WidgetDiagnostic] {
+        &self.diagnostics
     }
 
     #[must_use]
@@ -374,6 +414,16 @@ impl CachedPresentationFacts {
         self.nodes
             .get(position)
             .unwrap_or_else(|| unreachable!("presentation facts remain topology-aligned"))
+    }
+
+    #[must_use]
+    pub(super) fn published(&self, position: usize) -> bool {
+        self.node(position).published()
+    }
+
+    #[must_use]
+    pub(super) fn stack_root(&self, position: usize) -> Option<usize> {
+        self.node(position).stack_root()
     }
 }
 
@@ -584,6 +634,9 @@ impl SurfaceCache {
         };
         let local = map.candidate_rect(&active)?;
         let presentation = self.presentation.node(position);
+        if !presentation.published() {
+            return Err(TextCaretMapError::InvalidGeometry);
+        }
         let padding = self
             .effective
             .node(position)
@@ -630,6 +683,7 @@ impl SurfaceCache {
             .nodes
             .iter()
             .zip(&self.presentation.nodes)
+            .filter(|(_, presentation)| presentation.published())
             .map(|(node, presentation)| (node.id.clone(), presentation.visible_bounds()))
             .collect()
     }
@@ -646,14 +700,18 @@ impl SurfaceCache {
                 .position(id)
                 .unwrap_or_else(|| unreachable!("test geometry names a published node"));
             let current = presentation.nodes[position].clone();
-            presentation.nodes[position] = PresentationNodeFacts::new(
-                current.owner_to_surface(),
-                current.content_to_surface(),
-                current.owner_bounds,
-                *bounds,
-                Arc::clone(&current.inherited_clips),
-                Arc::clone(&current.content_clips),
-            );
+            presentation.nodes[position] = PresentationNodeFacts::new(PresentationNodeFactsInit {
+                owner_to_surface: current.owner_to_surface(),
+                content_to_surface: current.content_to_surface(),
+                owner_bounds: current.owner_bounds,
+                visible_bounds: *bounds,
+                inherited_clips: Arc::clone(&current.inherited_clips),
+                content_clips: Arc::clone(&current.content_clips),
+                published: current.published,
+                stack_root: current.stack_root,
+                root_snapshot: current.root_snapshot,
+                diagnostics: Arc::clone(&current.diagnostics),
+            });
         }
     }
 

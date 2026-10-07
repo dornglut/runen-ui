@@ -233,12 +233,16 @@ fn resolve_layout_phase<Action>(
 fn semantic_participation(
     topology: &super::resolve::SurfaceTopologySnapshot,
     layout: &CachedLayoutFacts,
+    presentation: &super::cache::CachedPresentationFacts,
 ) -> Vec<bool> {
     topology
         .nodes
         .iter()
         .enumerate()
-        .map(|(position, _)| scroll_chrome_participates(topology, layout, position))
+        .map(|(position, _)| {
+            scroll_chrome_participates(topology, layout, position)
+                && presentation.published(position)
+        })
         .collect()
 }
 
@@ -454,15 +458,6 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         &current.scroll,
     )?);
     current.scroll_controls = Arc::clone(&scroll_controls);
-    let semantic_contexts = semantic_contexts(&current.topology, scroll_controls.as_slice());
-    let semantic_participation = semantic_participation(&current.topology, &current.layout);
-    let semantic_capability_plan = semantic_dirty.then(|| {
-        tree.plan_semantic_publication_capabilities(
-            &capability_plan,
-            &semantic_contexts,
-            &semantic_participation,
-        )
-    });
     if presentation_dirty {
         current.presentation = Arc::new(resolve_presentation(
             &current.topology,
@@ -471,6 +466,16 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
             &current.scroll,
         )?);
     }
+    let semantic_contexts = semantic_contexts(&current.topology, scroll_controls.as_slice());
+    let semantic_participation =
+        semantic_participation(&current.topology, &current.layout, &current.presentation);
+    let semantic_capability_plan = semantic_dirty.then(|| {
+        tree.plan_semantic_publication_capabilities(
+            &capability_plan,
+            &semantic_contexts,
+            &semantic_participation,
+        )
+    });
 
     let scene_diagnostics_changed = resolve_contribution_phases(
         tree,
@@ -583,14 +588,14 @@ fn plan_structural_surface<'tree, Action>(
     let scroll_controls = Arc::new(scroll_control_projections(
         tree, &topology, &layout, &scroll,
     )?);
+    let presentation = resolve_presentation(&topology, &layout, &effective, &scroll)?;
     let semantic_contexts = semantic_contexts(&topology, scroll_controls.as_slice());
-    let semantic_participation = semantic_participation(&topology, &layout);
+    let semantic_participation = semantic_participation(&topology, &layout, &presentation);
     let semantic_capability_plan = tree.plan_semantic_publication_capabilities(
         &capability_plan,
         &semantic_contexts,
         &semantic_participation,
     );
-    let presentation = resolve_presentation(&topology, &layout, &effective, &scroll)?;
 
     let paint_contexts = paint_contexts(&layout, &effective, scroll_controls.as_slice());
     let hit_contexts = hit_contexts(&layout, scroll_controls.as_slice());
@@ -722,14 +727,17 @@ pub(super) fn publish_mounted_surface_cached<Action>(
 }
 
 fn combined_node_diagnostics(cache: &SurfaceCache, index: usize) -> Vec<WidgetDiagnostic> {
+    let presentation = cache.presentation.node(index);
     let mut diagnostics = Vec::with_capacity(
         cache.diagnostics[index].len()
             + cache.hit_diagnostics[index].len()
-            + cache.paint_diagnostics[index].len(),
+            + cache.paint_diagnostics[index].len()
+            + presentation.diagnostics().len(),
     );
     diagnostics.extend(cache.diagnostics[index].iter().cloned());
     diagnostics.extend(cache.hit_diagnostics[index].iter().cloned());
     diagnostics.extend(cache.paint_diagnostics[index].iter().cloned());
+    diagnostics.extend(presentation.diagnostics().iter().cloned());
     diagnostics
 }
 
@@ -746,6 +754,7 @@ fn compose_publication(cache: &SurfaceCache) -> SurfacePublication {
                 node.parent.clone(),
                 node.authored_id.clone(),
                 cache.layout.bounds[index],
+                cache.presentation.node(index).root_snapshot(),
                 SurfaceWidgetDebug {
                     widget_type_id: node.widget_type_id,
                     diagnostics: combined_node_diagnostics(cache, index),

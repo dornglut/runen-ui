@@ -9,6 +9,7 @@ const COMPUTED_STYLE: &str = "crates/runenui_core/src/computed_style.rs";
 const IMAGE: &str = "crates/runenui_core/src/visual/image.rs";
 const PRESENTATION: &str = "crates/runenui_core/src/visual/presentation.rs";
 const RUNTIME_RESOLVE: &str = "crates/runenui_runtime/src/surface/resolve.rs";
+const RUNTIME_PRESENTATION: &str = "crates/runenui_runtime/src/surface/resolve/presentation.rs";
 const RENDERER_ROOT: &str = "crates/runenui_render_wgpu/src";
 
 #[test]
@@ -156,6 +157,7 @@ fn presentation_composition_keeps_one_core_resolver_and_one_runtime_application_
     let root = workspace_root()?;
     let presentation = read(&root.join(PRESENTATION))?;
     let resolve = read(&root.join(RUNTIME_RESOLVE))?;
+    let runtime_presentation = read(&root.join(RUNTIME_PRESENTATION))?;
 
     for required in [
         "let origin_x = self.origin.x().get() * size.width();",
@@ -174,31 +176,37 @@ fn presentation_composition_keeps_one_core_resolver_and_one_runtime_application_
         }
     }
     for required in [
-        "let parent_position = topology_node",
-        "parent_position.map_or((0.0, 0.0), |parent| child_offsets[parent])",
-        ".presentation()",
-        "presentation.resolve_in_box(bounds.size())",
-        "LogicalTransform::translation(bounds.x() - ancestor_x, bounds.y() - ancestor_y)",
-        "let owner_to_surface = node_presentation",
-        ".then(placement)",
-        "let child_x = ancestor_x + scroll_x;",
-        "let child_y = ancestor_y + scroll_y;",
+        "mod presentation;",
+        "pub(super) use presentation::resolve_presentation;",
     ] {
         if !resolve.contains(required) {
             return Err(format!(
-                "M9C runtime presentation composition lost required seam `{required}` in {RUNTIME_RESOLVE}"
+                "M9C generic surface resolver lost the single extracted presentation owner seam `{required}` in {RUNTIME_RESOLVE}"
             ));
         }
     }
-    if resolve
-        .matches("presentation.resolve_in_box(bounds.size())")
-        .count()
-        != 1
-    {
-        return Err(
-            "M9C requires one reviewed runtime application of the sampled node presentation"
-                .to_owned(),
-        );
+    for required in [
+        "let parent = node",
+        "parent.map_or((0.0, 0.0), |parent| state.child_offsets[parent])",
+        "resolve_node_presentation(effective, bounds.size())?",
+        "LogicalTransform::translation(",
+        "bounds.x() - inherited.0 + projection.0",
+        "let owner_to_surface = transform",
+        ".then(placement)",
+        "let child_offset = (inherited.0 + scroll_x, inherited.1 + scroll_y);",
+    ] {
+        if !runtime_presentation.contains(required) {
+            return Err(format!(
+                "M9C runtime presentation composition lost required seam `{required}` in {RUNTIME_PRESENTATION}"
+            ));
+        }
+    }
+    let sampled_application_count = resolve.matches("resolve_in_box(").count()
+        + runtime_presentation.matches("resolve_in_box(").count();
+    if sampled_application_count != 1 {
+        return Err(format!(
+            "M9C requires one reviewed runtime application of the sampled node presentation; found {sampled_application_count}"
+        ));
     }
     Ok(())
 }
