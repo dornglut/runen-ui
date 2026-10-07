@@ -10,7 +10,10 @@ use crate::{
     scene::SceneClip,
     surface::{
         SurfacePresentationSnapshot, SurfaceScrollProjection,
-        cache::{CachedLayoutFacts, CachedPresentationFacts, PresentationNodeFacts},
+        cache::{
+            CachedLayoutFacts, CachedPresentationFacts, PresentationNodeFacts,
+            PresentationNodeFactsInit,
+        },
     },
 };
 
@@ -51,18 +54,18 @@ fn zero_rect() -> LogicalRect {
 
 fn unpublished(stack_root: Option<usize>, why: Option<WidgetDiagnostic>) -> PresentationNodeFacts {
     let zero = zero_rect();
-    PresentationNodeFacts::new(
-        LogicalTransform::IDENTITY,
-        LogicalTransform::IDENTITY,
-        zero,
-        zero,
-        Arc::from(Vec::<SceneClip>::new()),
-        Arc::from(Vec::<SceneClip>::new()),
-        false,
+    PresentationNodeFacts::new(PresentationNodeFactsInit {
+        owner_to_surface: LogicalTransform::IDENTITY,
+        content_to_surface: LogicalTransform::IDENTITY,
+        owner_bounds: zero,
+        visible_bounds: zero,
+        inherited_clips: Arc::from(Vec::<SceneClip>::new()),
+        content_clips: Arc::from(Vec::<SceneClip>::new()),
+        published: false,
         stack_root,
-        None,
-        Arc::from(why.into_iter().collect::<Vec<_>>()),
-    )
+        root_snapshot: None,
+        diagnostics: Arc::from(why.into_iter().collect::<Vec<_>>()),
+    })
 }
 
 fn surface_rect(layout: &CachedLayoutFacts) -> Result<LogicalRect, PresentationGeometryError> {
@@ -107,7 +110,7 @@ fn aligned(
 ) -> Result<f32, PresentationGeometryError> {
     let value = match alignment {
         SurfacePresentationAlignment::Start => start,
-        SurfacePresentationAlignment::Center => start + (anchor_extent - extent) * 0.5,
+        SurfacePresentationAlignment::Center => (anchor_extent - extent).mul_add(0.5, start),
         SurfacePresentationAlignment::End => start + anchor_extent - extent,
         _ => return Err(PresentationGeometryError),
     };
@@ -141,8 +144,8 @@ fn candidate_rect(
             aligned(anchor.y(), anchor.height(), height, candidate.alignment())?,
         ),
         SurfacePresentationSide::Center => (
-            anchor.x() + (anchor.width() - width) * 0.5,
-            anchor.y() + (anchor.height() - height) * 0.5,
+            (anchor.width() - width).mul_add(0.5, anchor.x()),
+            (anchor.height() - height).mul_add(0.5, anchor.y()),
         ),
         _ => return Err(PresentationGeometryError),
     };
@@ -406,18 +409,18 @@ pub(in crate::surface) fn resolve_presentation(
                 placed,
                 visible_bounds,
             );
-            state.nodes.push(PresentationNodeFacts::new(
+            state.nodes.push(PresentationNodeFacts::new(PresentationNodeFactsInit {
                 owner_to_surface,
                 content_to_surface,
                 owner_bounds,
                 visible_bounds,
-                Arc::from(inherited_clips),
-                Arc::from(content_clips.clone()),
-                true,
+                inherited_clips: Arc::from(inherited_clips),
+                content_clips: Arc::from(content_clips.clone()),
+                published: true,
                 stack_root,
-                Some(snapshot),
-                Arc::from(Vec::<WidgetDiagnostic>::new()),
-            ));
+                root_snapshot: Some(snapshot),
+                diagnostics: Arc::from(Vec::<WidgetDiagnostic>::new()),
+            }));
             state.child_clips.push(content_clips);
             state.child_clip_bounds.push(inherited_clip_bounds);
             continue;
@@ -504,18 +507,18 @@ pub(in crate::surface) fn resolve_presentation(
             &mut inherited_clip_bounds,
             &mut content_clips,
         )?;
-        state.nodes.push(PresentationNodeFacts::new(
+        state.nodes.push(PresentationNodeFacts::new(PresentationNodeFactsInit {
             owner_to_surface,
             content_to_surface,
             owner_bounds,
             visible_bounds,
-            Arc::from(inherited_clips),
-            Arc::from(content_clips.clone()),
-            true,
+            inherited_clips: Arc::from(inherited_clips),
+            content_clips: Arc::from(content_clips.clone()),
+            published: true,
             stack_root,
-            None,
-            Arc::from(Vec::<WidgetDiagnostic>::new()),
-        ));
+            root_snapshot: None,
+            diagnostics: Arc::from(Vec::<WidgetDiagnostic>::new()),
+        }));
         state.child_clips.push(content_clips);
         state.child_clip_bounds.push(inherited_clip_bounds);
     }

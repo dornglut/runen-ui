@@ -178,6 +178,31 @@ fn scroll_control_binding_invalidation(changed: bool) -> WidgetInvalidation {
     }
 }
 
+fn surface_presentation_invalidation(changed: bool) -> WidgetInvalidation {
+    if changed {
+        WidgetInvalidation::LAYOUT
+            | WidgetInvalidation::HIT_TEST
+            | WidgetInvalidation::PAINT
+            | WidgetInvalidation::SEMANTICS
+            | WidgetInvalidation::INTERACTION
+            | WidgetInvalidation::DIAGNOSTICS
+    } else {
+        WidgetInvalidation::NONE
+    }
+}
+
+fn scroll_chrome_invalidation(changed: bool) -> WidgetInvalidation {
+    if changed {
+        WidgetInvalidation::LAYOUT
+            | WidgetInvalidation::HIT_TEST
+            | WidgetInvalidation::PAINT
+            | WidgetInvalidation::SEMANTICS
+            | WidgetInvalidation::INTERACTION
+    } else {
+        WidgetInvalidation::NONE
+    }
+}
+
 const fn apply_retained_phase_changes<Action>(
     node: &mut MountedNode<Action>,
     tree_changed: bool,
@@ -618,27 +643,11 @@ impl<Action> MountedTree<Action> {
             // the widget explicitly invalidates semantics or mounted-child structure changes.
             node.caches.activation = CachedCapability::Unresolved;
             node.caches.text_input = CachedCapability::Unresolved;
-            let surface_presentation_invalidation = if surface_presentation_changed {
-                WidgetInvalidation::LAYOUT
-                    | WidgetInvalidation::HIT_TEST
-                    | WidgetInvalidation::PAINT
-                    | WidgetInvalidation::SEMANTICS
-                    | WidgetInvalidation::INTERACTION
-                    | WidgetInvalidation::DIAGNOSTICS
-            } else {
-                WidgetInvalidation::NONE
-            };
+            let surface_presentation_invalidation =
+                surface_presentation_invalidation(surface_presentation_changed);
             let scroll_control_invalidation =
                 scroll_control_binding_invalidation(scroll_control_binding_changed);
-            let scroll_chrome_invalidation = if scroll_chrome_changed {
-                WidgetInvalidation::LAYOUT
-                    | WidgetInvalidation::HIT_TEST
-                    | WidgetInvalidation::PAINT
-                    | WidgetInvalidation::SEMANTICS
-                    | WidgetInvalidation::INTERACTION
-            } else {
-                WidgetInvalidation::NONE
-            };
+            let scroll_chrome_invalidation = scroll_chrome_invalidation(scroll_chrome_changed);
             apply_invalidation(
                 node,
                 update_context.__runtime_take_invalidation()

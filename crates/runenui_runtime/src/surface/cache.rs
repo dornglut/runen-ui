@@ -321,31 +321,33 @@ pub(super) struct PresentationNodeFacts {
     diagnostics: Arc<[WidgetDiagnostic]>,
 }
 
+pub(super) struct PresentationNodeFactsInit {
+    pub(super) owner_to_surface: LogicalTransform,
+    pub(super) content_to_surface: LogicalTransform,
+    pub(super) owner_bounds: LogicalRect,
+    pub(super) visible_bounds: LogicalRect,
+    pub(super) inherited_clips: Arc<[SceneClip]>,
+    pub(super) content_clips: Arc<[SceneClip]>,
+    pub(super) published: bool,
+    pub(super) stack_root: Option<usize>,
+    pub(super) root_snapshot: Option<SurfacePresentationSnapshot>,
+    pub(super) diagnostics: Arc<[WidgetDiagnostic]>,
+}
+
 impl PresentationNodeFacts {
     #[must_use]
-    pub(super) const fn new(
-        owner_to_surface: LogicalTransform,
-        content_to_surface: LogicalTransform,
-        owner_bounds: LogicalRect,
-        visible_bounds: LogicalRect,
-        inherited_clips: Arc<[SceneClip]>,
-        content_clips: Arc<[SceneClip]>,
-        published: bool,
-        stack_root: Option<usize>,
-        root_snapshot: Option<SurfacePresentationSnapshot>,
-        diagnostics: Arc<[WidgetDiagnostic]>,
-    ) -> Self {
+    pub(super) const fn new(init: PresentationNodeFactsInit) -> Self {
         Self {
-            owner_to_surface,
-            content_to_surface,
-            owner_bounds,
-            visible_bounds,
-            inherited_clips,
-            content_clips,
-            published,
-            stack_root,
-            root_snapshot,
-            diagnostics,
+            owner_to_surface: init.owner_to_surface,
+            content_to_surface: init.content_to_surface,
+            owner_bounds: init.owner_bounds,
+            visible_bounds: init.visible_bounds,
+            inherited_clips: init.inherited_clips,
+            content_clips: init.content_clips,
+            published: init.published,
+            stack_root: init.stack_root,
+            root_snapshot: init.root_snapshot,
+            diagnostics: init.diagnostics,
         }
     }
 
@@ -698,18 +700,18 @@ impl SurfaceCache {
                 .position(id)
                 .unwrap_or_else(|| unreachable!("test geometry names a published node"));
             let current = presentation.nodes[position].clone();
-            presentation.nodes[position] = PresentationNodeFacts::new(
-                current.owner_to_surface(),
-                current.content_to_surface(),
-                current.owner_bounds,
-                *bounds,
-                Arc::clone(&current.inherited_clips),
-                Arc::clone(&current.content_clips),
-                current.published,
-                current.stack_root,
-                current.root_snapshot,
-                Arc::clone(&current.diagnostics),
-            );
+            presentation.nodes[position] = PresentationNodeFacts::new(PresentationNodeFactsInit {
+                owner_to_surface: current.owner_to_surface(),
+                content_to_surface: current.content_to_surface(),
+                owner_bounds: current.owner_bounds,
+                visible_bounds: *bounds,
+                inherited_clips: Arc::clone(&current.inherited_clips),
+                content_clips: Arc::clone(&current.content_clips),
+                published: current.published,
+                stack_root: current.stack_root,
+                root_snapshot: current.root_snapshot,
+                diagnostics: Arc::clone(&current.diagnostics),
+            });
         }
     }
 

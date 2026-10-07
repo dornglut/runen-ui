@@ -27,7 +27,7 @@ use super::{
     cache::{
         CachedLayoutFacts, CachedPresentationFacts, CachedScrollChromeKind,
         CachedScrollChromeProjection, CachedScrollControlProjection, PresentationNodeFacts,
-        TextEditingPaintInputs,
+        PresentationNodeFactsInit, TextEditingPaintInputs,
     },
 };
 
@@ -890,18 +890,18 @@ fn resolve_present_scroll_chrome(
     let content_clips = child_clips.clone();
     let child_clip_bounds = vec![owner_presentation.visible_bounds()];
     Ok(PresentedScrollChrome {
-        presentation: PresentationNodeFacts::new(
+        presentation: PresentationNodeFacts::new(PresentationNodeFactsInit {
             owner_to_surface,
-            owner_to_surface,
-            presented_bounds,
+            content_to_surface: owner_to_surface,
+            owner_bounds: presented_bounds,
             visible_bounds,
-            Arc::from(child_clips.clone()),
-            Arc::from(content_clips),
-            owner_presentation.published(),
-            owner_presentation.stack_root(),
-            None,
-            Arc::from(Vec::<WidgetDiagnostic>::new()),
-        ),
+            inherited_clips: Arc::from(child_clips.clone()),
+            content_clips: Arc::from(content_clips),
+            published: owner_presentation.published(),
+            stack_root: owner_presentation.stack_root(),
+            root_snapshot: None,
+            diagnostics: Arc::from(Vec::<WidgetDiagnostic>::new()),
+        }),
         child_offset,
         child_clips,
         child_clip_bounds,
