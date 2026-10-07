@@ -140,7 +140,7 @@ impl SurfacePresentation {
     }
 
     #[must_use]
-    pub fn candidates(&self) -> &[SurfacePresentationPlacement] {
+    pub const fn candidates(&self) -> &[SurfacePresentationPlacement] {
         self.candidates.as_slice()
     }
 }

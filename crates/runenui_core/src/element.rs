@@ -64,19 +64,17 @@ impl CommonNodeAuthoring {
         focusability: Focusability,
         focus_scope: Option<FocusScope>,
     ) -> (AuthoredElementFields, Vec<AuthoringDiagnostic>) {
-        (
-            AuthoredElementFields::new(
-                self.id,
-                self.key,
-                self.layout,
-                self.style,
-                self.timelines,
-                self.surface_presentation,
-                focusability,
-                focus_scope,
-            ),
-            self.diagnostics,
-        )
+        let mut fields = AuthoredElementFields::new(
+            self.id,
+            self.key,
+            self.layout,
+            self.style,
+            self.timelines,
+            focusability,
+            focus_scope,
+        );
+        fields.surface_presentation = self.surface_presentation;
+        (fields, self.diagnostics)
     }
 
     pub fn assign_id(&mut self, value: impl IntoElementId) {
@@ -244,7 +242,6 @@ impl AuthoredElementFields {
         layout: LayoutStyle,
         style: StyleIntent,
         timelines: Vec<ExplicitTimeline>,
-        surface_presentation: Option<SurfacePresentation>,
         focusability: Focusability,
         focus_scope: Option<FocusScope>,
     ) -> Self {
@@ -254,7 +251,7 @@ impl AuthoredElementFields {
             layout,
             style,
             timelines,
-            surface_presentation,
+            surface_presentation: None,
             focusability,
             focus_scope,
         }

@@ -281,7 +281,7 @@ fn append_scroll_clip(
 }
 
 #[allow(clippy::too_many_lines)]
-pub(super) fn resolve_presentation(
+pub(in crate::surface) fn resolve_presentation(
     topology: &SurfaceTopologySnapshot,
     layout: &CachedLayoutFacts,
     effective: &CachedEffectiveFacts,
