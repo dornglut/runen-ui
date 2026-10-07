@@ -18,7 +18,8 @@ use crate::{
 };
 
 use super::{
-    CachedEffectiveFacts, PresentationGeometryError, ScrollChromePresentationContext,
+    CachedEffectiveFacts, EffectiveNodeFacts, PresentationGeometryError,
+    ScrollChromePresentationContext,
     ScrollChromePresentationInput, SurfaceTopologyNode, SurfaceTopologySnapshot, intersect_rects,
     resolve_present_scroll_chrome,
 };
@@ -245,6 +246,19 @@ impl LoopState {
     }
 }
 
+fn resolve_node_presentation(
+    effective: &EffectiveNodeFacts,
+    size: runenui_core::LogicalSize,
+) -> Result<LogicalTransform, PresentationGeometryError> {
+    effective
+        .computed_style()
+        .presentation()
+        .map_or(Ok(LogicalTransform::IDENTITY), |presentation| {
+            presentation.resolve_in_box(size)
+        })
+        .map_err(|_| PresentationGeometryError)
+}
+
 fn local_scroll(node: &SurfaceTopologyNode, scroll: &SurfaceScrollProjection) -> (f32, f32) {
     let local = scroll.offset(&node.id);
     (
@@ -367,13 +381,7 @@ pub(in crate::surface) fn resolve_presentation(
             state.inherited_scroll.push((0.0, 0.0));
             state.projection_offsets.push(projection_offset);
 
-            let transform = effective
-                .computed_style()
-                .presentation()
-                .map_or(Ok(LogicalTransform::IDENTITY), |value| {
-                    value.resolve_in_box(bounds.size())
-                })
-                .map_err(|_| PresentationGeometryError)?;
+            let transform = resolve_node_presentation(effective, bounds.size())?;
             let placement = LogicalTransform::translation(placed.x(), placed.y())
                 .map_err(|_| PresentationGeometryError)?;
             let owner_to_surface = transform
@@ -438,13 +446,7 @@ pub(in crate::surface) fn resolve_presentation(
         let projection = parent.map_or((0.0, 0.0), |parent| state.projection_offsets[parent]);
         state.projection_offsets.push(projection);
 
-        let transform = effective
-            .computed_style()
-            .presentation()
-            .map_or(Ok(LogicalTransform::IDENTITY), |value| {
-                value.resolve_in_box(bounds.size())
-            })
-            .map_err(|_| PresentationGeometryError)?;
+        let transform = resolve_node_presentation(effective, bounds.size())?;
         if let Some(chrome) = layout.scroll_chrome[position].filter(|chrome| chrome.present()) {
             let presented = resolve_present_scroll_chrome(
                 &chrome_context,
