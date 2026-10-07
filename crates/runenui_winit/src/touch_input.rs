@@ -382,35 +382,65 @@ mod tests {
     #[test]
     fn native_touch_phases_have_exact_primary_contact_button_facts() {
         let (_, context) = traced_runtime_and_context();
-        let device = InputDeviceId::new(21)
-            .unwrap_or_else(|| unreachable!("fixture device is nonzero"));
+        let device =
+            InputDeviceId::new(21).unwrap_or_else(|| unreachable!("fixture device is nonzero"));
         let mut touch = TouchInputState::default();
 
         let down = touch
-            .transition(device, 7, TouchPhase::Started, point(1.0, 2.0), context.clone())
+            .transition(
+                device,
+                7,
+                TouchPhase::Started,
+                point(1.0, 2.0),
+                context.clone(),
+            )
             .unwrap_or_else(|_| unreachable!("contact starts"));
         assert_eq!(down.phase(), PointerPhase::Down);
         assert_eq!(down.changed_button(), Some(PointerButton::Primary));
-        assert_eq!(down.buttons().iter().collect::<Vec<_>>(), [PointerButton::Primary]);
+        assert_eq!(
+            down.buttons().iter().collect::<Vec<_>>(),
+            [PointerButton::Primary]
+        );
         assert_eq!(down.device_kind(), PointerDeviceKind::Touch);
         assert_eq!(down.device_id(), Some(device));
 
         let moved = touch
-            .transition(device, 7, TouchPhase::Moved, point(3.0, 4.0), context.clone())
+            .transition(
+                device,
+                7,
+                TouchPhase::Moved,
+                point(3.0, 4.0),
+                context.clone(),
+            )
             .unwrap_or_else(|_| unreachable!("contact moves"));
         assert_eq!(moved.phase(), PointerPhase::Move);
         assert_eq!(moved.changed_button(), None);
-        assert_eq!(moved.buttons().iter().collect::<Vec<_>>(), [PointerButton::Primary]);
+        assert_eq!(
+            moved.buttons().iter().collect::<Vec<_>>(),
+            [PointerButton::Primary]
+        );
 
         let up = touch
-            .transition(device, 7, TouchPhase::Ended, point(3.0, 4.0), context.clone())
+            .transition(
+                device,
+                7,
+                TouchPhase::Ended,
+                point(3.0, 4.0),
+                context.clone(),
+            )
             .unwrap_or_else(|_| unreachable!("contact ends"));
         assert_eq!(up.phase(), PointerPhase::Up);
         assert_eq!(up.changed_button(), Some(PointerButton::Primary));
         assert!(up.buttons().is_empty());
 
         let _ = touch
-            .transition(device, 8, TouchPhase::Started, point(5.0, 6.0), context.clone())
+            .transition(
+                device,
+                8,
+                TouchPhase::Started,
+                point(5.0, 6.0),
+                context.clone(),
+            )
             .unwrap_or_else(|_| unreachable!("second contact starts"));
         let cancel = touch
             .transition(device, 8, TouchPhase::Cancelled, point(5.0, 6.0), context)
@@ -424,8 +454,8 @@ mod tests {
     #[test]
     fn translated_concurrent_native_contacts_reach_runtime_without_profile_rejection() {
         let (mut runtime, context) = traced_runtime_and_context();
-        let device = InputDeviceId::new(22)
-            .unwrap_or_else(|| unreachable!("fixture device is nonzero"));
+        let device =
+            InputDeviceId::new(22).unwrap_or_else(|| unreachable!("fixture device is nonzero"));
         let mut touch = TouchInputState::default();
         let mut started_ids = Vec::new();
 
@@ -480,8 +510,8 @@ mod tests {
     #[test]
     fn buttonless_touch_dialect_rejects_without_registering_a_pointer_stream() {
         let (mut runtime, context) = traced_runtime_and_context();
-        let device = InputDeviceId::new(23)
-            .unwrap_or_else(|| unreachable!("fixture device is nonzero"));
+        let device =
+            InputDeviceId::new(23).unwrap_or_else(|| unreachable!("fixture device is nonzero"));
         let mut touch = TouchInputState::default();
         let valid = touch
             .transition(device, 16, TouchPhase::Started, point(1.0, 2.0), context)
