@@ -977,7 +977,7 @@ mod tests {
                 "M11CTRL-60",
                 "M11CTRL-61",
             ],
-            "implementation-complete",
+            "owner-accepted",
         ),
     ];
 
