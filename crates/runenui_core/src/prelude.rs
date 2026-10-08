@@ -2,7 +2,8 @@
 
 pub use crate::{
     Button, ChildBearingWidget, Container, Dialog, Effects, Element, ElementId, ElementKey,
-    HostProtocol, Image, IntoEffects, LogicalLength, NoHostProtocol, Popover,
+    HostProtocol, Image, IntoEffects, LogicalLength, Menu, MenuBar, MenuButton, MenuItem,
+    MenuItemCheckbox, MenuItemRadio, NoHostProtocol, Popover,
     PresentationDismissReason, PresentationFocusEntry, PresentationFocusPolicy,
     PresentationOutsidePointerPolicy, ScrollBar, ScrollContainer, Separator, SubscriptionSet,
     SurfacePresentation, SurfacePresentationAlignment, SurfacePresentationAnchor,

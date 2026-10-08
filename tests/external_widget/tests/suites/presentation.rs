@@ -6,3 +6,5 @@ mod invalidation;
 mod layout_publication;
 #[path = "../presentation_controls.rs"]
 mod presentation_controls;
+#[path = "../menu_controls.rs"]
+mod menu_controls;

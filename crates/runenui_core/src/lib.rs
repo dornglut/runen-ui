@@ -237,6 +237,7 @@ mod hit;
 mod identity;
 mod input;
 mod layout;
+mod menu_controls;
 mod motion;
 mod motion_sampling;
 mod paint;
@@ -332,6 +333,9 @@ pub use paint::{
 };
 pub use paint_group::{PaintContributionEntry, PaintContributionGroup};
 pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
+pub use menu_controls::{
+    Menu, MenuBar, MenuButton, MenuItem, MenuItemCheckbox, MenuItemRadio,
+};
 pub use presentation_controls::{Dialog, Popover, Tooltip, TooltipTrigger};
 pub use standard_content::{Image, Separator, image, separator};
 pub use surface_presentation::{
