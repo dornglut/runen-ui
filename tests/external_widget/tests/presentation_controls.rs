@@ -22,7 +22,7 @@ enum Action {
     ActivateBackground,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct Model {
     tooltip_visible: bool,
     dialog_open: bool,
@@ -31,20 +31,6 @@ struct Model {
     hide_count: usize,
     dismissals: Vec<(bool, PresentationDismissReason)>,
     background_activations: usize,
-}
-
-impl Default for Model {
-    fn default() -> Self {
-        Self {
-            tooltip_visible: false,
-            dialog_open: false,
-            popover_open: false,
-            show_count: 0,
-            hide_count: 0,
-            dismissals: Vec::new(),
-            background_activations: 0,
-        }
-    }
 }
 
 struct PresentationApp;
@@ -343,9 +329,10 @@ fn pointer_leave_cancels_delayed_tooltip_show_without_late_action() {
 
 #[test]
 fn dialog_and_popover_dismissal_actions_are_application_owned() {
-    let mut state = Model::default();
-    state.dialog_open = true;
-    let mut dialog = TestHarness::<PresentationApp>::mount(state);
+    let mut dialog = TestHarness::<PresentationApp>::mount(Model {
+        dialog_open: true,
+        ..Model::default()
+    });
     assert!(dialog.publish().is_ok());
     settle(&mut dialog);
     assert!(dialog.publish().is_ok());
@@ -402,9 +389,10 @@ fn dialog_and_popover_dismissal_actions_are_application_owned() {
         [(true, PresentationDismissReason::CancelOrBack)]
     );
 
-    let mut state = Model::default();
-    state.popover_open = true;
-    let mut popover = TestHarness::<PresentationApp>::mount(state);
+    let mut popover = TestHarness::<PresentationApp>::mount(Model {
+        popover_open: true,
+        ..Model::default()
+    });
     assert!(popover.publish().is_ok());
     let id = popover
         .publication()
