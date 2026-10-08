@@ -681,9 +681,43 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
             .any(|n| { n.role() == SemanticRole::MenuItem && n.name() == Some("Choice 7") })
     );
 
-    let last_semantic_id = last.id().clone();
+}
 
-    // Generic group exclusion retains the menu boundary without hiding scroll chrome.
+#[test]
+fn long_menu_group_navigation_stops_at_last_item_without_hiding_scrollbar() {
+    let mut h = TestHarness::<LongMenuApp>::mount(());
+    assert!(h.publish().is_ok());
+    let frame = h
+        .publication()
+        .unwrap_or_else(|| unreachable!("long menu publication exists"))
+        .frame();
+    let id_for = |name: &str| {
+        frame
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id().is_some_and(|id| id.as_str() == name))
+            .unwrap_or_else(|| unreachable!("authored long menu node remains mounted"))
+            .id()
+            .clone()
+    };
+    let last_id = id_for("long-item-7");
+    let scrollbar_id = id_for("long-menu-scrollbar");
+    assert!(
+        h.submit_command(
+            last_id.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .is_ok()
+    );
+    settle_long_menu(&mut h);
+    let last_semantic_id = h
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("menu semantic publication exists"))
+        .focused()
+        .cloned()
+        .unwrap_or_else(|| unreachable!("last menu item gained focus"));
+
     assert!(
         h.submit_command(
             last_id,
@@ -698,22 +732,9 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
             .unwrap_or_else(|_| unreachable!())
             .focused(),
         Some(&last_semantic_id),
-        "Down at the final Menu item must stop before the scrollbar"
+        "Down at last menu item must stop before auxiliary scrollbar chrome"
     );
 
-    let scrollbar_id = h
-        .publication()
-        .unwrap_or_else(|| unreachable!("published long menu"))
-        .frame()
-        .nodes()
-        .iter()
-        .find(|node| {
-            node.authored_id()
-                .is_some_and(|id| id.as_str() == "long-menu-scrollbar")
-        })
-        .unwrap_or_else(|| unreachable!("scrollbar remains mounted"))
-        .id()
-        .clone();
     assert!(
         h.submit_command(
             scrollbar_id,
@@ -729,6 +750,7 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
         .iter()
         .find(|node| node.role() == SemanticRole::ScrollBar)
         .unwrap_or_else(|| unreachable!("scrollbar retains semantic accessibility"));
+    assert_ne!(Some(scrollbar.id()), Some(&last_semantic_id));
     assert_eq!(snapshot.focused(), Some(scrollbar.id()));
 }
 
