@@ -985,7 +985,7 @@ mod tests {
         (
             "M11FOCUSVISIBLE",
             &["M11CTRL-63"],
-            "implementation-complete",
+            "owner-accepted",
         ),
     ];
 
