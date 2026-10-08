@@ -48,11 +48,11 @@ pub use font_source_config::GenericFamilyMappingError;
 pub use ink_bounds::TextInkBounds;
 pub use layout_state::{TextLayoutDecision, TextLayoutOutcome, TextLayoutState};
 pub use preedit::{TextPreeditProjection, TextPreeditProjectionError};
-pub use runenui_core::TextAlignment;
 pub use request::{
-    TextLanguage, TextLanguageError, TextMetricSpan, TextOverflowWrap,
-    TextParagraphStyle, TextRequest, TextRequestError, TextWordBreak, TextWrapMode,
+    TextLanguage, TextLanguageError, TextMetricSpan, TextOverflowWrap, TextParagraphStyle,
+    TextRequest, TextRequestError, TextWordBreak, TextWrapMode,
 };
+pub use runenui_core::TextAlignment;
 pub use source_identity::{FontSourceIdentity, FontSourceSnapshot};
 
 #[cfg(feature = "internal-test-seams")]

@@ -157,7 +157,9 @@ impl Widget<()> for LayeredTextPaint {
     fn create_state(&self) -> Self::State {}
 
     fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text(runenui_core::TextLeafMeasure::new("decoration order".to_owned()))
+        WidgetMeasure::Text(runenui_core::TextLeafMeasure::new(
+            "decoration order".to_owned(),
+        ))
     }
 
     fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {

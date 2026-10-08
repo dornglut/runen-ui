@@ -7,9 +7,8 @@ use runenui_core::{
     Axis, ComputedStyle, ContentAlignment, EdgeInsets, FlexBasis, FlexDirection, FlexWrap,
     ItemAlignment, LayoutBound, LayoutContainer, LayoutDimension, LayoutPosition, LayoutStyle,
     LogicalLength, LogicalPoint, LogicalRect, LogicalSize, MainAxisAlignment, OverflowPolicy,
-    ScrollBarPlacement, ScrollBarVisibility, ScrollControlSnapshot, Typography,
-    TextBlockPlacement, WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput,
-    WidgetMeasuredSize,
+    ScrollBarPlacement, ScrollBarVisibility, ScrollControlSnapshot, TextBlockPlacement, Typography,
+    WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize,
 };
 use std::{collections::HashMap, sync::Arc};
 
@@ -140,7 +139,14 @@ pub(super) fn layout_resolved_surface<Action>(
 
     #[cfg(feature = "internal-test-seams")]
     super::profile::record_layout(profile_started.elapsed());
-    Ok((result.0, result.1, result.2, scroll_chrome, result.3, result.4))
+    Ok((
+        result.0,
+        result.1,
+        result.2,
+        scroll_chrome,
+        result.3,
+        result.4,
+    ))
 }
 
 fn layout_resolved_surface_once<Action>(
@@ -640,8 +646,8 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                     .unwrap_or_else(Typography::default);
                 let constraints =
                     text_constraints(inputs.available_space.width, widget_input.known_width());
-                let paragraph = TextParagraphStyle::default()
-                    .with_alignment(descriptor.inline_alignment());
+                let paragraph =
+                    TextParagraphStyle::default().with_alignment(descriptor.inline_alignment());
                 let request = TextRequest::new(content, typography, constraints)
                     .with_paragraph_style(paragraph);
                 #[cfg(feature = "internal-test-seams")]
@@ -658,9 +664,9 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                         super::profile::record_text_layout_decision(decision);
                         let artifact = outcome.artifact();
                         let text_size = artifact.size();
-                        let block_slack = widget_input.known_height().map_or(0.0, |height| {
-                            (height.get() - text_size.height()).max(0.0)
-                        });
+                        let block_slack = widget_input
+                            .known_height()
+                            .map_or(0.0, |height| (height.get() - text_size.height()).max(0.0));
                         let block_offset = match descriptor.block_placement() {
                             TextBlockPlacement::Start => 0.0,
                             TextBlockPlacement::Center => block_slack / 2.0,
@@ -689,10 +695,11 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                         ));
                         if retained_for_paint {
                             self.final_text_states[index] = Some(state.clone());
-                            self.final_text_origins[index] = LogicalPoint::new(
-                                padding.left().get(), placed_top.get(),
-                            )
-                            .unwrap_or_else(|_| unreachable!("validated lengths are finite"));
+                            self.final_text_origins[index] =
+                                LogicalPoint::new(padding.left().get(), placed_top.get())
+                                    .unwrap_or_else(|_| {
+                                        unreachable!("validated lengths are finite")
+                                    });
                         }
                         text_size
                     }
