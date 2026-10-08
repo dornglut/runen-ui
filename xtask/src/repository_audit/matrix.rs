@@ -970,7 +970,7 @@ mod tests {
             (
                 "M11PRES2",
                 M11_PRESENTATION_LIFECYCLE_IDS,
-                "implementation-complete",
+                "owner-accepted",
             ),
         ];
         for (slice, ids, status) in expected {
