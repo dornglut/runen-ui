@@ -395,15 +395,10 @@ fn dialog_default_modal_entry_and_exact_focus_restoration_use_shared_runtime() {
         .unwrap_or_else(|| unreachable!("Dialog retains mounted identity"))
         .id()
         .clone();
+    let dismissal = SemanticCommand::PresentationDismiss(PresentationDismissReason::CancelOrBack);
     assert!(
         harness
-            .submit_command(
-                dialog,
-                SemanticCommand::PresentationDismiss(
-                    PresentationDismissReason::CancelOrBack,
-                ),
-                CommandOrigin::programmatic(),
-            )
+            .submit_command(dialog, dismissal, CommandOrigin::programmatic())
             .is_ok()
     );
     settle(&mut harness);
