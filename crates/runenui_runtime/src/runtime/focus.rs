@@ -485,16 +485,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         command: SemanticCommand,
     ) -> Result<(), TraceRoutedIntegrityFailure> {
         if command == SemanticCommand::RequestFocus {
-            let target = transaction.target.clone();
-            let eligibility = self.focus_eligibility_projection();
-            if is_focus_eligible(&mut self.tree, &target, &eligibility) {
-                return self.commit_focus_transition(
-                    transaction,
-                    Some(target),
-                    FocusReason::ProgrammaticRequest,
-                );
+            let (target, reason) = transaction.focus_request_override.as_ref().map_or_else(
+                || {
+                    (
+                        Some(transaction.target.clone()),
+                        FocusReason::ProgrammaticRequest,
+                    )
+                },
+                |request| (request.target.clone(), request.reason),
+            );
+            if let Some(target) = target {
+                let eligibility = self.focus_eligibility_projection();
+                if !is_focus_eligible(&mut self.tree, &target, &eligibility) {
+                    return Ok(());
+                }
+                return self.commit_focus_transition(transaction, Some(target), reason);
             }
-            return Ok(());
+            return self.commit_focus_transition(transaction, None, reason);
         }
         if matches!(
             command,

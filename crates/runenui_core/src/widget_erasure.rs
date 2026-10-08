@@ -7,10 +7,11 @@ use crate::{
     CommandOrigin, EditableContribution, ElementId, ElementKey, EventContext, EventPhase,
     ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope, Focusability, HitContribution,
     HitContributionContext, LayoutStyle, LogicalPoint, MonotonicInstant, MountedNodeId,
-    PaintContribution, PaintContributionContext, PointerId, ScrollChrome, ScrollControlBinding,
-    ScrollControlSnapshot, SemanticContribution, SemanticContributionContext, ShortcutBinding,
-    StyleIntent, SubscriptionSet, SurfacePresentation, UiEvent, WidgetActivationContext,
-    WidgetEventOutput, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
+    PaintContribution, PaintContributionContext, PointerId, PresentationFocusEntry, ScrollChrome,
+    ScrollControlBinding, ScrollControlSnapshot, SemanticContribution, SemanticContributionContext,
+    ShortcutBinding, StyleIntent, SubscriptionSet, SurfacePresentation, UiEvent,
+    WidgetActivationContext, WidgetEventOutput, WidgetMountContext, WidgetUnmountContext,
+    WidgetUpdateContext, WorkSequence,
 };
 use core::{any::Any, fmt};
 
@@ -510,6 +511,7 @@ impl<Action> MountedWidget<Action> {
 pub struct ElementCompositionFields {
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
+    presentation_focus_entry: PresentationFocusEntry,
     focus_group_search_text: Option<String>,
     scroll_control_binding: Option<ScrollControlBinding>,
     scroll_chrome: Option<ScrollChrome>,
@@ -519,6 +521,7 @@ impl ElementCompositionFields {
     pub const fn new(
         focus_group: Option<FocusGroup>,
         focus_group_entry: FocusGroupEntry,
+        presentation_focus_entry: PresentationFocusEntry,
         focus_group_search_text: Option<String>,
         scroll_control_binding: Option<ScrollControlBinding>,
         scroll_chrome: Option<ScrollChrome>,
@@ -526,6 +529,7 @@ impl ElementCompositionFields {
         Self {
             focus_group,
             focus_group_entry,
+            presentation_focus_entry,
             focus_group_search_text,
             scroll_control_binding,
             scroll_chrome,
@@ -546,6 +550,7 @@ pub struct ElementParts<Action> {
     focus_scope: Option<FocusScope>,
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
+    presentation_focus_entry: PresentationFocusEntry,
     focus_group_search_text: Option<String>,
     scroll_control_binding: Option<ScrollControlBinding>,
     scroll_chrome: Option<ScrollChrome>,
@@ -587,6 +592,7 @@ impl<Action> ElementParts<Action> {
             focus_scope: fields.focus_scope,
             focus_group: composition.focus_group,
             focus_group_entry: composition.focus_group_entry,
+            presentation_focus_entry: composition.presentation_focus_entry,
             focus_group_search_text: composition.focus_group_search_text,
             scroll_control_binding: composition.scroll_control_binding,
             scroll_chrome: composition.scroll_chrome,
@@ -634,6 +640,10 @@ impl<Action> ElementParts<Action> {
     #[must_use]
     pub const fn focus_group_entry(&self) -> FocusGroupEntry {
         self.focus_group_entry
+    }
+    #[must_use]
+    pub const fn presentation_focus_entry(&self) -> PresentationFocusEntry {
+        self.presentation_focus_entry
     }
     #[must_use]
     pub fn focus_group_search_text(&self) -> Option<&str> {

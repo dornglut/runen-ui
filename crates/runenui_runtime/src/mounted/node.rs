@@ -5,8 +5,9 @@ use core::fmt;
 use runenui_core::{
     __runtime::{MountedWidget, MountedWidgetState},
     AuthoringDiagnostic, ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry,
-    FocusScope, Focusability, LayoutStyle, ScrollChrome, ScrollControlBinding, ShortcutBinding,
-    StyleIntent, SurfacePresentation, WidgetActivation, WidgetStateTypeId, WidgetTypeId,
+    FocusScope, Focusability, LayoutStyle, PresentationFocusEntry, ScrollChrome,
+    ScrollControlBinding, ShortcutBinding, StyleIntent, SurfacePresentation, WidgetActivation,
+    WidgetStateTypeId, WidgetTypeId,
 };
 
 use super::{
@@ -29,6 +30,7 @@ pub(crate) struct MountedNode<Action> {
     pub(crate) focus_scope: Option<FocusScope>,
     pub(crate) focus_group: Option<FocusGroup>,
     pub(crate) focus_group_entry: FocusGroupEntry,
+    pub(crate) presentation_focus_entry: PresentationFocusEntry,
     pub(crate) focus_group_search_text: Option<String>,
     pub(crate) scroll_control_binding: Option<ScrollControlBinding>,
     pub(crate) scroll_chrome: Option<ScrollChrome>,
@@ -65,6 +67,7 @@ impl<Action> fmt::Debug for MountedNode<Action> {
             .field("key", &self.key)
             .field("timeline_count", &self.timelines.len())
             .field("surface_presentation", &self.surface_presentation)
+            .field("presentation_focus_entry", &self.presentation_focus_entry)
             .field("scroll_control_binding", &self.scroll_control_binding)
             .field("scroll_chrome", &self.scroll_chrome)
             .field("shortcut_binding_count", &self.shortcut_bindings.len())
@@ -153,6 +156,10 @@ impl<'a, Action> MountedNodeRef<'a, Action> {
     #[must_use]
     pub const fn focus_group_entry(&self) -> FocusGroupEntry {
         self.node.focus_group_entry
+    }
+    #[must_use]
+    pub const fn presentation_focus_entry(&self) -> PresentationFocusEntry {
+        self.node.presentation_focus_entry
     }
     #[must_use]
     pub const fn interaction(&self) -> InteractionStateRef<'a> {

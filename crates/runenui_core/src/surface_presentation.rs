@@ -102,6 +102,43 @@ impl SurfacePresentationPlacement {
     }
 }
 
+/// Generic pointer policy for input outside one live presentation interaction family.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum PresentationOutsidePointerPolicy {
+    #[default]
+    Ignore,
+    Block,
+    DismissAndBlock,
+}
+
+/// Focus behavior when one exact presentation lifetime becomes active.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum PresentationFocusPolicy {
+    #[default]
+    Preserve,
+    EnterAndRestore,
+}
+
+/// Authored entry preference for focus selection within one presentation lifetime.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum PresentationFocusEntry {
+    #[default]
+    Automatic,
+    Preferred,
+}
+
+/// Bounded reason carried by one generic presentation-dismiss semantic request.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum PresentationDismissReason {
+    OutsidePointer,
+    CancelOrBack,
+    AnchorUnavailable,
+}
+
 /// Non-empty ordered same-surface presentation placement request.
 ///
 /// The first candidate is mandatory by construction. Fallbacks retain authored
@@ -110,6 +147,10 @@ impl SurfacePresentationPlacement {
 pub struct SurfacePresentation {
     anchor: SurfacePresentationAnchor,
     candidates: Vec<SurfacePresentationPlacement>,
+    outside_pointer: PresentationOutsidePointerPolicy,
+    modal: bool,
+    dismiss_on_cancel_or_back: bool,
+    focus: PresentationFocusPolicy,
 }
 
 impl SurfacePresentation {
@@ -118,6 +159,10 @@ impl SurfacePresentation {
         Self {
             anchor: SurfacePresentationAnchor::OwnerBounds,
             candidates: vec![first],
+            outside_pointer: PresentationOutsidePointerPolicy::Ignore,
+            modal: false,
+            dismiss_on_cancel_or_back: false,
+            focus: PresentationFocusPolicy::Preserve,
         }
     }
 
@@ -135,6 +180,30 @@ impl SurfacePresentation {
     }
 
     #[must_use]
+    pub const fn with_outside_pointer(mut self, policy: PresentationOutsidePointerPolicy) -> Self {
+        self.outside_pointer = policy;
+        self
+    }
+
+    #[must_use]
+    pub const fn modal(mut self, modal: bool) -> Self {
+        self.modal = modal;
+        self
+    }
+
+    #[must_use]
+    pub const fn dismiss_on_cancel_or_back(mut self, dismiss: bool) -> Self {
+        self.dismiss_on_cancel_or_back = dismiss;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_focus_policy(mut self, policy: PresentationFocusPolicy) -> Self {
+        self.focus = policy;
+        self
+    }
+
+    #[must_use]
     pub const fn anchor(&self) -> SurfacePresentationAnchor {
         self.anchor
     }
@@ -142,6 +211,26 @@ impl SurfacePresentation {
     #[must_use]
     pub const fn candidates(&self) -> &[SurfacePresentationPlacement] {
         self.candidates.as_slice()
+    }
+
+    #[must_use]
+    pub const fn outside_pointer(&self) -> PresentationOutsidePointerPolicy {
+        self.outside_pointer
+    }
+
+    #[must_use]
+    pub const fn is_modal(&self) -> bool {
+        self.modal
+    }
+
+    #[must_use]
+    pub const fn dismisses_on_cancel_or_back(&self) -> bool {
+        self.dismiss_on_cancel_or_back
+    }
+
+    #[must_use]
+    pub const fn focus_policy(&self) -> PresentationFocusPolicy {
+        self.focus
     }
 }
 

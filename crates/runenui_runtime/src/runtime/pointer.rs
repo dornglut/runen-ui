@@ -210,6 +210,7 @@ pub(in crate::runtime) struct PointerStreamState {
     pressed_owner: Option<MountedNodeId>,
     pressed_inside: bool,
     capture_owner: Option<MountedNodeId>,
+    presentation_barrier: Option<MountedNodeId>,
     text_selection: Option<PointerTextSelectionGesture>,
     touch_gesture: Option<TouchGestureState>,
     surface_context: Option<SurfaceInputContext>,
@@ -256,6 +257,14 @@ impl PointerStreamState {
 
     pub(in crate::runtime) const fn capture_owner(&self) -> Option<&MountedNodeId> {
         self.capture_owner.as_ref()
+    }
+
+    pub(in crate::runtime) const fn presentation_barrier(&self) -> Option<&MountedNodeId> {
+        self.presentation_barrier.as_ref()
+    }
+
+    pub(in crate::runtime) fn set_presentation_barrier(&mut self, owner: Option<MountedNodeId>) {
+        self.presentation_barrier = owner;
     }
 
     pub(in crate::runtime) const fn text_selection(&self) -> Option<&PointerTextSelectionGesture> {
@@ -437,6 +446,7 @@ impl PointerRegistry {
             pressed_owner: None,
             pressed_inside: false,
             capture_owner: None,
+            presentation_barrier: None,
             text_selection: None,
             touch_gesture: None,
             surface_context: None,

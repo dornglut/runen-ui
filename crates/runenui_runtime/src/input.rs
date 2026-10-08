@@ -1615,7 +1615,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return true;
         }
         if event.composition_state() == KeyboardCompositionState::Active {
-            return Self::generic_keyboard_default(event).is_some();
+            return Self::generic_keyboard_default(event)
+                .is_some_and(|command| command != SemanticCommand::CancelOrBack);
         }
         if let Some(candidate) = shortcut_candidate {
             return candidate.reserves_default_output();
@@ -1737,6 +1738,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Ok(());
         }
         let command = Self::generic_keyboard_default(event);
+        if event.composition_state() == KeyboardCompositionState::Active
+            && command == Some(SemanticCommand::CancelOrBack)
+        {
+            return Ok(());
+        }
         if matches!(command, Some(SemanticCommand::Activate))
             && !self.keyboard_activation_eligible(&target)
         {

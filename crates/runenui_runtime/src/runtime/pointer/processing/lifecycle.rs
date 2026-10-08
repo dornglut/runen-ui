@@ -26,6 +26,7 @@ struct PointerCleanup {
     surface_context: Option<SurfaceInputContext>,
     pressed: bool,
     capture: bool,
+    presentation_barrier: bool,
     selection: bool,
     touch_gesture: Option<TouchGestureKind>,
     clear_physical_path: bool,
@@ -73,6 +74,7 @@ struct PointerReconciliationSnapshot {
     device_kind: PointerDeviceKind,
     pressed_owner: Option<MountedNodeId>,
     capture_owner: Option<MountedNodeId>,
+    presentation_barrier: Option<MountedNodeId>,
     selection_owner: Option<MountedNodeId>,
     touch_gesture: Option<TouchGestureState>,
     physical_path: Vec<MountedNodeId>,
@@ -107,6 +109,7 @@ impl PointerRegistry {
                     device_kind: stream.device_kind(),
                     pressed_owner: stream.pressed_owner().cloned(),
                     capture_owner: stream.capture_owner().cloned(),
+                    presentation_barrier: stream.presentation_barrier().cloned(),
                     selection_owner: stream
                         .text_selection()
                         .map(|selection| selection.owner().clone()),
@@ -136,6 +139,7 @@ impl PointerRegistry {
                     surface_context: stream.surface_context().cloned(),
                     pressed: stream.pressed_owner().is_some(),
                     capture: stream.capture_owner().is_some(),
+                    presentation_barrier: stream.presentation_barrier().is_some(),
                     selection: stream.text_selection().is_some(),
                     touch_gesture: stream.touch_gesture().and_then(|gesture| {
                         (!gesture.cancelled()).then(|| {
@@ -163,6 +167,9 @@ impl PointerRegistry {
             }
             if cleanup.capture {
                 stream.set_capture_owner(None);
+            }
+            if cleanup.presentation_barrier {
+                stream.set_presentation_barrier(None);
             }
             if cleanup.selection {
                 stream.set_text_selection(None);
@@ -264,7 +271,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 let pressed = snapshot
                     .pressed_owner
                     .as_ref()
-                    .is_some_and(|owner| self.pointer_owner_is_ineligible(owner, unmounted));
+                    .is_some_and(|owner| self.pressed_owner_is_ineligible(owner, unmounted));
                 let capture = match (
                     snapshot.capture_owner.as_ref(),
                     snapshot.pressed_owner.as_ref(),
@@ -274,9 +281,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     {
                         pressed
                     }
-                    (Some(owner), _) => self.pointer_owner_is_ineligible(owner, unmounted),
+                    (Some(owner), _) => self.capture_owner_is_ineligible(owner, unmounted),
                     (None, _) => false,
                 };
+                let presentation_barrier =
+                    snapshot.presentation_barrier.as_ref().is_some_and(|owner| {
+                        unmounted.contains(owner)
+                            || self.tree.target_status(owner) != TargetStatus::Live
+                    });
                 let selection = snapshot.selection_owner.as_ref().is_some_and(|owner| {
                     let disabled = self
                         .tree
@@ -323,7 +335,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 } else {
                     None
                 };
-                (pressed || capture || selection || touch_gesture.is_some() || clear_physical_path)
+                (pressed
+                    || capture
+                    || presentation_barrier
+                    || selection
+                    || touch_gesture.is_some()
+                    || clear_physical_path)
                     .then_some(PointerCleanup {
                         pointer_id: snapshot.pointer_id,
                         device_id: snapshot.device_id,
@@ -334,6 +351,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         surface_context: snapshot.surface_context,
                         pressed,
                         capture,
+                        presentation_barrier,
                         selection,
                         touch_gesture,
                         clear_physical_path,
@@ -373,12 +391,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             })
     }
 
-    fn pointer_owner_is_ineligible(
+    fn pressed_owner_is_ineligible(
         &mut self,
         owner: &MountedNodeId,
         unmounted: &[MountedNodeId],
     ) -> bool {
-        if unmounted.contains(owner) || self.tree.target_status(owner) != TargetStatus::Live {
+        if self.capture_owner_is_ineligible(owner, unmounted) {
             return true;
         }
         self.tree
@@ -386,6 +404,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .map_or(true, |activation| {
                 !activation.enabled() || !activation.is_actionable()
             })
+    }
+
+    fn capture_owner_is_ineligible(
+        &self,
+        owner: &MountedNodeId,
+        unmounted: &[MountedNodeId],
+    ) -> bool {
+        unmounted.contains(owner) || self.tree.target_status(owner) != TargetStatus::Live
     }
 
     pub(in crate::runtime) fn close_pointer_lifetimes(

@@ -3,7 +3,8 @@ use runenui_core::__runtime::RuntimeNamespace;
 use crate::{
     TraceMotionCollision, TraceMotionFact, TraceMotionInterpolation, TraceMotionLifecycle,
     TraceMotionPhase, TraceMotionPlanningRejection, TraceMotionPolicy,
-    TraceMotionPreferenceDecision, TraceMotionSource, TraceRecordKind,
+    TraceMotionPreferenceDecision, TraceMotionSource, TracePresentationInitialFocusOutcome,
+    TracePresentationOutsideDecision, TracePresentationRestorationOutcome, TraceRecordKind,
     TraceScrollControlBindingOutcome,
 };
 
@@ -132,6 +133,19 @@ macro_rules! trace_kind_name {
             TraceRecordKind::SurfaceTargetBound => "surface_target_bound",
             TraceRecordKind::SurfaceCommandRejected { .. } => "surface_command_rejected",
             TraceRecordKind::SurfacePublished => "surface_published",
+            TraceRecordKind::PresentationOutsideDecision { .. } => "presentation_outside_decision",
+            TraceRecordKind::PresentationCancelOrBackDecision { .. } => {
+                "presentation_cancel_or_back_decision"
+            }
+            TraceRecordKind::PresentationInitialFocusResolved { .. } => {
+                "presentation_initial_focus_resolved"
+            }
+            TraceRecordKind::PresentationRestorationResolved { .. } => {
+                "presentation_restoration_resolved"
+            }
+            TraceRecordKind::PresentationAnchorUnavailableRetired => {
+                "presentation_anchor_unavailable_retired"
+            }
             TraceRecordKind::Motion { .. } => "motion",
             TraceRecordKind::CommandProcessingRejected { .. } => "command_processing_rejected",
             TraceRecordKind::RoutedEventStarted => "routed_event_started",
@@ -251,10 +265,61 @@ fn encode_data_fields(output: &mut String, runtime: &RuntimeNamespace, kind: &Tr
     {
         return;
     }
-    if encode_scroll_control_data(output, kind) || encode_routed_focus_data(output, kind) {
+    if encode_scroll_control_data(output, kind)
+        || encode_routed_focus_data(output, kind)
+        || encode_presentation_data(output, kind)
+    {
         return;
     }
     let _ = encode_runtime_data(output, kind);
+}
+
+fn encode_presentation_data(output: &mut String, kind: &TraceRecordKind) -> bool {
+    match kind {
+        TraceRecordKind::PresentationOutsideDecision { outcome } => {
+            field_str(
+                output,
+                "outcome",
+                match outcome {
+                    TracePresentationOutsideDecision::Ignored => "ignored",
+                    TracePresentationOutsideDecision::Blocked => "blocked",
+                    TracePresentationOutsideDecision::DismissRequested => "dismiss_requested",
+                },
+            );
+        }
+        TraceRecordKind::PresentationCancelOrBackDecision { claimed } => {
+            field_bool(output, "claimed", *claimed);
+        }
+        TraceRecordKind::PresentationInitialFocusResolved { outcome } => {
+            field_str(
+                output,
+                "outcome",
+                match outcome {
+                    TracePresentationInitialFocusOutcome::Preferred => "preferred",
+                    TracePresentationInitialFocusOutcome::FirstEligible => "first_eligible",
+                    TracePresentationInitialFocusOutcome::NoneEligible => "none_eligible",
+                    TracePresentationInitialFocusOutcome::AmbiguousPreferred => {
+                        "ambiguous_preferred"
+                    }
+                },
+            );
+        }
+        TraceRecordKind::PresentationRestorationResolved { outcome } => {
+            field_str(
+                output,
+                "outcome",
+                match outcome {
+                    TracePresentationRestorationOutcome::Exact => "exact",
+                    TracePresentationRestorationOutcome::OwnerFallback => "owner_fallback",
+                    TracePresentationRestorationOutcome::ScopeFallback => "scope_fallback",
+                    TracePresentationRestorationOutcome::Cleared => "cleared",
+                },
+            );
+        }
+        TraceRecordKind::PresentationAnchorUnavailableRetired => {}
+        _ => return false,
+    }
+    true
 }
 
 fn encode_scroll_control_data(output: &mut String, kind: &TraceRecordKind) -> bool {

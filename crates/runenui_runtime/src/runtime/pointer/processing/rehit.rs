@@ -74,17 +74,30 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let previous_path = prepared_stream.stream.physical_path().to_vec();
         let previous_capture_owner = prepared_stream.stream.capture_owner().cloned();
-        let boundary_plan = super::notifications::plan_boundary_transition(
-            work.event.pointer_id(),
-            previous_path,
-            &geometry.physical_path,
-            work.event.surface_context(),
-            |target| self.tree.target_status(target) == crate::mounted::TargetStatus::Live,
-        );
+        // Re-hit is a pointer observation, not a bypass around the canonical
+        // presentation barrier. Preserve exact capture and blocked-stream policy.
+        let presentation_block = self
+            .presentation_resolution_for_pointer(&work, &prepared_stream.stream, &geometry)
+            .block;
+        let boundary_plan = if presentation_block.is_some() {
+            super::PointerBoundaryPlan::unchanged(previous_path)
+        } else {
+            super::notifications::plan_boundary_transition(
+                work.event.pointer_id(),
+                previous_path,
+                &geometry.physical_path,
+                work.event.surface_context(),
+                |target| self.tree.target_status(target) == crate::mounted::TargetStatus::Live,
+            )
+        };
         let mut stream = prepared_stream.stream;
         stream.update_observation(
             work.event.position(),
-            geometry.physical_path.clone(),
+            if presentation_block.is_some() {
+                Vec::new()
+            } else {
+                geometry.physical_path.clone()
+            },
             work.event.buttons().clone(),
         );
         stream.set_surface_context(work.event.surface_context().clone());
@@ -101,6 +114,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             geometry,
             boundary_plan,
             routed_target: None,
+            presentation_block_root: presentation_block.map(|block| block.root),
+            presentation_dismiss: None,
             parent,
             selection_cancelled: owner_cleanup.selection_cancelled,
             selection_tracking: false,

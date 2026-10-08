@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use runenui_core::{
     __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusGroup,
-    FocusGroupEntry, FocusScope, Focusability, LayoutStyle, ScrollChrome, ScrollControlBinding,
-    ShortcutBinding, StyleIntent, SurfacePresentation, WidgetInvalidation, WidgetMountContext,
-    WidgetUnmountReason, WidgetUpdateContext,
+    FocusGroupEntry, FocusScope, Focusability, LayoutStyle, PresentationFocusEntry, ScrollChrome,
+    ScrollControlBinding, ShortcutBinding, StyleIntent, SurfacePresentation, WidgetInvalidation,
+    WidgetMountContext, WidgetUnmountReason, WidgetUpdateContext,
 };
 
 use crate::ReconciliationDiagnostic;
@@ -74,6 +74,7 @@ pub(super) struct IncomingNode<Action> {
     focus_scope: Option<FocusScope>,
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
+    presentation_focus_entry: PresentationFocusEntry,
     focus_group_search_text: Option<String>,
     scroll_control_binding: Option<ScrollControlBinding>,
     scroll_chrome: Option<ScrollChrome>,
@@ -89,6 +90,7 @@ impl<Action> IncomingNode<Action> {
         let surface_presentation = parts.surface_presentation().cloned();
         let focus_group = parts.focus_group();
         let focus_group_entry = parts.focus_group_entry();
+        let presentation_focus_entry = parts.presentation_focus_entry();
         let focus_group_search_text = parts.focus_group_search_text().map(str::to_owned);
         let scroll_control_binding = parts.scroll_control_binding();
         let scroll_chrome = parts.scroll_chrome();
@@ -116,6 +118,7 @@ impl<Action> IncomingNode<Action> {
             focus_scope,
             focus_group,
             focus_group_entry,
+            presentation_focus_entry,
             focus_group_search_text,
             scroll_control_binding,
             scroll_chrome,
@@ -191,6 +194,18 @@ fn surface_presentation_invalidation(changed: bool) -> WidgetInvalidation {
     }
 }
 
+fn presentation_authoring_invalidation(
+    surface_changed: bool,
+    focus_entry_changed: bool,
+) -> WidgetInvalidation {
+    let focus = if focus_entry_changed {
+        WidgetInvalidation::INTERACTION | WidgetInvalidation::DIAGNOSTICS
+    } else {
+        WidgetInvalidation::NONE
+    };
+    surface_presentation_invalidation(surface_changed) | focus
+}
+
 fn scroll_chrome_invalidation(changed: bool) -> WidgetInvalidation {
     if changed {
         WidgetInvalidation::LAYOUT
@@ -220,6 +235,89 @@ const fn apply_retained_phase_changes<Action>(
     }
 }
 
+fn apply_retained_authoring<Action>(
+    node: &mut MountedNode<Action>,
+    incoming: IncomingNode<Action>,
+    widget_invalidation: WidgetInvalidation,
+) {
+    let IncomingNode {
+        authored_id,
+        key,
+        layout,
+        style,
+        timelines,
+        surface_presentation,
+        focusability,
+        focus_scope,
+        focus_group,
+        focus_group_entry,
+        presentation_focus_entry,
+        focus_group_search_text,
+        scroll_control_binding,
+        scroll_chrome,
+        shortcut_bindings,
+        authoring_diagnostics,
+        widget,
+        children: _,
+    } = incoming;
+    let surface_presentation_changed = node.surface_presentation != surface_presentation;
+    let presentation_focus_entry_changed =
+        node.presentation_focus_entry != presentation_focus_entry;
+    let tree_changed = node.authored_id != authored_id
+        || surface_presentation_changed
+        || node.layout.overflow() != layout.overflow();
+    let style_changed = node.style != style;
+    let timelines_changed = node.timelines != timelines;
+    let scroll_control_binding_changed = node.scroll_control_binding != scroll_control_binding;
+    let scroll_chrome_changed = node.scroll_chrome != scroll_chrome;
+    let common_invalidation = common_field_invalidation(
+        node,
+        &CommonFieldRefs {
+            authored_id: authored_id.as_ref(),
+            layout: &layout,
+            style: &style,
+            focusability,
+            focus_scope,
+            focus_group,
+            focus_group_entry,
+            presentation_focus_entry,
+            focus_group_search_text: focus_group_search_text.as_deref(),
+            diagnostics: &authoring_diagnostics,
+        },
+    );
+    node.authored_id = authored_id;
+    node.key = key;
+    node.layout = layout;
+    node.style = style;
+    node.timelines = timelines;
+    node.surface_presentation = surface_presentation;
+    node.focusability = focusability;
+    node.focus_scope = focus_scope;
+    node.focus_group = focus_group;
+    node.focus_group_entry = focus_group_entry;
+    node.presentation_focus_entry = presentation_focus_entry;
+    node.focus_group_search_text = focus_group_search_text;
+    node.scroll_control_binding = scroll_control_binding;
+    node.scroll_chrome = scroll_chrome;
+    node.shortcut_bindings = shortcut_bindings;
+    node.authoring_diagnostics = authoring_diagnostics;
+    node.widget = widget;
+    node.caches.activation = CachedCapability::Unresolved;
+    node.caches.text_input = CachedCapability::Unresolved;
+    apply_invalidation(
+        node,
+        widget_invalidation
+            | common_invalidation
+            | presentation_authoring_invalidation(
+                surface_presentation_changed,
+                presentation_focus_entry_changed,
+            )
+            | scroll_control_binding_invalidation(scroll_control_binding_changed)
+            | scroll_chrome_invalidation(scroll_chrome_changed),
+    );
+    apply_retained_phase_changes(node, tree_changed, style_changed, timelines_changed);
+}
+
 impl<Action> MountedTree<Action> {
     pub(crate) fn plan_reconciliation(
         &self,
@@ -239,6 +337,7 @@ impl<Action> MountedTree<Action> {
             moved: 0,
         };
         collect_focus_group_diagnostics(&root, "root", &mut planning.diagnostics);
+        collect_presentation_focus_diagnostics(&root, "root", &mut planning.diagnostics);
         let root = self.plan_existing(Some(old_root), None, root, "root".to_owned(), &mut planning);
         Ok(ReconciliationPlan {
             root,
@@ -293,6 +392,7 @@ impl<Action> MountedTree<Action> {
             focus_scope,
             focus_group,
             focus_group_entry,
+            presentation_focus_entry,
             focus_group_search_text,
             scroll_control_binding,
             scroll_chrome,
@@ -317,6 +417,7 @@ impl<Action> MountedTree<Action> {
                 focus_scope,
                 focus_group,
                 focus_group_entry,
+                presentation_focus_entry,
                 focus_group_search_text,
                 scroll_control_binding,
                 scroll_chrome,
@@ -574,95 +675,13 @@ impl<Action> MountedTree<Action> {
         path: &str,
         stats: &mut ReconcileStats<Action>,
     ) -> Result<(), ReconciliationApplyError> {
-        let IncomingNode {
-            authored_id,
-            key,
-            layout,
-            style,
-            timelines,
-            surface_presentation,
-            focusability,
-            focus_scope,
-            focus_group,
-            focus_group_entry,
-            focus_group_search_text,
-            scroll_control_binding,
-            scroll_chrome,
-            shortcut_bindings,
-            authoring_diagnostics,
-            widget,
-            children: _,
-        } = incoming;
-        let mut update_context = self.prepare_retained_widget_update(id, &widget, path, stats)?;
-        let common_invalidation;
-        {
-            let node = self
-                .node_mut(id)
-                .unwrap_or_else(|| unreachable!("planned retained node remains live"));
-            let surface_presentation_changed = node.surface_presentation != surface_presentation;
-            let tree_metadata_changed =
-                node.authored_id != authored_id || surface_presentation_changed;
-            let topology_overflow_changed = node.layout.overflow() != layout.overflow();
-            let style_changed = node.style != style;
-            let timelines_changed = node.timelines != timelines;
-            let scroll_control_binding_changed =
-                node.scroll_control_binding != scroll_control_binding;
-            let scroll_chrome_changed = node.scroll_chrome != scroll_chrome;
-            common_invalidation = common_field_invalidation(
-                node,
-                &CommonFieldRefs {
-                    authored_id: authored_id.as_ref(),
-                    layout: &layout,
-                    style: &style,
-                    focusability,
-                    focus_scope,
-                    focus_group,
-                    focus_group_entry,
-                    focus_group_search_text: focus_group_search_text.as_deref(),
-                    diagnostics: &authoring_diagnostics,
-                },
-            );
-            node.authored_id = authored_id;
-            node.key = key;
-            node.layout = layout;
-            node.style = style;
-            node.timelines = timelines;
-            node.surface_presentation = surface_presentation;
-            node.focusability = focusability;
-            node.focus_scope = focus_scope;
-            node.focus_group = focus_group;
-            node.focus_group_entry = focus_group_entry;
-            node.focus_group_search_text = focus_group_search_text;
-            node.scroll_control_binding = scroll_control_binding;
-            node.scroll_chrome = scroll_chrome;
-            node.shortcut_bindings = shortcut_bindings;
-            node.authoring_diagnostics = authoring_diagnostics;
-            node.widget = widget;
-            // Input capability declarations belong to the incoming widget instance,
-            // not the retained state. Semantic contribution remains cached unless
-            // the widget explicitly invalidates semantics or mounted-child structure changes.
-            node.caches.activation = CachedCapability::Unresolved;
-            node.caches.text_input = CachedCapability::Unresolved;
-            let surface_presentation_invalidation =
-                surface_presentation_invalidation(surface_presentation_changed);
-            let scroll_control_invalidation =
-                scroll_control_binding_invalidation(scroll_control_binding_changed);
-            let scroll_chrome_invalidation = scroll_chrome_invalidation(scroll_chrome_changed);
-            apply_invalidation(
-                node,
-                update_context.__runtime_take_invalidation()
-                    | common_invalidation
-                    | surface_presentation_invalidation
-                    | scroll_control_invalidation
-                    | scroll_chrome_invalidation,
-            );
-            apply_retained_phase_changes(
-                node,
-                tree_metadata_changed || topology_overflow_changed,
-                style_changed,
-                timelines_changed,
-            );
-        }
+        let mut update_context =
+            self.prepare_retained_widget_update(id, &incoming.widget, path, stats)?;
+        let widget_invalidation = update_context.__runtime_take_invalidation();
+        let node = self
+            .node_mut(id)
+            .unwrap_or_else(|| unreachable!("planned retained node remains live"));
+        apply_retained_authoring(node, incoming, widget_invalidation);
         if update_context.__runtime_take_subscription_invalidation() {
             stats.subscription_invalidated.push(id.clone());
         }
@@ -691,6 +710,7 @@ impl<Action> MountedTree<Action> {
             focus_scope,
             focus_group,
             focus_group_entry,
+            presentation_focus_entry,
             focus_group_search_text,
             scroll_control_binding,
             scroll_chrome,
@@ -722,6 +742,7 @@ impl<Action> MountedTree<Action> {
                     focus_scope,
                     focus_group,
                     focus_group_entry,
+                    presentation_focus_entry,
                     focus_group_search_text,
                     scroll_control_binding,
                     scroll_chrome,
@@ -763,6 +784,46 @@ impl<Action> MountedTree<Action> {
             .unwrap_or_else(|| unreachable!("new mounted node remains live"))
             .children = mounted_children;
         id
+    }
+}
+
+pub(super) fn collect_presentation_focus_diagnostics<Action>(
+    node: &IncomingNode<Action>,
+    path: &str,
+    diagnostics: &mut Vec<ReconciliationDiagnostic>,
+) {
+    if node.surface_presentation.is_some() {
+        let mut preferred_target_paths = Vec::new();
+        collect_nearest_presentation_preferred_targets(node, path, &mut preferred_target_paths);
+        if preferred_target_paths.len() > 1 {
+            diagnostics.push(
+                ReconciliationDiagnostic::MultiplePreferredPresentationFocusTargets {
+                    presentation_path: path.to_owned(),
+                    preferred_target_paths,
+                },
+            );
+        }
+    }
+    for (position, child) in node.children.iter().enumerate() {
+        let child_path = format!("{path}/{position}");
+        collect_presentation_focus_diagnostics(child, &child_path, diagnostics);
+    }
+}
+
+fn collect_nearest_presentation_preferred_targets<Action>(
+    presentation: &IncomingNode<Action>,
+    presentation_path: &str,
+    preferred_target_paths: &mut Vec<String>,
+) {
+    for (position, child) in presentation.children.iter().enumerate() {
+        let child_path = format!("{presentation_path}/{position}");
+        if child.surface_presentation.is_some() {
+            continue;
+        }
+        if child.presentation_focus_entry == PresentationFocusEntry::Preferred {
+            preferred_target_paths.push(child_path.clone());
+        }
+        collect_nearest_presentation_preferred_targets(child, &child_path, preferred_target_paths);
     }
 }
 
@@ -872,6 +933,7 @@ struct CommonFieldRefs<'a> {
     focus_scope: Option<FocusScope>,
     focus_group: Option<FocusGroup>,
     focus_group_entry: FocusGroupEntry,
+    presentation_focus_entry: PresentationFocusEntry,
     focus_group_search_text: Option<&'a str>,
     diagnostics: &'a [runenui_core::AuthoringDiagnostic],
 }
@@ -899,6 +961,7 @@ fn common_field_invalidation<Action>(
         || node.focus_scope != incoming.focus_scope
         || node.focus_group != incoming.focus_group
         || node.focus_group_entry != incoming.focus_group_entry
+        || node.presentation_focus_entry != incoming.presentation_focus_entry
         || node.focus_group_search_text.as_deref() != incoming.focus_group_search_text
     {
         invalidation |= WidgetInvalidation::INTERACTION;

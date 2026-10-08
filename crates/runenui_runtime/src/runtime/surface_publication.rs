@@ -880,6 +880,16 @@ impl SurfacePublicationState {
         &self.phase_report
     }
 
+    /// Returns the exact published presentation roots in visual topmost order.
+    pub(crate) fn current_presentation_interaction_roots(
+        &self,
+    ) -> Vec<crate::surface::PresentationInteractionRoot> {
+        self.cache
+            .as_ref()
+            .map(crate::surface::SurfaceCache::presentation_interaction_roots)
+            .unwrap_or_default()
+    }
+
     /// Projects current focus-selection geometry from the retained presentation facts.
     pub(crate) fn current_focus_geometry(&self) -> Vec<(MountedNodeId, LogicalRect)> {
         self.cache

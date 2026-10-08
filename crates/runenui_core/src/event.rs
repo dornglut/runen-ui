@@ -3,8 +3,8 @@
 use crate::{
     ApplicationCommandId, CommittedTextEvent, CompositionEvent, DragDropPayloadMetadata,
     DragDropPhase, FocusDirection, FocusEvent, KeyboardEvent, LogicalScrollCommand,
-    PointerBoundaryEvent, PointerCaptureEvent, PointerEvent, ScrollControlRequest,
-    SemanticActionTarget, SemanticNumber,
+    PointerBoundaryEvent, PointerCaptureEvent, PointerEvent, PresentationDismissReason,
+    ScrollControlRequest, SemanticActionTarget, SemanticNumber,
 };
 
 /// One host-neutral drag/drop offer routed to the exact physical hit target.
@@ -238,6 +238,8 @@ pub enum SemanticCommand {
     SetValue(SemanticNumber),
     Expand,
     Collapse,
+    /// Requests reconciliation of one exact live presentation lifetime.
+    PresentationDismiss(PresentationDismissReason),
 }
 
 /// Immutable event delivered to one mounted widget callback.

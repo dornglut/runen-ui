@@ -4,8 +4,8 @@ use runenui_core::{
         WidgetActivationContextOutputOrder, WidgetActivationContextOutputs,
     },
     ApplicationCommandId, Axis, ClipboardWritePurpose, CommandOrigin, FocusDirection,
-    FrameworkServiceRequest, HostProtocol, LogicalDelta, OverflowPolicy, ScrollControlRequest,
-    SemanticActionData, SemanticCommand, TextSensitivity,
+    FrameworkServiceRequest, HostProtocol, LogicalDelta, OverflowPolicy, PresentationDismissReason,
+    ScrollControlRequest, SemanticActionData, SemanticCommand, TextSensitivity,
 };
 
 use super::{
@@ -113,6 +113,38 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 transaction.origin,
             );
             return Ok(());
+        }
+        if command == SemanticCommand::CancelOrBack {
+            let presentation = self.topmost_cancel_presentation();
+            let trace_target = presentation.as_ref().map_or_else(
+                || transaction.target_trace.clone(),
+                |root| self.tree.trace_target(root),
+            );
+            self.record_optional(
+                TraceRecordKind::PresentationCancelOrBackDecision {
+                    claimed: presentation.is_some(),
+                },
+                Some(transaction.sequence),
+                transaction.parent,
+                Some(trace_target),
+            );
+            if let Some(root) = presentation {
+                self.record_semantic_default_applied(transaction, command);
+                transaction.consume_mandatory_default_output()?;
+                transaction
+                    .default_outputs
+                    .push(CollectedRoutedOutput::Command {
+                        target: root,
+                        command: SemanticCommand::PresentationDismiss(
+                            PresentationDismissReason::CancelOrBack,
+                        ),
+                        origin: CommandOrigin::__runtime_semantic_default(
+                            transaction.origin.source(),
+                        ),
+                        causal_parent: transaction.parent,
+                    });
+                return Ok(());
+            }
         }
         if matches!(
             command,

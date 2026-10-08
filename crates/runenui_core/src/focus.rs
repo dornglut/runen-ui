@@ -28,6 +28,7 @@ pub enum FocusReason {
     Removal,
     Disablement,
     RememberedRestoration,
+    PresentationRestoration,
     Shutdown,
 }
 

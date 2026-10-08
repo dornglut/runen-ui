@@ -205,6 +205,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             stream.set_capture_owner(None);
         }
         if stream
+            .presentation_barrier()
+            .is_some_and(|owner| self.tree.target_status(owner) != TargetStatus::Live)
+        {
+            stream.set_presentation_barrier(None);
+        }
+        if stream
             .pressed_owner()
             .is_some_and(|owner| self.tree.target_status(owner) != TargetStatus::Live)
         {

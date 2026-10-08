@@ -296,6 +296,10 @@ pub enum ReconciliationDiagnostic {
         group_path: String,
         preferred_member_paths: Vec<String>,
     },
+    MultiplePreferredPresentationFocusTargets {
+        presentation_path: String,
+        preferred_target_paths: Vec<String>,
+    },
     StatePayloadMismatch {
         path: String,
     },
@@ -323,6 +327,14 @@ impl fmt::Display for ReconciliationDiagnostic {
                 formatter,
                 "multiple preferred focus-group members under {group_path}: [{}]",
                 preferred_member_paths.join(", ")
+            ),
+            Self::MultiplePreferredPresentationFocusTargets {
+                presentation_path,
+                preferred_target_paths,
+            } => write!(
+                formatter,
+                "multiple preferred presentation-focus targets under {presentation_path}: [{}]",
+                preferred_target_paths.join(", ")
             ),
             Self::StatePayloadMismatch { path } => {
                 write!(formatter, "mounted widget state payload mismatch at {path}")
