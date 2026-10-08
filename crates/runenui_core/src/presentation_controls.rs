@@ -28,7 +28,6 @@ type ActionFactory<Action> = Rc<RefCell<Box<dyn FnMut() -> Action>>>;
 /// anchor, ordered fallback, outside-pointer, Escape and focus policies explicitly.
 pub struct Popover<Action> {
     children: Vec<Element<Action>>,
-    presentation: SurfacePresentation,
     on_dismiss: Option<DismissCallback<Action>>,
     common: CommonNodeAuthoring,
 }
@@ -36,7 +35,7 @@ pub struct Popover<Action> {
 impl<Action> fmt::Debug for Popover<Action> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Popover")
-            .field("presentation", &self.presentation)
+            .field("presentation", &self.common.surface_presentation)
             .field("children", &self.children)
             .field("has_dismiss_callback", &self.on_dismiss.is_some())
             .finish_non_exhaustive()
@@ -48,9 +47,8 @@ impl<Action> Popover<Action> {
     pub fn new(children: impl Views<Action>, presentation: SurfacePresentation) -> Self {
         Self {
             children: children.into_elements(),
-            presentation,
             on_dismiss: None,
-            common: presentation_common(),
+            common: presentation_common(Some(presentation)),
         }
     }
 
@@ -73,7 +71,6 @@ impl<Action> Popover<Action> {
 pub struct Dialog<Action> {
     label: String,
     children: Vec<Element<Action>>,
-    presentation: SurfacePresentation,
     on_dismiss: Option<DismissCallback<Action>>,
     common: CommonNodeAuthoring,
 }
@@ -82,7 +79,7 @@ impl<Action> fmt::Debug for Dialog<Action> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Dialog")
             .field("label", &self.label)
-            .field("presentation", &self.presentation)
+            .field("presentation", &self.common.surface_presentation)
             .field("children", &self.children)
             .field("has_dismiss_callback", &self.on_dismiss.is_some())
             .finish_non_exhaustive()
@@ -95,28 +92,21 @@ impl<Action> Dialog<Action> {
         Self {
             label: label.into(),
             children: children.into_elements(),
-            presentation: SurfacePresentation::new(SurfacePresentationPlacement::new(
-                SurfacePresentationSide::Center,
-            ))
-            .with_anchor(SurfacePresentationAnchor::SurfaceViewport)
-            .with_outside_pointer(PresentationOutsidePointerPolicy::Block)
-            .modal(true)
-            .dismiss_on_cancel_or_back(true)
-            .with_focus_policy(PresentationFocusPolicy::EnterAndRestore),
             on_dismiss: None,
-            common: presentation_common(),
+            common: presentation_common(Some(
+                SurfacePresentation::new(SurfacePresentationPlacement::new(
+                    SurfacePresentationSide::Center,
+                ))
+                .with_anchor(SurfacePresentationAnchor::SurfaceViewport)
+                .with_outside_pointer(PresentationOutsidePointerPolicy::Block)
+                .modal(true)
+                .dismiss_on_cancel_or_back(true)
+                .with_focus_policy(PresentationFocusPolicy::EnterAndRestore),
+            )),
         }
     }
 
     common_node_builder_methods!();
-
-    /// Explicitly replaces the complete accepted #341/#342 policy.
-    /// Modal semantic state and trapping are always derived from this same fact.
-    #[must_use]
-    pub fn with_presentation(mut self, presentation: SurfacePresentation) -> Self {
-        self.presentation = presentation;
-        self
-    }
 
     #[must_use]
     pub fn on_dismiss(
@@ -134,7 +124,6 @@ impl<Action> Dialog<Action> {
 /// `Tooltip`'s exact authored ID; no second semantic identity is generated.
 pub struct Tooltip<Action> {
     label: String,
-    presentation: SurfacePresentation,
     on_dismiss: Option<DismissCallback<Action>>,
     common: CommonNodeAuthoring,
 }
@@ -143,7 +132,7 @@ impl<Action> fmt::Debug for Tooltip<Action> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Tooltip")
             .field("label", &self.label)
-            .field("presentation", &self.presentation)
+            .field("presentation", &self.common.surface_presentation)
             .finish_non_exhaustive()
     }
 }
@@ -153,23 +142,14 @@ impl<Action> Tooltip<Action> {
     pub fn new(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
-            presentation: SurfacePresentation::new(SurfacePresentationPlacement::new(
-                SurfacePresentationSide::Bottom,
-            )),
             on_dismiss: None,
-            common: presentation_common(),
+            common: presentation_common(Some(SurfacePresentation::new(
+                SurfacePresentationPlacement::new(SurfacePresentationSide::Bottom),
+            ))),
         }
     }
 
     common_node_builder_methods!();
-
-    /// Accept placement/fallback and optional Escape dismissal. `Tooltip`
-    /// nonmodality, pointer passthrough and focus preservation are invariant.
-    #[must_use]
-    pub fn with_presentation(mut self, presentation: SurfacePresentation) -> Self {
-        self.presentation = presentation;
-        self
-    }
 
     #[must_use]
     pub fn on_dismiss(
@@ -181,9 +161,10 @@ impl<Action> Tooltip<Action> {
     }
 }
 
-fn presentation_common() -> CommonNodeAuthoring {
+fn presentation_common(presentation: Option<SurfacePresentation>) -> CommonNodeAuthoring {
     CommonNodeAuthoring {
         layout: LayoutStyle::default().with_container(LayoutContainer::Block),
+        surface_presentation: presentation,
         ..CommonNodeAuthoring::default()
     }
 }
@@ -270,7 +251,6 @@ impl<Action> ChildBearingWidget<Action> for PresentationSurfaceWidget<Action> {}
 
 fn presentation_element<Action: 'static>(
     common: CommonNodeAuthoring,
-    presentation: SurfacePresentation,
     widget: PresentationSurfaceWidget<Action>,
     children: Vec<Element<Action>>,
     focus_scope: Option<FocusScope>,
@@ -290,14 +270,16 @@ fn presentation_element<Action: 'static>(
         children,
         diagnostics,
     )
-    .surface_presentation(presentation)
 }
 
 impl<Action: 'static> View<Action> for Popover<Action> {
     fn into_element(self) -> Element<Action> {
+        let mut common = self.common;
+        common.surface_presentation = common
+            .surface_presentation
+            .map(|presentation| presentation.modal(false));
         presentation_element(
-            self.common,
-            self.presentation.modal(false),
+            common,
             PresentationSurfaceWidget {
                 role: SemanticRole::Group,
                 name: None,
@@ -313,7 +295,11 @@ impl<Action: 'static> View<Action> for Popover<Action> {
 
 impl<Action: 'static> View<Action> for Dialog<Action> {
     fn into_element(self) -> Element<Action> {
-        let modal = self.presentation.is_modal();
+        let modal = self
+            .common
+            .surface_presentation
+            .as_ref()
+            .is_some_and(SurfacePresentation::is_modal);
         let scope = modal.then(|| {
             FocusScope::new().with_policy(FocusScopePolicy::new(
                 FocusBoundaryPolicy::Trap,
@@ -322,7 +308,6 @@ impl<Action: 'static> View<Action> for Dialog<Action> {
         });
         presentation_element(
             self.common,
-            self.presentation,
             PresentationSurfaceWidget {
                 role: SemanticRole::Dialog,
                 name: Some(self.label),
@@ -339,14 +324,15 @@ impl<Action: 'static> View<Action> for Dialog<Action> {
 impl<Action: 'static> View<Action> for Tooltip<Action> {
     fn into_element(self) -> Element<Action> {
         let visible_text = Text::new(self.label.clone()).into_element();
-        let config = self
-            .presentation
-            .modal(false)
-            .with_outside_pointer(PresentationOutsidePointerPolicy::Ignore)
-            .with_focus_policy(PresentationFocusPolicy::Preserve);
+        let mut common = self.common;
+        common.surface_presentation = common.surface_presentation.map(|presentation| {
+            presentation
+                .modal(false)
+                .with_outside_pointer(PresentationOutsidePointerPolicy::Ignore)
+                .with_focus_policy(PresentationFocusPolicy::Preserve)
+        });
         presentation_element(
-            self.common,
-            config,
+            common,
             PresentationSurfaceWidget {
                 role: SemanticRole::Tooltip,
                 name: Some(self.label),
@@ -397,7 +383,7 @@ impl<Action> TooltipTrigger<Action> {
             show_delay,
             show: Rc::new(RefCell::new(Box::new(on_show))),
             hide: Rc::new(RefCell::new(Box::new(on_hide))),
-            common: presentation_common(),
+            common: presentation_common(None),
         }
     }
 

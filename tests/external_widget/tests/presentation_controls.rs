@@ -423,9 +423,55 @@ fn dialog_and_popover_dismissal_actions_are_application_owned() {
 }
 
 #[test]
+fn common_presentation_builder_overrides_constructor_and_preserves_control_invariants() {
+    let original = SurfacePresentation::new(SurfacePresentationPlacement::new(
+        SurfacePresentationSide::Bottom,
+    ))
+    .with_outside_pointer(PresentationOutsidePointerPolicy::DismissAndBlock)
+    .modal(true)
+    .with_focus_policy(PresentationFocusPolicy::EnterAndRestore);
+    let override_policy = SurfacePresentation::new(SurfacePresentationPlacement::new(
+        SurfacePresentationSide::Right,
+    ))
+    .with_outside_pointer(PresentationOutsidePointerPolicy::Ignore)
+    .with_focus_policy(PresentationFocusPolicy::Preserve);
+
+    let popover = Popover::<Action>::new(vec![button("Inside")], original)
+        .surface_presentation(override_policy.clone())
+        .into_element();
+    let popover_config = popover
+        .surface_presentation_config()
+        .unwrap_or_else(|| unreachable!("popover is presented"));
+    assert_eq!(
+        popover_config.candidates()[0].side(),
+        SurfacePresentationSide::Right,
+        "standard common-node builder must replace constructor policy"
+    );
+    assert!(!popover_config.is_modal());
+    assert_eq!(
+        popover_config.outside_pointer(),
+        PresentationOutsidePointerPolicy::Ignore
+    );
+
+    let dialog = Dialog::<Action>::new("Preferences", vec![button("Inside")])
+        .surface_presentation(override_policy)
+        .into_element();
+    assert!(
+        !dialog
+            .surface_presentation_config()
+            .unwrap_or_else(|| unreachable!("dialog is presented"))
+            .is_modal()
+    );
+    assert!(
+        dialog.focus_scope_config().is_none(),
+        "nonmodal override must not retain a stale modal focus trap"
+    );
+}
+
+#[test]
 fn tooltip_projection_cannot_become_modal_or_enter_focus() {
     let element = Tooltip::<Action>::new("Safe")
-        .with_presentation(
+        .surface_presentation(
             SurfacePresentation::new(SurfacePresentationPlacement::new(
                 SurfacePresentationSide::Right,
             ))
@@ -448,7 +494,7 @@ fn tooltip_projection_cannot_become_modal_or_enter_focus() {
 #[test]
 fn nonmodal_dialog_preserves_explicit_runtime_policy_without_focus_trap() {
     let element = Dialog::<Action>::new("Nonmodal", vec![button("Action")])
-        .with_presentation(
+        .surface_presentation(
             SurfacePresentation::new(SurfacePresentationPlacement::new(
                 SurfacePresentationSide::Center,
             ))
