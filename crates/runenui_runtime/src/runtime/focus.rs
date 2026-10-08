@@ -672,9 +672,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         target: &MountedNodeId,
     ) -> bool {
         match source {
-            InputModality::Keyboard
-            | InputModality::Controller
-            | InputModality::Accessibility => true,
+            InputModality::Keyboard | InputModality::Controller | InputModality::Accessibility => {
+                true
+            }
             InputModality::Pointer => {
                 let capability = self
                     .tree
@@ -701,7 +701,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         let previous_visibility = self.focus.focus_visible();
         let next_visibility = new_target.as_ref().is_some_and(|target| {
-            self.focus_visibility_on_transfer(transaction.pending_modality, old_target.is_some(), target)
+            self.focus_visibility_on_transfer(
+                transaction.pending_modality,
+                old_target.is_some(),
+                target,
+            )
         });
         if let Some(old) = old_target.as_ref() {
             self.cancel_composition_in_transaction(
