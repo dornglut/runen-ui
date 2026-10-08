@@ -63,7 +63,6 @@ fn author_menu_bar(state: &Model) -> MenuBar<Action> {
                     .id("bar-build")
                     .on_activate(|| Action::Selected),
             ])
-            .submenu()
             .id("bar-tools-menu")
             .accessible_name("Tools actions")
             .on_back(|| Action::CollapseBarMenu)
@@ -423,6 +422,12 @@ fn menu_bar_item_down_opens_submenu_and_restores_exact_focus_on_dismiss() {
         owner.relationships().iter().any(|r| {
             r.kind() == SemanticRelationshipKind::Controls && r.target() == popup.id()
         })
+    );
+    assert!(
+        popup.bounds().y() >= owner.bounds().max_y() - 0.5,
+        "top-level menubar submenu must open below its owning item: menu={:?}, owner={:?}",
+        popup.bounds(),
+        owner.bounds()
     );
     let first = snapshot
         .nodes()
