@@ -295,7 +295,7 @@ impl<Action: 'static> View<Action> for Popover<Action> {
     fn into_element(self) -> Element<Action> {
         presentation_element(
             self.common,
-            self.presentation,
+            self.presentation.modal(false),
             PresentationSurfaceWidget {
                 role: SemanticRole::Group,
                 name: None,

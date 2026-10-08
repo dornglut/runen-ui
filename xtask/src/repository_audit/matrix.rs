@@ -905,7 +905,7 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 51);
+        assert_eq!(rows.len(), 56);
 
         let expected: &[(&str, &[&str], &str)] = &[
             (
@@ -968,6 +968,17 @@ mod tests {
             ),
             ("M11PRES1", M11_PRESENTATION_IDS, "owner-accepted"),
             ("M11PRES2", M11_PRESENTATION_LIFECYCLE_IDS, "owner-accepted"),
+            (
+                "M11PRESCTRL",
+                &[
+                    "M11CTRL-52",
+                    "M11CTRL-53",
+                    "M11CTRL-54",
+                    "M11CTRL-55",
+                    "M11CTRL-56",
+                ],
+                "implementation-complete",
+            ),
         ];
         for (slice, ids, status) in expected {
             assert_m11_slice(&rows, slice, ids, status);
@@ -985,6 +996,7 @@ mod tests {
                 "M11CONTENT",
                 "M11PRES1",
                 "M11PRES2",
+                "M11PRESCTRL",
                 "M11SCROLLB",
                 "M11SEM1",
                 "M11TABS",
@@ -1082,7 +1094,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 493);
+        assert_eq!(total, 498);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }
