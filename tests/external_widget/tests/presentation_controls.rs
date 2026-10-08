@@ -61,17 +61,17 @@ impl UiApp for PresentationApp {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> impl View<Self::Action> {
-        let button = button("Explain")
+        let help_button = button("Explain")
             .id("help-button")
             .with_layout(fixed(80, 24))
             .on_activate(|| Action::ActivateBackground);
-        let button = if state.tooltip_visible {
-            button.described_by("help-tooltip")
+        let help_button = if state.tooltip_visible {
+            help_button.described_by("help-tooltip")
         } else {
-            button
+            help_button
         };
         let mut trigger = TooltipTrigger::new(
-            button,
+            help_button,
             Duration::from_millis(400),
             || Action::ShowTooltip,
             || Action::HideTooltip,
@@ -221,6 +221,23 @@ fn tooltip_delay_is_mounted_and_visibility_remains_app_owned() {
             )
             .is_ok()
     );
+    let semantic = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("published semantic snapshot exists"));
+    let owner = semantic
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::Button && node.name() == Some("Explain"))
+        .unwrap_or_else(|| unreachable!("semantic Button is published"));
+    let tooltip = semantic
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::Tooltip)
+        .unwrap_or_else(|| unreachable!("semantic Tooltip is published"));
+    assert!(owner.relationships().iter().any(|relationship| {
+        relationship.kind() == runenui_core::SemanticRelationshipKind::DescribedBy
+            && relationship.target() == tooltip.id()
+    }));
 
     move_pointer(
         &mut harness,
@@ -270,6 +287,20 @@ fn dialog_and_popover_dismissal_actions_are_application_owned() {
             )
             .is_ok()
     );
+    let semantic = dialog
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("dialog semantic snapshot exists"));
+    assert_eq!(
+        semantic
+            .nodes()
+            .iter()
+            .find(|node| node.role() == SemanticRole::Dialog)
+            .unwrap_or_else(|| unreachable!("Dialog semantic node exists"))
+            .state()
+            .modal(),
+        Some(true)
+    );
+    assert!(semantic.focused().is_some(), "modal Dialog enters ordinary focus scope");
     let id = dialog
         .publication()
         .unwrap_or_else(|| unreachable!("dialog published"))
@@ -350,4 +381,24 @@ fn tooltip_projection_cannot_become_modal_or_enter_focus() {
         PresentationOutsidePointerPolicy::Ignore
     );
     assert_eq!(config.focus_policy(), PresentationFocusPolicy::Preserve);
+}
+
+#[test]
+fn nonmodal_dialog_preserves_explicit_runtime_policy_without_focus_trap() {
+    let element = Dialog::<Action>::new("Nonmodal", vec![button("Action")])
+        .with_presentation(
+            SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Center,
+            ))
+            .modal(false)
+            .with_focus_policy(PresentationFocusPolicy::Preserve),
+        )
+        .into_element();
+    assert!(
+        !element
+            .surface_presentation_config()
+            .unwrap_or_else(|| unreachable!("Dialog is presented"))
+            .is_modal()
+    );
+    assert!(element.focus_scope_config().is_none());
 }
