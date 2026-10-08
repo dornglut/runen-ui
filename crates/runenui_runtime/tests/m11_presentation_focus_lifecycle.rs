@@ -7,7 +7,9 @@ use runenui_core::{
     SurfacePresentationAnchor, SurfacePresentationPlacement, SurfacePresentationSide, UiApp, View,
     Widget, WidgetActivation, button, column, container,
 };
-use runenui_runtime::{AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, SurfaceBuildContext};
+use runenui_runtime::{
+    AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, SurfaceBuildContext,
+};
 
 fn fixed(width: u16, height: u16) -> LayoutStyle {
     LayoutStyle::default()
@@ -38,10 +40,7 @@ fn settle<App: UiApp>(runtime: &mut AppRuntime<App>) {
     );
 }
 
-fn id(
-    publication: &runenui_runtime::SurfacePublication,
-    authored: &str,
-) -> MountedNodeId {
+fn id(publication: &runenui_runtime::SurfacePublication, authored: &str) -> MountedNodeId {
     publication
         .frame()
         .nodes()
@@ -70,10 +69,7 @@ impl<Action> Widget<Action> for FocusOwner {
 
 impl<Action> ChildBearingWidget<Action> for FocusOwner {}
 
-fn presentation_at<Action>(
-    child: Element<Action>,
-    authored: &'static str,
-) -> Element<Action>
+fn presentation_at<Action>(child: Element<Action>, authored: &'static str) -> Element<Action>
 where
     Action: 'static,
 {
@@ -81,9 +77,9 @@ where
         .id(authored)
         .key(authored)
         .surface_presentation(
-            SurfacePresentation::new(
-                SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-            )
+            SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Center,
+            ))
             .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                 LogicalPoint::new(85.0, 30.0)
                     .unwrap_or_else(|_| unreachable!("fixture presentation point is finite")),
@@ -365,9 +361,9 @@ impl UiApp for TrapApp {
                         FocusBoundaryPolicy::Trap,
                     )))
                     .surface_presentation(
-                        SurfacePresentation::new(
-                            SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-                        )
+                        SurfacePresentation::new(SurfacePresentationPlacement::new(
+                            SurfacePresentationSide::Center,
+                        ))
                         .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                             LogicalPoint::new(80.0, 30.0)
                                 .unwrap_or_else(|_| unreachable!("trap point is finite")),

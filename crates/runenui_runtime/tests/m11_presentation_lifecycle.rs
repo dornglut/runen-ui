@@ -883,12 +883,28 @@ fn active_pointer_capture_remains_authoritative_after_modal_presentation_opens()
     settle(&mut runtime);
 
     runtime
+        .submit_pointer(pointer(&input, capture_point, PointerPhase::Move))
+        .unwrap_or_else(|_| unreachable!("captured baseline move is accepted"));
+    settle(&mut runtime);
+    assert_eq!(
+        moves.borrow().as_slice(),
+        [(capture.clone(), Some(capture.clone()))],
+        "explicit capture must be active before the presentation opens"
+    );
+    moves.borrow_mut().clear();
+
+    runtime
         .submit_action(CaptureAction::Open)
         .unwrap_or_else(|_| unreachable!("modal open is accepted"));
     settle(&mut runtime);
     let second = runtime
         .publish_surface(&context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("modal publication succeeds"));
+    assert_eq!(
+        node_id(&second, "capture"),
+        capture,
+        "opening the presentation must retain the exact capture owner generation"
+    );
     let modal = node_id(&second, "modal");
     let modal_point =
         LogicalPoint::new(70.0, 20.0).unwrap_or_else(|_| unreachable!("modal point is finite"));
@@ -1192,6 +1208,14 @@ fn nested_presentation_owner_chain_is_inside_and_unrelated_content_dismisses_onl
     assert_eq!(runtime.state().interaction_presses, 1);
     assert!(runtime.state().dismissals.is_empty());
     assert!(runtime.state().inner_open);
+    runtime
+        .submit_pointer(pointer(
+            publication.input_context(),
+            owner_point,
+            PointerPhase::Up,
+        ))
+        .unwrap_or_else(|_| unreachable!("owner-family pointer up is accepted"));
+    settle(&mut runtime);
 
     let publication = runtime
         .publish_surface(&context(&environment, 110, 80))

@@ -197,6 +197,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             && pending.work.event.changed_button() == Some(PointerButton::Primary))
         .then(|| PointerIntegrityCleanupPlan::from_primary_release(&pending.stream))
         .flatten();
+        let presentation_blocked = pending.presentation_block_root.is_some();
         let explicit_capture_request_applied = self.apply_pointer_capture_requests(
             &pending.work,
             &pending.geometry,
@@ -207,14 +208,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             transaction.pointer_selection_transition =
                 Some(crate::runtime::routed::PointerSelectionTransition::Cancelled);
         }
-        let text_focus = self.apply_pointer_text_selection_default(
-            &pending.work.event,
-            &pending.geometry,
-            &mut pending.stream,
-            &mut transaction,
-            pending.selection_tracking && !pending.selection_cancelled,
-            explicit_capture_request_applied,
-        );
+        let text_focus = if presentation_blocked {
+            None
+        } else {
+            self.apply_pointer_text_selection_default(
+                &pending.work.event,
+                &pending.geometry,
+                &mut pending.stream,
+                &mut transaction,
+                pending.selection_tracking && !pending.selection_cancelled,
+                explicit_capture_request_applied,
+            )
+        };
         let default_outputs_before = transaction.default_outputs.len();
         if let Some(root) = pending.presentation_dismiss.as_ref() {
             if transaction.consume_mandatory_default_output().is_err() {
@@ -236,34 +241,42 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     causal_parent: transaction.parent,
                 });
         }
-        let pointer_focus = match self.apply_pointer_defaults(
-            &pending.work.event,
-            &pending.geometry.physical_path,
-            pending.geometry.physical_target.as_ref(),
-            pending.routed_target.as_ref(),
-            &mut pending.stream,
-            &mut transaction,
-        ) {
-            Ok(focus) => focus,
-            Err(failure) => {
-                let current = transaction.failure_current_target.clone();
-                self.poison_transaction(&transaction, failure, current.as_ref());
-                return self.pointer_runtime_outcome();
+        let pointer_focus = if presentation_blocked {
+            None
+        } else {
+            match self.apply_pointer_defaults(
+                &pending.work.event,
+                &pending.geometry.physical_path,
+                pending.geometry.physical_target.as_ref(),
+                pending.routed_target.as_ref(),
+                &mut pending.stream,
+                &mut transaction,
+            ) {
+                Ok(focus) => focus,
+                Err(failure) => {
+                    let current = transaction.failure_current_target.clone();
+                    self.poison_transaction(&transaction, failure, current.as_ref());
+                    return self.pointer_runtime_outcome();
+                }
             }
         };
-        let touch_focus = match self.apply_touch_gesture_default(
-            &pending.work.event,
-            &pending.geometry,
-            &mut pending.stream,
-            &mut transaction,
-            pending.touch_proposal.as_ref(),
-            pending.touch_cancelled,
-        ) {
-            Ok(focus) => focus,
-            Err(failure) => {
-                let current = transaction.failure_current_target.clone();
-                self.poison_transaction(&transaction, failure, current.as_ref());
-                return self.pointer_runtime_outcome();
+        let touch_focus = if presentation_blocked {
+            None
+        } else {
+            match self.apply_touch_gesture_default(
+                &pending.work.event,
+                &pending.geometry,
+                &mut pending.stream,
+                &mut transaction,
+                pending.touch_proposal.as_ref(),
+                pending.touch_cancelled,
+            ) {
+                Ok(focus) => focus,
+                Err(failure) => {
+                    let current = transaction.failure_current_target.clone();
+                    self.poison_transaction(&transaction, failure, current.as_ref());
+                    return self.pointer_runtime_outcome();
+                }
             }
         };
         let focus = pointer_focus.or(touch_focus).or(text_focus);
