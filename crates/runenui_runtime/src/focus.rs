@@ -121,7 +121,7 @@ impl FocusState {
 
     /// Promotes focus indication only for an already focused owner.
     /// Pointer or programmatic modality changes cannot demote this latch.
-    pub(crate) fn promote_focus_visible(&mut self, modality: InputModality) -> bool {
+    pub(crate) const fn promote_focus_visible(&mut self, modality: InputModality) -> bool {
         if self.focused_node_id.is_some()
             && !self.focus_visible
             && matches!(

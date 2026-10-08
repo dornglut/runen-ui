@@ -60,8 +60,14 @@ impl StyleInteractionFacts {
         let mask = state.mask();
         if enabled {
             self.0 |= mask;
+            if matches!(state, StyleInteractionState::FocusVisible) {
+                self.0 |= StyleInteractionState::Focus.mask();
+            }
         } else {
             self.0 &= !mask;
+            if matches!(state, StyleInteractionState::Focus) {
+                self.0 &= !StyleInteractionState::FocusVisible.mask();
+            }
         }
         self
     }

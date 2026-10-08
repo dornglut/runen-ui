@@ -663,6 +663,32 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    /// Derives the indication for a real focus transfer from its admitted source
+    /// and the target's public input capability, without consulting FocusReason.
+    fn focus_visibility_on_transfer(
+        &mut self,
+        source: InputModality,
+        had_previous_owner: bool,
+        target: &MountedNodeId,
+    ) -> bool {
+        match source {
+            InputModality::Keyboard
+            | InputModality::Controller
+            | InputModality::Accessibility => true,
+            InputModality::Pointer => {
+                let capability = self
+                    .tree
+                    .text_input_probe(target)
+                    .unwrap_or(WidgetTextInput::NONE);
+                capability.accepts_committed_text() || capability.accepts_composition()
+            }
+            InputModality::Programmatic | InputModality::Automation => {
+                !had_previous_owner || self.focus.focus_visible()
+            }
+            _ => !had_previous_owner || self.focus.focus_visible(),
+        }
+    }
+
     pub(in crate::runtime) fn commit_focus_transition(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
@@ -674,25 +700,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Ok(());
         }
         let previous_visibility = self.focus.focus_visible();
-        let next_visibility =
-            new_target
-                .as_ref()
-                .is_some_and(|target| match transaction.pending_modality {
-                    InputModality::Keyboard
-                    | InputModality::Controller
-                    | InputModality::Accessibility => true,
-                    InputModality::Pointer => {
-                        let capability = self
-                            .tree
-                            .text_input_probe(target)
-                            .unwrap_or(WidgetTextInput::NONE);
-                        capability.accepts_committed_text() || capability.accepts_composition()
-                    }
-                    InputModality::Programmatic | InputModality::Automation => {
-                        old_target.is_none() || previous_visibility
-                    }
-                    _ => old_target.is_none() || previous_visibility,
-                });
+        let next_visibility = new_target.as_ref().is_some_and(|target| {
+            self.focus_visibility_on_transfer(transaction.pending_modality, old_target.is_some(), target)
+        });
         if let Some(old) = old_target.as_ref() {
             self.cancel_composition_in_transaction(
                 transaction,

@@ -207,10 +207,10 @@ fn button_recipe(base: Color, hover: Color, active: Color) -> StyleRecipe {
         .unwrap_or_else(|_| unreachable!("Counter defines hover once per button recipe"));
     recipe
         .define_interaction(
-            StyleInteractionState::Focus,
+            StyleInteractionState::FocusVisible,
             StyleProperties::EMPTY.with_outline(focus_outline()),
         )
-        .unwrap_or_else(|_| unreachable!("Counter defines focus once per button recipe"));
+        .unwrap_or_else(|_| unreachable!("Counter defines focus-visible once per button recipe"));
     recipe
         .define_interaction(
             StyleInteractionState::Active,

@@ -539,5 +539,11 @@ fn focus_visible_layer_falls_between_focus_and_active_for_all_widgets()
         );
     }
     assert!(visible.focused() && visible.focus_visible());
+    let implied_focus =
+        StyleInteractionFacts::NONE.with(StyleInteractionState::FocusVisible, true);
+    assert!(implied_focus.focused() && implied_focus.focus_visible());
+    assert!(!implied_focus
+        .with(StyleInteractionState::Focus, false)
+        .focus_visible());
     Ok(())
 }

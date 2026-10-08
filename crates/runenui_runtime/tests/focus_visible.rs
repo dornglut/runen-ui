@@ -5,9 +5,9 @@ use runenui_core::{
     KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, LogicalLength,
     LogicalPoint, LogicalRect, NoHostProtocol, PhysicalKey, PointerButton, PointerButtons,
     PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
-    SemanticActionRequest, SemanticContribution, SemanticContributionContext,
-    SemanticNodeContribution, SemanticRole, SemanticCommand, StyleEnvironment, UiApp, View,
-    Widget, WidgetActivation, WidgetMeasure, WidgetTextInput, button, children, column,
+    SemanticActionRequest, SemanticCommand, SemanticContribution, SemanticContributionContext,
+    SemanticNodeContribution, SemanticRole, FocusScope, StyleEnvironment, UiApp, View, Widget,
+    WidgetActivation, WidgetMeasure, WidgetTextInput, button, children, column,
 };
 use runenui_runtime::{
     AppRuntime, InputModality, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext,
@@ -76,7 +76,7 @@ impl Widget<Action> for TextInputProbe {
     }
 }
 
-fn settle(runtime: &mut AppRuntime<App>) {
+fn settle<Application: UiApp>(runtime: &mut AppRuntime<Application>) {
     assert!(runtime.pump(PumpBudget::new(64, 64, 64, 64)).is_quiescent());
 }
 
@@ -86,7 +86,7 @@ fn mount() -> AppRuntime<App> {
     runtime
 }
 
-fn mounted_id(runtime: &mut AppRuntime<App>, authored: &str) -> MountedNodeId {
+fn mounted_id<Application: UiApp>(runtime: &mut AppRuntime<Application>, authored: &str) -> MountedNodeId {
     let id = ElementId::new(authored).unwrap_or_else(|_| unreachable!("known id"));
     runtime
         .index()
@@ -98,7 +98,7 @@ fn mounted_id(runtime: &mut AppRuntime<App>, authored: &str) -> MountedNodeId {
         .clone()
 }
 
-fn focus(runtime: &mut AppRuntime<App>, node: &MountedNodeId, origin: CommandOrigin) {
+fn focus<Application: UiApp>(runtime: &mut AppRuntime<Application>, node: &MountedNodeId, origin: CommandOrigin) {
     assert!(runtime
         .submit_command(node.clone(), SemanticCommand::RequestFocus, origin)
         .is_ok());
@@ -106,7 +106,7 @@ fn focus(runtime: &mut AppRuntime<App>, node: &MountedNodeId, origin: CommandOri
     assert_eq!(runtime.focus().focused_node(), Some(node));
 }
 
-fn pointer_focus(runtime: &mut AppRuntime<App>, name: &str, pointer: u64) {
+fn pointer_focus<Application: UiApp>(runtime: &mut AppRuntime<Application>, name: &str, pointer: u64) {
     let environment = StyleEnvironment::default();
     let size = LogicalSize::try_new(260.0, 180.0)
         .unwrap_or_else(|_| unreachable!("finite surface"));
@@ -340,4 +340,67 @@ fn disablement_retires_focus_and_its_visibility_latch_together() {
     assert!(app.pump(PumpBudget::new(64, 64, 64, 64)).is_quiescent());
     assert!(app.focus().focused_node().is_none());
     assert!(!app.focus().focus_visible());
+}
+
+struct RestoreApp;
+
+impl UiApp for RestoreApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &Self::State) -> impl View<Self::Action> {
+        column(children![
+            column(children![
+                button("Remember").id("remember").on_activate(|| ()),
+            ])
+            .id("nested")
+            .focus_scope(FocusScope::new()),
+            button("Outside").id("outside").on_activate(|| ()),
+        ])
+    }
+
+    fn update((): &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn remembered_restoration_obeys_canonical_source_not_focus_reason() {
+    let mut app = AppRuntime::<RestoreApp>::mount(());
+    settle(&mut app);
+    let inner = mounted_id(&mut app, "remember");
+    let outer = mounted_id(&mut app, "outside");
+    let scope = mounted_id(&mut app, "nested");
+    pointer_focus(&mut app, "Remember", 27);
+    assert_eq!(app.focus().focused_node(), Some(&inner));
+    assert!(!app.focus().focus_visible());
+
+    focus(&mut app, &outer, CommandOrigin::programmatic());
+    assert!(!app.focus().focus_visible());
+    assert!(app
+        .submit_command(
+            scope.clone(),
+            SemanticCommand::RestoreFocus,
+            CommandOrigin::programmatic(),
+        )
+        .is_ok());
+    settle(&mut app);
+    assert_eq!(app.focus().focused_node(), Some(&inner));
+    assert_eq!(
+        app.focus().reason(),
+        Some(runenui_core::FocusReason::RememberedRestoration)
+    );
+    assert!(!app.focus().focus_visible());
+
+    focus(&mut app, &outer, CommandOrigin::controller());
+    assert!(app.focus().focus_visible());
+    assert!(app
+        .submit_command(
+            scope,
+            SemanticCommand::RestoreFocus,
+            CommandOrigin::programmatic(),
+        )
+        .is_ok());
+    settle(&mut app);
+    assert_eq!(app.focus().focused_node(), Some(&inner));
+    assert!(app.focus().focus_visible());
 }
