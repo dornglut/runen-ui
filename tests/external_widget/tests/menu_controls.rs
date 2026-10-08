@@ -191,7 +191,7 @@ fn command(harness: &mut TestHarness<MenuApp>, id: &str, value: SemanticCommand)
 fn open_menu(harness: &mut TestHarness<MenuApp>) {
     assert!(harness.publish().is_ok());
     command(harness, "menu-button", SemanticCommand::Activate);
-    assert!(harness.state().open);
+    assert!(harness.state().menu.open);
 }
 
 #[test]
@@ -272,11 +272,18 @@ fn menu_checked_items_and_disabled_discoverability_preserve_app_authority() {
     }));
 
     command(&mut h, "disabled-item", SemanticCommand::RequestFocus);
-    assert!(
-        h.semantic_snapshot()
-            .unwrap_or_else(|_| unreachable!())
-            .focused()
-            .is_some()
+    let snapshot = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
+    let disabled = snapshot
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.role() == SemanticRole::MenuItem && node.name() == Some("Unavailable")
+        })
+        .unwrap_or_else(|| unreachable!("disabled item remains semantically discoverable"));
+    assert_eq!(
+        snapshot.focused(),
+        Some(disabled.id()),
+        "disabled menu item must be the exact current focus target"
     );
     command(&mut h, "disabled-item", SemanticCommand::Activate);
     assert_eq!(h.state().selected, 0);
@@ -543,14 +550,20 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
     let last_before = first
         .nodes()
         .iter()
-        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "long-item-7"))
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "long-item-7")
+        })
         .unwrap_or_else(|| unreachable!("last menu item is mounted"))
         .bounds();
 
     let last_id = first
         .nodes()
         .iter()
-        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "long-item-7"))
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "long-item-7")
+        })
         .unwrap_or_else(|| unreachable!("last menu item retains identity"))
         .id()
         .clone();
@@ -586,7 +599,10 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
         .frame()
         .nodes()
         .iter()
-        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "long-item-7"))
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "long-item-7")
+        })
         .unwrap_or_else(|| unreachable!("last item still mounted"));
     assert!(
         last.bounds().y() < last_before.y(),
@@ -597,10 +613,16 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
         "last menu item must be reachable inside the fixed standard viewport"
     );
     let semantics = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
-    assert!(semantics.nodes().iter().any(|n| {
-        n.role() == SemanticRole::ScrollBar
-    }));
-    assert!(semantics.nodes().iter().any(|n| {
-        n.role() == SemanticRole::MenuItem && n.name() == Some("Choice 7")
-    }));
+    assert!(
+        semantics
+            .nodes()
+            .iter()
+            .any(|n| { n.role() == SemanticRole::ScrollBar })
+    );
+    assert!(
+        semantics
+            .nodes()
+            .iter()
+            .any(|n| { n.role() == SemanticRole::MenuItem && n.name() == Some("Choice 7") })
+    );
 }
