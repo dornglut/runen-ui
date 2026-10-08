@@ -6,7 +6,7 @@ use runenui_core::{
     ApplicationCommand, ApplicationCommandId, CommandBinding, CommandOrigin, CommandScope, Menu,
     MenuBar, MenuButton, MenuItem, MenuItemCheckbox, MenuItemRadio, NoHostProtocol,
     PresentationDismissReason, SemanticCheckedState, SemanticCommand, SemanticOrientation,
-    SemanticRelationshipKind, SemanticRole, UiApp, View, column,
+    SemanticRelationshipKind, SemanticRole, UiApp, View,
 };
 use runenui_runtime::PumpBudget;
 use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
@@ -25,13 +25,18 @@ enum Action {
 
 #[derive(Clone, Debug, Default)]
 struct Model {
-    open: bool,
+    menu: MenuMounts,
     checkbox: bool,
     radio: bool,
-    submenu_open: bool,
     selected: usize,
     saved: usize,
     dismissals: Vec<PresentationDismissReason>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct MenuMounts {
+    open: bool,
+    submenu_open: bool,
 }
 
 struct MenuApp;
@@ -47,19 +52,19 @@ impl UiApp for MenuApp {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> impl View<Self::Action> {
-        let mut button = MenuButton::new("File", state.open)
+        let mut button = MenuButton::new("File", state.menu.open)
             .id("menu-button")
             .on_activate(|| Action::Toggle)
             .on_expand(|| Action::Toggle)
             .on_collapse(|| Action::Toggle);
 
-        if state.open {
+        if state.menu.open {
             let mut more = MenuItem::new("More")
                 .id("submenu-owner")
-                .submenu_expanded(state.submenu_open)
+                .submenu_expanded(state.menu.submenu_open)
                 .on_expand(|| Action::ExpandSubmenu)
                 .on_collapse(|| Action::CollapseSubmenu);
-            if state.submenu_open {
+            if state.menu.submenu_open {
                 more = more.with_submenu(
                     Menu::new(vec![
                         MenuItem::new("Nested action")
@@ -131,16 +136,16 @@ impl UiApp for MenuApp {
 
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
-            Action::Toggle => state.open = !state.open,
+            Action::Toggle => state.menu.open = !state.menu.open,
             Action::ToggleCheckbox => state.checkbox = !state.checkbox,
             Action::SelectRadio => state.radio = true,
             Action::Selected => state.selected += 1,
             Action::Saved => state.saved += 1,
-            Action::ExpandSubmenu => state.submenu_open = true,
-            Action::CollapseSubmenu => state.submenu_open = false,
+            Action::ExpandSubmenu => state.menu.submenu_open = true,
+            Action::CollapseSubmenu => state.menu.submenu_open = false,
             Action::Dismiss(reason) => {
-                state.open = false;
-                state.submenu_open = false;
+                state.menu.open = false;
+                state.menu.submenu_open = false;
                 state.dismissals.push(reason);
             }
         }
@@ -227,7 +232,7 @@ fn menu_button_open_close_and_exact_controls_are_application_owned() {
         "file-menu",
         SemanticCommand::PresentationDismiss(PresentationDismissReason::CancelOrBack),
     );
-    assert!(!h.state().open);
+    assert!(!h.state().menu.open);
     assert_eq!(
         h.state().dismissals,
         vec![PresentationDismissReason::CancelOrBack]
@@ -288,7 +293,7 @@ fn menu_command_uses_scoped_fifo_and_submenu_expands_through_app_state() {
     command(&mut h, "submenu-owner", SemanticCommand::RequestFocus);
     command(&mut h, "submenu-owner", SemanticCommand::FocusRight);
     assert!(
-        h.state().submenu_open,
+        h.state().menu.submenu_open,
         "right arrow opens the focused owning item"
     );
     let snapshot = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
@@ -313,15 +318,15 @@ fn menu_command_uses_scoped_fifo_and_submenu_expands_through_app_state() {
     assert_eq!(h.state().selected, 1);
     command(&mut h, "nested-action", SemanticCommand::FocusLeft);
     assert!(
-        !h.state().submenu_open,
+        !h.state().menu.submenu_open,
         "submenu back action closes only that subtree"
     );
-    assert!(h.state().open, "the parent menu remains open");
+    assert!(h.state().menu.open, "the parent menu remains open");
     command(&mut h, "submenu-owner", SemanticCommand::Expand);
-    assert!(h.state().submenu_open);
+    assert!(h.state().menu.submenu_open);
     command(&mut h, "submenu-owner", SemanticCommand::FocusLeft);
     assert!(
-        !h.state().submenu_open,
+        !h.state().menu.submenu_open,
         "left arrow collapses the owning item"
     );
 }
@@ -391,7 +396,7 @@ fn menu_escape_dismisses_and_restores_the_exact_prior_focus() {
         .cloned()
         .unwrap_or_else(|| unreachable!("focused menu trigger exists"));
     command(&mut h, "menu-button", SemanticCommand::Activate);
-    assert!(h.state().open);
+    assert!(h.state().menu.open);
     let escape = runenui_core::KeyboardEvent::new(
         runenui_core::KeyboardPhase::Down,
         runenui_core::PhysicalKey::Escape,
@@ -404,7 +409,7 @@ fn menu_escape_dismisses_and_restores_the_exact_prior_focus() {
     );
     assert!(h.submit_keyboard(escape).is_ok());
     settle(&mut h);
-    assert!(!h.state().open);
+    assert!(!h.state().menu.open);
     assert_eq!(
         h.state().dismissals,
         vec![PresentationDismissReason::CancelOrBack]
@@ -455,10 +460,147 @@ fn menu_outside_pointer_dismisses_without_dispatching_menu_activation() {
     .with_changed_button(runenui_core::PointerButton::Primary);
     assert!(h.submit_pointer(pointer).is_ok());
     settle(&mut h);
-    assert!(!h.state().open);
+    assert!(!h.state().menu.open);
     assert_eq!(
         h.state().dismissals,
         vec![PresentationDismissReason::OutsidePointer]
     );
     assert_eq!(h.state().selected, 0);
+}
+
+struct LongMenuApp;
+
+impl UiApp for LongMenuApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &Self::State) -> impl View<Self::Action> {
+        use runenui_core::{
+            Axis, LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, OverflowPolicy,
+            OverflowStyle, ScrollControlBinding, scroll_bar, scroll_container,
+        };
+
+        let fixed = |width: u16, height: u16| {
+            LayoutStyle::default()
+                .with_width(LayoutDimension::length(LogicalLength::from(width)))
+                .with_height(LayoutDimension::length(LogicalLength::from(height)))
+        };
+        let items = (0_u8..8)
+            .map(|i| {
+                MenuItem::new(format!("Choice {i}"))
+                    .id(format!("long-item-{i}"))
+                    .with_layout(fixed(100, 20))
+                    .on_activate(|| ())
+                    .into_element()
+            })
+            .collect::<Vec<_>>();
+        let overflow = OverflowStyle::new(OverflowPolicy::Clip, OverflowPolicy::Scroll);
+        let content = runenui_core::column(items);
+        let binding = ScrollControlBinding::new(Axis::Vertical, LogicalLength::from(5_u8))
+            .unwrap_or_else(|_| unreachable!("bounded step"));
+        let scroll = scroll_container(content, overflow)
+            .id("long-menu-viewport")
+            .with_layout(
+                fixed(110, 40)
+                    .with_container(LayoutContainer::Block)
+                    .with_overflow(overflow),
+            )
+            .scroll_bar(scroll_bar(
+                "Long menu vertical scroll",
+                binding,
+                LogicalLength::from(10_u8),
+                LogicalLength::from(20_u8),
+            ));
+        runenui_core::column(vec![
+            runenui_core::button("Anchor").into_element(),
+            Menu::new(vec![scroll.into_element()])
+                .id("long-menu")
+                .into_element(),
+        ])
+    }
+
+    fn update((): &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
+    let mut h = TestHarness::<LongMenuApp>::mount(());
+    assert!(h.publish().is_ok());
+    let first = h
+        .publication()
+        .unwrap_or_else(|| unreachable!("menu publication exists"))
+        .frame();
+    let viewport = first
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "long-menu-viewport")
+        })
+        .unwrap_or_else(|| unreachable!("standard scroll viewport is mounted"))
+        .bounds();
+    let last_before = first
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "long-item-7"))
+        .unwrap_or_else(|| unreachable!("last menu item is mounted"))
+        .bounds();
+
+    let last_id = first
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "long-item-7"))
+        .unwrap_or_else(|| unreachable!("last menu item retains identity"))
+        .id()
+        .clone();
+    assert!(
+        h.submit_command(
+            last_id.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .is_ok()
+    );
+    assert!(
+        h.submit_command(
+            last_id,
+            SemanticCommand::ScrollIntoView,
+            CommandOrigin::programmatic(),
+        )
+        .is_ok()
+    );
+    assert_eq!(
+        h.run_until_idle(SettleBudget::new(
+            NonZeroUsize::new(12).unwrap_or(NonZeroUsize::MIN),
+            PumpBudget::new(128, 128, 128, 128),
+        ))
+        .outcome(),
+        SettleOutcome::Idle
+    );
+    assert!(h.publish().is_ok());
+    let publication = h
+        .publication()
+        .unwrap_or_else(|| unreachable!("published after scroll"));
+    let last = publication
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "long-item-7"))
+        .unwrap_or_else(|| unreachable!("last item still mounted"));
+    assert!(
+        last.bounds().y() < last_before.y(),
+        "shared scroll must move the previously out-of-viewport last menu item"
+    );
+    assert!(
+        last.bounds().y() < viewport.max_y() && last.bounds().max_y() > viewport.y(),
+        "last menu item must be reachable inside the fixed standard viewport"
+    );
+    let semantics = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
+    assert!(semantics.nodes().iter().any(|n| {
+        n.role() == SemanticRole::ScrollBar
+    }));
+    assert!(semantics.nodes().iter().any(|n| {
+        n.role() == SemanticRole::MenuItem && n.name() == Some("Choice 7")
+    }));
 }
