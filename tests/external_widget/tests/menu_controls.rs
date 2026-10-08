@@ -389,6 +389,59 @@ fn menu_type_ahead_reuses_mounted_focus_group_without_activation() {
     assert_eq!(h.state().saved, 0, "focus search never invokes command");
 }
 
+fn assert_focused_menu_name(h: &TestHarness<MenuApp>, expected: &str) {
+    let snapshot = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
+    let focused = snapshot
+        .focused()
+        .unwrap_or_else(|| unreachable!("menu traversal establishes a focus target"));
+    let target = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.id() == focused)
+        .unwrap_or_else(|| unreachable!("focused node is in semantic publication"));
+    assert_eq!(target.name(), Some(expected));
+}
+
+#[test]
+fn ordinary_menu_uses_group_arrow_and_absolute_keyboard_navigation_without_activation() {
+    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    open_menu(&mut h);
+    command(&mut h, "save-item", SemanticCommand::RequestFocus);
+    assert_focused_menu_name(&h, "Save");
+
+    command(&mut h, "save-item", SemanticCommand::FocusDown);
+    assert_focused_menu_name(&h, "Autosave");
+    command(&mut h, "checkbox-item", SemanticCommand::FocusUp);
+    assert_focused_menu_name(&h, "Save");
+
+    command(&mut h, "disabled-item", SemanticCommand::RequestFocus);
+    for (key, expected) in [
+        (runenui_core::LogicalKey::Home, "Save"),
+        (runenui_core::LogicalKey::End, "More"),
+    ] {
+        assert!(
+            h.submit_keyboard(runenui_core::KeyboardEvent::new(
+                runenui_core::KeyboardPhase::Down,
+                runenui_core::PhysicalKey::Code(format!("{key:?}")),
+                key,
+                runenui_core::KeyModifiers::NONE,
+                false,
+                runenui_core::KeyLocation::Standard,
+                runenui_core::KeyboardCompositionState::Inactive,
+                None,
+            ))
+            .is_ok()
+        );
+        settle(&mut h);
+        assert!(h.publish().is_ok());
+        assert_focused_menu_name(&h, expected);
+    }
+
+    assert_eq!(h.state().saved, 0, "menu traversal never invokes commands");
+    assert!(!h.state().checkbox, "menu traversal never toggles items");
+    assert!(!h.state().radio, "menu traversal never selects radio items");
+}
+
 #[test]
 fn menu_escape_dismisses_and_restores_the_exact_prior_focus() {
     let mut h = TestHarness::<MenuApp>::mount(Model::default());
