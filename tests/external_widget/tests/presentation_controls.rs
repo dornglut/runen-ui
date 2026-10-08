@@ -339,7 +339,10 @@ fn dialog_default_modal_entry_and_exact_focus_restoration_use_shared_runtime() {
         .frame()
         .nodes()
         .iter()
-        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "help-button"))
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "help-button")
+        })
         .unwrap_or_else(|| unreachable!("owner button is mounted"))
         .id()
         .clone();
@@ -385,7 +388,10 @@ fn dialog_default_modal_entry_and_exact_focus_restoration_use_shared_runtime() {
         .frame()
         .nodes()
         .iter()
-        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "test-dialog"))
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "test-dialog")
+        })
         .unwrap_or_else(|| unreachable!("Dialog retains mounted identity"))
         .id()
         .clone();
