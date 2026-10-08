@@ -636,7 +636,7 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
     );
     assert!(
         h.submit_command(
-            last_id.clone(),
+            last_id,
             SemanticCommand::ScrollIntoView,
             CommandOrigin::programmatic(),
         )
