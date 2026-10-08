@@ -980,7 +980,7 @@ mod tests {
             ],
             "owner-accepted",
         ),
-        ("M11BUTTONPRESS", &["M11CTRL-62"], "implementation-complete"),
+        ("M11BUTTONPRESS", &["M11CTRL-62"], "owner-accepted"),
     ];
 
     #[test]
