@@ -49,6 +49,41 @@ fn save_command() -> ApplicationCommandId {
         .unwrap_or_else(|_| unreachable!("static menu command is valid"))
 }
 
+fn author_menu_bar(state: &Model) -> MenuBar<Action> {
+    let mut bar_tools = MenuItem::new("Tools")
+        .menu_bar_trigger()
+        .id("bar-tools")
+        .submenu_expanded(state.menu.bar_open)
+        .on_expand(|| Action::ExpandBarMenu)
+        .on_collapse(|| Action::CollapseBarMenu);
+    if state.menu.bar_open {
+        bar_tools = bar_tools.with_submenu(
+            Menu::new(vec![
+                MenuItem::new("Build")
+                    .id("bar-build")
+                    .on_activate(|| Action::Selected),
+            ])
+            .submenu()
+            .id("bar-tools-menu")
+            .accessible_name("Tools actions")
+            .on_back(|| Action::CollapseBarMenu)
+            .on_dismiss(|_| Action::CollapseBarMenu),
+            true,
+        );
+    }
+
+    MenuBar::new(vec![
+        MenuItem::new("View")
+            .menu_bar_trigger()
+            .id("bar-view")
+            .on_activate(|| Action::Selected)
+            .into_element(),
+        bar_tools.into_element(),
+    ])
+    .accessible_name("Application menu bar")
+    .id("menu-bar")
+}
+
 impl UiApp for MenuApp {
     type State = Model;
     type Action = Action;
@@ -115,28 +150,6 @@ impl UiApp for MenuApp {
             button = button.with_submenu(menu, true);
         }
 
-        let mut bar_tools = MenuItem::new("Tools")
-            .menu_bar_trigger()
-            .id("bar-tools")
-            .submenu_expanded(state.menu.bar_open)
-            .on_expand(|| Action::ExpandBarMenu)
-            .on_collapse(|| Action::CollapseBarMenu);
-        if state.menu.bar_open {
-            bar_tools = bar_tools.with_submenu(
-                Menu::new(vec![
-                    MenuItem::new("Build")
-                        .id("bar-build")
-                        .on_activate(|| Action::Selected),
-                ])
-                .submenu()
-                .id("bar-tools-menu")
-                .accessible_name("Tools actions")
-                .on_back(|| Action::CollapseBarMenu)
-                .on_dismiss(|_| Action::CollapseBarMenu),
-                true,
-            );
-        }
-
         CommandScope::new(
             [CommandBinding::new(
                 ApplicationCommand::new(save_command(), true),
@@ -144,17 +157,7 @@ impl UiApp for MenuApp {
             )],
             vec![
                 button.into_element(),
-                MenuBar::new(vec![
-                    MenuItem::new("View")
-                        .menu_bar_trigger()
-                        .id("bar-view")
-                        .on_activate(|| Action::Selected)
-                        .into_element(),
-                    bar_tools.into_element(),
-                ])
-                .accessible_name("Application menu bar")
-                .id("menu-bar")
-                .into_element(),
+                author_menu_bar(state).into_element(),
             ],
         )
     }
@@ -383,7 +386,10 @@ fn inline_menu_bar_uses_neutral_horizontal_semantics() {
         .find(|n| n.role() == SemanticRole::MenuItem && n.name() == Some("Tools"))
         .unwrap_or_else(|| unreachable!("Tools menubar item is mounted"));
     assert_eq!(snapshot.focused(), Some(tools.id()));
-    assert!(!h.state().menu.bar_open, "navigation does not open the submenu");
+    assert!(
+        !h.state().menu.bar_open,
+        "navigation does not open the submenu"
+    );
     assert_eq!(h.state().selected, 0, "focus movement never activates");
 }
 
@@ -412,9 +418,11 @@ fn menu_bar_item_down_opens_submenu_and_restores_exact_focus_on_dismiss() {
         .iter()
         .find(|n| n.role() == SemanticRole::Menu && n.name() == Some("Tools actions"))
         .unwrap_or_else(|| unreachable!("labelled submenu is mounted"));
-    assert!(owner.relationships().iter().any(|r| {
-        r.kind() == SemanticRelationshipKind::Controls && r.target() == popup.id()
-    }));
+    assert!(
+        owner.relationships().iter().any(|r| {
+            r.kind() == SemanticRelationshipKind::Controls && r.target() == popup.id()
+        })
+    );
     let first = snapshot
         .nodes()
         .iter()
