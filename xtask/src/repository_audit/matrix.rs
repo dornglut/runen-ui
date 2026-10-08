@@ -38,6 +38,7 @@ const M11_DELIVERY_SLICES: &[&str] = &[
     "M11CONTENT",
     "M11PRES1",
     "M11PRES2",
+    "M11PRESCTRL",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
