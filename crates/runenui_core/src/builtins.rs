@@ -433,7 +433,7 @@ impl<Action> Button<Action> {
     }
     common_node_builder_methods!();
 
-    /// Links this Button semantic node to an app-authored Tooltip.
+    /// Links this `Button` semantic node to an app-authored `Tooltip`.
     #[must_use]
     pub fn described_by(mut self, tooltip: impl IntoElementId) -> Self {
         self.described_by = authored_relationship_target(&mut self.common, "described_by", tooltip);
