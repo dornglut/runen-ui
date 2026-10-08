@@ -276,7 +276,10 @@ fn tooltip_focus_activation_uses_same_mounted_timer_and_blur_hides() {
         .frame()
         .nodes()
         .iter()
-        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "help-button"))
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "help-button")
+        })
         .unwrap_or_else(|| unreachable!("help button is mounted"))
         .id()
         .clone();
