@@ -480,7 +480,7 @@ impl UiApp for LongMenuApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root((): &Self::State) -> impl View<Self::Action> {
         use runenui_core::{
             Axis, LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, OverflowPolicy,
             OverflowStyle, ScrollControlBinding, scroll_bar, scroll_container,
@@ -545,14 +545,13 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
         })
         .unwrap_or_else(|| unreachable!("standard scroll viewport is mounted"))
         .bounds();
-    let last_before = first
+    let last_before = h
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("initial menu semantics are published"))
         .nodes()
         .iter()
-        .find(|node| {
-            node.authored_id()
-                .is_some_and(|id| id.as_str() == "long-item-7")
-        })
-        .unwrap_or_else(|| unreachable!("last menu item is mounted"))
+        .find(|node| node.role() == SemanticRole::MenuItem && node.name() == Some("Choice 7"))
+        .unwrap_or_else(|| unreachable!("last item is semantically mounted"))
         .bounds();
 
     let last_id = first
@@ -590,28 +589,21 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
         SettleOutcome::Idle
     );
     assert!(h.publish().is_ok());
-    let publication = h
-        .publication()
-        .unwrap_or_else(|| unreachable!("published after scroll"));
-    let last = publication
-        .frame()
+    let semantics = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
+    let last = semantics
         .nodes()
         .iter()
-        .find(|node| {
-            node.authored_id()
-                .is_some_and(|id| id.as_str() == "long-item-7")
-        })
-        .unwrap_or_else(|| unreachable!("last item still mounted"));
+        .find(|node| node.role() == SemanticRole::MenuItem && node.name() == Some("Choice 7"))
+        .unwrap_or_else(|| unreachable!("last item still semantically mounted"));
     assert!(
         last.bounds().y() < last_before.y(),
-        "shared scroll must move the previously out-of-viewport last menu item; before={last_before:?}, after={:?}, viewport={viewport:?}",
+        "shared scroll must move the last item's published semantic bounds; before={last_before:?}, after={:?}, viewport={viewport:?}",
         last.bounds()
     );
     assert!(
         last.bounds().y() < viewport.max_y() && last.bounds().max_y() > viewport.y(),
         "last menu item must be reachable inside the fixed standard viewport"
     );
-    let semantics = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
     assert!(
         semantics
             .nodes()
