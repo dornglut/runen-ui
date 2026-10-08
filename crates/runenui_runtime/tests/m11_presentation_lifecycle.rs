@@ -353,6 +353,75 @@ fn modal_ignore_still_blocks_ordinary_outside_pointer_without_dismissal() {
 }
 
 #[test]
+fn stationary_rehit_respects_modal_pointer_barrier_without_background_boundaries() {
+    let environment = StyleEnvironment::default();
+    let mut modal_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
+    modal_state.a.modal = true;
+    let mut modal = AppRuntime::<InteractionApp>::mount_with_config(
+        modal_state,
+        RuntimeConfig::default().with_trace_config(TraceConfig::new(2048)),
+    );
+    let first = modal
+        .publish_surface(&context(&environment, 100, 60))
+        .unwrap_or_else(|_| unreachable!("modal baseline publishes"));
+    let outside = node_center(&first, "outside");
+    modal
+        .submit_pointer(PointerEvent::new(
+            PointerId::new(342).unwrap_or_else(|| unreachable!("fixture pointer id is valid")),
+            PointerDeviceKind::Mouse,
+            PointerPhase::Move,
+            outside,
+            first.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("modal hover is accepted"));
+    settle(&mut modal);
+    assert!(
+        !modal
+            .trace()
+            .export_jsonl()
+            .contains("pointer_boundary_notification_resolved"),
+        "an ordinary hover outside a modal cannot target background callbacks"
+    );
+
+    let _second = modal
+        .publish_surface(&context(&environment, 100, 60))
+        .unwrap_or_else(|_| unreachable!("stationary re-hit publication is admitted"));
+    settle(&mut modal);
+    assert!(
+        !modal
+            .trace()
+            .export_jsonl()
+            .contains("pointer_boundary_notification_resolved"),
+        "stationary re-hit cannot bypass the same modal barrier"
+    );
+
+    let mut nonmodal = AppRuntime::<InteractionApp>::mount_with_config(
+        interaction_state(PresentationOutsidePointerPolicy::Ignore),
+        RuntimeConfig::default().with_trace_config(TraceConfig::new(2048)),
+    );
+    let ordinary = nonmodal
+        .publish_surface(&context(&environment, 100, 60))
+        .unwrap_or_else(|_| unreachable!("nonmodal baseline publishes"));
+    nonmodal
+        .submit_pointer(PointerEvent::new(
+            PointerId::new(342).unwrap_or_else(|| unreachable!("fixture pointer id is valid")),
+            PointerDeviceKind::Mouse,
+            PointerPhase::Move,
+            node_center(&ordinary, "outside"),
+            ordinary.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("nonmodal hover is accepted"));
+    settle(&mut nonmodal);
+    assert!(
+        nonmodal
+            .trace()
+            .export_jsonl()
+            .contains("pointer_boundary_notification_resolved"),
+        "nonmodal Ignore preserves normal pointer-boundary notifications"
+    );
+}
+
+#[test]
 fn visually_topmost_eligible_presentation_owns_outside_decision() {
     let mut state = interaction_state(PresentationOutsidePointerPolicy::Block);
     state.b.open = true;
