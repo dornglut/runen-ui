@@ -11,9 +11,9 @@ use crate::{
     ScrollControlRequest, ScrollNormalizedValue, SemanticAction, SemanticCheckedState,
     SemanticCollectionPosition, SemanticCommand, SemanticCommandEvent, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticNumber, SemanticOrientation,
-    SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole,
-    SemanticSelectionMode, SemanticState, SemanticText, ShortcutBinding, StyleIntent, UiEvent,
-    WidgetActivationContext, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation,
+    SemanticPressedState, SemanticReference, SemanticRelationship, SemanticRelationshipKind,
+    SemanticRole, SemanticSelectionMode, SemanticState, SemanticText, ShortcutBinding, StyleIntent,
+    UiEvent, WidgetActivationContext, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation,
     WidgetUpdateContext,
     element::{
         AuthoringDiagnostic, CommonNodeAuthoring, Element, View, Views, common_node_builder_methods,
@@ -395,6 +395,7 @@ pub struct Button<Action> {
     label: String,
     common: CommonNodeAuthoring,
     described_by: Option<ElementId>,
+    pressed: Option<SemanticPressedState>,
     enabled: bool,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
@@ -405,6 +406,7 @@ impl<Action> fmt::Debug for Button<Action> {
         formatter
             .debug_struct("Button")
             .field("label", &self.label)
+            .field("pressed", &self.pressed)
             .field("id", &self.common.id)
             .field("key", &self.common.key)
             .field("layout", &self.common.layout)
@@ -426,6 +428,7 @@ impl<Action> Button<Action> {
             label: label.into(),
             common: CommonNodeAuthoring::default(),
             described_by: None,
+            pressed: None,
             enabled: true,
             activation_factory: None,
             actionable: false,
@@ -437,6 +440,14 @@ impl<Action> Button<Action> {
     #[must_use]
     pub fn described_by(mut self, tooltip: impl IntoElementId) -> Self {
         self.described_by = authored_relationship_target(&mut self.common, "described_by", tooltip);
+        self
+    }
+
+    /// Publishes application-owned pressed semantics without automatic toggling.
+    /// An ordinary momentary Button omits this property.
+    #[must_use]
+    pub const fn pressed(mut self, pressed: SemanticPressedState) -> Self {
+        self.pressed = Some(pressed);
         self
     }
 
@@ -460,6 +471,7 @@ impl<Action> Button<Action> {
 struct ButtonWidget<Action> {
     label: String,
     described_by: Option<ElementId>,
+    pressed: Option<SemanticPressedState>,
     enabled: bool,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
@@ -469,6 +481,7 @@ struct ButtonWidget<Action> {
 struct ButtonWidgetState {
     label: String,
     described_by: Option<ElementId>,
+    pressed: Option<SemanticPressedState>,
     enabled: bool,
     actionable: bool,
     activation_count: u64,
@@ -479,6 +492,7 @@ impl<Action> fmt::Debug for ButtonWidget<Action> {
         formatter
             .debug_struct("ButtonWidget")
             .field("label", &self.label)
+            .field("pressed", &self.pressed)
             .field("enabled", &self.enabled)
             .field("described_by", &self.described_by)
             .field("actionable", &self.actionable)
@@ -493,6 +507,7 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
         ButtonWidgetState {
             label: self.label.clone(),
             described_by: self.described_by.clone(),
+            pressed: self.pressed,
             enabled: self.enabled,
             actionable: self.actionable,
             activation_count: 0,
@@ -506,7 +521,7 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
                     | WidgetInvalidation::SEMANTICS,
             );
         }
-        if state.described_by != self.described_by {
+        if state.described_by != self.described_by || state.pressed != self.pressed {
             context.invalidate(WidgetInvalidation::SEMANTICS);
         }
         if state.enabled != self.enabled {
@@ -526,6 +541,7 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
         }
         state.label.clone_from(&self.label);
         state.described_by.clone_from(&self.described_by);
+        state.pressed = self.pressed;
         state.enabled = self.enabled;
         state.actionable = self.actionable;
     }
@@ -572,7 +588,12 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
     ) -> SemanticContribution {
         let mut node = SemanticNodeContribution::primary(SemanticRole::Button)
             .with_name(state.label.clone())
-            .with_state(SemanticState::ENABLED.with_disabled(!state.enabled));
+            .with_state(match state.pressed {
+                Some(pressed) => SemanticState::ENABLED
+                    .with_disabled(!state.enabled)
+                    .with_pressed(pressed),
+                None => SemanticState::ENABLED.with_disabled(!state.enabled),
+            });
         if state.actionable {
             node = node.with_action(SemanticAction::Activate);
         }
@@ -599,6 +620,7 @@ impl<Action: 'static> View<Action> for Button<Action> {
             Box::new(WidgetAdapter(ButtonWidget {
                 label: self.label,
                 described_by: self.described_by,
+                pressed: self.pressed,
                 enabled: self.enabled,
                 activation_factory: self.activation_factory,
                 actionable: self.actionable,
