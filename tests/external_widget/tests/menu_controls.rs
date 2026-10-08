@@ -424,17 +424,29 @@ fn menu_escape_dismisses_and_restores_the_exact_prior_focus() {
 fn menu_outside_pointer_dismisses_without_dispatching_menu_activation() {
     let mut h = TestHarness::<MenuApp>::mount(Model::default());
     open_menu(&mut h);
+    let outside = runenui_core::LogicalPoint::new(790.0, 590.0)
+        .unwrap_or_else(|_| unreachable!("finite surface position"));
+    let menu = h
+        .publication()
+        .unwrap_or_else(|| unreachable!("published menu"))
+        .frame()
+        .nodes()
+        .iter()
+        .find(|n| n.authored_id().is_some_and(|id| id.as_str() == "file-menu"))
+        .unwrap_or_else(|| unreachable!("menu is mounted"));
+    assert!(
+        !menu.bounds().contains(outside),
+        "the outside-click probe must not overlap published menu bounds"
+    );
     let context = h
         .input_context()
         .unwrap_or_else(|_| unreachable!("surface is published"))
         .clone();
     let pointer = runenui_core::PointerEvent::new(
-        runenui_core::PointerId::new(330)
-            .unwrap_or_else(|| unreachable!("nonzero pointer id")),
+        runenui_core::PointerId::new(330).unwrap_or_else(|| unreachable!("nonzero pointer id")),
         runenui_core::PointerDeviceKind::Mouse,
         runenui_core::PointerPhase::Down,
-        runenui_core::LogicalPoint::new(250.0, 250.0)
-            .unwrap_or_else(|_| unreachable!("finite surface position")),
+        outside,
         context,
     );
     assert!(h.submit_pointer(pointer).is_ok());
