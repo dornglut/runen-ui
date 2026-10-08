@@ -276,9 +276,7 @@ fn menu_checked_items_and_disabled_discoverability_preserve_app_authority() {
     let disabled = snapshot
         .nodes()
         .iter()
-        .find(|node| {
-            node.role() == SemanticRole::MenuItem && node.name() == Some("Unavailable")
-        })
+        .find(|node| node.role() == SemanticRole::MenuItem && node.name() == Some("Unavailable"))
         .unwrap_or_else(|| unreachable!("disabled item remains semantically discoverable"));
     assert_eq!(
         snapshot.focused(),
@@ -606,7 +604,8 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
         .unwrap_or_else(|| unreachable!("last item still mounted"));
     assert!(
         last.bounds().y() < last_before.y(),
-        "shared scroll must move the previously out-of-viewport last menu item"
+        "shared scroll must move the previously out-of-viewport last menu item; before={last_before:?}, after={:?}, viewport={viewport:?}",
+        last.bounds()
     );
     assert!(
         last.bounds().y() < viewport.max_y() && last.bounds().max_y() > viewport.y(),
