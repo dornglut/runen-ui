@@ -363,6 +363,7 @@ impl<Action: 'static> View<Action> for Tooltip<Action> {
 /// pointer/focus lifetime and timer cancellation reuse ordinary runtime paths.
 pub struct TooltipTrigger<Action> {
     owner: Element<Action>,
+    tooltip: Option<Element<Action>>,
     show_delay: Duration,
     show: ActionFactory<Action>,
     hide: ActionFactory<Action>,
@@ -388,14 +389,23 @@ impl<Action> TooltipTrigger<Action> {
     ) -> Self {
         Self {
             owner: owner.into_element(),
+            tooltip: None,
             show_delay,
             show: Rc::new(RefCell::new(Box::new(on_show))),
             hide: Rc::new(RefCell::new(Box::new(on_hide))),
-            common: CommonNodeAuthoring::default(),
+            common: presentation_common(),
         }
     }
 
     common_node_builder_methods!();
+
+    /// Attaches an app-owned, conditionally mounted tooltip beneath the trigger
+    /// so owner-relative placement tracks the trigger's exact layout.
+    #[must_use]
+    pub fn with_tooltip(mut self, tooltip: impl View<Action>) -> Self {
+        self.tooltip = Some(tooltip.into_element());
+        self
+    }
 }
 
 struct TooltipTriggerWidget<Action> {
@@ -418,7 +428,7 @@ struct TooltipTriggerState {
     focused: bool,
 }
 
-impl<Action> TooltipTriggerWidget<Action> {
+impl<Action: 'static> TooltipTriggerWidget<Action> {
     fn update_intent(
         &mut self,
         was_active: bool,
@@ -443,7 +453,7 @@ impl<Action> TooltipTriggerWidget<Action> {
     }
 }
 
-impl<Action> Widget<Action> for TooltipTriggerWidget<Action> {
+impl<Action: 'static> Widget<Action> for TooltipTriggerWidget<Action> {
     type State = TooltipTriggerState;
 
     fn create_state(&self) -> Self::State {
@@ -501,13 +511,17 @@ impl<Action> Widget<Action> for TooltipTriggerWidget<Action> {
         SemanticContribution::single(group)
     }
 }
-impl<Action> ChildBearingWidget<Action> for TooltipTriggerWidget<Action> {}
+impl<Action: 'static> ChildBearingWidget<Action> for TooltipTriggerWidget<Action> {}
 
 impl<Action: 'static> View<Action> for TooltipTrigger<Action> {
     fn into_element(self) -> Element<Action> {
         let (fields, diagnostics) = self
             .common
             .into_authored_fields(Focusability::NotFocusable, None);
+        let mut children = vec![self.owner];
+        if let Some(tooltip) = self.tooltip {
+            children.push(tooltip);
+        }
         Element::from_authored_parts(
             fields,
             Box::new(WidgetAdapter(TooltipTriggerWidget {
@@ -515,7 +529,7 @@ impl<Action: 'static> View<Action> for TooltipTrigger<Action> {
                 show: self.show,
                 hide: self.hide,
             })),
-            vec![self.owner],
+            children,
             diagnostics,
         )
     }
