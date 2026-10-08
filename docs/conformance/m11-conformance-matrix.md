@@ -2,7 +2,7 @@
 
 > **Category:** Target architecture
 >
-> **Status:** M11A/M11B/M11C/M11D2/M11SEM1/M11S2 owner-accepted; M11SCROLLB owner-accepted; M11COLL2 owner-accepted; M11TABS owner-accepted; M11CONTENT owner-accepted; M11PRES1 owner-accepted; M11PRES2 owner-accepted; M11PRESCTRL owner-accepted; M11MENU owner-accepted
+> **Status:** M11A/M11B/M11C/M11D2/M11SEM1/M11S2 owner-accepted; M11SCROLLB owner-accepted; M11COLL2 owner-accepted; M11TABS owner-accepted; M11CONTENT owner-accepted; M11PRES1 owner-accepted; M11PRES2 owner-accepted; M11PRESCTRL owner-accepted; M11MENU owner-accepted; M11BUTTONPRESS implementation-complete
 >
 > **Milestone:** M11
 >
@@ -15,9 +15,9 @@
 > M10 remains authoritative for editable text and interaction services.
 
 ```text
-61 total unique rows
+62 total unique rows
 61 owner-accepted
-0 implementation-complete
+1 implementation-complete
 0 proof-complete
 0 blocked
 0 duplicate IDs
@@ -99,3 +99,6 @@
 | M11CTRL-59 | MenuItem, MenuItemCheckbox and MenuItemRadio reuse exact checked/expanded/popup semantics while checked selection remains application-owned. Disabled entries are discoverable/focusable by default but never activate. | `tests/external_widget/tests/menu_controls.rs::menu_checked_items_and_disabled_discoverability_preserve_app_authority` | MenuItemRadio does not permit Mixed, no hidden selection index or disabled activation | Existing semantic publication and focus observations | M11MENU | owner-accepted | Required |
 | M11CTRL-60 | Menu activation emits ordinary application actions or accepted scoped application commands; nested submenu Expand/Collapse and typed presentation dismissal preserve app-owned visibility and exact focus lifecycle. | `tests/external_widget/tests/menu_controls.rs::menu_command_uses_scoped_fifo_and_submenu_expands_through_app_state`; `menu_button_open_close_and_exact_controls_are_application_owned`; `menu_escape_dismisses_and_restores_the_exact_prior_focus`; `menu_outside_pointer_dismisses_without_dispatching_menu_activation` | No menu-local command registry, renderer popup, keyboard-accelerator matching, synchronous update or click-through | Existing application-command FIFO and #342 lifecycle observations | M11MENU | owner-accepted | Required |
 | M11CTRL-61 | Public Menu family and downstream composites share generic semantic, focus, scheduler, presentation, command and scroll contracts without runtime menu-type branches. | Complete `tests/external_widget/tests/menu_controls.rs` and accepted #341/#342/#338/#344/#345 proof | No separate runtime tree, focus, timer, renderer or native menu authority | Shared public deterministic runtime and bounded trace | M11MENU | owner-accepted | Required |
+
+
+| M11CTRL-62 | Public Button exposes optional application-authored Unpressed/Pressed/Mixed semantics through the accepted typed Button pressed state. An ordinary Button has no pressed semantic fact; changing pressed on application rebuild advances semantic revision without a runtime toggle, alternate control type or private selected style state. All activation origins remain ordinary application actions; disabled pressed Buttons retain semantic meaning but reject activation, and downstream public Widgets may author equivalent facts. | `crates/runenui_testing/tests/m11_button_pressed.rs::button_without_authored_pressed_state_remains_momentary`; `button_pressed_semantics_follow_only_application_authored_updates`; `downstream_custom_widget_uses_identical_public_pressed_semantic_contract` | `disabled_pressed_button_stays_semantic_and_rejects_activation`; equal-state publication does not advance revision; source audit excludes runtime-owned pressed state, separate ToggleButton runtime or widget-type branch | Accepted #310 role-aware validation and M5 semantic revision/delta plus accepted M11A activation-origin conformance | M11BUTTONPRESS | implementation-complete | Required |
