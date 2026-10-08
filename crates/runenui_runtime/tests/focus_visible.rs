@@ -1,13 +1,14 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    CommandOrigin, Element, ElementId, HitContribution, HitContributionContext, KeyLocation,
+    Brush, Color, CommandOrigin, Element, ElementId, HitContribution, HitContributionContext, KeyLocation,
     KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, LogicalLength,
-    LogicalPoint, LogicalRect, NoHostProtocol, PhysicalKey, PointerButton, PointerButtons,
+    LogicalPoint, LogicalRect, NoHostProtocol, Outline, PhysicalKey, PointerButton, PointerButtons,
     PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
     SemanticActionRequest, SemanticCommand, SemanticContribution, SemanticContributionContext,
-    SemanticNodeContribution, SemanticRole, FocusScope, StyleEnvironment, UiApp, View, Widget,
-    WidgetActivation, WidgetMeasure, WidgetTextInput, button, children, column,
+    SemanticNodeContribution, SemanticRole, FocusScope, StyleEnvironment, StyleInteractionState,
+    StyleProperties, StyleRecipe, StyleRecipeId, StyleTheme, StyleTokens, StrokeStyle, UiApp, View,
+    Widget, WidgetActivation, WidgetMeasure, WidgetTextInput, button, children, column,
 };
 use runenui_runtime::{
     AppRuntime, InputModality, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext,
@@ -403,4 +404,142 @@ fn remembered_restoration_obeys_canonical_source_not_focus_reason() {
     settle(&mut app);
     assert_eq!(app.focus().focused_node(), Some(&inner));
     assert!(app.focus().focus_visible());
+}
+
+
+struct StyledApp;
+
+impl UiApp for StyledApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &Self::State) -> impl View<Self::Action> {
+        let recipe = StyleRecipeId::new("control.focus-indicator")
+            .unwrap_or_else(|_| unreachable!("recipe identity is valid"));
+        column(children![
+            button("Focus indicator")
+                .id("styled")
+                .recipe(recipe.clone())
+                .on_activate(|| ()),
+            Element::new(TextInputProbe)
+                .id("styled-custom")
+                .focusable(true)
+                .recipe(recipe),
+        ])
+    }
+
+    fn update((): &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfer() {
+    let mut recipe = StyleRecipe::new(StyleProperties::EMPTY);
+    recipe
+        .define_interaction(
+            StyleInteractionState::FocusVisible,
+            StyleProperties::EMPTY.with_outline(Outline::new(
+                Brush::solid(Color::BLACK),
+                StrokeStyle::new(LogicalLength::from(2_u16)),
+            )),
+        )
+        .unwrap_or_else(|_| unreachable!("focus-visible recipe defined once"));
+    let mut theme = StyleTheme::new(StyleTokens::new());
+    theme
+        .define_recipe(
+            StyleRecipeId::new("control.focus-indicator")
+                .unwrap_or_else(|_| unreachable!("recipe identity is valid")),
+            recipe,
+        )
+        .unwrap_or_else(|_| unreachable!("recipe defined once"));
+    let environment = StyleEnvironment::new(theme);
+    let size = LogicalSize::try_new(240.0, 100.0)
+        .unwrap_or_else(|_| unreachable!("finite publication"));
+    let context = SurfaceBuildContext::tight(&environment, size);
+    let mut app = AppRuntime::<StyledApp>::mount(());
+    settle(&mut app);
+
+    let initial = app.publish_surface(&context)
+        .unwrap_or_else(|error| panic!("initial styled publication: {error:?}"));
+    let styled = initial.frame().nodes().iter()
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "styled"))
+        .unwrap_or_else(|| unreachable!("styled button publishes"));
+    assert!(styled.computed_style().outline().is_none());
+    let target = styled.id().clone();
+    let bounds = styled.bounds();
+    let point = LogicalPoint::new(bounds.x() + bounds.width() / 2.0, bounds.y() + bounds.height() / 2.0)
+        .unwrap_or_else(|_| unreachable!("finite geometry"));
+    let down = PointerEvent::new(
+        PointerId::new(77).unwrap_or_else(|| unreachable!("nonzero pointer")),
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        point,
+        initial.input_context().clone(),
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Primary]))
+    .with_changed_button(PointerButton::Primary);
+    assert!(app.submit_pointer(down).is_ok());
+    settle(&mut app);
+    assert_eq!(app.focus().focused_node(), Some(&target));
+    assert!(!app.focus().focus_visible());
+    let pointer_publication = app.publish_surface(&context)
+        .unwrap_or_else(|error| panic!("pointer publication: {error:?}"));
+    assert!(pointer_publication.frame().nodes().iter()
+        .find(|node| node.id() == &target)
+        .unwrap_or_else(|| unreachable!("focused button published"))
+        .computed_style().outline().is_none());
+
+    let focus_transitions = app.trace().records()
+        .filter(|record| matches!(record.kind(), TraceRecordKind::FocusTransitionCommitted { .. }))
+        .count();
+    assert!(app.submit_command(
+        target.clone(),
+        SemanticCommand::RequestFocus,
+        CommandOrigin::controller(),
+    ).is_ok());
+    settle(&mut app);
+    assert_eq!(app.focus().focused_node(), Some(&target));
+    assert!(app.focus().focus_visible());
+    assert_eq!(focus_transitions, app.trace().records()
+        .filter(|record| matches!(record.kind(), TraceRecordKind::FocusTransitionCommitted { .. }))
+        .count());
+    let after = app.publish_surface(&context)
+        .unwrap_or_else(|error| panic!("promoted publication: {error:?}"));
+    assert!(after.frame().nodes().iter()
+        .find(|node| node.id() == &target)
+        .unwrap_or_else(|| unreachable!("unchanged owner remains published"))
+        .computed_style().outline().is_some());
+    assert!(app.trace().records().any(|record| {
+        matches!(record.kind(), TraceRecordKind::FocusVisibilityChanged { visible: true })
+    }));
+
+    // The same public recipe also works for a non-built-in Widget with text-input capability.
+    let custom = after.frame().nodes().iter()
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "styled-custom"))
+        .unwrap_or_else(|| unreachable!("downstream styled widget is published"));
+    let custom_id = custom.id().clone();
+    let bounds = custom.bounds();
+    let point = LogicalPoint::new(
+        bounds.x() + bounds.width() / 2.0,
+        bounds.y() + bounds.height() / 2.0,
+    ).unwrap_or_else(|_| unreachable!("published custom bounds are finite"));
+    let down = PointerEvent::new(
+        PointerId::new(78).unwrap_or_else(|| unreachable!("distinct pointer")),
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        point,
+        after.input_context().clone(),
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Primary]))
+    .with_changed_button(PointerButton::Primary);
+    assert!(app.submit_pointer(down).is_ok());
+    settle(&mut app);
+    assert_eq!(app.focus().focused_node(), Some(&custom_id));
+    assert!(app.focus().focus_visible());
+    let downstream = app.publish_surface(&context)
+        .unwrap_or_else(|error| panic!("downstream styled publication: {error:?}"));
+    assert!(downstream.frame().nodes().iter()
+        .find(|node| node.id() == &custom_id)
+        .unwrap_or_else(|| unreachable!("custom widget remains published"))
+        .computed_style().outline().is_some());
 }

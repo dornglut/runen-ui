@@ -664,7 +664,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     /// Derives the indication for a real focus transfer from its admitted source
-    /// and the target's public input capability, without consulting FocusReason.
+    /// and the target's public input capability, without consulting `FocusReason`.
     fn focus_visibility_on_transfer(
         &mut self,
         source: InputModality,
