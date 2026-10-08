@@ -394,6 +394,7 @@ impl<Action: 'static> View<Action> for Text {
 pub struct Button<Action> {
     label: String,
     common: CommonNodeAuthoring,
+    described_by: Option<ElementId>,
     enabled: bool,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
@@ -408,6 +409,7 @@ impl<Action> fmt::Debug for Button<Action> {
             .field("key", &self.common.key)
             .field("layout", &self.common.layout)
             .field("enabled", &self.enabled)
+            .field("described_by", &self.described_by)
             .field("actionable", &self.actionable)
             .field("has_callback", &self.activation_factory.is_some())
             .field("style", &self.common.style)
@@ -423,12 +425,21 @@ impl<Action> Button<Action> {
         Self {
             label: label.into(),
             common: CommonNodeAuthoring::default(),
+            described_by: None,
             enabled: true,
             activation_factory: None,
             actionable: false,
         }
     }
     common_node_builder_methods!();
+
+    /// Links this `Button` semantic node to an app-authored `Tooltip`.
+    #[must_use]
+    pub fn described_by(mut self, tooltip: impl IntoElementId) -> Self {
+        self.described_by = authored_relationship_target(&mut self.common, "described_by", tooltip);
+        self
+    }
+
     #[must_use]
     pub const fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
@@ -448,6 +459,7 @@ impl<Action> Button<Action> {
 
 struct ButtonWidget<Action> {
     label: String,
+    described_by: Option<ElementId>,
     enabled: bool,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
@@ -456,6 +468,7 @@ struct ButtonWidget<Action> {
 #[derive(Debug)]
 struct ButtonWidgetState {
     label: String,
+    described_by: Option<ElementId>,
     enabled: bool,
     actionable: bool,
     activation_count: u64,
@@ -467,6 +480,7 @@ impl<Action> fmt::Debug for ButtonWidget<Action> {
             .debug_struct("ButtonWidget")
             .field("label", &self.label)
             .field("enabled", &self.enabled)
+            .field("described_by", &self.described_by)
             .field("actionable", &self.actionable)
             .field("has_callback", &self.activation_factory.is_some())
             .finish()
@@ -478,6 +492,7 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
     fn create_state(&self) -> Self::State {
         ButtonWidgetState {
             label: self.label.clone(),
+            described_by: self.described_by.clone(),
             enabled: self.enabled,
             actionable: self.actionable,
             activation_count: 0,
@@ -490,6 +505,9 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
                     | WidgetInvalidation::PAINT
                     | WidgetInvalidation::SEMANTICS,
             );
+        }
+        if state.described_by != self.described_by {
+            context.invalidate(WidgetInvalidation::SEMANTICS);
         }
         if state.enabled != self.enabled {
             context.invalidate(
@@ -507,6 +525,7 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
             );
         }
         state.label.clone_from(&self.label);
+        state.described_by.clone_from(&self.described_by);
         state.enabled = self.enabled;
         state.actionable = self.actionable;
     }
@@ -557,6 +576,15 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
         if state.actionable {
             node = node.with_action(SemanticAction::Activate);
         }
+        if let Some(tooltip) = state.described_by.clone() {
+            node = node.with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::DescribedBy,
+                SemanticReference::Authored {
+                    element_id: tooltip,
+                    semantic_key: None,
+                },
+            ));
+        }
         SemanticContribution::single(node)
     }
 }
@@ -570,6 +598,7 @@ impl<Action: 'static> View<Action> for Button<Action> {
             fields,
             Box::new(WidgetAdapter(ButtonWidget {
                 label: self.label,
+                described_by: self.described_by,
                 enabled: self.enabled,
                 activation_factory: self.activation_factory,
                 actionable: self.actionable,

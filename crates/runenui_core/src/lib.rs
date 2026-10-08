@@ -245,6 +245,7 @@ mod path;
 mod path_containment;
 mod pointer;
 pub mod prelude;
+mod presentation_controls;
 mod presentation_geometry;
 mod resource;
 mod runtime_protocol;
@@ -331,6 +332,7 @@ pub use paint::{
 };
 pub use paint_group::{PaintContributionEntry, PaintContributionGroup};
 pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
+pub use presentation_controls::{Dialog, Popover, Tooltip, TooltipTrigger};
 pub use standard_content::{Image, Separator, image, separator};
 pub use surface_presentation::{
     PresentationDismissReason, PresentationFocusEntry, PresentationFocusPolicy,

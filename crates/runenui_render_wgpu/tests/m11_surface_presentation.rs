@@ -8,9 +8,9 @@ use std::{
 };
 
 use runenui_core::{
-    Color, Element, LogicalLength, LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol,
-    PaintContribution, PaintContributionContext, PaintContributionItem, ResourceRef, SceneLayer,
-    SceneShape, StyleEnvironment, SurfacePresentation, SurfacePresentationAnchor,
+    Color, Dialog, Element, LogicalLength, LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol,
+    PaintContribution, PaintContributionContext, PaintContributionItem, Popover, ResourceRef,
+    SceneLayer, SceneShape, StyleEnvironment, SurfacePresentation, SurfacePresentationAnchor,
     SurfacePresentationPlacement, SurfacePresentationSide, UiApp, View, Widget, WidgetMeasure,
     WidgetMeasureInput, column,
 };
@@ -138,6 +138,75 @@ fn real_wgpu_consumes_runtime_presentation_band_without_renderer_popup_authority
         [0, 0, 0, 0xFF],
         "renderer must consume runtime ordering: presentation black stays above ordinary white despite lower SceneLayer"
     );
+    Ok(())
+}
+
+struct StandardPresentationControlApp;
+
+impl UiApp for StandardPresentationControlApp {
+    type State = bool;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(dialog: &Self::State) -> Element<Self::Action> {
+        let ordinary = Element::new(PaintProbe {
+            color: Color::WHITE,
+            layer: SceneLayer::new(10_000),
+        });
+        let child = Element::new(PaintProbe {
+            color: Color::BLACK,
+            layer: SceneLayer::new(-10_000),
+        });
+        let presentation = if *dialog {
+            Dialog::new("Native-neutral dialog", vec![child]).into_element()
+        } else {
+            Popover::new(
+                vec![child],
+                SurfacePresentation::new(SurfacePresentationPlacement::new(
+                    SurfacePresentationSide::Center,
+                ))
+                .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                    LogicalPoint::new(32.0, 32.0)
+                        .unwrap_or_else(|_| unreachable!("controlled point is finite")),
+                )),
+            )
+            .into_element()
+        };
+        column(vec![ordinary, presentation]).into_element()
+    }
+
+    fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn standard_popover_and_dialog_render_through_existing_runtime_presentation_band()
+-> Result<(), Box<dyn Error>> {
+    let Some(mut renderer) = renderer_or_skip()? else {
+        return Ok(());
+    };
+    let environment = StyleEnvironment::default();
+    let size = LogicalSize::new(LogicalLength::from(64_u8), LogicalLength::from(64_u8));
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::tight(size))
+        .with_raster_scale(RasterScale::ONE);
+
+    for dialog in [false, true] {
+        let mut runtime = AppRuntime::<StandardPresentationControlApp>::mount(dialog);
+        let publication = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|_| unreachable!("public presentation control publishes"));
+        let output =
+            renderer.render_offscreen_publication(publication.paint_publication(), &NoResources)?;
+        assert_eq!(
+            pixel(output.readback(), 20, 20),
+            [0, 0, 0, 0xFF],
+            "standard Popover/Dialog must paint above the ordinary SceneLayer without renderer branching"
+        );
+        assert_eq!(
+            pixel(output.readback(), 5, 5),
+            [0xFF, 0xFF, 0xFF, 0xFF],
+            "surface-presentation placement must not enlarge or replace ordinary child layout"
+        );
+    }
     Ok(())
 }
 

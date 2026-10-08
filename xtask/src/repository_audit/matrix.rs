@@ -38,6 +38,7 @@ const M11_DELIVERY_SLICES: &[&str] = &[
     "M11CONTENT",
     "M11PRES1",
     "M11PRES2",
+    "M11PRESCTRL",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -894,6 +895,80 @@ mod tests {
         "M11CTRL-51",
     ];
 
+    const M11_EXPECTED_SLICES: &[(&str, &[&str], &str)] = &[
+        (
+            "M11A",
+            &[
+                "M11CTRL-01",
+                "M11CTRL-02",
+                "M11CTRL-03",
+                "M11CTRL-04",
+                "M11CTRL-05",
+            ],
+            "owner-accepted",
+        ),
+        (
+            "M11B",
+            &["M11CTRL-06", "M11CTRL-07", "M11CTRL-08"],
+            "owner-accepted",
+        ),
+        ("M11C", &["M11CTRL-09", "M11CTRL-10"], "owner-accepted"),
+        (
+            "M11D2",
+            &["M11CTRL-11", "M11CTRL-12", "M11CTRL-13"],
+            "owner-accepted",
+        ),
+        (
+            "M11SEM1",
+            &["M11CTRL-14", "M11CTRL-15", "M11CTRL-16"],
+            "owner-accepted",
+        ),
+        (
+            "M11S2",
+            &["M11CTRL-17", "M11CTRL-18", "M11CTRL-19"],
+            "owner-accepted",
+        ),
+        (
+            "M11SCROLLB",
+            &[
+                "M11CTRL-20",
+                "M11CTRL-21",
+                "M11CTRL-22",
+                "M11CTRL-23",
+                "M11CTRL-24",
+            ],
+            "owner-accepted",
+        ),
+        (
+            "M11COLL2",
+            &["M11CTRL-25", "M11CTRL-26", "M11CTRL-27", "M11CTRL-28"],
+            "owner-accepted",
+        ),
+        (
+            "M11TABS",
+            &["M11CTRL-29", "M11CTRL-30", "M11CTRL-31", "M11CTRL-32"],
+            "owner-accepted",
+        ),
+        (
+            "M11CONTENT",
+            &["M11CTRL-33", "M11CTRL-34", "M11CTRL-35"],
+            "owner-accepted",
+        ),
+        ("M11PRES1", M11_PRESENTATION_IDS, "owner-accepted"),
+        ("M11PRES2", M11_PRESENTATION_LIFECYCLE_IDS, "owner-accepted"),
+        (
+            "M11PRESCTRL",
+            &[
+                "M11CTRL-52",
+                "M11CTRL-53",
+                "M11CTRL-54",
+                "M11CTRL-55",
+                "M11CTRL-56",
+            ],
+            "implementation-complete",
+        ),
+    ];
+
     #[test]
     #[allow(clippy::assert_is_empty)]
     fn m11_inventory_accepts_current_control_contracts() -> Result<(), String> {
@@ -905,71 +980,9 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 51);
+        assert_eq!(rows.len(), 56);
 
-        let expected: &[(&str, &[&str], &str)] = &[
-            (
-                "M11A",
-                &[
-                    "M11CTRL-01",
-                    "M11CTRL-02",
-                    "M11CTRL-03",
-                    "M11CTRL-04",
-                    "M11CTRL-05",
-                ],
-                "owner-accepted",
-            ),
-            (
-                "M11B",
-                &["M11CTRL-06", "M11CTRL-07", "M11CTRL-08"],
-                "owner-accepted",
-            ),
-            ("M11C", &["M11CTRL-09", "M11CTRL-10"], "owner-accepted"),
-            (
-                "M11D2",
-                &["M11CTRL-11", "M11CTRL-12", "M11CTRL-13"],
-                "owner-accepted",
-            ),
-            (
-                "M11SEM1",
-                &["M11CTRL-14", "M11CTRL-15", "M11CTRL-16"],
-                "owner-accepted",
-            ),
-            (
-                "M11S2",
-                &["M11CTRL-17", "M11CTRL-18", "M11CTRL-19"],
-                "owner-accepted",
-            ),
-            (
-                "M11SCROLLB",
-                &[
-                    "M11CTRL-20",
-                    "M11CTRL-21",
-                    "M11CTRL-22",
-                    "M11CTRL-23",
-                    "M11CTRL-24",
-                ],
-                "owner-accepted",
-            ),
-            (
-                "M11COLL2",
-                &["M11CTRL-25", "M11CTRL-26", "M11CTRL-27", "M11CTRL-28"],
-                "owner-accepted",
-            ),
-            (
-                "M11TABS",
-                &["M11CTRL-29", "M11CTRL-30", "M11CTRL-31", "M11CTRL-32"],
-                "owner-accepted",
-            ),
-            (
-                "M11CONTENT",
-                &["M11CTRL-33", "M11CTRL-34", "M11CTRL-35"],
-                "owner-accepted",
-            ),
-            ("M11PRES1", M11_PRESENTATION_IDS, "owner-accepted"),
-            ("M11PRES2", M11_PRESENTATION_LIFECYCLE_IDS, "owner-accepted"),
-        ];
-        for (slice, ids, status) in expected {
+        for (slice, ids, status) in M11_EXPECTED_SLICES {
             assert_m11_slice(&rows, slice, ids, status);
         }
         assert_eq!(
@@ -985,6 +998,7 @@ mod tests {
                 "M11CONTENT",
                 "M11PRES1",
                 "M11PRES2",
+                "M11PRESCTRL",
                 "M11SCROLLB",
                 "M11SEM1",
                 "M11TABS",
@@ -1082,7 +1096,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 493);
+        assert_eq!(total, 498);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }
