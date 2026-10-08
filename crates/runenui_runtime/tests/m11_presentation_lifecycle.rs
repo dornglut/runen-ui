@@ -26,11 +26,7 @@ fn fixed(width: u16, height: u16) -> LayoutStyle {
         .with_height(LayoutDimension::length(LogicalLength::from(height)))
 }
 
-fn context(
-    environment: &StyleEnvironment,
-    width: u16,
-    height: u16,
-) -> SurfaceBuildContext<'_> {
+fn context(environment: &StyleEnvironment, width: u16, height: u16) -> SurfaceBuildContext<'_> {
     SurfaceBuildContext::new(
         environment,
         LayoutConstraints::tight(LogicalSize::new(
@@ -89,7 +85,7 @@ fn pointer(input: &SurfaceInputContext, point: LogicalPoint, phase: PointerPhase
     }
 }
 
-type PointerMoveLog = PointerMoveLog;
+type PointerMoveLog = Rc<RefCell<Vec<(MountedNodeId, Option<MountedNodeId>)>>>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum InteractionAction {
