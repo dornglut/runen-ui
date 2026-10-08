@@ -516,15 +516,15 @@ impl UiApp for FocusLifecycleApp {
                 .id("focus-first")
                 .key("focus-first")
                 .with_layout(fixed(20, 20))
-                .presentation_focus_preferred(state.duplicate_preferred)
-                .into_element();
+                .into_element()
+                .presentation_focus_preferred(state.duplicate_preferred);
             let preferred = button("preferred")
                 .on_activate(|| FocusAction::Close)
                 .id("focus-preferred")
                 .key("focus-preferred")
                 .with_layout(fixed(20, 20))
-                .presentation_focus_preferred(state.preferred)
-                .into_element();
+                .into_element()
+                .presentation_focus_preferred(state.preferred);
             children.push(
                 column(vec![first, preferred])
                     .id("focus-presentation")
@@ -769,9 +769,9 @@ impl UiApp for AnchorUnavailableApp {
         let popup = Element::new(AnchorProbe)
             .id("anchor-popup")
             .key("anchor-popup")
-            .surface_presentation(SurfacePresentation::new(
-                SurfacePresentationPlacement::new(SurfacePresentationSide::Bottom),
-            ));
+            .surface_presentation(SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Bottom,
+            )));
         column(vec![popup])
             .id("singular-owner")
             .key("singular-owner")
@@ -845,9 +845,9 @@ impl UiApp for CaptureModalApp {
                 .key("modal")
                 .with_layout(fixed(20, 20))
                 .surface_presentation(
-                    SurfacePresentation::new(
-                        SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-                    )
+                    SurfacePresentation::new(SurfacePresentationPlacement::new(
+                        SurfacePresentationSide::Center,
+                    ))
                     .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                         LogicalPoint::new(70.0, 20.0)
                             .unwrap_or_else(|_| unreachable!("modal anchor is finite")),
@@ -898,8 +898,8 @@ fn active_pointer_capture_remains_authoritative_after_modal_presentation_opens()
         .publish_surface(&context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("modal publication succeeds"));
     let modal = node_id(&second, "modal");
-    let modal_point = LogicalPoint::new(70.0, 20.0)
-        .unwrap_or_else(|_| unreachable!("modal point is finite"));
+    let modal_point =
+        LogicalPoint::new(70.0, 20.0).unwrap_or_else(|_| unreachable!("modal point is finite"));
     runtime
         .submit_pointer(pointer(
             second.input_context(),
@@ -915,7 +915,6 @@ fn active_pointer_capture_remains_authoritative_after_modal_presentation_opens()
         "new modal presentation may be the physical target but must not steal the active capture"
     );
 }
-
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CompositionPresentationAction {
@@ -1008,9 +1007,9 @@ impl UiApp for CompositionPresentationApp {
                 .key("composition-popup")
                 .with_layout(fixed(20, 20))
                 .surface_presentation(
-                    SurfacePresentation::new(
-                        SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-                    )
+                    SurfacePresentation::new(SurfacePresentationPlacement::new(
+                        SurfacePresentationSide::Center,
+                    ))
                     .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                         LogicalPoint::new(70.0, 20.0)
                             .unwrap_or_else(|_| unreachable!("fixture anchor is finite")),
@@ -1076,7 +1075,6 @@ fn composition_active_escape_remains_text_owned_and_does_not_dismiss_presentatio
     assert_eq!(runtime.state().dismissals, 0);
 }
 
-
 #[derive(Clone, Debug)]
 struct NestedInteractionState {
     inner_open: bool,
@@ -1131,9 +1129,9 @@ impl UiApp for NestedInteractionApp {
             .key("nested-outer")
             .with_layout(fixed(40, 30))
             .surface_presentation(
-                SurfacePresentation::new(
-                    SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-                )
+                SurfacePresentation::new(SurfacePresentationPlacement::new(
+                    SurfacePresentationSide::Center,
+                ))
                 .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                     LogicalPoint::new(60.0, 35.0)
                         .unwrap_or_else(|_| unreachable!("nested outer anchor is finite")),
@@ -1219,15 +1217,11 @@ fn nested_presentation_owner_chain_is_inside_and_unrelated_content_dismisses_onl
     );
     assert_eq!(
         runtime.state().dismissals,
-        [(
-            "nested-inner",
-            PresentationDismissReason::OutsidePointer,
-        )],
+        [("nested-inner", PresentationDismissReason::OutsidePointer,)],
         "the visually topmost nested presentation owns the outside decision"
     );
     assert!(!runtime.state().inner_open);
 }
-
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ClickThroughAction {
@@ -1295,16 +1289,14 @@ impl UiApp for ClickThroughApp {
                     .key("click-through-presentation")
                     .with_layout(fixed(20, 20))
                     .surface_presentation(
-                        SurfacePresentation::new(
-                            SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-                        )
+                        SurfacePresentation::new(SurfacePresentationPlacement::new(
+                            SurfacePresentationSide::Center,
+                        ))
                         .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                             LogicalPoint::new(70.0, 30.0)
                                 .unwrap_or_else(|_| unreachable!("fixture anchor is finite")),
                         ))
-                        .with_outside_pointer(
-                            PresentationOutsidePointerPolicy::DismissAndBlock,
-                        ),
+                        .with_outside_pointer(PresentationOutsidePointerPolicy::DismissAndBlock),
                     ),
             );
         }
@@ -1350,7 +1342,6 @@ fn dismissed_outside_pointer_stream_cannot_activate_underlying_button_on_matchin
         "a blocked outside Down must not seed standard Button pressed ownership that could activate on the matching Up"
     );
 }
-
 
 #[test]
 fn presentation_lifecycle_trace_export_uses_bounded_stable_tokens() {

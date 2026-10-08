@@ -130,9 +130,9 @@ impl UiApp for OwnerRestoreApp {
                 .on_activate(|| OwnerRestoreAction::CloseAndReplace)
                 .id("restore-inside")
                 .key("restore-inside")
-                .presentation_focus_preferred(true)
                 .with_layout(fixed(20, 20))
-                .into_element();
+                .into_element()
+                .presentation_focus_preferred(true);
             owned.push(presentation_at(preferred, "restore-presentation"));
         }
         container(FocusOwner, owned)
@@ -244,9 +244,9 @@ impl UiApp for ScopeRestoreApp {
                     .on_activate(|| ScopeRestoreAction::CloseAndRemoveOwner)
                     .id("scope-inside")
                     .key("scope-inside")
-                    .presentation_focus_preferred(true)
                     .with_layout(fixed(20, 20))
-                    .into_element();
+                    .into_element()
+                    .presentation_focus_preferred(true);
                 owner_children.push(presentation_at(inside, "scope-presentation"));
             }
             scope_children.push(
@@ -456,18 +456,18 @@ impl UiApp for NestedRestoreApp {
                 .on_activate(|| NestedAction::OpenInner)
                 .id("outer-focus")
                 .key("outer-focus")
-                .presentation_focus_preferred(true)
                 .with_layout(fixed(20, 20))
-                .into_element();
+                .into_element()
+                .presentation_focus_preferred(true);
             let mut outer_children = vec![outer_focus];
             if state.inner {
                 let inner_focus = button("inner focus")
                     .on_activate(|| NestedAction::CloseInner)
                     .id("inner-focus")
                     .key("inner-focus")
-                    .presentation_focus_preferred(true)
                     .with_layout(fixed(20, 20))
-                    .into_element();
+                    .into_element()
+                    .presentation_focus_preferred(true);
                 outer_children.push(
                     column(vec![inner_focus])
                         .id("inner-presentation")
