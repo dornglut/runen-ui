@@ -775,16 +775,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
     fn finish(
         mut self,
         root_constraints: LayoutConstraints,
-    ) -> Result<
-        (
-            LogicalSize,
-            Vec<LogicalRect>,
-            SurfaceLayoutReport,
-            Vec<TextLayoutState>,
-            Vec<LogicalPoint>,
-        ),
-        TextLayoutError,
-    > {
+    ) -> Result<LayoutCoreResult, TextLayoutError> {
         if let Some(error) = self.text_error {
             return Err(error);
         }
@@ -1560,4 +1551,48 @@ fn layout_is_valid(layout: Layout) -> bool {
         && layout.scrollable_overflow_rect.bottom.is_finite()
         && layout.scrollable_overflow_rect.right >= layout.scrollable_overflow_rect.left
         && layout.scrollable_overflow_rect.bottom >= layout.scrollable_overflow_rect.top
+}
+
+#[cfg(test)]
+mod text_baseline_placement_tests {
+    use super::text_baselines;
+    use runenui_core::{FontFamilyName, GenericFontFamily, LogicalLength, Typography};
+    use runenui_text::{
+        FontSourcePolicy, TextConstraints, TextLayoutState, TextRequest, TextSystem,
+    };
+
+    const FONT: &[u8] =
+        include_bytes!("../../../runenui_text/tests/fixtures/Cantarell-Regular.ttf");
+
+    #[test]
+    fn first_and_last_baselines_share_exactly_one_block_placement()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        assert!(system.register_font_bytes(FONT.to_vec())? > 0);
+        let family = FontFamilyName::new("Cantarell")?;
+        assert!(system.set_generic_family_mapping(GenericFontFamily::SansSerif, &[family])?);
+
+        let mut retained = TextLayoutState::new();
+        let artifact = system
+            .layout_text(
+                &mut retained,
+                &TextRequest::new(
+                    "first line\nsecond line",
+                    Typography::default(),
+                    TextConstraints::unbounded(),
+                ),
+            )?
+            .into_artifact();
+        let start = text_baselines(&artifact, LogicalLength::from(8_u8));
+        let centered = text_baselines(&artifact, LogicalLength::from(28_u8));
+        let (Some(start_first), Some(start_last), Some(center_first), Some(center_last)) =
+            (start.first, start.last, centered.first, centered.last)
+        else {
+            return Err("two-line text must expose first and last baselines".into());
+        };
+        assert!((center_first - start_first - 20.0).abs() <= 0.0001);
+        assert!((center_last - start_last - 20.0).abs() <= 0.0001);
+        assert!(center_last > center_first);
+        Ok(())
+    }
 }
