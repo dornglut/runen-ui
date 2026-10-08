@@ -681,6 +681,8 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
             .any(|n| { n.role() == SemanticRole::MenuItem && n.name() == Some("Choice 7") })
     );
 
+    let last_semantic_id = last.id().clone();
+
     // Generic group exclusion retains the menu boundary without hiding scroll chrome.
     assert!(
         h.submit_command(
@@ -695,7 +697,7 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
         h.semantic_snapshot()
             .unwrap_or_else(|_| unreachable!())
             .focused(),
-        Some(last.id()),
+        Some(&last_semantic_id),
         "Down at the final Menu item must stop before the scrollbar"
     );
 
@@ -705,7 +707,10 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
         .frame()
         .nodes()
         .iter()
-        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "long-menu-scrollbar"))
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "long-menu-scrollbar")
+        })
         .unwrap_or_else(|| unreachable!("scrollbar remains mounted"))
         .id()
         .clone();
