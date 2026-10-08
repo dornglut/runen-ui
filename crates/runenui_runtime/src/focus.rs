@@ -338,6 +338,9 @@ fn collect_focus_group_members<Action>(
     }
 
     if nested_group {
+        if entry == FocusGroupEntry::Excluded {
+            return;
+        }
         if let Some(target) = focus_group_entry_target(tree, id, eligibility) {
             members.push(FocusGroupMember {
                 anchor: id.clone(),
@@ -347,7 +350,7 @@ fn collect_focus_group_members<Action>(
         return;
     }
 
-    if is_focus_eligible(tree, id, eligibility) {
+    if entry != FocusGroupEntry::Excluded && is_focus_eligible(tree, id, eligibility) {
         members.push(FocusGroupMember {
             anchor: id.clone(),
             target: id.clone(),
