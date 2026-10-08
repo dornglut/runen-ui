@@ -20,6 +20,8 @@ enum Action {
     Saved,
     ExpandSubmenu,
     CollapseSubmenu,
+    ExpandBarMenu,
+    CollapseBarMenu,
     Dismiss(PresentationDismissReason),
 }
 
@@ -37,6 +39,7 @@ struct Model {
 struct MenuMounts {
     open: bool,
     submenu_open: bool,
+    bar_open: bool,
 }
 
 struct MenuApp;
@@ -73,6 +76,7 @@ impl UiApp for MenuApp {
                     ])
                     .submenu()
                     .id("nested-menu")
+                    .accessible_name("More submenu")
                     .on_back(|| Action::CollapseSubmenu)
                     .on_dismiss(Action::Dismiss),
                     true,
@@ -106,8 +110,31 @@ impl UiApp for MenuApp {
                 more.into_element(),
             ])
             .id("file-menu")
+            .accessible_name("File actions")
             .on_dismiss(Action::Dismiss);
             button = button.with_submenu(menu, true);
+        }
+
+        let mut bar_tools = MenuItem::new("Tools")
+            .menu_bar_trigger()
+            .id("bar-tools")
+            .submenu_expanded(state.menu.bar_open)
+            .on_expand(|| Action::ExpandBarMenu)
+            .on_collapse(|| Action::CollapseBarMenu);
+        if state.menu.bar_open {
+            bar_tools = bar_tools.with_submenu(
+                Menu::new(vec![
+                    MenuItem::new("Build")
+                        .id("bar-build")
+                        .on_activate(|| Action::Selected),
+                ])
+                .submenu()
+                .id("bar-tools-menu")
+                .accessible_name("Tools actions")
+                .on_back(|| Action::CollapseBarMenu)
+                .on_dismiss(|_| Action::CollapseBarMenu),
+                true,
+            );
         }
 
         CommandScope::new(
@@ -118,16 +145,14 @@ impl UiApp for MenuApp {
             vec![
                 button.into_element(),
                 MenuBar::new(vec![
-                    MenuButton::new("View", false)
+                    MenuItem::new("View")
+                        .menu_bar_trigger()
                         .id("bar-view")
                         .on_activate(|| Action::Selected)
                         .into_element(),
-                    MenuButton::new("Tools", false)
-                        .id("bar-tools")
-                        .on_expand(|| Action::Selected)
-                        .on_activate(|| Action::Selected)
-                        .into_element(),
+                    bar_tools.into_element(),
                 ])
+                .accessible_name("Application menu bar")
                 .id("menu-bar")
                 .into_element(),
             ],
@@ -143,6 +168,8 @@ impl UiApp for MenuApp {
             Action::Saved => state.saved += 1,
             Action::ExpandSubmenu => state.menu.submenu_open = true,
             Action::CollapseSubmenu => state.menu.submenu_open = false,
+            Action::ExpandBarMenu => state.menu.bar_open = true,
+            Action::CollapseBarMenu => state.menu.bar_open = false,
             Action::Dismiss(reason) => {
                 state.menu.open = false;
                 state.menu.submenu_open = false;
@@ -344,6 +371,7 @@ fn inline_menu_bar_uses_neutral_horizontal_semantics() {
     assert!(snapshot.nodes().iter().any(|n| {
         n.role() == SemanticRole::MenuBar
             && n.orientation() == Some(SemanticOrientation::Horizontal)
+            && n.name() == Some("Application menu bar")
     }));
     command(&mut h, "bar-view", SemanticCommand::RequestFocus);
     command(&mut h, "bar-view", SemanticCommand::FocusRight);
@@ -352,11 +380,64 @@ fn inline_menu_bar_uses_neutral_horizontal_semantics() {
     let tools = snapshot
         .nodes()
         .iter()
-        .find(|n| n.role() == SemanticRole::Button && n.name() == Some("Tools"))
-        .unwrap_or_else(|| unreachable!("Tools is mounted"));
+        .find(|n| n.role() == SemanticRole::MenuItem && n.name() == Some("Tools"))
+        .unwrap_or_else(|| unreachable!("Tools menubar item is mounted"));
     assert_eq!(snapshot.focused(), Some(tools.id()));
+    assert!(!h.state().menu.bar_open, "navigation does not open the submenu");
+    assert_eq!(h.state().selected, 0, "focus movement never activates");
+}
+
+#[test]
+fn menu_bar_item_down_opens_submenu_and_restores_exact_focus_on_dismiss() {
+    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    assert!(h.publish().is_ok());
+    command(&mut h, "bar-tools", SemanticCommand::RequestFocus);
+    let trigger = h
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("menubar is published"))
+        .focused()
+        .cloned()
+        .unwrap_or_else(|| unreachable!("Tools takes real focus"));
+
     command(&mut h, "bar-tools", SemanticCommand::FocusDown);
-    assert_eq!(h.state().selected, 1, "down opens the focused MenuButton");
+    assert!(h.state().menu.bar_open, "Down expands app-owned submenu");
+    let snapshot = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
+    let owner = snapshot
+        .nodes()
+        .iter()
+        .find(|n| n.role() == SemanticRole::MenuItem && n.name() == Some("Tools"))
+        .unwrap_or_else(|| unreachable!("menubar trigger has MenuItem role"));
+    let popup = snapshot
+        .nodes()
+        .iter()
+        .find(|n| n.role() == SemanticRole::Menu && n.name() == Some("Tools actions"))
+        .unwrap_or_else(|| unreachable!("labelled submenu is mounted"));
+    assert!(owner.relationships().iter().any(|r| {
+        r.kind() == SemanticRelationshipKind::Controls && r.target() == popup.id()
+    }));
+    let first = snapshot
+        .nodes()
+        .iter()
+        .find(|n| n.role() == SemanticRole::MenuItem && n.name() == Some("Build"))
+        .unwrap_or_else(|| unreachable!("submenu child exists"));
+    assert_eq!(snapshot.focused(), Some(first.id()));
+    assert_eq!(h.state().selected, 0, "opening must not activate the child");
+
+    command(
+        &mut h,
+        "bar-tools-menu",
+        SemanticCommand::PresentationDismiss(PresentationDismissReason::CancelOrBack),
+    );
+    assert!(!h.state().menu.bar_open);
+    settle(&mut h);
+    assert!(h.publish().is_ok());
+    assert_eq!(
+        h.semantic_snapshot()
+            .unwrap_or_else(|_| unreachable!())
+            .focused(),
+        Some(&trigger),
+        "presentation restoration returns to exact menubar trigger"
+    );
 }
 
 #[test]
@@ -577,6 +658,7 @@ impl UiApp for LongMenuApp {
         runenui_core::column(vec![
             runenui_core::button("Anchor").into_element(),
             Menu::new(vec![scroll.into_element()])
+                .accessible_name("Choices")
                 .id("long-menu")
                 .into_element(),
         ])

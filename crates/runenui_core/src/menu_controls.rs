@@ -53,6 +53,7 @@ pub struct Menu<Action> {
     on_dismiss: Option<DismissCallback<Action>>,
     on_back: Option<ActionCallback<Action>>,
     type_ahead: FocusGroupTypeAhead,
+    accessible_name: Option<String>,
 }
 
 impl<Action> fmt::Debug for Menu<Action> {
@@ -89,10 +90,18 @@ impl<Action> Menu<Action> {
             on_dismiss: None,
             on_back: None,
             type_ahead: menu_type_ahead(),
+            accessible_name: None,
         }
     }
 
     common_node_builder_methods!();
+
+    /// Authors an accessible name instead of inferring from popup/trigger geometry.
+    #[must_use]
+    pub fn accessible_name(mut self, name: impl Into<String>) -> Self {
+        self.accessible_name = Some(name.into());
+        self
+    }
 
     /// Submenus prefer right placement and fall back to the left.
     #[must_use]
@@ -137,10 +146,15 @@ impl<Action> Menu<Action> {
 }
 
 /// Inline menu-bar container, not an OS/native global menubar.
+///
+/// Use `MenuItem::new(...).menu_bar_trigger()` for top-level entries so
+/// their role remains MenuItem while Down opens an application-owned submenu.
+/// Standalone MenuButton has Button semantics and is not a Menubar entry.
 pub struct MenuBar<Action> {
     children: Vec<Element<Action>>,
     common: CommonNodeAuthoring,
     type_ahead: FocusGroupTypeAhead,
+    accessible_name: Option<String>,
 }
 
 impl<Action> fmt::Debug for MenuBar<Action> {
@@ -161,10 +175,18 @@ impl<Action> MenuBar<Action> {
                 ..CommonNodeAuthoring::default()
             },
             type_ahead: menu_type_ahead(),
+            accessible_name: None,
         }
     }
 
     common_node_builder_methods!();
+
+    /// Authors an accessible name for the inline menubar.
+    #[must_use]
+    pub fn accessible_name(mut self, name: impl Into<String>) -> Self {
+        self.accessible_name = Some(name.into());
+        self
+    }
 
     #[must_use]
     pub const fn type_ahead(mut self, policy: FocusGroupTypeAhead) -> Self {
@@ -175,6 +197,7 @@ impl<Action> MenuBar<Action> {
 
 struct MenuContainerWidget<Action> {
     role: SemanticRole,
+    accessible_name: Option<String>,
     on_dismiss: Option<DismissCallback<Action>>,
     on_back: Option<ActionCallback<Action>>,
 }
@@ -267,6 +290,9 @@ impl<Action> Widget<Action> for MenuContainerWidget<Action> {
             SemanticOrientation::Horizontal
         };
         let mut node = SemanticNodeContribution::primary(self.role).with_orientation(orientation);
+        if let Some(name) = self.accessible_name.as_ref() {
+            node = node.with_name(name.clone());
+        }
         if context.has_mounted_children() {
             node = node.with_mounted_children();
         }
@@ -279,6 +305,7 @@ fn menu_container_element<Action: 'static>(
     common: CommonNodeAuthoring,
     children: Vec<Element<Action>>,
     role: SemanticRole,
+    accessible_name: Option<String>,
     on_dismiss: Option<DismissCallback<Action>>,
     on_back: Option<ActionCallback<Action>>,
     type_ahead: FocusGroupTypeAhead,
@@ -288,6 +315,7 @@ fn menu_container_element<Action: 'static>(
         fields,
         Box::new(WidgetAdapter(MenuContainerWidget {
             role,
+            accessible_name,
             on_dismiss,
             on_back,
         })),
@@ -312,6 +340,7 @@ impl<Action: 'static> View<Action> for Menu<Action> {
             common,
             self.children,
             SemanticRole::Menu,
+            self.accessible_name,
             self.on_dismiss,
             self.on_back,
             self.type_ahead,
@@ -325,6 +354,7 @@ impl<Action: 'static> View<Action> for MenuBar<Action> {
             self.common,
             self.children,
             SemanticRole::MenuBar,
+            self.accessible_name,
             None,
             None,
             self.type_ahead,
@@ -355,6 +385,7 @@ pub struct MenuEntry<Action, Kind> {
     on_expand: Option<ActionCallback<Action>>,
     on_collapse: Option<ActionCallback<Action>>,
     submenu: Option<Element<Action>>,
+    menu_bar_trigger: bool,
     marker: PhantomData<Kind>,
 }
 
@@ -373,6 +404,7 @@ impl<Action, Kind> fmt::Debug for MenuEntry<Action, Kind> {
             .field("expanded", &self.expanded)
             .field("enabled", &self.enabled)
             .field("has_submenu", &self.submenu.is_some())
+            .field("menu_bar_trigger", &self.menu_bar_trigger)
             .finish_non_exhaustive()
     }
 }
@@ -392,6 +424,7 @@ impl<Action, Kind> MenuEntry<Action, Kind> {
             on_expand: None,
             on_collapse: None,
             submenu: None,
+            menu_bar_trigger: false,
             marker: PhantomData,
         }
     }
@@ -468,6 +501,15 @@ impl<Action> MenuEntry<Action, PlainMenuItem> {
     pub fn new(label: impl Into<String>) -> Self {
         Self::with_role(label, SemanticRole::MenuItem)
     }
+
+    /// Makes this MenuItem a direct menubar trigger. Down opens the submenu;
+    /// Left/Right remain menubar focus-group movement. Ordinary nested Menu
+    /// entries retain Right-to-expand and Left-to-collapse behavior.
+    #[must_use]
+    pub const fn menu_bar_trigger(mut self) -> Self {
+        self.menu_bar_trigger = true;
+        self
+    }
 }
 
 impl<Action> MenuEntry<Action, CheckboxMenuItem> {
@@ -514,6 +556,7 @@ struct MenuItemState {
 
 struct MenuItemWidget<Action> {
     authored: MenuItemState,
+    menu_bar_trigger: bool,
     activation: Option<ActionCallback<Action>>,
     command: Option<ApplicationCommandId>,
     on_expand: Option<ActionCallback<Action>>,
@@ -600,12 +643,14 @@ impl<Action> Widget<Action> for MenuItemWidget<Action> {
         let opening = matches!(
             command.command(),
             SemanticCommand::Expand | SemanticCommand::OpenMenu
-        ) || (state.role == SemanticRole::Button
+        ) || ((state.role == SemanticRole::Button || self.menu_bar_trigger)
             && command.command() == SemanticCommand::FocusDown)
             || (state.role != SemanticRole::Button
+                && !self.menu_bar_trigger
                 && command.command() == SemanticCommand::FocusRight);
         let closing = command.command() == SemanticCommand::Collapse
             || (state.role != SemanticRole::Button
+                && !self.menu_bar_trigger
                 && command.command() == SemanticCommand::FocusLeft);
         let callback = if opening && state.expanded == Some(false) {
             &mut self.on_expand
@@ -717,6 +762,7 @@ impl<Action: 'static, Kind: 'static> View<Action> for MenuEntry<Action, Kind> {
             fields,
             Box::new(WidgetAdapter(MenuItemWidget {
                 authored,
+                menu_bar_trigger: self.menu_bar_trigger,
                 activation: self.activation,
                 command: self.command,
                 on_expand: self.on_expand,
