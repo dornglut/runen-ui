@@ -7,8 +7,8 @@ use core::{fmt, time::Duration};
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
 use crate::{
-    EventContext, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusScope,
-    FocusScopePolicy, Focusability, LayoutContainer, LayoutStyle, PointerBoundaryKind, PointerId,
+    EventContext, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusScope, FocusScopePolicy,
+    Focusability, LayoutContainer, LayoutStyle, PointerBoundaryKind, PointerId,
     PresentationDismissReason, PresentationFocusPolicy, PresentationOutsidePointerPolicy,
     SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
     SemanticRole, SemanticState, SurfacePresentation, SurfacePresentationAnchor,
@@ -538,4 +538,3 @@ impl<Action: 'static> View<Action> for TooltipTrigger<Action> {
         )
     }
 }
-
