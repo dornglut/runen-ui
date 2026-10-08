@@ -3,8 +3,8 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::{
-    ApplicationCommand, ApplicationCommandId, CommandBinding, CommandOrigin, CommandScope,
-    Menu, MenuBar, MenuButton, MenuItem, MenuItemCheckbox, MenuItemRadio, NoHostProtocol,
+    ApplicationCommand, ApplicationCommandId, CommandBinding, CommandOrigin, CommandScope, Menu,
+    MenuBar, MenuButton, MenuItem, MenuItemCheckbox, MenuItemRadio, NoHostProtocol,
     PresentationDismissReason, SemanticCheckedState, SemanticCommand, SemanticOrientation,
     SemanticRelationshipKind, SemanticRole, UiApp, View, column,
 };
@@ -212,9 +212,12 @@ fn menu_button_open_close_and_exact_controls_are_application_owned() {
         .find(|n| n.role() == SemanticRole::Menu)
         .unwrap_or_else(|| unreachable!());
     assert_eq!(owner.state().expanded(), Some(true));
-    assert!(owner.relationships().iter().any(|r| {
-        r.kind() == SemanticRelationshipKind::Controls && r.target() == menu.id()
-    }));
+    assert!(
+        owner
+            .relationships()
+            .iter()
+            .any(|r| { r.kind() == SemanticRelationshipKind::Controls && r.target() == menu.id() })
+    );
     assert_eq!(menu.orientation(), Some(SemanticOrientation::Vertical));
 
     command(
@@ -262,7 +265,12 @@ fn menu_checked_items_and_disabled_discoverability_preserve_app_authority() {
     }));
 
     command(&mut h, "disabled-item", SemanticCommand::RequestFocus);
-    assert!(h.semantic_snapshot().unwrap_or_else(|_| unreachable!()).focused().is_some());
+    assert!(
+        h.semantic_snapshot()
+            .unwrap_or_else(|_| unreachable!())
+            .focused()
+            .is_some()
+    );
     command(&mut h, "disabled-item", SemanticCommand::Activate);
     assert_eq!(h.state().selected, 0);
 }

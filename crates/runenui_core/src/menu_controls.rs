@@ -8,8 +8,8 @@ use core::{fmt, marker::PhantomData, time::Duration};
 use crate::{
     ApplicationCommandId, Axis, EventContext, EventPhase, FlexContainerStyle, FlexDirection,
     FocusGroup, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, FocusGroupTypeAhead,
-    Focusability, HitContribution, HitContributionContext, IntoElementId, KeyboardPhase,
-    KeyModifiers, LayoutContainer, LayoutStyle, LogicalKey, LogicalRect, LogicalSize,
+    Focusability, HitContribution, HitContributionContext, KeyModifiers,
+    KeyboardPhase, LayoutContainer, LayoutStyle, LogicalKey, LogicalRect, LogicalSize,
     PresentationDismissReason, PresentationFocusPolicy, PresentationOutsidePointerPolicy,
     SemanticAction, SemanticCheckedState, SemanticCommand, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticOrientation, SemanticPopupKind,
@@ -213,14 +213,11 @@ impl<Action> Widget<Action> for MenuContainerWidget<Action> {
                 | (SemanticRole::MenuBar, SemanticCommand::FocusDown) => {
                     Some(SemanticCommand::Expand)
                 }
-                (SemanticRole::Menu, SemanticCommand::FocusLeft) => {
-                    Some(SemanticCommand::Collapse)
-                }
+                (SemanticRole::Menu, SemanticCommand::FocusLeft) => Some(SemanticCommand::Collapse),
                 _ => None,
             }
         } else if let Some(keyboard) = event.as_keyboard() {
-            if keyboard.phase() == KeyboardPhase::Down
-                && keyboard.modifiers() == KeyModifiers::NONE
+            if keyboard.phase() == KeyboardPhase::Down && keyboard.modifiers() == KeyModifiers::NONE
             {
                 match keyboard.logical_key() {
                     LogicalKey::Home => Some(SemanticCommand::FocusGroupFirst),
@@ -251,8 +248,7 @@ impl<Action> Widget<Action> for MenuContainerWidget<Action> {
         } else {
             SemanticOrientation::Horizontal
         };
-        let mut node =
-            SemanticNodeContribution::primary(self.role).with_orientation(orientation);
+        let mut node = SemanticNodeContribution::primary(self.role).with_orientation(orientation);
         if context.has_mounted_children() {
             node = node.with_mounted_children();
         }
@@ -321,7 +317,7 @@ pub struct MenuButtonItem;
 /// An ordinary item inside Menu or MenuBar.
 ///
 /// Selected/checked/expanded facts are authored anew by the application.
-pub struct MenuItem<Action, Kind = PlainMenuItem> {
+pub struct MenuEntry<Action, Kind> {
     label: String,
     role: SemanticRole,
     checked: Option<SemanticCheckedState>,
@@ -338,11 +334,12 @@ pub struct MenuItem<Action, Kind = PlainMenuItem> {
 }
 
 /// MenuButton is a semantic Button with popup state, not a separate role.
-pub type MenuButton<Action> = MenuItem<Action, MenuButtonItem>;
-pub type MenuItemCheckbox<Action> = MenuItem<Action, CheckboxMenuItem>;
-pub type MenuItemRadio<Action> = MenuItem<Action, RadioMenuItem>;
+pub type MenuItem<Action> = MenuEntry<Action, PlainMenuItem>;
+pub type MenuButton<Action> = MenuEntry<Action, MenuButtonItem>;
+pub type MenuItemCheckbox<Action> = MenuEntry<Action, CheckboxMenuItem>;
+pub type MenuItemRadio<Action> = MenuEntry<Action, RadioMenuItem>;
 
-impl<Action, Kind> fmt::Debug for MenuItem<Action, Kind> {
+impl<Action, Kind> fmt::Debug for MenuEntry<Action, Kind> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MenuItem")
             .field("label", &self.label)
@@ -355,7 +352,7 @@ impl<Action, Kind> fmt::Debug for MenuItem<Action, Kind> {
     }
 }
 
-impl<Action, Kind> MenuItem<Action, Kind> {
+impl<Action, Kind> MenuEntry<Action, Kind> {
     fn with_role(label: impl Into<String>, role: SemanticRole) -> Self {
         Self {
             label: label.into(),
@@ -441,14 +438,14 @@ impl<Action, Kind> MenuItem<Action, Kind> {
     }
 }
 
-impl<Action> MenuItem<Action, PlainMenuItem> {
+impl<Action> MenuEntry<Action, PlainMenuItem> {
     #[must_use]
     pub fn new(label: impl Into<String>) -> Self {
         Self::with_role(label, SemanticRole::MenuItem)
     }
 }
 
-impl<Action> MenuItem<Action, CheckboxMenuItem> {
+impl<Action> MenuEntry<Action, CheckboxMenuItem> {
     #[must_use]
     pub fn new(label: impl Into<String>, checked: SemanticCheckedState) -> Self {
         let mut item = Self::with_role(label, SemanticRole::MenuItemCheckbox);
@@ -457,7 +454,7 @@ impl<Action> MenuItem<Action, CheckboxMenuItem> {
     }
 }
 
-impl<Action> MenuItem<Action, RadioMenuItem> {
+impl<Action> MenuEntry<Action, RadioMenuItem> {
     #[must_use]
     pub fn new(label: impl Into<String>, checked: bool) -> Self {
         let mut item = Self::with_role(label, SemanticRole::MenuItemRadio);
@@ -470,7 +467,7 @@ impl<Action> MenuItem<Action, RadioMenuItem> {
     }
 }
 
-impl<Action> MenuItem<Action, MenuButtonItem> {
+impl<Action> MenuEntry<Action, MenuButtonItem> {
     #[must_use]
     pub fn new(label: impl Into<String>, expanded: bool) -> Self {
         let mut item = Self::with_role(label, SemanticRole::Button);
@@ -568,9 +565,7 @@ impl<Action> Widget<Action> for MenuItemWidget<Action> {
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
-        if !state.enabled
-            || context.phase() != EventPhase::Target
-            || context.default_is_prevented()
+        if !state.enabled || context.phase() != EventPhase::Target || context.default_is_prevented()
         {
             return WidgetEventOutput::none();
         }
@@ -582,7 +577,7 @@ impl<Action> Widget<Action> for MenuItemWidget<Action> {
                 if state.expanded == Some(false) =>
             {
                 &mut self.on_expand
-            },
+            }
             SemanticCommand::Collapse if state.expanded == Some(true) => &mut self.on_collapse,
             _ => return WidgetEventOutput::none(),
         };
@@ -657,7 +652,7 @@ impl<Action> Widget<Action> for MenuItemWidget<Action> {
 }
 impl<Action> ChildBearingWidget<Action> for MenuItemWidget<Action> {}
 
-impl<Action: 'static, Kind: 'static> View<Action> for MenuItem<Action, Kind> {
+impl<Action: 'static, Kind: 'static> View<Action> for MenuEntry<Action, Kind> {
     fn into_element(self) -> Element<Action> {
         let submenu_id = self
             .submenu

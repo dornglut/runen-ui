@@ -322,6 +322,7 @@ pub use input::{
     CompositionRangeError, CompositionStart, CompositionUpdate, KeyLocation,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, PhysicalKey,
 };
+pub use menu_controls::{Menu, MenuBar, MenuButton, MenuItem, MenuItemCheckbox, MenuItemRadio};
 pub use motion::{
     AnimationId, CubicBezier, ExplicitTimeline, MotionEasing, MotionKeyframe, MotionRepeat,
     MotionSpecError, MotionTarget, MotionValue, ReducedMotionStrategy, TimelineSpec,
@@ -333,9 +334,6 @@ pub use paint::{
 };
 pub use paint_group::{PaintContributionEntry, PaintContributionGroup};
 pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
-pub use menu_controls::{
-    Menu, MenuBar, MenuButton, MenuItem, MenuItemCheckbox, MenuItemRadio,
-};
 pub use presentation_controls::{Dialog, Popover, Tooltip, TooltipTrigger};
 pub use standard_content::{Image, Separator, image, separator};
 pub use surface_presentation::{
