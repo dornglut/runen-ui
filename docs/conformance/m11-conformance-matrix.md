@@ -2,7 +2,7 @@
 
 > **Category:** Target architecture
 >
-> **Status:** M11A/M11B/M11C/M11D2/M11SEM1/M11S2 owner-accepted; M11SCROLLB owner-accepted; M11COLL2 owner-accepted; M11TABS owner-accepted; M11CONTENT owner-accepted; M11PRES1 owner-accepted; M11PRES2 owner-accepted; M11PRESCTRL owner-accepted; M11MENU owner-accepted; M11BUTTONPRESS implementation-complete
+> **Status:** M11A/M11B/M11C/M11D2/M11SEM1/M11S2 owner-accepted; M11SCROLLB owner-accepted; M11COLL2 owner-accepted; M11TABS owner-accepted; M11CONTENT owner-accepted; M11PRES1 owner-accepted; M11PRES2 owner-accepted; M11PRESCTRL owner-accepted; M11MENU owner-accepted; M11BUTTONPRESS owner-accepted
 >
 > **Milestone:** M11
 >
@@ -16,8 +16,8 @@
 
 ```text
 62 total unique rows
-61 owner-accepted
-1 implementation-complete
+62 owner-accepted
+0 implementation-complete
 0 proof-complete
 0 blocked
 0 duplicate IDs
@@ -101,4 +101,4 @@
 | M11CTRL-61 | Public Menu family and downstream composites share generic semantic, focus, scheduler, presentation, command and scroll contracts without runtime menu-type branches. | Complete `tests/external_widget/tests/menu_controls.rs` and accepted #341/#342/#338/#344/#345 proof | No separate runtime tree, focus, timer, renderer or native menu authority | Shared public deterministic runtime and bounded trace | M11MENU | owner-accepted | Required |
 
 
-| M11CTRL-62 | Public Button exposes optional application-authored Unpressed/Pressed/Mixed semantics through the accepted typed Button pressed state. An ordinary Button has no pressed semantic fact; changing pressed on application rebuild advances semantic revision without a runtime toggle, alternate control type or private selected style state. All activation origins remain ordinary application actions; disabled pressed Buttons retain semantic meaning but reject activation, and downstream public Widgets may author equivalent facts. | `crates/runenui_testing/tests/m11_button_pressed.rs::button_without_authored_pressed_state_remains_momentary`; `button_pressed_semantics_follow_only_application_authored_updates`; `downstream_custom_widget_uses_identical_public_pressed_semantic_contract` | `disabled_pressed_button_stays_semantic_and_rejects_activation`; equal-state publication does not advance revision; source audit excludes runtime-owned pressed state, separate ToggleButton runtime or widget-type branch | Accepted #310 role-aware validation and M5 semantic revision/delta plus accepted M11A activation-origin conformance | M11BUTTONPRESS | implementation-complete | Required |
+| M11CTRL-62 | Public Button exposes optional application-authored Unpressed/Pressed/Mixed semantics through the accepted typed Button pressed state. An ordinary Button has no pressed semantic fact; changing pressed on application rebuild advances semantic revision without a runtime toggle, alternate control type or private selected style state. All activation origins remain ordinary application actions; disabled pressed Buttons retain semantic meaning but reject activation, and downstream public Widgets may author equivalent facts. | `crates/runenui_testing/tests/m11_button_pressed.rs::button_without_authored_pressed_state_remains_momentary`; `button_pressed_semantics_follow_only_application_authored_updates`; `downstream_custom_widget_uses_identical_public_pressed_semantic_contract` | `disabled_pressed_button_stays_semantic_and_rejects_activation`; equal-state publication does not advance revision; source audit excludes runtime-owned pressed state, separate ToggleButton runtime or widget-type branch | Accepted #310 role-aware validation and M5 semantic revision/delta plus accepted M11A activation-origin conformance | M11BUTTONPRESS | owner-accepted | Required |
