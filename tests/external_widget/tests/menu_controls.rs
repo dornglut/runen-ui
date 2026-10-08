@@ -545,6 +545,7 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
         })
         .unwrap_or_else(|| unreachable!("standard scroll viewport is mounted"))
         .bounds();
+    assert_eq!(viewport.height(), 40.0, "fixed authored scroll viewport height");
     let last_before = h
         .semantic_snapshot()
         .unwrap_or_else(|_| unreachable!("initial menu semantics are published"))
@@ -600,15 +601,17 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
         "shared scroll must move the last item's published semantic bounds; before={last_before:?}, after={:?}, viewport={viewport:?}",
         last.bounds()
     );
+    let scrollbar = semantics
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::ScrollBar)
+        .unwrap_or_else(|| unreachable!("standard ScrollBar publishes semantic bounds"));
     assert!(
-        last.bounds().y() < viewport.max_y() && last.bounds().max_y() > viewport.y(),
-        "last menu item must be reachable inside the fixed standard viewport"
-    );
-    assert!(
-        semantics
-            .nodes()
-            .iter()
-            .any(|n| { n.role() == SemanticRole::ScrollBar })
+        last.bounds().y() < scrollbar.bounds().max_y()
+            && last.bounds().max_y() > scrollbar.bounds().y(),
+        "last menu item must intersect the published standard scrollbar viewport: item={:?}, bar={:?}",
+        last.bounds(),
+        scrollbar.bounds()
     );
     assert!(
         semantics
