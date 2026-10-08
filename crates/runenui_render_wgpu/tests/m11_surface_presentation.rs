@@ -175,7 +175,7 @@ impl UiApp for StandardPresentationControlApp {
         column(vec![ordinary, presentation]).into_element()
     }
 
-    fn update((): &mut Self::State, (): Self::Action) {}
+    fn update(_: &mut Self::State, (): Self::Action) {}
 }
 
 #[test]
