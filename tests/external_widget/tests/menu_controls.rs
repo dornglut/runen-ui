@@ -407,6 +407,10 @@ fn menu_bar_item_down_opens_submenu_and_restores_exact_focus_on_dismiss() {
 
     command(&mut h, "bar-tools", SemanticCommand::FocusDown);
     assert!(h.state().menu.bar_open, "Down expands app-owned submenu");
+    // Publication triggers the generic EnterAndRestore focus request. Settle
+    // that queued request before asserting the new exact focus owner.
+    settle(&mut h);
+    assert!(h.publish().is_ok());
     let snapshot = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
     let owner = snapshot
         .nodes()
