@@ -1,8 +1,9 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    CommandOrigin, Element, ElementId, HitContribution, HitContributionContext, LogicalLength,
-    LogicalPoint, LogicalRect, NoHostProtocol, PointerButton, PointerButtons,
+    CommandOrigin, Element, ElementId, HitContribution, HitContributionContext, KeyLocation,
+    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, LogicalLength,
+    LogicalPoint, LogicalRect, NoHostProtocol, PhysicalKey, PointerButton, PointerButtons,
     PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
     SemanticActionRequest, SemanticContribution, SemanticContributionContext,
     SemanticNodeContribution, SemanticRole, SemanticCommand, StyleEnvironment, UiApp, View,
@@ -240,6 +241,103 @@ fn shutdown_clears_focus_indication_with_real_focus_authority() {
     focus(&mut app, &ordinary, CommandOrigin::controller());
     assert!(app.focus().focus_visible());
     app.shutdown();
+    assert!(app.focus().focused_node().is_none());
+    assert!(!app.focus().focus_visible());
+}
+
+
+#[test]
+fn keyboard_traversal_promotes_pointer_focus_and_tracks_canonical_target() {
+    let mut app = mount();
+    pointer_focus(&mut app, "Ordinary", 12);
+    assert!(!app.focus().focus_visible());
+    let event = KeyboardEvent::new(
+        KeyboardPhase::Down,
+        PhysicalKey::Tab,
+        LogicalKey::Tab,
+        KeyModifiers::NONE,
+        false,
+        KeyLocation::Standard,
+        KeyboardCompositionState::Inactive,
+        None,
+    );
+    assert!(app.submit_keyboard(event).is_ok());
+    settle(&mut app);
+    assert_eq!(app.focus().modality(), Some(InputModality::Keyboard));
+    assert!(app.focus().focus_visible());
+    assert!(app.focus().focused_node().is_some());
+}
+
+#[test]
+fn pointer_activity_does_not_demote_visible_focus_without_owner_transfer() {
+    let mut app = mount();
+    let ordinary = mounted_id(&mut app, "ordinary");
+    pointer_focus(&mut app, "Ordinary", 13);
+    assert!(!app.focus().focus_visible());
+    focus(&mut app, &ordinary, CommandOrigin::controller());
+    assert!(app.focus().focus_visible());
+
+    let environment = StyleEnvironment::default();
+    let size = LogicalSize::try_new(260.0, 180.0)
+        .unwrap_or_else(|_| unreachable!("finite surface"));
+    let context = app
+        .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+        .unwrap_or_else(|_| unreachable!("updated surface publishes"))
+        .input_context()
+        .clone();
+    let point = LogicalPoint::new(1.0, 1.0).unwrap_or_else(|_| unreachable!("finite point"));
+    let move_event = PointerEvent::new(
+        PointerId::new(13).unwrap_or_else(|| unreachable!("valid pointer")),
+        PointerDeviceKind::Mouse,
+        PointerPhase::Move,
+        point,
+        context,
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Primary]));
+    assert!(app.submit_pointer(move_event).is_ok());
+    settle(&mut app);
+    assert_eq!(app.focus().focused_node(), Some(&ordinary));
+    assert!(app.focus().focus_visible());
+}
+
+struct DisabledApp;
+
+impl UiApp for DisabledApp {
+    type State = bool;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(enabled: &Self::State) -> impl View<Self::Action> {
+        button("Retire").id("retire").enabled(*enabled).on_activate(|| ())
+    }
+
+    fn update(state: &mut Self::State, (): Self::Action) {
+        *state = false;
+    }
+}
+
+#[test]
+fn disablement_retires_focus_and_its_visibility_latch_together() {
+    let mut app = AppRuntime::<DisabledApp>::mount(true);
+    let id = ElementId::new("retire").unwrap_or_else(|_| unreachable!("known id"));
+    let target = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&id))
+        .unwrap_or_else(|| unreachable!("retire is mounted"))
+        .id()
+        .clone();
+    assert!(app.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    ).is_ok());
+    assert!(app.pump(PumpBudget::new(64, 64, 64, 64)).is_quiescent());
+    assert!(app.focus().focus_visible());
+
+    assert!(app.submit_action(()).is_ok());
+    assert!(app.pump(PumpBudget::new(64, 64, 64, 64)).is_quiescent());
     assert!(app.focus().focused_node().is_none());
     assert!(!app.focus().focus_visible());
 }

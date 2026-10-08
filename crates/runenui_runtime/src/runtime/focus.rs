@@ -674,24 +674,25 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Ok(());
         }
         let previous_visibility = self.focus.focus_visible();
-        let next_visibility = new_target.as_ref().is_some_and(|target| {
-            match transaction.pending_modality {
-                InputModality::Keyboard
-                | InputModality::Controller
-                | InputModality::Accessibility => true,
-                InputModality::Pointer => {
-                    let capability = self
-                        .tree
-                        .text_input_probe(target)
-                        .unwrap_or(WidgetTextInput::NONE);
-                    capability.accepts_committed_text() || capability.accepts_composition()
-                }
-                InputModality::Programmatic | InputModality::Automation => {
-                    old_target.is_none() || previous_visibility
-                }
-                _ => old_target.is_none() || previous_visibility,
-            }
-        });
+        let next_visibility =
+            new_target
+                .as_ref()
+                .is_some_and(|target| match transaction.pending_modality {
+                    InputModality::Keyboard
+                    | InputModality::Controller
+                    | InputModality::Accessibility => true,
+                    InputModality::Pointer => {
+                        let capability = self
+                            .tree
+                            .text_input_probe(target)
+                            .unwrap_or(WidgetTextInput::NONE);
+                        capability.accepts_committed_text() || capability.accepts_composition()
+                    }
+                    InputModality::Programmatic | InputModality::Automation => {
+                        old_target.is_none() || previous_visibility
+                    }
+                    _ => old_target.is_none() || previous_visibility,
+                });
         if let Some(old) = old_target.as_ref() {
             self.cancel_composition_in_transaction(
                 transaction,
@@ -719,8 +720,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let left = old_route.len().saturating_sub(common);
         let entered = new_route.len().saturating_sub(common);
 
-        self.focus
-            .commit(new_target.clone(), new_route.clone(), reason, next_visibility);
+        self.focus.commit(
+            new_target.clone(),
+            new_route.clone(),
+            reason,
+            next_visibility,
+        );
         self.reconcile_focus_group_type_ahead_state();
         if let Some(target) = new_target.as_ref() {
             for scope in new_route.iter().filter(|scope| {

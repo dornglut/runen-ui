@@ -126,9 +126,12 @@ mod tests {
     #[test]
     fn focused_owner_visibility_projects_focus_and_focus_visible_without_new_identity() {
         let (focused, other) = ids();
-        let projection =
-            SurfaceInteractionProjection::new(vec![focused.clone()], Vec::new(), Some(focused.clone()))
-                .with_focus_visible(true);
+        let projection = SurfaceInteractionProjection::new(
+            vec![focused.clone()],
+            Vec::new(),
+            Some(focused.clone()),
+        )
+        .with_focus_visible(true);
         let facts = projection.facts_for(&focused);
         assert!(facts.focused() && facts.focus_visible() && facts.hovered());
         assert_eq!(projection.facts_for(&other), StyleInteractionFacts::NONE);
@@ -139,9 +142,8 @@ mod tests {
         assert!(projection.content_differs(&hidden));
         assert!(!hidden.facts_for(&other).focus_visible());
 
-        let unfocused =
-            SurfaceInteractionProjection::new(Vec::new(), Vec::new(), None).with_focus_visible(true);
+        let unfocused = SurfaceInteractionProjection::new(Vec::new(), Vec::new(), None)
+            .with_focus_visible(true);
         assert!(!unfocused.facts_for(&other).focus_visible());
     }
-
 }
