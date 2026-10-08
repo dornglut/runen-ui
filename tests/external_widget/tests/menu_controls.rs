@@ -545,7 +545,11 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
         })
         .unwrap_or_else(|| unreachable!("standard scroll viewport is mounted"))
         .bounds();
-    assert_eq!(viewport.height(), 40.0, "fixed authored scroll viewport height");
+    assert_eq!(
+        viewport.height(),
+        40.0,
+        "fixed authored scroll viewport height"
+    );
     let last_before = h
         .semantic_snapshot()
         .unwrap_or_else(|_| unreachable!("initial menu semantics are published"))
