@@ -174,7 +174,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let focused_owner = self.focus.focused_node().cloned();
         let interaction = self
             .pointer_registry
-            .surface_interaction_projection(focused_owner.as_ref());
+            .surface_interaction_projection(focused_owner.as_ref())
+            .with_focus_visible(self.focus.focus_visible());
         let editing = self.editing.semantic_projections();
         let preedits = self.editing.preedit_projections();
         let candidate = SurfacePublicationCandidateInputs::new(

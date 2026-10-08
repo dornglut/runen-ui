@@ -225,6 +225,7 @@ pub(super) const fn focus_record_role(value: TraceFocusRecordRole) -> &'static s
         TraceFocusRecordRole::Transition => "transition",
         TraceFocusRecordRole::Notification => "notification",
         TraceFocusRecordRole::ModalityChange => "modality_change",
+        TraceFocusRecordRole::FocusVisibility => "focus_visibility",
     }
 }
 

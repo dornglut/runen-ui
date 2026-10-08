@@ -337,6 +337,7 @@ pub enum TraceFocusRecordRole {
     Transition,
     Notification,
     ModalityChange,
+    FocusVisibility,
 }
 
 /// Renderer-facing publication identity that closes an M4 causal chain.
@@ -552,6 +553,7 @@ enum TraceFocusRecordContext {
     ModalityChange {
         transition: TraceModalityTransition,
     },
+    FocusVisibility,
 }
 
 impl TraceFocusRecordContext {
@@ -560,6 +562,7 @@ impl TraceFocusRecordContext {
             Self::Transition { .. } => TraceFocusRecordRole::Transition,
             Self::Notification { .. } => TraceFocusRecordRole::Notification,
             Self::ModalityChange { .. } => TraceFocusRecordRole::ModalityChange,
+            Self::FocusVisibility => TraceFocusRecordRole::FocusVisibility,
         }
     }
 
@@ -568,7 +571,7 @@ impl TraceFocusRecordContext {
             Self::Notification { .. } => {
                 Some(TraceEventContext::new(TraceEventFamily::Focus, false))
             }
-            Self::Transition { .. } | Self::ModalityChange { .. } => None,
+            Self::Transition { .. } | Self::ModalityChange { .. } | Self::FocusVisibility => None,
         }
     }
 
@@ -577,14 +580,14 @@ impl TraceFocusRecordContext {
             Self::Transition { surface, .. } | Self::Notification { surface, .. } => {
                 surface.as_ref()
             }
-            Self::ModalityChange { .. } => None,
+            Self::ModalityChange { .. } | Self::FocusVisibility => None,
         }
     }
 
     const fn route(&self) -> Option<&TraceRouteSnapshot> {
         match self {
             Self::Notification { route, .. } => Some(route),
-            Self::Transition { .. } | Self::ModalityChange { .. } => None,
+            Self::Transition { .. } | Self::ModalityChange { .. } | Self::FocusVisibility => None,
         }
     }
 
@@ -593,21 +596,21 @@ impl TraceFocusRecordContext {
             Self::Transition { transition, .. } | Self::Notification { transition, .. } => {
                 Some(transition)
             }
-            Self::ModalityChange { .. } => None,
+            Self::ModalityChange { .. } | Self::FocusVisibility => None,
         }
     }
 
     const fn modality_transition(&self) -> Option<TraceModalityTransition> {
         match self {
             Self::ModalityChange { transition } => Some(*transition),
-            Self::Transition { .. } | Self::Notification { .. } => None,
+            Self::Transition { .. } | Self::Notification { .. } | Self::FocusVisibility => None,
         }
     }
 
     const fn delivery(&self) -> Option<TraceDeliveryOutcome> {
         match self {
             Self::Notification { delivery, .. } => Some(*delivery),
-            Self::Transition { .. } | Self::ModalityChange { .. } => None,
+            Self::Transition { .. } | Self::ModalityChange { .. } | Self::FocusVisibility => None,
         }
     }
 }
@@ -809,6 +812,10 @@ impl TraceContext {
 
     pub(crate) fn modality_change(transition: TraceModalityTransition) -> Self {
         Self::focus_record(TraceFocusRecordContext::ModalityChange { transition })
+    }
+
+    pub(crate) fn focus_visibility() -> Self {
+        Self::focus_record(TraceFocusRecordContext::FocusVisibility)
     }
 
     pub(crate) fn publication_record(publication: TracePublicationContext) -> Self {
