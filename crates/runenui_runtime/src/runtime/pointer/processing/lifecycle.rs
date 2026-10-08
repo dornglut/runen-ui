@@ -271,7 +271,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 let pressed = snapshot
                     .pressed_owner
                     .as_ref()
-                    .is_some_and(|owner| self.pointer_owner_is_ineligible(owner, unmounted));
+                    .is_some_and(|owner| self.pressed_owner_is_ineligible(owner, unmounted));
                 let capture = match (
                     snapshot.capture_owner.as_ref(),
                     snapshot.pressed_owner.as_ref(),
@@ -281,7 +281,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     {
                         pressed
                     }
-                    (Some(owner), _) => self.pointer_owner_is_ineligible(owner, unmounted),
+                    (Some(owner), _) => self.capture_owner_is_ineligible(owner, unmounted),
                     (None, _) => false,
                 };
                 let presentation_barrier =
@@ -391,12 +391,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             })
     }
 
-    fn pointer_owner_is_ineligible(
+    fn pressed_owner_is_ineligible(
         &mut self,
         owner: &MountedNodeId,
         unmounted: &[MountedNodeId],
     ) -> bool {
-        if unmounted.contains(owner) || self.tree.target_status(owner) != TargetStatus::Live {
+        if self.capture_owner_is_ineligible(owner, unmounted) {
             return true;
         }
         self.tree
@@ -404,6 +404,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .map_or(true, |activation| {
                 !activation.enabled() || !activation.is_actionable()
             })
+    }
+
+    fn capture_owner_is_ineligible(
+        &self,
+        owner: &MountedNodeId,
+        unmounted: &[MountedNodeId],
+    ) -> bool {
+        unmounted.contains(owner) || self.tree.target_status(owner) != TargetStatus::Live
     }
 
     pub(in crate::runtime) fn close_pointer_lifetimes(

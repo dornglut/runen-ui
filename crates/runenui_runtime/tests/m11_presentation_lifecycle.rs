@@ -26,11 +26,11 @@ fn fixed(width: u16, height: u16) -> LayoutStyle {
         .with_height(LayoutDimension::length(LogicalLength::from(height)))
 }
 
-fn context<'a>(
-    environment: &'a StyleEnvironment,
+fn context(
+    environment: &StyleEnvironment,
     width: u16,
     height: u16,
-) -> SurfaceBuildContext<'a> {
+) -> SurfaceBuildContext<'_> {
     SurfaceBuildContext::new(
         environment,
         LayoutConstraints::tight(LogicalSize::new(
@@ -70,8 +70,8 @@ fn node_center(publication: &runenui_runtime::SurfacePublication, authored: &str
         .unwrap_or_else(|| unreachable!("fixture authored node is published"));
     let bounds = node.bounds();
     LogicalPoint::new(
-        bounds.x() + bounds.width() * 0.5,
-        bounds.y() + bounds.height() * 0.5,
+        bounds.width().mul_add(0.5, bounds.x()),
+        bounds.height().mul_add(0.5, bounds.y()),
     )
     .unwrap_or_else(|_| unreachable!("published bounds are finite"))
 }
@@ -89,6 +89,8 @@ fn pointer(input: &SurfaceInputContext, point: LogicalPoint, phase: PointerPhase
     }
 }
 
+type PointerMoveLog = PointerMoveLog;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum InteractionAction {
     OutsidePressed,
@@ -104,7 +106,7 @@ struct InteractionProbe {
     outside: bool,
     prevent_cancel: bool,
     capture_on_down: bool,
-    moves: Rc<RefCell<Vec<(MountedNodeId, Option<MountedNodeId>)>>>,
+    moves: PointerMoveLog,
 }
 
 impl Widget<InteractionAction> for InteractionProbe {
@@ -164,20 +166,22 @@ impl Widget<InteractionAction> for InteractionProbe {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct PresentationFixture {
+    open: bool,
+    policy: PresentationOutsidePointerPolicy,
+    modal: bool,
+    cancel: bool,
+}
+
 #[derive(Clone, Debug)]
 struct InteractionState {
-    open_a: bool,
-    open_b: bool,
-    policy_a: PresentationOutsidePointerPolicy,
-    policy_b: PresentationOutsidePointerPolicy,
-    modal_a: bool,
-    modal_b: bool,
-    cancel_a: bool,
-    cancel_b: bool,
+    a: PresentationFixture,
+    b: PresentationFixture,
     prevent_cancel: bool,
     outside_presses: usize,
     dismissals: Vec<(&'static str, PresentationDismissReason)>,
-    capture_moves: Rc<RefCell<Vec<(MountedNodeId, Option<MountedNodeId>)>>>,
+    capture_moves: PointerMoveLog,
 }
 
 struct InteractionApp;
@@ -188,7 +192,7 @@ fn presentation_probe(
     policy: PresentationOutsidePointerPolicy,
     modal: bool,
     cancel: bool,
-    moves: Rc<RefCell<Vec<(MountedNodeId, Option<MountedNodeId>)>>>,
+    moves: PointerMoveLog,
 ) -> Element<InteractionAction> {
     let presentation = Element::new(InteractionProbe {
         name,
@@ -232,23 +236,23 @@ impl UiApp for InteractionApp {
         .with_layout(fixed(20, 20));
 
         let mut children = vec![outside];
-        if state.open_a {
+        if state.a.open {
             children.push(presentation_probe(
                 "presentation-a",
                 60.0,
-                state.policy_a,
-                state.modal_a,
-                state.cancel_a,
+                state.a.policy,
+                state.a.modal,
+                state.a.cancel,
                 Rc::clone(&state.capture_moves),
             ));
         }
-        if state.open_b {
+        if state.b.open {
             children.push(presentation_probe(
                 "presentation-b",
                 70.0,
-                state.policy_b,
-                state.modal_b,
-                state.cancel_b,
+                state.b.policy,
+                state.b.modal,
+                state.b.cancel,
                 Rc::clone(&state.capture_moves),
             ));
         }
@@ -261,8 +265,8 @@ impl UiApp for InteractionApp {
             InteractionAction::Dismissed { name, reason } => {
                 state.dismissals.push((name, reason));
                 match name {
-                    "presentation-a" => state.open_a = false,
-                    "presentation-b" => state.open_b = false,
+                    "presentation-a" => state.a.open = false,
+                    "presentation-b" => state.b.open = false,
                     _ => unreachable!("fixture presentation name is bounded"),
                 }
             }
@@ -272,14 +276,18 @@ impl UiApp for InteractionApp {
 
 fn interaction_state(policy: PresentationOutsidePointerPolicy) -> InteractionState {
     InteractionState {
-        open_a: true,
-        open_b: false,
-        policy_a: policy,
-        policy_b: PresentationOutsidePointerPolicy::Ignore,
-        modal_a: false,
-        modal_b: false,
-        cancel_a: false,
-        cancel_b: false,
+        a: PresentationFixture {
+            open: true,
+            policy,
+            modal: false,
+            cancel: false,
+        },
+        b: PresentationFixture {
+            open: false,
+            policy: PresentationOutsidePointerPolicy::Ignore,
+            modal: false,
+            cancel: false,
+        },
         prevent_cancel: false,
         outside_presses: 0,
         dismissals: Vec::new(),
@@ -310,8 +318,8 @@ fn outside_pointer_policies_are_exact_and_never_click_through_after_dismissal() 
     ));
     outside_down(&mut ignore);
     assert_eq!(ignore.state().outside_presses, 1);
-    assert!(ignore.state().dismissals.is_empty());
-    assert!(ignore.state().open_a);
+    assert_eq!(ignore.state().dismissals.len(), 0);
+    assert!(ignore.state().a.open);
     assert!(
         ignore.focus().focused_node().is_none(),
         "Ignore + nonmodal + default Preserve must permit a Tooltip-style nonfocusable presentation without proxy focus"
@@ -322,8 +330,8 @@ fn outside_pointer_policies_are_exact_and_never_click_through_after_dismissal() 
     ));
     outside_down(&mut block);
     assert_eq!(block.state().outside_presses, 0);
-    assert!(block.state().dismissals.is_empty());
-    assert!(block.state().open_a);
+    assert_eq!(block.state().dismissals.len(), 0);
+    assert!(block.state().a.open);
 
     let mut dismiss = AppRuntime::<InteractionApp>::mount(interaction_state(
         PresentationOutsidePointerPolicy::DismissAndBlock,
@@ -334,25 +342,25 @@ fn outside_pointer_policies_are_exact_and_never_click_through_after_dismissal() 
         dismiss.state().dismissals,
         [("presentation-a", PresentationDismissReason::OutsidePointer)]
     );
-    assert!(!dismiss.state().open_a);
+    assert!(!dismiss.state().a.open);
 }
 
 #[test]
 fn modal_ignore_still_blocks_ordinary_outside_pointer_without_dismissal() {
     let mut state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
-    state.modal_a = true;
+    state.a.modal = true;
     let mut runtime = AppRuntime::<InteractionApp>::mount(state);
     outside_down(&mut runtime);
     assert_eq!(runtime.state().outside_presses, 0);
-    assert!(runtime.state().dismissals.is_empty());
-    assert!(runtime.state().open_a);
+    assert_eq!(runtime.state().dismissals.len(), 0);
+    assert!(runtime.state().a.open);
 }
 
 #[test]
 fn visually_topmost_eligible_presentation_owns_outside_decision() {
     let mut state = interaction_state(PresentationOutsidePointerPolicy::Block);
-    state.open_b = true;
-    state.policy_b = PresentationOutsidePointerPolicy::DismissAndBlock;
+    state.b.open = true;
+    state.b.policy = PresentationOutsidePointerPolicy::DismissAndBlock;
     let mut runtime = AppRuntime::<InteractionApp>::mount(state);
     outside_down(&mut runtime);
     assert_eq!(runtime.state().outside_presses, 0);
@@ -360,8 +368,8 @@ fn visually_topmost_eligible_presentation_owns_outside_decision() {
         runtime.state().dismissals,
         [("presentation-b", PresentationDismissReason::OutsidePointer)]
     );
-    assert!(runtime.state().open_a);
-    assert!(!runtime.state().open_b);
+    assert!(runtime.state().a.open);
+    assert!(!runtime.state().b.open);
 }
 
 #[test]
@@ -369,7 +377,7 @@ fn cancel_or_back_claim_is_suppressed_by_prior_routed_prevent_default() {
     let environment = StyleEnvironment::default();
 
     let mut unprevented_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
-    unprevented_state.cancel_a = true;
+    unprevented_state.a.cancel = true;
     let mut unprevented = AppRuntime::<InteractionApp>::mount(unprevented_state);
     let publication = unprevented
         .publish_surface(&context(&environment, 100, 60))
@@ -389,9 +397,9 @@ fn cancel_or_back_claim_is_suppressed_by_prior_routed_prevent_default() {
     );
 
     let mut topmost_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
-    topmost_state.open_b = true;
-    topmost_state.cancel_a = true;
-    topmost_state.cancel_b = true;
+    topmost_state.b.open = true;
+    topmost_state.a.cancel = true;
+    topmost_state.b.cancel = true;
     let mut topmost = AppRuntime::<InteractionApp>::mount(topmost_state);
     let publication = topmost
         .publish_surface(&context(&environment, 100, 60))
@@ -410,11 +418,11 @@ fn cancel_or_back_claim_is_suppressed_by_prior_routed_prevent_default() {
         [("presentation-b", PresentationDismissReason::CancelOrBack)],
         "CancelOrBack must be claimed by the visually topmost eligible presentation"
     );
-    assert!(topmost.state().open_a);
-    assert!(!topmost.state().open_b);
+    assert!(topmost.state().a.open);
+    assert!(!topmost.state().b.open);
 
     let mut prevented_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
-    prevented_state.cancel_a = true;
+    prevented_state.a.cancel = true;
     prevented_state.prevent_cancel = true;
     let mut prevented = AppRuntime::<InteractionApp>::mount(prevented_state);
     let publication = prevented
@@ -429,8 +437,8 @@ fn cancel_or_back_claim_is_suppressed_by_prior_routed_prevent_default() {
         )
         .unwrap_or_else(|_| unreachable!("prevented cancel command is accepted"));
     settle(&mut prevented);
-    assert!(prevented.state().dismissals.is_empty());
-    assert!(prevented.state().open_a);
+    assert_eq!(prevented.state().dismissals.len(), 0);
+    assert!(prevented.state().a.open);
 
     let fallback_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
     let mut fallback = AppRuntime::<InteractionApp>::mount(fallback_state);
@@ -446,9 +454,9 @@ fn cancel_or_back_claim_is_suppressed_by_prior_routed_prevent_default() {
         )
         .unwrap_or_else(|_| unreachable!("unclaimed cancel command is accepted"));
     settle(&mut fallback);
-    assert!(fallback.state().dismissals.is_empty());
+    assert_eq!(fallback.state().dismissals.len(), 0);
     assert!(
-        fallback.state().open_a,
+        fallback.state().a.open,
         "when no presentation claims CancelOrBack, presentation lifecycle must leave the existing default path untouched"
     );
 }
@@ -793,7 +801,7 @@ enum CaptureAction {
 #[derive(Clone, Debug)]
 struct CaptureState {
     open: bool,
-    moves: Rc<RefCell<Vec<(MountedNodeId, Option<MountedNodeId>)>>>,
+    moves: PointerMoveLog,
 }
 
 struct CaptureModalApp;
@@ -1088,7 +1096,7 @@ struct NestedInteractionState {
     inner_open: bool,
     interaction_presses: usize,
     dismissals: Vec<(&'static str, PresentationDismissReason)>,
-    moves: Rc<RefCell<Vec<(MountedNodeId, Option<MountedNodeId>)>>>,
+    moves: PointerMoveLog,
 }
 
 struct NestedInteractionApp;
@@ -1206,7 +1214,7 @@ fn nested_presentation_owner_chain_is_inside_and_unrelated_content_dismisses_onl
         .unwrap_or_else(|_| unreachable!("owner-family pointer down is accepted"));
     settle(&mut runtime);
     assert_eq!(runtime.state().interaction_presses, 1);
-    assert!(runtime.state().dismissals.is_empty());
+    assert_eq!(runtime.state().dismissals.len(), 0);
     assert!(runtime.state().inner_open);
     runtime
         .submit_pointer(pointer(
@@ -1383,7 +1391,7 @@ fn presentation_lifecycle_trace_export_uses_bounded_stable_tokens() {
     assert!(outside_json.contains("outside_pointer"));
 
     let mut cancel_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
-    cancel_state.cancel_a = true;
+    cancel_state.a.cancel = true;
     let mut cancel = AppRuntime::<InteractionApp>::mount_with_config(cancel_state, trace_config());
     let environment = StyleEnvironment::default();
     let publication = cancel
