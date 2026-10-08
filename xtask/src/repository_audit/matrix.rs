@@ -967,11 +967,7 @@ mod tests {
                 "owner-accepted",
             ),
             ("M11PRES1", M11_PRESENTATION_IDS, "owner-accepted"),
-            (
-                "M11PRES2",
-                M11_PRESENTATION_LIFECYCLE_IDS,
-                "owner-accepted",
-            ),
+            ("M11PRES2", M11_PRESENTATION_LIFECYCLE_IDS, "owner-accepted"),
         ];
         for (slice, ids, status) in expected {
             assert_m11_slice(&rows, slice, ids, status);
