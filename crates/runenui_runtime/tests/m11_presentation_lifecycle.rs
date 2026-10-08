@@ -190,7 +190,7 @@ fn presentation_probe(
     cancel: bool,
     moves: Rc<RefCell<Vec<(MountedNodeId, Option<MountedNodeId>)>>>,
 ) -> Element<InteractionAction> {
-    Element::new(InteractionProbe {
+    let presentation = Element::new(InteractionProbe {
         name,
         outside: false,
         prevent_cancel: false,
@@ -210,7 +210,8 @@ fn presentation_probe(
         .with_outside_pointer(policy)
         .modal(modal)
         .dismiss_on_cancel_or_back(cancel),
-    )
+    );
+    column(vec![presentation]).into_element()
 }
 
 impl UiApp for InteractionApp {
@@ -502,20 +503,24 @@ impl UiApp for FocusLifecycleApp {
                 .with_layout(fixed(20, 20))
                 .into_element()
                 .presentation_focus_preferred(state.preferred);
+            let presentation = column(vec![first, preferred])
+                .id("focus-presentation")
+                .key("focus-presentation")
+                .surface_presentation(
+                    SurfacePresentation::new(SurfacePresentationPlacement::new(
+                        SurfacePresentationSide::Center,
+                    ))
+                    .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                        LogicalPoint::new(70.0, 30.0)
+                            .unwrap_or_else(|_| unreachable!("focus anchor is finite")),
+                    ))
+                    .with_focus_policy(state.policy),
+                )
+                .into_element();
             children.push(
-                column(vec![first, preferred])
-                    .id("focus-presentation")
-                    .key("focus-presentation")
-                    .surface_presentation(
-                        SurfacePresentation::new(SurfacePresentationPlacement::new(
-                            SurfacePresentationSide::Center,
-                        ))
-                        .with_anchor(SurfacePresentationAnchor::SurfacePoint(
-                            LogicalPoint::new(70.0, 30.0)
-                                .unwrap_or_else(|_| unreachable!("focus anchor is finite")),
-                        ))
-                        .with_focus_policy(state.policy),
-                    )
+                column(vec![presentation])
+                    .id("focus-presentation-owner")
+                    .key("focus-presentation-owner")
                     .into_element(),
             );
         }
@@ -816,34 +821,38 @@ impl UiApp for CaptureModalApp {
         });
         let mut children = vec![capture.into_element()];
         if state.open {
+            let modal = Element::new(InteractionProbe {
+                name: "modal",
+                outside: false,
+                prevent_cancel: false,
+                capture_on_down: false,
+                moves: Rc::clone(&state.moves),
+            })
+            .id("modal")
+            .key("modal")
+            .with_layout(fixed(20, 20))
+            .surface_presentation(
+                SurfacePresentation::new(SurfacePresentationPlacement::new(
+                    SurfacePresentationSide::Center,
+                ))
+                .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                    LogicalPoint::new(70.0, 20.0)
+                        .unwrap_or_else(|_| unreachable!("modal anchor is finite")),
+                ))
+                .with_outside_pointer(PresentationOutsidePointerPolicy::DismissAndBlock)
+                .modal(true),
+            )
+            .map_action(|action| match action {
+                InteractionAction::OutsidePressed | InteractionAction::Dismissed { .. } => {
+                    CaptureAction::Open
+                }
+            })
+            .into_element();
             children.push(
-                Element::new(InteractionProbe {
-                    name: "modal",
-                    outside: false,
-                    prevent_cancel: false,
-                    capture_on_down: false,
-                    moves: Rc::clone(&state.moves),
-                })
-                .id("modal")
-                .key("modal")
-                .with_layout(fixed(20, 20))
-                .surface_presentation(
-                    SurfacePresentation::new(SurfacePresentationPlacement::new(
-                        SurfacePresentationSide::Center,
-                    ))
-                    .with_anchor(SurfacePresentationAnchor::SurfacePoint(
-                        LogicalPoint::new(70.0, 20.0)
-                            .unwrap_or_else(|_| unreachable!("modal anchor is finite")),
-                    ))
-                    .with_outside_pointer(PresentationOutsidePointerPolicy::DismissAndBlock)
-                    .modal(true),
-                )
-                .map_action(|action| match action {
-                    InteractionAction::OutsidePressed | InteractionAction::Dismissed { .. } => {
-                        CaptureAction::Open
-                    }
-                })
-                .into_element(),
+                column(vec![modal])
+                    .id("modal-owner")
+                    .key("modal-owner")
+                    .into_element(),
             );
         }
         column(children)
@@ -1123,7 +1132,11 @@ impl UiApp for NestedInteractionApp {
             )
             .into_element();
 
-        column(vec![outside, outer])
+        let outer_owner = column(vec![outer])
+            .id("nested-outer-owner")
+            .key("nested-outer-owner")
+            .into_element();
+        column(vec![outside, outer_owner])
     }
 
     fn update(state: &mut Self::State, action: Self::Action) {
@@ -1266,21 +1279,25 @@ impl UiApp for ClickThroughApp {
             .into_element();
         let mut children = vec![underlying];
         if state.open {
+            let presentation = Element::new(ClickThroughDismissProbe)
+                .id("click-through-presentation")
+                .key("click-through-presentation")
+                .with_layout(fixed(20, 20))
+                .surface_presentation(
+                    SurfacePresentation::new(SurfacePresentationPlacement::new(
+                        SurfacePresentationSide::Center,
+                    ))
+                    .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                        LogicalPoint::new(70.0, 30.0)
+                            .unwrap_or_else(|_| unreachable!("fixture anchor is finite")),
+                    ))
+                    .with_outside_pointer(PresentationOutsidePointerPolicy::DismissAndBlock),
+                );
             children.push(
-                Element::new(ClickThroughDismissProbe)
-                    .id("click-through-presentation")
-                    .key("click-through-presentation")
-                    .with_layout(fixed(20, 20))
-                    .surface_presentation(
-                        SurfacePresentation::new(SurfacePresentationPlacement::new(
-                            SurfacePresentationSide::Center,
-                        ))
-                        .with_anchor(SurfacePresentationAnchor::SurfacePoint(
-                            LogicalPoint::new(70.0, 30.0)
-                                .unwrap_or_else(|_| unreachable!("fixture anchor is finite")),
-                        ))
-                        .with_outside_pointer(PresentationOutsidePointerPolicy::DismissAndBlock),
-                    ),
+                column(vec![presentation])
+                    .id("click-through-presentation-owner")
+                    .key("click-through-presentation-owner")
+                    .into_element(),
             );
         }
         column(children)
