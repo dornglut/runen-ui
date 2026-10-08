@@ -42,13 +42,14 @@ fn menu_type_ahead() -> FocusGroupTypeAhead {
 
 /// An application-mounted, nonmodal menu surface in the ordinary mounted tree.
 ///
-/// Children may include the standard Separator and a standard ScrollContainer
-/// with a ScrollBar for long lists. Presentation, focus and dismissal remain
+/// Children may include the standard `Separator` and a standard `ScrollContainer`
+/// with a `ScrollBar` for long lists. Presentation, focus and dismissal remain
 /// the existing generic M11 authorities.
 pub struct Menu<Action> {
     children: Vec<Element<Action>>,
     common: CommonNodeAuthoring,
     on_dismiss: Option<DismissCallback<Action>>,
+    on_back: Option<ActionCallback<Action>>,
     type_ahead: FocusGroupTypeAhead,
 }
 
@@ -84,6 +85,7 @@ impl<Action> Menu<Action> {
                 ..CommonNodeAuthoring::default()
             },
             on_dismiss: None,
+            on_back: None,
             type_ahead: menu_type_ahead(),
         }
     }
@@ -110,7 +112,7 @@ impl<Action> Menu<Action> {
     }
 
     #[must_use]
-    pub fn type_ahead(mut self, policy: FocusGroupTypeAhead) -> Self {
+    pub const fn type_ahead(mut self, policy: FocusGroupTypeAhead) -> Self {
         self.type_ahead = policy;
         self
     }
@@ -121,6 +123,13 @@ impl<Action> Menu<Action> {
         callback: impl FnMut(PresentationDismissReason) -> Action + 'static,
     ) -> Self {
         self.on_dismiss = Some(Box::new(callback));
+        self
+    }
+
+    /// Optional application-owned back action when focused inside a nested submenu.
+    #[must_use]
+    pub fn on_back(mut self, callback: impl FnMut() -> Action + 'static) -> Self {
+        self.on_back = Some(Box::new(callback));
         self
     }
 }
@@ -156,7 +165,7 @@ impl<Action> MenuBar<Action> {
     common_node_builder_methods!();
 
     #[must_use]
-    pub fn type_ahead(mut self, policy: FocusGroupTypeAhead) -> Self {
+    pub const fn type_ahead(mut self, policy: FocusGroupTypeAhead) -> Self {
         self.type_ahead = policy;
         self
     }
@@ -165,6 +174,7 @@ impl<Action> MenuBar<Action> {
 struct MenuContainerWidget<Action> {
     role: SemanticRole,
     on_dismiss: Option<DismissCallback<Action>>,
+    on_back: Option<ActionCallback<Action>>,
 }
 
 impl<Action> fmt::Debug for MenuContainerWidget<Action> {
@@ -183,7 +193,7 @@ impl<Action> Widget<Action> for MenuContainerWidget<Action> {
 
     fn event(
         &mut self,
-        _: &mut Self::State,
+        (): &mut Self::State,
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
@@ -199,6 +209,16 @@ impl<Action> Widget<Action> for MenuContainerWidget<Action> {
         if context.phase() != EventPhase::Bubble || context.default_is_prevented() {
             return WidgetEventOutput::none();
         }
+        if self.role == SemanticRole::Menu
+            && let Some(command) = event.as_semantic_command()
+            && command.command() == SemanticCommand::FocusLeft
+            && let Some(callback) = self.on_back.as_mut()
+        {
+            context.prevent_default();
+            context.stop_propagation();
+            context.emit(callback());
+            return WidgetEventOutput::none();
+        }
         let delegated = if let Some(command) = event.as_semantic_command() {
             match (self.role, command.command()) {
                 (SemanticRole::Menu, SemanticCommand::FocusUp)
@@ -209,11 +229,6 @@ impl<Action> Widget<Action> for MenuContainerWidget<Action> {
                 | (SemanticRole::MenuBar, SemanticCommand::FocusRight) => {
                     Some(SemanticCommand::FocusGroupNext)
                 }
-                (SemanticRole::Menu, SemanticCommand::FocusRight)
-                | (SemanticRole::MenuBar, SemanticCommand::FocusDown) => {
-                    Some(SemanticCommand::Expand)
-                }
-                (SemanticRole::Menu, SemanticCommand::FocusLeft) => Some(SemanticCommand::Collapse),
                 _ => None,
             }
         } else if let Some(keyboard) = event.as_keyboard() {
@@ -240,7 +255,7 @@ impl<Action> Widget<Action> for MenuContainerWidget<Action> {
 
     fn semantics(
         &self,
-        _: &Self::State,
+        (): &Self::State,
         context: SemanticContributionContext,
     ) -> SemanticContribution {
         let orientation = if self.role == SemanticRole::Menu {
@@ -262,12 +277,13 @@ fn menu_container_element<Action: 'static>(
     children: Vec<Element<Action>>,
     role: SemanticRole,
     on_dismiss: Option<DismissCallback<Action>>,
+    on_back: Option<ActionCallback<Action>>,
     type_ahead: FocusGroupTypeAhead,
 ) -> Element<Action> {
     let (fields, diagnostics) = common.into_authored_fields(Focusability::Automatic, None);
     Element::from_authored_parts(
         fields,
-        Box::new(WidgetAdapter(MenuContainerWidget { role, on_dismiss })),
+        Box::new(WidgetAdapter(MenuContainerWidget { role, on_dismiss, on_back })),
         children,
         diagnostics,
     )
@@ -290,6 +306,7 @@ impl<Action: 'static> View<Action> for Menu<Action> {
             self.children,
             SemanticRole::Menu,
             self.on_dismiss,
+            self.on_back,
             self.type_ahead,
         )
     }
@@ -301,6 +318,7 @@ impl<Action: 'static> View<Action> for MenuBar<Action> {
             self.common,
             self.children,
             SemanticRole::MenuBar,
+            None,
             None,
             self.type_ahead,
         )
@@ -314,7 +332,7 @@ pub struct CheckboxMenuItem;
 pub struct RadioMenuItem;
 pub struct MenuButtonItem;
 
-/// An ordinary item inside Menu or MenuBar.
+/// An ordinary item inside `Menu` or `MenuBar`.
 ///
 /// Selected/checked/expanded facts are authored anew by the application.
 pub struct MenuEntry<Action, Kind> {
@@ -333,7 +351,7 @@ pub struct MenuEntry<Action, Kind> {
     marker: PhantomData<Kind>,
 }
 
-/// MenuButton is a semantic Button with popup state, not a separate role.
+/// `MenuButton` is a semantic `Button` with popup state, not a separate role.
 pub type MenuItem<Action> = MenuEntry<Action, PlainMenuItem>;
 pub type MenuButton<Action> = MenuEntry<Action, MenuButtonItem>;
 pub type MenuItemCheckbox<Action> = MenuEntry<Action, CheckboxMenuItem>;
@@ -419,7 +437,7 @@ impl<Action, Kind> MenuEntry<Action, Kind> {
         Action: 'static,
     {
         let element = submenu.into_element();
-        self.submenu = Some(element);
+        self.submenu = expanded.then_some(element);
         self.expanded = Some(expanded);
         self
     }
@@ -572,16 +590,26 @@ impl<Action> Widget<Action> for MenuItemWidget<Action> {
         let Some(command) = event.as_semantic_command() else {
             return WidgetEventOutput::none();
         };
-        let callback = match command.command() {
+        let opening = matches!(
+            command.command(),
             SemanticCommand::Expand | SemanticCommand::OpenMenu
-                if state.expanded == Some(false) =>
-            {
-                &mut self.on_expand
-            }
-            SemanticCommand::Collapse if state.expanded == Some(true) => &mut self.on_collapse,
-            _ => return WidgetEventOutput::none(),
+        ) || (state.role == SemanticRole::Button
+            && command.command() == SemanticCommand::FocusDown)
+            || (state.role != SemanticRole::Button
+                && command.command() == SemanticCommand::FocusRight);
+        let closing = command.command() == SemanticCommand::Collapse
+            || (state.role != SemanticRole::Button
+                && command.command() == SemanticCommand::FocusLeft);
+        let callback = if opening && state.expanded == Some(false) {
+            &mut self.on_expand
+        } else if closing && state.expanded == Some(true) {
+            &mut self.on_collapse
+        } else {
+            return WidgetEventOutput::none();
         };
         if let Some(callback) = callback.as_mut() {
+            context.prevent_default();
+            context.stop_propagation();
             context.emit(callback());
         }
         WidgetEventOutput::none()

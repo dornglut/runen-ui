@@ -68,6 +68,7 @@ impl UiApp for MenuApp {
                     ])
                     .submenu()
                     .id("nested-menu")
+                    .on_back(|| Action::CollapseSubmenu)
                     .on_dismiss(Action::Dismiss),
                     true,
                 );
@@ -118,6 +119,7 @@ impl UiApp for MenuApp {
                         .into_element(),
                     MenuButton::new("Tools", false)
                         .id("bar-tools")
+                        .on_expand(|| Action::Selected)
                         .on_activate(|| Action::Selected)
                         .into_element(),
                 ])
@@ -283,8 +285,9 @@ fn menu_command_uses_scoped_fifo_and_submenu_expands_through_app_state() {
     assert_eq!(h.state().saved, 1);
     assert_eq!(h.state().selected, 0);
 
-    command(&mut h, "submenu-owner", SemanticCommand::Expand);
-    assert!(h.state().submenu_open);
+    command(&mut h, "submenu-owner", SemanticCommand::RequestFocus);
+    command(&mut h, "submenu-owner", SemanticCommand::FocusRight);
+    assert!(h.state().submenu_open, "right arrow opens the focused owning item");
     let snapshot = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
     let owner = snapshot
         .nodes()
@@ -305,8 +308,13 @@ fn menu_command_uses_scoped_fifo_and_submenu_expands_through_app_state() {
     assert_eq!(nested.role(), SemanticRole::Menu);
     command(&mut h, "nested-action", SemanticCommand::Activate);
     assert_eq!(h.state().selected, 1);
-    command(&mut h, "submenu-owner", SemanticCommand::Collapse);
-    assert!(!h.state().submenu_open);
+    command(&mut h, "nested-action", SemanticCommand::FocusLeft);
+    assert!(!h.state().submenu_open, "submenu back action closes only that subtree");
+    assert!(h.state().open, "the parent menu remains open");
+    command(&mut h, "submenu-owner", SemanticCommand::Expand);
+    assert!(h.state().submenu_open);
+    command(&mut h, "submenu-owner", SemanticCommand::FocusLeft);
+    assert!(!h.state().submenu_open, "left arrow collapses the owning item");
 }
 
 #[test]
@@ -321,4 +329,13 @@ fn inline_menu_bar_uses_neutral_horizontal_semantics() {
     command(&mut h, "bar-view", SemanticCommand::RequestFocus);
     command(&mut h, "bar-view", SemanticCommand::FocusRight);
     assert_eq!(h.state().selected, 0, "focus traversal never activates");
+    let snapshot = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
+    let tools = snapshot
+        .nodes()
+        .iter()
+        .find(|n| n.role() == SemanticRole::Button && n.name() == Some("Tools"))
+        .unwrap_or_else(|| unreachable!("Tools is mounted"));
+    assert_eq!(snapshot.focused(), Some(tools.id()));
+    command(&mut h, "bar-tools", SemanticCommand::FocusDown);
+    assert_eq!(h.state().selected, 1, "down opens the focused MenuButton");
 }
