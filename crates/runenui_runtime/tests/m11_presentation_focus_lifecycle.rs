@@ -473,11 +473,9 @@ impl UiApp for NestedRestoreApp {
                         .id("inner-presentation")
                         .key("inner-presentation")
                         .surface_presentation(
-                            SurfacePresentation::new(
-                                SurfacePresentationPlacement::new(
-                                    SurfacePresentationSide::Center,
-                                ),
-                            )
+                            SurfacePresentation::new(SurfacePresentationPlacement::new(
+                                SurfacePresentationSide::Center,
+                            ))
                             .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                                 LogicalPoint::new(95.0, 40.0)
                                     .unwrap_or_else(|_| unreachable!("inner point is finite")),
@@ -492,9 +490,9 @@ impl UiApp for NestedRestoreApp {
                     .id("outer-presentation")
                     .key("outer-presentation")
                     .surface_presentation(
-                        SurfacePresentation::new(
-                            SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-                        )
+                        SurfacePresentation::new(SurfacePresentationPlacement::new(
+                            SurfacePresentationSide::Center,
+                        ))
                         .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                             LogicalPoint::new(75.0, 30.0)
                                 .unwrap_or_else(|_| unreachable!("outer point is finite")),

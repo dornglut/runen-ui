@@ -50,35 +50,23 @@ fn settle<App: UiApp>(runtime: &mut AppRuntime<App>) {
     assert!(report.is_quiescent());
 }
 
-fn node_id(
-    publication: &runenui_runtime::SurfacePublication,
-    authored: &str,
-) -> MountedNodeId {
+fn node_id(publication: &runenui_runtime::SurfacePublication, authored: &str) -> MountedNodeId {
     publication
         .frame()
         .nodes()
         .iter()
-        .find(|node| {
-            node.authored_id()
-                .is_some_and(|id| id.as_str() == authored)
-        })
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == authored))
         .unwrap_or_else(|| unreachable!("fixture authored node is published"))
         .id()
         .clone()
 }
 
-fn node_center(
-    publication: &runenui_runtime::SurfacePublication,
-    authored: &str,
-) -> LogicalPoint {
+fn node_center(publication: &runenui_runtime::SurfacePublication, authored: &str) -> LogicalPoint {
     let node = publication
         .frame()
         .nodes()
         .iter()
-        .find(|node| {
-            node.authored_id()
-                .is_some_and(|id| id.as_str() == authored)
-        })
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == authored))
         .unwrap_or_else(|| unreachable!("fixture authored node is published"));
     let bounds = node.bounds();
     LogicalPoint::new(
@@ -88,19 +76,9 @@ fn node_center(
     .unwrap_or_else(|_| unreachable!("published bounds are finite"))
 }
 
-fn pointer(
-    input: &SurfaceInputContext,
-    point: LogicalPoint,
-    phase: PointerPhase,
-) -> PointerEvent {
+fn pointer(input: &SurfaceInputContext, point: LogicalPoint, phase: PointerPhase) -> PointerEvent {
     let id = PointerId::new(342).unwrap_or_else(|| unreachable!("fixture pointer id is non-zero"));
-    let event = PointerEvent::new(
-        id,
-        PointerDeviceKind::Mouse,
-        phase,
-        point,
-        input.clone(),
-    );
+    let event = PointerEvent::new(id, PointerDeviceKind::Mouse, phase, point, input.clone());
     match phase {
         PointerPhase::Down => event
             .with_buttons(PointerButtons::new([PointerButton::Primary]))
@@ -223,12 +201,11 @@ fn presentation_probe(
     .key(name)
     .with_layout(fixed(20, 20))
     .surface_presentation(
-        SurfacePresentation::new(
-            SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-        )
+        SurfacePresentation::new(SurfacePresentationPlacement::new(
+            SurfacePresentationSide::Center,
+        ))
         .with_anchor(SurfacePresentationAnchor::SurfacePoint(
-            LogicalPoint::new(x, 30.0)
-                .unwrap_or_else(|_| unreachable!("fixture anchor is finite")),
+            LogicalPoint::new(x, 30.0).unwrap_or_else(|_| unreachable!("fixture anchor is finite")),
         ))
         .with_outside_pointer(policy)
         .modal(modal)
@@ -530,9 +507,9 @@ impl UiApp for FocusLifecycleApp {
                     .id("focus-presentation")
                     .key("focus-presentation")
                     .surface_presentation(
-                        SurfacePresentation::new(
-                            SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-                        )
+                        SurfacePresentation::new(SurfacePresentationPlacement::new(
+                            SurfacePresentationSide::Center,
+                        ))
                         .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                             LogicalPoint::new(70.0, 30.0)
                                 .unwrap_or_else(|_| unreachable!("focus anchor is finite")),
@@ -669,12 +646,18 @@ fn duplicate_preferred_focus_fails_closed_and_diagnoses() {
     let _ = open_and_publish(&mut runtime, &environment);
 
     assert_eq!(runtime.focus().focused_node(), Some(&trigger));
-    assert!(runtime.reconciliation_report().diagnostics().iter().any(|diagnostic| {
-        matches!(
-            diagnostic,
-            ReconciliationDiagnostic::MultiplePreferredPresentationFocusTargets { .. }
-        )
-    }));
+    assert!(
+        runtime
+            .reconciliation_report()
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| {
+                matches!(
+                    diagnostic,
+                    ReconciliationDiagnostic::MultiplePreferredPresentationFocusTargets { .. }
+                )
+            })
+    );
 }
 
 #[test]
