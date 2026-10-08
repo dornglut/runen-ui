@@ -644,8 +644,22 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                     .typography()
                     .cloned()
                     .unwrap_or_else(Typography::default);
-                let constraints =
+                // Taffy may resolve min-width without supplying known_dimensions on
+                // an intrinsic leaf. Carry that minimum into the *same* text
+                // request as an alignment floor, not a wrapping ceiling or a
+                // second horizontal runtime translation.
+                let minimum_inline = style
+                    .min_size
+                    .width
+                    .resolve_to_option(inputs.parent_size.width, |_, _| 0.0)
+                    .map(|value| {
+                        logical_extent(value - padding.left().get() - padding.right().get())
+                    });
+                let mut constraints =
                     text_constraints(inputs.available_space.width, widget_input.known_width());
+                if let Some(minimum) = minimum_inline {
+                    constraints = constraints.with_alignment_min_inline(minimum);
+                }
                 let paragraph =
                     TextParagraphStyle::default().with_alignment(descriptor.inline_alignment());
                 let request = TextRequest::new(content, typography, constraints)
@@ -664,9 +678,21 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                         super::profile::record_text_layout_decision(decision);
                         let artifact = outcome.artifact();
                         let text_size = artifact.size();
-                        let block_slack = widget_input
-                            .known_height()
-                            .map_or(0.0, |height| (height.get() - text_size.height()).max(0.0));
+                        // Min-height can expand the final box even when Taffy has
+                        // not passed a known height into this leaf callback.
+                        let minimum_block = style
+                            .min_size
+                            .height
+                            .resolve_to_option(inputs.parent_size.height, |_, _| 0.0)
+                            .map(|value| {
+                                logical_extent(value - padding.top().get() - padding.bottom().get())
+                            });
+                        let block_extent = [widget_input.known_height(), minimum_block]
+                            .into_iter()
+                            .flatten()
+                            .map(LogicalLength::get)
+                            .fold(0.0_f32, f32::max);
+                        let block_slack = (block_extent - text_size.height()).max(0.0);
                         let block_offset = match descriptor.block_placement() {
                             TextBlockPlacement::Start => 0.0,
                             TextBlockPlacement::Center => block_slack / 2.0,

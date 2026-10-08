@@ -21,7 +21,6 @@ fn text_leaf_contract_has_one_owner_and_no_legacy_parallel_variant() {
         assert!(!source.contains("ButtonWidget"));
     }
     assert!(!PAINT.contains("widget_type_id == "));
-
 }
 
 #[test]

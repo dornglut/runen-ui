@@ -82,10 +82,20 @@ pub fn relayout_text(
     #[cfg(any(test, feature = "internal-test-seams"))]
     let line_break_started = std::time::Instant::now();
     let paragraph = request.paragraph_style();
-    let max_inline = if request.constraints().is_min_content() {
+    let constraints = request.constraints();
+    let max_inline = if constraints.is_min_content() {
         Some(layout.calculate_content_widths().min)
     } else {
-        request.constraints().max_inline().map(LogicalLength::get)
+        let wrapping_width = constraints.max_inline().map(LogicalLength::get);
+        match (wrapping_width, constraints.alignment_min_inline()) {
+            (Some(width), Some(minimum)) => Some(width.max(minimum.get())),
+            (None, Some(minimum)) => {
+                // An unbounded text leaf must stay max-content when longer
+                // than the Taffy-owned minimum; only alignment uses extra slack.
+                Some(layout.calculate_content_widths().max.max(minimum.get()))
+            }
+            (width, None) => width,
+        }
     };
     layout.break_all_lines(max_inline);
     layout.align(

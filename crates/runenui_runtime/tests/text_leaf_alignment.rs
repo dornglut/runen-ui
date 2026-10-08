@@ -9,6 +9,7 @@ use runenui_core::{
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext, SurfacePublication};
 
 const CANTARELL: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/Cantarell-Regular.ttf");
+const ARABIC: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/RunenUIFixtureArabic-Regular.ttf");
 
 #[derive(Clone, Copy)]
 enum Kind {
@@ -92,7 +93,12 @@ fn minimum(width: u16, height: u16) -> LayoutStyle {
         .with_min_height(LayoutBound::length(length(height)))
 }
 
-fn publish(kind: Kind, label: &'static str, layout: LayoutStyle, padding: u16) -> SurfacePublication {
+fn publish(
+    kind: Kind,
+    label: &'static str,
+    layout: LayoutStyle,
+    padding: u16,
+) -> SurfacePublication {
     let mut app = AppRuntime::<AlignmentApp>::mount(Case {
         kind,
         label,
@@ -100,11 +106,20 @@ fn publish(kind: Kind, label: &'static str, layout: LayoutStyle, padding: u16) -
         padding: EdgeInsets::all(length(padding)),
     });
     assert!(app.register_text_font_bytes(CANTARELL.to_vec()).is_ok());
-    let family = FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!("known family"));
-    assert!(app.set_text_generic_family_mapping(GenericFontFamily::SansSerif, &[family]).is_ok());
+    assert!(app.register_text_font_bytes(ARABIC.to_vec()).is_ok());
+    let latin = FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!("known family"));
+    let arabic = FontFamilyName::new("RunenUI Fixture Arabic")
+        .unwrap_or_else(|_| unreachable!("known Arabic fixture"));
+    assert!(
+        app.set_text_generic_family_mapping(GenericFontFamily::SansSerif, &[latin, arabic])
+            .is_ok()
+    );
     let style = StyleEnvironment::default();
-    app.publish_surface(&SurfaceBuildContext::new(&style, LayoutConstraints::unbounded()))
-        .unwrap_or_else(|error| panic!("aligned text publication: {error:?}"))
+    app.publish_surface(&SurfaceBuildContext::new(
+        &style,
+        LayoutConstraints::unbounded(),
+    ))
+    .unwrap_or_else(|error| panic!("aligned text publication: {error:?}"))
 }
 
 fn first_origin(publication: &SurfacePublication) -> LogicalPoint {
@@ -120,6 +135,27 @@ fn first_origin(publication: &SurfacePublication) -> LogicalPoint {
             .shaped_text_resource(run.resource_ref())
             .is_some(),
         "text paint must retain the exact shaped resource"
+    );
+    let retained = publication
+        .layout_report()
+        .root()
+        .unwrap_or_else(|| unreachable!("retained layout is published"))
+        .text_measurements()
+        .iter()
+        .filter(|measurement| measurement.retained_for_paint())
+        .collect::<Vec<_>>();
+    assert_eq!(retained.len(), 1, "one final text artifact supplies paint");
+    let painted_refs = publication
+        .paint_scene()
+        .items()
+        .iter()
+        .filter_map(|item| item.primitive().as_shaped_text_run())
+        .map(|run| run.resource_ref().clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        retained[0].retained_resource_refs(),
+        painted_refs.as_slice(),
+        "final text measurement and paint retain identical shaped resources"
     );
     run.origin()
 }
@@ -171,9 +207,24 @@ fn button_intrinsic_size_is_unchanged_and_minimum_geometry_centers() {
 
 #[test]
 fn downstream_uses_same_inline_and_block_placement_without_runtime_type_checks() {
-    let plain = publish(Kind::Downstream(TextAlignment::Start, TextBlockPlacement::Start), "Custom", fixed(180, 80), 8);
-    let end = publish(Kind::Downstream(TextAlignment::End, TextBlockPlacement::End), "Custom", fixed(180, 80), 8);
-    let center = publish(Kind::Downstream(TextAlignment::Center, TextBlockPlacement::Center), "Custom", fixed(180, 80), 8);
+    let plain = publish(
+        Kind::Downstream(TextAlignment::Start, TextBlockPlacement::Start),
+        "Custom",
+        fixed(180, 80),
+        8,
+    );
+    let end = publish(
+        Kind::Downstream(TextAlignment::End, TextBlockPlacement::End),
+        "Custom",
+        fixed(180, 80),
+        8,
+    );
+    let center = publish(
+        Kind::Downstream(TextAlignment::Center, TextBlockPlacement::Center),
+        "Custom",
+        fixed(180, 80),
+        8,
+    );
     let a = first_origin(&plain);
     let b = first_origin(&end);
     let c = first_origin(&center);
@@ -184,8 +235,18 @@ fn downstream_uses_same_inline_and_block_placement_without_runtime_type_checks()
 #[test]
 fn overflowing_text_does_not_receive_negative_block_origin() {
     let text = "Long text with multiple line breaks\nSecond long line\nThird long line";
-    let start = publish(Kind::Downstream(TextAlignment::Start, TextBlockPlacement::Start), text, fixed(70, 12), 0);
-    let end = publish(Kind::Downstream(TextAlignment::Start, TextBlockPlacement::End), text, fixed(70, 12), 0);
+    let start = publish(
+        Kind::Downstream(TextAlignment::Start, TextBlockPlacement::Start),
+        text,
+        fixed(70, 12),
+        0,
+    );
+    let end = publish(
+        Kind::Downstream(TextAlignment::Start, TextBlockPlacement::End),
+        text,
+        fixed(70, 12),
+        0,
+    );
     approximately_equal(first_origin(&start).y(), first_origin(&end).y());
     assert!(first_origin(&end).y() >= 0.0);
 }
@@ -193,11 +254,28 @@ fn overflowing_text_does_not_receive_negative_block_origin() {
 #[test]
 fn multiline_center_and_logical_end_are_engine_aligned_not_extra_runtime_offsets() {
     let label = "Longer first line\nShort";
-    let start = publish(Kind::Downstream(TextAlignment::Start, TextBlockPlacement::Start), label, fixed(220, 90), 8);
-    let center = publish(Kind::Downstream(TextAlignment::Center, TextBlockPlacement::Start), label, fixed(220, 90), 8);
-    let end = publish(Kind::Downstream(TextAlignment::End, TextBlockPlacement::Start), label, fixed(220, 90), 8);
+    let start = publish(
+        Kind::Downstream(TextAlignment::Start, TextBlockPlacement::Start),
+        label,
+        fixed(220, 90),
+        8,
+    );
+    let center = publish(
+        Kind::Downstream(TextAlignment::Center, TextBlockPlacement::Start),
+        label,
+        fixed(220, 90),
+        8,
+    );
+    let end = publish(
+        Kind::Downstream(TextAlignment::End, TextBlockPlacement::Start),
+        label,
+        fixed(220, 90),
+        8,
+    );
     let starts = |p: &SurfacePublication| {
-        p.paint_scene().items().iter()
+        p.paint_scene()
+            .items()
+            .iter()
             .filter_map(|item| item.primitive().as_shaped_text_run())
             .map(|run| run.origin().x())
             .collect::<Vec<_>>()
@@ -209,4 +287,51 @@ fn multiline_center_and_logical_end_are_engine_aligned_not_extra_runtime_offsets
     for ((start, center), end) in a.iter().zip(&b).zip(&c) {
         assert!(*start < *center && *center < *end);
     }
+}
+
+#[test]
+fn rtl_start_end_are_logical_and_center_is_direction_independent() {
+    // The Arabic font is repository-bundled: no host font fallback or text direction guess.
+    let label = "سلام";
+    let start = publish(
+        Kind::Downstream(TextAlignment::Start, TextBlockPlacement::Start),
+        label,
+        fixed(220, 70),
+        8,
+    );
+    let center = publish(
+        Kind::Downstream(TextAlignment::Center, TextBlockPlacement::Start),
+        label,
+        fixed(220, 70),
+        8,
+    );
+    let end = publish(
+        Kind::Downstream(TextAlignment::End, TextBlockPlacement::Start),
+        label,
+        fixed(220, 70),
+        8,
+    );
+    let start_x = first_origin(&start).x();
+    let center_x = first_origin(&center).x();
+    let end_x = first_origin(&end).x();
+    assert!(start_x > center_x && center_x > end_x);
+    approximately_equal(center_x * 2.0, start_x + end_x);
+}
+
+#[test]
+fn minimum_narrower_than_intrinsic_does_not_force_line_breaks() {
+    let label = "A long intrinsic button label without explicit breaks";
+    let intrinsic = publish(Kind::Button, label, LayoutStyle::default(), 8);
+    let narrow_minimum = publish(Kind::Button, label, minimum(20, 10), 8);
+    approximately_equal(bounds(&intrinsic).width(), bounds(&narrow_minimum).width());
+    approximately_equal(bounds(&intrinsic).height(), bounds(&narrow_minimum).height());
+    approximately_equal(first_origin(&intrinsic).x(), first_origin(&narrow_minimum).x());
+    let count_runs = |p: &SurfacePublication| {
+        p.paint_scene()
+            .items()
+            .iter()
+            .filter(|item| item.primitive().as_shaped_text_run().is_some())
+            .count()
+    };
+    assert_eq!(count_runs(&intrinsic), count_runs(&narrow_minimum));
 }
