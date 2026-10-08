@@ -586,14 +586,13 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
         state: &Self::State,
         _: SemanticContributionContext,
     ) -> SemanticContribution {
+        let mut semantic_state = SemanticState::ENABLED.with_disabled(!state.enabled);
+        if let Some(pressed) = state.pressed {
+            semantic_state = semantic_state.with_pressed(pressed);
+        }
         let mut node = SemanticNodeContribution::primary(SemanticRole::Button)
             .with_name(state.label.clone())
-            .with_state(match state.pressed {
-                Some(pressed) => SemanticState::ENABLED
-                    .with_disabled(!state.enabled)
-                    .with_pressed(pressed),
-                None => SemanticState::ENABLED.with_disabled(!state.enabled),
-            });
+            .with_state(semantic_state);
         if state.actionable {
             node = node.with_action(SemanticAction::Activate);
         }
