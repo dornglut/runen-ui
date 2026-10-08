@@ -148,8 +148,8 @@ impl<Action> Menu<Action> {
 /// Inline menu-bar container, not an OS/native global menubar.
 ///
 /// Use `MenuItem::new(...).menu_bar_trigger()` for top-level entries so
-/// their role remains MenuItem while Down opens an application-owned submenu.
-/// Standalone MenuButton has Button semantics and is not a Menubar entry.
+/// their role remains `MenuItem` while Down opens an application-owned submenu.
+/// Standalone `MenuButton` has Button semantics and is not a Menubar entry.
 pub struct MenuBar<Action> {
     children: Vec<Element<Action>>,
     common: CommonNodeAuthoring,
@@ -206,6 +206,7 @@ impl<Action> fmt::Debug for MenuContainerWidget<Action> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MenuContainerWidget")
             .field("role", &self.role)
+            .field("accessible_name", &self.accessible_name)
             .field("has_dismiss_callback", &self.on_dismiss.is_some())
             .field("has_back_callback", &self.on_back.is_some())
             .finish()
@@ -502,7 +503,7 @@ impl<Action> MenuEntry<Action, PlainMenuItem> {
         Self::with_role(label, SemanticRole::MenuItem)
     }
 
-    /// Makes this MenuItem a direct menubar trigger. Down opens the submenu;
+    /// Makes this `MenuItem` a direct menubar trigger. Down opens the submenu;
     /// Left/Right remain menubar focus-group movement. Ordinary nested Menu
     /// entries retain Right-to-expand and Left-to-collapse behavior.
     #[must_use]
