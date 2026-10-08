@@ -155,10 +155,7 @@ impl UiApp for MenuApp {
                 ApplicationCommand::new(save_command(), true),
                 || Action::Saved,
             )],
-            vec![
-                button.into_element(),
-                author_menu_bar(state).into_element(),
-            ],
+            vec![button.into_element(), author_menu_bar(state).into_element()],
         )
     }
 
