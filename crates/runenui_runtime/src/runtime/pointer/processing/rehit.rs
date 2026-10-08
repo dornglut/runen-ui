@@ -77,7 +77,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // Re-hit is a pointer observation, not a bypass around the canonical
         // presentation barrier. Preserve exact capture and blocked-stream policy.
         let presentation_block = self
-            .presentation_resolution_for_pointer(work, &prepared_stream.stream, &geometry)
+            .presentation_resolution_for_pointer(&work, &prepared_stream.stream, &geometry)
             .block;
         let boundary_plan = if presentation_block.is_some() {
             super::PointerBoundaryPlan::unchanged(previous_path)
