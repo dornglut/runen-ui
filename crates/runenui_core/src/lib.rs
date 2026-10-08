@@ -288,7 +288,6 @@ pub use builtins::{
     container, list_box, option_item, radio_button, radio_group, row, scroll_bar, scroll_container,
     scroll_viewport, shortcut_scope, switch, tab, tab_list, tab_panel, text,
 };
-pub use presentation_controls::{Dialog, Popover, Tooltip, TooltipTrigger, tooltip_description_reference};
 pub use computed_style::ComputedStyle;
 pub use editing::{
     EditChangeMap, EditGroupHint, EditIntent, EditInverse, EditKind, EditRequestId, EditResolution,
@@ -333,6 +332,9 @@ pub use paint::{
 };
 pub use paint_group::{PaintContributionEntry, PaintContributionGroup};
 pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
+pub use presentation_controls::{
+    Dialog, Popover, Tooltip, TooltipTrigger, tooltip_description_reference,
+};
 pub use standard_content::{Image, Separator, image, separator};
 pub use surface_presentation::{
     PresentationDismissReason, PresentationFocusEntry, PresentationFocusPolicy,

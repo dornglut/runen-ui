@@ -8,13 +8,13 @@ use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
 use crate::{
     ElementId, EventContext, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusScope,
-    FocusScopePolicy, Focusability, IntoElementId, LayoutContainer, LayoutStyle, PointerBoundaryKind,
-    PointerId, PresentationDismissReason, PresentationFocusPolicy,
+    FocusScopePolicy, Focusability, LayoutContainer, LayoutStyle, PointerBoundaryKind, PointerId,
+    PresentationDismissReason, PresentationFocusPolicy,
     PresentationOutsidePointerPolicy, SemanticCommand, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
     SurfacePresentation, SurfacePresentationAnchor, SurfacePresentationPlacement,
-    SurfacePresentationSide, Text, TimerEffect, UiEvent, View, Views, Widget,
-    WidgetEventOutput, WidgetInvalidation, WidgetUpdateContext, WorkFamily, WorkKey,
+    SurfacePresentationSide, Text, TimerEffect, UiEvent, View, Views, Widget, WidgetEventOutput,
+    WidgetInvalidation, WidgetUpdateContext, WorkFamily, WorkKey,
     element::{CommonNodeAuthoring, Element, common_node_builder_methods},
     widget_erasure::WidgetAdapter,
     widget_protocol::ChildBearingWidget,
@@ -287,8 +287,13 @@ fn presentation_element<Action: 'static>(
         },
         focus_scope,
     );
-    Element::from_authored_parts(fields, Box::new(WidgetAdapter(widget)), children, diagnostics)
-        .surface_presentation(presentation)
+    Element::from_authored_parts(
+        fields,
+        Box::new(WidgetAdapter(widget)),
+        children,
+        diagnostics,
+    )
+    .surface_presentation(presentation)
 }
 
 impl<Action: 'static> View<Action> for Popover<Action> {
@@ -445,7 +450,9 @@ impl<Action: 'static> TooltipTriggerWidget<Action> {
         if active {
             context.cancel(WorkFamily::Timer, hide_key);
             let show = Rc::clone(&self.show);
-            context.timer(TimerEffect::once(self.delay, move || (show.borrow_mut())()).keyed(show_key));
+            context.timer(
+                TimerEffect::once(self.delay, move || (show.borrow_mut())()).keyed(show_key),
+            );
         } else {
             context.cancel(WorkFamily::Timer, show_key);
             context.emit((self.hide.borrow_mut())());
@@ -478,7 +485,6 @@ impl<Action: 'static> Widget<Action> for TooltipTriggerWidget<Action> {
                     PointerBoundaryKind::Leave => {
                         state.hovering.remove(&boundary.pointer_id());
                     }
-                    _ => {}
                 }
             }
         }
@@ -487,7 +493,6 @@ impl<Action: 'static> Widget<Action> for TooltipTriggerWidget<Action> {
                 match focus.kind() {
                     FocusEventKind::In => state.focused = true,
                     FocusEventKind::Out => state.focused = false,
-                    _ => {}
                 }
             }
         }

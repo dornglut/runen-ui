@@ -86,10 +86,12 @@ impl UiApp for PresentationApp {
         if state.popover_open {
             children.push(
                 Popover::new(
-                    vec![button("Popover action")
-                        .id("popover-button")
-                        .with_layout(fixed(70, 20))
-                        .on_activate(|| Action::ActivateBackground)],
+                    vec![
+                        button("Popover action")
+                            .id("popover-button")
+                            .with_layout(fixed(70, 20))
+                            .on_activate(|| Action::ActivateBackground),
+                    ],
                     SurfacePresentation::new(SurfacePresentationPlacement::new(
                         SurfacePresentationSide::Bottom,
                     ))
@@ -109,10 +111,12 @@ impl UiApp for PresentationApp {
             children.push(
                 Dialog::new(
                     "Settings",
-                    vec![button("Inside")
-                        .id("dialog-button")
-                        .with_layout(fixed(90, 24))
-                        .on_activate(|| Action::ActivateBackground)],
+                    vec![
+                        button("Inside")
+                            .id("dialog-button")
+                            .with_layout(fixed(90, 24))
+                            .on_activate(|| Action::ActivateBackground),
+                    ],
                 )
                 .id("test-dialog")
                 .on_dismiss(Action::DismissDialog)
@@ -147,11 +151,12 @@ impl UiApp for PresentationApp {
 
 fn settle(harness: &mut TestHarness<PresentationApp>) {
     assert_eq!(
-        harness.run_until_idle(SettleBudget::new(
-            NonZeroUsize::new(12).unwrap_or(NonZeroUsize::MIN),
-            PumpBudget::new(128, 128, 128, 128),
-        ))
-        .outcome(),
+        harness
+            .run_until_idle(SettleBudget::new(
+                NonZeroUsize::new(12).unwrap_or(NonZeroUsize::MIN),
+                PumpBudget::new(128, 128, 128, 128),
+            ))
+            .outcome(),
         SettleOutcome::Idle
     );
 }
@@ -241,8 +246,7 @@ fn tooltip_delay_is_mounted_and_visibility_remains_app_owned() {
 
     move_pointer(
         &mut harness,
-        LogicalPoint::new(250.0, 250.0)
-            .unwrap_or_else(|_| unreachable!("finite test point")),
+        LogicalPoint::new(250.0, 250.0).unwrap_or_else(|_| unreachable!("finite test point")),
     );
     assert!(!harness.state().tooltip_visible);
     assert_eq!(harness.state().hide_count, 1);
@@ -263,8 +267,7 @@ fn pointer_leave_cancels_delayed_tooltip_show_without_late_action() {
     move_pointer(&mut harness, point);
     move_pointer(
         &mut harness,
-        LogicalPoint::new(250.0, 250.0)
-            .unwrap_or_else(|_| unreachable!("finite outside point")),
+        LogicalPoint::new(250.0, 250.0).unwrap_or_else(|_| unreachable!("finite outside point")),
     );
     assert!(harness.advance_time(Duration::from_secs(1)).is_ok());
     settle(&mut harness);
@@ -277,6 +280,8 @@ fn dialog_and_popover_dismissal_actions_are_application_owned() {
     let mut state = Model::default();
     state.dialog_open = true;
     let mut dialog = TestHarness::<PresentationApp>::mount(state);
+    assert!(dialog.publish().is_ok());
+    settle(&mut dialog);
     assert!(dialog.publish().is_ok());
     assert!(
         dialog
@@ -300,7 +305,10 @@ fn dialog_and_popover_dismissal_actions_are_application_owned() {
             .modal(),
         Some(true)
     );
-    assert!(semantic.focused().is_some(), "modal Dialog enters ordinary focus scope");
+    assert!(
+        semantic.focused().is_some(),
+        "modal Dialog enters ordinary focus scope"
+    );
     let id = dialog
         .publication()
         .unwrap_or_else(|| unreachable!("dialog published"))
