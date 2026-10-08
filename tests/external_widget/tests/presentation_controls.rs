@@ -15,6 +15,7 @@ use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Action {
+    OpenDialog,
     ShowTooltip,
     HideTooltip,
     DismissDialog(PresentationDismissReason),
@@ -121,6 +122,7 @@ impl UiApp for PresentationApp {
 
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
+            Action::OpenDialog => state.dialog_open = true,
             Action::ShowTooltip => {
                 state.tooltip_visible = true;
                 state.show_count += 1;
@@ -325,6 +327,92 @@ fn pointer_leave_cancels_delayed_tooltip_show_without_late_action() {
     settle(&mut harness);
     assert_eq!(harness.state().show_count, 0);
     assert!(!harness.state().tooltip_visible);
+}
+
+#[test]
+fn dialog_default_modal_entry_and_exact_focus_restoration_use_shared_runtime() {
+    let mut harness = TestHarness::<PresentationApp>::mount(Model::default());
+    assert!(harness.publish().is_ok());
+    let trigger = harness
+        .publication()
+        .unwrap_or_else(|| unreachable!("baseline is published"))
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "help-button"))
+        .unwrap_or_else(|| unreachable!("owner button is mounted"))
+        .id()
+        .clone();
+    assert!(
+        harness
+            .submit_command(
+                trigger,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .is_ok()
+    );
+    settle(&mut harness);
+    assert!(harness.publish().is_ok());
+    let original_focus = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("focused baseline snapshot exists"))
+        .focused()
+        .cloned()
+        .unwrap_or_else(|| unreachable!("original owner must be focused"));
+
+    assert!(harness.submit_action(Action::OpenDialog).is_ok());
+    settle(&mut harness);
+    assert!(harness.publish().is_ok());
+    settle(&mut harness);
+    assert!(harness.publish().is_ok());
+    let snapshot = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("dialog snapshot exists"));
+    let inside = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::Button && node.name() == Some("Inside"))
+        .unwrap_or_else(|| unreachable!("Dialog has one focusable child"));
+    assert_eq!(
+        snapshot.focused(),
+        Some(inside.id()),
+        "default modal Dialog must enter its first eligible child"
+    );
+    let dialog = harness
+        .publication()
+        .unwrap_or_else(|| unreachable!("dialog is published"))
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "test-dialog"))
+        .unwrap_or_else(|| unreachable!("Dialog retains mounted identity"))
+        .id()
+        .clone();
+    assert!(
+        harness
+            .submit_command(
+                dialog,
+                SemanticCommand::PresentationDismiss(
+                    PresentationDismissReason::CancelOrBack,
+                ),
+                CommandOrigin::programmatic(),
+            )
+            .is_ok()
+    );
+    settle(&mut harness);
+    assert!(!harness.state().dialog_open);
+    assert!(harness.publish().is_ok());
+    settle(&mut harness);
+    assert!(harness.publish().is_ok());
+    assert_eq!(
+        harness
+            .semantic_snapshot()
+            .unwrap_or_else(|_| unreachable!("closed dialog has a snapshot"))
+            .focused(),
+        Some(&original_focus),
+        "the exact previous owner must be restored by the shared runtime"
+    );
 }
 
 #[test]
