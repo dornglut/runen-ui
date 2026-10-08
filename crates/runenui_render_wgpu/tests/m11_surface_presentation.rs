@@ -10,8 +10,7 @@ use std::{
 use runenui_core::{
     Color, Dialog, Element, LogicalLength, LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol,
     PaintContribution, PaintContributionContext, PaintContributionItem, Popover, ResourceRef,
-    SceneLayer,
-    SceneShape, StyleEnvironment, SurfacePresentation, SurfacePresentationAnchor,
+    SceneLayer, SceneShape, StyleEnvironment, SurfacePresentation, SurfacePresentationAnchor,
     SurfacePresentationPlacement, SurfacePresentationSide, UiApp, View, Widget, WidgetMeasure,
     WidgetMeasureInput, column,
 };
@@ -141,7 +140,6 @@ fn real_wgpu_consumes_runtime_presentation_band_without_renderer_popup_authority
     );
     Ok(())
 }
-
 
 struct StandardPresentationControlApp;
 
