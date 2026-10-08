@@ -82,7 +82,14 @@ impl UiApp for PresentationApp {
             trigger = trigger.with_tooltip(Tooltip::new("Helpful details").id("help-tooltip"));
         }
 
-        let mut children = vec![trigger.into_element()];
+        let mut children = vec![
+            trigger.into_element(),
+            button("Elsewhere")
+                .id("focus-elsewhere")
+                .with_layout(fixed(70, 24))
+                .on_activate(|| Action::ActivateBackground)
+                .into_element(),
+        ];
         if state.popover_open {
             children.push(
                 Popover::new(
@@ -257,6 +264,62 @@ fn tooltip_delay_is_mounted_and_visibility_remains_app_owned() {
             .unwrap_or_else(|_| unreachable!("semantic query is valid"))
             .is_empty()
     );
+}
+
+#[test]
+fn tooltip_focus_activation_uses_same_mounted_timer_and_blur_hides() {
+    let mut harness = TestHarness::<PresentationApp>::mount(Model::default());
+    assert!(harness.publish().is_ok());
+    let first = harness
+        .publication()
+        .unwrap_or_else(|| unreachable!("focus fixture has a publication"))
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "help-button"))
+        .unwrap_or_else(|| unreachable!("help button is mounted"))
+        .id()
+        .clone();
+    harness
+        .submit_command(
+            first,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus request is accepted"));
+    settle(&mut harness);
+    assert!(!harness.state().tooltip_visible);
+    assert!(harness.last_timer_start_outcome().is_some());
+
+    assert!(harness.advance_time(Duration::from_millis(400)).is_ok());
+    settle(&mut harness);
+    assert!(harness.state().tooltip_visible);
+    assert_eq!(harness.state().show_count, 1);
+    assert!(harness.publish().is_ok());
+
+    let elsewhere = harness
+        .publication()
+        .unwrap_or_else(|| unreachable!("mounted surface is published"))
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "focus-elsewhere")
+        })
+        .unwrap_or_else(|| unreachable!("the second focusable button is mounted"))
+        .id()
+        .clone();
+    harness
+        .submit_command(
+            elsewhere,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("new focus request is accepted"));
+    settle(&mut harness);
+    assert!(!harness.state().tooltip_visible);
+    assert_eq!(harness.state().hide_count, 1);
 }
 
 #[test]
