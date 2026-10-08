@@ -283,7 +283,11 @@ fn menu_container_element<Action: 'static>(
     let (fields, diagnostics) = common.into_authored_fields(Focusability::Automatic, None);
     Element::from_authored_parts(
         fields,
-        Box::new(WidgetAdapter(MenuContainerWidget { role, on_dismiss, on_back })),
+        Box::new(WidgetAdapter(MenuContainerWidget {
+            role,
+            on_dismiss,
+            on_back,
+        })),
         children,
         diagnostics,
     )

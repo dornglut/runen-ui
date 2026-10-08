@@ -36,6 +36,7 @@ const M11_DELIVERY_SLICES: &[&str] = &[
     "M11COLL2",
     "M11TABS",
     "M11CONTENT",
+    "M11MENU",
     "M11PRES1",
     "M11PRES2",
     "M11PRESCTRL",

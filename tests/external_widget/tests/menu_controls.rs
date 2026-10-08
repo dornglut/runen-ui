@@ -287,7 +287,10 @@ fn menu_command_uses_scoped_fifo_and_submenu_expands_through_app_state() {
 
     command(&mut h, "submenu-owner", SemanticCommand::RequestFocus);
     command(&mut h, "submenu-owner", SemanticCommand::FocusRight);
-    assert!(h.state().submenu_open, "right arrow opens the focused owning item");
+    assert!(
+        h.state().submenu_open,
+        "right arrow opens the focused owning item"
+    );
     let snapshot = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
     let owner = snapshot
         .nodes()
@@ -309,12 +312,18 @@ fn menu_command_uses_scoped_fifo_and_submenu_expands_through_app_state() {
     command(&mut h, "nested-action", SemanticCommand::Activate);
     assert_eq!(h.state().selected, 1);
     command(&mut h, "nested-action", SemanticCommand::FocusLeft);
-    assert!(!h.state().submenu_open, "submenu back action closes only that subtree");
+    assert!(
+        !h.state().submenu_open,
+        "submenu back action closes only that subtree"
+    );
     assert!(h.state().open, "the parent menu remains open");
     command(&mut h, "submenu-owner", SemanticCommand::Expand);
     assert!(h.state().submenu_open);
     command(&mut h, "submenu-owner", SemanticCommand::FocusLeft);
-    assert!(!h.state().submenu_open, "left arrow collapses the owning item");
+    assert!(
+        !h.state().submenu_open,
+        "left arrow collapses the owning item"
+    );
 }
 
 #[test]
@@ -338,4 +347,102 @@ fn inline_menu_bar_uses_neutral_horizontal_semantics() {
     assert_eq!(snapshot.focused(), Some(tools.id()));
     command(&mut h, "bar-tools", SemanticCommand::FocusDown);
     assert_eq!(h.state().selected, 1, "down opens the focused MenuButton");
+}
+
+#[test]
+fn menu_type_ahead_reuses_mounted_focus_group_without_activation() {
+    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    open_menu(&mut h);
+    command(&mut h, "disabled-item", SemanticCommand::RequestFocus);
+    assert!(
+        h.submit_keyboard(runenui_core::KeyboardEvent::new(
+            runenui_core::KeyboardPhase::Down,
+            runenui_core::PhysicalKey::Code(String::from("KeyS")),
+            runenui_core::LogicalKey::Character(String::from("s")),
+            runenui_core::KeyModifiers::NONE,
+            false,
+            runenui_core::KeyLocation::Standard,
+            runenui_core::KeyboardCompositionState::Inactive,
+            None,
+        ))
+        .is_ok()
+    );
+    settle(&mut h);
+    assert!(h.publish().is_ok());
+    let snapshot = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
+    let save = snapshot
+        .nodes()
+        .iter()
+        .find(|n| n.role() == SemanticRole::MenuItem && n.name() == Some("Save"))
+        .unwrap_or_else(|| unreachable!("search target is mounted"));
+    assert_eq!(snapshot.focused(), Some(save.id()));
+    assert_eq!(h.state().saved, 0, "focus search never invokes command");
+}
+
+#[test]
+fn menu_escape_dismisses_and_restores_the_exact_prior_focus() {
+    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    assert!(h.publish().is_ok());
+    command(&mut h, "menu-button", SemanticCommand::RequestFocus);
+    let original = h
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!())
+        .focused()
+        .cloned()
+        .unwrap_or_else(|| unreachable!("focused menu trigger exists"));
+    command(&mut h, "menu-button", SemanticCommand::Activate);
+    assert!(h.state().open);
+    let escape = runenui_core::KeyboardEvent::new(
+        runenui_core::KeyboardPhase::Down,
+        runenui_core::PhysicalKey::Escape,
+        runenui_core::LogicalKey::Escape,
+        runenui_core::KeyModifiers::NONE,
+        false,
+        runenui_core::KeyLocation::Standard,
+        runenui_core::KeyboardCompositionState::Inactive,
+        None,
+    );
+    assert!(h.submit_keyboard(escape).is_ok());
+    settle(&mut h);
+    assert!(!h.state().open);
+    assert_eq!(
+        h.state().dismissals,
+        vec![PresentationDismissReason::CancelOrBack]
+    );
+    assert!(h.publish().is_ok());
+    settle(&mut h);
+    assert!(h.publish().is_ok());
+    assert_eq!(
+        h.semantic_snapshot()
+            .unwrap_or_else(|_| unreachable!())
+            .focused(),
+        Some(&original)
+    );
+}
+
+#[test]
+fn menu_outside_pointer_dismisses_without_dispatching_menu_activation() {
+    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    open_menu(&mut h);
+    let context = h
+        .input_context()
+        .unwrap_or_else(|_| unreachable!("surface is published"))
+        .clone();
+    let pointer = runenui_core::PointerEvent::new(
+        runenui_core::PointerId::new(330)
+            .unwrap_or_else(|| unreachable!("nonzero pointer id")),
+        runenui_core::PointerDeviceKind::Mouse,
+        runenui_core::PointerPhase::Down,
+        runenui_core::LogicalPoint::new(250.0, 250.0)
+            .unwrap_or_else(|_| unreachable!("finite surface position")),
+        context,
+    );
+    assert!(h.submit_pointer(pointer).is_ok());
+    settle(&mut h);
+    assert!(!h.state().open);
+    assert_eq!(
+        h.state().dismissals,
+        vec![PresentationDismissReason::OutsidePointer]
+    );
+    assert_eq!(h.state().selected, 0);
 }
