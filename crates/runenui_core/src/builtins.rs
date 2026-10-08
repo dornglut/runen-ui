@@ -2388,6 +2388,7 @@ pub struct ScrollBar {
     layout: ScrollBarLayout,
     thumb_style: StyleIntent,
     common: CommonNodeAuthoring,
+    exclude_from_focus_group: bool,
 }
 
 impl fmt::Debug for ScrollBar {
@@ -2398,6 +2399,7 @@ impl fmt::Debug for ScrollBar {
             .field("binding", &self.binding)
             .field("layout", &self.layout)
             .field("thumb_style", &self.thumb_style)
+            .field("exclude_from_focus_group", &self.exclude_from_focus_group)
             .field("id", &self.common.id)
             .field("key", &self.common.key)
             .field("style", &self.common.style)
@@ -2425,6 +2427,7 @@ impl ScrollBar {
             ),
             thumb_style: StyleIntent::EMPTY,
             common: CommonNodeAuthoring::default(),
+            exclude_from_focus_group: false,
         }
     }
 
@@ -2439,6 +2442,15 @@ impl ScrollBar {
     #[must_use]
     pub const fn placement(mut self, placement: ScrollBarPlacement) -> Self {
         self.layout = self.layout.with_placement(placement);
+        self
+    }
+
+    /// Excludes scroll chrome from an enclosing focus group's arrow-key members
+    /// without removing independent exact focus or semantic accessibility.
+    /// Standalone scrollbar keyboard behavior is unchanged by default.
+    #[must_use]
+    pub const fn exclude_from_focus_group(mut self, exclude: bool) -> Self {
+        self.exclude_from_focus_group = exclude;
         self
     }
 
@@ -2810,6 +2822,7 @@ impl<Action> Widget<Action> for ScrollBarThumbWidget {
 impl<Action: 'static> View<Action> for ScrollBar {
     fn into_element(self) -> Element<Action> {
         let axis = self.binding.axis();
+        let exclude_from_focus_group = self.exclude_from_focus_group;
         let thumb_common = CommonNodeAuthoring {
             style: self.thumb_style,
             ..CommonNodeAuthoring::default()
@@ -2841,6 +2854,7 @@ impl<Action: 'static> View<Action> for ScrollBar {
         )
         .scroll_control(self.binding)
         .scroll_chrome(ScrollChrome::Bar(self.layout))
+        .focus_group_excluded(exclude_from_focus_group)
     }
 }
 

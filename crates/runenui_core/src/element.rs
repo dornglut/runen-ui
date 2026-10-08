@@ -390,6 +390,18 @@ impl<Action> Element<Action> {
         self
     }
 
+    /// Excludes this node from nearest-group member navigation without disabling
+    /// explicit focus, semantic actions, or its descendants' ordinary membership.
+    #[must_use]
+    pub const fn focus_group_excluded(mut self, excluded: bool) -> Self {
+        self.focus_group_entry = if excluded {
+            FocusGroupEntry::Excluded
+        } else {
+            FocusGroupEntry::Automatic
+        };
+        self
+    }
+
     /// Marks this node as the preferred initial focus target of its nearest presentation root.
     #[must_use]
     pub const fn presentation_focus_preferred(mut self, preferred: bool) -> Self {

@@ -43,8 +43,10 @@ fn menu_type_ahead() -> FocusGroupTypeAhead {
 /// An application-mounted, nonmodal menu surface in the ordinary mounted tree.
 ///
 /// Children may include the standard `Separator` and a standard `ScrollContainer`
-/// with a `ScrollBar` for long lists. Presentation, focus and dismissal remain
-/// the existing generic M11 authorities.
+/// with a `ScrollBar` for long lists. Use
+/// `ScrollBar::exclude_from_focus_group(true)` to keep scroll chrome out of
+/// the menu-item arrow sequence while retaining independent semantic focus.
+/// Presentation, focus and dismissal remain the existing generic M11 authorities.
 pub struct Menu<Action> {
     children: Vec<Element<Action>>,
     common: CommonNodeAuthoring,

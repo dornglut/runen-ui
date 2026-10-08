@@ -283,13 +283,15 @@ impl FocusGroup {
     }
 }
 
-/// Authored external-entry preference for a member of its nearest focus group.
+/// Authored participation and preferred entry policy in the nearest focus group.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum FocusGroupEntry {
     #[default]
     Automatic,
     Preferred,
+    /// Exclude the node from nearest-group navigation, preserving exact focus eligibility.
+    Excluded,
 }
 
 /// Authored participation of one mounted node in focus selection.

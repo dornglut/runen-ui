@@ -564,12 +564,16 @@ impl UiApp for LongMenuApp {
                     .with_container(LayoutContainer::Block)
                     .with_overflow(overflow),
             )
-            .scroll_bar(scroll_bar(
-                "Long menu vertical scroll",
-                binding,
-                LogicalLength::from(10_u8),
-                LogicalLength::from(20_u8),
-            ));
+            .scroll_bar(
+                scroll_bar(
+                    "Long menu vertical scroll",
+                    binding,
+                    LogicalLength::from(10_u8),
+                    LogicalLength::from(20_u8),
+                )
+                .id("long-menu-scrollbar")
+                .exclude_from_focus_group(true),
+            );
         runenui_core::column(vec![
             runenui_core::button("Anchor").into_element(),
             Menu::new(vec![scroll.into_element()])
@@ -632,7 +636,7 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
     );
     assert!(
         h.submit_command(
-            last_id,
+            last_id.clone(),
             SemanticCommand::ScrollIntoView,
             CommandOrigin::programmatic(),
         )
@@ -676,4 +680,50 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
             .iter()
             .any(|n| { n.role() == SemanticRole::MenuItem && n.name() == Some("Choice 7") })
     );
+
+    // Generic group exclusion retains the menu boundary without hiding scroll chrome.
+    assert!(h.submit_command(
+        last_id,
+        SemanticCommand::FocusDown,
+        CommandOrigin::programmatic(),
+    ).is_ok());
+    settle_long_menu(&mut h);
+    assert_eq!(
+        h.semantic_snapshot().unwrap_or_else(|_| unreachable!()).focused(),
+        Some(last.id()),
+        "Down at the final Menu item must stop before the scrollbar"
+    );
+
+    let scrollbar_id = h
+        .publication()
+        .unwrap_or_else(|| unreachable!("published long menu"))
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "long-menu-scrollbar"))
+        .unwrap_or_else(|| unreachable!("scrollbar remains mounted"))
+        .id()
+        .clone();
+    assert!(h.submit_command(
+        scrollbar_id,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    ).is_ok());
+    settle_long_menu(&mut h);
+    let snapshot = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
+    let scrollbar = snapshot.nodes().iter()
+        .find(|node| node.role() == SemanticRole::ScrollBar)
+        .unwrap_or_else(|| unreachable!("scrollbar retains semantic accessibility"));
+    assert_eq!(snapshot.focused(), Some(scrollbar.id()));
+}
+
+fn settle_long_menu(h: &mut TestHarness<LongMenuApp>) {
+    assert_eq!(
+        h.run_until_idle(SettleBudget::new(
+            NonZeroUsize::new(12).unwrap_or(NonZeroUsize::MIN),
+            PumpBudget::new(128, 128, 128, 128),
+        )).outcome(),
+        SettleOutcome::Idle,
+    );
+    assert!(h.publish().is_ok());
 }
