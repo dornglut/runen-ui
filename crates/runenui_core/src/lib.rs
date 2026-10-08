@@ -245,6 +245,7 @@ mod path;
 mod path_containment;
 mod pointer;
 pub mod prelude;
+mod presentation_controls;
 mod presentation_geometry;
 mod resource;
 mod runtime_protocol;
@@ -287,6 +288,7 @@ pub use builtins::{
     container, list_box, option_item, radio_button, radio_group, row, scroll_bar, scroll_container,
     scroll_viewport, shortcut_scope, switch, tab, tab_list, tab_panel, text,
 };
+pub use presentation_controls::{Dialog, Popover, Tooltip, TooltipTrigger, tooltip_description_reference};
 pub use computed_style::ComputedStyle;
 pub use editing::{
     EditChangeMap, EditGroupHint, EditIntent, EditInverse, EditKind, EditRequestId, EditResolution,
