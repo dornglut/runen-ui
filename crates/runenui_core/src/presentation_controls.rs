@@ -7,7 +7,7 @@ use core::{fmt, time::Duration};
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
 use crate::{
-    ElementId, EventContext, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusScope,
+    EventContext, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusScope,
     FocusScopePolicy, Focusability, LayoutContainer, LayoutStyle, PointerBoundaryKind, PointerId,
     PresentationDismissReason, PresentationFocusPolicy, PresentationOutsidePointerPolicy,
     SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
@@ -24,7 +24,7 @@ type ActionFactory<Action> = Rc<RefCell<Box<dyn FnMut() -> Action>>>;
 
 /// A nonmodal popover composed over one ordinary mounted presentation subtree.
 ///
-/// Visibility is application-owned. Pass an existing SurfacePresentation to select
+/// Visibility is application-owned. Pass an existing `SurfacePresentation` to select
 /// anchor, ordered fallback, outside-pointer, Escape and focus policies explicitly.
 pub struct Popover<Action> {
     children: Vec<Element<Action>>,
@@ -66,10 +66,10 @@ impl<Action> Popover<Action> {
     }
 }
 
-/// Same-surface dialog with typed Dialog semantics and the existing FocusScope.
+/// Same-surface dialog with typed `Dialog` semantics and the existing `FocusScope`.
 ///
 /// Its default is modal, center-anchored, Escape-dismissable, outside-blocking
-/// and EnterAndRestore-focused. Application state decides whether it is mounted.
+/// and `EnterAndRestore` focused. Application state decides whether it is mounted.
 pub struct Dialog<Action> {
     label: String,
     children: Vec<Element<Action>>,
@@ -130,8 +130,8 @@ impl<Action> Dialog<Action> {
 
 /// Nonfocusable descriptive presentation. App state owns visibility.
 ///
-/// The described owner must author a standard DescribedBy relation to this
-/// Tooltip's exact authored ID; no second semantic identity is generated.
+/// The described owner must author a standard `DescribedBy` relation to this
+/// `Tooltip`'s exact authored ID; no second semantic identity is generated.
 pub struct Tooltip<Action> {
     label: String,
     presentation: SurfacePresentation,
@@ -163,7 +163,7 @@ impl<Action> Tooltip<Action> {
 
     common_node_builder_methods!();
 
-    /// Accept placement/fallback and optional Escape dismissal. Tooltip
+    /// Accept placement/fallback and optional Escape dismissal. `Tooltip`
     /// nonmodality, pointer passthrough and focus preservation are invariant.
     #[must_use]
     pub fn with_presentation(mut self, presentation: SurfacePresentation) -> Self {
@@ -238,14 +238,12 @@ impl<Action> Widget<Action> for PresentationSurfaceWidget<Action> {
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
-        if context.phase() == EventPhase::Target {
-            if let Some(command) = event.as_semantic_command() {
-                if let SemanticCommand::PresentationDismiss(reason) = command.command() {
-                    if let Some(callback) = self.on_dismiss.as_mut() {
-                        context.emit(callback(reason));
-                    }
-                }
-            }
+        if context.phase() == EventPhase::Target
+            && let Some(command) = event.as_semantic_command()
+            && let SemanticCommand::PresentationDismiss(reason) = command.command()
+            && let Some(callback) = self.on_dismiss.as_mut()
+        {
+            context.emit(callback(reason));
         }
         WidgetEventOutput::none()
     }
@@ -362,9 +360,11 @@ impl<Action: 'static> View<Action> for Tooltip<Action> {
     }
 }
 
-/// Host-neutral hover/focus intent for a Tooltip; the application conditionally
-/// authors Tooltip itself. Show delay uses a keyed owner-local TimerEffect;
-/// pointer/focus lifetime and timer cancellation reuse ordinary runtime paths.
+/// Host-neutral hover/focus intent for a `Tooltip`.
+///
+/// The application conditionally authors `Tooltip` content. Show delay uses
+/// the existing owner-keyed `TimerEffect`; pointer/focus lifetime and timer
+/// cancellation reuse ordinary runtime paths.
 pub struct TooltipTrigger<Action> {
     owner: Element<Action>,
     tooltip: Option<Element<Action>>,
@@ -434,7 +434,7 @@ struct TooltipTriggerState {
 
 impl<Action: 'static> TooltipTriggerWidget<Action> {
     fn update_intent(
-        &mut self,
+        &self,
         was_active: bool,
         active: bool,
         context: &mut EventContext<'_, Action>,
@@ -475,24 +475,24 @@ impl<Action: 'static> Widget<Action> for TooltipTriggerWidget<Action> {
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
         let was_active = !state.hovering.is_empty() || state.focused;
-        if context.phase() == EventPhase::Target {
-            if let Some(boundary) = event.as_pointer_boundary() {
-                match boundary.kind() {
-                    PointerBoundaryKind::Enter => {
-                        state.hovering.insert(boundary.pointer_id());
-                    }
-                    PointerBoundaryKind::Leave => {
-                        state.hovering.remove(&boundary.pointer_id());
-                    }
+        if context.phase() == EventPhase::Target
+            && let Some(boundary) = event.as_pointer_boundary()
+        {
+            match boundary.kind() {
+                PointerBoundaryKind::Enter => {
+                    state.hovering.insert(boundary.pointer_id());
+                }
+                PointerBoundaryKind::Leave => {
+                    state.hovering.remove(&boundary.pointer_id());
                 }
             }
         }
-        if context.phase() == EventPhase::Capture {
-            if let Some(focus) = event.as_focus() {
-                match focus.kind() {
-                    FocusEventKind::In => state.focused = true,
-                    FocusEventKind::Out => state.focused = false,
-                }
+        if context.phase() == EventPhase::Capture
+            && let Some(focus) = event.as_focus()
+        {
+            match focus.kind() {
+                FocusEventKind::In => state.focused = true,
+                FocusEventKind::Out => state.focused = false,
             }
         }
         self.update_intent(
@@ -539,14 +539,3 @@ impl<Action: 'static> View<Action> for TooltipTrigger<Action> {
     }
 }
 
-/// Existing semantic DescribedBy relation from an exact authored owner to Tooltip.
-#[must_use]
-pub fn tooltip_description_reference(id: ElementId) -> crate::SemanticRelationship {
-    crate::SemanticRelationship::new(
-        crate::SemanticRelationshipKind::DescribedBy,
-        crate::SemanticReference::Authored {
-            element_id: id,
-            semantic_key: None,
-        },
-    )
-}
