@@ -831,9 +831,7 @@ impl<Action> Widget<Action> for TextMinimumPanel {
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text {
-            content: "external text intrinsic minimum".to_owned(),
-        }
+        WidgetMeasure::Text(runenui_core::TextLeafMeasure::new("external text intrinsic minimum".to_owned()))
     }
 }
 
@@ -1059,9 +1057,7 @@ impl Widget<()> for CountingText {
     fn create_state(&self) -> Self::State {}
     fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
         self.calls.set(self.calls.get() + 1);
-        WidgetMeasure::Text {
-            content: "counted descriptor".to_owned(),
-        }
+        WidgetMeasure::Text(runenui_core::TextLeafMeasure::new("counted descriptor".to_owned()))
     }
 }
 

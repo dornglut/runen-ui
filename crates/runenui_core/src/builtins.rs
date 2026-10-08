@@ -358,9 +358,7 @@ impl<Action> Widget<Action> for TextWidget {
         }
     }
     fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text {
-            content: self.content.clone(),
-        }
+        WidgetMeasure::Text(crate::TextLeafMeasure::new(self.content.clone()))
     }
     fn semantics(
         &self,
@@ -570,9 +568,11 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
         }
     }
     fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text {
-            content: self.label.clone(),
-        }
+        WidgetMeasure::Text(
+            crate::TextLeafMeasure::new(self.label.clone())
+                .with_inline_alignment(crate::TextAlignment::Center)
+                .with_block_placement(crate::TextBlockPlacement::Center),
+        )
     }
     fn hit_test(&self, state: &Self::State, context: HitContributionContext) -> HitContribution {
         if state.actionable {
@@ -943,9 +943,7 @@ impl<Action> Widget<Action> for BinaryControlWidget<Action> {
     }
 
     fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text {
-            content: self.label.clone(),
-        }
+        WidgetMeasure::Text(crate::TextLeafMeasure::new(self.label.clone()))
     }
 
     fn hit_test(&self, state: &Self::State, context: HitContributionContext) -> HitContribution {
@@ -1423,9 +1421,7 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
     }
 
     fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text {
-            content: self.label.clone(),
-        }
+        WidgetMeasure::Text(crate::TextLeafMeasure::new(self.label.clone()))
     }
 
     fn hit_test(&self, _: &Self::State, context: HitContributionContext) -> HitContribution {
@@ -1987,9 +1983,7 @@ impl<Action> Widget<Action> for TabWidget<Action> {
     }
 
     fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text {
-            content: self.label.clone(),
-        }
+        WidgetMeasure::Text(crate::TextLeafMeasure::new(self.label.clone()))
     }
 
     fn hit_test(&self, _: &Self::State, context: HitContributionContext) -> HitContribution {

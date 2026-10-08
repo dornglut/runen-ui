@@ -142,12 +142,77 @@ impl WidgetMeasuredSize {
     }
 }
 
+/// Logical inline text alignment shared by widget authoring and shaping.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum TextAlignment {
+    #[default]
+    Start,
+    End,
+    Center,
+    Justify,
+}
+
+/// Block-axis placement inside the final content box.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum TextBlockPlacement {
+    #[default]
+    Start,
+    Center,
+    End,
+}
+
+/// Authored text-leaf measurement over a single retained production text layout.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextLeafMeasure {
+    content: String,
+    inline_alignment: TextAlignment,
+    block_placement: TextBlockPlacement,
+}
+
+impl TextLeafMeasure {
+    #[must_use]
+    pub fn new(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+            inline_alignment: TextAlignment::Start,
+            block_placement: TextBlockPlacement::Start,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_inline_alignment(mut self, alignment: TextAlignment) -> Self {
+        self.inline_alignment = alignment;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_block_placement(mut self, placement: TextBlockPlacement) -> Self {
+        self.block_placement = placement;
+        self
+    }
+
+    #[must_use]
+    pub const fn content(&self) -> &str {
+        self.content.as_str()
+    }
+
+    #[must_use]
+    pub const fn inline_alignment(&self) -> TextAlignment {
+        self.inline_alignment
+    }
+
+    #[must_use]
+    pub const fn block_placement(&self) -> TextBlockPlacement {
+        self.block_placement
+    }
+}
+
 /// Production measurement capability contributed by a widget.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum WidgetMeasure {
     Measured(WidgetMeasuredSize),
-    Text { content: String },
+    Text(TextLeafMeasure),
     Unsupported { reason: &'static str },
 }
 

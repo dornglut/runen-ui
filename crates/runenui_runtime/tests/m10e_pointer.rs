@@ -70,9 +70,7 @@ impl Widget<()> for EditableProbe {
     }
 
     fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text {
-            content: String::from("ab"),
-        }
+        WidgetMeasure::Text(runenui_core::TextLeafMeasure::new(String::from("ab")))
     }
 
     fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {

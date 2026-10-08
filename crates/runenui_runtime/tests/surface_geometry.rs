@@ -550,9 +550,7 @@ impl Widget<CorrelationPhase> for CorrelatingText {
             }
         };
         self.inputs.borrow_mut().push((input, content));
-        WidgetMeasure::Text {
-            content: content.to_owned(),
-        }
+        WidgetMeasure::Text(runenui_core::TextLeafMeasure::new(content.to_owned()))
     }
 }
 

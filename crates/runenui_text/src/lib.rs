@@ -48,8 +48,9 @@ pub use font_source_config::GenericFamilyMappingError;
 pub use ink_bounds::TextInkBounds;
 pub use layout_state::{TextLayoutDecision, TextLayoutOutcome, TextLayoutState};
 pub use preedit::{TextPreeditProjection, TextPreeditProjectionError};
+pub use runenui_core::TextAlignment;
 pub use request::{
-    TextAlignment, TextLanguage, TextLanguageError, TextMetricSpan, TextOverflowWrap,
+    TextLanguage, TextLanguageError, TextMetricSpan, TextOverflowWrap,
     TextParagraphStyle, TextRequest, TextRequestError, TextWordBreak, TextWrapMode,
 };
 pub use source_identity::{FontSourceIdentity, FontSourceSnapshot};

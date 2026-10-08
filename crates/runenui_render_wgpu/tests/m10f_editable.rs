@@ -97,9 +97,10 @@ impl Widget<EditorAction> for EditorWidget {
     }
 
     fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text {
-            content: self.text.clone(),
-        }
+        WidgetMeasure::Text(
+            runenui_core::TextLeafMeasure::new(self.text.clone())
+                .with_block_placement(runenui_core::TextBlockPlacement::Center),
+        )
     }
 
     fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {

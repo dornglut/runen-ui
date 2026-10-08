@@ -1150,11 +1150,10 @@ fn text_editing_paint_geometry_for_owner(
         .flatten()
 }
 
-fn text_rect_with_padding(rect: LogicalRect, computed: &ComputedStyle) -> Option<LogicalRect> {
-    let padding = computed.padding().unwrap_or_default();
+fn text_rect_with_origin(rect: LogicalRect, origin: LogicalPoint) -> Option<LogicalRect> {
     LogicalRect::try_new(
-        rect.x() + padding.left().get(),
-        rect.y() + padding.top().get(),
+        rect.x() + origin.x(),
+        rect.y() + origin.y(),
         rect.width(),
         rect.height(),
     )
@@ -1206,6 +1205,7 @@ fn append_text_overlay_rect(
 fn append_text_selection_overlay(
     geometry: &TextEditingPaintGeometry,
     computed: &ComputedStyle,
+    origin: LogicalPoint,
     owner: OwnerPaintContext<'_>,
     next_local_order: &mut usize,
     ordered: &mut Vec<groups::OrderedPaintItem>,
@@ -1213,7 +1213,7 @@ fn append_text_selection_overlay(
     let foreground = computed.foreground().unwrap_or(Color::BLACK);
     let selection_color = Color::rgba(foreground.red(), foreground.green(), foreground.blue(), 96);
     for rect in &geometry.selection {
-        if let Some(rect) = text_rect_with_padding(*rect, computed) {
+        if let Some(rect) = text_rect_with_origin(*rect, origin) {
             append_text_overlay_rect(rect, selection_color, owner, next_local_order, ordered);
         }
     }
@@ -1222,6 +1222,7 @@ fn append_text_selection_overlay(
 fn append_text_preedit_and_caret(
     geometry: &TextEditingPaintGeometry,
     computed: &ComputedStyle,
+    origin: LogicalPoint,
     focused: bool,
     owner: OwnerPaintContext<'_>,
     next_local_order: &mut usize,
@@ -1229,7 +1230,7 @@ fn append_text_preedit_and_caret(
 ) {
     let foreground = computed.foreground().unwrap_or(Color::BLACK);
     for rect in &geometry.preedit_underline {
-        let Some(rect) = text_rect_with_padding(*rect, computed).and_then(|rect| {
+        let Some(rect) = text_rect_with_origin(*rect, origin).and_then(|rect| {
             LogicalRect::try_new(rect.x(), rect.y() + rect.height() - 1.0, rect.width(), 1.0).ok()
         }) else {
             continue;
@@ -1237,7 +1238,7 @@ fn append_text_preedit_and_caret(
         append_text_overlay_rect(rect, foreground, owner, next_local_order, ordered);
     }
 
-    if focused && let Some(rect) = text_rect_with_padding(geometry.caret, computed) {
+    if focused && let Some(rect) = text_rect_with_origin(geometry.caret, origin) {
         append_text_overlay_rect(rect, foreground, owner, next_local_order, ordered);
     }
 }
@@ -1267,7 +1268,7 @@ fn append_shaped_text(
                         unreachable!("published text artifact retains its exact shaped resource")
                     });
                 shaped_text_leases.push(lease);
-                let item = text_run_item(run, computed);
+                let item = text_run_item(run, computed, layout.text_origins[mounted_preorder]);
                 append_runtime_paint_item(
                     &item,
                     owner.mounted_preorder,
@@ -1284,11 +1285,14 @@ fn append_shaped_text(
     super::profile::record_paint_text_run_items(profiled_run_count);
 }
 
-fn text_run_item(run: &runenui_text::TextRun, computed: &ComputedStyle) -> PaintContributionItem {
-    let padding = computed.padding().unwrap_or_default();
+fn text_run_item(
+    run: &runenui_text::TextRun,
+    computed: &ComputedStyle,
+    text_origin: LogicalPoint,
+) -> PaintContributionItem {
     let origin = LogicalPoint::new(
-        padding.left().get() + run.origin_x(),
-        padding.top().get() + run.origin_y(),
+        text_origin.x() + run.origin_x(),
+        text_origin.y() + run.origin_y(),
     )
     .unwrap_or_else(|_| unreachable!("text artifact and resolved padding remain finite"));
     PaintContributionItem::shaped_text_run(
@@ -1524,6 +1528,7 @@ pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
             append_text_selection_overlay(
                 geometry,
                 computed,
+                layout.text_origins[mounted_preorder],
                 owner,
                 &mut next_local_order,
                 &mut ordered,
@@ -1544,6 +1549,7 @@ pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
             append_text_preedit_and_caret(
                 geometry,
                 computed,
+                layout.text_origins[mounted_preorder],
                 focused_owner == Some(&node.id),
                 owner,
                 &mut next_local_order,

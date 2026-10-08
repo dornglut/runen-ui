@@ -212,7 +212,7 @@ fn resolve_layout_phase<Action>(
 ) -> Result<CachedLayoutFacts, SurfacePlanningError> {
     let resolved = ResolvedSurfaceTree::for_layout(&current.topology, &current.effective);
     let chrome_plan = resolve_scroll_chrome_layout_plan(&current.topology)?;
-    let (size, bounds, report, scroll_chrome, text_layouts) = layout_resolved_surface(
+    let (size, bounds, report, scroll_chrome, text_layouts, text_origins) = layout_resolved_surface(
         &resolved,
         &chrome_plan,
         tree,
@@ -227,6 +227,7 @@ fn resolve_layout_phase<Action>(
         report,
         scroll_chrome,
         text_layouts,
+        text_origins,
     })
 }
 
