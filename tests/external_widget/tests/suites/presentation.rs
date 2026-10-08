@@ -4,3 +4,5 @@ mod element_presentation;
 mod invalidation;
 #[path = "../layout_publication.rs"]
 mod layout_publication;
+#[path = "../presentation_controls.rs"]
+mod presentation_controls;
