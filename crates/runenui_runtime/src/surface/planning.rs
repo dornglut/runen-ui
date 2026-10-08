@@ -571,14 +571,14 @@ fn plan_structural_surface<'tree, Action>(
     let chrome_plan = resolve_scroll_chrome_layout_plan(&topology)?;
     let (size, bounds, layout_report, scroll_chrome, text_layouts, text_origins) =
         layout_resolved_surface(
-        &resolved,
-        &chrome_plan,
-        tree,
-        context.root_constraints(),
-        text_system,
-        text_editing.preedits,
-        None,
-    )?;
+            &resolved,
+            &chrome_plan,
+            tree,
+            context.root_constraints(),
+            text_system,
+            text_editing.preedits,
+            None,
+        )?;
     let layout = CachedLayoutFacts {
         size,
         bounds,

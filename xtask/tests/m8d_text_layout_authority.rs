@@ -36,11 +36,12 @@ fn production_text_measurement_and_paint_share_one_retained_artifact_path() -> R
     let resolve = read(&root.join(RESOLVE))?;
 
     for required in [
-        "let request = TextRequest::new(content, typography, constraints);",
+        "let request = TextRequest::new(content, typography, constraints)",
         "match self.text_system.layout_text(&mut state, &request)",
         "let artifact = outcome.artifact();",
         "let text_size = artifact.size();",
         "self.final_text_states[index] = Some(state.clone());",
+        "self.final_text_origins[index]",
         "self.text_layouts[index] = state;",
     ] {
         if !taffy_layout.contains(required) {
@@ -53,8 +54,9 @@ fn production_text_measurement_and_paint_share_one_retained_artifact_path() -> R
     for required in [
         "if let Some(artifact) = layout.text_layouts[mounted_preorder].artifact()",
         ".lease_shaped_run(run.resource_ref())",
+        "layout.text_origins[mounted_preorder]",
         "let computed = effective.node(mounted_preorder).computed_style();",
-        "let item = text_run_item(run, computed);",
+        "let item = text_run_item(run, computed, layout.text_origins[mounted_preorder]);",
     ] {
         if !resolve.contains(required) {
             return Err(format!(

@@ -1,8 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
-    Axis, LogicalPoint, LogicalTransform, ScrollChrome, ScrollControlBinding, ScrollControlSnapshot,
-    StyleEnvironment, SurfacePresentation, TextDocumentSnapshot, WidgetDiagnostic,
+    Axis, LogicalPoint, LogicalTransform, ScrollChrome, ScrollControlBinding,
+    ScrollControlSnapshot, StyleEnvironment, SurfacePresentation, TextDocumentSnapshot,
+    WidgetDiagnostic,
 };
 use runenui_text::{
     FontSourceSnapshot, TextCaretMap, TextCaretMapError, TextDisplaySelection, TextLayoutState,
