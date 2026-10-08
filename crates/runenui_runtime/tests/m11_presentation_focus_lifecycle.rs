@@ -17,7 +17,7 @@ fn fixed(width: u16, height: u16) -> LayoutStyle {
         .with_height(LayoutDimension::length(LogicalLength::from(height)))
 }
 
-fn surface_context<'a>(environment: &'a StyleEnvironment) -> SurfaceBuildContext<'a> {
+fn surface_context(environment: &StyleEnvironment) -> SurfaceBuildContext<'_> {
     SurfaceBuildContext::new(
         environment,
         LayoutConstraints::tight(LogicalSize::new(
