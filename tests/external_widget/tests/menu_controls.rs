@@ -680,7 +680,6 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
             .iter()
             .any(|n| { n.role() == SemanticRole::MenuItem && n.name() == Some("Choice 7") })
     );
-
 }
 
 #[test]
