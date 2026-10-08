@@ -9,7 +9,8 @@ use runenui_core::{
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext, SurfacePublication};
 
 const CANTARELL: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/Cantarell-Regular.ttf");
-const ARABIC: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/RunenUIFixtureArabic-Regular.ttf");
+const ARABIC: &[u8] =
+    include_bytes!("../../runenui_text/tests/fixtures/RunenUIFixtureArabic-Regular.ttf");
 
 #[derive(Clone, Copy)]
 enum Kind {
@@ -324,8 +325,14 @@ fn minimum_narrower_than_intrinsic_does_not_force_line_breaks() {
     let intrinsic = publish(Kind::Button, label, LayoutStyle::default(), 8);
     let narrow_minimum = publish(Kind::Button, label, minimum(20, 10), 8);
     approximately_equal(bounds(&intrinsic).width(), bounds(&narrow_minimum).width());
-    approximately_equal(bounds(&intrinsic).height(), bounds(&narrow_minimum).height());
-    approximately_equal(first_origin(&intrinsic).x(), first_origin(&narrow_minimum).x());
+    approximately_equal(
+        bounds(&intrinsic).height(),
+        bounds(&narrow_minimum).height(),
+    );
+    approximately_equal(
+        first_origin(&intrinsic).x(),
+        first_origin(&narrow_minimum).x(),
+    );
     let count_runs = |p: &SurfacePublication| {
         p.paint_scene()
             .items()

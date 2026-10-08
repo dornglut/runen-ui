@@ -651,7 +651,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 let minimum_inline = style
                     .min_size
                     .width
-                    .resolve_to_option(inputs.parent_size.width, |_, _| 0.0)
+                    .resolve_to_option(inputs.parent_size.width.unwrap_or(0.0), |_, _| 0.0)
                     .map(|value| {
                         logical_extent(value - padding.left().get() - padding.right().get())
                     });
@@ -683,7 +683,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                         let minimum_block = style
                             .min_size
                             .height
-                            .resolve_to_option(inputs.parent_size.height, |_, _| 0.0)
+                            .resolve_to_option(inputs.parent_size.height.unwrap_or(0.0), |_, _| 0.0)
                             .map(|value| {
                                 logical_extent(value - padding.top().get() - padding.bottom().get())
                             });
