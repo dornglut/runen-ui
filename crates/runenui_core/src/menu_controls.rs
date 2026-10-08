@@ -182,6 +182,7 @@ impl<Action> fmt::Debug for MenuContainerWidget<Action> {
         f.debug_struct("MenuContainerWidget")
             .field("role", &self.role)
             .field("has_dismiss_callback", &self.on_dismiss.is_some())
+            .field("has_back_callback", &self.on_back.is_some())
             .finish()
     }
 }

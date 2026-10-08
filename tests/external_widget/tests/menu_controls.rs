@@ -448,7 +448,11 @@ fn menu_outside_pointer_dismisses_without_dispatching_menu_activation() {
         runenui_core::PointerPhase::Down,
         outside,
         context,
-    );
+    )
+    .with_buttons(runenui_core::PointerButtons::new([
+        runenui_core::PointerButton::Primary,
+    ]))
+    .with_changed_button(runenui_core::PointerButton::Primary);
     assert!(h.submit_pointer(pointer).is_ok());
     settle(&mut h);
     assert!(!h.state().open);
