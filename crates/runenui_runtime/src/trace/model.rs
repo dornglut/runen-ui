@@ -474,6 +474,10 @@ pub enum TraceRecordKind {
         entered: usize,
     },
     ModalityChanged,
+    /// Causality-derived focus indication changed without altering actual focus.
+    FocusVisibilityChanged {
+        visible: bool,
+    },
     PumpBudgetExhausted,
     InitialEffectsCommitted {
         count: usize,

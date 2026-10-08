@@ -2,7 +2,7 @@
 
 > **Category:** Target architecture
 >
-> **Status:** M11A/M11B/M11C/M11D2/M11SEM1/M11S2 owner-accepted; M11SCROLLB owner-accepted; M11COLL2 owner-accepted; M11TABS owner-accepted; M11CONTENT owner-accepted; M11PRES1 owner-accepted; M11PRES2 owner-accepted; M11PRESCTRL owner-accepted; M11MENU owner-accepted; M11BUTTONPRESS owner-accepted
+> **Status:** M11A/M11B/M11C/M11D2/M11SEM1/M11S2 owner-accepted; M11SCROLLB owner-accepted; M11COLL2 owner-accepted; M11TABS owner-accepted; M11CONTENT owner-accepted; M11PRES1 owner-accepted; M11PRES2 owner-accepted; M11PRESCTRL owner-accepted; M11MENU owner-accepted; M11BUTTONPRESS owner-accepted; M11FOCUSVISIBLE implementation-complete
 >
 > **Milestone:** M11
 >
@@ -15,9 +15,9 @@
 > M10 remains authoritative for editable text and interaction services.
 
 ```text
-62 total unique rows
+63 total unique rows
 62 owner-accepted
-0 implementation-complete
+1 implementation-complete
 0 proof-complete
 0 blocked
 0 duplicate IDs
@@ -102,3 +102,4 @@
 
 
 | M11CTRL-62 | Public Button exposes optional application-authored Unpressed/Pressed/Mixed semantics through the accepted typed Button pressed state. An ordinary Button has no pressed semantic fact; changing pressed on application rebuild advances semantic revision without a runtime toggle, alternate control type or private selected style state. All activation origins remain ordinary application actions; disabled pressed Buttons retain semantic meaning but reject activation, and downstream public Widgets may author equivalent facts. | `crates/runenui_testing/tests/m11_button_pressed.rs::button_without_authored_pressed_state_remains_momentary`; `button_pressed_semantics_follow_only_application_authored_updates`; `downstream_custom_widget_uses_identical_public_pressed_semantic_contract` | `disabled_pressed_button_stays_semantic_and_rejects_activation`; equal-state publication does not advance revision; source audit excludes runtime-owned pressed state, separate ToggleButton runtime or widget-type branch | Accepted #310 role-aware validation and M5 semantic revision/delta plus accepted M11A activation-origin conformance | M11BUTTONPRESS | owner-accepted | Required |
+| M11CTRL-63 | Canonical FocusVisible is distinct from exact Focus, ordered between Focus and Active; the owner-local focus latch derives from canonical input source, pointer target WidgetTextInput capability, and prior focus indication on programmatic/automation transfer. Stable nonpointing input promotes with interaction invalidation; pointer activity never demotes, focus retirement clears, and existing semantic focus and M4 modality are unchanged. | `crates/runenui_runtime/tests/focus_visible.rs` including `stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfer` (built-in and downstream authored recipe); `crates/runenui_core/tests/style_resolution_layers.rs::focus_visible_layer_falls_between_focus_and_active_for_all_widgets` | `crates/runenui_runtime/src/surface/interaction.rs::focused_owner_visibility_projects_focus_and_focus_visible_without_new_identity`; no second focus owner, widget type shortcut, application modality, native preference or altered focus selection | Bounded typed `TraceRecordKind::FocusVisibilityChanged` with distinct focus-visibility context, exact routed causality and JSON export | M11FOCUSVISIBLE | implementation-complete | Required |

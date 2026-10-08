@@ -69,6 +69,7 @@ pub struct FocusState {
     focused_route: Vec<MountedNodeId>,
     remembered: HashMap<MountedNodeId, MountedNodeId>,
     modality: Option<InputModality>,
+    focus_visible: bool,
     reason: Option<FocusReason>,
 }
 
@@ -100,6 +101,13 @@ impl FocusState {
         self.modality
     }
 
+    /// Whether the currently focused owner receives the causal focus indicator.
+    /// This is derived runtime state, distinct from canonical focus ownership.
+    #[must_use]
+    pub const fn focus_visible(&self) -> bool {
+        self.focus_visible
+    }
+
     /// Returns the reason of the latest committed focus transition.
     #[must_use]
     pub const fn reason(&self) -> Option<FocusReason> {
@@ -111,12 +119,30 @@ impl FocusState {
         (old != Some(modality)).then_some(modality)
     }
 
+    /// Promotes focus indication only for an already focused owner.
+    /// Pointer or programmatic modality changes cannot demote this latch.
+    pub(crate) const fn promote_focus_visible(&mut self, modality: InputModality) -> bool {
+        if self.focused_node_id.is_some()
+            && !self.focus_visible
+            && matches!(
+                modality,
+                InputModality::Keyboard | InputModality::Controller | InputModality::Accessibility
+            )
+        {
+            self.focus_visible = true;
+            return true;
+        }
+        false
+    }
+
     pub(crate) fn commit(
         &mut self,
         target: Option<MountedNodeId>,
         route: Vec<MountedNodeId>,
         reason: FocusReason,
+        focus_visible: bool,
     ) {
+        self.focus_visible = target.is_some() && focus_visible;
         self.focused_node_id = target;
         self.focused_route = route;
         self.reason = Some(reason);
@@ -139,6 +165,7 @@ impl FocusState {
 
     pub(crate) fn clear_all(&mut self, reason: FocusReason) {
         self.focused_node_id = None;
+        self.focus_visible = false;
         self.focused_route.clear();
         self.remembered.clear();
         self.reason = Some(reason);

@@ -1,7 +1,7 @@
 use runenui_core::{
     CommandOrigin, CompositionCancel, CompositionCancelReason, CompositionEvent, FocusEvent,
-    FocusEventKind, FocusReason, HostProtocol, MonotonicInstant, SemanticCommand, UiEvent,
-    WidgetInvalidation,
+    FocusEventKind, FocusReason, HostProtocol, InputModality, MonotonicInstant, SemanticCommand,
+    UiEvent, WidgetInvalidation, WidgetTextInput,
 };
 
 use super::{
@@ -415,6 +415,39 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 ),
             );
         }
+        if self.focus.promote_focus_visible(modality) {
+            transaction.invalidation |= WidgetInvalidation::INTERACTION;
+            let owner = self.focus.focused_node().cloned();
+            self.record_focus_visibility_change(transaction, true, owner.as_ref());
+        }
+    }
+
+    /// Records a visibility-latch transition through the existing focus trace
+    /// authority, not a second focus event or semantic focus mutation.
+    fn record_focus_visibility_change(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        visible: bool,
+        owner: Option<&MountedNodeId>,
+    ) {
+        if !self.trace.is_enabled() {
+            return;
+        }
+        transaction.parent = self.trace.record_draft(
+            TraceRecordDraft::focus_fact(
+                TraceRecordKind::FocusVisibilityChanged { visible },
+                transaction.instant,
+                TraceContext::focus_visibility(),
+            )
+            .with_work_sequence(Some(transaction.sequence))
+            .with_causal_parent(transaction.parent)
+            .with_target(owner.map(|id| self.tree.trace_target(id)))
+            .with_routed_endpoints(
+                transaction.target.clone(),
+                owner.cloned(),
+                transaction.origin,
+            ),
+        );
     }
 
     fn apply_focus_group_default(
@@ -630,6 +663,32 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    /// Derives the indication for a real focus transfer from its admitted source
+    /// and the target's public input capability, without consulting `FocusReason`.
+    fn focus_visibility_on_transfer(
+        &mut self,
+        source: InputModality,
+        had_previous_owner: bool,
+        target: &MountedNodeId,
+    ) -> bool {
+        match source {
+            InputModality::Keyboard | InputModality::Controller | InputModality::Accessibility => {
+                true
+            }
+            InputModality::Pointer => {
+                let capability = self
+                    .tree
+                    .text_input_probe(target)
+                    .unwrap_or(WidgetTextInput::NONE);
+                capability.accepts_committed_text() || capability.accepts_composition()
+            }
+            InputModality::Programmatic | InputModality::Automation => {
+                !had_previous_owner || self.focus.focus_visible()
+            }
+            _ => !had_previous_owner || self.focus.focus_visible(),
+        }
+    }
+
     pub(in crate::runtime) fn commit_focus_transition(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
@@ -640,6 +699,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if old_target == new_target {
             return Ok(());
         }
+        let previous_visibility = self.focus.focus_visible();
+        let next_visibility = new_target.as_ref().is_some_and(|target| {
+            self.focus_visibility_on_transfer(
+                transaction.pending_modality,
+                old_target.is_some(),
+                target,
+            )
+        });
         if let Some(old) = old_target.as_ref() {
             self.cancel_composition_in_transaction(
                 transaction,
@@ -667,8 +734,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let left = old_route.len().saturating_sub(common);
         let entered = new_route.len().saturating_sub(common);
 
-        self.focus
-            .commit(new_target.clone(), new_route.clone(), reason);
+        self.focus.commit(
+            new_target.clone(),
+            new_route.clone(),
+            reason,
+            next_visibility,
+        );
         self.reconcile_focus_group_type_ahead_state();
         if let Some(target) = new_target.as_ref() {
             for scope in new_route.iter().filter(|scope| {
@@ -691,6 +762,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             left,
             entered,
         );
+        if previous_visibility != next_visibility {
+            let owner = new_target.as_ref().or(old_target.as_ref());
+            self.record_focus_visibility_change(transaction, next_visibility, owner);
+        }
 
         if let Some(old) = old_target.as_ref() {
             let plan = FocusNotificationPlan {
@@ -923,7 +998,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             trace_target,
             surface,
         } = cleanup;
-        self.focus.commit(None, Vec::new(), reason);
+        let previous_visibility = self.focus.focus_visible();
+        self.focus.commit(None, Vec::new(), reason, false);
         self.reconcile_focus_group_type_ahead_state();
         let Some(trace_target) = trace_target else {
             return;
@@ -943,6 +1019,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .with_reconciliation(Some(before), Some(after))
             .with_target(Some(trace_target.clone())),
         );
+        if previous_visibility {
+            self.trace.record_draft(
+                TraceRecordDraft::focus_fact(
+                    TraceRecordKind::FocusVisibilityChanged { visible: false },
+                    instant,
+                    TraceContext::focus_visibility(),
+                )
+                .with_work_sequence(Some(sequence))
+                .with_causal_parent(transition)
+                .with_reconciliation(Some(before), Some(after))
+                .with_target(Some(trace_target.clone())),
+            );
+        }
         let within = self.trace.record_draft(
             TraceRecordDraft::lifecycle_fact(
                 TraceRecordKind::FocusWithinInvalidated {
@@ -997,6 +1086,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             let surface = self.surface_publication.current_trace_surface_context();
             (target, route, surface)
         });
+        let previous_visibility = self.focus.focus_visible();
         self.focus.clear_all(FocusReason::Shutdown);
         let Some(_old_target) = old_target else {
             return causal_parent;
@@ -1019,6 +1109,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .with_causal_parent(causal_parent)
             .with_target(Some(trace_target.clone())),
         );
+        if previous_visibility {
+            self.trace.record_draft(
+                TraceRecordDraft::focus_fact(
+                    TraceRecordKind::FocusVisibilityChanged { visible: false },
+                    instant,
+                    TraceContext::focus_visibility(),
+                )
+                .with_causal_parent(transition)
+                .with_target(Some(trace_target.clone())),
+            );
+        }
         let within = self.trace.record_draft(
             TraceRecordDraft::lifecycle_fact(
                 TraceRecordKind::FocusWithinInvalidated {

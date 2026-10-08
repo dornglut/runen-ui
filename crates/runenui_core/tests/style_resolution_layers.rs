@@ -485,3 +485,66 @@ fn property_effects_classify_every_current_property() -> Result<(), Box<dyn std:
     assert!(mixed.paint());
     Ok(())
 }
+
+#[test]
+fn focus_visible_layer_falls_between_focus_and_active_for_all_widgets()
+-> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(
+        StyleInteractionState::ORDERED,
+        [
+            StyleInteractionState::Hover,
+            StyleInteractionState::Focus,
+            StyleInteractionState::FocusVisible,
+            StyleInteractionState::Active,
+            StyleInteractionState::Disabled,
+        ]
+    );
+
+    let id = recipe_id("control.focus-visible")?;
+    let mut recipe = StyleRecipe::new(StyleProperties::EMPTY);
+    for (layer, intensity) in [
+        (StyleInteractionState::Hover, 1),
+        (StyleInteractionState::Focus, 2),
+        (StyleInteractionState::FocusVisible, 3),
+        (StyleInteractionState::Active, 4),
+        (StyleInteractionState::Disabled, 5),
+    ] {
+        recipe.define_interaction(
+            layer,
+            StyleProperties::EMPTY.with_foreground(Color::rgb(intensity, 0, 0)),
+        )?;
+    }
+    let mut theme = StyleTheme::new(StyleTokens::new());
+    theme.define_recipe(id.clone(), recipe)?;
+    let environment = StyleEnvironment::new(theme);
+    let intent = StyleIntent::EMPTY.with_recipe(id);
+    let hover = StyleInteractionFacts::NONE.with(StyleInteractionState::Hover, true);
+    let focus = hover.with(StyleInteractionState::Focus, true);
+    let visible = focus.with(StyleInteractionState::FocusVisible, true);
+    let active = visible.with(StyleInteractionState::Active, true);
+    let disabled = active.with(StyleInteractionState::Disabled, true);
+    for (facts, winning_layer, value) in [
+        (hover, StyleInteractionState::Hover, 1),
+        (focus, StyleInteractionState::Focus, 2),
+        (visible, StyleInteractionState::FocusVisible, 3),
+        (active, StyleInteractionState::Active, 4),
+        (disabled, StyleInteractionState::Disabled, 5),
+    ] {
+        assert_foreground_resolution(
+            &intent,
+            &environment,
+            facts,
+            Color::rgb(value, 0, 0),
+            &StyleResolutionLayer::Interaction(winning_layer),
+        );
+    }
+    assert!(visible.focused() && visible.focus_visible());
+    let implied_focus = StyleInteractionFacts::NONE.with(StyleInteractionState::FocusVisible, true);
+    assert!(implied_focus.focused() && implied_focus.focus_visible());
+    assert!(
+        !implied_focus
+            .with(StyleInteractionState::Focus, false)
+            .focus_visible()
+    );
+    Ok(())
+}

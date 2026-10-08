@@ -192,6 +192,7 @@ macro_rules! trace_kind_name {
             TraceRecordKind::FocusNotificationResolved { .. } => "focus_notification_resolved",
             TraceRecordKind::FocusWithinInvalidated { .. } => "focus_within_invalidated",
             TraceRecordKind::ModalityChanged => "modality_changed",
+            TraceRecordKind::FocusVisibilityChanged { .. } => "focus_visibility_changed",
             TraceRecordKind::PumpBudgetExhausted => "pump_budget_exhausted",
             TraceRecordKind::InitialEffectsCommitted { .. } => "initial_effects_committed",
             TraceRecordKind::InitialApplicationTransactionStarted => {
@@ -866,6 +867,9 @@ fn encode_routed_focus_data(output: &mut String, kind: &TraceRecordKind) -> bool
         }
         TraceRecordKind::FocusTransitionCommitted { reason } => {
             field_str(output, "reason", tokens::focus_reason(*reason));
+        }
+        TraceRecordKind::FocusVisibilityChanged { visible } => {
+            field_bool(output, "visible", *visible);
         }
         TraceRecordKind::FocusNotificationResolved { kind } => {
             field_str(output, "kind", tokens::focus_event_kind(*kind));

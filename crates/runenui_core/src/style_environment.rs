@@ -7,25 +7,33 @@ use crate::{StyleProperties, StyleRecipeId, StyleTokens, StyleVariantId};
 
 /// Framework-ordered interaction layer.
 ///
-/// Resolution order is hover, focus, active, disabled; later active layers win
+/// Resolution order is hover, focus, focus-visible, active, disabled; later active layers win
 /// property-by-property.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum StyleInteractionState {
     Hover,
     Focus,
+    FocusVisible,
     Active,
     Disabled,
 }
 
 impl StyleInteractionState {
-    pub const ORDERED: [Self; 4] = [Self::Hover, Self::Focus, Self::Active, Self::Disabled];
+    pub const ORDERED: [Self; 5] = [
+        Self::Hover,
+        Self::Focus,
+        Self::FocusVisible,
+        Self::Active,
+        Self::Disabled,
+    ];
 
     const fn mask(self) -> u8 {
         match self {
             Self::Hover => 1 << 0,
             Self::Focus => 1 << 1,
-            Self::Active => 1 << 2,
-            Self::Disabled => 1 << 3,
+            Self::FocusVisible => 1 << 2,
+            Self::Active => 1 << 3,
+            Self::Disabled => 1 << 4,
         }
     }
 
@@ -52,8 +60,14 @@ impl StyleInteractionFacts {
         let mask = state.mask();
         if enabled {
             self.0 |= mask;
+            if matches!(state, StyleInteractionState::FocusVisible) {
+                self.0 |= StyleInteractionState::Focus.mask();
+            }
         } else {
             self.0 &= !mask;
+            if matches!(state, StyleInteractionState::Focus) {
+                self.0 &= !StyleInteractionState::FocusVisible.mask();
+            }
         }
         self
     }
@@ -70,6 +84,10 @@ impl StyleInteractionFacts {
     #[must_use]
     pub const fn focused(self) -> bool {
         self.contains(StyleInteractionState::Focus)
+    }
+    #[must_use]
+    pub const fn focus_visible(self) -> bool {
+        self.contains(StyleInteractionState::FocusVisible)
     }
     #[must_use]
     pub const fn active(self) -> bool {
