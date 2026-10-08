@@ -120,7 +120,7 @@ fn publish(
         &style,
         LayoutConstraints::unbounded(),
     ))
-    .unwrap_or_else(|error| panic!("aligned text publication: {error:?}"))
+    .unwrap_or_else(|_| unreachable!("aligned text publication is admitted"))
 }
 
 fn first_origin(publication: &SurfacePublication) -> LogicalPoint {
