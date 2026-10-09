@@ -1,5 +1,6 @@
 use runenui_core::{
-    CommandOrigin, CommittedTextEvent, Element, NoHostProtocol, SemanticAction,
+    ClipboardWritePurpose, CommandOrigin, CommittedTextEvent, Element,
+    FrameworkServiceRequest, NoHostProtocol, SemanticAction,
     SemanticActionRequest, SemanticCommand, StyleEnvironment, TextAffinity, TextDocumentId,
     TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, UiApp,
 };
@@ -22,13 +23,10 @@ impl UiApp for SelectableApp {
             TextDocumentSnapshot::new(TextDocumentId::new(23), TextDocumentRevision::new(1));
         let position = TextPosition::new(snapshot, SOURCE, SOURCE.len(), TextAffinity::Downstream)
             .unwrap_or_else(|_| unreachable!("fixture selection is valid"));
-        let control = runenui_core::selectable_text(
-            snapshot,
-            SOURCE,
-            TextSelection::collapsed(position),
-        )
-        .unwrap_or_else(|_| unreachable!("fixture text is revision-scoped"))
-        .id("read-only.text");
+        let control =
+            runenui_core::selectable_text(snapshot, SOURCE, TextSelection::collapsed(position))
+                .unwrap_or_else(|_| unreachable!("fixture text is revision-scoped"))
+                .id("read-only.text");
         runenui_core::View::into_element(control)
     }
 
@@ -56,8 +54,7 @@ fn selectable_text_uses_m10_for_read_only_selection_and_blocks_mutation() {
     let environment = StyleEnvironment::default();
     let context = SurfaceBuildContext::tight(
         &environment,
-        LogicalSize::try_new(280.0, 60.0)
-            .unwrap_or_else(|_| unreachable!("surface is finite")),
+        LogicalSize::try_new(280.0, 60.0).unwrap_or_else(|_| unreachable!("surface is finite")),
     );
     let initial = runtime
         .publish_surface(&context)
@@ -70,12 +67,20 @@ fn selectable_text_uses_m10_for_read_only_selection_and_blocks_mutation() {
     );
     assert!(!node.supported_actions().contains(&SemanticAction::Paste));
     assert!(!node.supported_actions().contains(&SemanticAction::Cut));
-    assert!(!node.supported_actions().contains(&SemanticAction::ReplaceSelection));
+    assert!(
+        !node
+            .supported_actions()
+            .contains(&SemanticAction::ReplaceSelection)
+    );
 
     assert!(
         runtime
             .submit_semantic_action(SemanticActionRequest::replace_selection(
-                initial.semantic_publication().snapshot().surface_id().clone(),
+                initial
+                    .semantic_publication()
+                    .snapshot()
+                    .surface_id()
+                    .clone(),
                 node.id().clone(),
                 "mutation",
             ))
@@ -116,5 +121,21 @@ fn selectable_text_uses_m10_for_read_only_selection_and_blocks_mutation() {
     assert_eq!(editable.selection().anchor().byte_offset(), 0);
     assert_eq!(editable.selection().active().byte_offset(), SOURCE.len());
     assert!(semantic.supported_actions().contains(&SemanticAction::Copy));
-    assert!(runtime.pending_framework_services().is_empty());
+
+    // Copy is handled by the existing framework-service FIFO, not a widget
+    // callback or a parallel selection/clipboard model.
+    let owner = runtime.index().nodes()[0].id().clone();
+    runtime
+        .submit_command(owner, SemanticCommand::Copy, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("read-only copy command routes"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert!(runtime.pending_framework_services().iter().any(|service| {
+        matches!(
+            service.request(),
+            FrameworkServiceRequest::ClipboardWriteText {
+                text,
+                purpose: ClipboardWritePurpose::Copy
+            } if text.as_ref() == SOURCE
+        )
+    }));
 }
