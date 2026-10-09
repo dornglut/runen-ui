@@ -493,3 +493,134 @@ fn state_only_interaction_invalidation_preserves_still_valid_focus() {
     assert_eq!(runtime.focus().focused_node(), Some(&id));
     assert!(runtime.index().nodes()[0].is_focusable());
 }
+
+#[derive(Debug)]
+struct DownstreamLink;
+
+impl Widget<()> for DownstreamLink {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(true)
+    }
+
+    fn activate(
+        &mut self,
+        (): &mut Self::State,
+        _: &mut WidgetActivationContext,
+    ) -> WidgetActivationOutput<()> {
+        WidgetActivationOutput::action(())
+    }
+
+    fn measure(&self, (): &Self::State, _: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::Text(runenui_core::TextLeafMeasure::new("Reference"))
+    }
+
+    fn hit_test(
+        &self,
+        (): &Self::State,
+        context: runenui_core::HitContributionContext,
+    ) -> runenui_core::HitContribution {
+        let size = context.local_size();
+        runenui_core::HitContribution::single_rect(
+            LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+                .unwrap_or_else(|_| unreachable!("valid widget local geometry")),
+        )
+    }
+
+    fn semantics(
+        &self,
+        (): &Self::State,
+        _: SemanticContributionContext,
+    ) -> SemanticContribution {
+        SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::Link)
+                .with_name("Reference")
+                .with_action(SemanticAction::Activate),
+        )
+    }
+}
+
+struct DownstreamLinkApp;
+struct StandardLinkApp;
+
+impl UiApp for DownstreamLinkApp {
+    type State = usize;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &Self::State) -> Element<Self::Action> {
+        Element::new(DownstreamLink).id("reference").focusable(true)
+    }
+
+    fn update(state: &mut Self::State, (): Self::Action) {
+        *state += 1;
+    }
+}
+
+impl UiApp for StandardLinkApp {
+    type State = usize;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &Self::State) -> Element<Self::Action> {
+        runenui_core::link("Reference")
+            .id("reference")
+            .on_activate(|| ())
+            .into_element()
+    }
+
+    fn update(state: &mut Self::State, (): Self::Action) {
+        *state += 1;
+    }
+}
+
+fn assert_link_action_is_ordinary<
+    App: UiApp<State = usize, Action = (), HostProtocol = NoHostProtocol>,
+>() {
+    let mut runtime = AppRuntime::<App>::mount(0);
+    settle_initial_mounted_declarations(&mut runtime);
+    let owner = runtime.index().nodes()[0].id().clone();
+    runtime
+        .submit_command(
+            owner,
+            SemanticCommand::Activate,
+            CommandOrigin::accessibility(),
+        )
+        .unwrap_or_else(|_| unreachable!("link uses the ordinary semantic route"));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    assert_eq!(*runtime.state(), 1);
+}
+
+#[test]
+fn downstream_link_matches_public_standard_link_semantics_and_activation() {
+    let authored: Element<()> = Element::new(DownstreamLink).id("reference").focusable(true);
+    let builtin: Element<()> = runenui_core::link("Reference")
+        .id("reference")
+        .on_activate(|| ())
+        .into_element();
+
+    let (_, _, _, _, _, _, _, _, authored_widget, _) =
+        authored.into_runtime_parts().into_parts();
+    let (_, _, _, _, _, _, _, _, builtin_widget, _) =
+        builtin.into_runtime_parts().into_parts();
+    let authored_state = authored_widget.create_state();
+    let builtin_state = builtin_widget.create_state();
+    assert_eq!(
+        authored_widget
+            .semantics(&authored_state, SemanticContributionContext::default())
+            .unwrap_or_else(|_| unreachable!("custom link semantic contribution is valid")),
+        builtin_widget
+            .semantics(&builtin_state, SemanticContributionContext::default())
+            .unwrap_or_else(|_| unreachable!("built-in link semantic contribution is valid")),
+    );
+    assert_link_action_is_ordinary::<DownstreamLinkApp>();
+    assert_link_action_is_ordinary::<StandardLinkApp>();
+}

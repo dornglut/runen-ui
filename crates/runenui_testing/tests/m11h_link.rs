@@ -4,7 +4,7 @@ use core::num::NonZeroUsize;
 
 use runenui_core::{
     ElementId, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase,
-    LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, LogicalKey, NoHostProtocol,
+    LayoutDimension, LayoutStyle, LogicalKey, LogicalLength, LogicalPoint, NoHostProtocol,
     PhysicalKey, PointerButton, PointerButtons, PointerDeviceKind, PointerId, PointerPhase,
     SemanticAction, SemanticCommand, SemanticRole, UiApp, View, link,
 };
@@ -47,7 +47,10 @@ fn settle(harness: &mut TestHarness<LinkApp>) {
         NonZeroUsize::new(16).unwrap_or(NonZeroUsize::MIN),
         PumpBudget::new(64, 64, 64, 64),
     );
-    assert_eq!(harness.run_until_idle(budget).outcome(), SettleOutcome::Idle);
+    assert_eq!(
+        harness.run_until_idle(budget).outcome(),
+        SettleOutcome::Idle
+    );
 }
 
 fn mounted(enabled: bool) -> TestHarness<LinkApp> {
@@ -82,7 +85,12 @@ fn semantic_link_action_uses_application_action_and_never_button_role() {
     settle(&mut h);
     assert_eq!(h.state().navigations, 1);
     assert!(h.publish().is_ok());
-    assert_eq!(h.query_semantics(&query()).unwrap_or_else(|_| unreachable!("snapshot exists")).len(), 1);
+    assert_eq!(
+        h.query_semantics(&query())
+            .unwrap_or_else(|_| unreachable!("snapshot exists"))
+            .len(),
+        1
+    );
     assert_eq!(
         h.query_semantics(&SemanticQuery::new().with_role(SemanticRole::Button))
             .unwrap_or_else(|_| unreachable!("snapshot exists"))
@@ -126,10 +134,18 @@ fn focused_enter_and_pointer_primary_activation_converge_on_link() {
     let bounds = node.bounds();
     let point = LogicalPoint::new(bounds.x() + 2.0, bounds.y() + 2.0)
         .unwrap_or_else(|_| unreachable!("bounds are finite"));
-    assert_eq!(publication.hit_test_scene().target_at(point), Some(node.id()));
+    assert_eq!(
+        publication.hit_test_scene().target_at(point),
+        Some(node.id())
+    );
     let pointer_id = PointerId::new(71).unwrap_or_else(|| unreachable!("pointer is nonzero"));
     let down = pointer
-        .pointer_event(pointer_id, PointerDeviceKind::Mouse, PointerPhase::Down, point)
+        .pointer_event(
+            pointer_id,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Down,
+            point,
+        )
         .unwrap_or_else(|_| unreachable!("published pointer context exists"))
         .with_buttons(PointerButtons::new([PointerButton::Primary]))
         .with_changed_button(PointerButton::Primary);
@@ -138,7 +154,12 @@ fn focused_enter_and_pointer_primary_activation_converge_on_link() {
         .unwrap_or_else(|_| unreachable!("pointer down admits"));
     settle(&mut pointer);
     let up = pointer
-        .pointer_event(pointer_id, PointerDeviceKind::Mouse, PointerPhase::Up, point)
+        .pointer_event(
+            pointer_id,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Up,
+            point,
+        )
         .unwrap_or_else(|_| unreachable!("published pointer context exists"))
         .with_changed_button(PointerButton::Primary);
     pointer
