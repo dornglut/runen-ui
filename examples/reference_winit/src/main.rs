@@ -15,12 +15,14 @@ mod framework_services;
 mod keyboard_input;
 mod mouse_input;
 mod proof_trace;
+mod pointer_mode;
 mod text_input;
 mod wheel_input;
 
 use accessibility::{AccessibilityEvent, SemanticAdapter};
 use device_identity::{DeviceIdentityError, DeviceIdentityMap};
 use framework_services::NativeFrameworkServices;
+use pointer_mode::{Mode as HostPointerMode, Outcome as HostPointerOutcome, Scope as HostPointerScope, State as HostPointerState, WinitPointer};
 use keyboard_input::{
     KeyboardIngressDiagnostic, KeyboardInputOutcome, KeyboardInputState, NativeKeyTransition,
 };
@@ -52,9 +54,9 @@ use text_input::{TextInputState, keyboard_committed_text_candidate, translate_pr
 use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalPosition, PhysicalSize},
-    event::{DeviceId, ElementState, Ime, MouseButton, Touch, TouchPhase, WindowEvent},
+    event::{DeviceEvent, DeviceId, ElementState, Ime, MouseButton, Touch, TouchPhase, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
-    keyboard::ModifiersState,
+    keyboard::{Key, ModifiersState, NamedKey},
     window::{Window, WindowId},
 };
 
@@ -738,6 +740,8 @@ struct ReferenceHost {
     mapping_publication_needed: bool,
     presentation_suppressed: bool,
     initial_focus_requested: bool,
+    window_epoch: u64,
+    raw_motion_samples: u64,
 }
 
 impl ReferenceHost {
@@ -776,6 +780,8 @@ impl ReferenceHost {
             mapping_publication_needed: false,
             presentation_suppressed: false,
             initial_focus_requested: false,
+            window_epoch: 0,
+            raw_motion_samples: 0,
         };
         host.drain_runtime_trace();
         host
@@ -787,6 +793,7 @@ impl ReferenceHost {
 
     fn fail(&mut self, event_loop: &ActiveEventLoop, detail: &str) {
         eprintln!("reference_winit fatal: {detail}");
+        self.release_host_pointer("fatal error");
         let _ = self.runtime.shutdown();
         self.framework_services
             .reset_native_window_ime(self.window.as_deref());
@@ -849,6 +856,8 @@ impl ReferenceHost {
         let window = event_loop
             .create_window(attributes)
             .map_err(|error| format!("native window creation failed: {error}"))?;
+        self.window_epoch = self.window_epoch.checked_add(1)
+            .ok_or_else(|| String::from("native host window epoch exhausted"))?;
         let activation_handler = self.semantic_adapter.activation_handler();
         let accessibility = accesskit_winit::Adapter::with_mixed_handlers(
             event_loop,
@@ -1340,6 +1349,11 @@ impl ReferenceHost {
     fn handle_window_focus(&mut self, event_loop: &ActiveEventLoop, focused: bool) {
         proof!("stage=window_focus focused={focused}");
         if focused {
+            if let Some(window) = self.window.as_ref() {
+                let result = self.framework_services.pointer_modes_mut()
+                    .focus_changed(true, &mut WinitPointer(window));
+                proof!("stage=host_pointer_focus_acquired result={result:?}");
+            }
             self.pump_runtime_once();
             self.text_input.set_window_focused(true);
             if let Some(window) = self.window.as_ref() {
@@ -1349,6 +1363,12 @@ impl ReferenceHost {
             return;
         }
 
+        self.release_host_pointer("native window lost focus");
+        if let Some(window) = self.window.as_ref() {
+            let result = self.framework_services.pointer_modes_mut()
+                .focus_changed(false, &mut WinitPointer(window));
+            proof!("stage=host_pointer_focus_lost result={result:?}");
+        }
         if !self.cancel_native_touch_contacts(event_loop, "native window lost focus") {
             return;
         }
@@ -1602,6 +1622,75 @@ impl ReferenceHost {
         }
     }
 
+    fn current_host_pointer_scope(&self) -> Option<HostPointerScope> {
+        let surface = self.displayed_frame.as_ref()?.input_context.surface_id().clone();
+        (self.window_epoch != 0 && self.window.is_some()).then_some(HostPointerScope {
+            window_epoch: self.window_epoch,
+            surface: Some(surface),
+        })
+    }
+
+    fn release_host_pointer(&mut self, reason: &str) {
+        // Native unlock cannot depend on a running UI pump.
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        let returning_from_relative = matches!(
+            self.framework_services.pointer_modes().state(),
+            HostPointerState::AwaitingMotion(_) | HostPointerState::Active(pointer_mode::Lease { mode: HostPointerMode::LockedRelative, .. })
+        );
+        let result = self.framework_services.pointer_modes_mut()
+            .release(&mut WinitPointer(window));
+        proof!("stage=host_pointer_release reason={reason:?} result={result:?}");
+        if let Err(error) = result {
+            eprintln!("reference_winit native pointer release failed ({reason}): {error:?}");
+        }
+        // Old absolute coordinates must not leak back from camera mode.
+        if returning_from_relative && self.framework_services.pointer_modes().ui_pointer_allowed() {
+            let _ = self.mouse.invalidate_point_authority(self.modifiers);
+        }
+    }
+
+    fn toggle_host_pointer(&mut self, event_loop: &ActiveEventLoop, desired: HostPointerMode) {
+        if !matches!(self.framework_services.pointer_modes().state(), HostPointerState::Absolute) {
+            self.release_host_pointer("host pointer mode toggle to UI");
+            if !self.invalidate_mouse_point_authority(event_loop, "host mode returned to UI") {
+                return;
+            }
+            return;
+        }
+        let Some(scope) = self.current_host_pointer_scope() else {
+            proof!("stage=host_pointer_acquire_rejected reason=no_displayed_surface");
+            return;
+        };
+        // Cancel before acquisition: held UI buttons must not turn into camera actions.
+        if !self.cancel_native_touch_contacts(event_loop, "switching to gameplay")
+            || !self.invalidate_mouse_point_authority(event_loop, "switching to gameplay")
+        {
+            return;
+        }
+        self.pump_runtime_once();
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        self.raw_motion_samples = 0;
+        let result = self.framework_services.pointer_modes_mut().request(
+            scope, desired, &mut WinitPointer(window),
+        );
+        proof!("stage=host_pointer_acquire result={result:?}");
+        match result {
+            Ok(HostPointerOutcome::WaitingForMotion(_)) => {
+                proof!("stage=host_pointer_waiting_for_native_raw_motion");
+            }
+            Ok(HostPointerOutcome::Realized(_)) | Ok(HostPointerOutcome::Released) => {
+                proof!("stage=host_pointer_realized");
+            }
+            Err(error) => {
+                eprintln!("reference_winit native gameplay pointer mode unavailable: {error:?}");
+            }
+        }
+    }
+
     fn invalidate_mouse_point_authority(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -1687,6 +1776,9 @@ impl ReferenceHost {
         native_device_id: DeviceId,
         physical_position: PhysicalPosition<f64>,
     ) {
+        if !self.framework_services.pointer_modes().ui_pointer_allowed() {
+            return;
+        }
         let Some(device_id) = self.resolve_native_device_id(event_loop, native_device_id) else {
             return;
         };
@@ -1738,6 +1830,9 @@ impl ReferenceHost {
         state: ElementState,
         button: MouseButton,
     ) {
+        if !self.framework_services.pointer_modes().ui_pointer_allowed() {
+            return;
+        }
         let Some(device_id) = self.resolve_native_device_id(event_loop, native_device_id) else {
             return;
         };
@@ -1797,6 +1892,9 @@ impl ReferenceHost {
     }
 
     fn handle_native_touch(&mut self, event_loop: &ActiveEventLoop, touch: Touch) {
+        if !self.framework_services.pointer_modes().ui_pointer_allowed() {
+            return;
+        }
         let Some(device_id) = self.resolve_native_device_id(event_loop, touch.device_id) else {
             return;
         };
@@ -1871,6 +1969,25 @@ impl ReferenceHost {
         event: &winit::event::KeyEvent,
         is_synthetic: bool,
     ) {
+        if !is_synthetic && !event.repeat && event.state == ElementState::Pressed {
+            if matches!(&event.logical_key, Key::Named(NamedKey::F7)) {
+                self.toggle_host_pointer(event_loop, HostPointerMode::ConfinedAbsolute);
+                return;
+            }
+            if matches!(&event.logical_key, Key::Named(NamedKey::F8)) {
+                self.toggle_host_pointer(event_loop, HostPointerMode::LockedRelative);
+                return;
+            }
+            if matches!(&event.logical_key, Key::Named(NamedKey::Escape))
+                && !self.framework_services.pointer_modes().ui_pointer_allowed()
+            {
+                self.release_host_pointer("escape/menu");
+                return;
+            }
+        }
+        if !self.framework_services.pointer_modes().ui_pointer_allowed() {
+            return;
+        }
         let Some(device_id) = self.resolve_native_device_id(event_loop, native_device_id) else {
             return;
         };
@@ -2149,6 +2266,7 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
 
     fn suspended(&mut self, event_loop: &ActiveEventLoop) {
         proof!("stage=host_suspended");
+        self.release_host_pointer("host suspended");
         if !self.cancel_native_touch_contacts(event_loop, "native host suspended") {
             return;
         }
@@ -2183,6 +2301,30 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
         self.request_pending_redraw();
     }
 
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: DeviceId,
+        event: DeviceEvent,
+    ) {
+        let DeviceEvent::MouseMotion { delta } = event else {
+            return;
+        };
+        let Some(scope) = self.current_host_pointer_scope() else {
+            return;
+        };
+        if !self.framework_services.pointer_modes_mut().observe_motion(&scope, delta)
+            || !self.framework_services.pointer_modes().gameplay_motion_allowed()
+        {
+            return;
+        }
+        // Device-native units stay in the host. Never synthesize RunenUI PointerEvent.
+        self.raw_motion_samples = self.raw_motion_samples.saturating_add(1);
+        if self.raw_motion_samples == 1 {
+            proof!("stage=host_gameplay_raw_motion_started");
+        }
+    }
+
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -2205,6 +2347,12 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
         match event {
             WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                 proof!("stage=window_exit");
+                self.release_host_pointer("window destroy/close");
+                if let Some(window) = self.window.as_ref() {
+                    let result = self.framework_services.pointer_modes_mut()
+                        .retire_window(&mut WinitPointer(window));
+                    proof!("stage=host_pointer_window_retired result={result:?}");
+                }
                 if !self.cancel_native_touch_contacts(event_loop, "native window destroyed") {
                     return;
                 }
@@ -2246,7 +2394,9 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             WindowEvent::MouseWheel {
                 device_id, delta, ..
             } => {
-                wheel_input::handle_mouse_wheel(self, event_loop, device_id, delta);
+                if self.framework_services.pointer_modes().ui_pointer_allowed() {
+                    wheel_input::handle_mouse_wheel(self, event_loop, device_id, delta);
+                }
             }
             WindowEvent::Touch(touch) => self.handle_native_touch(event_loop, touch),
             WindowEvent::KeyboardInput {
@@ -2265,6 +2415,9 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             WindowEvent::Occluded(occluded) => {
                 proof!("stage=window_occluded occluded={occluded}");
                 self.presentation_suppressed = occluded;
+                if occluded {
+                    self.release_host_pointer("window occluded");
+                }
                 if !occluded {
                     self.request_pending_redraw();
                 }
@@ -2283,12 +2436,25 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
         proof!("stage=host_exiting");
+        self.release_host_pointer("host exiting");
         let _ = self.runtime.shutdown();
         self.framework_services
             .reset_native_window_ime(self.window.as_deref());
         self.framework_services.shutdown();
         self.deferred_framework_service_completions.clear();
         self.drain_runtime_trace();
+    }
+}
+
+impl Drop for ReferenceHost {
+    fn drop(&mut self) {
+        if let Some(window) = self.window.as_ref() {
+            if let Err(error) = self.framework_services.pointer_modes_mut()
+                .retire_window(&mut WinitPointer(window))
+            {
+                eprintln!("reference_winit drop could not confirm native pointer release: {error:?}");
+            }
+        }
     }
 }
 

@@ -8,6 +8,18 @@ Because the example is a native desktop host, it explicitly permits system-font 
 
 Run the host with `cargo run -p reference_winit`. Click or drag in the text, type committed text, use native IME composition where supported, and try copy/cut/paste with a selected range. Native winit touch contacts are normalized through the public `runenui_winit` adapter using the exact displayed-frame mapping; mapping, focus, and suspension loss cancel live contacts. Pointer identity uses disjoint mouse/touch namespaces. File drops are admitted only at the exact widget target; the example does not open or read dropped files.
 
+## M13 host-private real-time pointer-mode proof (#424)
+
+The example also serves as a host-owned pointer-mode probe. **F7** toggles confined absolute cursor mode; **F8** toggles locked-relative game-input mode; **Escape** releases a pending or active mode. These are example-host policy hotkeys, not RunenUI actions or new core/runtime APIs. The demonstration does not implement a camera; native relative motion samples are counted by the host and never converted into RunenUI logical pointer events.
+
+An exact displayed RunenUI surface identity and live native window epoch are required before requesting a native mode. The host cancels existing routed mouse/touch streams before acquiring gameplay lock. While relative mode is pending or active, ordinary absolute pointer, wheel, touch and editor keyboard ingress are withheld; native device motion remains at the host boundary. Lock acquisition is only classified as usable after a finite raw device motion sample arrives. This is not proof that cursor visibility was visually realized or that the operating system cannot release the grab independently.
+
+The host owns one native cursor writer: the M10 framework cursor request sets the ordinary UI shape/visibility baseline, while gameplay lock applies a temporary native visibility override. Escape, focus loss, suspension, destruction, host failure and exit attempt native release independently of the runtime queue. Native release failure is recorded and leaves UI/game input gated; it is never reported as success. A fresh absolute cursor position is required after return to UI. No native fallback silently substitutes one mode for another.
+
+For native proof, enable RUNENUI_REFERENCE_PROOF=1, press F7/F8 and Escape, physically move the mouse, force focus loss (alt-tab), reenter, suspend/close, and inspect the stage=host_pointer_* lines. Record OS, display server (X11/Wayland), pinned winit version, exact result, cursor visibility, raw-motion delivery and restoration. Deterministic fake-host tests validate ordering and failure semantics but cannot prove OS realization. Platforms not actually run remain unproven. Pinned winit 0.30.13 documents macOS confinement and X11 lock as unsupported; an actual NotSupported result is expected negative evidence.
+
+Multi-window/seat handoff is excluded from this single-window reference host. #353 owns RunenUI multi-surface identity and activation; a later authorized host consumer must consume that decision. The independent host-input arbitration investigation owns any reusable UI/gameplay input-consumption contract.
+
 For reproducible large-document interaction checks, the same binary can initialize the ordinary application-owned editor state with deterministic generated text:
 
 ```text

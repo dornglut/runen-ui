@@ -4,6 +4,7 @@ use runenui_core::{
     FrameworkServiceRequest, FrameworkServiceResponse, WorkSequence,
 };
 use std::{collections::HashMap, path::PathBuf};
+use crate::pointer_mode::{PointerModes, WinitPointer};
 use winit::{
     dpi::{LogicalPosition, LogicalSize},
     window::{CursorIcon, Window},
@@ -16,6 +17,7 @@ pub struct NativeFrameworkServices {
     admitted_drop_paths: HashMap<WorkSequence, Vec<PathBuf>>,
     native_window_focused: bool,
     requested_ime_allowed: bool,
+    pointer_modes: PointerModes,
 }
 
 impl NativeFrameworkServices {
@@ -26,7 +28,16 @@ impl NativeFrameworkServices {
             admitted_drop_paths: HashMap::new(),
             native_window_focused: false,
             requested_ime_allowed: false,
+            pointer_modes: PointerModes::default(),
         }
+    }
+
+    pub const fn pointer_modes(&self) -> &PointerModes {
+        &self.pointer_modes
+    }
+
+    pub fn pointer_modes_mut(&mut self) -> &mut PointerModes {
+        &mut self.pointer_modes
     }
 
     pub fn shutdown(&mut self) {
@@ -169,8 +180,7 @@ impl NativeFrameworkServices {
                         FrameworkServiceFailure::Unavailable,
                     ));
                 };
-                window.set_cursor_visible(*visible);
-                window.set_cursor(cursor_icon(*shape));
+                self.pointer_modes.set_ui_cursor(&mut WinitPointer(window), *shape, *visible);
                 FrameworkServiceResponse::Cursor(Ok(()))
             }
             FrameworkServiceRequest::DragDrop {
@@ -261,7 +271,7 @@ const fn map_clipboard_error(error: &arboard::Error) -> FrameworkServiceFailure 
     }
 }
 
-const fn cursor_icon(shape: CursorShape) -> CursorIcon {
+pub(crate) const fn cursor_icon(shape: CursorShape) -> CursorIcon {
     match shape {
         CursorShape::Text => CursorIcon::Text,
         CursorShape::Pointer => CursorIcon::Pointer,
