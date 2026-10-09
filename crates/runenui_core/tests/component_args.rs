@@ -603,7 +603,9 @@ fn selectable_text_reuses_public_m10_selection_and_copy_without_mutation() {
         node.editable().and_then(|editable| editable.value()),
         Some(source)
     );
-    assert!(node.actions().contains(&SemanticAction::Copy));
+    // M10D exposes clipboard Copy through routed commands and framework
+    // services, not through a semantically advertised clipboard action.
+    assert!(!node.actions().contains(&SemanticAction::Copy));
     assert!(node.actions().contains(&SemanticAction::SelectAll));
     assert!(!node.actions().contains(&SemanticAction::ReplaceSelection));
     assert!(!node.actions().contains(&SemanticAction::Paste));

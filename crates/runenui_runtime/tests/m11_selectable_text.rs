@@ -1,5 +1,5 @@
 use runenui_core::{
-    ClipboardWritePurpose, CommandOrigin, CommittedTextEvent, Element, FrameworkServiceRequest,
+    ClipboardWritePurpose, CommandOrigin, CommittedTextEvent, FrameworkServiceRequest,
     NoHostProtocol, SemanticAction, SemanticActionRequest, SemanticCommand, StyleEnvironment,
     TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,
     TextSelection, UiApp,
@@ -18,7 +18,7 @@ impl UiApp for SelectableApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> Element<Self::Action> {
+    fn root((): &Self::State) -> impl runenui_core::View<Self::Action> {
         let snapshot =
             TextDocumentSnapshot::new(TextDocumentId::new(23), TextDocumentRevision::new(1));
         let position = TextPosition::new(snapshot, SOURCE, SOURCE.len(), TextAffinity::Upstream)
@@ -30,7 +30,10 @@ impl UiApp for SelectableApp {
         runenui_core::View::into_element(control)
     }
 
-    fn update(_: &mut Self::State, (): Self::Action) {}
+    fn update(
+        (): &mut Self::State,
+        (): Self::Action,
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {}
 }
 
 #[test]
@@ -120,7 +123,9 @@ fn selectable_text_uses_m10_for_read_only_selection_and_blocks_mutation() {
         .unwrap_or_else(|| unreachable!("retained selection is projected"));
     assert_eq!(editable.selection().anchor().byte_offset(), 0);
     assert_eq!(editable.selection().active().byte_offset(), SOURCE.len());
-    assert!(semantic.supported_actions().contains(&SemanticAction::Copy));
+    // The canonical M10 clipboard path is a routed command, not a published
+    // semantic clipboard action until the generic service authority supports it.
+    assert!(!semantic.supported_actions().contains(&SemanticAction::Copy));
 
     // Copy is handled by the existing framework-service FIFO, not a widget
     // callback or a parallel selection/clipboard model.

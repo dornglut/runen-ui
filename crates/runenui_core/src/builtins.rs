@@ -505,7 +505,6 @@ impl<Action> Widget<Action> for SelectableTextWidget {
                 .with_state(SemanticState::ENABLED.with_read_only(true))
                 .with_editable(editable)
                 .with_editable_mode(crate::SemanticEditableMode::Multiline)
-                .with_action(SemanticAction::Copy)
                 .with_action(SemanticAction::SelectAll)
                 .with_action(SemanticAction::SetSelection)
                 .with_action(SemanticAction::MoveBackward)
