@@ -511,7 +511,7 @@ pub struct EditableContribution<Action> {
     read_only: bool,
     disabled: bool,
     session_policy: EditingSessionPolicy,
-    mapper: Rc<dyn Fn(EditIntent) -> Action>,
+    mapper: Option<Rc<dyn Fn(EditIntent) -> Action>>,
 }
 
 /// Failure while binding an editable contribution to one exact document snapshot.
@@ -559,7 +559,55 @@ impl<Action> EditableContribution<Action> {
         session_policy: EditingSessionPolicy,
         mapper: impl Fn(EditIntent) -> Action + 'static,
     ) -> Result<Self, EditableContributionError> {
-        let text = text.into();
+        Self::new_checked(
+            snapshot,
+            text.into(),
+            initial_selection,
+            sensitivity,
+            read_only,
+            disabled,
+            session_policy,
+            Some(Rc::new(mapper)),
+        )
+    }
+
+    /// Creates a read-only, selectable document without an edit-action callback.
+    /// The accepted M10 editing registry still owns selection, caret and copy.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same checked document/selection errors as `Self::new`.
+    pub fn new_read_only(
+        snapshot: TextDocumentSnapshot,
+        text: impl Into<Arc<str>>,
+        initial_selection: TextSelection,
+        sensitivity: TextSensitivity,
+        disabled: bool,
+        session_policy: EditingSessionPolicy,
+    ) -> Result<Self, EditableContributionError> {
+        Self::new_checked(
+            snapshot,
+            text.into(),
+            initial_selection,
+            sensitivity,
+            true,
+            disabled,
+            session_policy,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new_checked(
+        snapshot: TextDocumentSnapshot,
+        text: Arc<str>,
+        initial_selection: TextSelection,
+        sensitivity: TextSensitivity,
+        read_only: bool,
+        disabled: bool,
+        session_policy: EditingSessionPolicy,
+        mapper: Option<Rc<dyn Fn(EditIntent) -> Action>>,
+    ) -> Result<Self, EditableContributionError> {
         if initial_selection.anchor().snapshot() != snapshot
             || initial_selection.active().snapshot() != snapshot
         {
@@ -585,7 +633,7 @@ impl<Action> EditableContribution<Action> {
             read_only,
             disabled,
             session_policy,
-            mapper: Rc::new(mapper),
+            mapper,
         })
     }
 
@@ -618,8 +666,8 @@ impl<Action> EditableContribution<Action> {
         self.session_policy
     }
     #[must_use]
-    pub fn map_intent(&self, intent: EditIntent) -> Action {
-        (self.mapper)(intent)
+    pub fn map_intent(&self, intent: EditIntent) -> Option<Action> {
+        self.mapper.as_ref().map(|mapper| mapper(intent))
     }
 
     #[must_use]
@@ -640,7 +688,10 @@ impl<Action> EditableContribution<Action> {
             read_only: self.read_only,
             disabled: self.disabled,
             session_policy: self.session_policy,
-            mapper: Rc::new(move |intent| mapper(child_mapper(intent))),
+            mapper: child_mapper.map(|child_mapper| {
+                Rc::new(move |intent| mapper(child_mapper(intent)))
+                    as Rc<dyn Fn(EditIntent) -> ParentAction>
+            }),
         }
     }
 }
@@ -813,7 +864,62 @@ mod tests {
             TextSensitivity::Public,
             None,
         );
-        assert_eq!(contribution.map_intent(intent), 8);
+        assert_eq!(contribution.map_intent(intent), Some(8));
+    }
+
+    #[test]
+    fn read_only_contribution_has_no_edit_mapper_even_after_action_mapping() {
+        let source = "reference text";
+        let contribution = EditableContribution::<u8>::new_read_only(
+            snapshot(1),
+            source,
+            selection(source, source.len()),
+            TextSensitivity::Public,
+            false,
+            EditingSessionPolicy::PreserveExact,
+        )
+        .unwrap_or_else(|_| unreachable!("test read-only document is valid"))
+        .map_action(Rc::new(|value| usize::from(value) + 1));
+        assert!(contribution.read_only());
+        assert_eq!(contribution.text(), source);
+        let namespace = RuntimeNamespace::__runtime_new();
+        let intent = EditIntent::__runtime_new(
+            namespace.__runtime_edit_request_id(1),
+            namespace.__runtime_editing_session_generation(1),
+            None,
+            TextRange::new(snapshot(1), source, source.len(), source.len())
+                .unwrap_or_else(|_| unreachable!("test range is valid")),
+            Arc::from("!"),
+            super::EditSelection::collapsed("reference text!", 15, TextAffinity::Downstream)
+                .unwrap_or_else(|_| unreachable!("test projected selection is valid")),
+            super::EditKind::Insert,
+            None,
+            None,
+            TextSensitivity::Public,
+            None,
+        );
+        assert!(contribution.map_intent(intent).is_none());
+    }
+
+    #[test]
+    fn read_only_contribution_rejects_stale_revision_scoped_selection() {
+        let source = "abc";
+        let invalid = TextSelection::collapsed(
+            TextPosition::new(snapshot(2), source, 1, TextAffinity::Downstream)
+                .unwrap_or_else(|_| unreachable!("test position is valid")),
+        );
+        let result = EditableContribution::<()>::new_read_only(
+            snapshot(1),
+            source,
+            invalid,
+            TextSensitivity::Public,
+            false,
+            EditingSessionPolicy::PreserveExact,
+        );
+        assert!(matches!(
+            result,
+            Err(EditableContributionError::SelectionSnapshotMismatch)
+        ));
     }
 
     #[test]
