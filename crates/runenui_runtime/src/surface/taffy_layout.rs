@@ -55,9 +55,7 @@ fn secret_text_shaping_source<Action>(
         return None;
     }
     let masked = if let Some(preedit) = preedit {
-        if preedit.snapshot() != editable.snapshot()
-            || preedit.document_text() != editable.text()
-        {
+        if preedit.snapshot() != editable.snapshot() || preedit.document_text() != editable.text() {
             return None;
         }
         TextMaskedProjection::preedit(Arc::clone(preedit)).ok()?
@@ -662,14 +660,15 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 let preedit = self.preedits.get(&mounted.id);
                 let content = match mounted.widget.editable(&mounted.state) {
                     Ok(Some(editable)) if editable.sensitivity() == TextSensitivity::Secret => {
-                        secret_text_shaping_source(&descriptor, &editable, preedit)
-                            .unwrap_or_else(|| {
+                        secret_text_shaping_source(&descriptor, &editable, preedit).unwrap_or_else(
+                            || {
                                 self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
                                     "runenui.text.secret-source-mismatch",
                                     "secret text layout source is not correlated with M10 editing",
                                 ));
                                 String::new()
-                            })
+                            },
+                        )
                     }
                     Ok(Some(editable)) => {
                         if let Some(projection) = preedit {
@@ -1674,10 +1673,9 @@ mod text_baseline_placement_tests {
 mod secret_shaping_tests {
     use super::secret_text_shaping_source;
     use runenui_core::{
-        __runtime::RuntimeNamespace, CompositionRange, EditableContribution,
-        EditingSessionPolicy, TextAffinity, TextDocumentId, TextDocumentRevision,
-        TextDocumentSnapshot, TextLeafMeasure, TextPosition, TextRange, TextSelection,
-        TextSensitivity,
+        __runtime::RuntimeNamespace, CompositionRange, EditableContribution, EditingSessionPolicy,
+        TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextLeafMeasure,
+        TextPosition, TextRange, TextSelection, TextSensitivity,
     };
     use runenui_text::TextPreeditProjection;
     use std::sync::Arc;
@@ -1687,32 +1685,33 @@ mod secret_shaping_tests {
     }
 
     fn secret(source: &str) -> EditableContribution<()> {
-        let cursor = TextPosition::new(
-            snapshot(), source, source.len(), TextAffinity::Downstream,
-        ).unwrap_or_else(|_| unreachable!("fixture position is valid"));
+        let cursor = TextPosition::new(snapshot(), source, source.len(), TextAffinity::Downstream)
+            .unwrap_or_else(|_| unreachable!("fixture position is valid"));
         EditableContribution::new_read_only(
-            snapshot(), source, TextSelection::collapsed(cursor),
-            TextSensitivity::Secret, false, EditingSessionPolicy::PreserveExact,
-        ).unwrap_or_else(|_| unreachable!("fixture contribution is valid"))
+            snapshot(),
+            source,
+            TextSelection::collapsed(cursor),
+            TextSensitivity::Secret,
+            false,
+            EditingSessionPolicy::PreserveExact,
+        )
+        .unwrap_or_else(|_| unreachable!("fixture contribution is valid"))
     }
 
     #[test]
     fn production_layout_input_contains_no_secret_source_graphemes() {
         let source = "sécret👩‍💻漢字";
-        let rendered = secret_text_shaping_source(
-            &TextLeafMeasure::new(source),
-            &secret(source),
-            None,
-        ).unwrap_or_else(|| unreachable!("exact source masks"));
+        let rendered =
+            secret_text_shaping_source(&TextLeafMeasure::new(source), &secret(source), None)
+                .unwrap_or_else(|| unreachable!("exact source masks"));
         assert_eq!(rendered, "•••••••••");
         assert!(!rendered.contains("sécret"));
         assert!(!rendered.contains("👩"));
         assert!(!rendered.contains("漢"));
-        assert!(secret_text_shaping_source(
-            &TextLeafMeasure::new("different"),
-            &secret(source),
-            None,
-        ).is_none());
+        assert!(
+            secret_text_shaping_source(&TextLeafMeasure::new("different"), &secret(source), None,)
+                .is_none()
+        );
     }
 
     #[test]
@@ -1722,19 +1721,29 @@ mod secret_shaping_tests {
         let namespace = RuntimeNamespace::__runtime_new();
         let range = TextRange::new(snapshot(), source, 2, 4)
             .unwrap_or_else(|_| unreachable!("replacement range is valid"));
-        let preedit = Arc::new(TextPreeditProjection::new(
-            snapshot(), source, range, namespace.__runtime_composition_generation(1),
-            "かな", Some(CompositionRange::new("かな", 0, "か".len())
-                .unwrap_or_else(|_| unreachable!("selection is valid"))),
-        ).unwrap_or_else(|_| unreachable!("preedit is valid")));
-        let rendered = secret_text_shaping_source(
-            &TextLeafMeasure::new(source), &editing, Some(&preedit),
-        ).unwrap_or_else(|| unreachable!("valid preedit masks"));
+        let preedit = Arc::new(
+            TextPreeditProjection::new(
+                snapshot(),
+                source,
+                range,
+                namespace.__runtime_composition_generation(1),
+                "かな",
+                Some(
+                    CompositionRange::new("かな", 0, "か".len())
+                        .unwrap_or_else(|_| unreachable!("selection is valid")),
+                ),
+            )
+            .unwrap_or_else(|_| unreachable!("preedit is valid")),
+        );
+        let rendered =
+            secret_text_shaping_source(&TextLeafMeasure::new(source), &editing, Some(&preedit))
+                .unwrap_or_else(|| unreachable!("valid preedit masks"));
         assert_eq!(rendered, "••••••");
         assert!(!rendered.contains("かな"));
         let other = secret("another");
-        assert!(secret_text_shaping_source(
-            &TextLeafMeasure::new("another"), &other, Some(&preedit),
-        ).is_none());
+        assert!(
+            secret_text_shaping_source(&TextLeafMeasure::new("another"), &other, Some(&preedit),)
+                .is_none()
+        );
     }
 }
