@@ -2,7 +2,7 @@
 
 > **Category:** Target architecture
 >
-> **Status:** M11A/M11B/M11C/M11D2/M11SEM1/M11S2 owner-accepted; M11SCROLLB owner-accepted; M11COLL2 owner-accepted; M11TABS owner-accepted; M11CONTENT owner-accepted; M11PRES1 owner-accepted; M11PRES2 owner-accepted; M11PRESCTRL owner-accepted; M11MENU owner-accepted; M11BUTTONPRESS owner-accepted; M11FOCUSVISIBLE owner-accepted; M11TEXTLAYOUT owner-accepted; M11SELECTABLE owner-accepted; M11LINK owner-accepted; M11TEXTFIELD owner-accepted; M11PASSWORD owner-accepted
+> **Status:** M11A/M11B/M11C/M11D2/M11SEM1/M11S2 owner-accepted; M11SCROLLB owner-accepted; M11COLL2 owner-accepted; M11TABS owner-accepted; M11CONTENT owner-accepted; M11PRES1 owner-accepted; M11PRES2 owner-accepted; M11PRESCTRL owner-accepted; M11MENU owner-accepted; M11BUTTONPRESS owner-accepted; M11FOCUSVISIBLE owner-accepted; M11TEXTLAYOUT owner-accepted; M11SELECTABLE owner-accepted; M11LINK owner-accepted; M11TEXTFIELD owner-accepted; M11PASSWORD owner-accepted; M11PLACEHOLDER owner-accepted
 >
 > **Milestone:** M11
 >
@@ -15,8 +15,8 @@
 > M10 remains authoritative for editable text and interaction services.
 
 ```text
-68 total unique rows
-68 owner-accepted
+69 total unique rows
+69 owner-accepted
 0 implementation-complete
 0 proof-complete
 0 blocked
