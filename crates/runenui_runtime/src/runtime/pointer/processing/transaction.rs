@@ -366,7 +366,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             reasons.push(crate::UiInputClaimReason::PointerSelection);
         }
         if pending.work.event.device_kind() == PointerDeviceKind::Touch
-            && pending.stream.touch_gesture().and_then(TouchGestureState::winner).is_some()
+            && pending
+                .stream
+                .touch_gesture()
+                .and_then(TouchGestureState::winner)
+                .is_some()
         {
             reasons.push(crate::UiInputClaimReason::TouchGesture);
         }
@@ -376,9 +380,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let route = if let Some(root) = pending.presentation_block_root.as_ref() {
             crate::UiInputRoute::PresentationBlocked { root: root.clone() }
         } else if let Some(target) = pending.stream.capture_owner() {
-            crate::UiInputRoute::Captured { target: target.clone() }
+            crate::UiInputRoute::Captured {
+                target: target.clone(),
+            }
         } else if let Some(target) = pending.routed_target.as_ref() {
-            crate::UiInputRoute::Routed { target: target.clone() }
+            crate::UiInputRoute::Routed {
+                target: target.clone(),
+            }
         } else {
             crate::UiInputRoute::Unrouted
         };

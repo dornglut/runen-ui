@@ -126,7 +126,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn process_pointer_envelope(
         &mut self,
         envelope: PointerEnvelope,
-    ) -> (ProcessApplicationActionOutcome, Option<crate::UiInputFinality>) {
+    ) -> (
+        ProcessApplicationActionOutcome,
+        Option<crate::UiInputFinality>,
+    ) {
         let PointerEnvelope {
             sequence,
             payload,

@@ -83,14 +83,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     pub(crate) fn finish_external_pointer_input(&mut self) -> crate::UiInputFinality {
         self.input_observation.external_pointer_active = false;
-        self.input_observation.pointer_finality.take().unwrap_or_else(|| {
-            match self.status {
-                crate::RuntimeStatus::Terminal(reason) =>
-                    crate::UiInputFinality::Aborted(crate::UiInputAbortReason::Terminal(reason)),
-                crate::RuntimeStatus::Running | crate::RuntimeStatus::Closed =>
-                    crate::UiInputFinality::Aborted(crate::UiInputAbortReason::RuntimeIntegrity),
-            }
-        })
+        self.input_observation
+            .pointer_finality
+            .take()
+            .unwrap_or_else(|| match self.status {
+                crate::RuntimeStatus::Terminal(reason) => {
+                    crate::UiInputFinality::Aborted(crate::UiInputAbortReason::Terminal(reason))
+                }
+                crate::RuntimeStatus::Running | crate::RuntimeStatus::Closed => {
+                    crate::UiInputFinality::Aborted(crate::UiInputAbortReason::RuntimeIntegrity)
+                }
+            })
     }
 
     /// Returns a new immutable projection without changing any live authority.

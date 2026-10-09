@@ -619,13 +619,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             | TracePointerRejection::CoordinateRevisionMismatch => {
                 crate::UiInputProcessingRejection::InvalidDisplayedSnapshot
             }
-            TracePointerRejection::RetiredGeneration
-            | TracePointerRejection::MissingGeneration => {
+            TracePointerRejection::RetiredGeneration | TracePointerRejection::MissingGeneration => {
                 crate::UiInputProcessingRejection::MissingDisplayedSnapshot
             }
-            TracePointerRejection::NoTarget => {
-                crate::UiInputProcessingRejection::MissingTarget
-            }
+            TracePointerRejection::NoTarget => crate::UiInputProcessingRejection::MissingTarget,
             _ => crate::UiInputProcessingRejection::InvalidPointerStream,
         };
         self.note_external_pointer_finality(crate::UiInputFinality::ProcessingRejected(cause));
