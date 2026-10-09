@@ -185,10 +185,7 @@ impl TextMaskedProjection {
         self.source_offset_to_display(offset)
     }
 
-    fn source_offset_to_display(
-        &self,
-        offset: usize,
-    ) -> Result<usize, TextMaskedProjectionError> {
+    fn source_offset_to_display(&self, offset: usize) -> Result<usize, TextMaskedProjectionError> {
         if offset > self.unmasked_source().len() {
             return Err(TextMaskedProjectionError::OutOfBounds);
         }
@@ -256,7 +253,7 @@ impl TextMaskedProjection {
             offset,
             position.affinity(),
         )
-        .map_err(|_| TextMaskedProjectionError::InvalidCoordinate)?;
+                .map_err(|_| TextMaskedProjectionError::InvalidCoordinate)?;
         Ok(TextDisplayPosition::Document(checked))
     }
 
@@ -388,7 +385,8 @@ impl TextMaskedCaretMap {
         operation: TextNavigation,
         mode: TextNavigationMode,
         preferred_inline: Option<TextPreferredInline>,
-    ) -> Result<(TextDisplaySelection, Option<TextPreferredInline>), TextMaskedProjectionError> {
+    ) -> Result<(TextDisplaySelection, Option<TextPreferredInline>), TextMaskedProjectionError>
+    {
         let masked = self.projection.to_masked_selection(selection)?;
         let result = self.map.navigate(&masked, operation, mode, preferred_inline)?;
         Ok((
@@ -434,8 +432,8 @@ impl From<TextPreeditProjectionError> for TextMaskedProjectionError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runenui_core::{TextDocumentId, TextDocumentRevision, Typography};
     use crate::{FontSourcePolicy, TextConstraints, TextRequest, TextSystem};
+    use runenui_core::{TextDocumentId, TextDocumentRevision, Typography};
 
     fn snapshot() -> TextDocumentSnapshot {
         TextDocumentSnapshot::new(TextDocumentId::new(199), TextDocumentRevision::new(5))
@@ -449,20 +447,31 @@ mod tests {
         assert_eq!(projection.display_text(), "••••••");
         assert!(!projection.display_text().contains("秘密"));
         assert!(!format!("{projection:?}").contains("秘密"));
-        let boundary = source.find('🔐').unwrap_or_else(|| unreachable!("fixture contains emoji"));
+        let boundary = source
+            .find('🔐')
+            .unwrap_or_else(|| unreachable!("fixture contains emoji"));
         let p = TextDisplayPosition::Document(
             TextPosition::new(snapshot(), source, boundary, TextAffinity::Downstream)
                 .unwrap_or_else(|_| unreachable!("valid grapheme boundary")),
         );
-        let masked = projection.display_offset_for_position(&p)
+        let masked = projection
+            .display_offset_for_position(&p)
             .unwrap_or_else(|_| unreachable!("mapped boundary"));
         assert_eq!(masked, 6);
-        assert_eq!(projection.position_from_display_offset(masked, TextAffinity::Downstream)
-            .unwrap_or_else(|_| unreachable!("inverse mapped boundary")), p);
-        assert_eq!(projection.source_offset_to_display(2),
-            Err(TextMaskedProjectionError::NotGraphemeBoundary));
-        assert_eq!(projection.position_from_display_offset(1, TextAffinity::Downstream),
-            Err(TextMaskedProjectionError::NotGraphemeBoundary));
+        assert_eq!(
+            projection
+                .position_from_display_offset(masked, TextAffinity::Downstream)
+                .unwrap_or_else(|_| unreachable!("inverse mapped boundary")),
+            p
+        );
+        assert_eq!(
+            projection.source_offset_to_display(2),
+            Err(TextMaskedProjectionError::NotGraphemeBoundary)
+        );
+        assert_eq!(
+            projection.position_from_display_offset(1, TextAffinity::Downstream),
+            Err(TextMaskedProjectionError::NotGraphemeBoundary)
+        );
     }
 
     #[test]
@@ -470,14 +479,23 @@ mod tests {
         let projection = TextMaskedProjection::document(snapshot(), "")
             .unwrap_or_else(|_| unreachable!("empty mask is valid"));
         assert_eq!(projection.display_text(), "");
-        assert_eq!(projection.position_from_display_offset(0, TextAffinity::Downstream)
-            .unwrap_or_else(|_| unreachable!("empty boundary is valid")).snapshot(), snapshot());
-        let foreign = TextDocumentSnapshot::new(TextDocumentId::new(199), TextDocumentRevision::new(6));
-        let position = TextDisplayPosition::Document(TextPosition::new(
-            foreign, "", 0, TextAffinity::Downstream,
-        ).unwrap_or_else(|_| unreachable!("foreign coordinate is individually valid")));
-        assert_eq!(projection.display_offset_for_position(&position),
-            Err(TextMaskedProjectionError::ForeignSnapshot));
+        assert_eq!(
+            projection
+                .position_from_display_offset(0, TextAffinity::Downstream)
+                .unwrap_or_else(|_| unreachable!("empty boundary is valid"))
+                .snapshot(),
+            snapshot()
+        );
+        let foreign =
+            TextDocumentSnapshot::new(TextDocumentId::new(199), TextDocumentRevision::new(6));
+        let position = TextDisplayPosition::Document(
+            TextPosition::new(foreign, "", 0, TextAffinity::Downstream)
+                .unwrap_or_else(|_| unreachable!("foreign coordinate is individually valid")),
+        );
+        assert_eq!(
+            projection.display_offset_for_position(&position),
+            Err(TextMaskedProjectionError::ForeignSnapshot)
+        );
     }
 
     #[test]
@@ -487,29 +505,48 @@ mod tests {
         let projection = TextMaskedProjection::document(snapshot(), source)
             .unwrap_or_else(|_| unreachable!("valid source"));
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
-        assert!(system.register_font_bytes(FONT.to_vec())
-            .unwrap_or_else(|_| unreachable!("fixture font")) > 0);
+        assert!(
+            system
+                .register_font_bytes(FONT.to_vec())
+                .unwrap_or_else(|_| unreachable!("fixture font"))
+                > 0
+        );
         let mut state = TextLayoutState::new();
-        let request = TextRequest::new(projection.display_text(), Typography::default(),
-            TextConstraints::unbounded());
-        let artifact = system.layout_text(&mut state, &request)
-            .unwrap_or_else(|_| unreachable!("masked layout succeeds")).artifact().clone();
-        let map = projection.caret_map(&state)
+        let request = TextRequest::new(
+            projection.display_text(),
+            Typography::default(),
+            TextConstraints::unbounded(),
+        );
+        let artifact = system
+            .layout_text(&mut state, &request)
+            .unwrap_or_else(|_| unreachable!("masked layout succeeds"))
+            .artifact()
+            .clone();
+        let map = projection
+            .caret_map(&state)
             .unwrap_or_else(|_| unreachable!("mask corresponds to retained layout"));
         assert!(map.is_correlated_with(&artifact));
-        assert_eq!(map.legal_source_offsets()
-            .unwrap_or_else(|_| unreachable!("masked grapheme stops")),
-            vec![0, 3, 14, 15]);
-        let begin = TextDisplayPosition::Document(TextPosition::new(
-            snapshot(), source, 0, TextAffinity::Downstream,
-        ).unwrap_or_else(|_| unreachable!("source start")));
-        let end = TextDisplayPosition::Document(TextPosition::new(
-            snapshot(), source, source.len(), TextAffinity::Upstream,
-        ).unwrap_or_else(|_| unreachable!("source end")));
+        assert_eq!(
+            map.legal_source_offsets()
+                .unwrap_or_else(|_| unreachable!("masked grapheme stops")),
+            vec![0, 3, 14, 15]
+        );
+        let begin = TextDisplayPosition::Document(
+            TextPosition::new(snapshot(), source, 0, TextAffinity::Downstream)
+                .unwrap_or_else(|_| unreachable!("source start")),
+        );
+        let end = TextDisplayPosition::Document(
+            TextPosition::new(snapshot(), source, source.len(), TextAffinity::Upstream)
+                .unwrap_or_else(|_| unreachable!("source end")),
+        );
         assert!(map.caret_rect(&begin, LogicalLength::from(1_u8)).is_ok());
-        assert!(!map.selection_rects(&TextDisplaySelection::new(begin.clone(), end))
-            .unwrap_or_else(|_| unreachable!("grapheme-aligned selection")).is_empty());
-        let expected_mask = state.caret_map_for_source(snapshot(), projection.display_text())
+        assert!(
+            !map.selection_rects(&TextDisplaySelection::new(begin.clone(), end))
+                .unwrap_or_else(|_| unreachable!("grapheme-aligned selection"))
+                .is_empty()
+        );
+        let expected_mask = state
+            .caret_map_for_source(snapshot(), projection.display_text())
             .unwrap_or_else(|_| unreachable!("retained mask is exact"));
         assert!(projection.caret_map(&TextLayoutState::new()).is_err());
         assert!(map.is_correlated_with(expected_mask.artifact()));
