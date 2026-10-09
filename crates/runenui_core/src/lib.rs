@@ -342,9 +342,10 @@ pub use surface_presentation::{
     SurfacePresentationAnchor, SurfacePresentationPlacement, SurfacePresentationSide,
 };
 pub use widget_protocol::{
-    ChildBearingWidget, Widget, WidgetActivation, WidgetActivationOutput, WidgetAvailableSpace,
-    WidgetDiagnostic, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId,
-    WidgetTextInput, WidgetTypeId,
+    ChildBearingWidget, TextAlignment, TextBlockPlacement, TextLeafMeasure, Widget,
+    WidgetActivation, WidgetActivationOutput, WidgetAvailableSpace, WidgetDiagnostic,
+    WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId, WidgetTextInput,
+    WidgetTypeId,
 };
 /// Unstable safe bridge from transient core elements to the mounted runtime.
 ///

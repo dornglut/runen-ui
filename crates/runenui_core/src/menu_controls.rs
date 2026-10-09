@@ -669,9 +669,7 @@ impl<Action> Widget<Action> for MenuItemWidget<Action> {
     }
 
     fn measure(&self, state: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text {
-            content: state.label.clone(),
-        }
+        WidgetMeasure::Text(crate::TextLeafMeasure::new(state.label.clone()))
     }
 
     fn hit_test(&self, state: &Self::State, context: HitContributionContext) -> HitContribution {

@@ -276,9 +276,9 @@ impl Widget<()> for TextAndExplicitPaint {
     fn create_state(&self) -> Self::State {}
 
     fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text {
-            content: "grouped text".to_owned(),
-        }
+        WidgetMeasure::Text(runenui_core::TextLeafMeasure::new(
+            "grouped text".to_owned(),
+        ))
     }
 
     fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {

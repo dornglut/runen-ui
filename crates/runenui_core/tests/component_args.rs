@@ -31,7 +31,7 @@ fn typed_builders_use_the_open_widget_protocol() {
                 WidgetAvailableSpace::MaxContent,
             ),
         ),
-        Ok(WidgetMeasure::Text { .. })
+        Ok(WidgetMeasure::Text(_))
     ));
     let (_, _, _, _, _, _, _, _, button_widget, _) =
         button_element.into_runtime_parts().into_parts();
@@ -516,4 +516,47 @@ fn tab_list_multiple_selected_authoring_fails_closed() {
         diagnostics[0].code(),
         "runenui.control.tab-list.multiple-selected"
     );
+}
+
+#[test]
+fn text_measure_descriptor_defaults_and_button_center_are_public() {
+    use runenui_core::{TextAlignment, TextBlockPlacement, TextLeafMeasure};
+    let input = WidgetMeasureInput::new(
+        None,
+        None,
+        WidgetAvailableSpace::MaxContent,
+        WidgetAvailableSpace::MaxContent,
+    );
+    let plain: runenui_core::Element<Action> = text("Title").into_element();
+    let (_, _, _, _, _, _, _, _, widget, _) = plain.into_runtime_parts().into_parts();
+    let plain_state = widget.create_state();
+    let WidgetMeasure::Text(plain) = widget
+        .measure(&plain_state, input)
+        .unwrap_or_else(|_| unreachable!("text measures"))
+    else {
+        unreachable!("Text remains a text leaf");
+    };
+    assert_eq!(plain.content(), "Title");
+    assert_eq!(plain.inline_alignment(), TextAlignment::Start);
+    assert_eq!(plain.block_placement(), TextBlockPlacement::Start);
+
+    let button: runenui_core::Element<Action> =
+        button("Save").on_activate(|| Action::Save).into_element();
+    let (_, _, _, _, _, _, _, _, widget, _) = button.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    let WidgetMeasure::Text(button) = widget
+        .measure(&state, input)
+        .unwrap_or_else(|_| unreachable!("button measures"))
+    else {
+        unreachable!("Button stays a text leaf");
+    };
+    assert_eq!(button.content(), "Save");
+    assert_eq!(button.inline_alignment(), TextAlignment::Center);
+    assert_eq!(button.block_placement(), TextBlockPlacement::Center);
+
+    let downstream = TextLeafMeasure::new("Downstream")
+        .with_inline_alignment(TextAlignment::End)
+        .with_block_placement(TextBlockPlacement::End);
+    assert_eq!(downstream.inline_alignment(), TextAlignment::End);
+    assert_eq!(downstream.block_placement(), TextBlockPlacement::End);
 }

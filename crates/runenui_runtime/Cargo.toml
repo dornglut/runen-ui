@@ -53,6 +53,10 @@ path = "tests/suites/lifecycle_identity.rs"
 name = "surface_context"
 path = "tests/surface_context.rs"
 
+[[test]]
+name = "text_leaf_alignment"
+path = "tests/text_leaf_alignment.rs"
+
 [dependencies]
 runenui_core = { path = "../runenui_core", version = "0.1.0" }
 runenui_text = { path = "../runenui_text", version = "0.1.0" }

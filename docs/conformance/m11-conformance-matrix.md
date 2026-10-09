@@ -2,7 +2,7 @@
 
 > **Category:** Target architecture
 >
-> **Status:** M11A/M11B/M11C/M11D2/M11SEM1/M11S2 owner-accepted; M11SCROLLB owner-accepted; M11COLL2 owner-accepted; M11TABS owner-accepted; M11CONTENT owner-accepted; M11PRES1 owner-accepted; M11PRES2 owner-accepted; M11PRESCTRL owner-accepted; M11MENU owner-accepted; M11BUTTONPRESS owner-accepted; M11FOCUSVISIBLE owner-accepted
+> **Status:** M11A/M11B/M11C/M11D2/M11SEM1/M11S2 owner-accepted; M11SCROLLB owner-accepted; M11COLL2 owner-accepted; M11TABS owner-accepted; M11CONTENT owner-accepted; M11PRES1 owner-accepted; M11PRES2 owner-accepted; M11PRESCTRL owner-accepted; M11MENU owner-accepted; M11BUTTONPRESS owner-accepted; M11FOCUSVISIBLE owner-accepted; M11TEXTLAYOUT implementation-complete
 >
 > **Milestone:** M11
 >
@@ -15,9 +15,9 @@
 > M10 remains authoritative for editable text and interaction services.
 
 ```text
-63 total unique rows
+64 total unique rows
 63 owner-accepted
-0 implementation-complete
+1 implementation-complete
 0 proof-complete
 0 blocked
 0 duplicate IDs
@@ -103,3 +103,4 @@
 
 | M11CTRL-62 | Public Button exposes optional application-authored Unpressed/Pressed/Mixed semantics through the accepted typed Button pressed state. An ordinary Button has no pressed semantic fact; changing pressed on application rebuild advances semantic revision without a runtime toggle, alternate control type or private selected style state. All activation origins remain ordinary application actions; disabled pressed Buttons retain semantic meaning but reject activation, and downstream public Widgets may author equivalent facts. | `crates/runenui_testing/tests/m11_button_pressed.rs::button_without_authored_pressed_state_remains_momentary`; `button_pressed_semantics_follow_only_application_authored_updates`; `downstream_custom_widget_uses_identical_public_pressed_semantic_contract` | `disabled_pressed_button_stays_semantic_and_rejects_activation`; equal-state publication does not advance revision; source audit excludes runtime-owned pressed state, separate ToggleButton runtime or widget-type branch | Accepted #310 role-aware validation and M5 semantic revision/delta plus accepted M11A activation-origin conformance | M11BUTTONPRESS | owner-accepted | Required |
 | M11CTRL-63 | Canonical FocusVisible is distinct from exact Focus, ordered between Focus and Active; the owner-local focus latch derives from canonical input source, pointer target WidgetTextInput capability, and prior focus indication on programmatic/automation transfer. Stable nonpointing input promotes with interaction invalidation; pointer activity never demotes, focus retirement clears, and existing semantic focus and M4 modality are unchanged. | `crates/runenui_runtime/tests/focus_visible.rs` including `stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfer` (built-in and downstream authored recipe); `crates/runenui_core/tests/style_resolution_layers.rs::focus_visible_layer_falls_between_focus_and_active_for_all_widgets` | `crates/runenui_runtime/src/surface/interaction.rs::focused_owner_visibility_projects_focus_and_focus_visible_without_new_identity`; no second focus owner, widget type shortcut, application modality, native preference or altered focus selection | Bounded typed `TraceRecordKind::FocusVisibilityChanged` with distinct focus-visibility context, exact routed causality and JSON export | M11FOCUSVISIBLE | owner-accepted | Required |
+| M11CTRL-64 | One public TextLeafMeasure replaces the bare WidgetMeasure::Text content shape for built-ins and downstream Widgets. Canonical core TextAlignment supplies bidi-aware inline alignment through the retained Parley text request; TextBlockPlacement Start/Center/End uses one nonnegative final content-box slack under runtime Taffy geometry. Text stays Start/Start; Button stays a text leaf with Center/Center. The exact final topology-aligned text origin composes padding once and is shared by retained shaped paint, Taffy baselines, editing selection/preedit/caret/candidate, displayed pointer hit and nearest-position geometry without a second text layout or widget-type branch. | `crates/runenui_core/tests/component_args.rs::text_measure_descriptor_defaults_and_button_center_are_public`; `crates/runenui_runtime/tests/text_leaf_alignment.rs`; existing `crates/runenui_render_wgpu/tests/m10f_editable.rs` exercises vertically placed downstream editing through correlated renderer/IME proof | `overflowing_text_does_not_receive_negative_block_origin`; no retained bare WidgetMeasure::Text content struct variant, duplicate text alignment enum, horizontal artifact-width compensation, Button-specific runtime branch, renderer policy or extra text layout authority | Existing M8 retained TextArtifact/ResourceRef and M10 caret-map provenance, M10F correlated real-wgpu text/editing/candidate/pointer products | M11TEXTLAYOUT | implementation-complete | Required |

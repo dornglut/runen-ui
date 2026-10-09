@@ -7,14 +7,14 @@ use runenui_core::{
     Axis, ComputedStyle, ContentAlignment, EdgeInsets, FlexBasis, FlexDirection, FlexWrap,
     ItemAlignment, LayoutBound, LayoutContainer, LayoutDimension, LayoutPosition, LayoutStyle,
     LogicalLength, LogicalPoint, LogicalRect, LogicalSize, MainAxisAlignment, OverflowPolicy,
-    ScrollBarPlacement, ScrollBarVisibility, ScrollControlSnapshot, Typography,
+    ScrollBarPlacement, ScrollBarVisibility, ScrollControlSnapshot, TextBlockPlacement, Typography,
     WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize,
 };
 use std::{collections::HashMap, sync::Arc};
 
 use runenui_text::{
-    TextConstraints, TextLayoutError, TextLayoutState, TextPreeditProjection, TextRequest,
-    TextSystem,
+    TextConstraints, TextLayoutError, TextLayoutState, TextParagraphStyle, TextPreeditProjection,
+    TextRequest, TextSystem,
 };
 use taffy::{
     CacheTree,
@@ -53,6 +53,7 @@ type LayoutCoreResult = (
     Vec<LogicalRect>,
     SurfaceLayoutReport,
     Vec<TextLayoutState>,
+    Vec<LogicalPoint>,
 );
 
 type LayoutResult = (
@@ -61,6 +62,7 @@ type LayoutResult = (
     SurfaceLayoutReport,
     Vec<Option<CachedScrollChromeProjection>>,
     Vec<TextLayoutState>,
+    Vec<LogicalPoint>,
 );
 
 struct LayoutPassInputs<'a, Action> {
@@ -137,7 +139,14 @@ pub(super) fn layout_resolved_surface<Action>(
 
     #[cfg(feature = "internal-test-seams")]
     super::profile::record_layout(profile_started.elapsed());
-    Ok((result.0, result.1, result.2, scroll_chrome, result.3))
+    Ok((
+        result.0,
+        result.1,
+        result.2,
+        scroll_chrome,
+        result.3,
+        result.4,
+    ))
 }
 
 fn layout_resolved_surface_once<Action>(
@@ -469,6 +478,7 @@ struct LayoutKernel<'a, Action> {
     // PerformLayout callback is the final request for that callback sequence;
     // retaining its state avoids any post-layout geometry-based identity guess.
     final_text_states: Vec<Option<TextLayoutState>>,
+    final_text_origins: Vec<LogicalPoint>,
     text_measurements: Vec<Vec<SurfaceTextMeasurementRecord>>,
     diagnostics: Vec<Vec<runenui_core::WidgetDiagnostic>>,
     intrinsic_sizes: Vec<LogicalSize>,
@@ -535,6 +545,11 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             layouts: vec![Layout::default(); count],
             text_layouts,
             final_text_states: vec![None; count],
+            final_text_origins: vec![
+                LogicalPoint::new(0.0, 0.0)
+                    .unwrap_or_else(|_| unreachable!("zero is finite"));
+                count
+            ],
             text_measurements: vec![Vec::new(); count],
             diagnostics,
             intrinsic_sizes: vec![LogicalSize::ZERO; count],
@@ -616,22 +631,39 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 self.custom_intrinsic_sizes[index] = Some(measured.size());
                 measured.size()
             }
-            Ok(WidgetMeasure::Text { content }) => {
+            Ok(WidgetMeasure::Text(descriptor)) => {
                 #[cfg(feature = "internal-test-seams")]
                 let request_started = std::time::Instant::now();
-                let content = self
-                    .preedits
-                    .get(&mounted.id)
-                    .map_or(content, |projection| projection.display_text().to_owned());
+                let content = self.preedits.get(&mounted.id).map_or_else(
+                    || descriptor.content().to_owned(),
+                    |projection| projection.display_text().to_owned(),
+                );
                 self.custom_intrinsic_sizes[index] = None;
                 let typography = resolved
                     .computed_style()
                     .typography()
                     .cloned()
                     .unwrap_or_else(Typography::default);
-                let constraints =
+                // Taffy may resolve min-width without supplying known_dimensions on
+                // an intrinsic leaf. Carry that minimum into the *same* text
+                // request as an alignment floor, not a wrapping ceiling or a
+                // second horizontal runtime translation.
+                let minimum_inline = style
+                    .min_size
+                    .width
+                    .resolve_to_option(inputs.parent_size.width.unwrap_or(0.0), |_, _| 0.0)
+                    .map(|value| {
+                        logical_extent(value - padding.left().get() - padding.right().get())
+                    });
+                let mut constraints =
                     text_constraints(inputs.available_space.width, widget_input.known_width());
-                let request = TextRequest::new(content, typography, constraints);
+                if let Some(minimum) = minimum_inline {
+                    constraints = constraints.with_alignment_min_inline(minimum);
+                }
+                let paragraph =
+                    TextParagraphStyle::default().with_alignment(descriptor.inline_alignment());
+                let request = TextRequest::new(content, typography, constraints)
+                    .with_paragraph_style(paragraph);
                 #[cfg(feature = "internal-test-seams")]
                 super::profile::record_request_prepare(request_started.elapsed());
                 let mut state = self.text_layouts[index].clone();
@@ -646,7 +678,28 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                         super::profile::record_text_layout_decision(decision);
                         let artifact = outcome.artifact();
                         let text_size = artifact.size();
-                        baselines = text_baselines(artifact, padding);
+                        // Min-height can expand the final box even when Taffy has
+                        // not passed a known height into this leaf callback.
+                        let minimum_block = style
+                            .min_size
+                            .height
+                            .resolve_to_option(inputs.parent_size.height.unwrap_or(0.0), |_, _| 0.0)
+                            .map(|value| {
+                                logical_extent(value - padding.top().get() - padding.bottom().get())
+                            });
+                        let block_extent = [widget_input.known_height(), minimum_block]
+                            .into_iter()
+                            .flatten()
+                            .map(LogicalLength::get)
+                            .fold(0.0_f32, f32::max);
+                        let block_slack = (block_extent - text_size.height()).max(0.0);
+                        let block_offset = match descriptor.block_placement() {
+                            TextBlockPlacement::Start => 0.0,
+                            TextBlockPlacement::Center => block_slack / 2.0,
+                            TextBlockPlacement::End => block_slack,
+                        };
+                        let placed_top = padding.top().saturating_add(logical_extent(block_offset));
+                        baselines = text_baselines(artifact, placed_top);
                         let retained_for_paint = inputs.run_mode == RunMode::PerformLayout;
                         let retained_resource_refs = if retained_for_paint {
                             artifact
@@ -668,6 +721,11 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                         ));
                         if retained_for_paint {
                             self.final_text_states[index] = Some(state.clone());
+                            self.final_text_origins[index] =
+                                LogicalPoint::new(padding.left().get(), placed_top.get())
+                                    .unwrap_or_else(|_| {
+                                        unreachable!("validated lengths are finite")
+                                    });
                         }
                         text_size
                     }
@@ -717,15 +775,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
     fn finish(
         mut self,
         root_constraints: LayoutConstraints,
-    ) -> Result<
-        (
-            LogicalSize,
-            Vec<LogicalRect>,
-            SurfaceLayoutReport,
-            Vec<TextLayoutState>,
-        ),
-        TextLayoutError,
-    > {
+    ) -> Result<LayoutCoreResult, TextLayoutError> {
         if let Some(error) = self.text_error {
             return Err(error);
         }
@@ -875,6 +925,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             bounds,
             SurfaceLayoutReport::new(reports),
             self.text_layouts,
+            self.final_text_origins,
         ))
     }
 }
@@ -1434,15 +1485,15 @@ fn baselines_from_widget(size: WidgetMeasuredSize, padding: EdgeInsets) -> Basel
         last: size.last_baseline().map(|v| v.get() + padding.top().get()),
     }
 }
-fn text_baselines(artifact: &runenui_text::TextArtifact, padding: EdgeInsets) -> Baselines {
+fn text_baselines(artifact: &runenui_text::TextArtifact, top: LogicalLength) -> Baselines {
     let lines = artifact.lines();
     Baselines {
         first: lines
             .first()
-            .map(|line| line.metrics().baseline() + padding.top().get()),
+            .map(|line| line.metrics().baseline() + top.get()),
         last: lines
             .last()
-            .map(|line| line.metrics().baseline() + padding.top().get()),
+            .map(|line| line.metrics().baseline() + top.get()),
     }
 }
 fn constraints_for_node(
@@ -1500,4 +1551,48 @@ fn layout_is_valid(layout: Layout) -> bool {
         && layout.scrollable_overflow_rect.bottom.is_finite()
         && layout.scrollable_overflow_rect.right >= layout.scrollable_overflow_rect.left
         && layout.scrollable_overflow_rect.bottom >= layout.scrollable_overflow_rect.top
+}
+
+#[cfg(test)]
+mod text_baseline_placement_tests {
+    use super::text_baselines;
+    use runenui_core::{FontFamilyName, GenericFontFamily, LogicalLength, Typography};
+    use runenui_text::{
+        FontSourcePolicy, TextConstraints, TextLayoutState, TextRequest, TextSystem,
+    };
+
+    const FONT: &[u8] =
+        include_bytes!("../../../runenui_text/tests/fixtures/Cantarell-Regular.ttf");
+
+    #[test]
+    fn first_and_last_baselines_share_exactly_one_block_placement()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        assert!(system.register_font_bytes(FONT.to_vec())? > 0);
+        let family = FontFamilyName::new("Cantarell")?;
+        assert!(system.set_generic_family_mapping(GenericFontFamily::SansSerif, &[family])?);
+
+        let mut retained = TextLayoutState::new();
+        let artifact = system
+            .layout_text(
+                &mut retained,
+                &TextRequest::new(
+                    "first line\nsecond line",
+                    Typography::default(),
+                    TextConstraints::unbounded(),
+                ),
+            )?
+            .into_artifact();
+        let start = text_baselines(&artifact, LogicalLength::from(8_u8));
+        let centered = text_baselines(&artifact, LogicalLength::from(28_u8));
+        let (Some(start_first), Some(start_last), Some(center_first), Some(center_last)) =
+            (start.first, start.last, centered.first, centered.last)
+        else {
+            return Err("two-line text must expose first and last baselines".into());
+        };
+        assert!((center_first - start_first - 20.0).abs() <= 0.0001);
+        assert!((center_last - start_last - 20.0).abs() <= 0.0001);
+        assert!(center_last > center_first);
+        Ok(())
+    }
 }

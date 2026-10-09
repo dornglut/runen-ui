@@ -1,8 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
-    Axis, LogicalTransform, ScrollChrome, ScrollControlBinding, ScrollControlSnapshot,
-    StyleEnvironment, SurfacePresentation, TextDocumentSnapshot, WidgetDiagnostic,
+    Axis, LogicalPoint, LogicalTransform, ScrollChrome, ScrollControlBinding,
+    ScrollControlSnapshot, StyleEnvironment, SurfacePresentation, TextDocumentSnapshot,
+    WidgetDiagnostic,
 };
 use runenui_text::{
     FontSourceSnapshot, TextCaretMap, TextCaretMapError, TextDisplaySelection, TextLayoutState,
@@ -304,6 +305,8 @@ pub(super) struct CachedLayoutFacts {
     // Each state is cheap COW sharing so a staged reflow cannot mutate accepted
     // shaping/layout state before publication commit.
     pub(super) text_layouts: Vec<TextLayoutState>,
+    // One final-layout origin for every retained text artifact, topology-aligned.
+    pub(super) text_origins: Vec<LogicalPoint>,
 }
 
 /// One runtime-owned node presentation fact in mounted-preorder alignment.
@@ -667,13 +670,12 @@ impl SurfaceCache {
         if !presentation.published() {
             return Err(TextCaretMapError::InvalidGeometry);
         }
-        let padding = self
-            .effective
-            .node(position)
-            .computed_style()
-            .padding()
-            .unwrap_or_default();
-        let text_origin = LogicalTransform::translation(padding.left().get(), padding.top().get())
+        let origin = self
+            .layout
+            .text_origins
+            .get(position)
+            .ok_or(TextCaretMapError::MissingLayout)?;
+        let text_origin = LogicalTransform::translation(origin.x(), origin.y())
             .map_err(|_| TextCaretMapError::InvalidGeometry)?;
         let text_to_surface = text_origin
             .then(presentation.content_to_surface())

@@ -352,9 +352,7 @@ impl Widget<DemoAction> for DemoSurface {
         _state: &Self::State,
         _input: runenui_core::WidgetMeasureInput,
     ) -> WidgetMeasure {
-        WidgetMeasure::Text {
-            content: self.text.clone(),
-        }
+        WidgetMeasure::Text(runenui_core::TextLeafMeasure::new(self.text.clone()))
     }
 
     fn hit_test(&self, _state: &Self::State, context: HitContributionContext) -> HitContribution {

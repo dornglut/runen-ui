@@ -134,7 +134,7 @@ fn image_and_shaped_text_publication_paths_have_no_retired_exact_mapping_or_pain
     for required in [
         "PaintContributionItem::shaped_text_run(",
         ".lease_shaped_run(run.resource_ref())",
-        "let item = text_run_item(run, computed);",
+        "let item = text_run_item(run, computed, layout.text_origins[mounted_preorder]);",
     ] {
         if !resolve.contains(required) {
             return Err(format!(

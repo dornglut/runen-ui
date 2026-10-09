@@ -49,9 +49,10 @@ pub use ink_bounds::TextInkBounds;
 pub use layout_state::{TextLayoutDecision, TextLayoutOutcome, TextLayoutState};
 pub use preedit::{TextPreeditProjection, TextPreeditProjectionError};
 pub use request::{
-    TextAlignment, TextLanguage, TextLanguageError, TextMetricSpan, TextOverflowWrap,
-    TextParagraphStyle, TextRequest, TextRequestError, TextWordBreak, TextWrapMode,
+    TextLanguage, TextLanguageError, TextMetricSpan, TextOverflowWrap, TextParagraphStyle,
+    TextRequest, TextRequestError, TextWordBreak, TextWrapMode,
 };
+pub use runenui_core::TextAlignment;
 pub use source_identity::{FontSourceIdentity, FontSourceSnapshot};
 
 #[cfg(feature = "internal-test-seams")]
@@ -109,6 +110,10 @@ impl FontSourceRevision {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct TextConstraints {
     mode: TextConstraintMode,
+    // Minimum paragraph alignment extent, not a line-breaking maximum.
+    // This lets Taffy-owned min-width grow the final text box without forcing
+    // an otherwise unconstrained paragraph to wrap at its minimum width.
+    alignment_min_inline: Option<LogicalLength>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -125,6 +130,7 @@ impl TextConstraints {
     pub const fn unbounded() -> Self {
         Self {
             mode: TextConstraintMode::MaxContent,
+            alignment_min_inline: None,
         }
     }
 
@@ -133,6 +139,7 @@ impl TextConstraints {
     pub const fn limited(max_inline: LogicalLength) -> Self {
         Self {
             mode: TextConstraintMode::Limited(max_inline),
+            alignment_min_inline: None,
         }
     }
 
@@ -141,7 +148,24 @@ impl TextConstraints {
     pub const fn min_content() -> Self {
         Self {
             mode: TextConstraintMode::MinContent,
+            alignment_min_inline: None,
         }
+    }
+
+    /// Declares the minimum inline paragraph extent for alignment only.
+    ///
+    /// Parley still owns shaping, line breaking and Start/End directionality.
+    /// An unconstrained paragraph remains max-content when longer than this
+    /// minimum; this is not a wrapping ceiling.
+    #[must_use]
+    pub const fn with_alignment_min_inline(mut self, minimum: LogicalLength) -> Self {
+        self.alignment_min_inline = Some(minimum);
+        self
+    }
+
+    #[must_use]
+    pub const fn alignment_min_inline(self) -> Option<LogicalLength> {
+        self.alignment_min_inline
     }
 
     /// Returns the available inline extent, or `None` when unbounded.

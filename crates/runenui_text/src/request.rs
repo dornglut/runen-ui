@@ -1,7 +1,7 @@
 use core::{error::Error, fmt, ops::Range};
 
 use parley::Language;
-use runenui_core::Typography;
+use runenui_core::{TextAlignment, Typography};
 
 use crate::TextConstraints;
 
@@ -58,16 +58,6 @@ impl fmt::Display for TextLanguageError {
 }
 
 impl Error for TextLanguageError {}
-
-/// Logical paragraph alignment independent of the shaping implementation.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum TextAlignment {
-    #[default]
-    Start,
-    End,
-    Center,
-    Justify,
-}
 
 /// Ordinary soft-wrap policy for one paragraph.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

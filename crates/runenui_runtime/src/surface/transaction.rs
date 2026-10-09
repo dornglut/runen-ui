@@ -238,16 +238,10 @@ impl<'a> PlannedSurfacePublication<'a> {
                 continue;
             };
             let presentation = self.cache.presentation.node(position);
-            let padding = self
-                .cache
-                .effective
-                .node(position)
-                .computed_style()
-                .padding()
-                .unwrap_or_default();
-            let Ok(text_origin) =
-                LogicalTransform::translation(padding.left().get(), padding.top().get())
-            else {
+            let Some(origin) = self.cache.layout.text_origins.get(position) else {
+                continue;
+            };
+            let Ok(text_origin) = LogicalTransform::translation(origin.x(), origin.y()) else {
                 continue;
             };
             let Ok(layout_to_surface) = text_origin.then(presentation.content_to_surface()) else {
