@@ -26,6 +26,8 @@ pub enum TextMaskedProjectionError {
     AllocationFailed,
     ForeignSnapshot,
     ForeignComposition,
+    HiddenDocumentPosition,
+    InvalidAffinity,
     OutOfBounds,
     NotGraphemeBoundary,
     InvalidCoordinate,
@@ -39,6 +41,8 @@ impl fmt::Display for TextMaskedProjectionError {
             Self::AllocationFailed => "masked display allocation failed",
             Self::ForeignSnapshot => "masked display snapshot mismatch",
             Self::ForeignComposition => "masked display composition mismatch",
+            Self::HiddenDocumentPosition => "masked display document position hidden by composition",
+            Self::InvalidAffinity => "masked display composition boundary affinity mismatch",
             Self::OutOfBounds => "masked display coordinate outside source",
             Self::NotGraphemeBoundary => "masked display coordinate splits a grapheme",
             Self::InvalidCoordinate => "masked display coordinate invalid",
@@ -180,7 +184,7 @@ impl TextMaskedProjection {
             }
             (SourceSpace::Preedit(projection), _) => projection
                 .display_offset_for_position(position)
-                .map_err(|_| TextMaskedProjectionError::ForeignComposition)?,
+                .map_err(TextMaskedProjectionError::from)?,
         };
         self.source_offset_to_display(offset)
     }
@@ -221,7 +225,7 @@ impl TextMaskedProjection {
             )),
             SourceSpace::Preedit(projection) => projection
                 .position_from_display_offset(source_offset, affinity)
-                .map_err(|_| TextMaskedProjectionError::InvalidCoordinate),
+                .map_err(TextMaskedProjectionError::from),
         }
     }
 
@@ -432,8 +436,19 @@ impl fmt::Debug for TextMaskedCaretMap {
 }
 
 impl From<TextPreeditProjectionError> for TextMaskedProjectionError {
-    fn from(_: TextPreeditProjectionError) -> Self {
-        Self::InvalidCoordinate
+    fn from(error: TextPreeditProjectionError) -> Self {
+        match error {
+            TextPreeditProjectionError::SnapshotMismatch => Self::ForeignSnapshot,
+            TextPreeditProjectionError::ForeignComposition => Self::ForeignComposition,
+            TextPreeditProjectionError::HiddenDocumentPosition => Self::HiddenDocumentPosition,
+            TextPreeditProjectionError::InvalidBoundaryAffinity => Self::InvalidAffinity,
+            TextPreeditProjectionError::DisplayLengthOverflow => Self::LengthOverflow,
+            TextPreeditProjectionError::DisplayOffsetOutOfBounds
+            | TextPreeditProjectionError::InvalidPosition(
+                runenui_core::TextPositionError::OutOfBounds,
+            ) => Self::OutOfBounds,
+            _ => Self::InvalidCoordinate,
+        }
     }
 }
 
@@ -669,6 +684,28 @@ mod tests {
         assert_eq!(
             mask.display_offset_for_position(&foreign),
             Err(TextMaskedProjectionError::ForeignComposition)
+        );
+        let hidden = TextDisplayPosition::Document(
+            TextPosition::new(snapshot(), source, 3, TextAffinity::Downstream)
+                .unwrap_or_else(|_| unreachable!("hidden source offset is valid")),
+        );
+        assert_eq!(
+            mask.display_offset_for_position(&hidden),
+            Err(TextMaskedProjectionError::HiddenDocumentPosition)
+        );
+        let wrong_side = TextDisplayPosition::Preedit(
+            TextPreeditPosition::new(
+                snapshot(),
+                projection.generation().clone(),
+                composing,
+                0,
+                TextAffinity::Upstream,
+            )
+            .unwrap_or_else(|_| unreachable!("preedit scalar boundary is valid")),
+        );
+        assert_eq!(
+            mask.display_offset_for_position(&wrong_side),
+            Err(TextMaskedProjectionError::InvalidAffinity)
         );
 
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
