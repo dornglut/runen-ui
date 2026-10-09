@@ -1986,4 +1986,57 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("fresh normalized action resolves"));
         assert_eq!(registry.active[&owner].contribution.text(), "abX Y");
     }
+    #[test]
+    fn policy_flip_preserves_accepted_inflight_edit_in_authoritative_source() {
+        use runenui_core::TextNewlinePolicy;
+
+        let namespace = RuntimeNamespace::__runtime_new();
+        let owner = namespace.__runtime_mounted_id(82, 1);
+        let mut registry = EditingRegistry::new(4, 8);
+        registry
+            .initial_reconcile(
+                &namespace,
+                vec![(
+                    owner.clone(),
+                    contribution(0, "ab", 2, EditingSessionPolicy::PreserveExact),
+                )],
+            )
+            .unwrap_or_else(|_| unreachable!("initial multiline source is valid"));
+        let old = registry
+            .prepare_insert(&namespace, &owner, "Q", None)
+            .unwrap_or_else(|_| unreachable!("ordinary insertion is admitted"));
+        registry
+            .reconcile(
+                &namespace,
+                vec![(
+                    owner.clone(),
+                    contribution(0, "ab", 2, EditingSessionPolicy::PreserveExact)
+                        .with_newline_policy(TextNewlinePolicy::ReplaceWithSpace),
+                )],
+                &crate::queue::ApplicationActionOrigin::Ordinary,
+                None,
+            )
+            .unwrap_or_else(|_| unreachable!("new policy reconciles"));
+        assert_eq!(registry.draining.len(), 1);
+        registry
+            .reconcile(
+                &namespace,
+                vec![(
+                    owner.clone(),
+                    contribution(1, "abQ", 3, EditingSessionPolicy::PreserveExact)
+                        .with_newline_policy(TextNewlinePolicy::ReplaceWithSpace),
+                )],
+                &crate::queue::ApplicationActionOrigin::Edit(old.origin.clone()),
+                Some(EditResolution::accepted(old.origin.request, snapshot(1))),
+            )
+            .unwrap_or_else(|_| unreachable!("old accepted edit reconciles into new application source"));
+        assert!(registry.draining.is_empty());
+        assert_eq!(registry.active[&owner].contribution.text(), "abQ");
+        assert_eq!(registry.active[&owner].projected_text.as_ref(), "abQ");
+        assert_eq!(
+            registry.active[&owner].contribution.newline_policy(),
+            TextNewlinePolicy::ReplaceWithSpace
+        );
+    }
+
 }
