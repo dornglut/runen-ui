@@ -55,6 +55,7 @@ pub struct EventContextOutput<Action> {
     pub pointer_capture: Vec<PointerCaptureRequest>,
     pub propagation_stopped: bool,
     pub default_prevented: bool,
+    pub host_input_claimed: bool,
     pub accepted_drag_drop: bool,
     pub overflowed: bool,
     pub remaining_outputs: usize,
@@ -85,6 +86,7 @@ pub struct EventContext<'a, Action> {
     default_cancelable: bool,
     default_prevented: bool,
     propagation_stopped: bool,
+    host_input_claimed: bool,
     application_command_disposition: Option<ApplicationCommandDisposition>,
     invalidation: WidgetInvalidation,
     subscription_invalidation: bool,
@@ -114,6 +116,7 @@ impl<Action> fmt::Debug for EventContext<'_, Action> {
             .field("default_cancelable", &self.default_cancelable)
             .field("default_prevented", &self.default_prevented)
             .field("propagation_stopped", &self.propagation_stopped)
+            .field("host_input_claimed", &self.host_input_claimed)
             .finish_non_exhaustive()
     }
 }
@@ -379,6 +382,21 @@ impl<'a, Action> EventContext<'a, Action> {
         }
     }
 
+    /// Explicitly claims this routed input against a concurrently embedded host.
+    ///
+    /// This independent transaction-local claim does not prevent RunenUI defaults,
+    /// stop propagation, invoke a gameplay callback or allocate queued work.
+    /// It becomes authoritative only after the enclosing routed transaction commits.
+    pub const fn claim_host_input(&mut self) {
+        self.host_input_claimed = true;
+    }
+
+    /// Reports whether this context has an explicit current-event host claim.
+    #[must_use]
+    pub const fn host_input_is_claimed(&self) -> bool {
+        self.host_input_claimed
+    }
+
     pub const fn stop_propagation(&mut self) {
         self.propagation_stopped = true;
     }
@@ -435,6 +453,7 @@ impl<'a, Action> EventContext<'a, Action> {
         self.accepted_drag_drop |= child.accepted_drag_drop;
         self.default_prevented = child.default_prevented;
         self.propagation_stopped = child.propagation_stopped;
+        self.host_input_claimed |= child.host_input_claimed;
         if child.application_command_disposition.is_some() {
             self.application_command_disposition = child.application_command_disposition;
         }
@@ -669,6 +688,7 @@ impl<'a, Action> EventContext<'a, Action> {
             default_cancelable,
             default_prevented,
             propagation_stopped,
+            host_input_claimed: false,
             application_command_disposition: None,
             invalidation: WidgetInvalidation::NONE,
             subscription_invalidation: false,
@@ -690,6 +710,7 @@ impl<'a, Action> EventContext<'a, Action> {
             pointer_capture: self.pointer_capture,
             propagation_stopped: self.propagation_stopped,
             default_prevented: self.default_prevented,
+            host_input_claimed: self.host_input_claimed,
             accepted_drag_drop: self.accepted_drag_drop,
             overflowed: self.overflowed,
             remaining_outputs: self.remaining_outputs,
@@ -751,6 +772,7 @@ mod tests {
         assert!(context.default_is_cancelable());
         assert!(!context.default_is_prevented());
         assert!(!context.propagation_is_stopped());
+        assert!(!context.host_input_is_claimed());
 
         context.emit(String::from("first"));
         context.emit_command(SemanticCommand::OpenMenu);
@@ -759,6 +781,7 @@ mod tests {
         context.local_task(async { Some(String::from("later")) });
         context.stop_propagation();
         context.prevent_default();
+        context.claim_host_input();
         let output = context.into_output();
 
         assert_eq!(output.ordered.len(), 2);
@@ -779,6 +802,7 @@ mod tests {
         assert_eq!(output.pointer_capture, Vec::new());
         assert!(output.propagation_stopped);
         assert!(output.default_prevented);
+        assert!(output.host_input_claimed);
         assert!(!output.overflowed);
         assert_eq!(output.remaining_outputs, 0);
     }

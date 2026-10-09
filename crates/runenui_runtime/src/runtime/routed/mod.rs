@@ -391,6 +391,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             remaining_outputs: admission.max_outputs,
             remaining_default_outputs: admission.mandatory_default_outputs,
             propagation_stopped: false,
+            host_input_claimed: false,
             application_command_resolution: None,
             default_prevented: false,
             collecting_notification_outputs: false,
