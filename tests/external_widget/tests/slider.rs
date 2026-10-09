@@ -92,7 +92,10 @@ impl Widget<Action> for ExternalSlider {
         if context.phase() != EventPhase::Target || !self.enabled {
             return WidgetEventOutput::none();
         }
-        let proposed = match event.as_semantic_command().map(runenui_core::SemanticCommandEvent::command) {
+        let proposed = match event
+            .as_semantic_command()
+            .map(runenui_core::SemanticCommandEvent::command)
+        {
             Some(SemanticCommand::Increment) => (self.value.get() + 5.0).min(100.0),
             Some(SemanticCommand::Decrement) => (self.value.get() - 5.0).max(0.0),
             Some(SemanticCommand::SetValue(value)) => value.get(),
