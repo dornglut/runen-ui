@@ -5,8 +5,8 @@ use core::fmt;
 
 use crate::{
     Axis, EventContext, EventPhase, FlexContainerStyle, FlexDirection, FocusGroup,
-    FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, Focusability, KeyboardPhase, KeyModifiers,
-    LayoutContainer, LayoutStyle, LogicalKey, LogicalLength, SemanticCommand,
+    FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, Focusability, KeyModifiers,
+    KeyboardPhase, LayoutContainer, LayoutStyle, LogicalKey, LogicalLength, SemanticCommand,
     SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
     SemanticOrientation, SemanticRole, UiEvent, View, Views, Widget, WidgetEventOutput,
     WidgetInvalidation, WidgetUpdateContext,
@@ -146,7 +146,8 @@ impl<Action> Widget<Action> for ToolbarWidget {
                 _ => None,
             }
         } else if let Some(keyboard) = event.as_keyboard() {
-            if keyboard.phase() == KeyboardPhase::Down && keyboard.modifiers() == KeyModifiers::NONE {
+            if keyboard.phase() == KeyboardPhase::Down && keyboard.modifiers() == KeyModifiers::NONE
+            {
                 match keyboard.logical_key() {
                     LogicalKey::Home => Some(SemanticCommand::FocusGroupFirst),
                     LogicalKey::End => Some(SemanticCommand::FocusGroupLast),
@@ -175,8 +176,8 @@ impl<Action> Widget<Action> for ToolbarWidget {
             Axis::Horizontal => SemanticOrientation::Horizontal,
             Axis::Vertical => SemanticOrientation::Vertical,
         };
-        let mut node = SemanticNodeContribution::primary(SemanticRole::Toolbar)
-            .with_orientation(orientation);
+        let mut node =
+            SemanticNodeContribution::primary(SemanticRole::Toolbar).with_orientation(orientation);
         if let Some(name) = &state.accessible_name {
             node = node.with_name(name.clone());
         }
@@ -191,7 +192,9 @@ impl<Action> ChildBearingWidget<Action> for ToolbarWidget {}
 
 impl<Action: 'static> View<Action> for Toolbar<Action> {
     fn into_element(self) -> Element<Action> {
-        let (fields, diagnostics) = self.common.into_authored_fields(Focusability::Automatic, None);
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(Focusability::Automatic, None);
         Element::from_authored_parts(
             fields,
             Box::new(WidgetAdapter(ToolbarWidget {

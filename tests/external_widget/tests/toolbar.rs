@@ -77,22 +77,23 @@ impl UiApp for App {
 
     fn root(_: &Self::State) -> impl View<Self::Action> {
         CommandScope::new(
-            [CommandBinding::new(ApplicationCommand::new(id(), true), || Action::Saved)],
-            [
-                toolbar([
-                    button("Open")
-                        .id("external.open")
-                        .on_activate(|| Action::Opened)
-                        .into_element(),
-                    Element::new(CommandButton(id()))
-                        .with_focusability(Focusability::Focusable)
-                        .id("external.save")
-                        .into_element(),
-                ])
-                .accessible_name("External editor tools")
-                .id("external.toolbar")
-                .into_element(),
-            ],
+            [CommandBinding::new(
+                ApplicationCommand::new(id(), true),
+                || Action::Saved,
+            )],
+            [toolbar([
+                button("Open")
+                    .id("external.open")
+                    .on_activate(|| Action::Opened)
+                    .into_element(),
+                Element::new(CommandButton(id()))
+                    .with_focusability(Focusability::Focusable)
+                    .id("external.save")
+                    .into_element(),
+            ])
+            .accessible_name("External editor tools")
+            .id("external.toolbar")
+            .into_element()],
         )
     }
 
@@ -130,7 +131,9 @@ fn external_widget_in_toolbar_uses_public_focus_and_command_scope() {
     let mut h = TestHarness::<App>::mount((0, 0));
     assert!(h.publish().is_ok());
     let semantic = h.semantic_snapshot().unwrap();
-    let bar = semantic.nodes().iter()
+    let bar = semantic
+        .nodes()
+        .iter()
         .find(|n| n.role() == SemanticRole::Toolbar)
         .unwrap_or_else(|| unreachable!("toolbar semantic node"));
     assert_eq!(bar.name(), Some("External editor tools"));
@@ -141,13 +144,20 @@ fn external_widget_in_toolbar_uses_public_focus_and_command_scope() {
     let focused = h.semantic_snapshot().unwrap().focused().cloned();
     assert_eq!(
         focused,
-        h.semantic_snapshot().unwrap().nodes().iter()
+        h.semantic_snapshot()
+            .unwrap()
+            .nodes()
+            .iter()
             .find(|n| n.name() == Some("Custom Save"))
             .map(|node| node.id().clone())
     );
     assert_eq!(h.state(), &(0, 0), "movement cannot execute the command");
     command(&mut h, "external.save", SemanticCommand::Activate);
-    assert_eq!(h.state(), &(1, 0), "activation resolved through ordinary scope");
+    assert_eq!(
+        h.state(),
+        &(1, 0),
+        "activation resolved through ordinary scope"
+    );
     command(&mut h, "external.open", SemanticCommand::Activate);
     assert_eq!(h.state(), &(1, 1));
 }

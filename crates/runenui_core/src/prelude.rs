@@ -7,7 +7,7 @@ pub use crate::{
     PresentationFocusEntry, PresentationFocusPolicy, PresentationOutsidePointerPolicy, ScrollBar,
     ScrollContainer, SemanticEditableMode, Separator, SubscriptionSet, SurfacePresentation,
     SurfacePresentationAlignment, SurfacePresentationAnchor, SurfacePresentationPlacement,
-    SurfacePresentationSide, Text, TextField, Tooltip, TooltipTrigger, UiApp, View, Widget,
-    WorkKey, button, column, container, image, link, row, scroll_bar, scroll_container, separator,
-    text, text_field,
+    SurfacePresentationSide, Text, TextField, Toolbar, Tooltip, TooltipTrigger, UiApp, View,
+    Widget, WorkKey, button, column, container, image, link, row, scroll_bar, scroll_container,
+    separator, text, text_field, toolbar,
 };
