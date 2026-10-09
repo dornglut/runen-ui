@@ -96,6 +96,7 @@ struct LayoutPassInputs<'a, Action> {
     mounted_tree: &'a crate::mounted::MountedTree<Action>,
     root_constraints: LayoutConstraints,
     preedits: &'a HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
+    sensitivities: &'a HashMap<crate::MountedNodeId, TextSensitivity>,
     prior_text_layouts: Option<&'a [TextLayoutState]>,
 }
 
@@ -110,6 +111,7 @@ pub(super) fn layout_resolved_surface<Action>(
     root_constraints: LayoutConstraints,
     text_system: &mut TextSystem,
     preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
+    sensitivities: &HashMap<crate::MountedNodeId, TextSensitivity>,
     prior_text_layouts: Option<&[TextLayoutState]>,
 ) -> Result<LayoutResult, TextLayoutError> {
     #[cfg(feature = "internal-test-seams")]
@@ -136,6 +138,7 @@ pub(super) fn layout_resolved_surface<Action>(
             mounted_tree,
             root_constraints,
             preedits,
+            sensitivities,
             prior_text_layouts,
         };
         result = layout_resolved_surface_once(&inputs, text_system)?;
@@ -495,6 +498,7 @@ struct LayoutKernel<'a, Action> {
     mounted: &'a crate::mounted::MountedTree<Action>,
     text_system: &'a mut TextSystem,
     preedits: &'a HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
+    sensitivities: &'a HashMap<crate::MountedNodeId, TextSensitivity>,
     caches: Vec<Cache>,
     layouts: Vec<Layout>,
     text_layouts: Vec<TextLayoutState>,
@@ -519,6 +523,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         let mounted = inputs.mounted_tree;
         let root_constraints = inputs.root_constraints;
         let preedits = inputs.preedits;
+        let sensitivities = inputs.sensitivities;
         let prior_text_layouts = inputs.prior_text_layouts;
         let count = resolved.nodes().len();
         let text_layouts = prior_text_layouts
@@ -565,6 +570,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             mounted,
             text_system,
             preedits,
+            sensitivities,
             caches: vec![Cache::new(); count],
             layouts: vec![Layout::default(); count],
             text_layouts,
@@ -659,17 +665,37 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 #[cfg(feature = "internal-test-seams")]
                 let request_started = std::time::Instant::now();
                 let preedit = self.preedits.get(&mounted.id);
+                let current_sensitivity = self.sensitivities.get(&mounted.id).copied();
                 let content = match mounted.widget.editable(&mounted.state) {
-                    Ok(Some(editable)) if editable.sensitivity() == TextSensitivity::Secret => {
-                        secret_text_shaping_source(&descriptor, &editable, preedit).unwrap_or_else(
-                            || {
-                                self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
-                                    "runenui.text.secret-source-mismatch",
-                                    "secret text layout source is not correlated with M10 editing",
-                                ));
-                                String::new()
-                            },
-                        )
+                    Ok(Some(editable))
+                        if current_sensitivity == Some(TextSensitivity::Secret)
+                            || editable.sensitivity() == TextSensitivity::Secret =>
+                    {
+                        if current_sensitivity.is_some_and(|current| {
+                            current != editable.sensitivity()
+                        }) {
+                            self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                                "runenui.text.secret-classification-mismatch",
+                                "authored and live M10 sensitivity disagree",
+                            ));
+                            String::new()
+                        } else {
+                            secret_text_shaping_source(&descriptor, &editable, preedit)
+                                .unwrap_or_else(|| {
+                                    self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                                        "runenui.text.secret-source-mismatch",
+                                        "secret text layout source is not correlated with M10 editing",
+                                    ));
+                                    String::new()
+                                })
+                        }
+                    }
+                    Ok(None) if current_sensitivity == Some(TextSensitivity::Secret) => {
+                        self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                            "runenui.text.secret-owner-missing",
+                            "live M10 secret session has no authored editable contribution",
+                        ));
+                        String::new()
                     }
                     Ok(Some(editable)) => {
                         if let Some(projection) = preedit {

@@ -209,6 +209,7 @@ fn resolve_layout_phase<Action>(
     context: &SurfaceBuildContext<'_>,
     text_system: &mut TextSystem,
     preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
+    sensitivities: &HashMap<crate::MountedNodeId, runenui_core::TextSensitivity>,
 ) -> Result<CachedLayoutFacts, SurfacePlanningError> {
     let resolved = ResolvedSurfaceTree::for_layout(&current.topology, &current.effective);
     let chrome_plan = resolve_scroll_chrome_layout_plan(&current.topology)?;
@@ -220,6 +221,7 @@ fn resolve_layout_phase<Action>(
             context.root_constraints(),
             text_system,
             preedits,
+            sensitivities,
             Some(current.layout.text_layouts.as_slice()),
         )?;
     Ok(CachedLayoutFacts {
@@ -448,6 +450,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
             context,
             text_system,
             text_editing.preedits,
+            text_editing.sensitivities,
         )?);
         report.record(SurfacePhase::Layout);
         completed.insert(DirtyPhases::LAYOUT);
@@ -581,6 +584,7 @@ fn plan_structural_surface<'tree, Action>(
             context.root_constraints(),
             text_system,
             text_editing.preedits,
+            text_editing.sensitivities,
             None,
         )?;
     let layout = CachedLayoutFacts {
@@ -702,7 +706,7 @@ pub(super) fn plan_mounted_surface_cached_with_test_text<'tree, Action>(
             context,
             interaction,
             &mut text_system.borrow_mut(),
-            TextEditingPaintInputs::new(None, &HashMap::new(), &HashMap::new()),
+            TextEditingPaintInputs::new(None, &HashMap::new(), &HashMap::new(), &HashMap::new()),
             cache,
             &motion_store,
             MonotonicInstant::ZERO,

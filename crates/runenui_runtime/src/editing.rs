@@ -369,6 +369,19 @@ impl<Action> EditingRegistry<Action> {
             .collect()
     }
 
+    /// Current M10 sensitivity for every mounted editing session, including
+    /// pending and composing sessions omitted from stable semantic projections.
+    pub(crate) fn sensitivity_projections(
+        &self,
+    ) -> HashMap<MountedNodeId, runenui_core::TextSensitivity> {
+        self.active
+            .iter()
+            .map(|(owner, session)| {
+                (owner.clone(), session.contribution.sensitivity())
+            })
+            .collect()
+    }
+
     pub(crate) fn preedit_projections(&self) -> HashMap<MountedNodeId, Arc<TextPreeditProjection>> {
         self.active
             .iter()

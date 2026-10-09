@@ -27,6 +27,7 @@ struct EditingPaintIdentity {
 pub(crate) struct TextEditingPaintInputs<'a> {
     pub(super) focused_owner: Option<&'a MountedNodeId>,
     pub(super) editing: &'a HashMap<MountedNodeId, EditingSemanticProjection>,
+    pub(super) sensitivities: &'a HashMap<MountedNodeId, runenui_core::TextSensitivity>,
     pub(super) preedits: &'a HashMap<MountedNodeId, Arc<TextPreeditProjection>>,
 }
 
@@ -34,11 +35,13 @@ impl<'a> TextEditingPaintInputs<'a> {
     pub(crate) const fn new(
         focused_owner: Option<&'a MountedNodeId>,
         editing: &'a HashMap<MountedNodeId, EditingSemanticProjection>,
+        sensitivities: &'a HashMap<MountedNodeId, runenui_core::TextSensitivity>,
         preedits: &'a HashMap<MountedNodeId, Arc<TextPreeditProjection>>,
     ) -> Self {
         Self {
             focused_owner,
             editing,
+            sensitivities,
             preedits,
         }
     }
@@ -52,6 +55,7 @@ impl<'a> TextEditingPaintInputs<'a> {
 pub(super) struct TextEditingPaintKey {
     focused_owner: Option<MountedNodeId>,
     editing: HashMap<MountedNodeId, EditingPaintIdentity>,
+    sensitivities: HashMap<MountedNodeId, runenui_core::TextSensitivity>,
     preedits: HashMap<MountedNodeId, Arc<TextPreeditProjection>>,
 }
 
@@ -60,16 +64,18 @@ impl TextEditingPaintKey {
     /// M8 shaped source in a paint-only surface update.
     pub(super) fn text_source_layout_changed(&self, next: &Self) -> bool {
         use runenui_core::TextSensitivity;
-        self.preedits != next.preedits
-            || self.editing.iter().any(|(owner, old)| {
-                let current = next.editing.get(owner).map(|item| item.sensitivity);
-                current != Some(old.sensitivity)
-                    && (old.sensitivity == TextSensitivity::Secret
-                        || current == Some(TextSensitivity::Secret))
-            })
-            || next.editing.iter().any(|(owner, current)| {
-                current.sensitivity == TextSensitivity::Secret && !self.editing.contains_key(owner)
-            })
+        if self.preedits != next.preedits {
+            return true;
+        }
+        self.sensitivities.iter().any(|(owner, old)| {
+            let current = next.sensitivities.get(owner).copied();
+            current != Some(*old)
+                && (*old == TextSensitivity::Secret
+                    || current == Some(TextSensitivity::Secret))
+        }) || next.sensitivities.iter().any(|(owner, current)| {
+            *current == TextSensitivity::Secret
+                && !self.sensitivities.contains_key(owner)
+        })
     }
 
     pub(super) fn new(inputs: TextEditingPaintInputs<'_>) -> Self {
@@ -89,6 +95,7 @@ impl TextEditingPaintKey {
                     )
                 })
                 .collect(),
+            sensitivities: inputs.sensitivities.clone(),
             preedits: inputs.preedits.clone(),
         }
     }
