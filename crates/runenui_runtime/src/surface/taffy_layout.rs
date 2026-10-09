@@ -123,10 +123,10 @@ pub(super) fn layout_resolved_surface<Action>(
     #[cfg(test)]
     super::cache::note_layout_phase_execution();
 
-    let (prior_text_layouts, prior_placeholder_layouts) = prior_layouts.map_or(
-        (None, None),
-        |(source, placeholder)| (Some(source), Some(placeholder)),
-    );
+    let (prior_text_layouts, prior_placeholder_layouts) = prior_layouts
+        .map_or((None, None), |(source, placeholder)| {
+            (Some(source), Some(placeholder))
+        });
     let mut reserved_present = chrome_plan
         .bars
         .iter()

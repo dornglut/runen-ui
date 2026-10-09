@@ -15,10 +15,9 @@ use runenui_core::{
     __runtime::transform_rect_aabb, Axis, Color, ComputedStyle, ContributionClip, ElementId,
     HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
     LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
-    PaintContributionItem, Radius, SceneShape, ScrollBarLayout, ScrollChrome,
-    ScrollControlSnapshot, SemanticContributionContext, SceneOpacity, StyleEnvironment,
-    StyleInteractionState, StyleResolution, SurfacePresentation, TextAffinity,
-    WidgetDiagnostic, WidgetTypeId,
+    PaintContributionItem, Radius, SceneOpacity, SceneShape, ScrollBarLayout, ScrollChrome,
+    ScrollControlSnapshot, SemanticContributionContext, StyleEnvironment, StyleInteractionState,
+    StyleResolution, SurfacePresentation, TextAffinity, WidgetDiagnostic, WidgetTypeId,
     resolve_style_in_environment, style_effects_between,
 };
 use runenui_text::{ShapedTextLease, TextDisplaySelection, TextPreeditProjection, TextSystem};
@@ -1258,10 +1257,15 @@ fn append_shaped_text(
     let mut profiled_run_count = 0usize;
     let mounted_preorder = owner.mounted_preorder;
     let (state, origin) = if visual_hint {
-        (&layout.placeholder_text_layouts[mounted_preorder],
-         layout.placeholder_text_origins[mounted_preorder])
+        (
+            &layout.placeholder_text_layouts[mounted_preorder],
+            layout.placeholder_text_origins[mounted_preorder],
+        )
     } else {
-        (&layout.text_layouts[mounted_preorder], layout.text_origins[mounted_preorder])
+        (
+            &layout.text_layouts[mounted_preorder],
+            layout.text_origins[mounted_preorder],
+        )
     };
     let mut hint_clips = Vec::new();
     if visual_hint {
@@ -1269,9 +1273,16 @@ fn append_shaped_text(
         let bounds = layout.bounds[mounted_preorder];
         let local = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
             .unwrap_or_else(|_| unreachable!("published owner extent is finite"));
-        hint_clips.push(SceneClip::new(SceneShape::rect(local), owner.content_to_surface));
+        hint_clips.push(SceneClip::new(
+            SceneShape::rect(local),
+            owner.content_to_surface,
+        ));
     }
-    let clips = if visual_hint { hint_clips.as_slice() } else { owner.content_clips };
+    let clips = if visual_hint {
+        hint_clips.as_slice()
+    } else {
+        owner.content_clips
+    };
     let opacity = if visual_hint {
         SceneOpacity::new(0.5)
             .unwrap_or_else(|_| unreachable!("constant visual hint opacity is valid"))

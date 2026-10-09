@@ -215,20 +215,26 @@ fn resolve_layout_phase<Action>(
     let resolved = ResolvedSurfaceTree::for_layout(&current.topology, &current.effective);
     let chrome_plan = resolve_scroll_chrome_layout_plan(&current.topology)?;
     let (
-        size, bounds, report, scroll_chrome, text_layouts, text_origins,
-        placeholder_text_layouts, placeholder_text_origins,
+        size,
+        bounds,
+        report,
+        scroll_chrome,
+        text_layouts,
+        text_origins,
+        placeholder_text_layouts,
+        placeholder_text_origins,
     ) = layout_resolved_surface(
-            &resolved,
-            &chrome_plan,
-            tree,
-            context.root_constraints(),
-            text_system,
-            text_editing,
-            Some((
-                current.layout.text_layouts.as_slice(),
-                current.layout.placeholder_text_layouts.as_slice(),
-            )),
-        )?;
+        &resolved,
+        &chrome_plan,
+        tree,
+        context.root_constraints(),
+        text_system,
+        text_editing,
+        Some((
+            current.layout.text_layouts.as_slice(),
+            current.layout.placeholder_text_layouts.as_slice(),
+        )),
+    )?;
     Ok(CachedLayoutFacts {
         size,
         bounds,

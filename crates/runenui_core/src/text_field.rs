@@ -386,7 +386,11 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         let descriptor =
             crate::TextLeafMeasure::new(self.state.content.clone()).with_wrap_mode(wrap);
         let descriptor = if self.state.content.is_empty()
-            && let Some(hint) = self.state.placeholder.as_deref().filter(|hint| !hint.is_empty())
+            && let Some(hint) = self
+                .state
+                .placeholder
+                .as_deref()
+                .filter(|hint| !hint.is_empty())
         {
             descriptor.with_visual_placeholder(hint)
         } else {

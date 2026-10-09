@@ -260,8 +260,16 @@ fn empty_standard_field_placeholder_uses_real_gpu_but_not_editable_text()
         Some("")
     );
     assert_eq!(
-        hinted.layout_report().root().unwrap_or_else(|| unreachable!("layout is published")).desired_content_size(),
-        blank.layout_report().root().unwrap_or_else(|| unreachable!("layout is published")).desired_content_size(),
+        hinted
+            .layout_report()
+            .root()
+            .unwrap_or_else(|| unreachable!("layout is published"))
+            .desired_content_size(),
+        blank
+            .layout_report()
+            .root()
+            .unwrap_or_else(|| unreachable!("layout is published"))
+            .desired_content_size(),
     );
     assert!(hinted.paint_scene().items().iter().any(|item| {
         item.primitive().as_shaped_text_run().is_some() && item.opacity().get() == 0.5
@@ -277,15 +285,17 @@ fn empty_standard_field_placeholder_uses_real_gpu_but_not_editable_text()
         item.primitive().as_shaped_text_run().is_none() || item.opacity().get() == 1.0
     }));
 
-    let hint_render = renderer.render_offscreen_publication(hinted.paint_publication(), &provider)?;
+    let hint_render =
+        renderer.render_offscreen_publication(hinted.paint_publication(), &provider)?;
     let hint_pixels = hint_render.readback().rgba8_srgb().to_vec();
-    let blank_render = renderer.render_offscreen_publication(blank.paint_publication(), &provider)?;
+    let blank_render =
+        renderer.render_offscreen_publication(blank.paint_publication(), &provider)?;
     assert_ne!(hint_pixels, blank_render.readback().rgba8_srgb());
-    let filled_render = renderer.render_offscreen_publication(filled.paint_publication(), &provider)?;
+    let filled_render =
+        renderer.render_offscreen_publication(filled.paint_publication(), &provider)?;
     assert_ne!(hint_pixels, filled_render.readback().rgba8_srgb());
 
-    if let Some(directory) = std::env::var_os("RUNENUI_M11PASSWORD_EVIDENCE_DIR")
-        .map(PathBuf::from)
+    if let Some(directory) = std::env::var_os("RUNENUI_M11PASSWORD_EVIDENCE_DIR").map(PathBuf::from)
     {
         fs::create_dir_all(&directory)?;
         let extent = hint_render.readback().extent();
