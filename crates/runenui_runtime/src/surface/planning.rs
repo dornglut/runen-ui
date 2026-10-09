@@ -598,14 +598,14 @@ fn plan_structural_surface<'tree, Action>(
         placeholder_text_layouts,
         placeholder_text_origins,
     ) = layout_resolved_surface(
-            &resolved,
-            &chrome_plan,
-            tree,
-            context.root_constraints(),
-            text_system,
-            text_editing,
-            None,
-        )?;
+        &resolved,
+        &chrome_plan,
+        tree,
+        context.root_constraints(),
+        text_system,
+        text_editing,
+        None,
+    )?;
     let layout = CachedLayoutFacts {
         size,
         bounds,

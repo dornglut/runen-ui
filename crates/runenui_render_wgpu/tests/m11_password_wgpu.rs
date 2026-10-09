@@ -235,10 +235,15 @@ fn placeholder_publication(
         &[FontFamilyName::new("Cantarell")?],
     )?;
     let env = StyleEnvironment::default();
-    Ok(runtime.publish_surface(&SurfaceBuildContext::tight(
-        &env,
-        LogicalSize::try_new(300.0, 60.0)?,
-    ))?)
+    runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &env,
+            LogicalSize::try_new(300.0, 60.0)?,
+        ))
+        .map_err(|error| {
+            std::io::Error::other(format!("visual placeholder publication failed: {error:?}"))
+        })
+        .map_err(Into::into)
 }
 
 #[test]
