@@ -412,16 +412,14 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
 
 impl<Action: 'static> View<Action> for TextField<Action> {
     fn into_element(self) -> Element<Action> {
-        let (fields, diagnostics) = self
-            .common
-            .into_authored_fields(
-                if self.disabled {
-                    Focusability::NotFocusable
-                } else {
-                    Focusability::Focusable
-                },
-                None,
-            );
+        let (fields, diagnostics) = self.common.into_authored_fields(
+            if self.disabled {
+                Focusability::NotFocusable
+            } else {
+                Focusability::Focusable
+            },
+            None,
+        );
         Element::from_authored_parts(
             fields,
             Box::new(WidgetAdapter(TextFieldWidget {
@@ -551,7 +549,7 @@ mod tests {
         assert!(flags.contains(WidgetInvalidation::SEMANTICS));
         assert!(!flags.contains(WidgetInvalidation::LAYOUT));
     }
-#[test]
+    #[test]
     fn enter_honors_prevention_modifiers_repeat_composition_and_read_only() {
         use crate::{
             __runtime::{RoutedEventOutput, RuntimeNamespace},
@@ -681,6 +679,4 @@ mod tests {
         assert!(flags.contains(WidgetInvalidation::PAINT));
         assert!(flags.contains(WidgetInvalidation::SEMANTICS));
     }
-
-
 }
