@@ -693,9 +693,9 @@ fn public_link_is_semantically_distinct_from_button_and_navigation_is_app_owned(
 #[test]
 fn public_text_field_binds_checked_m10_editor_with_typed_line_policy_and_semantics() {
     use runenui_core::{
-        EditableContributionError, SemanticAction, SemanticEditableMode, SemanticInvalidState,
-        TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextFieldError,
-        TextNewlinePolicy, TextPosition, TextSelection, text_field,
+        SemanticAction, SemanticEditableMode, SemanticInvalidState, TextAffinity, TextDocumentId,
+        TextDocumentRevision, TextDocumentSnapshot, TextNewlinePolicy, TextPosition, TextSelection,
+        text_field,
     };
 
     let source = "hello";
@@ -766,6 +766,22 @@ fn public_text_field_binds_checked_m10_editor_with_typed_line_policy_and_semanti
     assert!(node.actions().contains(&SemanticAction::ReplaceSelection));
     assert!(!node.actions().contains(&SemanticAction::Copy));
     assert!(!node.actions().contains(&SemanticAction::Paste));
+
+}
+
+#[test]
+fn public_text_field_multiline_preserves_wrap_and_rejects_invalid_source() {
+    use runenui_core::{
+        EditableContributionError, SemanticEditableMode, TextAffinity, TextDocumentId,
+        TextDocumentRevision, TextDocumentSnapshot, TextFieldError, TextNewlinePolicy, TextPosition,
+        TextSelection, text_field,
+    };
+
+    let source = "hello";
+    let snapshot = TextDocumentSnapshot::new(TextDocumentId::new(81), TextDocumentRevision::new(4));
+    let position = TextPosition::new(snapshot, source, source.len(), TextAffinity::Upstream)
+        .unwrap_or_else(|_| unreachable!("fixture caret is valid"));
+    let selection = TextSelection::collapsed(position);
 
     let multiline = text_field(
         snapshot,
