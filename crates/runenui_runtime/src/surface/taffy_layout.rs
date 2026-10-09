@@ -55,7 +55,8 @@ fn secret_text_shaping_source<Action>(
         return None;
     }
     let masked = if let Some(preedit) = preedit {
-        if preedit.snapshot() != editable.snapshot() || preedit.document_text() != editable.text() {
+        let source_matches = preedit.document_text() == editable.text();
+        if preedit.snapshot() != editable.snapshot() || !source_matches {
             return None;
         }
         TextMaskedProjection::preedit(Arc::clone(preedit)).ok()?
@@ -672,8 +673,9 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                     }
                     Ok(Some(editable)) => {
                         if let Some(projection) = preedit {
+                            let source_matches = projection.document_text() == editable.text();
                             if projection.snapshot() == editable.snapshot()
-                                && projection.document_text() == editable.text()
+                                && source_matches
                                 && descriptor.content() == editable.text()
                             {
                                 projection.display_text().to_owned()
