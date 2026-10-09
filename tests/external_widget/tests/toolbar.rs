@@ -25,13 +25,13 @@ impl Widget<Action> for CommandButton {
 
     fn create_state(&self) -> Self::State {}
 
-    fn activation(&self, _: &Self::State) -> WidgetActivation {
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
         WidgetActivation::actionable(true)
     }
 
     fn activate(
         &mut self,
-        _: &mut Self::State,
+        (): &mut Self::State,
         context: &mut WidgetActivationContext<Action>,
     ) -> WidgetActivationOutput<Action> {
         context.emit_application_command(self.0.clone());
@@ -40,7 +40,7 @@ impl Widget<Action> for CommandButton {
 
     fn event(
         &mut self,
-        _: &mut Self::State,
+        (): &mut Self::State,
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
@@ -54,7 +54,7 @@ impl Widget<Action> for CommandButton {
         WidgetEventOutput::none()
     }
 
-    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         SemanticContribution::single(
             SemanticNodeContribution::primary(SemanticRole::Button)
                 .with_name("Custom Save")
@@ -130,7 +130,7 @@ fn command(h: &mut TestHarness<App>, id: &str, command: SemanticCommand) {
 fn external_widget_in_toolbar_uses_public_focus_and_command_scope() {
     let mut h = TestHarness::<App>::mount((0, 0));
     assert!(h.publish().is_ok());
-    let semantic = h.semantic_snapshot().unwrap();
+    let semantic = h.semantic_snapshot().unwrap_or_else(|_| unreachable!("published semantic snapshot"));
     let bar = semantic
         .nodes()
         .iter()
@@ -141,11 +141,11 @@ fn external_widget_in_toolbar_uses_public_focus_and_command_scope() {
 
     command(&mut h, "external.open", SemanticCommand::RequestFocus);
     command(&mut h, "external.open", SemanticCommand::FocusRight);
-    let focused = h.semantic_snapshot().unwrap().focused().cloned();
+    let focused = h.semantic_snapshot().unwrap_or_else(|_| unreachable!("published semantic snapshot")).focused().cloned();
     assert_eq!(
         focused,
         h.semantic_snapshot()
-            .unwrap()
+            .unwrap_or_else(|_| unreachable!("published semantic snapshot"))
             .nodes()
             .iter()
             .find(|n| n.name() == Some("Custom Save"))

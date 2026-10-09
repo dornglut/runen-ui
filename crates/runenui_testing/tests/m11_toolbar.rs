@@ -120,7 +120,7 @@ fn focus_name(h: &TestHarness<App>, label: &str) {
     let target = h.unique_semantic_target(
         &SemanticQuery::new().with_name(label),
     ).unwrap_or_else(|error| unreachable!("semantic named focus target: {error:?}"));
-    assert_eq!(h.semantic_snapshot().unwrap().focused(), Some(target.node_id()));
+    assert_eq!(h.semantic_snapshot().unwrap_or_else(|_| unreachable!("published semantic snapshot")).focused(), Some(target.node_id()));
 }
 
 fn key(physical: PhysicalKey, logical: LogicalKey) -> KeyboardEvent {
@@ -140,7 +140,7 @@ fn key(physical: PhysicalKey, logical: LogicalKey) -> KeyboardEvent {
 fn toolbar_is_one_external_stop_with_manual_real_focus_and_stop_boundary() {
     let mut h = TestHarness::<App>::mount(state());
     assert!(h.publish().is_ok());
-    let node = h.semantic_snapshot().unwrap().nodes().iter()
+    let node = h.semantic_snapshot().unwrap_or_else(|_| unreachable!("published semantic snapshot")).nodes().iter()
         .find(|n| n.role() == SemanticRole::Toolbar)
         .unwrap_or_else(|| unreachable!("toolbar semantics"));
     assert_eq!(node.name(), Some("Editor tools"));
@@ -178,7 +178,7 @@ fn toolbar_vertical_wrap_home_end_and_disabled_discoverability() {
     )).is_ok());
     settle(&mut h);
     assert!(h.publish().is_ok());
-    let node = h.semantic_snapshot().unwrap().nodes().iter()
+    let node = h.semantic_snapshot().unwrap_or_else(|_| unreachable!("published semantic snapshot")).nodes().iter()
         .find(|n| n.role() == SemanticRole::Toolbar)
         .unwrap_or_else(|| unreachable!("toolbar semantics"));
     assert_eq!(node.orientation(), Some(SemanticOrientation::Vertical));
