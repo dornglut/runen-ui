@@ -990,7 +990,7 @@ mod tests {
         ("M11TEXTLAYOUT", &["M11CTRL-64"], "owner-accepted"),
         ("M11SELECTABLE", &["M11CTRL-65"], "owner-accepted"),
         ("M11LINK", &["M11CTRL-67"], "owner-accepted"),
-        ("M11TEXTFIELD", &["M11CTRL-66"], "implementation-complete"),
+        ("M11TEXTFIELD", &["M11CTRL-66"], "owner-accepted"),
     ];
 
     #[test]
