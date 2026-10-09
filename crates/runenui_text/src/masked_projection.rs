@@ -768,7 +768,6 @@ mod tests {
             mask.display_offset_for_position(&wrong_side),
             Err(TextMaskedProjectionError::InvalidAffinity)
         );
-
     }
 
     #[test]
