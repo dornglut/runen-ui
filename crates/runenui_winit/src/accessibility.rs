@@ -2864,9 +2864,10 @@ mod tests {
         ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
             match action {
                 StandardPasswordAction::Toggle => {
-                    state.sensitivity = match state.sensitivity {
-                        TextSensitivity::Secret => TextSensitivity::Public,
-                        TextSensitivity::Public => TextSensitivity::Secret,
+                    state.sensitivity = if state.sensitivity == TextSensitivity::Secret {
+                        TextSensitivity::Public
+                    } else {
+                        TextSensitivity::Secret
                     };
                     UpdateOutput::effects(runenui_core::Effects::none())
                 }
@@ -2881,6 +2882,23 @@ mod tests {
                 ),
             }
         }
+    }
+
+    fn publish_standard_password(
+        runtime: &mut AppRuntime<StandardPasswordApp>,
+        adapter: &mut SemanticAdapter,
+    ) -> SemanticPublication {
+        let style = StyleEnvironment::default();
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(
+                &style,
+                LogicalSize::try_new(280.0, 50.0).unwrap(),
+            ))
+            .unwrap()
+            .semantic_publication()
+            .clone();
+        adapter.update(&publication);
+        publication
     }
 
     #[test]
@@ -2904,20 +2922,7 @@ mod tests {
                 .is_ok()
         );
         let mut adapter = SemanticAdapter::new();
-        let style = StyleEnvironment::default();
-        let mut publish = |runtime: &mut AppRuntime<StandardPasswordApp>| {
-            let publication = runtime
-                .publish_surface(&SurfaceBuildContext::tight(
-                    &style,
-                    LogicalSize::try_new(280.0, 50.0).unwrap(),
-                ))
-                .unwrap()
-                .semantic_publication()
-                .clone();
-            adapter.update(&publication);
-            publication
-        };
-        let first = publish(&mut runtime);
+        let first = publish_standard_password(&mut runtime, &mut adapter);
         let semantic = &first.snapshot().nodes()[0];
         assert_eq!(semantic.editable().and_then(|editable| editable.value()), None);
         assert!(semantic.supported_actions().contains(&SemanticAction::SetSelection));
@@ -2948,7 +2953,7 @@ mod tests {
 
         runtime.submit_action(StandardPasswordAction::Toggle).unwrap();
         runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
-        let public = publish(&mut runtime);
+        let public = publish_standard_password(&mut runtime, &mut adapter);
         let public_semantic = &public.snapshot().nodes()[0];
         let public_parent = adapter
             .active_id(public.snapshot().surface_id(), public_semantic.id())
@@ -2961,7 +2966,7 @@ mod tests {
 
         runtime.submit_action(StandardPasswordAction::Toggle).unwrap();
         runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
-        let again = publish(&mut runtime);
+        let again = publish_standard_password(&mut runtime, &mut adapter);
         let again_semantic = &again.snapshot().nodes()[0];
         let secret_parent = adapter
             .active_id(again.snapshot().surface_id(), again_semantic.id())
