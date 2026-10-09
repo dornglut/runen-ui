@@ -576,7 +576,6 @@ impl PointerRegistry {
         count
     }
 
-    #[cfg(test)]
     pub(in crate::runtime) fn ordered_pointer_ids(&self) -> Vec<PointerId> {
         let mut registered = self
             .streams

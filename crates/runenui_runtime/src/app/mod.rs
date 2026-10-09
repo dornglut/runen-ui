@@ -214,6 +214,20 @@ impl<App: UiApp> AppRuntime<App> {
             .submit_public_automation_command(authored_id, command)
     }
 
+    /// Observes exact immutable current UI input ownership; never host gameplay policy.
+    ///
+    /// This method also observes accepted synchronous focus/composition/publication
+    /// changes that can occur without a canonical pump envelope.
+    ///
+    /// # Errors
+    /// Returns a structured error if a bounded snapshot cannot be allocated or
+    /// its non-wrapping revision cannot advance.
+    pub fn input_ownership(
+        &mut self,
+    ) -> Result<crate::InputOwnershipSnapshot, crate::InputObservationError> {
+        self.runtime.input_ownership()
+    }
+
     /// Processes at most the requested number of canonical work envelopes.
     pub fn pump(&mut self, budget: PumpBudget) -> PumpReport {
         self.runtime.acknowledge_wake();

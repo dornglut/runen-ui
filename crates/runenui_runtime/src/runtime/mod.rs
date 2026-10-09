@@ -8,6 +8,7 @@ mod automation;
 mod focus;
 mod helpers;
 mod ingress;
+mod input_arbitration;
 mod lifecycle;
 mod mount;
 mod pointer;
@@ -97,6 +98,7 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     pub(crate) trace_action_labeler: Option<fn(&Action) -> Option<&'static str>>,
     text_system: TextSystem,
     pub(crate) focus: FocusState,
+    input_observation: input_arbitration::InputObservationState,
     pub(crate) focus_group_type_ahead: FocusGroupTypeAheadState,
     pub(crate) presentation_lifecycle: PresentationLifecycleState,
     pointer_registry: PointerRegistry,
