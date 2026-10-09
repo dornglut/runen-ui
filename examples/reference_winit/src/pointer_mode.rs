@@ -280,10 +280,13 @@ impl PointerModes {
 
     /// A replaced native window never inherits the old lease or its generation.
     pub fn retire_window(&mut self, platform: &mut impl Platform) -> Result<(), Failure> {
-        let result = self.release(platform);
+        // The retired window's UI presentation cannot become the next window's
+        // cursor baseline, including when native release fails.
         self.focused = false;
         self.scope = None;
-        result
+        self.ui_shape = CursorShape::Default;
+        self.ui_visible = true;
+        self.release(platform)
     }
 }
 
@@ -494,6 +497,19 @@ mod tests {
             .focus_changed(true, &mut host)
             .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         assert!(!host.visible); // UI baseline resumes only when the host is focused
+    }
+
+    #[test]
+    fn retiring_window_resets_hidden_ui_baseline_and_forces_visible_cursor() {
+        let (mut modes, mut host) = focused();
+        modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
+        assert!(!host.visible);
+        assert!(modes.retire_window(&mut host).is_ok());
+        assert!(host.visible);
+        assert!(!modes.ui_pointer_allowed());
+        assert!(modes.focus_changed(true, &mut host).is_ok());
+        assert!(host.visible);
+        assert!(modes.ui_pointer_allowed());
     }
 
     #[test]
