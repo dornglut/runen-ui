@@ -280,6 +280,27 @@ impl<'a> PlannedSurfacePublication<'a> {
         targets
     }
 
+    /// Retains the final owner-local border-box size used by paint and hit for
+    /// the same displayed generation as owner-to-surface pointer transforms.
+    pub(crate) fn displayed_owner_sizes(&self) -> HashMap<MountedNodeId, LogicalSize> {
+        self.cache
+            .topology
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(position, _)| self.cache.presentation.published(*position))
+            .filter_map(|(position, topology)| {
+                self.cache
+                    .layout
+                    .report
+                    .nodes()
+                    .get(position)
+                    .filter(|node| node.id() == &topology.id)
+                    .map(|node| (topology.id.clone(), node.layout_extent()))
+            })
+            .collect()
+    }
+
     pub(crate) fn displayed_owner_transforms(&self) -> HashMap<MountedNodeId, LogicalTransform> {
         self.cache
             .topology

@@ -82,6 +82,7 @@ jobs:
           RUNENUI_M8D_EVIDENCE_DIR: ${{ runner.temp }}/runenui-visual-conformance
           RUNENUI_M10F_EVIDENCE_DIR: ${{ runner.temp }}/runenui-visual-conformance
           RUNENUI_M11PASSWORD_EVIDENCE_DIR: ${{ runner.temp }}/runenui-visual-conformance
+          RUNENUI_M11SLIDER_EVIDENCE_DIR: ${{ runner.temp }}/runenui-visual-conformance
         run: |
           set -euo pipefail
           cargo +stable test --locked -p runenui_render_wgpu --test solid_render -- --nocapture
@@ -99,6 +100,9 @@ jobs:
           test -s "${RUNENUI_M11PASSWORD_EVIDENCE_DIR}/m11-password-public.png"
           test -s "${RUNENUI_M11PASSWORD_EVIDENCE_DIR}/m11-placeholder-hint.png"
           test -s "${RUNENUI_M11PASSWORD_EVIDENCE_DIR}/m11-placeholder-blank.png"
+          cargo +stable test --locked -p runenui_render_wgpu --test m11_slider_wgpu -- --nocapture
+          test -s "${RUNENUI_M11SLIDER_EVIDENCE_DIR}/m11-slider-start.png"
+          test -s "${RUNENUI_M11SLIDER_EVIDENCE_DIR}/m11-slider-full.png"
 
       - name: Check repository hygiene
         run: |

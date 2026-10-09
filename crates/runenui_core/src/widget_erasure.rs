@@ -6,12 +6,12 @@ use crate::widget_protocol::{
 use crate::{
     CommandOrigin, EditableContribution, ElementId, ElementKey, EventContext, EventPhase,
     ExplicitTimeline, FocusGroup, FocusGroupEntry, FocusScope, Focusability, HitContribution,
-    HitContributionContext, LayoutStyle, LogicalPoint, MonotonicInstant, MountedNodeId,
-    PaintContribution, PaintContributionContext, PointerId, PresentationFocusEntry, ScrollChrome,
-    ScrollControlBinding, ScrollControlSnapshot, SemanticContribution, SemanticContributionContext,
-    ShortcutBinding, StyleIntent, SubscriptionSet, SurfacePresentation, UiEvent,
-    WidgetActivationContext, WidgetEventOutput, WidgetMountContext, WidgetUnmountContext,
-    WidgetUpdateContext, WorkSequence,
+    HitContributionContext, LayoutStyle, LogicalPoint, LogicalSize, MonotonicInstant,
+    MountedNodeId, PaintContribution, PaintContributionContext, PointerId, PresentationFocusEntry,
+    ScrollChrome, ScrollControlBinding, ScrollControlSnapshot, SemanticContribution,
+    SemanticContributionContext, ShortcutBinding, StyleIntent, SubscriptionSet,
+    SurfacePresentation, UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetMountContext,
+    WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
 };
 use core::{any::Any, fmt};
 
@@ -395,6 +395,7 @@ impl<Action> MountedWidget<Action> {
         physical_target: Option<&MountedNodeId>,
         physical_path: &[MountedNodeId],
         pointer_local_position: Option<LogicalPoint>,
+        pointer_local_size: Option<LogicalSize>,
         scroll_control: Option<ScrollControlSnapshot>,
         default_cancelable: bool,
         default_prevented: bool,
@@ -420,6 +421,7 @@ impl<Action> MountedWidget<Action> {
             physical_target,
             physical_path,
             pointer_local_position,
+            pointer_local_size,
             scroll_control,
             default_cancelable,
             default_prevented,
