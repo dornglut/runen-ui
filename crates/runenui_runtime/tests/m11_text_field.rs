@@ -57,7 +57,7 @@ impl UiApp for FormApp {
         .unwrap_or_else(|_| unreachable!("application field source remains valid"))
         .id("form.field")
         .with_layout(
-            LayoutStyle::default().with_width(LayoutDimension::length(LogicalLength::from(48))),
+            LayoutStyle::default().with_width(LayoutDimension::length(LogicalLength::from(48_u16))),
         )
         .placeholder("Type here")
         .on_submit(|| Action::Submit)
