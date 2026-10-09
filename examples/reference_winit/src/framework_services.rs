@@ -64,7 +64,7 @@ impl NativeFrameworkServices {
         }
     }
 
-    fn effective_ime_allowed(&self) -> bool {
+    const fn effective_ime_allowed(&self) -> bool {
         self.native_window_focused
             && self.requested_ime_allowed
             && self.pointer_modes.ui_pointer_allowed()
@@ -285,7 +285,7 @@ const fn map_clipboard_error(error: &arboard::Error) -> FrameworkServiceFailure 
     }
 }
 
-pub(super) const fn cursor_icon(shape: CursorShape) -> CursorIcon {
+pub const fn cursor_icon(shape: CursorShape) -> CursorIcon {
     match shape {
         CursorShape::Text => CursorIcon::Text,
         CursorShape::Pointer => CursorIcon::Pointer,
