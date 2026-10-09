@@ -5,7 +5,6 @@ use runenui_core::{FontFamilyName, GenericFontFamily};
 use runenui_core::{LogicalLength, LogicalSize, MonotonicInstant, WidgetDiagnostic};
 #[cfg(test)]
 use runenui_text::FontSourcePolicy;
-use runenui_text::TextPreeditProjection;
 use runenui_text::{TextLayoutError, TextSystem};
 
 use crate::mounted::{DirtyPhases, SemanticReconcileError, SurfaceCapabilityPlan};
