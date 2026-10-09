@@ -1048,7 +1048,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub(crate) fn process_input_envelope(&mut self, envelope: InputEnvelope) -> crate::UiInputFinality {
+    pub(crate) fn process_input_envelope(
+        &mut self,
+        envelope: InputEnvelope,
+    ) -> crate::UiInputFinality {
         let InputEnvelope {
             sequence,
             target,
@@ -1150,13 +1153,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     instant,
                 );
                 return match self.status() {
-                    RuntimeStatus::Terminal(reason) => crate::UiInputFinality::Aborted(
-                        crate::UiInputAbortReason::Terminal(reason),
-                    ),
-                    RuntimeStatus::Running | RuntimeStatus::Closed =>
+                    RuntimeStatus::Terminal(reason) => {
+                        crate::UiInputFinality::Aborted(crate::UiInputAbortReason::Terminal(reason))
+                    }
+                    RuntimeStatus::Running | RuntimeStatus::Closed => {
                         crate::UiInputFinality::ProcessingRejected(
                             crate::UiInputProcessingRejection::InsufficientTransactionCapacity,
-                        ),
+                        )
+                    }
                 };
             }
         };
@@ -1182,17 +1186,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // A candidate shortcut alone does not prove an accepted shortcut default.
         let explicit = transaction.host_input_claimed;
         let has_default_output = !transaction.default_outputs.is_empty();
-        let text_domain = matches!(&payload, InputEnvelopePayload::CommittedText(_) | InputEnvelopePayload::Composition(_));
+        let text_domain = matches!(
+            &payload,
+            InputEnvelopePayload::CommittedText(_) | InputEnvelopePayload::Composition(_)
+        );
         let mut reasons = Vec::new();
         if explicit {
             reasons.push(crate::UiInputClaimReason::ExplicitWidgetClaim);
         }
         if text_domain {
-            reasons.push(if matches!(&payload, InputEnvelopePayload::Composition(_)) {
-                crate::UiInputClaimReason::CompositionOwner
-            } else {
-                crate::UiInputClaimReason::TextOwner
-            });
+            reasons.push(
+                if matches!(&payload, InputEnvelopePayload::Composition(_)) {
+                    crate::UiInputClaimReason::CompositionOwner
+                } else {
+                    crate::UiInputClaimReason::TextOwner
+                },
+            );
         }
         if has_default_output {
             reasons.push(crate::UiInputClaimReason::ActivationDefault);
@@ -1205,7 +1214,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 crate::UiInputConflict::ObservedNonexclusive
             },
             reasons,
-            route: crate::UiInputRoute::Routed { target: target.clone() },
+            route: crate::UiInputRoute::Routed {
+                target: target.clone(),
+            },
             propagation_stopped: transaction.propagation_stopped,
             default_prevented: transaction.default_prevented,
             default_disposition: if transaction.default_prevented {
