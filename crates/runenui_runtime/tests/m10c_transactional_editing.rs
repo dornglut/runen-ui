@@ -2808,7 +2808,6 @@ fn secret_unicode_navigation_and_backspace_reuse_the_masked_m10_source_map() {
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 }
 
-
 #[test]
 fn secret_mouse_hit_uses_source_coordinates_from_the_retained_mask() {
     let mut state = mounted().state().clone();
@@ -2819,8 +2818,8 @@ fn secret_mouse_hit_uses_source_coordinates_from_the_retained_mask() {
     install_controlled_font(&mut runtime);
     focus(&mut runtime);
     let context = publish_editor(&mut runtime);
-    let pointer = PointerId::new(83)
-        .unwrap_or_else(|| unreachable!("pointer identity is non-zero"));
+    let pointer =
+        PointerId::new(83).unwrap_or_else(|| unreachable!("pointer identity is non-zero"));
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -2842,7 +2841,8 @@ fn secret_mouse_hit_uses_source_coordinates_from_the_retained_mask() {
     )));
     let published = publish_editor_surface_for_secret(&mut runtime);
     let selection = published.semantic_publication().snapshot().nodes()[0]
-        .editable().unwrap_or_else(|| unreachable!("secret semantic range retained"))
+        .editable()
+        .unwrap_or_else(|| unreachable!("secret semantic range retained"))
         .selection();
     assert_eq!(selection.active().byte_offset(), 0);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
@@ -2855,8 +2855,7 @@ fn publish_editor_surface_for_secret(
     runtime
         .publish_surface(&SurfaceBuildContext::tight(
             &environment,
-            LogicalSize::try_new(200.0, 40.0)
-                .unwrap_or_else(|_| unreachable!("surface is finite")),
+            LogicalSize::try_new(200.0, 40.0).unwrap_or_else(|_| unreachable!("surface is finite")),
         ))
         .unwrap_or_else(|_| unreachable!("secret publication remains available"))
 }
