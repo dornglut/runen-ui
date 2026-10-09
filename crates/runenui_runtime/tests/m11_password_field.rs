@@ -279,3 +279,65 @@ fn password_clipboard_copy_cut_suppress_disclosure_and_paste_uses_m10_service() 
         assert!(!format!("{:?}", surface.paint_scene()).contains(literal));
     }
 }
+
+#[test]
+fn secret_composition_masks_preedit_before_shaping_and_keeps_candidate_geometry() {
+    const PREEDIT_SECRET: &str = "秘密preedit🌐";
+    let mut runtime = mounted();
+    let owner = runtime.index().nodes()[0].id().clone();
+    runtime
+        .submit_command(
+            owner,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("password is focusable"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    publication(&mut runtime);
+    let composition = runtime
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("password composition starts"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime
+        .submit_composition_update(
+            composition.generation().clone(),
+            PREEDIT_SECRET.to_owned(),
+            None,
+        )
+        .unwrap_or_else(|_| unreachable!("password preedit is admitted"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let during = publication(&mut runtime);
+    assert_eq!(
+        during.semantic_publication().snapshot().nodes()[0]
+            .editable()
+            .and_then(|editable| editable.value()),
+        None
+    );
+    assert!(runtime.pending_framework_services().iter().any(|service| {
+        matches!(
+            service.request(),
+            FrameworkServiceRequest::InputMethod {
+                enabled: true,
+                candidate_area: Some(_),
+                ..
+            }
+        )
+    }));
+    for literal in [SECRET, PREEDIT_SECRET] {
+        assert!(!runtime.trace().export_jsonl().contains(literal));
+        assert!(!format!("{:?}", during.paint_scene()).contains(literal));
+    }
+    runtime
+        .cancel_composition(composition.generation().clone())
+        .unwrap_or_else(|_| unreachable!("password composition is cancelable"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let after = publication(&mut runtime);
+    assert_eq!(runtime.state().text, SECRET);
+    assert!(!glyphs(&after).is_empty());
+    assert_eq!(
+        after.semantic_publication().snapshot().nodes()[0]
+            .editable()
+            .and_then(|editable| editable.value()),
+        None
+    );
+}

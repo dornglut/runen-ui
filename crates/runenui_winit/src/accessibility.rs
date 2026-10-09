@@ -1347,7 +1347,9 @@ mod tests {
         WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetInvalidation,
         WidgetMeasure, WidgetMeasureInput,
     };
-    use runenui_runtime::{AppRuntime, FontFamilyName, GenericFontFamily, SurfaceBuildContext};
+    use runenui_runtime::{
+        AppRuntime, FontFamilyName, GenericFontFamily, PumpBudget, SurfaceBuildContext,
+    };
 
     #[derive(Clone, Copy, Debug)]
     struct FixtureAction;
@@ -2805,4 +2807,172 @@ mod tests {
         assert!(projected_read_only.supports_action(Action::SetTextSelection));
         assert!(!projected_read_only.supports_action(Action::ReplaceSelectedText));
     }
+
+    #[derive(Clone)]
+    struct StandardPasswordState {
+        content: String,
+        sensitivity: TextSensitivity,
+    }
+
+    enum StandardPasswordAction {
+        Edit(EditIntent),
+        Toggle,
+    }
+
+    struct StandardPasswordApp;
+
+    impl UiApp for StandardPasswordApp {
+        type State = StandardPasswordState;
+        type Action = StandardPasswordAction;
+        type HostProtocol = NoHostProtocol;
+
+        fn root(state: &Self::State) -> impl View<Self::Action> {
+            let snapshot = TextDocumentSnapshot::new(
+                TextDocumentId::new(190),
+                TextDocumentRevision::new(1),
+            );
+            let selection = TextSelection::collapsed(
+                TextPosition::new(
+                    snapshot,
+                    &state.content,
+                    state.content.len(),
+                    TextAffinity::Upstream,
+                )
+                .unwrap_or_else(|_| unreachable!("checked application selection")),
+            );
+            let field = runenui_core::text_field(
+                snapshot,
+                state.content.clone(),
+                selection,
+                SemanticEditableMode::SingleLine,
+                StandardPasswordAction::Edit,
+            )
+            .unwrap_or_else(|_| unreachable!("single-line source is valid"));
+            let field = if state.sensitivity == TextSensitivity::Secret {
+                field
+                    .password()
+                    .unwrap_or_else(|_| unreachable!("single-line password is valid"))
+            } else {
+                field
+            };
+            field.id("form.password").placeholder("Password")
+        }
+
+        fn update(
+            state: &mut Self::State,
+            action: Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+            match action {
+                StandardPasswordAction::Toggle => {
+                    state.sensitivity = match state.sensitivity {
+                        TextSensitivity::Secret => TextSensitivity::Public,
+                        TextSensitivity::Public => TextSensitivity::Secret,
+                    };
+                    UpdateOutput::effects(runenui_core::Effects::none())
+                }
+                StandardPasswordAction::Edit(intent) => UpdateOutput::edit(
+                    EditResolution::rejected(
+                        intent.request().clone(),
+                        TextDocumentSnapshot::new(
+                            TextDocumentId::new(190),
+                            TextDocumentRevision::new(1),
+                        ),
+                    ),
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn standard_password_native_projection_retires_public_text_resources_on_reclassification() {
+        const SOURCE: &str = "vault-é漢🔒";
+        const FONT: &[u8] = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../runenui_text/tests/fixtures/Cantarell-Regular.ttf"
+        ));
+        let mut runtime = AppRuntime::<StandardPasswordApp>::mount(StandardPasswordState {
+            content: SOURCE.to_owned(),
+            sensitivity: TextSensitivity::Secret,
+        });
+        assert!(runtime.register_text_font_bytes(FONT.to_vec()).is_ok());
+        assert!(
+            runtime
+                .set_text_generic_family_mapping(
+                    GenericFontFamily::SansSerif,
+                    &[FontFamilyName::new("Cantarell").unwrap()],
+                )
+                .is_ok()
+        );
+        let mut adapter = SemanticAdapter::new();
+        let style = StyleEnvironment::default();
+        let mut publish = |runtime: &mut AppRuntime<StandardPasswordApp>| {
+            let publication = runtime
+                .publish_surface(&SurfaceBuildContext::tight(
+                    &style,
+                    LogicalSize::try_new(280.0, 50.0).unwrap(),
+                ))
+                .unwrap()
+                .semantic_publication()
+                .clone();
+            adapter.update(&publication);
+            publication
+        };
+        let first = publish(&mut runtime);
+        let semantic = &first.snapshot().nodes()[0];
+        assert_eq!(semantic.editable().and_then(|editable| editable.value()), None);
+        assert!(semantic.supported_actions().contains(&SemanticAction::SetSelection));
+        let parent = adapter
+            .active_id(first.snapshot().surface_id(), semantic.id())
+            .unwrap();
+        let native = &adapter.projection.current_nodes[&parent];
+        assert_eq!(native.role(), Role::PasswordInput);
+        assert_eq!(native.value(), None);
+        assert!(!native.supports_action(Action::SetTextSelection));
+        assert!(native.supports_action(Action::ReplaceSelectedText));
+        assert!(!adapter.projection.editable_text_runs.contains_key(semantic.id()));
+        assert!(adapter.action_request(&ActionRequest {
+            action: Action::SetTextSelection,
+            target_tree: TreeId::ROOT,
+            target_node: parent,
+            data: Some(ActionData::SetTextSelection(AccessTextSelection {
+                anchor: AccessTextPosition {
+                    node: parent,
+                    character_index: 0,
+                },
+                focus: AccessTextPosition {
+                    node: parent,
+                    character_index: 0,
+                },
+            })),
+        }).is_err());
+
+        runtime.submit_action(StandardPasswordAction::Toggle).unwrap();
+        runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+        let public = publish(&mut runtime);
+        let public_semantic = &public.snapshot().nodes()[0];
+        let public_parent = adapter
+            .active_id(public.snapshot().surface_id(), public_semantic.id())
+            .unwrap();
+        let public_native = &adapter.projection.current_nodes[&public_parent];
+        assert_eq!(public_native.role(), Role::TextInput);
+        assert_eq!(public_native.value(), Some(SOURCE));
+        assert!(public_native.supports_action(Action::SetTextSelection));
+        assert!(adapter.projection.editable_text_runs.contains_key(public_semantic.id()));
+
+        runtime.submit_action(StandardPasswordAction::Toggle).unwrap();
+        runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+        let again = publish(&mut runtime);
+        let again_semantic = &again.snapshot().nodes()[0];
+        let secret_parent = adapter
+            .active_id(again.snapshot().surface_id(), again_semantic.id())
+            .unwrap();
+        let secret = &adapter.projection.current_nodes[&secret_parent];
+        assert_eq!(secret.role(), Role::PasswordInput);
+        assert_eq!(secret.value(), None);
+        assert!(!adapter.projection.editable_text_runs.contains_key(again_semantic.id()));
+        assert!(adapter.projection.current_nodes.values().all(|node| {
+            node.value() != Some(SOURCE)
+        }));
+    }
+
 }
