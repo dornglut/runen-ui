@@ -1655,6 +1655,22 @@ impl ReferenceHost {
         })
     }
 
+    /// Never carry a native mode across a different or unpublished UI surface.
+    fn release_if_pointer_scope_changed(
+        &mut self,
+        candidate: Option<HostPointerScope>,
+        reason: &str,
+    ) {
+        if self
+            .framework_services
+            .pointer_modes()
+            .scope_changed(candidate.as_ref())
+        {
+            proof!("stage=host_pointer_scope_revoked reason={reason:?}");
+            self.release_host_pointer(reason);
+        }
+    }
+
     fn release_host_pointer(&mut self, reason: &str) {
         self.pending_raw_motion_since = None;
         // Native unlock cannot depend on a running UI pump.
@@ -1693,6 +1709,10 @@ impl ReferenceHost {
             if !self.invalidate_mouse_point_authority(event_loop, "host mode returned to UI") {
                 return;
             }
+            return;
+        }
+        if self.presentation_suppressed {
+            proof!("stage=host_pointer_acquire_rejected reason=occluded_or_suspended");
             return;
         }
         let Some(scope) = self.current_host_pointer_scope() else {
@@ -1888,6 +1908,11 @@ impl ReferenceHost {
         self.last_mouse_ingress_diagnostic = None;
         if !self.submit_pointer_event(event_loop, event, "native cursor translation") {
             return;
+        }
+        if let Some(window) = self.window.as_ref() {
+            self.framework_services
+                .pointer_modes_mut()
+                .confirm_fresh_absolute_point(&mut WinitPointer(window));
         }
         self.request_pending_redraw();
     }
@@ -2131,6 +2156,9 @@ impl ReferenceHost {
 
     fn handle_mapping_change(&mut self, event_loop: &ActiveEventLoop) {
         let changed = self.refresh_mapping();
+        if changed {
+            self.release_host_pointer("native mapping changed");
+        }
         if changed && !self.cancel_native_touch_contacts(event_loop, "native mapping changed") {
             return;
         }
@@ -2158,6 +2186,14 @@ impl ReferenceHost {
     }
 
     fn record_presented_frame(&mut self, event_loop: &ActiveEventLoop, pending: &PendingFrame) {
+        let next = HostPointerScope {
+            window_epoch: self.window_epoch,
+            surface: Some(pending.publication.input_context().surface_id().clone()),
+        };
+        self.release_if_pointer_scope_changed(
+            Some(next),
+            "displayed surface identity changed",
+        );
         self.displayed_frame = Some(DisplayedFrame::from_pending(pending));
         self.pending_frame = None;
         proof!(
@@ -2248,6 +2284,7 @@ impl ReferenceHost {
             }
             Err(PublicationRenderError::SurfaceLost) => {
                 proof!("stage=surface_lost");
+                self.release_host_pointer("native surface lost");
                 if !self.invalidate_mouse_point_authority(event_loop, "native surface lost") {
                     return;
                 }
@@ -2339,6 +2376,13 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
     fn suspended(&mut self, event_loop: &ActiveEventLoop) {
         proof!("stage=host_suspended");
         self.release_host_pointer("host suspended");
+        if let Some(window) = self.window.as_ref() {
+            let result = self
+                .framework_services
+                .pointer_modes_mut()
+                .focus_changed(false, &mut WinitPointer(window));
+            proof!("stage=host_pointer_suspended_focus_revoked result={result:?}");
+        }
         if !self.cancel_native_touch_contacts(event_loop, "native host suspended") {
             return;
         }
@@ -2382,7 +2426,12 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
         let DeviceEvent::MouseMotion { delta } = event else {
             return;
         };
-        let Some(scope) = self.current_host_pointer_scope() else {
+        let current_scope = self.current_host_pointer_scope();
+        self.release_if_pointer_scope_changed(
+            current_scope.clone(),
+            "raw-device event without current displayed surface",
+        );
+        let Some(scope) = current_scope else {
             return;
         };
         if self
@@ -2393,14 +2442,17 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             proof!("stage=host_pointer_raw_motion_timeout");
             return;
         }
-        if !self
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        if !self.framework_services.pointer_modes_mut().observe_motion(
+            &scope,
+            delta,
+            &mut WinitPointer(window),
+        ) || !self
             .framework_services
-            .pointer_modes_mut()
-            .observe_motion(&scope, delta)
-            || !self
-                .framework_services
-                .pointer_modes()
-                .gameplay_motion_allowed()
+            .pointer_modes()
+            .gameplay_motion_allowed()
         {
             return;
         }

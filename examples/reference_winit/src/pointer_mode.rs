@@ -89,6 +89,9 @@ pub struct PointerModes {
     scope: Option<Scope>,
     ui_shape: CursorShape,
     ui_visible: bool,
+    // Releasing a native grab must restore an ordinary visible cursor until a
+    // newly translated absolute point authorizes ordinary UI cursor policy.
+    awaiting_fresh_absolute_point: bool,
 }
 
 impl Default for PointerModes {
@@ -100,6 +103,7 @@ impl Default for PointerModes {
             scope: None,
             ui_shape: CursorShape::Default,
             ui_visible: true,
+            awaiting_fresh_absolute_point: false,
         }
     }
 }
@@ -132,6 +136,26 @@ impl PointerModes {
             )
     }
 
+    /// A lease must not remain live after its exact displayed window/surface changes.
+    /// A terminal failed release remains gated independently of scope admission.
+    pub fn scope_changed(&self, current: Option<&Scope>) -> bool {
+        match &self.state {
+            State::AwaitingMotion(lease) | State::Active(lease) => {
+                current != Some(&lease.scope)
+            }
+            State::Absolute | State::ReleaseFailed => false,
+        }
+    }
+
+    /// Consume only a fresh, validated absolute UI cursor observation.
+    /// Stale translated positions and raw game motion must not clear restoration.
+    pub fn confirm_fresh_absolute_point(&mut self, platform: &mut impl Platform) {
+        if self.ui_pointer_allowed() && self.awaiting_fresh_absolute_point {
+            self.awaiting_fresh_absolute_point = false;
+            self.apply_cursor(platform);
+        }
+    }
+
     pub fn set_ui_cursor(
         &mut self,
         platform: &mut impl Platform,
@@ -144,24 +168,25 @@ impl PointerModes {
     }
 
     fn apply_cursor(&self, platform: &mut impl Platform) {
-        if !self.focused {
+        if !self.focused || self.awaiting_fresh_absolute_point {
             platform.cursor(CursorShape::Default, true);
             return;
         }
-        let locked = matches!(
-            self.state,
-            State::AwaitingMotion(_)
-                | State::Active(Lease {
-                    mode: Mode::LockedRelative,
-                    ..
-                })
-        );
-        if locked {
-            platform.cursor(CursorShape::Default, false);
-        } else if matches!(self.state, State::ReleaseFailed) {
-            platform.cursor(CursorShape::Default, true);
-        } else {
-            platform.cursor(self.ui_shape, self.ui_visible);
+        match &self.state {
+            // Native grab alone is not proof that raw motion can drive a game.
+            // While acquiring, keep the cursor ordinary and visible.
+            State::AwaitingMotion(_) | State::ReleaseFailed => {
+                platform.cursor(CursorShape::Default, true);
+            }
+            State::Active(Lease {
+                mode: Mode::LockedRelative,
+                ..
+            }) => platform.cursor(CursorShape::Default, false),
+            State::Absolute
+            | State::Active(Lease {
+                mode: Mode::ConfinedAbsolute | Mode::Absolute,
+                ..
+            }) => platform.cursor(self.ui_shape, self.ui_visible),
         }
     }
 
@@ -225,6 +250,7 @@ impl PointerModes {
             return Err(Failure::ReleaseFailed);
         }
         self.scope = Some(scope);
+        self.awaiting_fresh_absolute_point = false;
         if desired == Mode::LockedRelative {
             self.state = State::AwaitingMotion(lease.clone());
             self.apply_cursor(platform);
@@ -238,7 +264,12 @@ impl PointerModes {
 
     /// A genuine finite host raw-device observation certifies motion availability,
     /// without claiming a window association from a device ID.
-    pub fn observe_motion(&mut self, scope: &Scope, delta: (f64, f64)) -> bool {
+    pub fn observe_motion(
+        &mut self,
+        scope: &Scope,
+        delta: (f64, f64),
+        platform: &mut impl Platform,
+    ) -> bool {
         if !self.focused
             || self.scope.as_ref() != Some(scope)
             || !delta.0.is_finite()
@@ -251,6 +282,7 @@ impl PointerModes {
                 if &lease.scope == scope && lease.mode == Mode::LockedRelative =>
             {
                 self.state = State::Active(lease.clone());
+                self.apply_cursor(platform);
                 true
             }
             State::Active(lease) if &lease.scope == scope && lease.mode == Mode::LockedRelative => {
@@ -267,6 +299,7 @@ impl PointerModes {
             return Ok(());
         }
         self.state = State::ReleaseFailed;
+        self.awaiting_fresh_absolute_point = true;
         platform.cursor(CursorShape::Default, true);
         match platform.grab(Mode::Absolute) {
             Ok(()) => {
@@ -286,6 +319,7 @@ impl PointerModes {
         self.scope = None;
         self.ui_shape = CursorShape::Default;
         self.ui_visible = true;
+        self.awaiting_fresh_absolute_point = true;
         self.release(platform)
     }
 }
@@ -346,10 +380,11 @@ mod tests {
         ));
         assert!(!modes.ui_pointer_allowed());
         assert!(!modes.gameplay_motion_allowed());
+        assert!(host.visible); // A pending grab has not demonstrated usable raw input.
+        assert!(!modes.observe_motion(&scope(2), (2.0, 1.0), &mut host));
+        assert!(!modes.observe_motion(&scope(1), (f64::NAN, 1.0), &mut host));
+        assert!(modes.observe_motion(&scope(1), (2.0, 1.0), &mut host));
         assert!(!host.visible);
-        assert!(!modes.observe_motion(&scope(2), (2.0, 1.0)));
-        assert!(!modes.observe_motion(&scope(1), (f64::NAN, 1.0)));
-        assert!(modes.observe_motion(&scope(1), (2.0, 1.0)));
         assert!(modes.gameplay_motion_allowed());
         modes
             .release(&mut host)
@@ -419,6 +454,8 @@ mod tests {
             .request(scope(1), Mode::LockedRelative, &mut host)
             .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         modes.set_ui_cursor(&mut host, CursorShape::Pointer, true);
+        assert!(host.visible);
+        assert!(modes.observe_motion(&scope(1), (1.0, 1.0), &mut host));
         assert!(!host.visible);
         modes
             .focus_changed(false, &mut host)
@@ -442,7 +479,7 @@ mod tests {
         modes
             .focus_changed(false, &mut host)
             .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
-        assert!(!modes.observe_motion(&scope(1), (4.0, 6.0)));
+        assert!(!modes.observe_motion(&scope(1), (4.0, 6.0), &mut host));
         assert!(!modes.gameplay_motion_allowed());
         assert!(host.visible);
         modes
@@ -460,13 +497,13 @@ mod tests {
         modes
             .request(scope(1), Mode::LockedRelative, &mut host)
             .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
-        assert!(modes.observe_motion(&scope(1), (1.0, 2.0)));
+        assert!(modes.observe_motion(&scope(1), (1.0, 2.0), &mut host));
         let next = modes
             .request(scope(2), Mode::LockedRelative, &mut host)
             .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         assert!(matches!(next, Outcome::WaitingForMotion(_)));
-        assert!(!modes.observe_motion(&scope(1), (8.0, 9.0)));
-        assert!(modes.observe_motion(&scope(2), (8.0, 9.0)));
+        assert!(!modes.observe_motion(&scope(1), (8.0, 9.0), &mut host));
+        assert!(modes.observe_motion(&scope(2), (8.0, 9.0), &mut host));
         assert!(host.calls.iter().any(|(mode, _)| *mode == Mode::Absolute));
     }
 
@@ -513,6 +550,69 @@ mod tests {
     }
 
     #[test]
+    fn scoped_lease_requires_exact_window_and_surface_identity() {
+        let (mut modes, mut host) = focused();
+        let current = scope(7);
+        assert!(!modes.scope_changed(None));
+        assert!(matches!(
+            modes.request(current.clone(), Mode::LockedRelative, &mut host),
+            Ok(Outcome::WaitingForMotion(_))
+        ));
+        assert!(!modes.scope_changed(Some(&current)));
+        assert!(modes.scope_changed(None));
+        assert!(modes.scope_changed(Some(&scope(8))));
+        assert!(modes.release(&mut host).is_ok());
+        assert!(!modes.scope_changed(None));
+    }
+
+    #[test]
+    fn native_unlock_remains_visible_until_fresh_absolute_point() {
+        let (mut modes, mut host) = focused();
+        modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
+        assert!(!host.visible);
+        assert!(matches!(
+            modes.request(scope(1), Mode::LockedRelative, &mut host),
+            Ok(Outcome::WaitingForMotion(_))
+        ));
+        assert!(modes.release(&mut host).is_ok());
+        assert!(modes.ui_pointer_allowed());
+        assert!(host.visible);
+        // An old framework cursor request cannot re-hide the cursor during recovery.
+        modes.set_ui_cursor(&mut host, CursorShape::Grab, false);
+        assert!(host.visible);
+        modes.confirm_fresh_absolute_point(&mut host);
+        assert!(!host.visible);
+        // The cursor is only restored after a genuine absolute observation.
+        assert!(matches!(
+            modes.request(scope(1), Mode::ConfinedAbsolute, &mut host),
+            Ok(Outcome::Realized(_))
+        ));
+        assert!(modes.release(&mut host).is_ok());
+        assert!(host.visible);
+        modes.confirm_fresh_absolute_point(&mut host);
+        assert!(!host.visible);
+    }
+
+    #[test]
+    fn failed_native_release_keeps_visibility_safe_through_refocus() {
+        let (mut modes, mut host) = focused();
+        modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
+        assert!(matches!(
+            modes.request(scope(1), Mode::LockedRelative, &mut host),
+            Ok(Outcome::WaitingForMotion(_))
+        ));
+        host.failures.push((Mode::Absolute, Failure::Native));
+        assert_eq!(modes.focus_changed(false, &mut host), Err(Failure::ReleaseFailed));
+        assert!(host.visible);
+        assert!(!modes.ui_pointer_allowed());
+        assert!(modes.focus_changed(true, &mut host).is_ok());
+        assert!(host.visible);
+        assert!(!modes.ui_pointer_allowed());
+        assert!(modes.release(&mut host).is_ok());
+        assert!(host.visible);
+    }
+
+    #[test]
     fn repeated_request_is_idempotent_and_retirement_invalidates_lease() {
         let (mut modes, mut host) = focused();
         let first = modes
@@ -524,11 +624,11 @@ mod tests {
             Ok(first)
         );
         assert_eq!(host.calls.len(), count);
-        assert!(modes.observe_motion(&scope(1), (1.0, -1.0)));
+        assert!(modes.observe_motion(&scope(1), (1.0, -1.0), &mut host));
         modes
             .retire_window(&mut host)
             .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
-        assert!(!modes.observe_motion(&scope(1), (1.0, -1.0)));
+        assert!(!modes.observe_motion(&scope(1), (1.0, -1.0), &mut host));
         assert_eq!(
             modes.request(scope(2), Mode::LockedRelative, &mut host),
             Err(Failure::Inactive)
