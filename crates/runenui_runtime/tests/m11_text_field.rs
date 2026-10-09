@@ -375,7 +375,7 @@ fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authorit
     assert_eq!(field.placeholder(), Some("Type here"));
     assert_eq!(field.editable().and_then(|editable| editable.value()), Some(""));
     assert_eq!(runtime.state().revision, 0);
-    let original_size = first.layout_report().root().unwrap().desired_content_size();
+    let original_size = first.layout_report().root().unwrap_or_else(|| unreachable!("field layout is retained")).desired_content_size();
     let first_hint = first.paint_scene().items().iter().find_map(|item| {
         item.primitive().as_shaped_text_run().map(|run| {
             assert_eq!(item.opacity().get(), 0.5);
@@ -383,7 +383,7 @@ fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authorit
         })
     }).unwrap_or_else(|| unreachable!("empty source renders a visual-only shaped hint"));
     assert!(first.paint_scene().shaped_text_resource(&first_hint).is_some());
-    let point = LogicalPoint::new(2.0, 2.0).unwrap();
+    let point = LogicalPoint::new(2.0, 2.0).unwrap_or_else(|_| unreachable!("point is finite"));
     assert_eq!(first.hit_test_scene().target_at(point), Some(&owner));
 
     runtime.submit_action(Action::SetPlaceholder("A much longer visual hint".to_owned()))
@@ -391,7 +391,7 @@ fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authorit
     runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
     let relabeled = publication(&mut runtime);
     assert_eq!(runtime.index().nodes()[0].id(), &owner);
-    assert_eq!(relabeled.layout_report().root().unwrap().desired_content_size(), original_size);
+    assert_eq!(relabeled.layout_report().root().unwrap_or_else(|| unreachable!("field layout is retained")).desired_content_size(), original_size);
     assert_eq!(
         relabeled.semantic_publication().snapshot().nodes()[0]
             .editable().and_then(|editable| editable.value()), Some("")

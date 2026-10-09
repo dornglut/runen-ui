@@ -116,14 +116,17 @@ pub(super) fn layout_resolved_surface<Action>(
     root_constraints: LayoutConstraints,
     text_system: &mut TextSystem,
     text_editing: TextEditingPaintInputs<'_>,
-    prior_text_layouts: Option<&[TextLayoutState]>,
-    prior_placeholder_layouts: Option<&[TextLayoutState]>,
+    prior_layouts: Option<(&[TextLayoutState], &[TextLayoutState])>,
 ) -> Result<LayoutResult, TextLayoutError> {
     #[cfg(feature = "internal-test-seams")]
     let profile_started = std::time::Instant::now();
     #[cfg(test)]
     super::cache::note_layout_phase_execution();
 
+    let (prior_text_layouts, prior_placeholder_layouts) = prior_layouts.map_or(
+        (None, None),
+        |(source, placeholder)| (Some(source), Some(placeholder)),
+    );
     let mut reserved_present = chrome_plan
         .bars
         .iter()

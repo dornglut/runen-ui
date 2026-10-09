@@ -224,8 +224,10 @@ fn resolve_layout_phase<Action>(
             context.root_constraints(),
             text_system,
             text_editing,
-            Some(current.layout.text_layouts.as_slice()),
-            Some(current.layout.placeholder_text_layouts.as_slice()),
+            Some((
+                current.layout.text_layouts.as_slice(),
+                current.layout.placeholder_text_layouts.as_slice(),
+            )),
         )?;
     Ok(CachedLayoutFacts {
         size,
