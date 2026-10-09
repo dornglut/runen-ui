@@ -598,10 +598,7 @@ mod tests {
         assert!(projection.display_offset_for_position(&nearest).is_ok());
         assert_eq!(
             map.nearest_position(
-                TextDocumentSnapshot::new(
-                    TextDocumentId::new(199),
-                    TextDocumentRevision::new(6),
-                ),
+                TextDocumentSnapshot::new(TextDocumentId::new(199), TextDocumentRevision::new(6),),
                 point,
                 LogicalTransform::IDENTITY,
             ),
