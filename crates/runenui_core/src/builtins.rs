@@ -490,11 +490,7 @@ impl<Action> Widget<Action> for SelectableTextWidget {
         HitContribution::single_rect(local_rect(context.local_size()))
     }
 
-    fn semantics(
-        &self,
-        _: &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         let Some(editable) = crate::SemanticEditable::new(
             self.snapshot,
             &self.content,
