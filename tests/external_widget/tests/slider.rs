@@ -79,26 +79,26 @@ impl Widget<Action> for ExternalSlider {
 
     fn create_state(&self) -> Self::State {}
 
-    fn activation(&self, _: &Self::State) -> WidgetActivation {
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
         WidgetActivation::actionable(self.enabled)
     }
 
     fn event(
         &mut self,
-        _: &mut Self::State,
+        (): &mut Self::State,
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
         if context.phase() != EventPhase::Target || !self.enabled {
             return WidgetEventOutput::none();
         }
-        let proposed = match event.as_semantic_command().map(|command| command.command()) {
+        let proposed = match event.as_semantic_command().map(runenui_core::SemanticCommandEvent::command) {
             Some(SemanticCommand::Increment) => (self.value.get() + 5.0).min(100.0),
             Some(SemanticCommand::Decrement) => (self.value.get() - 5.0).max(0.0),
             Some(SemanticCommand::SetValue(value)) => value.get(),
             _ => return WidgetEventOutput::none(),
         };
-        if (0.0..=100.0).contains(&proposed) && proposed != self.value.get() {
+        if (0.0..=100.0).contains(&proposed) && number(proposed) != self.value {
             context.emit(Action::Set(number(proposed)));
             context.prevent_default();
             context.stop_propagation();
@@ -106,14 +106,14 @@ impl Widget<Action> for ExternalSlider {
         WidgetEventOutput::none()
     }
 
-    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+    fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::measured(
             runenui_core::LogicalLength::from(160_u16),
             runenui_core::LogicalLength::from(24_u16),
         )
     }
 
-    fn hit_test(&self, _: &Self::State, context: HitContributionContext) -> HitContribution {
+    fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
         let size = context.local_size();
         HitContribution::single_rect(
             LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
@@ -121,7 +121,7 @@ impl Widget<Action> for ExternalSlider {
         )
     }
 
-    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         let range = SemanticRange::new(Some(number(0.0)), Some(number(100.0)), Some(self.value))
             .unwrap_or_else(|_| unreachable!("controlled range valid"))
             .with_small_step(number(5.0))
@@ -293,7 +293,7 @@ fn keyboard_and_pointer_requests_are_routed_through_same_application_fifo() {
         .clone();
     runtime
         .submit_command(
-            owner.clone(),
+            owner,
             SemanticCommand::RequestFocus,
             CommandOrigin::programmatic(),
         )
