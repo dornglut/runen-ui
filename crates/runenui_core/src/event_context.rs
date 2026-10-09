@@ -4,7 +4,7 @@ use core::{fmt, future::Future};
 
 use crate::{
     ApplicationCommandDisposition, ApplicationCommandId, CommandOrigin, DragDropEvent,
-    DragDropPhase, EventPhase, LogicalPoint, MonotonicInstant, MountedNodeId, PointerId,
+    DragDropPhase, EventPhase, LogicalPoint, LogicalSize, MonotonicInstant, MountedNodeId, PointerId,
     ScrollControlSnapshot, SemanticCommand, SendTaskStartFailure, TimerEffect, WidgetInvalidation,
     WorkFamily, WorkKey, WorkSequence, effects::MountedEffect, widget_context::WidgetWorkCollector,
 };
@@ -78,6 +78,7 @@ pub struct EventContext<'a, Action> {
     physical_target: Option<&'a MountedNodeId>,
     physical_path: &'a [MountedNodeId],
     pointer_local_position: Option<LogicalPoint>,
+    pointer_local_size: Option<LogicalSize>,
     scroll_control: Option<ScrollControlSnapshot>,
     pointer_capture: Vec<PointerCaptureRequest>,
     default_cancelable: bool,
@@ -108,6 +109,7 @@ impl<Action> fmt::Debug for EventContext<'_, Action> {
             .field("physical_target", &self.physical_target)
             .field("physical_path", &self.physical_path)
             .field("pointer_local_position", &self.pointer_local_position)
+            .field("pointer_local_size", &self.pointer_local_size)
             .field("default_cancelable", &self.default_cancelable)
             .field("default_prevented", &self.default_prevented)
             .field("propagation_stopped", &self.propagation_stopped)
@@ -195,6 +197,13 @@ impl<'a, Action> EventContext<'a, Action> {
     #[must_use]
     pub const fn pointer_local_position(&self) -> Option<LogicalPoint> {
         self.pointer_local_position
+    }
+
+    /// Final displayed owner-local extent from the same retained input publication
+    /// as pointer_local_position. Unavailable or retired geometry yields None.
+    #[must_use]
+    pub const fn pointer_local_size(&self) -> Option<LogicalSize> {
+        self.pointer_local_size
     }
 
     /// Returns the runtime-derived bound scroll snapshot for the current routed node.
@@ -403,6 +412,7 @@ impl<'a, Action> EventContext<'a, Action> {
             self.physical_target,
             self.physical_path,
             self.pointer_local_position,
+            self.pointer_local_size,
             self.scroll_control,
             self.default_cancelable,
             self.default_prevented,
@@ -526,6 +536,7 @@ impl<'a, Action> EventContext<'a, Action> {
             physical_path,
             None,
             None,
+            None,
             default_cancelable,
             default_prevented,
             propagation_stopped,
@@ -563,6 +574,7 @@ impl<'a, Action> EventContext<'a, Action> {
             None,
             &[],
             None,
+            None,
             scroll_control,
             default_cancelable,
             default_prevented,
@@ -586,6 +598,7 @@ impl<'a, Action> EventContext<'a, Action> {
         physical_target: Option<&'a MountedNodeId>,
         physical_path: &'a [MountedNodeId],
         pointer_local_position: Option<LogicalPoint>,
+        pointer_local_size: Option<LogicalSize>,
         scroll_control: Option<ScrollControlSnapshot>,
         default_cancelable: bool,
         default_prevented: bool,
@@ -605,6 +618,7 @@ impl<'a, Action> EventContext<'a, Action> {
             physical_target,
             physical_path,
             pointer_local_position,
+            pointer_local_size,
             scroll_control,
             default_cancelable,
             default_prevented,
@@ -627,6 +641,7 @@ impl<'a, Action> EventContext<'a, Action> {
         physical_target: Option<&'a MountedNodeId>,
         physical_path: &'a [MountedNodeId],
         pointer_local_position: Option<LogicalPoint>,
+        pointer_local_size: Option<LogicalSize>,
         scroll_control: Option<ScrollControlSnapshot>,
         default_cancelable: bool,
         default_prevented: bool,
@@ -647,6 +662,7 @@ impl<'a, Action> EventContext<'a, Action> {
             physical_target,
             physical_path,
             pointer_local_position,
+            pointer_local_size,
             scroll_control,
             pointer_capture: Vec::new(),
             default_cancelable,

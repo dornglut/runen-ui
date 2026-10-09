@@ -2,7 +2,7 @@
 
 use runenui_core::{
     __runtime::{EventContextOutput, WidgetBridgeError},
-    CommandOrigin, EventPhase, LogicalPoint, MonotonicInstant, PointerId, ScrollControlSnapshot,
+    CommandOrigin, EventPhase, LogicalPoint, LogicalSize, MonotonicInstant, PointerId, ScrollControlSnapshot,
     ShortcutBinding, UiEvent, WidgetEventOutput, WorkSequence,
 };
 
@@ -163,6 +163,7 @@ impl<Action> MountedTree<Action> {
         physical_target: Option<&MountedNodeId>,
         physical_path: &[MountedNodeId],
         pointer_local_position: Option<LogicalPoint>,
+        pointer_local_size: Option<LogicalSize>,
         scroll_control: Option<ScrollControlSnapshot>,
         default_cancelable: bool,
         default_prevented: bool,
@@ -186,6 +187,7 @@ impl<Action> MountedTree<Action> {
             physical_target,
             physical_path,
             pointer_local_position,
+            pointer_local_size,
             scroll_control,
             default_cancelable,
             default_prevented,

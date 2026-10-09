@@ -198,6 +198,7 @@ pub(in crate::runtime) struct StagedSurfacePublication<'a> {
     displayed_text_targets: HashMap<MountedNodeId, DisplayedTextTarget>,
     displayed_scroll_metrics: HashMap<MountedNodeId, DisplayedScrollMetrics>,
     displayed_owner_transforms: HashMap<MountedNodeId, LogicalTransform>,
+    displayed_owner_sizes: HashMap<MountedNodeId, LogicalSize>,
     paint_publication: PaintPublication,
     allocated_paint_revision: Option<u64>,
     hit_test_generation: u64,
@@ -224,6 +225,7 @@ impl StagedSurfacePublication<'_> {
             displayed_text_targets,
             displayed_scroll_metrics,
             displayed_owner_transforms,
+            displayed_owner_sizes,
             paint_publication,
             allocated_paint_revision,
             hit_test_generation,
@@ -238,6 +240,7 @@ impl StagedSurfacePublication<'_> {
             displayed_text_targets,
             displayed_scroll_metrics,
             displayed_owner_transforms,
+            displayed_owner_sizes,
             paint_publication,
             allocated_paint_revision,
             hit_test_generation,
@@ -256,6 +259,7 @@ pub(in crate::runtime) struct AdmittedSurfacePublicationCommit {
     displayed_text_targets: HashMap<MountedNodeId, DisplayedTextTarget>,
     displayed_scroll_metrics: HashMap<MountedNodeId, DisplayedScrollMetrics>,
     displayed_owner_transforms: HashMap<MountedNodeId, LogicalTransform>,
+    displayed_owner_sizes: HashMap<MountedNodeId, LogicalSize>,
     paint_publication: PaintPublication,
     allocated_paint_revision: Option<u64>,
     hit_test_generation: u64,
@@ -289,6 +293,7 @@ struct RetainedSurfaceSnapshot {
     text_targets: HashMap<MountedNodeId, DisplayedTextTarget>,
     scroll_metrics: HashMap<MountedNodeId, DisplayedScrollMetrics>,
     owner_transforms: HashMap<MountedNodeId, LogicalTransform>,
+    owner_sizes: HashMap<MountedNodeId, LogicalSize>,
 }
 
 impl RetainedSurfaceSnapshot {
@@ -425,6 +430,7 @@ impl SurfacePublicationState {
         crate::surface::profile::record_displayed_text_targets(displayed_text_started.elapsed());
         let displayed_scroll_metrics = planned.displayed_scroll_metrics();
         let displayed_owner_transforms = planned.displayed_owner_transforms();
+        let displayed_owner_sizes = planned.displayed_owner_sizes();
         #[cfg(feature = "internal-test-seams")]
         let semantic_candidate_started = std::time::Instant::now();
         let semantic_candidate = planned.semantic_candidate(focused_owner, editing)?;
@@ -509,6 +515,7 @@ impl SurfacePublicationState {
             displayed_text_targets,
             displayed_scroll_metrics,
             displayed_owner_transforms,
+            displayed_owner_sizes,
             paint_publication,
             allocated_paint_revision,
             hit_test_generation,
@@ -530,6 +537,7 @@ impl SurfacePublicationState {
             displayed_text_targets,
             displayed_scroll_metrics,
             displayed_owner_transforms,
+            displayed_owner_sizes,
             paint_publication,
             allocated_paint_revision,
             hit_test_generation,
@@ -549,6 +557,7 @@ impl SurfacePublicationState {
             displayed_text_targets,
             displayed_scroll_metrics,
             displayed_owner_transforms,
+            displayed_owner_sizes,
             hit_test_generation,
             coordinate_revision,
         );
@@ -567,6 +576,7 @@ impl SurfacePublicationState {
         text_targets: HashMap<MountedNodeId, DisplayedTextTarget>,
         scroll_metrics: HashMap<MountedNodeId, DisplayedScrollMetrics>,
         owner_transforms: HashMap<MountedNodeId, LogicalTransform>,
+        owner_sizes: HashMap<MountedNodeId, LogicalSize>,
         hit_test_generation: u64,
         coordinate_revision: u64,
     ) {
@@ -602,6 +612,7 @@ impl SurfacePublicationState {
             text_targets,
             scroll_metrics,
             owner_transforms,
+            owner_sizes,
         });
     }
 
@@ -765,6 +776,16 @@ impl SurfacePublicationState {
             .text_targets
             .get(owner)?
             .captured_drag_position(point)
+    }
+
+    /// Exact final owner-local border box of a retained displayed input generation.
+    pub(in crate::runtime) fn pointer_local_size_at(
+        &self,
+        context: &SurfaceInputContext,
+        owner: &MountedNodeId,
+    ) -> Option<LogicalSize> {
+        let (snapshot, _) = self.validate_context(context).ok()?;
+        snapshot.owner_sizes.get(owner).copied()
     }
 
     pub(in crate::runtime) fn pointer_local_position_at(
