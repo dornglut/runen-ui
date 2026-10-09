@@ -170,10 +170,13 @@ pub enum TextLeafWrap {
     NoWrap,
 }
 
-/// Authored text-leaf measurement over a single retained production text layout.
+/// Authored source measurement with an optional separate M8 visual placeholder.
+/// The placeholder never replaces the document's retained source layout or caret map.
 #[derive(Clone, Eq, PartialEq)]
 pub struct TextLeafMeasure {
     content: String,
+    // Visual-only empty-source hint; not an editable document or M10 caret source.
+    visual_placeholder: Option<String>,
     inline_alignment: TextAlignment,
     block_placement: TextBlockPlacement,
     wrap_mode: TextLeafWrap,
@@ -196,6 +199,7 @@ impl TextLeafMeasure {
     pub fn new(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
+            visual_placeholder: None,
             inline_alignment: TextAlignment::Start,
             block_placement: TextBlockPlacement::Start,
             wrap_mode: TextLeafWrap::Wrap,
@@ -218,6 +222,23 @@ impl TextLeafMeasure {
     pub const fn with_wrap_mode(mut self, mode: TextLeafWrap) -> Self {
         self.wrap_mode = mode;
         self
+    }
+
+    /// Gives M8 a separate visual hint, never substituted for the editable source.
+    /// The hint is rendered only for an empty, checked M10 editable owner with no
+    /// active preedit. Non-editable text leaves do not acquire a placeholder.
+    #[must_use]
+    pub fn with_visual_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.visual_placeholder = Some(placeholder.into());
+        self
+    }
+
+    #[must_use]
+    pub const fn visual_placeholder(&self) -> Option<&str> {
+        match &self.visual_placeholder {
+            Some(text) => Some(text.as_str()),
+            None => None,
+        }
     }
 
     #[must_use]
@@ -592,5 +613,16 @@ mod confidentiality_tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn empty_source_visual_hint_is_distinct_from_document_and_implicit_debug() {
+        let measured = TextLeafMeasure::new("").with_visual_placeholder("Hint é漢");
+        assert_eq!(measured.content(), "");
+        assert_eq!(measured.visual_placeholder(), Some("Hint é漢"));
+        let output = format!("{measured:?}");
+        assert!(!output.contains("Hint"));
+        assert!(!output.contains("é漢"));
+        assert_eq!(TextLeafMeasure::new("ordinary").visual_placeholder(), None);
     }
 }

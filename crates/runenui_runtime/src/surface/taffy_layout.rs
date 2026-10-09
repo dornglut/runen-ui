@@ -78,6 +78,8 @@ type LayoutCoreResult = (
     SurfaceLayoutReport,
     Vec<TextLayoutState>,
     Vec<LogicalPoint>,
+    Vec<TextLayoutState>,
+    Vec<LogicalPoint>,
 );
 
 type LayoutResult = (
@@ -85,6 +87,8 @@ type LayoutResult = (
     Vec<LogicalRect>,
     SurfaceLayoutReport,
     Vec<Option<CachedScrollChromeProjection>>,
+    Vec<TextLayoutState>,
+    Vec<LogicalPoint>,
     Vec<TextLayoutState>,
     Vec<LogicalPoint>,
 );
@@ -98,6 +102,7 @@ struct LayoutPassInputs<'a, Action> {
     preedits: &'a HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
     sensitivities: &'a HashMap<crate::MountedNodeId, TextSensitivity>,
     prior_text_layouts: Option<&'a [TextLayoutState]>,
+    prior_placeholder_layouts: Option<&'a [TextLayoutState]>,
 }
 
 #[allow(
@@ -111,13 +116,17 @@ pub(super) fn layout_resolved_surface<Action>(
     root_constraints: LayoutConstraints,
     text_system: &mut TextSystem,
     text_editing: TextEditingPaintInputs<'_>,
-    prior_text_layouts: Option<&[TextLayoutState]>,
+    prior_layouts: Option<(&[TextLayoutState], &[TextLayoutState])>,
 ) -> Result<LayoutResult, TextLayoutError> {
     #[cfg(feature = "internal-test-seams")]
     let profile_started = std::time::Instant::now();
     #[cfg(test)]
     super::cache::note_layout_phase_execution();
 
+    let (prior_text_layouts, prior_placeholder_layouts) = prior_layouts
+        .map_or((None, None), |(source, placeholder)| {
+            (Some(source), Some(placeholder))
+        });
     let mut reserved_present = chrome_plan
         .bars
         .iter()
@@ -139,6 +148,7 @@ pub(super) fn layout_resolved_surface<Action>(
             preedits: text_editing.preedits,
             sensitivities: text_editing.sensitivities,
             prior_text_layouts,
+            prior_placeholder_layouts,
         };
         result = layout_resolved_surface_once(&inputs, text_system)?;
         let mut added = false;
@@ -172,6 +182,8 @@ pub(super) fn layout_resolved_surface<Action>(
         scroll_chrome,
         result.3,
         result.4,
+        result.5,
+        result.6,
     ))
 }
 
@@ -506,6 +518,9 @@ struct LayoutKernel<'a, Action> {
     // retaining its state avoids any post-layout geometry-based identity guess.
     final_text_states: Vec<Option<TextLayoutState>>,
     final_text_origins: Vec<LogicalPoint>,
+    placeholder_text_layouts: Vec<TextLayoutState>,
+    final_placeholder_states: Vec<Option<TextLayoutState>>,
+    final_placeholder_origins: Vec<LogicalPoint>,
     text_measurements: Vec<Vec<SurfaceTextMeasurementRecord>>,
     diagnostics: Vec<Vec<runenui_core::WidgetDiagnostic>>,
     intrinsic_sizes: Vec<LogicalSize>,
@@ -526,6 +541,10 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         let prior_text_layouts = inputs.prior_text_layouts;
         let count = resolved.nodes().len();
         let text_layouts = prior_text_layouts
+            .filter(|states| states.len() == count)
+            .map_or_else(|| vec![TextLayoutState::new(); count], ToOwned::to_owned);
+        let placeholder_text_layouts = inputs
+            .prior_placeholder_layouts
             .filter(|states| states.len() == count)
             .map_or_else(|| vec![TextLayoutState::new(); count], ToOwned::to_owned);
         let mut diagnostics = chrome_plan.diagnostics.clone();
@@ -573,6 +592,13 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             caches: vec![Cache::new(); count],
             layouts: vec![Layout::default(); count],
             text_layouts,
+            placeholder_text_layouts,
+            final_placeholder_states: vec![None; count],
+            final_placeholder_origins: vec![
+                LogicalPoint::new(0.0, 0.0)
+                    .unwrap_or_else(|_| unreachable!("zero is finite"));
+                count
+            ],
             final_text_states: vec![None; count],
             final_text_origins: vec![
                 LogicalPoint::new(0.0, 0.0)
@@ -665,7 +691,17 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 let request_started = std::time::Instant::now();
                 let preedit = self.preedits.get(&mounted.id);
                 let current_sensitivity = self.sensitivities.get(&mounted.id).copied();
-                let content = match mounted.widget.editable(&mounted.state) {
+                let editable = mounted.widget.editable(&mounted.state);
+                let show_placeholder = descriptor.content().is_empty()
+                    && preedit.is_none()
+                    && matches!(
+                        &editable,
+                        Ok(Some(owner))
+                            if owner.text().is_empty()
+                                && current_sensitivity
+                                    .is_none_or(|live| live == owner.sensitivity())
+                    );
+                let content = match editable {
                     Ok(Some(editable))
                         if current_sensitivity == Some(TextSensitivity::Secret)
                             || editable.sensitivity() == TextSensitivity::Secret =>
@@ -824,6 +860,41 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                                     .unwrap_or_else(|_| {
                                         unreachable!("validated lengths are finite")
                                     });
+                            if show_placeholder
+                                && let Some(hint) = descriptor
+                                    .visual_placeholder()
+                                    .filter(|hint| !hint.is_empty())
+                            {
+                                // M8 shapes the hint separately: source, caret, IME,
+                                // intrinsic size and ordinary semantics remain untouched.
+                                let hint_request = TextRequest::new(
+                                    hint,
+                                    request.typography().clone(),
+                                    request.constraints(),
+                                )
+                                .with_paragraph_style(request.paragraph_style().clone());
+                                let mut hint_state = self.placeholder_text_layouts[index].clone();
+                                match self.text_system.layout_text(&mut hint_state, &hint_request) {
+                                    Ok(hint_outcome) => {
+                                        let hint_height = hint_outcome.artifact().size().height();
+                                        let slack = (block_extent - hint_height).max(0.0);
+                                        let offset = match descriptor.block_placement() {
+                                            TextBlockPlacement::Start => 0.0,
+                                            TextBlockPlacement::Center => slack / 2.0,
+                                            TextBlockPlacement::End => slack,
+                                        };
+                                        let top =
+                                            padding.top().saturating_add(logical_extent(offset));
+                                        self.final_placeholder_states[index] = Some(hint_state);
+                                        self.final_placeholder_origins[index] =
+                                            LogicalPoint::new(padding.left().get(), top.get())
+                                                .unwrap_or_else(|_| {
+                                                    unreachable!("validated origin is finite")
+                                                });
+                                    }
+                                    Err(error) => self.text_error = Some(error),
+                                }
+                            }
                         }
                         text_size
                     }
@@ -1016,6 +1087,11 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             } else {
                 self.text_layouts[index].clear();
             }
+            if let Some(state) = self.final_placeholder_states[index].take() {
+                self.placeholder_text_layouts[index] = state;
+            } else {
+                self.placeholder_text_layouts[index].clear();
+            }
         }
         let size = bounds.first().map_or(LogicalSize::ZERO, |b| b.size());
         Ok((
@@ -1024,6 +1100,8 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             SurfaceLayoutReport::new(reports),
             self.text_layouts,
             self.final_text_origins,
+            self.placeholder_text_layouts,
+            self.final_placeholder_origins,
         ))
     }
 }

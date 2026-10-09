@@ -750,11 +750,19 @@ impl TextCaretMap {
         {
             return Err(TextCaretMapError::NotCaretStop);
         }
-        let cursor = Cursor::from_byte_index(
-            &self.cached.layout,
-            byte_offset,
-            affinity_to_parley(affinity),
-        );
+        // Parley returns Upstream for a byte-index cursor when the layout has
+        // no clusters, but its point-based cursor represents the same empty
+        // caret as Downstream. Both document affinities remain valid at byte 0;
+        // use Parley's own empty-layout cursor rather than inventing geometry.
+        let cursor = if source.is_empty() && affinity == TextAffinity::Downstream {
+            Cursor::from_point(&self.cached.layout, 0.0, 0.0)
+        } else {
+            Cursor::from_byte_index(
+                &self.cached.layout,
+                byte_offset,
+                affinity_to_parley(affinity),
+            )
+        };
         if cursor.index() != byte_offset {
             return Err(TextCaretMapError::NotCaretStop);
         }

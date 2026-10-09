@@ -328,6 +328,8 @@ pub(super) struct CachedLayoutFacts {
     pub(super) text_layouts: Vec<TextLayoutState>,
     // One final-layout origin for every retained text artifact, topology-aligned.
     pub(super) text_origins: Vec<LogicalPoint>,
+    pub(super) placeholder_text_layouts: Vec<TextLayoutState>,
+    pub(super) placeholder_text_origins: Vec<LogicalPoint>,
 }
 
 /// One runtime-owned node presentation fact in mounted-preorder alignment.

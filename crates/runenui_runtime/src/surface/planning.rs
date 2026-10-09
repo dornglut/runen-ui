@@ -214,16 +214,27 @@ fn resolve_layout_phase<Action>(
 ) -> Result<CachedLayoutFacts, SurfacePlanningError> {
     let resolved = ResolvedSurfaceTree::for_layout(&current.topology, &current.effective);
     let chrome_plan = resolve_scroll_chrome_layout_plan(&current.topology)?;
-    let (size, bounds, report, scroll_chrome, text_layouts, text_origins) =
-        layout_resolved_surface(
-            &resolved,
-            &chrome_plan,
-            tree,
-            context.root_constraints(),
-            text_system,
-            text_editing,
-            Some(current.layout.text_layouts.as_slice()),
-        )?;
+    let (
+        size,
+        bounds,
+        report,
+        scroll_chrome,
+        text_layouts,
+        text_origins,
+        placeholder_text_layouts,
+        placeholder_text_origins,
+    ) = layout_resolved_surface(
+        &resolved,
+        &chrome_plan,
+        tree,
+        context.root_constraints(),
+        text_system,
+        text_editing,
+        Some((
+            current.layout.text_layouts.as_slice(),
+            current.layout.placeholder_text_layouts.as_slice(),
+        )),
+    )?;
     Ok(CachedLayoutFacts {
         size,
         bounds,
@@ -231,6 +242,8 @@ fn resolve_layout_phase<Action>(
         scroll_chrome,
         text_layouts,
         text_origins,
+        placeholder_text_layouts,
+        placeholder_text_origins,
     })
 }
 
@@ -575,16 +588,24 @@ fn plan_structural_surface<'tree, Action>(
     tree.extend_surface_publication_capabilities(&mut capability_plan, DirtyPhases::ALL);
     let resolved = ResolvedSurfaceTree::for_layout(&topology, &effective);
     let chrome_plan = resolve_scroll_chrome_layout_plan(&topology)?;
-    let (size, bounds, layout_report, scroll_chrome, text_layouts, text_origins) =
-        layout_resolved_surface(
-            &resolved,
-            &chrome_plan,
-            tree,
-            context.root_constraints(),
-            text_system,
-            text_editing,
-            None,
-        )?;
+    let (
+        size,
+        bounds,
+        layout_report,
+        scroll_chrome,
+        text_layouts,
+        text_origins,
+        placeholder_text_layouts,
+        placeholder_text_origins,
+    ) = layout_resolved_surface(
+        &resolved,
+        &chrome_plan,
+        tree,
+        context.root_constraints(),
+        text_system,
+        text_editing,
+        None,
+    )?;
     let layout = CachedLayoutFacts {
         size,
         bounds,
@@ -592,6 +613,8 @@ fn plan_structural_surface<'tree, Action>(
         scroll_chrome,
         text_layouts,
         text_origins,
+        placeholder_text_layouts,
+        placeholder_text_origins,
     };
     report.record(SurfacePhase::Layout);
     let scroll = normalize_scroll_projection(&topology, &layout, scroll)?;

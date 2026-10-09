@@ -15,7 +15,7 @@ use runenui_core::{
     __runtime::transform_rect_aabb, Axis, Color, ComputedStyle, ContributionClip, ElementId,
     HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
     LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
-    PaintContributionItem, Radius, SceneShape, ScrollBarLayout, ScrollChrome,
+    PaintContributionItem, Radius, SceneOpacity, SceneShape, ScrollBarLayout, ScrollChrome,
     ScrollControlSnapshot, SemanticContributionContext, StyleEnvironment, StyleInteractionState,
     StyleResolution, SurfacePresentation, TextAffinity, WidgetDiagnostic, WidgetTypeId,
     resolve_style_in_environment, style_effects_between,
@@ -1243,38 +1243,79 @@ fn append_text_preedit_and_caret(
     }
 }
 
+struct TextPaintResources<'a> {
+    text_system: &'a mut TextSystem,
+    leases: &'a mut Vec<ShapedTextLease>,
+}
+
 fn append_shaped_text(
     layout: &CachedLayoutFacts,
     computed: &ComputedStyle,
     owner: OwnerPaintContext<'_>,
+    visual_hint: bool,
     next_local_order: &mut usize,
-    text_system: &mut TextSystem,
-    shaped_text_leases: &mut Vec<ShapedTextLease>,
+    resources: &mut TextPaintResources<'_>,
     ordered: &mut Vec<groups::OrderedPaintItem>,
 ) {
     #[cfg(feature = "internal-test-seams")]
     let mut profiled_run_count = 0usize;
     let mounted_preorder = owner.mounted_preorder;
-    if let Some(artifact) = layout.text_layouts[mounted_preorder].artifact() {
+    let (state, origin) = if visual_hint {
+        (
+            &layout.placeholder_text_layouts[mounted_preorder],
+            layout.placeholder_text_origins[mounted_preorder],
+        )
+    } else {
+        (
+            &layout.text_layouts[mounted_preorder],
+            layout.text_origins[mounted_preorder],
+        )
+    };
+    let mut hint_clips = Vec::new();
+    if visual_hint && state.artifact().is_some() {
+        hint_clips.extend_from_slice(owner.content_clips);
+        let bounds = layout.bounds[mounted_preorder];
+        let local = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
+            .unwrap_or_else(|_| unreachable!("published owner extent is finite"));
+        // The field border box does not scroll with its text content.
+        // Existing inherited viewport clips remain owner-anchored as well.
+        hint_clips.push(SceneClip::new(
+            SceneShape::rect(local),
+            owner.owner_to_surface,
+        ));
+    }
+    let clips = if visual_hint {
+        hint_clips.as_slice()
+    } else {
+        owner.content_clips
+    };
+    let opacity = if visual_hint {
+        SceneOpacity::new(0.5)
+            .unwrap_or_else(|_| unreachable!("constant visual hint opacity is valid"))
+    } else {
+        SceneOpacity::OPAQUE
+    };
+    if let Some(artifact) = state.artifact() {
         for line in artifact.lines() {
             for run in line.runs() {
                 #[cfg(feature = "internal-test-seams")]
                 {
                     profiled_run_count = profiled_run_count.saturating_add(1);
                 }
-                let lease = text_system
+                let lease = resources
+                    .text_system
                     .lease_shaped_run(run.resource_ref())
                     .unwrap_or_else(|| {
                         unreachable!("published text artifact retains its exact shaped resource")
                     });
-                shaped_text_leases.push(lease);
-                let item = text_run_item(run, computed, layout.text_origins[mounted_preorder]);
+                resources.leases.push(lease);
+                let item = text_run_item(run, computed, origin).with_opacity(opacity);
                 append_runtime_paint_item(
                     &item,
                     owner.mounted_preorder,
                     *next_local_order,
                     owner.content_to_surface,
-                    owner.content_clips,
+                    clips,
                     ordered,
                 );
                 *next_local_order += 1;
@@ -1535,13 +1576,26 @@ pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
             );
         }
 
+        let mut text_resources = TextPaintResources {
+            text_system: &mut *text_system,
+            leases: &mut shaped_text_leases,
+        };
         append_shaped_text(
             layout,
             computed,
             owner,
+            false,
             &mut next_local_order,
-            text_system,
-            &mut shaped_text_leases,
+            &mut text_resources,
+            &mut ordered,
+        );
+        append_shaped_text(
+            layout,
+            computed,
+            owner,
+            true,
+            &mut next_local_order,
+            &mut text_resources,
             &mut ordered,
         );
 

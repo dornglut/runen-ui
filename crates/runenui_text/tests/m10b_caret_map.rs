@@ -76,6 +76,32 @@ fn map_for(source: &str, width: Option<f32>) -> Result<TextCaretMap, Box<dyn Err
 }
 
 #[test]
+fn empty_document_caret_has_downstream_stop() -> Result<(), Box<dyn Error>> {
+    let map = map_for("", None)?;
+    let downstream = map.validate_position(&document_position("", 0, TextAffinity::Downstream));
+    let upstream = map.validate_position(&document_position("", 0, TextAffinity::Upstream));
+    assert_eq!(
+        downstream,
+        Ok(()),
+        "empty document requires a valid downstream caret; upstream={upstream:?}"
+    );
+    assert_eq!(upstream, Ok(()));
+    assert_eq!(map.legal_byte_offsets(), vec![0]);
+    assert_eq!(map.legal_positions().len(), 2);
+    for affinity in [TextAffinity::Upstream, TextAffinity::Downstream] {
+        let position = document_position("", 0, affinity);
+        let caret = map.caret_rect(&position, LogicalLength::from(1_u8))?;
+        assert!(caret.width() > 0.0);
+        assert!(caret.height() >= 0.0);
+        assert_eq!(
+            map.selection_rects(&TextDisplaySelection::new(position.clone(), position,))?,
+            Vec::new()
+        );
+    }
+    Ok(())
+}
+
+#[test]
 #[allow(clippy::assert_is_empty)]
 fn scalar_coordinates_are_narrowed_to_grapheme_and_shaping_stops() -> Result<(), Box<dyn Error>> {
     let source = "e\u{301} office 👩\u{200d}💻";
