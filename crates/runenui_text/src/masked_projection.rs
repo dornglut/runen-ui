@@ -551,10 +551,11 @@ mod tests {
                 .unwrap_or_else(|_| unreachable!("source end")),
         );
         assert!(map.caret_rect(&begin, LogicalLength::from(1_u8)).is_ok());
-        assert!(
-            !map.selection_rects(&TextDisplaySelection::new(begin.clone(), end))
+        assert_ne!(
+            map.selection_rects(&TextDisplaySelection::new(begin.clone(), end))
                 .unwrap_or_else(|_| unreachable!("grapheme-aligned selection"))
-                .is_empty()
+                .len(),
+            0
         );
         let expected_mask = state
             .caret_map_for_source(snapshot(), projection.display_text())
@@ -563,7 +564,7 @@ mod tests {
         assert!(map.is_correlated_with(expected_mask.artifact()));
         let (moved, _) = map
             .navigate(
-                &TextDisplaySelection::new(begin.clone(), begin.clone()),
+                &TextDisplaySelection::new(begin.clone(), begin),
                 TextNavigation::NextLogical,
                 TextNavigationMode::Move,
                 None,
