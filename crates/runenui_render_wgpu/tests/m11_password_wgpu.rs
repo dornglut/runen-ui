@@ -4,6 +4,7 @@ use core::{
     pin::pin,
     task::{Context, Poll},
 };
+use std::{fs, path::PathBuf};
 use runenui_core::{
     Color, EditIntent, EditResolution, FontFamilyName, GenericFontFamily, NoHostProtocol,
     SemanticEditableMode, StyleEnvironment, TextAffinity, TextDocumentId, TextDocumentRevision,
@@ -132,6 +133,18 @@ fn masked_standard_password_renders_with_real_wgpu_and_reclassifies_without_sour
     );
     let initial = renderer.render_offscreen_publication(masked.paint_publication(), &provider)?;
     let pixels = initial.readback().rgba8_srgb().to_vec();
+    let evidence_dir = std::env::var_os("RUNENUI_M11PASSWORD_EVIDENCE_DIR").map(PathBuf::from);
+    if let Some(directory) = &evidence_dir {
+        fs::create_dir_all(directory)?;
+        let extent = initial.readback().extent();
+        image::save_buffer(
+            directory.join("m11-password-masked.png"),
+            &pixels,
+            extent.width(),
+            extent.height(),
+            image::ColorType::Rgba8,
+        )?;
+    }
     runtime
         .submit_action(Action::Toggle)
         .unwrap_or_else(|_| unreachable!("toggle is accepted"));
@@ -139,6 +152,16 @@ fn masked_standard_password_renders_with_real_wgpu_and_reclassifies_without_sour
     let public = publish(&mut runtime);
     let visible = renderer.render_offscreen_publication(public.paint_publication(), &provider)?;
     assert_ne!(pixels, visible.readback().rgba8_srgb());
+    if let Some(directory) = &evidence_dir {
+        let extent = visible.readback().extent();
+        image::save_buffer(
+            directory.join("m11-password-public.png"),
+            visible.readback().rgba8_srgb(),
+            extent.width(),
+            extent.height(),
+            image::ColorType::Rgba8,
+        )?;
+    }
     runtime
         .submit_action(Action::Toggle)
         .unwrap_or_else(|_| unreachable!("toggle is accepted"));
