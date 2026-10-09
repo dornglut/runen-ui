@@ -203,7 +203,6 @@ impl TextLeafMeasure {
     }
 
     #[must_use]
-    #[must_use]
     pub const fn with_wrap_mode(mut self, mode: TextLeafWrap) -> Self {
         self.wrap_mode = mode;
         self

@@ -236,16 +236,32 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
 
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         if state.content != self.state.content || state.mode != self.state.mode {
+            // Mode changes wrapping and thus the retained M8 text geometry.
             context.invalidate(
                 WidgetInvalidation::LAYOUT
                     | WidgetInvalidation::PAINT
                     | WidgetInvalidation::SEMANTICS,
             );
-        } else if state != &self.state {
-            context.invalidate(WidgetInvalidation::SEMANTICS | WidgetInvalidation::PAINT);
-        }
-        if state.disabled != self.state.disabled || state.read_only != self.state.read_only {
-            context.invalidate(WidgetInvalidation::INTERACTION);
+        } else {
+            if state.snapshot != self.state.snapshot || state.selection != self.state.selection {
+                context.invalidate(WidgetInvalidation::PAINT | WidgetInvalidation::SEMANTICS);
+            }
+            if state.placeholder != self.state.placeholder
+                || state.labelled_by != self.state.labelled_by
+                || state.described_by != self.state.described_by
+                || state.error_message != self.state.error_message
+                || state.invalid != self.state.invalid
+                || state.required != self.state.required
+            {
+                context.invalidate(WidgetInvalidation::SEMANTICS);
+            }
+            if state.read_only != self.state.read_only || state.disabled != self.state.disabled {
+                context.invalidate(
+                    WidgetInvalidation::INTERACTION
+                        | WidgetInvalidation::PAINT
+                        | WidgetInvalidation::SEMANTICS,
+                );
+            }
         }
         state.clone_from(&self.state);
     }
@@ -365,9 +381,18 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             node = node.with_placeholder(placeholder.clone());
         }
         for (target, kind) in [
-            (&self.state.labelled_by, SemanticRelationshipKind::LabelledBy),
-            (&self.state.described_by, SemanticRelationshipKind::DescribedBy),
-            (&self.state.error_message, SemanticRelationshipKind::ErrorMessage),
+            (
+                &self.state.labelled_by,
+                SemanticRelationshipKind::LabelledBy,
+            ),
+            (
+                &self.state.described_by,
+                SemanticRelationshipKind::DescribedBy,
+            ),
+            (
+                &self.state.error_message,
+                SemanticRelationshipKind::ErrorMessage,
+            ),
         ] {
             if let Some(element_id) = target {
                 node = node.with_relationship(SemanticRelationship::new(
@@ -428,4 +453,98 @@ pub fn text_field<Action>(
     on_edit: impl Fn(EditIntent) -> Action + 'static,
 ) -> Result<TextField<Action>, TextFieldError> {
     TextField::new(snapshot, content, selection, mode, on_edit)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{TextAffinity, TextDocumentId, TextDocumentRevision, TextPosition};
+
+    fn widget(mode: SemanticEditableMode) -> TextFieldWidget<()> {
+        let content = "a line without hard breaks".to_owned();
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(91), TextDocumentRevision::new(1));
+        let position = TextPosition::new(
+            snapshot,
+            &content,
+            content.len(),
+            TextAffinity::Upstream,
+        )
+        .unwrap_or_else(|_| unreachable!("fixture position is valid"));
+        TextFieldWidget {
+            state: TextFieldState {
+                snapshot,
+                content,
+                selection: TextSelection::collapsed(position),
+                mode,
+                placeholder: None,
+                labelled_by: None,
+                described_by: None,
+                error_message: None,
+                invalid: None,
+                required: false,
+                read_only: false,
+                disabled: false,
+            },
+            mapper: Rc::new(|_| ()),
+            on_submit: None,
+        }
+    }
+
+    #[test]
+    fn mode_rebuild_invalidates_retained_text_geometry_and_semantics() {
+        let before = widget(SemanticEditableMode::Multiline);
+        let after = widget(SemanticEditableMode::SingleLine);
+        let mut retained = before.create_state();
+        let mut context = WidgetUpdateContext::<()>::__runtime_new();
+        after.update(&mut retained, &mut context);
+        let flags = context.__runtime_take_invalidation();
+        assert!(flags.contains(WidgetInvalidation::LAYOUT));
+        assert!(flags.contains(WidgetInvalidation::PAINT));
+        assert!(flags.contains(WidgetInvalidation::SEMANTICS));
+        assert_eq!(retained.mode, SemanticEditableMode::SingleLine);
+    }
+
+    #[test]
+    fn relationship_rebuild_invalidates_semantics_without_layout_or_paint() {
+        let before = widget(SemanticEditableMode::SingleLine);
+        let mut after = widget(SemanticEditableMode::SingleLine);
+        after.state.labelled_by = Some(
+            ElementId::from_static("form.label")
+                .unwrap_or_else(|_| unreachable!("fixture id is valid")),
+        );
+        after.state.described_by = Some(
+            ElementId::from_static("form.help")
+                .unwrap_or_else(|_| unreachable!("fixture id is valid")),
+        );
+        after.state.error_message = Some(
+            ElementId::from_static("form.error")
+                .unwrap_or_else(|_| unreachable!("fixture id is valid")),
+        );
+        let mut retained = before.create_state();
+        let mut context = WidgetUpdateContext::<()>::__runtime_new();
+        after.update(&mut retained, &mut context);
+        let flags = context.__runtime_take_invalidation();
+        assert!(flags.contains(WidgetInvalidation::SEMANTICS));
+        assert!(!flags.contains(WidgetInvalidation::LAYOUT));
+        assert!(!flags.contains(WidgetInvalidation::PAINT));
+        assert_eq!(retained.labelled_by, after.state.labelled_by);
+        assert_eq!(retained.described_by, after.state.described_by);
+        assert_eq!(retained.error_message, after.state.error_message);
+    }
+
+    #[test]
+    fn readonly_and_disabled_changes_refresh_interaction_authority() {
+        let before = widget(SemanticEditableMode::SingleLine);
+        let mut after = widget(SemanticEditableMode::SingleLine);
+        after.state.read_only = true;
+        after.state.disabled = true;
+        let mut retained = before.create_state();
+        let mut context = WidgetUpdateContext::<()>::__runtime_new();
+        after.update(&mut retained, &mut context);
+        let flags = context.__runtime_take_invalidation();
+        assert!(flags.contains(WidgetInvalidation::INTERACTION));
+        assert!(flags.contains(WidgetInvalidation::SEMANTICS));
+        assert!(!flags.contains(WidgetInvalidation::LAYOUT));
+    }
 }
