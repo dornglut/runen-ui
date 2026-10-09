@@ -560,3 +560,75 @@ fn text_measure_descriptor_defaults_and_button_center_are_public() {
     assert_eq!(downstream.inline_alignment(), TextAlignment::End);
     assert_eq!(downstream.block_placement(), TextBlockPlacement::End);
 }
+
+#[test]
+fn selectable_text_reuses_public_m10_selection_and_copy_without_mutation() {
+    use runenui_core::{
+        EditableContributionError, SemanticAction, SemanticEditableMode, TextAffinity,
+        TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection,
+        selectable_text,
+    };
+
+    let snapshot = TextDocumentSnapshot::new(
+        TextDocumentId::new(250),
+        TextDocumentRevision::new(2),
+    );
+    let source = "read-only public documentation";
+    let position = TextPosition::new(
+        snapshot,
+        source,
+        source.len(),
+        TextAffinity::Downstream,
+    )
+    .unwrap_or_else(|_| unreachable!("selection is valid"));
+    let selection = TextSelection::collapsed(position);
+    let element: runenui_core::Element<Action> = selectable_text(snapshot, source, selection)
+        .unwrap_or_else(|_| unreachable!("read-only contract is valid"))
+        .id("selectable.copy")
+        .into_element();
+
+    let (_, _, _, _, _, _, _, _, widget, _) = element.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    let editable = widget
+        .editable(&state)
+        .unwrap_or_else(|_| unreachable!("widget state matches"))
+        .unwrap_or_else(|| unreachable!("read-only text contributes M10 selection"));
+    assert!(editable.read_only());
+    assert_eq!(editable.text(), source);
+    assert_eq!(editable.snapshot(), snapshot);
+
+    let contribution = widget
+        .semantics(&state, SemanticContributionContext::default())
+        .unwrap_or_else(|_| unreachable!("widget semantics are sound"));
+    let node = contribution.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("read-only text has one semantic node"));
+    assert_eq!(node.role(), SemanticRole::EditableText);
+    assert!(node.state().read_only());
+    assert_eq!(node.editable_mode(), Some(SemanticEditableMode::Multiline));
+    assert_eq!(
+        node.editable().and_then(|editable| editable.value()),
+        Some(source)
+    );
+    assert!(node.actions().contains(&SemanticAction::Copy));
+    assert!(node.actions().contains(&SemanticAction::SelectAll));
+    assert!(!node.actions().contains(&SemanticAction::ReplaceSelection));
+    assert!(!node.actions().contains(&SemanticAction::Paste));
+    assert!(!node.actions().contains(&SemanticAction::Cut));
+
+    let foreign = TextDocumentSnapshot::new(
+        TextDocumentId::new(250),
+        TextDocumentRevision::new(3),
+    );
+    let other_position = TextPosition::new(
+        foreign,
+        source,
+        0,
+        TextAffinity::Downstream,
+    )
+    .unwrap_or_else(|_| unreachable!("foreign position is valid"));
+    assert!(matches!(
+        selectable_text(snapshot, source, TextSelection::collapsed(other_position)),
+        Err(EditableContributionError::SelectionSnapshotMismatch),
+    ));
+}

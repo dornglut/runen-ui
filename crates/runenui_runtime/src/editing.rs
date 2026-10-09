@@ -629,7 +629,10 @@ impl<Action> EditingRegistry<Action> {
             session.contribution.sensitivity(),
             composition,
         );
-        let action = session.contribution.map_intent(intent);
+        let action = session
+            .contribution
+            .map_intent(intent)
+            .ok_or(EditPrepareError::Unavailable)?;
         let proposed_text: Arc<str> = proposed.into();
         session.pending.push(PendingEdit {
             request: request.clone(),
@@ -738,7 +741,10 @@ impl<Action> EditingRegistry<Action> {
             session.contribution.sensitivity(),
             None,
         );
-        let action = session.contribution.map_intent(intent);
+        let action = session
+            .contribution
+            .map_intent(intent)
+            .ok_or(EditPrepareError::Unavailable)?;
         session.pending.push(PendingEdit {
             request: request.clone(),
             predecessor: predecessor.clone(),

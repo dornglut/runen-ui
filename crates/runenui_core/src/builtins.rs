@@ -389,6 +389,168 @@ impl<Action: 'static> View<Action> for Text {
     }
 }
 
+/// Application-owned, read-only text with ordinary M10 caret, selection and copy.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SelectableText {
+    snapshot: crate::TextDocumentSnapshot,
+    content: String,
+    selection: crate::TextSelection,
+    common: CommonNodeAuthoring,
+}
+
+impl SelectableText {
+    /// Validates the application document and exact revision-scoped selection.
+    ///
+    /// # Errors
+    ///
+    /// Returns the M10 editable-document validation error for stale or invalid
+    /// selection coordinates.
+    pub fn new(
+        snapshot: crate::TextDocumentSnapshot,
+        content: impl Into<String>,
+        selection: crate::TextSelection,
+    ) -> Result<Self, crate::EditableContributionError> {
+        let content = content.into();
+        crate::EditableContribution::<()>::new_read_only(
+            snapshot,
+            content.as_str(),
+            selection,
+            crate::TextSensitivity::Public,
+            false,
+            crate::EditingSessionPolicy::PreserveExact,
+        )?;
+        Ok(Self {
+            snapshot,
+            content,
+            selection,
+            common: CommonNodeAuthoring::default(),
+        })
+    }
+
+    common_node_builder_methods!();
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SelectableTextState {
+    snapshot: crate::TextDocumentSnapshot,
+    content: String,
+    selection: crate::TextSelection,
+}
+
+#[derive(Debug)]
+struct SelectableTextWidget {
+    snapshot: crate::TextDocumentSnapshot,
+    content: String,
+    selection: crate::TextSelection,
+}
+
+impl<Action> Widget<Action> for SelectableTextWidget {
+    type State = SelectableTextState;
+
+    fn create_state(&self) -> Self::State {
+        SelectableTextState {
+            snapshot: self.snapshot,
+            content: self.content.clone(),
+            selection: self.selection,
+        }
+    }
+
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
+        if state.content != self.content {
+            context.invalidate(
+                WidgetInvalidation::LAYOUT
+                    | WidgetInvalidation::PAINT
+                    | WidgetInvalidation::SEMANTICS,
+            );
+        } else if state.snapshot != self.snapshot || state.selection != self.selection {
+            context.invalidate(WidgetInvalidation::PAINT | WidgetInvalidation::SEMANTICS);
+        }
+        state.snapshot = self.snapshot;
+        state.content.clone_from(&self.content);
+        state.selection = self.selection;
+    }
+
+    fn editable(&self, _: &Self::State) -> Option<crate::EditableContribution<Action>> {
+        crate::EditableContribution::new_read_only(
+            self.snapshot,
+            self.content.as_str(),
+            self.selection,
+            crate::TextSensitivity::Public,
+            false,
+            crate::EditingSessionPolicy::PreserveExact,
+        )
+        .ok()
+    }
+
+    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::Text(crate::TextLeafMeasure::new(self.content.clone()))
+    }
+
+    fn hit_test(&self, _: &Self::State, context: HitContributionContext) -> HitContribution {
+        HitContribution::single_rect(local_rect(context.local_size()))
+    }
+
+    fn semantics(
+        &self,
+        _: &Self::State,
+        _: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let Some(editable) = crate::SemanticEditable::new(
+            self.snapshot,
+            &self.content,
+            self.selection,
+            crate::TextSensitivity::Public,
+            true,
+        ) else {
+            return SemanticContribution::empty();
+        };
+        SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::EditableText)
+                .with_state(SemanticState::ENABLED.with_read_only(true))
+                .with_editable(editable)
+                .with_editable_mode(crate::SemanticEditableMode::Multiline)
+                .with_action(SemanticAction::Copy)
+                .with_action(SemanticAction::SelectAll)
+                .with_action(SemanticAction::SetSelection)
+                .with_action(SemanticAction::MoveBackward)
+                .with_action(SemanticAction::MoveForward)
+                .with_action(SemanticAction::ExtendBackward)
+                .with_action(SemanticAction::ExtendForward),
+        )
+    }
+}
+
+impl<Action: 'static> View<Action> for SelectableText {
+    fn into_element(self) -> Element<Action> {
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(Focusability::Focusable, None);
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(SelectableTextWidget {
+                snapshot: self.snapshot,
+                content: self.content,
+                selection: self.selection,
+            })),
+            Vec::new(),
+            diagnostics,
+        )
+    }
+}
+
+/// Authors selectable and copyable read-only text without an edit callback.
+///
+/// # Errors
+///
+/// Returns the checked M10 document/selection error.
+pub fn selectable_text(
+    snapshot: crate::TextDocumentSnapshot,
+    content: impl Into<String>,
+    selection: crate::TextSelection,
+) -> Result<SelectableText, crate::EditableContributionError> {
+    SelectableText::new(snapshot, content, selection)
+}
+
 pub struct Button<Action> {
     label: String,
     common: CommonNodeAuthoring,
