@@ -450,3 +450,110 @@ fn horizontal_divider_uses_vertical_pointer_motion_not_horizontal_motion() {
     assert_eq!(runtime.state().size, 65.0);
     assert_eq!(runtime.state().proposals, 1);
 }
+
+struct TwoPaneApp;
+
+#[derive(Clone, Copy)]
+struct TwoPaneState {
+    left: f64,
+}
+
+impl UiApp for TwoPaneApp {
+    type State = TwoPaneState;
+    type Action = SplitterRequest;
+    type HostProtocol = NoHostProtocol;
+
+    #[allow(clippy::cast_possible_truncation)]
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        let dimension = |width: f32| {
+            runenui_core::LayoutStyle::default()
+                .with_width(runenui_core::LayoutDimension::length(
+                    runenui_core::LogicalLength::new(width)
+                        .unwrap_or_else(|_| unreachable!("app-owned pane size is valid")),
+                ))
+                .with_height(runenui_core::LayoutDimension::length(
+                    runenui_core::LogicalLength::from(160_u16),
+                ))
+        };
+        let left = runenui_core::column(Vec::<Element<SplitterRequest>>::new())
+            .id("pane.left")
+            .with_layout(dimension(state.left as f32))
+            .into_element();
+        let divider = splitter("Two panes", 0.0, 200.0, state.left, 5.0)
+            .unwrap_or_else(|_| unreachable!("app-clamped range"))
+            .on_resize(|request| request)
+            .id("pane.splitter")
+            .into_element();
+        let right = runenui_core::column(Vec::<Element<SplitterRequest>>::new())
+            .id("pane.right")
+            .with_layout(dimension((200.0 - state.left) as f32))
+            .into_element();
+        runenui_core::row([left, divider, right])
+    }
+
+    fn update(state: &mut Self::State, request: Self::Action) {
+        let next = match request {
+            SplitterRequest::MoveBy(pixels) => state.left + f64::from(pixels),
+            SplitterRequest::AdjustBy(amount) => state.left + amount.get(),
+            SplitterRequest::SetValue(value) => value.get(),
+        };
+        state.left = next.clamp(0.0, 200.0);
+    }
+}
+
+fn pane_width(
+    publication: &runenui_runtime::SurfacePublication,
+    id: &str,
+) -> f32 {
+    publication
+        .layout_report()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id().is_some_and(|candidate| candidate.as_str() == id))
+        .unwrap_or_else(|| unreachable!("app-authored pane has layout"))
+        .constrained_outer_size()
+        .width()
+}
+
+#[test]
+fn splitter_requests_rebuild_both_application_owned_pane_geometries() {
+    let mut runtime = AppRuntime::<TwoPaneApp>::mount(TwoPaneState { left: 80.0 });
+    settle_two_pane(&mut runtime);
+    let first = publish_two_pane(&mut runtime);
+    assert_eq!(pane_width(&first, "pane.left"), 80.0);
+    assert_eq!(pane_width(&first, "pane.right"), 120.0);
+    let snapshot = first.semantic_publication().snapshot();
+    let splitter_node = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::Splitter)
+        .unwrap_or_else(|| unreachable!("semantic divider"));
+    runtime
+        .submit_semantic_action(SemanticActionRequest::set_value(
+            snapshot.surface_id().clone(),
+            splitter_node.id().clone(),
+            number(115.0),
+        ))
+        .unwrap_or_else(|_| unreachable!("semantic resize admitted"));
+    assert_eq!(runtime.state().left, 80.0, "admission alone does not mutate panes");
+    settle_two_pane(&mut runtime);
+    assert_eq!(runtime.state().left, 115.0);
+    let second = publish_two_pane(&mut runtime);
+    assert_eq!(pane_width(&second, "pane.left"), 115.0);
+    assert_eq!(pane_width(&second, "pane.right"), 85.0);
+}
+
+fn settle_two_pane(runtime: &mut AppRuntime<TwoPaneApp>) {
+    runtime.pump(PumpBudget::new(256, 256, 256, 256));
+}
+
+fn publish_two_pane(
+    runtime: &mut AppRuntime<TwoPaneApp>,
+) -> runenui_runtime::SurfacePublication {
+    runtime
+        .publish_surface(&SurfaceBuildContext::new(
+            &StyleEnvironment::default(),
+            LayoutConstraints::unbounded(),
+        ))
+        .unwrap_or_else(|_| unreachable!("two-pane application scene publishes"))
+}
