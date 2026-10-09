@@ -2,7 +2,7 @@
 
 use runenui_core::{
     CommandOrigin, Element, EventContext, EventPhase, HitContribution, HitContributionContext,
-    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, KeyLocation, KeyModifiers, LogicalKey,
+    KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
     LogicalPoint, LogicalRect, NoHostProtocol, PhysicalKey, PointerButton, PointerButtons,
     PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
     SemanticActionRequest, SemanticCommand, SemanticContribution, SemanticContributionContext,
@@ -121,17 +121,9 @@ impl Widget<Action> for ExternalSlider {
         )
     }
 
-    fn semantics(
-        &self,
-        _: &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
-        let range = SemanticRange::new(
-            Some(number(0.0)),
-            Some(number(100.0)),
-            Some(self.value),
-        )
-        .unwrap_or_else(|_| unreachable!("controlled range valid"))
+    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+        let range = SemanticRange::new(Some(number(0.0)), Some(number(100.0)), Some(self.value))
+            .unwrap_or_else(|_| unreachable!("controlled range valid"))
         .with_small_step(number(5.0))
         .unwrap_or_else(|_| unreachable!("positive step"))
         .with_value_text("Volume percentage")
@@ -142,7 +134,8 @@ impl Widget<Action> for ExternalSlider {
             .with_range(range)
             .with_state(SemanticState::ENABLED.with_disabled(!self.enabled));
         if self.enabled {
-            node = node.with_action(SemanticAction::Increment)
+            node = node
+                .with_action(SemanticAction::Increment)
                 .with_action(SemanticAction::Decrement)
                 .with_action(SemanticAction::SetValue);
         }
@@ -167,21 +160,26 @@ fn settle(runtime: &mut AppRuntime<App>) {
 
 fn publish(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
     let environment = StyleEnvironment::default();
-    runtime.publish_surface(&SurfaceBuildContext::new(
-        &environment,
-        LayoutConstraints::unbounded(),
-    ))
-    .unwrap_or_else(|_| unreachable!("slider scene publishes"))
+    runtime
+        .publish_surface(&SurfaceBuildContext::new(
+            &environment,
+            LayoutConstraints::unbounded(),
+        ))
+        .unwrap_or_else(|_| unreachable!("slider scene publishes"))
 }
 
 fn inspect(publication: &runenui_runtime::SurfacePublication, expected: f64, enabled: bool) {
     let nodes = publication.semantic_publication().snapshot();
-    let slider = nodes.nodes().iter()
+    let slider = nodes
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::Slider)
         .unwrap_or_else(|| unreachable!("slider role published"));
     assert_eq!(slider.name(), Some("Volume"));
     assert_eq!(slider.orientation(), Some(SemanticOrientation::Horizontal));
-    let range = slider.range().unwrap_or_else(|| unreachable!("range published"));
+    let range = slider
+        .range()
+        .unwrap_or_else(|| unreachable!("range published"));
     assert_eq!(range.current(), Some(number(expected)));
     assert_eq!(range.small_step(), Some(number(5.0)));
     assert_eq!(range.value_text(), Some("Volume percentage"));
@@ -201,11 +199,15 @@ fn semantic_action(
     action: SemanticAction,
 ) -> Result<runenui_runtime::CommandSubmission, runenui_runtime::SubmitSemanticActionError> {
     let snapshot = publication.semantic_publication().snapshot();
-    let node = snapshot.nodes().iter()
+    let node = snapshot
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::Slider)
         .unwrap_or_else(|| unreachable!("slider is published"));
     runtime.submit_semantic_action(SemanticActionRequest::new(
-        snapshot.surface_id().clone(), node.id().clone(), action,
+        snapshot.surface_id().clone(),
+        node.id().clone(),
+        action,
     ))
 }
 
@@ -223,12 +225,18 @@ fn standard_slider_semantic_action_converges_only_through_application() {
     let after = publish(&mut runtime);
     inspect(&after, 55.0, true);
     let snapshot = after.semantic_publication().snapshot();
-    let slider_node = snapshot.nodes().iter()
+    let slider_node = snapshot
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::Slider)
         .unwrap_or_else(|| unreachable!());
-    runtime.submit_semantic_action(SemanticActionRequest::set_value(
-        snapshot.surface_id().clone(), slider_node.id().clone(), number(80.0),
-    )).unwrap_or_else(|_| unreachable!("exact SetValue accepted"));
+    runtime
+        .submit_semantic_action(SemanticActionRequest::set_value(
+            snapshot.surface_id().clone(),
+            slider_node.id().clone(),
+            number(80.0),
+        ))
+        .unwrap_or_else(|_| unreachable!("exact SetValue accepted"));
     settle(&mut runtime);
     assert_eq!(runtime.state().value, number(80.0));
     inspect(&publish(&mut runtime), 80.0, true);
@@ -237,16 +245,19 @@ fn standard_slider_semantic_action_converges_only_through_application() {
 #[test]
 fn disabled_action_rejects_and_downstream_custom_widget_preserves_range_contract() {
     let mut runtime = fresh();
-    runtime.submit_action(Action::Enabled(false))
+    runtime
+        .submit_action(Action::Enabled(false))
         .unwrap_or_else(|_| unreachable!("disable accepted"));
     settle(&mut runtime);
     let disabled = publish(&mut runtime);
     inspect(&disabled, 50.0, false);
     assert!(semantic_action(&mut runtime, &disabled, SemanticAction::Increment).is_err());
     assert_eq!(runtime.state().proposals, 0);
-    runtime.submit_action(Action::Enabled(true))
+    runtime
+        .submit_action(Action::Enabled(true))
         .unwrap_or_else(|_| unreachable!("enable accepted"));
-    runtime.submit_action(Action::External(true))
+    runtime
+        .submit_action(Action::External(true))
         .unwrap_or_else(|_| unreachable!("switch implementation accepted"));
     settle(&mut runtime);
     let custom = publish(&mut runtime);
@@ -255,7 +266,8 @@ fn disabled_action_rejects_and_downstream_custom_widget_preserves_range_contract
         .unwrap_or_else(|_| unreachable!("downstream increment admitted"));
     settle(&mut runtime);
     inspect(&publish(&mut runtime), 55.0, true);
-    runtime.submit_action(Action::External(false))
+    runtime
+        .submit_action(Action::External(false))
         .unwrap_or_else(|_| unreachable!("restoring standard widget accepted"));
     settle(&mut runtime);
     inspect(&publish(&mut runtime), 55.0, true);
@@ -265,43 +277,80 @@ fn disabled_action_rejects_and_downstream_custom_widget_preserves_range_contract
 fn keyboard_and_pointer_requests_are_routed_through_same_application_fifo() {
     let mut runtime = fresh();
     let publication = publish(&mut runtime);
-    let owner = runtime.index().nodes().iter()
-        .find(|node| node.authored_id()
-            == Some(&runenui_core::ElementId::new("controlled.slider").unwrap_or_else(|_| unreachable!())))
-        .unwrap_or_else(|| unreachable!("mounted slider")).id().clone();
-    runtime.submit_command(
-        owner.clone(), SemanticCommand::RequestFocus, CommandOrigin::programmatic(),
-    ).unwrap_or_else(|_| unreachable!("focus command accepted"));
+    let owner = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                == Some(
+                    &runenui_core::ElementId::new("controlled.slider")
+                        .unwrap_or_else(|_| unreachable!()),
+                )
+        })
+        .unwrap_or_else(|| unreachable!("mounted slider"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(
+            owner.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus command accepted"));
     settle(&mut runtime);
     let keyboard = KeyboardEvent::new(
-        KeyboardPhase::Down, PhysicalKey::ArrowRight, LogicalKey::ArrowRight,
-        KeyModifiers::NONE, false, KeyLocation::Standard,
-        KeyboardCompositionState::Inactive, None,
+        KeyboardPhase::Down,
+        PhysicalKey::ArrowRight,
+        LogicalKey::ArrowRight,
+        KeyModifiers::NONE,
+        false,
+        KeyLocation::Standard,
+        KeyboardCompositionState::Inactive,
+        None,
     );
-    runtime.submit_keyboard(keyboard).unwrap_or_else(|_| unreachable!("key accepted"));
+    runtime
+        .submit_keyboard(keyboard).unwrap_or_else(|_| unreachable!("key accepted"));
     settle(&mut runtime);
     assert_eq!(runtime.state().value, number(55.0));
     let context = publication.input_context().clone();
     let point = LogicalPoint::new(120.0, 12.0).unwrap_or_else(|_| unreachable!("finite position"));
     let pointer = PointerId::new(41).unwrap_or_else(|| unreachable!("nonzero pointer"));
-    let down = PointerEvent::new(pointer, PointerDeviceKind::Mouse, PointerPhase::Down, point, context.clone())
-        .with_changed_button(PointerButton::Primary)
-        .with_buttons(PointerButtons::new([PointerButton::Primary]));
-    runtime.submit_pointer(down).unwrap_or_else(|_| unreachable!("pointer down accepted"));
+    let down = PointerEvent::new(
+        pointer,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        point,
+        context.clone(),
+    )
+    .with_changed_button(PointerButton::Primary)
+    .with_buttons(PointerButtons::new([PointerButton::Primary]));
+    runtime
+        .submit_pointer(down).unwrap_or_else(|_| unreachable!("pointer down accepted"));
     settle(&mut runtime);
     assert!(runtime.state().value.get() > 55.0);
     let move_event = PointerEvent::new(
-        pointer, PointerDeviceKind::Mouse, PointerPhase::Move,
+        pointer,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Move,
         LogicalPoint::new(155.0, 12.0).unwrap_or_else(|_| unreachable!("finite")),
         context.clone(),
-    ).with_buttons(PointerButtons::new([PointerButton::Primary]));
-    runtime.submit_pointer(move_event).unwrap_or_else(|_| unreachable!("captured drag accepted"));
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Primary]));
+    runtime
+        .submit_pointer(move_event).unwrap_or_else(|_| unreachable!("captured drag accepted"));
     settle(&mut runtime);
     assert_eq!(runtime.state().value, number(100.0));
-    let up = PointerEvent::new(pointer, PointerDeviceKind::Mouse, PointerPhase::Up,
-        LogicalPoint::new(155.0, 12.0).unwrap_or_else(|_| unreachable!("finite")), context)
-        .with_changed_button(PointerButton::Primary);
-    runtime.submit_pointer(up).unwrap_or_else(|_| unreachable!("terminal pointer accepted"));
+    let up = PointerEvent::new(
+        pointer,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Up,
+        LogicalPoint::new(155.0, 12.0).unwrap_or_else(|_| unreachable!("finite")),
+        context,
+    )
+    .with_changed_button(PointerButton::Primary);
+    runtime
+        .submit_pointer(up).unwrap_or_else(|_| unreachable!("terminal pointer accepted"));
     settle(&mut runtime);
     assert_eq!(runtime.state().value, number(100.0));
     inspect(&publish(&mut runtime), 100.0, true);

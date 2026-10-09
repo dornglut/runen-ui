@@ -158,7 +158,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             )
         });
         let pointer_local_size = pointer.and_then(|_| event.as_pointer()).and_then(|event| {
-            self.surface_publication.pointer_local_size_at(event.surface_context(), current)
+            self.surface_publication
+                .pointer_local_size_at(event.surface_context(), current)
         });
         let invocation = match pointer {
             Some(pointer) => self.tree.invoke_pointer_event(

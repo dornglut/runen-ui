@@ -997,6 +997,7 @@ mod tests {
         ("M11PASSWORD", &["M11CTRL-68"], "owner-accepted"),
         ("M11PLACEHOLDER", &["M11CTRL-69"], "owner-accepted"),
         ("M11DISCLOSURE", &["M11CTRL-70"], "owner-accepted"),
+        ("M11SLIDER", &["M11CTRL-71", "M11CTRL-72", "M11CTRL-73"], "implementation-complete"),
     ];
 
     #[test]
@@ -1010,7 +1011,7 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 70);
+        assert_eq!(rows.len(), 73);
 
         for (slice, ids, status) in M11_EXPECTED_SLICES {
             assert_m11_slice(&rows, slice, ids, status);
@@ -1031,6 +1032,7 @@ mod tests {
                 "M11PASSWORD",
                 "M11PLACEHOLDER",
                 "M11DISCLOSURE",
+                "M11SLIDER",
                 "M11C",
                 "M11D2",
                 "M11COLL2",
@@ -1136,7 +1138,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 512);
+        assert_eq!(total, 515);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }

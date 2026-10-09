@@ -6,16 +6,14 @@
 use core::fmt;
 
 use crate::{
-    Brush, Color, EventContext, EventPhase, Focusability, HitContribution,
-    HitContributionContext, KeyboardPhase, KeyModifiers, LogicalKey, LogicalLength,
-    LogicalPoint, LogicalRect, LogicalSize, PaintContribution, PaintContributionContext,
-    PaintContributionItem, PointerButton, PointerCaptureKind, PointerDeviceKind,
-    PointerId, PointerPhase, SceneShape, SemanticAction, SemanticCommand,
-    SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
-    SemanticNumber, SemanticNumberError, SemanticOrientation, SemanticRange,
-    SemanticRangeError, SemanticRole, SemanticState, UiEvent, WidgetActivation,
-    WidgetEventOutput, WidgetInvalidation, WidgetMeasure,
-    WidgetMeasureInput, WidgetUpdateContext,
+    Brush, Color, EventContext, EventPhase, Focusability, HitContribution, HitContributionContext,
+    KeyModifiers, KeyboardPhase, LogicalKey, LogicalLength, LogicalPoint, LogicalRect, LogicalSize,
+    PaintContribution, PaintContributionContext, PaintContributionItem, PointerButton,
+    PointerCaptureKind, PointerDeviceKind, PointerId, PointerPhase, SceneShape, SemanticAction,
+    SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
+    SemanticNumber, SemanticNumberError, SemanticOrientation, SemanticRange, SemanticRangeError,
+    SemanticRole, SemanticState, UiEvent, WidgetActivation, WidgetEventOutput, WidgetInvalidation,
+    WidgetMeasure, WidgetMeasureInput, WidgetUpdateContext,
     element::{CommonNodeAuthoring, Element, View, common_node_builder_methods},
     widget_erasure::WidgetAdapter,
     widget_protocol::Widget,
@@ -99,8 +97,7 @@ impl<Action> Slider<Action> {
         let max = SemanticNumber::new(maximum)?;
         let value = SemanticNumber::new(current)?;
         let step = SemanticNumber::new(step)?;
-        let range = SemanticRange::new(Some(min), Some(max), Some(value))?
-            .with_small_step(step)?;
+        let range = SemanticRange::new(Some(min), Some(max), Some(value))?.with_small_step(step)?;
         validate_span(&range)?;
         Ok(Self {
             label: label.into(),
@@ -175,8 +172,7 @@ pub fn slider<Action>(
 }
 
 fn validate_span(range: &SemanticRange) -> Result<(), SliderError> {
-    let (Some(min), Some(max), Some(step)) =
-        (range.minimum(), range.maximum(), range.small_step())
+    let (Some(min), Some(max), Some(step)) = (range.minimum(), range.maximum(), range.small_step())
     else {
         return Err(SliderError::UnrepresentableSpan);
     };
@@ -295,7 +291,7 @@ fn requested_value(range: &SemanticRange, command: SemanticCommand) -> Option<Se
         SemanticCommand::Increment => numeric_value(range, (current + small).min(max)),
         SemanticCommand::Decrement => numeric_value(range, (current - small).max(min)),
         SemanticCommand::SetValue(value) => numeric_value(range, value.get()),
-        _ => None
+        _ => None,
     }
 }
 
@@ -319,10 +315,9 @@ fn keyboard_value(
             let max = range.maximum()?.get();
             let current = range.current()?.get();
             let small = range.small_step()?.get();
-            let page = range.large_step().map_or_else(
-                || (small * 10.0).min(max - min),
-                SemanticNumber::get,
-            );
+            let page = range
+                .large_step()
+                .map_or_else(|| (small * 10.0).min(max - min), SemanticNumber::get);
             let value = if matches!(event.logical_key(), LogicalKey::PageUp) {
                 (current + page).min(max)
             } else {
@@ -452,11 +447,22 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
                 };
                 state.drag = Some(pointer.pointer_id());
                 context.capture_pointer();
-                let min = state.range.minimum().map(SemanticNumber::get).unwrap_or(0.0);
-                let max = state.range.maximum().map(SemanticNumber::get).unwrap_or(0.0);
+                let min = state
+                    .range
+                    .minimum()
+                    .map(SemanticNumber::get)
+                    .unwrap_or(0.0);
+                let max = state
+                    .range
+                    .maximum()
+                    .map(SemanticNumber::get)
+                    .unwrap_or(0.0);
                 self.emit_value(
                     state,
-                    numeric_value(&state.range, min + (max - min) * geometry.fraction_at(position)),
+                    numeric_value(
+                        &state.range,
+                        min + (max - min) * geometry.fraction_at(position),
+                    ),
                     context,
                 );
                 context.prevent_default();
@@ -477,11 +483,22 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
                     context.release_pointer_capture();
                     return WidgetEventOutput::changed();
                 };
-                let min = state.range.minimum().map(SemanticNumber::get).unwrap_or(0.0);
-                let max = state.range.maximum().map(SemanticNumber::get).unwrap_or(0.0);
+                let min = state
+                    .range
+                    .minimum()
+                    .map(SemanticNumber::get)
+                    .unwrap_or(0.0);
+                let max = state
+                    .range
+                    .maximum()
+                    .map(SemanticNumber::get)
+                    .unwrap_or(0.0);
                 self.emit_value(
                     state,
-                    numeric_value(&state.range, min + (max - min) * geometry.fraction_at(position)),
+                    numeric_value(
+                        &state.range,
+                        min + (max - min) * geometry.fraction_at(position),
+                    ),
                     context,
                 );
                 context.prevent_default();
@@ -533,22 +550,32 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
         };
         #[allow(clippy::cast_possible_truncation)]
         let filled = geometry.travel * fraction as f32;
-        let track = context.computed_style().background()
-            .cloned().unwrap_or_else(|| Brush::solid(Color::rgba(170, 170, 170, 255)));
-        let thumb = context.computed_style().foreground()
+        let track = context
+            .computed_style()
+            .background()
+            .cloned()
+            .unwrap_or_else(|| Brush::solid(Color::rgba(170, 170, 170, 255)));
+        let thumb = context
+            .computed_style()
+            .foreground()
             .unwrap_or(Color::rgba(70, 115, 205, 255));
         let thickness = (geometry.radius * 0.5).max(1.0);
         let start = geometry.radius;
         let items = vec![
             PaintContributionItem::fill(
-                SceneShape::rect(geometry.rect(start, geometry.travel, thickness)), track,
+                SceneShape::rect(geometry.rect(start, geometry.travel, thickness)),
+                track,
             ),
             PaintContributionItem::fill(
                 SceneShape::rect(geometry.rect(start, filled, thickness)),
                 Brush::solid(thumb),
             ),
             PaintContributionItem::fill(
-                SceneShape::ellipse(geometry.rect(start + filled - geometry.radius, 2.0 * geometry.radius, 2.0 * geometry.radius)),
+                SceneShape::ellipse(geometry.rect(
+                    start + filled - geometry.radius,
+                    2.0 * geometry.radius,
+                    2.0 * geometry.radius,
+                )),
                 Brush::solid(thumb),
             ),
         ];
@@ -577,7 +604,8 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
             .with_orientation(state.orientation)
             .with_state(SemanticState::ENABLED.with_disabled(!state.enabled));
         if state.actionable && state.enabled && state.range.minimum() != state.range.maximum() {
-            node = node.with_action(SemanticAction::Increment)
+            node = node
+                .with_action(SemanticAction::Increment)
                 .with_action(SemanticAction::Decrement)
                 .with_action(SemanticAction::SetValue);
         }
@@ -587,8 +615,9 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
 
 impl<Action: 'static> View<Action> for Slider<Action> {
     fn into_element(self) -> Element<Action> {
-        let (fields, diagnostics) =
-            self.common.into_authored_fields(Focusability::Automatic, None);
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(Focusability::Automatic, None);
         Element::from_authored_parts(
             fields,
             Box::new(WidgetAdapter(SliderWidget {
@@ -608,19 +637,37 @@ impl<Action: 'static> View<Action> for Slider<Action> {
 mod tests {
     use super::{Slider, SliderError, SliderGeometry, keyboard_value, numeric_value};
     use crate::{
-        KeyboardCompositionState, KeyboardEvent, KeyboardPhase, KeyLocation,
-        KeyModifiers, LogicalKey, LogicalSize, PhysicalKey,
-        SemanticNumber, SemanticOrientation, SemanticRangeError,
+        KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase,
+        LogicalKey, LogicalSize, PhysicalKey, SemanticNumber, SemanticOrientation,
+        SemanticRangeError,
     };
 
     #[test]
     fn invalid_numeric_authoring_fails_before_mount() {
-        assert!(matches!(Slider::<()>::new("Volume", 0.0, 1.0, f64::NAN, 0.1), Err(SliderError::NonFinite)));
-        assert!(matches!(Slider::<()>::new("Volume", 3.0, 1.0, 2.0, 0.1), Err(SliderError::Range(SemanticRangeError::ReversedBounds))));
-        assert!(matches!(Slider::<()>::new("Volume", 0.0, 1.0, 2.0, 0.1), Err(SliderError::Range(SemanticRangeError::CurrentAboveMaximum))));
-        assert!(matches!(Slider::<()>::new("Volume", 0.0, 1.0, 0.5, 0.0), Err(SliderError::Range(SemanticRangeError::NonPositiveSmallStep))));
-        assert!(matches!(Slider::<()>::new("Volume", -1e308, 1e308, 0.0, 1.0), Err(SliderError::UnrepresentableSpan)));
-        assert!(matches!(Slider::<()>::new("Volume", 0.0, 1.0, 0.5, 1e-320), Err(SliderError::UnrepresentableSpan)));
+        assert!(matches!(
+            Slider::<()>::new("Volume", 0.0, 1.0, f64::NAN, 0.1),
+            Err(SliderError::NonFinite)
+        ));
+        assert!(matches!(
+            Slider::<()>::new("Volume", 3.0, 1.0, 2.0, 0.1),
+            Err(SliderError::Range(SemanticRangeError::ReversedBounds))
+        ));
+        assert!(matches!(
+            Slider::<()>::new("Volume", 0.0, 1.0, 2.0, 0.1),
+            Err(SliderError::Range(SemanticRangeError::CurrentAboveMaximum))
+        ));
+        assert!(matches!(
+            Slider::<()>::new("Volume", 0.0, 1.0, 0.5, 0.0),
+            Err(SliderError::Range(SemanticRangeError::NonPositiveSmallStep))
+        ));
+        assert!(matches!(
+            Slider::<()>::new("Volume", -1e308, 1e308, 0.0, 1.0),
+            Err(SliderError::UnrepresentableSpan)
+        ));
+        assert!(matches!(
+            Slider::<()>::new("Volume", 0.0, 1.0, 0.5, 1e-320),
+            Err(SliderError::UnrepresentableSpan)
+        ));
         assert!(Slider::<()>::new("Volume", 0.0, 1.0, 0.5, 0.1).is_ok());
     }
 
@@ -631,30 +678,52 @@ mod tests {
             crate::LogicalLength::new(160.0).unwrap_or_else(|_| unreachable!()),
             crate::LogicalLength::new(24.0).unwrap_or_else(|_| unreachable!()),
         );
-        let horizontal = SliderGeometry::new(size, SemanticOrientation::Horizontal).unwrap_or_else(|| unreachable!());
+        let horizontal = SliderGeometry::new(size, SemanticOrientation::Horizontal)
+            .unwrap_or_else(|| unreachable!());
         assert!(horizontal.travel > 0.0);
         assert!(SliderGeometry::new(size, SemanticOrientation::Vertical).is_some());
     }
 
     #[test]
     fn snapped_values_preserve_both_endpoints() {
-        let slider = Slider::<()>::new("Scale", 0.0, 1.0, 0.5, 0.3).unwrap_or_else(|_| unreachable!());
-        assert_eq!(numeric_value(&slider.range, 1.0), SemanticNumber::new(1.0).ok());
-        assert_eq!(numeric_value(&slider.range, 0.0), SemanticNumber::new(0.0).ok());
-        assert_eq!(numeric_value(&slider.range, 0.4), SemanticNumber::new(0.3).ok());
+        let slider =
+            Slider::<()>::new("Scale", 0.0, 1.0, 0.5, 0.3).unwrap_or_else(|_| unreachable!());
+        assert_eq!(
+            numeric_value(&slider.range, 1.0),
+            SemanticNumber::new(1.0).ok()
+        );
+        assert_eq!(
+            numeric_value(&slider.range, 0.0),
+            SemanticNumber::new(0.0).ok()
+        );
+        assert_eq!(
+            numeric_value(&slider.range, 0.4),
+            SemanticNumber::new(0.3).ok()
+        );
         assert!(numeric_value(&slider.range, 2.0).is_none());
     }
 
     #[test]
     fn keyboard_orientation_is_value_semantic_not_screen_scroll() {
-        let slider = Slider::<()>::new("Scale", 0.0, 100.0, 50.0, 5.0).unwrap_or_else(|_| unreachable!());
+        let slider =
+            Slider::<()>::new("Scale", 0.0, 100.0, 50.0, 5.0).unwrap_or_else(|_| unreachable!());
         let event = KeyboardEvent::new(
-            KeyboardPhase::Down, PhysicalKey::ArrowUp, LogicalKey::ArrowUp,
-            KeyModifiers::NONE, false, KeyLocation::Standard,
-            KeyboardCompositionState::Inactive, None,
+            KeyboardPhase::Down,
+            PhysicalKey::ArrowUp,
+            LogicalKey::ArrowUp,
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
         );
-        assert_eq!(keyboard_value(&slider.range, SemanticOrientation::Vertical, &event),
-            SemanticNumber::new(55.0).ok());
-        assert_eq!(keyboard_value(&slider.range, SemanticOrientation::Horizontal, &event), None);
+        assert_eq!(
+            keyboard_value(&slider.range, SemanticOrientation::Vertical, &event),
+            SemanticNumber::new(55.0).ok()
+        );
+        assert_eq!(
+            keyboard_value(&slider.range, SemanticOrientation::Horizontal, &event),
+            None
+        );
     }
 }

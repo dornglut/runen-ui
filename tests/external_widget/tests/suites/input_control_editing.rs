@@ -10,9 +10,9 @@ mod pointer;
 mod routed_event;
 #[path = "../scroll_control.rs"]
 mod scroll_control;
-#[path = "../standard_scrollbar.rs"]
-mod standard_scrollbar;
 #[path = "../slider.rs"]
 mod slider;
+#[path = "../standard_scrollbar.rs"]
+mod standard_scrollbar;
 #[path = "../subscriptions.rs"]
 mod subscriptions;
