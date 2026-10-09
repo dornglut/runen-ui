@@ -25,6 +25,7 @@ const M7_DELIVERY_SLICES: &[&str] = &["M7A", "M7B", "M7C", "M7D"];
 const M8_DELIVERY_SLICES: &[&str] = &["M8A", "M8B", "M8C", "M8D"];
 const M9_DELIVERY_SLICES: &[&str] = &["M9A", "M9B", "M9C"];
 const M10_DELIVERY_SLICES: &[&str] = &["M10B", "M10C", "M10D", "M10E", "M10F"];
+const M13_DELIVERY_SLICES: &[&str] = &["M13ARB"];
 const M11_DELIVERY_SLICES: &[&str] = &[
     "M11A",
     "M11B",
@@ -114,8 +115,13 @@ const M11_SPEC: MatrixSpec = MatrixSpec {
     allowed_delivery_slices: M11_DELIVERY_SLICES,
     gate_policy: GatePolicy::Required,
 };
+const M13_SPEC: MatrixSpec = MatrixSpec {
+    path: "docs/conformance/m13-conformance-matrix.md",
+    allowed_delivery_slices: M13_DELIVERY_SLICES,
+    gate_policy: GatePolicy::Required,
+};
 const MATRIX_SPECS: &[MatrixSpec] = &[
-    M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC, M10_SPEC, M11_SPEC,
+    M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC, M10_SPEC, M11_SPEC, M13_SPEC,
 ];
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -606,9 +612,9 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{
-        M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC, M10_SPEC, M11_SPEC, MATRIX_SPECS,
-        analyze_contents, audit_inventory, compare_declared_summary, declared_metric, parse_rows,
-        parse_summary, valid_id, validate_inventory,
+        M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC, M10_SPEC, M11_SPEC, M13_SPEC,
+        MATRIX_SPECS, analyze_contents, audit_inventory, compare_declared_summary, declared_metric,
+        parse_rows, parse_summary, valid_id, validate_inventory,
     };
 
     #[test]
@@ -1057,6 +1063,35 @@ mod tests {
     }
 
     #[test]
+    fn m13_host_input_arbitration_is_registered_and_proof_blocked() -> Result<(), String> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask has no repository root".to_owned())?;
+        let matrix = std::fs::read_to_string(root.join(M13_SPEC.path))
+            .map_err(|error| format!("failed to read M13 matrix: {error}"))?;
+        let mut seen = BTreeSet::new();
+        let mut findings = Vec::new();
+        let analysis = analyze_contents(M13_SPEC, &matrix, &mut seen, &mut findings);
+        compare_declared_summary(
+            M13_SPEC.path,
+            &parse_summary(&matrix),
+            &analysis,
+            &mut findings,
+        );
+        assert_eq!(analysis.metrics.total_rows, 10);
+        assert_eq!(analysis.metrics.blocked, 10);
+        assert_eq!(analysis.metrics.owner_accepted, 0);
+        assert_eq!(
+            seen,
+            (1..=10)
+                .map(|index| format!("M13ARB-{index:02}"))
+                .collect::<BTreeSet<_>>()
+        );
+        assert!(findings.is_empty(), "{findings:?}");
+        Ok(())
+    }
+
+    #[test]
     fn index_and_directory_cannot_silently_omit_a_matrix() {
         let indexed = MATRIX_SPECS
             .iter()
@@ -1143,7 +1178,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 515);
+        assert_eq!(total, 525);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }
