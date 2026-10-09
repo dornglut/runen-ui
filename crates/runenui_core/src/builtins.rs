@@ -550,7 +550,9 @@ pub struct Button<Action> {
     label: String,
     common: CommonNodeAuthoring,
     described_by: Option<ElementId>,
+    controls: Option<ElementId>,
     pressed: Option<SemanticPressedState>,
+    expanded: Option<bool>,
     enabled: bool,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
@@ -562,6 +564,8 @@ impl<Action> fmt::Debug for Button<Action> {
             .debug_struct("Button")
             .field("label", &self.label)
             .field("pressed", &self.pressed)
+            .field("expanded", &self.expanded)
+            .field("controls", &self.controls)
             .field("id", &self.common.id)
             .field("key", &self.common.key)
             .field("layout", &self.common.layout)
@@ -583,7 +587,9 @@ impl<Action> Button<Action> {
             label: label.into(),
             common: CommonNodeAuthoring::default(),
             described_by: None,
+            controls: None,
             pressed: None,
+            expanded: None,
             enabled: true,
             activation_factory: None,
             actionable: false,
@@ -595,6 +601,22 @@ impl<Action> Button<Action> {
     #[must_use]
     pub fn described_by(mut self, tooltip: impl IntoElementId) -> Self {
         self.described_by = authored_relationship_target(&mut self.common, "described_by", tooltip);
+        self
+    }
+
+    /// Authors a controlled content target while expanded. A collapsed
+    /// disclosure may omit its panel completely; dangling Controls are never
+    /// published for that state. Expanded targets must be mounted and resolvable.
+    #[must_use]
+    pub fn controls(mut self, content: impl IntoElementId) -> Self {
+        self.controls = authored_relationship_target(&mut self.common, "controls", content);
+        self
+    }
+
+    /// Authors application-owned expanded state using ordinary Button semantics.
+    #[must_use]
+    pub const fn expanded(mut self, expanded: bool) -> Self {
+        self.expanded = Some(expanded);
         self
     }
 
@@ -626,7 +648,9 @@ impl<Action> Button<Action> {
 struct ButtonWidget<Action> {
     label: String,
     described_by: Option<ElementId>,
+    controls: Option<ElementId>,
     pressed: Option<SemanticPressedState>,
+    expanded: Option<bool>,
     enabled: bool,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
@@ -636,7 +660,9 @@ struct ButtonWidget<Action> {
 struct ButtonWidgetState {
     label: String,
     described_by: Option<ElementId>,
+    controls: Option<ElementId>,
     pressed: Option<SemanticPressedState>,
+    expanded: Option<bool>,
     enabled: bool,
     actionable: bool,
     activation_count: u64,
@@ -648,7 +674,9 @@ impl<Action> fmt::Debug for ButtonWidget<Action> {
             .debug_struct("ButtonWidget")
             .field("label", &self.label)
             .field("pressed", &self.pressed)
+            .field("expanded", &self.expanded)
             .field("enabled", &self.enabled)
+            .field("controls", &self.controls)
             .field("described_by", &self.described_by)
             .field("actionable", &self.actionable)
             .field("has_callback", &self.activation_factory.is_some())
@@ -662,7 +690,9 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
         ButtonWidgetState {
             label: self.label.clone(),
             described_by: self.described_by.clone(),
+            controls: self.controls.clone(),
             pressed: self.pressed,
+            expanded: self.expanded,
             enabled: self.enabled,
             actionable: self.actionable,
             activation_count: 0,
@@ -676,7 +706,11 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
                     | WidgetInvalidation::SEMANTICS,
             );
         }
-        if state.described_by != self.described_by || state.pressed != self.pressed {
+        if state.described_by != self.described_by
+            || state.controls != self.controls
+            || state.pressed != self.pressed
+            || state.expanded != self.expanded
+        {
             context.invalidate(WidgetInvalidation::SEMANTICS);
         }
         if state.enabled != self.enabled {
@@ -696,7 +730,9 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
         }
         state.label.clone_from(&self.label);
         state.described_by.clone_from(&self.described_by);
+        state.controls.clone_from(&self.controls);
         state.pressed = self.pressed;
+        state.expanded = self.expanded;
         state.enabled = self.enabled;
         state.actionable = self.actionable;
     }
@@ -724,6 +760,36 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
             WidgetActivationOutput::none()
         }
     }
+    fn event(
+        &mut self,
+        state: &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        if !state.enabled
+            || !state.actionable
+            || context.phase() != EventPhase::Target
+            || context.default_is_prevented()
+        {
+            return WidgetEventOutput::none();
+        }
+        let Some(command) = event.as_semantic_command() else {
+            return WidgetEventOutput::none();
+        };
+        if !matches!(
+            (state.expanded, command.command()),
+            (Some(false), SemanticCommand::Expand) | (Some(true), SemanticCommand::Collapse)
+        ) {
+            return WidgetEventOutput::none();
+        }
+        if let Some(factory) = self.activation_factory.as_mut() {
+            context.prevent_default();
+            context.stop_propagation();
+            context.emit(factory());
+        }
+        WidgetEventOutput::none()
+    }
+
     fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::Text(
             crate::TextLeafMeasure::new(self.label.clone())
@@ -747,11 +813,32 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
         if let Some(pressed) = state.pressed {
             semantic_state = semantic_state.with_pressed(pressed);
         }
+        if let Some(expanded) = state.expanded {
+            semantic_state = semantic_state.with_expanded(expanded);
+        }
         let mut node = SemanticNodeContribution::primary(SemanticRole::Button)
             .with_name(state.label.clone())
             .with_state(semantic_state);
         if state.actionable {
             node = node.with_action(SemanticAction::Activate);
+            if state.enabled {
+                match state.expanded {
+                    Some(false) => node = node.with_action(SemanticAction::Expand),
+                    Some(true) => node = node.with_action(SemanticAction::Collapse),
+                    None => {}
+                }
+            }
+        }
+        if state.expanded == Some(true)
+            && let Some(content) = &state.controls
+        {
+            node = node.with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::Controls,
+                SemanticReference::Authored {
+                    element_id: content.clone(),
+                    semantic_key: None,
+                },
+            ));
         }
         if let Some(tooltip) = state.described_by.clone() {
             node = node.with_relationship(SemanticRelationship::new(
@@ -776,7 +863,9 @@ impl<Action: 'static> View<Action> for Button<Action> {
             Box::new(WidgetAdapter(ButtonWidget {
                 label: self.label,
                 described_by: self.described_by,
+                controls: self.controls,
                 pressed: self.pressed,
+                expanded: self.expanded,
                 enabled: self.enabled,
                 activation_factory: self.activation_factory,
                 actionable: self.actionable,
@@ -785,6 +874,17 @@ impl<Action: 'static> View<Action> for Button<Action> {
             diagnostics,
         )
     }
+}
+
+/// Disclosure is an ordinary Button authoring surface: no second widget role,
+/// expansion registry, command queue, or framework-owned content visibility.
+pub type Disclosure<Action> = Button<Action>;
+
+/// An expandable Button trigger. Mount or omit the panel subtree in application
+/// composition; attach `controls(id)` to associate mounted expanded content.
+#[must_use]
+pub fn disclosure<Action>(label: impl Into<String>, expanded: bool) -> Disclosure<Action> {
+    Button::new(label).expanded(expanded)
 }
 
 pub struct Checkbox<Action> {

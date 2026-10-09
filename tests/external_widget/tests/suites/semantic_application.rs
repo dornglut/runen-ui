@@ -1,3 +1,5 @@
+#[path = "../disclosure.rs"]
+mod disclosure;
 #[path = "../content.rs"]
 mod content;
 #[path = "../list_box.rs"]
