@@ -94,9 +94,11 @@ jobs:
           cargo +stable test --locked -p runenui_render_wgpu --test m10f_editable correlated_editable_publication_renders_selection_preedit_scroll_and_retries_exactly -- --nocapture
           test -s "${RUNENUI_M10F_EVIDENCE_DIR}/m10f-editable-contact-sheet.png"
           test -s "${RUNENUI_M10F_EVIDENCE_DIR}/m10f-editable-evidence.txt"
-          cargo +stable test --locked -p runenui_render_wgpu --test m11_password_wgpu masked_standard_password_renders_with_real_wgpu_and_reclassifies_without_source_glyphs -- --nocapture
+          cargo +stable test --locked -p runenui_render_wgpu --test m11_password_wgpu -- --nocapture
           test -s "${RUNENUI_M11PASSWORD_EVIDENCE_DIR}/m11-password-masked.png"
           test -s "${RUNENUI_M11PASSWORD_EVIDENCE_DIR}/m11-password-public.png"
+          test -s "${RUNENUI_M11PASSWORD_EVIDENCE_DIR}/m11-placeholder-hint.png"
+          test -s "${RUNENUI_M11PASSWORD_EVIDENCE_DIR}/m11-placeholder-blank.png"
 
       - name: Check repository hygiene
         run: |

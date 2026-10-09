@@ -170,7 +170,8 @@ pub enum TextLeafWrap {
     NoWrap,
 }
 
-/// Authored text-leaf measurement over a single retained production text layout.
+/// Authored source measurement with an optional separate M8 visual placeholder.
+/// The placeholder never replaces the document's retained source layout or caret map.
 #[derive(Clone, Eq, PartialEq)]
 pub struct TextLeafMeasure {
     content: String,
@@ -611,5 +612,16 @@ mod confidentiality_tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn empty_source_visual_hint_is_distinct_from_document_and_implicit_debug() {
+        let measured = TextLeafMeasure::new("").with_visual_placeholder("Hint é漢");
+        assert_eq!(measured.content(), "");
+        assert_eq!(measured.visual_placeholder(), Some("Hint é漢"));
+        let output = format!("{measured:?}");
+        assert!(!output.contains("Hint"));
+        assert!(!output.contains("é漢"));
+        assert_eq!(TextLeafMeasure::new("ordinary").visual_placeholder(), None);
     }
 }
