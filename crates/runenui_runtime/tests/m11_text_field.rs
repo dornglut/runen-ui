@@ -19,12 +19,14 @@ struct FormState {
     revision: u64,
     selection: usize,
     mode: SemanticEditableMode,
+    placeholder: String,
     submits: usize,
 }
 
 enum Action {
     Edit(Box<EditIntent>),
     SetValue(String),
+    SetPlaceholder(String),
     Submit,
 }
 
@@ -60,7 +62,7 @@ impl UiApp for FormApp {
         .with_layout(
             LayoutStyle::default().with_width(LayoutDimension::length(LogicalLength::from(48_u16))),
         )
-        .placeholder("Type here")
+        .placeholder(state.placeholder.clone())
         .on_submit(|| Action::Submit)
     }
 
@@ -87,6 +89,10 @@ impl UiApp for FormApp {
                 state.revision += 1;
                 UpdateOutput::effects(Effects::none())
             }
+            Action::SetPlaceholder(value) => {
+                state.placeholder = value;
+                UpdateOutput::effects(Effects::none())
+            }
             Action::Submit => {
                 state.submits += 1;
                 UpdateOutput::effects(Effects::none())
@@ -109,6 +115,7 @@ fn app_with_source(mode: SemanticEditableMode, source: &str) -> AppRuntime<FormA
         revision: 0,
         selection: source.len(),
         mode,
+        placeholder: "Type here".to_owned(),
         submits: 0,
     })
 }
@@ -356,4 +363,92 @@ fn controlled_font_pointer_hit_and_selection_share_m10_caret_geometry() {
         selection.active().byte_offset() < selected_before.active().byte_offset(),
         "pointer click near the start must place the authoritative caret before the end"
     );
+}
+
+#[test]
+fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authority() {
+    let mut runtime = app_with_source(SemanticEditableMode::SingleLine, "");
+    register_font(&mut runtime);
+    let owner = runtime.index().nodes()[0].id().clone();
+    let first = publication(&mut runtime);
+    let field = &first.semantic_publication().snapshot().nodes()[0];
+    assert_eq!(field.placeholder(), Some("Type here"));
+    assert_eq!(field.editable().and_then(|editable| editable.value()), Some(""));
+    assert_eq!(runtime.state().revision, 0);
+    let original_size = first.layout_report().root().unwrap().desired_content_size();
+    let first_hint = first.paint_scene().items().iter().find_map(|item| {
+        item.primitive().as_shaped_text_run().map(|run| {
+            assert_eq!(item.opacity().get(), 0.5);
+            run.resource_ref().clone()
+        })
+    }).unwrap_or_else(|| unreachable!("empty source renders a visual-only shaped hint"));
+    assert!(first.paint_scene().shaped_text_resource(&first_hint).is_some());
+    let point = LogicalPoint::new(2.0, 2.0).unwrap();
+    assert_eq!(first.hit_test_scene().target_at(point), Some(&owner));
+
+    runtime.submit_action(Action::SetPlaceholder("A much longer visual hint".to_owned()))
+        .unwrap_or_else(|_| unreachable!("placeholder is application-authored"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let relabeled = publication(&mut runtime);
+    assert_eq!(runtime.index().nodes()[0].id(), &owner);
+    assert_eq!(relabeled.layout_report().root().unwrap().desired_content_size(), original_size);
+    assert_eq!(
+        relabeled.semantic_publication().snapshot().nodes()[0]
+            .editable().and_then(|editable| editable.value()), Some("")
+    );
+    assert!(relabeled.paint_scene().items().iter().any(|item| {
+        item.primitive().as_shaped_text_run().is_some() && item.opacity().get() == 0.5
+    }));
+
+    focus(&mut runtime);
+    commit(&mut runtime, "Q");
+    let filled = publication(&mut runtime);
+    assert_eq!(runtime.state().text, "Q");
+    assert!(filled.paint_scene().items().iter().all(|item| {
+        item.primitive().as_shaped_text_run().is_none() || item.opacity().get() == 1.0
+    }));
+    assert_eq!(filled.semantic_publication().snapshot().nodes()[0].placeholder(),
+        Some("A much longer visual hint"));
+
+    runtime.submit_action(Action::SetValue(String::new()))
+        .unwrap_or_else(|_| unreachable!("application can clear durable text"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let cleared = publication(&mut runtime);
+    assert_eq!(runtime.state().text, "");
+    assert!(cleared.paint_scene().items().iter().any(|item| {
+        item.primitive().as_shaped_text_run().is_some() && item.opacity().get() == 0.5
+    }));
+}
+
+#[test]
+fn active_ime_preedit_suppresses_placeholder_without_substituting_document_source() {
+    let mut runtime = app_with_source(SemanticEditableMode::SingleLine, "");
+    register_font(&mut runtime);
+    focus(&mut runtime);
+    let idle = publication(&mut runtime);
+    assert!(idle.paint_scene().items().iter().any(|item| {
+        item.primitive().as_shaped_text_run().is_some() && item.opacity().get() == 0.5
+    }));
+    let generation = runtime.start_composition(None)
+        .unwrap_or_else(|_| unreachable!("composition begins"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.submit_composition_update(generation.generation().clone(), "é".to_owned(), None)
+        .unwrap_or_else(|_| unreachable!("preedit is admitted"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let composing = publication(&mut runtime);
+    assert!(composing.paint_scene().items().iter().all(|item| {
+        item.primitive().as_shaped_text_run().is_none() || item.opacity().get() == 1.0
+    }), "preedit owns visual text while composition is active");
+    assert_eq!(runtime.state().text, "");
+    assert_eq!(
+        composing.semantic_publication().snapshot().nodes()[0]
+            .editable().and_then(|editable| editable.value()), Some("")
+    );
+    runtime.cancel_composition(generation.generation().clone())
+        .unwrap_or_else(|_| unreachable!("composition cancels"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let restored = publication(&mut runtime);
+    assert!(restored.paint_scene().items().iter().any(|item| {
+        item.primitive().as_shaped_text_run().is_some() && item.opacity().get() == 0.5
+    }));
 }

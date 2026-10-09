@@ -173,3 +173,130 @@ fn masked_standard_password_renders_with_real_wgpu_and_reclassifies_without_sour
     assert_eq!(pixels, repeated.readback().rgba8_srgb());
     Ok(())
 }
+
+#[derive(Clone)]
+struct PlaceholderState {
+    source: String,
+    hint: bool,
+}
+
+struct PlaceholderApp;
+
+impl UiApp for PlaceholderApp {
+    type State = PlaceholderState;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(1000), TextDocumentRevision::new(1));
+        let position = TextPosition::new(
+            snapshot,
+            &state.source,
+            state.source.len(),
+            TextAffinity::Downstream,
+        )
+        .unwrap_or_else(|_| unreachable!("checked source offset"));
+        let field = runenui_core::text_field(
+            snapshot,
+            state.source.clone(),
+            TextSelection::collapsed(position),
+            SemanticEditableMode::SingleLine,
+            |_| (),
+        )
+        .unwrap_or_else(|_| unreachable!("valid placeholder field"));
+        let field = if state.hint {
+            field.placeholder("Search records")
+        } else {
+            field
+        };
+        field.foreground(Color::WHITE)
+    }
+
+    fn update(
+        _: &mut Self::State,
+        _: Self::Action,
+    ) -> UpdateOutput<Self::Action, Self::HostProtocol> {
+        UpdateOutput::effects(runenui_core::Effects::none())
+    }
+}
+
+fn placeholder_publication(source: &str, hint: bool) -> Result<
+    runenui_runtime::SurfacePublication,
+    Box<dyn std::error::Error>,
+> {
+    let mut runtime = AppRuntime::<PlaceholderApp>::mount(PlaceholderState {
+        source: source.to_owned(),
+        hint,
+    });
+    runtime.register_text_font_bytes(FONT.to_vec())?;
+    runtime.set_text_generic_family_mapping(
+        GenericFontFamily::SansSerif,
+        &[FontFamilyName::new("Cantarell")?],
+    )?;
+    let env = StyleEnvironment::default();
+    Ok(runtime.publish_surface(&SurfaceBuildContext::tight(
+        &env,
+        LogicalSize::try_new(300.0, 60.0)?,
+    ))?)
+}
+
+#[test]
+fn empty_standard_field_placeholder_uses_real_gpu_but_not_editable_text()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut renderer = match block_on(Renderer::request(RendererOptions::new())) {
+        Ok(renderer) => renderer,
+        Err(RendererInitError::AdapterUnavailable { .. }) => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    let provider = NoExternalResources;
+    let hinted = placeholder_publication("", true)?;
+    let blank = placeholder_publication("", false)?;
+    let filled = placeholder_publication("Q", true)?;
+    assert_eq!(
+        hinted.semantic_publication().snapshot().nodes()[0]
+            .editable().and_then(|editable| editable.value()), Some("")
+    );
+    assert_eq!(
+        hinted.layout_report().root().unwrap().desired_content_size(),
+        blank.layout_report().root().unwrap().desired_content_size(),
+    );
+    assert!(hinted.paint_scene().items().iter().any(|item| {
+        item.primitive().as_shaped_text_run().is_some() && item.opacity().get() == 0.5
+    }));
+    assert!(!blank.paint_scene().items().iter().any(|item| {
+        item.primitive().as_shaped_text_run().is_some()
+    }));
+    assert!(filled.paint_scene().items().iter().all(|item| {
+        item.primitive().as_shaped_text_run().is_none() || item.opacity().get() == 1.0
+    }));
+
+    let hint_render = renderer.render_offscreen_publication(hinted.paint_publication(), &provider)?;
+    let hint_pixels = hint_render.readback().rgba8_srgb().to_vec();
+    let blank_render = renderer.render_offscreen_publication(blank.paint_publication(), &provider)?;
+    assert_ne!(hint_pixels, blank_render.readback().rgba8_srgb());
+    let filled_render = renderer.render_offscreen_publication(filled.paint_publication(), &provider)?;
+    assert_ne!(hint_pixels, filled_render.readback().rgba8_srgb());
+
+    if let Some(directory) = std::env::var_os("RUNENUI_M11PASSWORD_EVIDENCE_DIR")
+        .map(PathBuf::from)
+    {
+        fs::create_dir_all(&directory)?;
+        let extent = hint_render.readback().extent();
+        image::save_buffer(
+            directory.join("m11-placeholder-hint.png"),
+            &hint_pixels,
+            extent.width(),
+            extent.height(),
+            image::ColorType::Rgba8,
+        )?;
+        image::save_buffer(
+            directory.join("m11-placeholder-blank.png"),
+            blank_render.readback().rgba8_srgb(),
+            extent.width(),
+            extent.height(),
+            image::ColorType::Rgba8,
+        )?;
+    }
+    Ok(())
+}
