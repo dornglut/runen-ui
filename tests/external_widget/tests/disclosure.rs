@@ -147,8 +147,14 @@ fn parity(h: &TestHarness<App>, expanded: bool) {
             .unwrap_or_else(|| unreachable!("target present"));
         assert_eq!(node.state().expanded(), Some(expanded));
         assert!(node.supported_actions().contains(&SemanticAction::Activate));
-        assert_eq!(node.supported_actions().contains(&SemanticAction::Expand), !expanded);
-        assert_eq!(node.supported_actions().contains(&SemanticAction::Collapse), expanded);
+        assert_eq!(
+            node.supported_actions().contains(&SemanticAction::Expand),
+            !expanded
+        );
+        assert_eq!(
+            node.supported_actions().contains(&SemanticAction::Collapse),
+            expanded
+        );
     }
 }
 #[test]
