@@ -201,7 +201,7 @@ impl<'a, Action> EventContext<'a, Action> {
     }
 
     /// Final displayed owner-local extent from the same retained input publication
-    /// as pointer_local_position. Unavailable or retired geometry yields None.
+    /// as `pointer_local_position`. Unavailable or retired geometry yields None.
     #[must_use]
     pub const fn pointer_local_size(&self) -> Option<LogicalSize> {
         self.pointer_local_size
