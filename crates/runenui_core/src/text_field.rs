@@ -289,7 +289,6 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             && !context.default_is_prevented()
             && self.state.mode == SemanticEditableMode::SingleLine
             && !self.state.disabled
-            && !self.state.read_only
             && let Some(key) = event.as_keyboard()
             && key.phase() == KeyboardPhase::Down
             && key.logical_key() == &LogicalKey::Enter
@@ -472,14 +471,10 @@ mod tests {
 
     fn widget(mode: SemanticEditableMode) -> TextFieldWidget<()> {
         let content = "a line without hard breaks".to_owned();
-        let snapshot = TextDocumentSnapshot::new(TextDocumentId::new(91), TextDocumentRevision::new(1));
-        let position = TextPosition::new(
-            snapshot,
-            &content,
-            content.len(),
-            TextAffinity::Upstream,
-        )
-        .unwrap_or_else(|_| unreachable!("fixture position is valid"));
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(91), TextDocumentRevision::new(1));
+        let position = TextPosition::new(snapshot, &content, content.len(), TextAffinity::Upstream)
+            .unwrap_or_else(|_| unreachable!("fixture position is valid"));
         TextFieldWidget {
             state: TextFieldState {
                 snapshot,
@@ -556,40 +551,94 @@ mod tests {
         assert!(flags.contains(WidgetInvalidation::SEMANTICS));
         assert!(!flags.contains(WidgetInvalidation::LAYOUT));
     }
-    #[test]
+#[test]
     fn enter_honors_prevention_modifiers_repeat_composition_and_read_only() {
-        use core::num::NonZeroU64;
         use crate::{
             __runtime::{RoutedEventOutput, RuntimeNamespace},
-            CommandOrigin, KeyLocation, KeyModifiers, KeyboardEvent, MonotonicInstant,
-            PhysicalKey, WorkSequence,
+            CommandOrigin, KeyLocation, KeyModifiers, KeyboardEvent, MonotonicInstant, PhysicalKey,
+            WorkSequence,
         };
+        use core::num::NonZeroU64;
+
+        #[derive(Clone, Copy)]
+        struct EnterCase {
+            previously_prevented: bool,
+            modifiers: KeyModifiers,
+            repeat: bool,
+            composition: KeyboardCompositionState,
+            read_only: bool,
+            disabled: bool,
+            emits: bool,
+            prevents_default: bool,
+        }
+
         let namespace = RuntimeNamespace::__runtime_new();
         let owner = namespace.__runtime_mounted_id(1, 1);
+        let ordinary = EnterCase {
+            previously_prevented: false,
+            modifiers: KeyModifiers::NONE,
+            repeat: false,
+            composition: KeyboardCompositionState::Inactive,
+            read_only: false,
+            disabled: false,
+            emits: true,
+            prevents_default: true,
+        };
         let cases = [
-            (false, KeyModifiers::NONE, false, KeyboardCompositionState::Inactive, false, false, true, true),
-            (false, KeyModifiers::SHIFT, false, KeyboardCompositionState::Inactive, false, false, false, false),
-            (false, KeyModifiers::NONE.with_control(), false, KeyboardCompositionState::Inactive, false, false, false, false),
-            (false, KeyModifiers::NONE, true, KeyboardCompositionState::Inactive, false, false, false, true),
-            (false, KeyModifiers::NONE, false, KeyboardCompositionState::Active, false, false, false, false),
-            (true, KeyModifiers::NONE, false, KeyboardCompositionState::Inactive, false, false, false, true),
-            (false, KeyModifiers::NONE, false, KeyboardCompositionState::Inactive, true, false, false, false),
-            (false, KeyModifiers::NONE, false, KeyboardCompositionState::Inactive, false, true, false, false),
+            ordinary,
+            EnterCase {
+                modifiers: KeyModifiers::SHIFT,
+                emits: false,
+                prevents_default: false,
+                ..ordinary
+            },
+            EnterCase {
+                modifiers: KeyModifiers::NONE.with_control(),
+                emits: false,
+                prevents_default: false,
+                ..ordinary
+            },
+            EnterCase {
+                repeat: true,
+                emits: false,
+                ..ordinary
+            },
+            EnterCase {
+                composition: KeyboardCompositionState::Active,
+                emits: false,
+                prevents_default: false,
+                ..ordinary
+            },
+            EnterCase {
+                previously_prevented: true,
+                emits: false,
+                ..ordinary
+            },
+            EnterCase {
+                read_only: true,
+                ..ordinary
+            },
+            EnterCase {
+                disabled: true,
+                emits: false,
+                prevents_default: false,
+                ..ordinary
+            },
         ];
-        for (previously_prevented, modifiers, repeat, composition, read_only, disabled, emitted, prevented) in cases {
+        for case in cases {
             let mut field = widget(SemanticEditableMode::SingleLine);
-            field.state.read_only = read_only;
-            field.state.disabled = disabled;
+            field.state.read_only = case.read_only;
+            field.state.disabled = case.disabled;
             field.on_submit = Some(Box::new(|| ()));
             let mut state = field.create_state();
             let event = UiEvent::Keyboard(KeyboardEvent::new(
                 KeyboardPhase::Down,
                 PhysicalKey::Code("Enter".to_owned()),
                 LogicalKey::Enter,
-                modifiers,
-                repeat,
+                case.modifiers,
+                case.repeat,
                 KeyLocation::Standard,
-                composition,
+                case.composition,
                 None,
             ));
             let mut context = EventContext::new(
@@ -604,17 +653,34 @@ mod tests {
                 MonotonicInstant::__runtime_from_nanos(0),
                 None,
                 true,
-                previously_prevented,
+                case.previously_prevented,
                 false,
                 4,
             );
             field.event(&mut state, &event, &mut context);
             let output = context.into_output();
-            assert_eq!(output.default_prevented, prevented);
-            assert_eq!(output.ordered.len(), usize::from(emitted));
-            if emitted {
+            assert_eq!(output.default_prevented, case.prevents_default);
+            assert_eq!(output.ordered.len(), usize::from(case.emits));
+            if case.emits {
                 assert!(matches!(output.ordered[0], RoutedEventOutput::Action(())));
             }
         }
     }
+
+    #[test]
+    fn combined_mode_and_disabled_rebuild_invalidates_both_layout_and_interaction() {
+        let before = widget(SemanticEditableMode::Multiline);
+        let mut after = widget(SemanticEditableMode::SingleLine);
+        after.state.disabled = true;
+        let mut retained = before.create_state();
+        let mut context = WidgetUpdateContext::<()>::__runtime_new();
+        after.update(&mut retained, &mut context);
+        let flags = context.__runtime_take_invalidation();
+        assert!(flags.contains(WidgetInvalidation::LAYOUT));
+        assert!(flags.contains(WidgetInvalidation::INTERACTION));
+        assert!(flags.contains(WidgetInvalidation::PAINT));
+        assert!(flags.contains(WidgetInvalidation::SEMANTICS));
+    }
+
+
 }
