@@ -7,14 +7,15 @@ use runenui_core::{
     Axis, ComputedStyle, ContentAlignment, EdgeInsets, FlexBasis, FlexDirection, FlexWrap,
     ItemAlignment, LayoutBound, LayoutContainer, LayoutDimension, LayoutPosition, LayoutStyle,
     LogicalLength, LogicalPoint, LogicalRect, LogicalSize, MainAxisAlignment, OverflowPolicy,
-    ScrollBarPlacement, ScrollBarVisibility, ScrollControlSnapshot, TextBlockPlacement, Typography,
-    WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize,
+    ScrollBarPlacement, ScrollBarVisibility, ScrollControlSnapshot, TextBlockPlacement,
+    TextLeafWrap, Typography, WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput,
+    WidgetMeasuredSize,
 };
 use std::{collections::HashMap, sync::Arc};
 
 use runenui_text::{
     TextConstraints, TextLayoutError, TextLayoutState, TextParagraphStyle, TextPreeditProjection,
-    TextRequest, TextSystem,
+    TextRequest, TextSystem, TextWrapMode,
 };
 use taffy::{
     CacheTree,
@@ -660,8 +661,14 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 if let Some(minimum) = minimum_inline {
                     constraints = constraints.with_alignment_min_inline(minimum);
                 }
-                let paragraph =
-                    TextParagraphStyle::default().with_alignment(descriptor.inline_alignment());
+                let wrap_mode = match descriptor.wrap_mode() {
+                    TextLeafWrap::Wrap => TextWrapMode::Wrap,
+                    TextLeafWrap::NoWrap => TextWrapMode::NoWrap,
+                    _ => TextWrapMode::Wrap,
+                };
+                let paragraph = TextParagraphStyle::default()
+                    .with_alignment(descriptor.inline_alignment())
+                    .with_wrap_mode(wrap_mode);
                 let request = TextRequest::new(content, typography, constraints)
                     .with_paragraph_style(paragraph);
                 #[cfg(feature = "internal-test-seams")]

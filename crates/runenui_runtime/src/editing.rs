@@ -76,6 +76,28 @@ pub(crate) enum EditingReconcileError {
     InconsistentResolution,
 }
 
+/// Normalizes committed insertions, pastes, and completed IME proposals at the
+/// single M10 transaction boundary. Source text and other documents are unchanged.
+fn normalize_line_breaks(source: &str) -> String {
+    let mut normalized = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                normalized.push(' ');
+            }
+            ch if runenui_core::TextNewlinePolicy::is_hard_line_break(ch) => {
+                normalized.push(' ');
+            }
+            _ => normalized.push(ch),
+        }
+    }
+    normalized
+}
+
 struct PendingEdit {
     request: EditRequestId,
     predecessor: Option<EditRequestId>,
@@ -582,6 +604,17 @@ impl<Action> EditingRegistry<Action> {
             .active
             .get_mut(owner)
             .ok_or(EditPrepareError::MissingOwner)?;
+        let normalized_text = if session.contribution.newline_policy()
+            == runenui_core::TextNewlinePolicy::ReplaceWithSpace
+            && replacement_text
+                .chars()
+                .any(runenui_core::TextNewlinePolicy::is_hard_line_break)
+        {
+            std::borrow::Cow::Owned(normalize_line_breaks(replacement_text))
+        } else {
+            std::borrow::Cow::Borrowed(replacement_text)
+        };
+        let replacement_text = normalized_text.as_ref();
         let selection = session.selection;
         let snapshot = session.contribution.snapshot();
         let replacement = TextRange::new(snapshot, &session.projected_text, start, end)
@@ -1534,6 +1567,69 @@ mod tests {
             |intent| intent,
         )
         .unwrap_or_else(|_| unreachable!("fixture contribution is valid"))
+    }
+
+    #[test]
+    fn line_break_normalization_is_m10_edit_proposal_policy() {
+        use runenui_core::TextNewlinePolicy;
+
+        let namespace = RuntimeNamespace::__runtime_new();
+        let normalized_owner = namespace.__runtime_mounted_id(91, 1);
+        let multiline_owner = namespace.__runtime_mounted_id(92, 1);
+        let mut registry = EditingRegistry::new(4, 8);
+        registry
+            .initial_reconcile(
+                &namespace,
+                vec![
+                    (
+                        normalized_owner.clone(),
+                        contribution(0, "a", 1, EditingSessionPolicy::PreserveExact)
+                            .with_newline_policy(TextNewlinePolicy::ReplaceWithSpace),
+                    ),
+                    (
+                        multiline_owner.clone(),
+                        contribution(0, "a", 1, EditingSessionPolicy::PreserveExact),
+                    ),
+                ],
+            )
+            .unwrap_or_else(|_| unreachable!("checked source sessions reconcile"));
+
+        let normalized = registry
+            .prepare_insert(
+                &namespace,
+                &normalized_owner,
+                "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j",
+                None,
+            )
+            .unwrap_or_else(|_| unreachable!("single-line edit is prepared"));
+        assert_eq!(normalized.action.replacement_text(), "b c d e f g h i j");
+        assert_eq!(
+            registry.active[&normalized_owner].projected_text.as_ref(),
+            "ab c d e f g h i j"
+        );
+        assert_eq!(
+            registry.active[&normalized_owner].pending[0]
+                .replacement_text
+                .as_ref(),
+            "b c d e f g h i j"
+        );
+
+        let original = registry
+            .prepare_insert(
+                &namespace,
+                &multiline_owner,
+                "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j",
+                None,
+            )
+            .unwrap_or_else(|_| unreachable!("multiline edit is prepared"));
+        assert_eq!(
+            original.action.replacement_text(),
+            "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j"
+        );
+        assert_eq!(
+            registry.active[&multiline_owner].projected_text.as_ref(),
+            "ab\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j"
+        );
     }
 
     #[test]
