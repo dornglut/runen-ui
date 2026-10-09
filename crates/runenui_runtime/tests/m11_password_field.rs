@@ -1,7 +1,8 @@
 //! Standard password TextField exercising the accepted M10/M8 secret authority.
 
 use runenui_core::{
-    CommandOrigin, CommittedTextEvent, EditIntent, EditResolution, Effects, IntoUpdateOutput,
+    ClipboardClassification, ClipboardText, CommandOrigin, CommittedTextEvent, EditIntent,
+    EditResolution, Effects, FrameworkServiceRequest, FrameworkServiceResponse, IntoUpdateOutput,
     NoHostProtocol, SemanticCommand, SemanticEditableMode, StyleEnvironment, TextAffinity,
     TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection,
     TextSensitivity, UiApp, UpdateOutput, View,
@@ -201,4 +202,80 @@ fn password_submit_and_public_rebuild_keep_m10_authority_and_shaping_consistent(
     assert_eq!(editable.sensitivity(), TextSensitivity::Public);
     assert_eq!(editable.value(), Some(runtime.state().text.as_str()));
     assert_ne!(glyphs(&after_edit), glyphs(&public));
+
+    runtime
+        .submit_action(Action::ToggleSecret)
+        .unwrap_or_else(|_| unreachable!("secret reclassification is admitted"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let secret_again = publication(&mut runtime);
+    let editable = secret_again.semantic_publication().snapshot().nodes()[0]
+        .editable().unwrap_or_else(|| unreachable!("secret semantics are restored"));
+    assert_eq!(editable.sensitivity(), TextSensitivity::Secret);
+    assert_eq!(editable.value(), None);
+    assert_eq!(glyphs(&after_edit), glyphs(&secret_again));
+    assert!(!format!("{:?}", secret_again.paint_scene()).contains(SECRET));
+}
+
+#[test]
+fn password_clipboard_copy_cut_suppress_disclosure_and_paste_uses_m10_service() {
+    let mut runtime = mounted();
+    let owner = runtime.index().nodes()[0].id().clone();
+    runtime
+        .submit_command(
+            owner.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus is admitted"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    publication(&mut runtime);
+
+    for command in [SemanticCommand::SelectAll, SemanticCommand::Copy, SemanticCommand::Cut] {
+        runtime
+            .submit_command(owner.clone(), command, CommandOrigin::programmatic())
+            .unwrap_or_else(|_| unreachable!("clipboard command is routed"));
+        runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    }
+    assert_eq!(runtime.state().text, SECRET);
+    assert!(runtime.pending_framework_services().iter().all(|service| {
+        !matches!(service.request(), FrameworkServiceRequest::ClipboardWriteText { .. })
+    }));
+
+    runtime
+        .submit_command(
+            owner,
+            SemanticCommand::Paste,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("paste command is routed"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let service = runtime
+        .pending_framework_services()
+        .into_iter()
+        .find(|service| {
+            matches!(service.request(), FrameworkServiceRequest::ClipboardReadText { .. })
+        })
+        .unwrap_or_else(|| unreachable!("M10 requests typed clipboard read"));
+    runtime
+        .complete_framework_service(
+            &service.token(),
+            FrameworkServiceResponse::ClipboardReadText(Ok(ClipboardText::new(
+                "new-é🔒",
+                ClipboardClassification::Sensitive,
+            ))),
+        )
+        .unwrap_or_else(|_| unreachable!("classified response is admitted"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.state().text, "new-é🔒");
+    let surface = publication(&mut runtime);
+    assert_eq!(
+        surface.semantic_publication().snapshot().nodes()[0]
+            .editable()
+            .and_then(|editable| editable.value()),
+        None
+    );
+    for literal in [SECRET, "new-é🔒"] {
+        assert!(!runtime.trace().export_jsonl().contains(literal));
+        assert!(!format!("{:?}", surface.paint_scene()).contains(literal));
+    }
 }

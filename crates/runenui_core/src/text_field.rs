@@ -67,15 +67,19 @@ pub struct TextField<Action> {
 
 impl<Action> fmt::Debug for TextField<Action> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TextField")
+        let mut debug = f.debug_struct("TextField");
+        debug
             .field("snapshot", &self.snapshot)
-            .field("content_bytes", &self.content.len())
-            .field("selection", &self.selection)
             .field("mode", &self.mode)
             .field("sensitivity", &self.sensitivity)
             .field("read_only", &self.read_only)
-            .field("disabled", &self.disabled)
-            .finish_non_exhaustive()
+            .field("disabled", &self.disabled);
+        if self.sensitivity == TextSensitivity::Public {
+            debug
+                .field("content_bytes", &self.content.len())
+                .field("selection", &self.selection);
+        }
+        debug.finish_non_exhaustive()
     }
 }
 
@@ -238,15 +242,19 @@ struct TextFieldState {
 
 impl fmt::Debug for TextFieldState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TextFieldState")
+        let mut debug = f.debug_struct("TextFieldState");
+        debug
             .field("snapshot", &self.snapshot)
-            .field("content_bytes", &self.content.len())
-            .field("selection", &self.selection)
             .field("mode", &self.mode)
             .field("sensitivity", &self.sensitivity)
             .field("read_only", &self.read_only)
-            .field("disabled", &self.disabled)
-            .finish_non_exhaustive()
+            .field("disabled", &self.disabled);
+        if self.sensitivity == TextSensitivity::Public {
+            debug
+                .field("content_bytes", &self.content.len())
+                .field("selection", &self.selection);
+        }
+        debug.finish_non_exhaustive()
     }
 }
 
@@ -538,15 +546,13 @@ mod tests {
     #[test]
     fn secret_password_builder_rejects_multiline_and_redacts_widget_state_debug() {
         let source = "vault-secret-é漢";
-        let snapshot = TextDocumentSnapshot::new(
-            TextDocumentId::new(92),
-            TextDocumentRevision::new(1),
-        );
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(92), TextDocumentRevision::new(1));
         let active = TextPosition::new(
             snapshot,
             source,
-            source.len(),
-            TextAffinity::Upstream,
+            "vault".len(),
+            TextAffinity::Downstream,
         )
         .unwrap_or_else(|_| unreachable!("source selection is valid"));
         let make = |mode| {
@@ -567,21 +573,36 @@ mod tests {
             .password()
             .unwrap_or_else(|_| unreachable!("single-line password is valid"));
         assert_eq!(field.sensitivity, TextSensitivity::Secret);
-        assert!(!format!("{field:?}").contains(source));
+        let facade_debug = format!("{field:?}");
+        for forbidden in [source, "content_bytes", "selection"] {
+            assert!(!facade_debug.contains(forbidden));
+        }
         let mut widget = widget(SemanticEditableMode::SingleLine);
         widget.state.content = source.to_owned();
         widget.state.selection = TextSelection::collapsed(
-            TextPosition::new(widget.state.snapshot, source, source.len(), TextAffinity::Upstream)
-                .unwrap_or_else(|_| unreachable!("updated selection validates")),
+            TextPosition::new(
+                widget.state.snapshot,
+                source,
+                "vault".len(),
+                TextAffinity::Downstream,
+            )
+            .unwrap_or_else(|_| unreachable!("updated selection validates")),
         );
         widget.state.sensitivity = TextSensitivity::Secret;
-        assert!(!format!("{:?}", widget.state).contains(source));
-        assert!(!format!("{widget:?}").contains(source));
+        for debug in [format!("{:?}", widget.state), format!("{widget:?}")] {
+            for forbidden in [source, "content_bytes", "selection"] {
+                assert!(!debug.contains(forbidden), "secret metadata appeared in Debug");
+            }
+        }
         assert_eq!(
-            widget.editable(&()).unwrap_or_else(|| unreachable!("secret document binds"))
+            widget
+                .editable(&widget.state)
+                .unwrap_or_else(|| unreachable!("secret document binds"))
                 .sensitivity(),
             TextSensitivity::Secret
         );
+        let public = make(SemanticEditableMode::SingleLine);
+        assert!(format!("{public:?}").contains("content_bytes"));
     }
 
     #[test]
