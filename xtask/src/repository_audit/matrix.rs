@@ -984,7 +984,7 @@ mod tests {
         ),
         ("M11BUTTONPRESS", &["M11CTRL-62"], "owner-accepted"),
         ("M11FOCUSVISIBLE", &["M11CTRL-63"], "owner-accepted"),
-        ("M11TEXTLAYOUT", &["M11CTRL-64"], "implementation-complete"),
+        ("M11TEXTLAYOUT", &["M11CTRL-64"], "owner-accepted"),
     ];
 
     #[test]
