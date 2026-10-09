@@ -1,4 +1,4 @@
-//! Host-private game pointer-mode policy. No RunenUI routing or camera semantics live here.
+//! Host-private game pointer-mode policy. No `RunenUI` routing or camera semantics live here.
 use runenui_core::{CursorShape, SurfaceId};
 use winit::{
     error::ExternalError,
@@ -7,8 +7,9 @@ use winit::{
 
 use crate::framework_services::cursor_icon;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum Mode {
+    #[default]
     Absolute,
     ConfinedAbsolute,
     LockedRelative,
@@ -108,7 +109,7 @@ impl PointerModes {
         &self.state
     }
 
-    pub fn ui_pointer_allowed(&self) -> bool {
+    pub const fn ui_pointer_allowed(&self) -> bool {
         self.focused
             && matches!(
                 self.state,
@@ -120,7 +121,7 @@ impl PointerModes {
             )
     }
 
-    pub fn gameplay_motion_allowed(&self) -> bool {
+    pub const fn gameplay_motion_allowed(&self) -> bool {
         self.focused
             && matches!(
                 self.state,
@@ -297,11 +298,6 @@ mod tests {
         failures: Vec<(Mode, Failure)>,
         calls: Vec<(Mode, Option<bool>)>,
     }
-    impl Default for Mode {
-        fn default() -> Self {
-            Self::Absolute
-        }
-    }
     impl Platform for Fake {
         fn grab(&mut self, mode: Mode) -> Result<(), Failure> {
             self.calls.push((mode, None));
@@ -325,7 +321,7 @@ mod tests {
     fn focused() -> (PointerModes, Fake) {
         let mut controller = PointerModes::default();
         let mut host = Fake::default();
-        controller.focus_changed(true, &mut host).unwrap();
+        controller.focus_changed(true, &mut host).unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         (controller, host)
     }
 
@@ -350,7 +346,7 @@ mod tests {
         assert!(!modes.observe_motion(&scope(1), (f64::NAN, 1.0)));
         assert!(modes.observe_motion(&scope(1), (2.0, 1.0)));
         assert!(modes.gameplay_motion_allowed());
-        modes.release(&mut host).unwrap();
+        modes.release(&mut host).unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         assert!(modes.ui_pointer_allowed());
         assert!(!modes.gameplay_motion_allowed());
         assert!(host.visible);
@@ -376,7 +372,7 @@ mod tests {
         let (mut modes, mut host) = focused();
         modes
             .request(scope(1), Mode::LockedRelative, &mut host)
-            .unwrap();
+            .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         host.failures.push((Mode::Absolute, Failure::Native));
         assert_eq!(modes.release(&mut host), Err(Failure::ReleaseFailed));
         assert!(!modes.ui_pointer_allowed());
@@ -386,7 +382,7 @@ mod tests {
             modes.request(scope(2), Mode::LockedRelative, &mut host),
             Err(Failure::ReleaseFailed)
         );
-        modes.release(&mut host).unwrap();
+        modes.release(&mut host).unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         assert!(modes.ui_pointer_allowed());
     }
 
@@ -402,7 +398,7 @@ mod tests {
         );
         assert!(matches!(modes.state(), State::ReleaseFailed));
         assert!(!modes.ui_pointer_allowed());
-        modes.release(&mut host).unwrap();
+        modes.release(&mut host).unwrap_or_else(|_| unreachable!("deterministic fake native success"));
     }
 
     #[test]
@@ -410,14 +406,14 @@ mod tests {
         let (mut modes, mut host) = focused();
         modes
             .request(scope(1), Mode::LockedRelative, &mut host)
-            .unwrap();
+            .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         modes.set_ui_cursor(&mut host, CursorShape::Pointer, true);
         assert!(!host.visible);
-        modes.focus_changed(false, &mut host).unwrap();
+        modes.focus_changed(false, &mut host).unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         assert!(host.visible);
         assert!(!modes.gameplay_motion_allowed());
         assert!(!modes.ui_pointer_allowed());
-        modes.focus_changed(true, &mut host).unwrap();
+        modes.focus_changed(true, &mut host).unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         assert!(modes.ui_pointer_allowed());
         assert!(!modes.gameplay_motion_allowed());
     }
@@ -427,15 +423,15 @@ mod tests {
         let (mut modes, mut host) = focused();
         let pending = modes
             .request(scope(1), Mode::LockedRelative, &mut host)
-            .unwrap();
-        modes.focus_changed(false, &mut host).unwrap();
+            .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
+        modes.focus_changed(false, &mut host).unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         assert!(!modes.observe_motion(&scope(1), (4.0, 6.0)));
         assert!(!modes.gameplay_motion_allowed());
         assert!(host.visible);
-        modes.focus_changed(true, &mut host).unwrap();
+        modes.focus_changed(true, &mut host).unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         let fresh = modes
             .request(scope(1), Mode::LockedRelative, &mut host)
-            .unwrap();
+            .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         assert_ne!(pending, fresh);
     }
 
@@ -444,11 +440,11 @@ mod tests {
         let (mut modes, mut host) = focused();
         modes
             .request(scope(1), Mode::LockedRelative, &mut host)
-            .unwrap();
+            .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         assert!(modes.observe_motion(&scope(1), (1.0, 2.0)));
         let next = modes
             .request(scope(2), Mode::LockedRelative, &mut host)
-            .unwrap();
+            .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         assert!(matches!(next, Outcome::WaitingForMotion(_)));
         assert!(!modes.observe_motion(&scope(1), (8.0, 9.0)));
         assert!(modes.observe_motion(&scope(2), (8.0, 9.0)));
@@ -472,11 +468,11 @@ mod tests {
     #[test]
     fn unfocused_cursor_service_cannot_hide_system_cursor() {
         let (mut modes, mut host) = focused();
-        modes.focus_changed(false, &mut host).unwrap();
+        modes.focus_changed(false, &mut host).unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
         assert!(host.visible);
         assert!(!modes.ui_pointer_allowed());
-        modes.focus_changed(true, &mut host).unwrap();
+        modes.focus_changed(true, &mut host).unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         assert!(!host.visible); // UI baseline resumes only when the host is focused
     }
 
@@ -485,7 +481,7 @@ mod tests {
         let (mut modes, mut host) = focused();
         let first = modes
             .request(scope(1), Mode::LockedRelative, &mut host)
-            .unwrap();
+            .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         let count = host.calls.len();
         assert_eq!(
             modes.request(scope(1), Mode::LockedRelative, &mut host),
@@ -493,7 +489,7 @@ mod tests {
         );
         assert_eq!(host.calls.len(), count);
         assert!(modes.observe_motion(&scope(1), (1.0, -1.0)));
-        modes.retire_window(&mut host).unwrap();
+        modes.retire_window(&mut host).unwrap_or_else(|_| unreachable!("deterministic fake native success"));
         assert!(!modes.observe_motion(&scope(1), (1.0, -1.0)));
         assert_eq!(
             modes.request(scope(2), Mode::LockedRelative, &mut host),

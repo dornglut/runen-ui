@@ -36,7 +36,7 @@ impl NativeFrameworkServices {
         &self.pointer_modes
     }
 
-    pub fn pointer_modes_mut(&mut self) -> &mut PointerModes {
+    pub const fn pointer_modes_mut(&mut self) -> &mut PointerModes {
         &mut self.pointer_modes
     }
 
@@ -285,7 +285,7 @@ const fn map_clipboard_error(error: &arboard::Error) -> FrameworkServiceFailure 
     }
 }
 
-pub(crate) const fn cursor_icon(shape: CursorShape) -> CursorIcon {
+pub(super) const fn cursor_icon(shape: CursorShape) -> CursorIcon {
     match shape {
         CursorShape::Text => CursorIcon::Text,
         CursorShape::Pointer => CursorIcon::Pointer,
@@ -318,6 +318,20 @@ mod tests {
         WorkSequence,
     };
     use winit::window::CursorIcon;
+
+    /// Explicit deterministic host stand-in for UI cursor and IME arbitration.
+    struct FakePointer;
+
+    impl crate::pointer_mode::Platform for FakePointer {
+        fn grab(
+            &mut self,
+            _mode: crate::pointer_mode::Mode,
+        ) -> Result<(), crate::pointer_mode::Failure> {
+            Ok(())
+        }
+
+        fn cursor(&mut self, _shape: CursorShape, _visible: bool) {}
+    }
 
     #[test]
     fn native_clipboard_error_mapping_is_typed_and_does_not_collapse_to_empty_text() {
@@ -396,38 +410,29 @@ mod tests {
         assert!(!services.effective_ime_allowed());
         services.native_window_focused = true;
         assert!(!services.effective_ime_allowed());
-        struct FakePointer;
-        impl crate::pointer_mode::Platform for FakePointer {
-            fn grab(
-                &mut self,
-                _mode: crate::pointer_mode::Mode,
-            ) -> Result<(), crate::pointer_mode::Failure> {
-                Ok(())
-            }
-            fn cursor(&mut self, _shape: CursorShape, _visible: bool) {}
-        }
-        services
-            .pointer_modes
-            .focus_changed(true, &mut FakePointer)
-            .expect("host focus becomes valid");
+        assert!(
+            services
+                .pointer_modes
+                .focus_changed(true, &mut FakePointer)
+                .is_ok()
+        );
         assert!(services.effective_ime_allowed());
         let scope = crate::pointer_mode::Scope {
             window_epoch: 1,
             surface: None,
         };
-        services
-            .pointer_modes
-            .request(
-                scope,
-                crate::pointer_mode::Mode::LockedRelative,
-                &mut FakePointer,
-            )
-            .expect("fake native lock acquired");
+        assert!(
+            services
+                .pointer_modes
+                .request(
+                    scope,
+                    crate::pointer_mode::Mode::LockedRelative,
+                    &mut FakePointer,
+                )
+                .is_ok()
+        );
         assert!(!services.effective_ime_allowed());
-        services
-            .pointer_modes
-            .release(&mut FakePointer)
-            .expect("native release succeeds");
+        assert!(services.pointer_modes.release(&mut FakePointer).is_ok());
         assert!(services.effective_ime_allowed());
         services.reset_native_window_ime(None);
         assert!(!services.effective_ime_allowed());

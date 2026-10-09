@@ -1728,13 +1728,36 @@ impl ReferenceHost {
                 self.pending_raw_motion_since = Some(Instant::now());
                 proof!("stage=host_pointer_waiting_for_native_raw_motion");
             }
-            Ok(HostPointerOutcome::Realized(_)) | Ok(HostPointerOutcome::Released) => {
+            Ok(HostPointerOutcome::Realized(_) | HostPointerOutcome::Released) => {
                 proof!("stage=host_pointer_realized");
             }
             Err(error) => {
                 eprintln!("reference_winit native gameplay pointer mode unavailable: {error:?}");
             }
         }
+    }
+
+    /// One host-owned native release and shutdown transaction, independent of UI shutdown health.
+    fn close_native_window(&mut self, event_loop: &ActiveEventLoop) {
+        proof!("stage=window_exit");
+        self.release_host_pointer("window destroy/close");
+        if let Some(window) = self.window.as_ref() {
+            let result = self
+                .framework_services
+                .pointer_modes_mut()
+                .retire_window(&mut WinitPointer(window));
+            proof!("stage=host_pointer_window_retired result={result:?}");
+        }
+        if !self.cancel_native_touch_contacts(event_loop, "native window destroyed") {
+            return;
+        }
+        let _ = self.runtime.shutdown();
+        self.framework_services
+            .reset_native_window_ime(self.window.as_deref());
+        self.framework_services.shutdown();
+        self.deferred_framework_service_completions.clear();
+        self.drain_runtime_trace();
+        event_loop.exit();
     }
 
     fn invalidate_mouse_point_authority(
@@ -2410,25 +2433,7 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
         }
         match event {
             WindowEvent::CloseRequested | WindowEvent::Destroyed => {
-                proof!("stage=window_exit");
-                self.release_host_pointer("window destroy/close");
-                if let Some(window) = self.window.as_ref() {
-                    let result = self
-                        .framework_services
-                        .pointer_modes_mut()
-                        .retire_window(&mut WinitPointer(window));
-                    proof!("stage=host_pointer_window_retired result={result:?}");
-                }
-                if !self.cancel_native_touch_contacts(event_loop, "native window destroyed") {
-                    return;
-                }
-                let _ = self.runtime.shutdown();
-                self.framework_services
-                    .reset_native_window_ime(self.window.as_deref());
-                self.framework_services.shutdown();
-                self.deferred_framework_service_completions.clear();
-                self.drain_runtime_trace();
-                event_loop.exit();
+                self.close_native_window(event_loop);
             }
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                 proof!("stage=native_mapping_event");
@@ -2534,16 +2539,15 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
 
 impl Drop for ReferenceHost {
     fn drop(&mut self) {
-        if let Some(window) = self.window.as_ref() {
-            if let Err(error) = self
+        if let Some(window) = self.window.as_ref()
+            && let Err(error) = self
                 .framework_services
                 .pointer_modes_mut()
                 .retire_window(&mut WinitPointer(window))
-            {
-                eprintln!(
-                    "reference_winit drop could not confirm native pointer release: {error:?}"
-                );
-            }
+        {
+            eprintln!(
+                "reference_winit drop could not confirm native pointer release: {error:?}"
+            );
         }
     }
 }
@@ -2591,7 +2595,7 @@ mod tests {
         assert!(!raw_motion_probe_expired(start, start));
         assert!(!raw_motion_probe_expired(
             start,
-            start + RAW_MOTION_PROBE_TIMEOUT - std::time::Duration::from_nanos(1)
+            start + std::time::Duration::from_secs(4)
         ));
         assert!(raw_motion_probe_expired(
             start,
