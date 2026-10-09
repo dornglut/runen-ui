@@ -570,12 +570,44 @@ mod tests {
                 None,
             )
             .unwrap_or_else(|_| unreachable!("masked logical navigation succeeds"));
+        let TextDisplayPosition::Document(moved_active) = moved.active() else {
+            unreachable!("masked navigation returns a durable document position");
+        };
+        assert_eq!(moved_active.byte_offset(), 3);
+
+        let point = LogicalPoint::new(1.0, artifact.size().height() * 0.5)
+            .unwrap_or_else(|_| unreachable!("pointer fixture is finite"));
+        let eligible = LogicalRect::try_new(
+            0.0,
+            0.0,
+            artifact.size().width().max(1.0),
+            artifact.size().height().max(1.0),
+        )
+        .unwrap_or_else(|_| unreachable!("mask bounds are valid"));
+        let hit = map
+            .hit_test(snapshot(), point, eligible, LogicalTransform::IDENTITY)
+            .unwrap_or_else(|_| unreachable!("hit-test delegates to retained mask"))
+            .unwrap_or_else(|| unreachable!("eligible point hits masked text"));
+        let mapped = projection
+            .display_offset_for_position(&hit)
+            .unwrap_or_else(|_| unreachable!("hit position maps to a mask grapheme"));
+        assert!(expected_mask.legal_byte_offsets().contains(&mapped));
+        let nearest = map
+            .nearest_position(snapshot(), point, LogicalTransform::IDENTITY)
+            .unwrap_or_else(|_| unreachable!("nearest position maps to source"));
+        assert!(projection.display_offset_for_position(&nearest).is_ok());
         assert_eq!(
-            moved.active(),
-            &TextDisplayPosition::Document(
-                TextPosition::new(snapshot(), source, 3, TextAffinity::Downstream)
-                    .unwrap_or_else(|_| unreachable!("first grapheme boundary"))
-            )
+            map.nearest_position(
+                TextDocumentSnapshot::new(
+                    TextDocumentId::new(199),
+                    TextDocumentRevision::new(6),
+                ),
+                point,
+                LogicalTransform::IDENTITY,
+            ),
+            Err(TextMaskedProjectionError::RetainedLayout(
+                TextCaretMapError::SnapshotMismatch,
+            ))
         );
     }
 
