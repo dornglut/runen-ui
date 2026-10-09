@@ -100,6 +100,31 @@ pub enum EditingSessionPolicy {
     Reset,
 }
 
+/// Presentation-level line-break normalization applied by the canonical M10 edit
+/// proposer for committed text, paste and completed composition alike.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum TextNewlinePolicy {
+    #[default]
+    Preserve,
+    /// Normalize hard line separators to ASCII spaces before proposing.
+    ReplaceWithSpace,
+}
+
+impl TextNewlinePolicy {
+    /// Identifies hard line separators as interpreted by single-line input.
+    ///
+    /// Soft-wrap opportunities (ordinary spaces and punctuation) are handled
+    /// separately by M8's paragraph no-wrap policy.
+    #[must_use]
+    pub const fn is_hard_line_break(ch: char) -> bool {
+        matches!(
+            ch,
+            '\r' | '\n' | '\u{000B}' | '\u{000C}' | '\u{0085}' | '\u{2028}' | '\u{2029}'
+        )
+    }
+}
+
 /// Application-visible reason for one document-changing edit proposal.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -511,6 +536,7 @@ pub struct EditableContribution<Action> {
     read_only: bool,
     disabled: bool,
     session_policy: EditingSessionPolicy,
+    newline_policy: TextNewlinePolicy,
     mapper: Option<Rc<dyn Fn(EditIntent) -> Action>>,
 }
 
@@ -633,6 +659,7 @@ impl<Action> EditableContribution<Action> {
             read_only,
             disabled,
             session_policy,
+            newline_policy: TextNewlinePolicy::Preserve,
             mapper,
         })
     }
@@ -665,6 +692,19 @@ impl<Action> EditableContribution<Action> {
     pub const fn session_policy(&self) -> EditingSessionPolicy {
         self.session_policy
     }
+
+    /// Selects text-normalization for new proposals without changing the
+    /// application-owned source document or the existing editing authority.
+    #[must_use]
+    pub const fn with_newline_policy(mut self, policy: TextNewlinePolicy) -> Self {
+        self.newline_policy = policy;
+        self
+    }
+
+    #[must_use]
+    pub const fn newline_policy(&self) -> TextNewlinePolicy {
+        self.newline_policy
+    }
     #[must_use]
     pub fn map_intent(&self, intent: EditIntent) -> Option<Action> {
         self.mapper.as_ref().map(|mapper| mapper(intent))
@@ -688,6 +728,7 @@ impl<Action> EditableContribution<Action> {
             read_only: self.read_only,
             disabled: self.disabled,
             session_policy: self.session_policy,
+            newline_policy: self.newline_policy,
             mapper: child_mapper.map(|child_mapper| {
                 Rc::new(move |intent| mapper(child_mapper(intent)))
                     as Rc<dyn Fn(EditIntent) -> ParentAction>
@@ -707,6 +748,7 @@ impl<Action> fmt::Debug for EditableContribution<Action> {
             .field("read_only", &self.read_only)
             .field("disabled", &self.disabled)
             .field("session_policy", &self.session_policy)
+            .field("newline_policy", &self.newline_policy)
             .finish_non_exhaustive()
     }
 }

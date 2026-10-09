@@ -689,3 +689,170 @@ fn public_link_is_semantically_distinct_from_button_and_navigation_is_app_owned(
             .is_actionable()
     );
 }
+
+#[test]
+fn public_text_field_binds_checked_m10_editor_with_typed_line_policy_and_semantics() {
+    use runenui_core::{
+        SemanticAction, SemanticEditableMode, SemanticInvalidState, TextAffinity, TextDocumentId,
+        TextDocumentRevision, TextDocumentSnapshot, TextNewlinePolicy, TextPosition, TextSelection,
+        text_field,
+    };
+
+    let source = "hello";
+    let snapshot = TextDocumentSnapshot::new(TextDocumentId::new(81), TextDocumentRevision::new(4));
+    let position = TextPosition::new(snapshot, source, source.len(), TextAffinity::Upstream)
+        .unwrap_or_else(|_| unreachable!("fixture caret is valid"));
+    let selection = TextSelection::collapsed(position);
+
+    let editor = text_field(
+        snapshot,
+        source,
+        selection,
+        SemanticEditableMode::SingleLine,
+        |_| Action::Save,
+    )
+    .unwrap_or_else(|_| unreachable!("app's single-line document is valid"))
+    .id("input.name")
+    .placeholder("Name")
+    .labelled_by("label.name")
+    .described_by("hint.name")
+    .error_message("error.name")
+    .required(true)
+    .invalid(SemanticInvalidState::Invalid);
+    let element: runenui_core::Element<Action> = editor.into_element();
+    let (_, _, _, _, _, _, _, _, widget, _) = element.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    let editable = widget
+        .editable(&state)
+        .unwrap_or_else(|_| unreachable!("widget state matches"))
+        .unwrap_or_else(|| unreachable!("text field uses M10"));
+    assert_eq!(editable.text(), source);
+    assert_eq!(editable.snapshot(), snapshot);
+    assert_eq!(
+        editable.newline_policy(),
+        TextNewlinePolicy::ReplaceWithSpace
+    );
+    let WidgetMeasure::Text(single_measure) = widget
+        .measure(
+            &state,
+            WidgetMeasureInput::new(
+                None,
+                None,
+                WidgetAvailableSpace::MaxContent,
+                WidgetAvailableSpace::MaxContent,
+            ),
+        )
+        .unwrap_or_else(|_| unreachable!("field measurement is valid"))
+    else {
+        unreachable!("text field stays a text leaf");
+    };
+    assert_eq!(
+        single_measure.wrap_mode(),
+        runenui_core::TextLeafWrap::NoWrap
+    );
+    assert!(!editable.read_only());
+    let declaration = widget
+        .semantics(&state, SemanticContributionContext::default())
+        .unwrap_or_else(|_| unreachable!("field semantics are valid"));
+    let node = declaration.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("input contributes one semantic node"));
+    assert_eq!(node.role(), SemanticRole::EditableText);
+    assert_eq!(node.editable_mode(), Some(SemanticEditableMode::SingleLine));
+    assert_eq!(node.placeholder(), Some("Name"));
+    assert_eq!(node.state().required(), Some(true));
+    assert_eq!(node.state().invalid(), Some(SemanticInvalidState::Invalid));
+    assert_eq!(node.relationships().len(), 3);
+    assert!(node.actions().contains(&SemanticAction::ReplaceSelection));
+    assert!(!node.actions().contains(&SemanticAction::Copy));
+    assert!(!node.actions().contains(&SemanticAction::Paste));
+}
+
+#[test]
+fn public_text_field_multiline_preserves_wrap_and_rejects_invalid_source() {
+    use runenui_core::{
+        EditableContributionError, SemanticEditableMode, TextAffinity, TextDocumentId,
+        TextDocumentRevision, TextDocumentSnapshot, TextFieldError, TextNewlinePolicy,
+        TextPosition, TextSelection, text_field,
+    };
+
+    let source = "hello";
+    let snapshot = TextDocumentSnapshot::new(TextDocumentId::new(81), TextDocumentRevision::new(4));
+    let position = TextPosition::new(snapshot, source, source.len(), TextAffinity::Upstream)
+        .unwrap_or_else(|_| unreachable!("fixture caret is valid"));
+    let selection = TextSelection::collapsed(position);
+
+    let multiline = text_field(
+        snapshot,
+        source,
+        selection,
+        SemanticEditableMode::Multiline,
+        |_| Action::Save,
+    )
+    .unwrap_or_else(|_| unreachable!("multiline source is valid"))
+    .into_element();
+    let (_, _, _, _, _, _, _, _, widget, _) = multiline.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    assert_eq!(
+        widget
+            .editable(&state)
+            .unwrap_or_else(|_| unreachable!("widget state matches"))
+            .unwrap_or_else(|| unreachable!("field supplies M10 edit contribution"))
+            .newline_policy(),
+        TextNewlinePolicy::Preserve
+    );
+    let WidgetMeasure::Text(multiline_measure) = widget
+        .measure(
+            &state,
+            WidgetMeasureInput::new(
+                None,
+                None,
+                WidgetAvailableSpace::MaxContent,
+                WidgetAvailableSpace::MaxContent,
+            ),
+        )
+        .unwrap_or_else(|_| unreachable!("multiline measurement is valid"))
+    else {
+        unreachable!("multiline field stays a text leaf");
+    };
+    assert_eq!(
+        multiline_measure.wrap_mode(),
+        runenui_core::TextLeafWrap::Wrap
+    );
+
+    assert!(matches!(
+        text_field(
+            snapshot,
+            "not\nallowed",
+            selection,
+            SemanticEditableMode::SingleLine,
+            |_| Action::Save,
+        ),
+        Err(TextFieldError::SingleLineSourceContainsNewline),
+    ));
+    assert!(matches!(
+        text_field(
+            snapshot,
+            "not\u{2028}allowed",
+            selection,
+            SemanticEditableMode::SingleLine,
+            |_| Action::Save,
+        ),
+        Err(TextFieldError::SingleLineSourceContainsNewline),
+    ));
+    let foreign = TextDocumentSnapshot::new(TextDocumentId::new(81), TextDocumentRevision::new(5));
+    let other_position = TextPosition::new(foreign, source, 0, TextAffinity::Downstream)
+        .unwrap_or_else(|_| unreachable!("foreign caret is valid"));
+    assert!(matches!(
+        text_field(
+            snapshot,
+            source,
+            TextSelection::collapsed(other_position),
+            SemanticEditableMode::Multiline,
+            |_| Action::Save,
+        ),
+        Err(TextFieldError::InvalidSelection(
+            EditableContributionError::SelectionSnapshotMismatch
+        )),
+    ));
+}

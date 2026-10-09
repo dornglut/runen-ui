@@ -11,3 +11,6 @@ mod semantic_m5c_integrity;
 
 #[path = "../m11_selectable_text.rs"]
 mod m11_selectable_text;
+
+#[path = "../m11_text_field.rs"]
+mod m11_text_field;

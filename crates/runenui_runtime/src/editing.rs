@@ -76,6 +76,28 @@ pub(crate) enum EditingReconcileError {
     InconsistentResolution,
 }
 
+/// Normalizes committed insertions, pastes, and completed IME proposals at the
+/// single M10 transaction boundary. Source text and other documents are unchanged.
+fn normalize_line_breaks(source: &str) -> String {
+    let mut normalized = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                normalized.push(' ');
+            }
+            ch if runenui_core::TextNewlinePolicy::is_hard_line_break(ch) => {
+                normalized.push(' ');
+            }
+            _ => normalized.push(ch),
+        }
+    }
+    normalized
+}
+
 struct PendingEdit {
     request: EditRequestId,
     predecessor: Option<EditRequestId>,
@@ -582,6 +604,17 @@ impl<Action> EditingRegistry<Action> {
             .active
             .get_mut(owner)
             .ok_or(EditPrepareError::MissingOwner)?;
+        let normalized_text = if session.contribution.newline_policy()
+            == runenui_core::TextNewlinePolicy::ReplaceWithSpace
+            && replacement_text
+                .chars()
+                .any(runenui_core::TextNewlinePolicy::is_hard_line_break)
+        {
+            std::borrow::Cow::Owned(normalize_line_breaks(replacement_text))
+        } else {
+            std::borrow::Cow::Borrowed(replacement_text)
+        };
+        let replacement_text = normalized_text.as_ref();
         let selection = session.selection;
         let snapshot = session.contribution.snapshot();
         let replacement = TextRange::new(snapshot, &session.projected_text, start, end)
@@ -932,14 +965,39 @@ impl<Action> EditingRegistry<Action> {
             };
             let exact = contribution.snapshot() == session.contribution.snapshot()
                 && contribution.text() == session.contribution.text()
-                && contribution.session_policy() == EditingSessionPolicy::PreserveExact;
+                && contribution.session_policy() == EditingSessionPolicy::PreserveExact
+                && contribution.newline_policy() == session.contribution.newline_policy();
             let resolving_edit = edit_origin.filter(|(edit_origin, _)| {
                 edit_origin.owner == owner && edit_origin.session == session.generation
             });
             if let Some((resolving_origin, resolution)) = resolving_edit {
+                let policy_changed =
+                    contribution.newline_policy() != session.contribution.newline_policy();
+                // Resolve the already-dispatched action before retiring its generation.
                 Self::resolve_live(&mut session, &contribution, resolving_origin, resolution)?;
-                session.contribution = contribution;
-                self.active.insert(owner, session);
+                if policy_changed {
+                    self.retire(session);
+                    let generation = self.allocate_session(namespace)?;
+                    let selection = EditSelection::from_selection(contribution.initial_selection());
+                    let projected_text = Arc::<str>::from(contribution.text());
+                    self.active.insert(
+                        owner.clone(),
+                        EditingSession {
+                            owner,
+                            generation,
+                            contribution,
+                            selection,
+                            projected_text,
+                            pending: Vec::new(),
+                            invalid_suffix: false,
+                            preedit: None,
+                            preferred_inline: None,
+                        },
+                    );
+                } else {
+                    session.contribution = contribution;
+                    self.active.insert(owner, session);
+                }
             } else if exact {
                 session.contribution = contribution;
                 self.active.insert(owner, session);
@@ -1269,11 +1327,17 @@ impl<Action> EditingRegistry<Action> {
             };
             let exact = contribution.snapshot() == session.contribution.snapshot()
                 && contribution.text() == session.contribution.text()
-                && contribution.session_policy() == EditingSessionPolicy::PreserveExact;
+                && contribution.session_policy() == EditingSessionPolicy::PreserveExact
+                && contribution.newline_policy() == session.contribution.newline_policy();
             let resolves_here = edit_origin.is_some_and(|(origin, _)| {
                 origin.owner == **owner && origin.session == session.generation
             });
-            !exact && !resolves_here
+            if resolves_here {
+                contribution.newline_policy() != session.contribution.newline_policy()
+                    && !resolves_and_finishes
+            } else {
+                !exact
+            }
         });
         let resolved_draining = edit_origin.is_some_and(|(origin, _)| {
             let origin_owner = &origin.owner;
@@ -1304,11 +1368,14 @@ impl<Action> EditingRegistry<Action> {
                 };
                 let exact = contribution.snapshot() == session.contribution.snapshot()
                     && contribution.text() == session.contribution.text()
-                    && contribution.session_policy() == EditingSessionPolicy::PreserveExact;
+                    && contribution.session_policy() == EditingSessionPolicy::PreserveExact
+                    && contribution.newline_policy() == session.contribution.newline_policy();
                 let resolves_here = edit_origin.is_some_and(|(origin, _)| {
                     origin.owner == **owner && origin.session == session.generation
                 });
-                !exact && !resolves_here
+                !exact
+                    && (!resolves_here
+                        || contribution.newline_policy() != session.contribution.newline_policy())
             })
             .count()
     }
@@ -1534,6 +1601,69 @@ mod tests {
             |intent| intent,
         )
         .unwrap_or_else(|_| unreachable!("fixture contribution is valid"))
+    }
+
+    #[test]
+    fn line_break_normalization_is_m10_edit_proposal_policy() {
+        use runenui_core::TextNewlinePolicy;
+
+        let namespace = RuntimeNamespace::__runtime_new();
+        let normalized_owner = namespace.__runtime_mounted_id(91, 1);
+        let multiline_owner = namespace.__runtime_mounted_id(92, 1);
+        let mut registry = EditingRegistry::new(4, 8);
+        registry
+            .initial_reconcile(
+                &namespace,
+                vec![
+                    (
+                        normalized_owner.clone(),
+                        contribution(0, "a", 1, EditingSessionPolicy::PreserveExact)
+                            .with_newline_policy(TextNewlinePolicy::ReplaceWithSpace),
+                    ),
+                    (
+                        multiline_owner.clone(),
+                        contribution(0, "a", 1, EditingSessionPolicy::PreserveExact),
+                    ),
+                ],
+            )
+            .unwrap_or_else(|_| unreachable!("checked source sessions reconcile"));
+
+        let normalized = registry
+            .prepare_insert(
+                &namespace,
+                &normalized_owner,
+                "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j",
+                None,
+            )
+            .unwrap_or_else(|_| unreachable!("single-line edit is prepared"));
+        assert_eq!(normalized.action.replacement_text(), "b c d e f g h i j");
+        assert_eq!(
+            registry.active[&normalized_owner].projected_text.as_ref(),
+            "ab c d e f g h i j"
+        );
+        assert_eq!(
+            registry.active[&normalized_owner].pending[0]
+                .replacement_text
+                .as_ref(),
+            "b c d e f g h i j"
+        );
+
+        let original = registry
+            .prepare_insert(
+                &namespace,
+                &multiline_owner,
+                "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j",
+                None,
+            )
+            .unwrap_or_else(|_| unreachable!("multiline edit is prepared"));
+        assert_eq!(
+            original.action.replacement_text(),
+            "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j"
+        );
+        assert_eq!(
+            registry.active[&multiline_owner].projected_text.as_ref(),
+            "ab\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j"
+        );
     }
 
     #[test]
@@ -1789,5 +1919,125 @@ mod tests {
         assert_eq!(pending[0].replacement_start, 2);
         assert_eq!(pending[0].replacement_end, 3);
         assert_eq!(pending[0].proposed_text.as_ref(), "ab");
+    }
+    #[test]
+    fn policy_flip_drains_old_queued_edit_without_reusing_generation() {
+        use runenui_core::TextNewlinePolicy;
+
+        let namespace = RuntimeNamespace::__runtime_new();
+        let owner = namespace.__runtime_mounted_id(81, 1);
+        let single = || {
+            contribution(0, "ab", 2, EditingSessionPolicy::PreserveExact)
+                .with_newline_policy(TextNewlinePolicy::ReplaceWithSpace)
+        };
+        let mut registry = EditingRegistry::new(4, 8);
+        registry
+            .initial_reconcile(
+                &namespace,
+                vec![(
+                    owner.clone(),
+                    contribution(0, "ab", 2, EditingSessionPolicy::PreserveExact),
+                )],
+            )
+            .unwrap_or_else(|_| unreachable!("initial multiline contribution is valid"));
+        let old = registry
+            .prepare_insert(&namespace, &owner, "\n", None)
+            .unwrap_or_else(|_| unreachable!("multiline edit is prepared"));
+        assert_eq!(old.action.replacement_text(), "\n");
+        registry
+            .reconcile(
+                &namespace,
+                vec![(owner.clone(), single())],
+                &crate::queue::ApplicationActionOrigin::Ordinary,
+                None,
+            )
+            .unwrap_or_else(|_| unreachable!("policy flip is valid"));
+        assert_ne!(registry.active[&owner].generation, old.origin.session);
+        assert_eq!(registry.active[&owner].projected_text.as_ref(), "ab");
+        assert_eq!(registry.draining.len(), 1);
+        assert_eq!(registry.draining[0].pending.len(), 1);
+
+        let new = registry
+            .prepare_insert(&namespace, &owner, "X\nY", None)
+            .unwrap_or_else(|_| unreachable!("new policy accepts normalized edit"));
+        assert_eq!(new.action.replacement_text(), "X Y");
+        registry
+            .reconcile(
+                &namespace,
+                vec![(owner.clone(), single())],
+                &crate::queue::ApplicationActionOrigin::Edit(old.origin.clone()),
+                Some(EditResolution::rejected(old.origin.request, snapshot(0))),
+            )
+            .unwrap_or_else(|_| unreachable!("old in-flight action drains"));
+        assert!(registry.draining.is_empty());
+        assert_eq!(registry.active[&owner].generation, new.origin.session);
+        assert_eq!(registry.active[&owner].projected_text.as_ref(), "abX Y");
+        registry
+            .reconcile(
+                &namespace,
+                vec![(
+                    owner.clone(),
+                    contribution(1, "abX Y", 5, EditingSessionPolicy::PreserveExact)
+                        .with_newline_policy(TextNewlinePolicy::ReplaceWithSpace),
+                )],
+                &crate::queue::ApplicationActionOrigin::Edit(new.origin.clone()),
+                Some(EditResolution::accepted(new.origin.request, snapshot(1))),
+            )
+            .unwrap_or_else(|_| unreachable!("fresh normalized action resolves"));
+        assert_eq!(registry.active[&owner].contribution.text(), "abX Y");
+    }
+    #[test]
+    fn policy_flip_preserves_accepted_inflight_edit_in_authoritative_source() {
+        use runenui_core::TextNewlinePolicy;
+
+        let namespace = RuntimeNamespace::__runtime_new();
+        let owner = namespace.__runtime_mounted_id(82, 1);
+        let mut registry = EditingRegistry::new(4, 8);
+        registry
+            .initial_reconcile(
+                &namespace,
+                vec![(
+                    owner.clone(),
+                    contribution(0, "ab", 2, EditingSessionPolicy::PreserveExact),
+                )],
+            )
+            .unwrap_or_else(|_| unreachable!("initial multiline source is valid"));
+        let old = registry
+            .prepare_insert(&namespace, &owner, "Q", None)
+            .unwrap_or_else(|_| unreachable!("ordinary insertion is admitted"));
+        registry
+            .reconcile(
+                &namespace,
+                vec![(
+                    owner.clone(),
+                    contribution(0, "ab", 2, EditingSessionPolicy::PreserveExact)
+                        .with_newline_policy(TextNewlinePolicy::ReplaceWithSpace),
+                )],
+                &crate::queue::ApplicationActionOrigin::Ordinary,
+                None,
+            )
+            .unwrap_or_else(|_| unreachable!("new policy reconciles"));
+        assert_eq!(registry.draining.len(), 1);
+        registry
+            .reconcile(
+                &namespace,
+                vec![(
+                    owner.clone(),
+                    contribution(1, "abQ", 3, EditingSessionPolicy::PreserveExact)
+                        .with_newline_policy(TextNewlinePolicy::ReplaceWithSpace),
+                )],
+                &crate::queue::ApplicationActionOrigin::Edit(old.origin.clone()),
+                Some(EditResolution::accepted(old.origin.request, snapshot(1))),
+            )
+            .unwrap_or_else(|_| {
+                unreachable!("old accepted edit reconciles into new application source")
+            });
+        assert!(registry.draining.is_empty());
+        assert_eq!(registry.active[&owner].contribution.text(), "abQ");
+        assert_eq!(registry.active[&owner].projected_text.as_ref(), "abQ");
+        assert_eq!(
+            registry.active[&owner].contribution.newline_policy(),
+            TextNewlinePolicy::ReplaceWithSpace
+        );
     }
 }
