@@ -579,9 +579,15 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("replacement is checked"));
         let projection = Arc::new(
             TextPreeditProjection::new(
-                snapshot(), source, replacement, generation.clone(), composing,
-                Some(CompositionRange::new(composing, 0, "か".len())
-                    .unwrap_or_else(|_| unreachable!("composition range is checked"))),
+                snapshot(),
+                source,
+                replacement,
+                generation.clone(),
+                composing,
+                Some(
+                    CompositionRange::new(composing, 0, "か".len())
+                        .unwrap_or_else(|_| unreachable!("composition range is checked")),
+                ),
             )
             .unwrap_or_else(|_| unreachable!("transient preedit is checked")),
         );
@@ -593,33 +599,63 @@ mod tests {
         assert!(!format!("{mask:?}").contains("XYZ"));
 
         let synthetic = TextDisplayPosition::Preedit(
-            TextPreeditPosition::new(snapshot(), generation, composing, "か".len(),
-                TextAffinity::Downstream)
-                .unwrap_or_else(|_| unreachable!("synthetic coordinate is valid")),
+            TextPreeditPosition::new(
+                snapshot(),
+                generation,
+                composing,
+                "か".len(),
+                TextAffinity::Downstream,
+            )
+            .unwrap_or_else(|_| unreachable!("synthetic coordinate is valid")),
         );
-        assert_eq!(mask.display_offset_for_position(&synthetic),
-            Ok(3 * '•'.len_utf8()));
-        assert_eq!(mask.position_from_display_offset(3 * '•'.len_utf8(),
-            TextAffinity::Downstream), Ok(synthetic.clone()));
+        assert_eq!(
+            mask.display_offset_for_position(&synthetic),
+            Ok(3 * '•'.len_utf8())
+        );
+        assert_eq!(
+            mask.position_from_display_offset(3 * '•'.len_utf8(), TextAffinity::Downstream),
+            Ok(synthetic.clone())
+        );
         let foreign = TextDisplayPosition::Preedit(
-            TextPreeditPosition::new(snapshot(),
-                namespace.__runtime_composition_generation(92), composing, "か".len(),
-                TextAffinity::Downstream)
-                .unwrap_or_else(|_| unreachable!("foreign generation is valid")),
+            TextPreeditPosition::new(
+                snapshot(),
+                namespace.__runtime_composition_generation(92),
+                composing,
+                "か".len(),
+                TextAffinity::Downstream,
+            )
+            .unwrap_or_else(|_| unreachable!("foreign generation is valid")),
         );
-        assert_eq!(mask.display_offset_for_position(&foreign),
-            Err(TextMaskedProjectionError::ForeignComposition));
+        assert_eq!(
+            mask.display_offset_for_position(&foreign),
+            Err(TextMaskedProjectionError::ForeignComposition)
+        );
 
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
-        assert!(system.register_font_bytes(FONT.to_vec())
-            .unwrap_or_else(|_| unreachable!("font registers")) > 0);
+        assert!(
+            system
+                .register_font_bytes(FONT.to_vec())
+                .unwrap_or_else(|_| unreachable!("font registers"))
+                > 0
+        );
         let mut state = TextLayoutState::new();
-        system.layout_text(&mut state, &TextRequest::new(mask.display_text(),
-            Typography::default(), TextConstraints::unbounded()))
+        system
+            .layout_text(
+                &mut state,
+                &TextRequest::new(
+                    mask.display_text(),
+                    Typography::default(),
+                    TextConstraints::unbounded(),
+                ),
+            )
             .unwrap_or_else(|_| unreachable!("mask shapes"));
-        let map = mask.caret_map(&state)
+        let map = mask
+            .caret_map(&state)
             .unwrap_or_else(|_| unreachable!("one retained layout is correlated"));
-        assert!(map.caret_rect(&synthetic, LogicalLength::from(1_u8)).is_ok());
+        assert!(
+            map.caret_rect(&synthetic, LogicalLength::from(1_u8))
+                .is_ok()
+        );
     }
 
     #[test]
@@ -630,18 +666,33 @@ mod tests {
         let generation = namespace.__runtime_composition_generation(93);
         let replacement = TextRange::new(snapshot(), source, source.len(), source.len())
             .unwrap_or_else(|_| unreachable!("empty replacement range is valid"));
-        let preedit = Arc::new(TextPreeditProjection::new(
-            snapshot(), source, replacement, generation.clone(), composing, None,
-        ).unwrap_or_else(|_| unreachable!("joined grapheme preedit is valid")));
+        let preedit = Arc::new(
+            TextPreeditProjection::new(
+                snapshot(),
+                source,
+                replacement,
+                generation.clone(),
+                composing,
+                None,
+            )
+            .unwrap_or_else(|_| unreachable!("joined grapheme preedit is valid")),
+        );
         let mask = TextMaskedProjection::preedit(preedit)
             .unwrap_or_else(|_| unreachable!("grapheme mask is valid"));
         assert_eq!(mask.display_text(), "•");
         let at_preedit_start = TextDisplayPosition::Preedit(
-            TextPreeditPosition::new(snapshot(), generation, composing, 0,
-                TextAffinity::Downstream)
-                .unwrap_or_else(|_| unreachable!("synthetic position is scalar aligned")),
+            TextPreeditPosition::new(
+                snapshot(),
+                generation,
+                composing,
+                0,
+                TextAffinity::Downstream,
+            )
+            .unwrap_or_else(|_| unreachable!("synthetic position is scalar aligned")),
         );
-        assert_eq!(mask.display_offset_for_position(&at_preedit_start),
-            Err(TextMaskedProjectionError::NotGraphemeBoundary));
+        assert_eq!(
+            mask.display_offset_for_position(&at_preedit_start),
+            Err(TextMaskedProjectionError::NotGraphemeBoundary)
+        );
     }
 }
