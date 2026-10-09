@@ -369,8 +369,11 @@ impl TextMaskedCaretMap {
         self.projection.restore_source_position(&position)
     }
 
-    /// Navigates against the retained shaped mask, returning source/preedit
+    /// Navigates against the retained shaped **mask**, returning source/preedit
     /// coordinates and the unchanged M10 preferred-inline navigation hint.
+    /// Word navigation here follows the mask's word boundaries, **not** the
+    /// original secret's linguistic words; callers must define their desired
+    /// password word-navigation policy at the M10 ingress.
     ///
     /// # Errors
     ///
@@ -394,12 +397,18 @@ impl TextMaskedCaretMap {
         ))
     }
 
-    /// Returns legal source/preedit byte offsets for the retained mask's caret stops.
+    /// Returns legal **durable document** byte offsets for the retained mask.
+    /// A preedit projection has synthetic offsets and must not expose them as
+    /// untyped durable document bytes. Use checked `TextDisplayPosition` mapping
+    /// for synthetic composition positions instead.
     ///
     /// # Errors
     ///
-    /// Rejects inconsistent retained grapheme boundary mapping.
+    /// Rejects preedit coordinate space and inconsistent retained grapheme mapping.
     pub fn legal_source_offsets(&self) -> Result<Vec<usize>, TextMaskedProjectionError> {
+        if !matches!(self.projection.source, SourceSpace::Document { .. }) {
+            return Err(TextMaskedProjectionError::ForeignComposition);
+        }
         self.map
             .legal_byte_offsets()
             .into_iter()
@@ -653,6 +662,10 @@ mod tests {
         let map = mask
             .caret_map(&state)
             .unwrap_or_else(|_| unreachable!("one retained layout is correlated"));
+        assert_eq!(
+            map.legal_source_offsets(),
+            Err(TextMaskedProjectionError::ForeignComposition)
+        );
         assert!(
             map.caret_rect(&synthetic, LogicalLength::from(1_u8))
                 .is_ok()
