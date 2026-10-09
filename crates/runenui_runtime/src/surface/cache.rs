@@ -677,11 +677,10 @@ impl SurfaceCache {
                 if preedit.snapshot() != snapshot || preedit.document_text() != source {
                     return Err(TextCaretMapError::DisplayTextMismatch);
                 }
-                let composition_end = if let Some(range) = preedit.selection() {
-                    range.end()
-                } else {
-                    preedit.preedit().len()
-                };
+                let composition_end = preedit.selection().map_or_else(
+                    || preedit.preedit().len(),
+                    runenui_core::CompositionRange::end,
+                );
                 let offset = preedit.display_preedit_start() + composition_end;
                 let active = preedit
                     .position_from_display_offset(offset, runenui_core::TextAffinity::Upstream)
