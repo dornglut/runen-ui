@@ -2025,7 +2025,10 @@ impl ReferenceHost {
                 return;
             }
             if matches!(&event.logical_key, Key::Named(NamedKey::Escape))
-                && !self.framework_services.pointer_modes().ui_pointer_allowed()
+                && !matches!(
+                    self.framework_services.pointer_modes().state(),
+                    HostPointerState::Absolute
+                )
             {
                 self.release_host_pointer("escape/menu");
                 return;
