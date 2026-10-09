@@ -177,11 +177,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .surface_interaction_projection(focused_owner.as_ref())
             .with_focus_visible(self.focus.focus_visible());
         let editing = self.editing.semantic_projections();
+        let sensitivities = self.editing.sensitivity_projections();
         let preedits = self.editing.preedit_projections();
         let candidate = SurfacePublicationCandidateInputs::new(
             &interaction,
             focused_owner.as_ref(),
             &editing,
+            &sensitivities,
             &preedits,
             admission.surface,
             instant,

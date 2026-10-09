@@ -1,11 +1,13 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
+
+#[cfg(test)]
+use std::collections::HashMap;
 
 #[cfg(test)]
 use runenui_core::{FontFamilyName, GenericFontFamily};
 use runenui_core::{LogicalLength, LogicalSize, MonotonicInstant, WidgetDiagnostic};
 #[cfg(test)]
 use runenui_text::FontSourcePolicy;
-use runenui_text::TextPreeditProjection;
 use runenui_text::{TextLayoutError, TextSystem};
 
 use crate::mounted::{DirtyPhases, SemanticReconcileError, SurfaceCapabilityPlan};
@@ -208,7 +210,7 @@ fn resolve_layout_phase<Action>(
     current: &SurfaceCache,
     context: &SurfaceBuildContext<'_>,
     text_system: &mut TextSystem,
-    preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
+    text_editing: TextEditingPaintInputs<'_>,
 ) -> Result<CachedLayoutFacts, SurfacePlanningError> {
     let resolved = ResolvedSurfaceTree::for_layout(&current.topology, &current.effective);
     let chrome_plan = resolve_scroll_chrome_layout_plan(&current.topology)?;
@@ -219,7 +221,7 @@ fn resolve_layout_phase<Action>(
             tree,
             context.root_constraints(),
             text_system,
-            preedits,
+            text_editing,
             Some(current.layout.text_layouts.as_slice()),
         )?;
     Ok(CachedLayoutFacts {
@@ -392,10 +394,14 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     let next_context = context_key(context, text_system.source_snapshot());
     let mut current = stage_non_structural_cache(cache);
     let text_editing_dirty = current.text_editing.as_ref() != &text_editing_key;
+    let text_source_layout_dirty = current
+        .text_editing
+        .text_source_layout_changed(&text_editing_key);
     current.text_editing = Arc::new(text_editing_key);
     let style_dirty = style_product_is_dirty(pending, &current, &next_context, interaction);
-    let layout_dirty =
-        pending.contains(DirtyPhases::LAYOUT) || layout_context_changed(&current, &next_context);
+    let layout_dirty = pending.contains(DirtyPhases::LAYOUT)
+        || layout_context_changed(&current, &next_context)
+        || text_source_layout_dirty;
     let hit_dirty = pending.contains(DirtyPhases::HIT_TEST);
     let paint_dirty = pending.contains(DirtyPhases::PAINT) || text_editing_dirty;
     let mut report = SurfacePhaseReport::default();
@@ -443,7 +449,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
             &current,
             context,
             text_system,
-            text_editing.preedits,
+            text_editing,
         )?);
         report.record(SurfacePhase::Layout);
         completed.insert(DirtyPhases::LAYOUT);
@@ -576,7 +582,7 @@ fn plan_structural_surface<'tree, Action>(
             tree,
             context.root_constraints(),
             text_system,
-            text_editing.preedits,
+            text_editing,
             None,
         )?;
     let layout = CachedLayoutFacts {
@@ -698,7 +704,7 @@ pub(super) fn plan_mounted_surface_cached_with_test_text<'tree, Action>(
             context,
             interaction,
             &mut text_system.borrow_mut(),
-            TextEditingPaintInputs::new(None, &HashMap::new(), &HashMap::new()),
+            TextEditingPaintInputs::new(None, &HashMap::new(), &HashMap::new(), &HashMap::new()),
             cache,
             &motion_store,
             MonotonicInstant::ZERO,

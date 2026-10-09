@@ -2761,3 +2761,101 @@ fn secret_edit_and_preedit_payloads_stay_absent_from_full_capture_trace_and_repl
     TraceReplay::parse_jsonl(&jsonl)
         .unwrap_or_else(|error| panic!("redacted edit trace remains replayable: {error:?}"));
 }
+
+#[test]
+fn secret_unicode_navigation_and_backspace_reuse_the_masked_m10_source_map() {
+    let mut state = mounted().state().clone();
+    state.text = "aé漢".to_owned();
+    state.selection = state.text.len();
+    state.sensitivity = TextSensitivity::Secret;
+    let mut runtime = AppRuntime::<App>::mount(state);
+    install_controlled_font(&mut runtime);
+    focus(&mut runtime);
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::try_new(200.0, 40.0)
+            .unwrap_or_else(|_| unreachable!("test surface is finite")),
+    );
+    let surface = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("secret mask surface publishes"));
+    assert_eq!(
+        surface.semantic_publication().snapshot().nodes()[0]
+            .editable()
+            .and_then(|editable| editable.value()),
+        None
+    );
+    let owner = runtime.index().nodes()[0].id().clone();
+    runtime
+        .submit_command(
+            owner.clone(),
+            SemanticCommand::MoveBackward,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("secret move is admitted"));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime
+        .submit_command(
+            owner,
+            SemanticCommand::DeleteBackward,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("secret deletion is admitted"));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.state().text, "a漢");
+    assert_eq!(runtime.state().selection, 1);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn secret_mouse_hit_uses_source_coordinates_from_the_retained_mask() {
+    let mut state = mounted().state().clone();
+    state.text = "aé漢".to_owned();
+    state.selection = state.text.len();
+    state.sensitivity = TextSensitivity::Secret;
+    let mut runtime = AppRuntime::<App>::mount(state);
+    install_controlled_font(&mut runtime);
+    focus(&mut runtime);
+    let context = publish_editor(&mut runtime);
+    let pointer =
+        PointerId::new(83).unwrap_or_else(|| unreachable!("pointer identity is non-zero"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                LogicalPoint::new(1.0, 18.0)
+                    .unwrap_or_else(|_| unreachable!("pointer position is valid")),
+                context,
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|_| unreachable!("secret pointer is submitted"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::PointerTextSelectionStarted { pointer_id } if pointer_id.get() == 83
+    )));
+    let published = publish_editor_surface_for_secret(&mut runtime);
+    let selection = published.semantic_publication().snapshot().nodes()[0]
+        .editable()
+        .unwrap_or_else(|| unreachable!("secret semantic range retained"))
+        .selection();
+    assert_eq!(selection.active().byte_offset(), 0);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+fn publish_editor_surface_for_secret(
+    runtime: &mut AppRuntime<App>,
+) -> runenui_runtime::SurfacePublication {
+    let environment = StyleEnvironment::default();
+    runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &environment,
+            LogicalSize::try_new(200.0, 40.0).unwrap_or_else(|_| unreachable!("surface is finite")),
+        ))
+        .unwrap_or_else(|_| unreachable!("secret publication remains available"))
+}

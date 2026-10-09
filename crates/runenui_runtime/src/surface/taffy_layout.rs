@@ -8,14 +8,14 @@ use runenui_core::{
     ItemAlignment, LayoutBound, LayoutContainer, LayoutDimension, LayoutPosition, LayoutStyle,
     LogicalLength, LogicalPoint, LogicalRect, LogicalSize, MainAxisAlignment, OverflowPolicy,
     ScrollBarPlacement, ScrollBarVisibility, ScrollControlSnapshot, TextBlockPlacement,
-    TextLeafWrap, Typography, WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput,
-    WidgetMeasuredSize,
+    TextLeafMeasure, TextLeafWrap, TextSensitivity, Typography, WidgetAvailableSpace,
+    WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize,
 };
 use std::{collections::HashMap, sync::Arc};
 
 use runenui_text::{
-    TextConstraints, TextLayoutError, TextLayoutState, TextParagraphStyle, TextPreeditProjection,
-    TextRequest, TextSystem, TextWrapMode,
+    TextConstraints, TextLayoutError, TextLayoutState, TextMaskedProjection, TextParagraphStyle,
+    TextPreeditProjection, TextRequest, TextSystem, TextWrapMode,
 };
 use taffy::{
     CacheTree,
@@ -36,12 +36,35 @@ use taffy::{
     },
 };
 
-use super::cache::CachedScrollChromeProjection;
+use super::cache::{CachedScrollChromeProjection, TextEditingPaintInputs};
 use super::resolve::{
     ResolvedScrollBarChrome, ResolvedSurfaceNode, ResolvedSurfaceTree, ScrollChromeLayoutPlan,
 };
 use super::{LayoutOverflow, SurfaceLayoutNode, SurfaceLayoutReport, SurfaceTextMeasurementRecord};
 use crate::{AxisConstraints, AxisLimit, LayoutConstraints};
+
+/// Derive the sole source for shaping a secret editable leaf. A stale/foreign
+/// widget source or M10 preedit fails closed; no literal reaches the M8 request.
+/// Caret/IME integration remains an independently gated part of #319.
+fn secret_text_shaping_source<Action>(
+    descriptor: &TextLeafMeasure,
+    editable: &runenui_core::EditableContribution<Action>,
+    preedit: Option<&Arc<TextPreeditProjection>>,
+) -> Option<String> {
+    if descriptor.content() != editable.text() {
+        return None;
+    }
+    let masked = if let Some(preedit) = preedit {
+        let source_matches = preedit.document_text() == editable.text();
+        if preedit.snapshot() != editable.snapshot() || !source_matches {
+            return None;
+        }
+        TextMaskedProjection::preedit(Arc::clone(preedit)).ok()?
+    } else {
+        TextMaskedProjection::document(editable.snapshot(), editable.text()).ok()?
+    };
+    Some(masked.display_text().to_owned())
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct ScrollViewportGutter {
@@ -73,6 +96,7 @@ struct LayoutPassInputs<'a, Action> {
     mounted_tree: &'a crate::mounted::MountedTree<Action>,
     root_constraints: LayoutConstraints,
     preedits: &'a HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
+    sensitivities: &'a HashMap<crate::MountedNodeId, TextSensitivity>,
     prior_text_layouts: Option<&'a [TextLayoutState]>,
 }
 
@@ -86,7 +110,7 @@ pub(super) fn layout_resolved_surface<Action>(
     mounted_tree: &crate::mounted::MountedTree<Action>,
     root_constraints: LayoutConstraints,
     text_system: &mut TextSystem,
-    preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
+    text_editing: TextEditingPaintInputs<'_>,
     prior_text_layouts: Option<&[TextLayoutState]>,
 ) -> Result<LayoutResult, TextLayoutError> {
     #[cfg(feature = "internal-test-seams")]
@@ -112,7 +136,8 @@ pub(super) fn layout_resolved_surface<Action>(
             gutters: gutters.as_slice(),
             mounted_tree,
             root_constraints,
-            preedits,
+            preedits: text_editing.preedits,
+            sensitivities: text_editing.sensitivities,
             prior_text_layouts,
         };
         result = layout_resolved_surface_once(&inputs, text_system)?;
@@ -472,6 +497,7 @@ struct LayoutKernel<'a, Action> {
     mounted: &'a crate::mounted::MountedTree<Action>,
     text_system: &'a mut TextSystem,
     preedits: &'a HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
+    sensitivities: &'a HashMap<crate::MountedNodeId, TextSensitivity>,
     caches: Vec<Cache>,
     layouts: Vec<Layout>,
     text_layouts: Vec<TextLayoutState>,
@@ -496,6 +522,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         let mounted = inputs.mounted_tree;
         let root_constraints = inputs.root_constraints;
         let preedits = inputs.preedits;
+        let sensitivities = inputs.sensitivities;
         let prior_text_layouts = inputs.prior_text_layouts;
         let count = resolved.nodes().len();
         let text_layouts = prior_text_layouts
@@ -542,6 +569,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             mounted,
             text_system,
             preedits,
+            sensitivities,
             caches: vec![Cache::new(); count],
             layouts: vec![Layout::default(); count],
             text_layouts,
@@ -635,10 +663,74 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             Ok(WidgetMeasure::Text(descriptor)) => {
                 #[cfg(feature = "internal-test-seams")]
                 let request_started = std::time::Instant::now();
-                let content = self.preedits.get(&mounted.id).map_or_else(
-                    || descriptor.content().to_owned(),
-                    |projection| projection.display_text().to_owned(),
-                );
+                let preedit = self.preedits.get(&mounted.id);
+                let current_sensitivity = self.sensitivities.get(&mounted.id).copied();
+                let content = match mounted.widget.editable(&mounted.state) {
+                    Ok(Some(editable))
+                        if current_sensitivity == Some(TextSensitivity::Secret)
+                            || editable.sensitivity() == TextSensitivity::Secret =>
+                    {
+                        if current_sensitivity
+                            .is_some_and(|current| current != editable.sensitivity())
+                        {
+                            self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                                "runenui.text.secret-classification-mismatch",
+                                "authored and live M10 sensitivity disagree",
+                            ));
+                            String::new()
+                        } else {
+                            secret_text_shaping_source(&descriptor, &editable, preedit)
+                                .unwrap_or_else(|| {
+                                    self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                                        "runenui.text.secret-source-mismatch",
+                                        "secret text layout source is not correlated with M10 editing",
+                                    ));
+                                    String::new()
+                                })
+                        }
+                    }
+                    Ok(None) if current_sensitivity == Some(TextSensitivity::Secret) => {
+                        self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                            "runenui.text.secret-owner-missing",
+                            "live M10 secret session has no authored editable contribution",
+                        ));
+                        String::new()
+                    }
+                    Ok(Some(editable)) => {
+                        if let Some(projection) = preedit {
+                            let source_matches = projection.document_text() == editable.text();
+                            if projection.snapshot() == editable.snapshot()
+                                && source_matches
+                                && descriptor.content() == editable.text()
+                            {
+                                projection.display_text().to_owned()
+                            } else {
+                                self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                                    "runenui.text.preedit-source-mismatch",
+                                    "transient M10 text layout is not correlated with its owner",
+                                ));
+                                String::new()
+                            }
+                        } else {
+                            descriptor.content().to_owned()
+                        }
+                    }
+                    Ok(None) if preedit.is_some() => {
+                        self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                            "runenui.text.preedit-owner-missing",
+                            "transient M10 text layout has no editable owner",
+                        ));
+                        String::new()
+                    }
+                    Ok(None) => descriptor.content().to_owned(),
+                    Err(_) => {
+                        self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                            "runenui.text.editable-unavailable",
+                            "editable presentation could not be verified",
+                        ));
+                        String::new()
+                    }
+                };
                 self.custom_intrinsic_sizes[index] = None;
                 let typography = resolved
                     .computed_style()
@@ -1600,5 +1692,85 @@ mod text_baseline_placement_tests {
         assert!((center_last - start_last - 20.0).abs() <= 0.0001);
         assert!(center_last > center_first);
         Ok(())
+    }
+}
+
+// The production shaping input, not a cosmetic paint overlay, is redacted.
+#[cfg(test)]
+mod secret_shaping_tests {
+    use super::secret_text_shaping_source;
+    use runenui_core::{
+        __runtime::RuntimeNamespace, CompositionRange, EditableContribution, EditingSessionPolicy,
+        TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextLeafMeasure,
+        TextPosition, TextRange, TextSelection, TextSensitivity,
+    };
+    use runenui_text::TextPreeditProjection;
+    use std::sync::Arc;
+
+    fn snapshot() -> TextDocumentSnapshot {
+        TextDocumentSnapshot::new(TextDocumentId::new(811), TextDocumentRevision::new(5))
+    }
+
+    fn secret(source: &str) -> EditableContribution<()> {
+        let cursor = TextPosition::new(snapshot(), source, source.len(), TextAffinity::Downstream)
+            .unwrap_or_else(|_| unreachable!("fixture position is valid"));
+        EditableContribution::new_read_only(
+            snapshot(),
+            source,
+            TextSelection::collapsed(cursor),
+            TextSensitivity::Secret,
+            false,
+            EditingSessionPolicy::PreserveExact,
+        )
+        .unwrap_or_else(|_| unreachable!("fixture contribution is valid"))
+    }
+
+    #[test]
+    fn production_layout_input_contains_no_secret_source_graphemes() {
+        let source = "sécret👩‍💻漢字";
+        let rendered =
+            secret_text_shaping_source(&TextLeafMeasure::new(source), &secret(source), None)
+                .unwrap_or_else(|| unreachable!("exact source masks"));
+        assert_eq!(rendered, "•••••••••");
+        assert!(!rendered.contains("sécret"));
+        assert!(!rendered.contains("👩"));
+        assert!(!rendered.contains("漢"));
+        assert!(
+            secret_text_shaping_source(&TextLeafMeasure::new("different"), &secret(source), None,)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn composing_secret_masks_transient_m10_source_before_shaping() {
+        let source = "abXYcd";
+        let editing = secret(source);
+        let namespace = RuntimeNamespace::__runtime_new();
+        let range = TextRange::new(snapshot(), source, 2, 4)
+            .unwrap_or_else(|_| unreachable!("replacement range is valid"));
+        let preedit = Arc::new(
+            TextPreeditProjection::new(
+                snapshot(),
+                source,
+                range,
+                namespace.__runtime_composition_generation(1),
+                "かな",
+                Some(
+                    CompositionRange::new("かな", 0, "か".len())
+                        .unwrap_or_else(|_| unreachable!("selection is valid")),
+                ),
+            )
+            .unwrap_or_else(|_| unreachable!("preedit is valid")),
+        );
+        let rendered =
+            secret_text_shaping_source(&TextLeafMeasure::new(source), &editing, Some(&preedit))
+                .unwrap_or_else(|| unreachable!("valid preedit masks"));
+        assert_eq!(rendered, "••••••");
+        assert!(!rendered.contains("かな"));
+        let other = secret("another");
+        assert!(
+            secret_text_shaping_source(&TextLeafMeasure::new("another"), &other, Some(&preedit),)
+                .is_none()
+        );
     }
 }

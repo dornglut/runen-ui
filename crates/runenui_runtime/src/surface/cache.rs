@@ -6,8 +6,8 @@ use runenui_core::{
     WidgetDiagnostic,
 };
 use runenui_text::{
-    FontSourceSnapshot, TextCaretMap, TextCaretMapError, TextDisplaySelection, TextLayoutState,
-    TextPreeditProjection,
+    FontSourceSnapshot, TextCaretMapError, TextDisplaySelection, TextLayoutState,
+    TextMaskedProjection, TextPreeditProjection,
 };
 
 use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize, MountedNodeId};
@@ -27,6 +27,7 @@ struct EditingPaintIdentity {
 pub(crate) struct TextEditingPaintInputs<'a> {
     pub(super) focused_owner: Option<&'a MountedNodeId>,
     pub(super) editing: &'a HashMap<MountedNodeId, EditingSemanticProjection>,
+    pub(super) sensitivities: &'a HashMap<MountedNodeId, runenui_core::TextSensitivity>,
     pub(super) preedits: &'a HashMap<MountedNodeId, Arc<TextPreeditProjection>>,
 }
 
@@ -34,11 +35,13 @@ impl<'a> TextEditingPaintInputs<'a> {
     pub(crate) const fn new(
         focused_owner: Option<&'a MountedNodeId>,
         editing: &'a HashMap<MountedNodeId, EditingSemanticProjection>,
+        sensitivities: &'a HashMap<MountedNodeId, runenui_core::TextSensitivity>,
         preedits: &'a HashMap<MountedNodeId, Arc<TextPreeditProjection>>,
     ) -> Self {
         Self {
             focused_owner,
             editing,
+            sensitivities,
             preedits,
         }
     }
@@ -52,10 +55,27 @@ impl<'a> TextEditingPaintInputs<'a> {
 pub(super) struct TextEditingPaintKey {
     focused_owner: Option<MountedNodeId>,
     editing: HashMap<MountedNodeId, EditingPaintIdentity>,
+    sensitivities: HashMap<MountedNodeId, runenui_core::TextSensitivity>,
     preedits: HashMap<MountedNodeId, Arc<TextPreeditProjection>>,
 }
 
 impl TextEditingPaintKey {
+    /// Sensitivity and transient preedit changes must never reuse the previous
+    /// M8 shaped source in a paint-only surface update.
+    pub(super) fn text_source_layout_changed(&self, next: &Self) -> bool {
+        use runenui_core::TextSensitivity;
+        if self.preedits != next.preedits {
+            return true;
+        }
+        self.sensitivities.iter().any(|(owner, old)| {
+            let current = next.sensitivities.get(owner).copied();
+            current != Some(*old)
+                && (*old == TextSensitivity::Secret || current == Some(TextSensitivity::Secret))
+        }) || next.sensitivities.iter().any(|(owner, current)| {
+            *current == TextSensitivity::Secret && !self.sensitivities.contains_key(owner)
+        })
+    }
+
     pub(super) fn new(inputs: TextEditingPaintInputs<'_>) -> Self {
         Self {
             focused_owner: inputs.focused_owner.cloned(),
@@ -73,6 +93,7 @@ impl TextEditingPaintKey {
                     )
                 })
                 .collect(),
+            sensitivities: inputs.sensitivities.clone(),
             preedits: inputs.preedits.clone(),
         }
     }
@@ -613,16 +634,23 @@ impl SurfaceCache {
         owner: &MountedNodeId,
         snapshot: TextDocumentSnapshot,
         source: &str,
-    ) -> Result<TextCaretMap, TextCaretMapError> {
+    ) -> Result<crate::editing::EditingCaretMap, TextCaretMapError> {
         let position = self
             .topology
             .position(owner)
             .ok_or(TextCaretMapError::MissingLayout)?;
-        self.layout
+        let layout = self
+            .layout
             .text_layouts
             .get(position)
-            .ok_or(TextCaretMapError::MissingLayout)?
-            .caret_map_for_source(snapshot, source)
+            .ok_or(TextCaretMapError::MissingLayout)?;
+        let sensitivity = self
+            .text_editing
+            .sensitivities
+            .get(owner)
+            .copied()
+            .unwrap_or(runenui_core::TextSensitivity::Public);
+        crate::editing::EditingCaretMap::for_source(layout, snapshot, source, sensitivity)
     }
 
     pub(crate) fn text_candidate_area(
@@ -642,30 +670,63 @@ impl SurfaceCache {
             .text_layouts
             .get(position)
             .ok_or(TextCaretMapError::MissingLayout)?;
-        let (map, active) = if let Some(preedit) = preedit {
-            let map = layout.preedit_caret_map(preedit)?;
-            let active = map
-                .preedit_selection()?
-                .map(|display| display.active().clone())
-                .or_else(|| {
-                    let projection = map.preedit_projection()?;
-                    projection
-                        .position_from_display_offset(
-                            projection.display_preedit_end(),
-                            runenui_core::TextAffinity::Upstream,
-                        )
-                        .ok()
-                })
-                .ok_or(TextCaretMapError::DisplayTextMismatch)?;
-            (map, active)
+        let secret = self.text_editing.sensitivities.get(owner).copied()
+            == Some(runenui_core::TextSensitivity::Secret);
+        let local = if secret {
+            let (projection, active) = if let Some(preedit) = preedit {
+                if preedit.snapshot() != snapshot || preedit.document_text() != source {
+                    return Err(TextCaretMapError::DisplayTextMismatch);
+                }
+                let composition_end = preedit.selection().map_or_else(
+                    || preedit.preedit().len(),
+                    runenui_core::CompositionRange::end,
+                );
+                let offset = preedit.display_preedit_start() + composition_end;
+                let active = preedit
+                    .position_from_display_offset(offset, runenui_core::TextAffinity::Upstream)
+                    .map_err(|_| TextCaretMapError::DisplayTextMismatch)?;
+                let projection = TextMaskedProjection::preedit(preedit)
+                    .map_err(|_| TextCaretMapError::DisplayTextMismatch)?;
+                (projection, active)
+            } else {
+                let projection = TextMaskedProjection::document(snapshot, source)
+                    .map_err(|_| TextCaretMapError::DisplayTextMismatch)?;
+                let active = TextDisplaySelection::from_document(selection)
+                    .active()
+                    .clone();
+                (projection, active)
+            };
+            projection
+                .caret_map(layout)
+                .map_err(|_| TextCaretMapError::DisplayTextMismatch)?
+                .candidate_rect(&active)
+                .map_err(|_| TextCaretMapError::DisplayTextMismatch)?
         } else {
-            let map = layout.caret_map_for_source(snapshot, source)?;
-            let active = TextDisplaySelection::from_document(selection)
-                .active()
-                .clone();
-            (map, active)
+            let (map, active) = if let Some(preedit) = preedit {
+                let map = layout.preedit_caret_map(preedit)?;
+                let active = map
+                    .preedit_selection()?
+                    .map(|display| display.active().clone())
+                    .or_else(|| {
+                        let projection = map.preedit_projection()?;
+                        projection
+                            .position_from_display_offset(
+                                projection.display_preedit_end(),
+                                runenui_core::TextAffinity::Upstream,
+                            )
+                            .ok()
+                    })
+                    .ok_or(TextCaretMapError::DisplayTextMismatch)?;
+                (map, active)
+            } else {
+                let map = layout.caret_map_for_source(snapshot, source)?;
+                let active = TextDisplaySelection::from_document(selection)
+                    .active()
+                    .clone();
+                (map, active)
+            };
+            map.candidate_rect(&active)?
         };
-        let local = map.candidate_rect(&active)?;
         let presentation = self.presentation.node(position);
         if !presentation.published() {
             return Err(TextCaretMapError::InvalidGeometry);

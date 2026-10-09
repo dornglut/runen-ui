@@ -4,11 +4,12 @@ use std::{
     sync::Arc,
 };
 
+use crate::editing::EditingCaretMap;
 use runenui_core::{
     __runtime::RuntimeNamespace, LogicalTransform, MonotonicInstant, ScrollChrome, SurfaceId,
     SurfaceInputContext, TextDocumentSnapshot,
 };
-use runenui_text::{TextCaretMap, TextCaretMapError, TextLayoutError, TextSystem};
+use runenui_text::{TextCaretMapError, TextLayoutError, TextSystem};
 
 use crate::{
     LogicalPoint, LogicalRect, LogicalSize, MountedNodeId, RedrawAcknowledgeError, RedrawRequest,
@@ -139,6 +140,7 @@ pub(in crate::runtime) struct SurfacePublicationCandidateInputs<'a> {
     interaction: &'a SurfaceInteractionProjection,
     focused_owner: Option<&'a MountedNodeId>,
     editing: &'a HashMap<MountedNodeId, crate::editing::EditingSemanticProjection>,
+    sensitivities: &'a HashMap<MountedNodeId, runenui_core::TextSensitivity>,
     preedits: &'a HashMap<MountedNodeId, Arc<runenui_text::TextPreeditProjection>>,
     admission: SurfacePublicationAdmission,
     instant: MonotonicInstant,
@@ -149,6 +151,7 @@ impl<'a> SurfacePublicationCandidateInputs<'a> {
         interaction: &'a SurfaceInteractionProjection,
         focused_owner: Option<&'a MountedNodeId>,
         editing: &'a HashMap<MountedNodeId, crate::editing::EditingSemanticProjection>,
+        sensitivities: &'a HashMap<MountedNodeId, runenui_core::TextSensitivity>,
         preedits: &'a HashMap<MountedNodeId, Arc<runenui_text::TextPreeditProjection>>,
         admission: SurfacePublicationAdmission,
         instant: MonotonicInstant,
@@ -157,6 +160,7 @@ impl<'a> SurfacePublicationCandidateInputs<'a> {
             interaction,
             focused_owner,
             editing,
+            sensitivities,
             preedits,
             admission,
             instant,
@@ -309,7 +313,7 @@ impl SurfacePublicationState {
         owner: &MountedNodeId,
         snapshot: TextDocumentSnapshot,
         source: &str,
-    ) -> Result<TextCaretMap, TextCaretMapError> {
+    ) -> Result<EditingCaretMap, TextCaretMapError> {
         self.cache
             .as_ref()
             .ok_or(TextCaretMapError::MissingLayout)?
@@ -388,13 +392,18 @@ impl SurfacePublicationState {
             interaction,
             focused_owner,
             editing,
+            sensitivities,
             preedits,
             admission,
             instant,
         } = candidate;
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
-        let text_editing =
-            crate::surface::TextEditingPaintInputs::new(focused_owner, editing, preedits);
+        let text_editing = crate::surface::TextEditingPaintInputs::new(
+            focused_owner,
+            editing,
+            sensitivities,
+            preedits,
+        );
         #[cfg(feature = "internal-test-seams")]
         let surface_plan_started = std::time::Instant::now();
         let planned = plan_mounted_surface_cached_with_text(
@@ -740,10 +749,7 @@ impl SurfacePublicationState {
         context: &SurfaceInputContext,
         owner: &MountedNodeId,
         point: LogicalPoint,
-    ) -> Option<(
-        runenui_text::TextCaretMap,
-        runenui_core::TextDisplayPosition,
-    )> {
+    ) -> Option<(EditingCaretMap, runenui_core::TextDisplayPosition)> {
         let (snapshot, _) = self.validate_context(context).ok()?;
         snapshot.text_targets.get(owner)?.hit_position(point)
     }
@@ -753,10 +759,7 @@ impl SurfacePublicationState {
         context: &SurfaceInputContext,
         owner: &MountedNodeId,
         point: LogicalPoint,
-    ) -> Option<(
-        runenui_text::TextCaretMap,
-        runenui_core::TextDisplayPosition,
-    )> {
+    ) -> Option<(EditingCaretMap, runenui_core::TextDisplayPosition)> {
         let (snapshot, _) = self.validate_context(context).ok()?;
         snapshot
             .text_targets
