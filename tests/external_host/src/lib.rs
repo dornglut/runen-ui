@@ -248,6 +248,39 @@ mod tests {
     }
 
     #[test]
+    fn independent_public_host_slots_have_disjoint_runtime_scopes() {
+        let mut first = AppRuntime::<ExternalHostApp>::mount(HostState {
+            image: ResourceRef::new(ResourceKind::Image),
+            active: false,
+        });
+        let mut second = AppRuntime::<ExternalHostApp>::mount(HostState {
+            image: ResourceRef::new(ResourceKind::Image),
+            active: false,
+        });
+        let first_snapshot = first
+            .input_ownership()
+            .expect("first runtime can project its initial input ownership");
+        let second_snapshot = second
+            .input_ownership()
+            .expect("second runtime can project its initial input ownership");
+        assert_ne!(first_snapshot.scope(), second_snapshot.scope());
+        assert_eq!(first_snapshot.revision().get(), 1);
+        assert_eq!(second_snapshot.revision().get(), 1);
+        assert_eq!(
+            first_snapshot.revision(),
+            first.input_ownership().expect("unchanged state projects").revision()
+        );
+        let _ = first.shutdown();
+        let closed = first
+            .input_ownership()
+            .expect("terminal ownership is observable without a pump");
+        assert_ne!(closed.revision(), first_snapshot.revision());
+        assert_eq!(closed.status(), runenui_runtime::RuntimeStatus::Closed);
+        assert_eq!(second.input_ownership().expect("other runtime remains valid").status(),
+                   runenui_runtime::RuntimeStatus::Running);
+    }
+
+    #[test]
     fn downstream_host_owns_publication_acknowledgement_renderer_retry_and_semantic_next_frame()
     -> Result<(), Box<dyn Error>> {
         let Some(mut renderer) = renderer_or_adapterless()? else {
