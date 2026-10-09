@@ -1121,7 +1121,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 506);
+        assert_eq!(total, 507);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }
