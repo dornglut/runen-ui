@@ -4,7 +4,6 @@ use core::{
     pin::pin,
     task::{Context, Poll},
 };
-use std::{fs, path::PathBuf};
 use runenui_core::{
     Color, EditIntent, EditResolution, FontFamilyName, GenericFontFamily, NoHostProtocol,
     SemanticEditableMode, StyleEnvironment, TextAffinity, TextDocumentId, TextDocumentRevision,
@@ -15,6 +14,7 @@ use runenui_render_wgpu::{
     ResourceProviderError, ResourceProviderErrorKind, ResourceRequest,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
+use std::{fs, path::PathBuf};
 
 const FONT: &[u8] = include_bytes!("fixtures/Cantarell-Regular.ttf");
 const SECRET: &str = "clé-é漢🌐";
