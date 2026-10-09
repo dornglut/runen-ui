@@ -734,15 +734,14 @@ mod tests {
     #[test]
     fn vertical_pointer_and_page_policy_follow_checked_orientation_and_step() {
         let vertical = SliderGeometry::new(
-            LogicalSize::try_new(24.0, 160.0)
-                .unwrap_or_else(|_| unreachable!("finite extent")),
+            LogicalSize::try_new(24.0, 160.0).unwrap_or_else(|_| unreachable!("finite extent")),
             SemanticOrientation::Vertical,
         )
         .unwrap_or_else(|| unreachable!("positive vertical track"));
-        let bottom = crate::LogicalPoint::new(12.0, 160.0)
-            .unwrap_or_else(|_| unreachable!("finite point"));
-        let top = crate::LogicalPoint::new(12.0, 0.0)
-            .unwrap_or_else(|_| unreachable!("finite point"));
+        let bottom =
+            crate::LogicalPoint::new(12.0, 160.0).unwrap_or_else(|_| unreachable!("finite point"));
+        let top =
+            crate::LogicalPoint::new(12.0, 0.0).unwrap_or_else(|_| unreachable!("finite point"));
         assert_eq!(vertical.fraction_at(bottom), 0.0);
         assert_eq!(vertical.fraction_at(top), 1.0);
 

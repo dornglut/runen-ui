@@ -1,6 +1,11 @@
 #![allow(refining_impl_trait)]
 
-use core::{error::Error, future::Future, pin::pin, task::{Context, Poll}};
+use core::{
+    error::Error,
+    future::Future,
+    pin::pin,
+    task::{Context, Poll},
+};
 use std::{fs, path::PathBuf};
 
 use runenui_core::{Color, NoHostProtocol, SemanticNumber, StyleEnvironment, UiApp, View, slider};
