@@ -14,6 +14,7 @@ mod issue266_tests;
 mod issue269_tests;
 mod layout_extract;
 mod layout_state;
+mod masked_projection;
 mod parley_bridge;
 mod preedit;
 #[cfg(test)]
@@ -47,6 +48,7 @@ pub use caret_map::{
 pub use font_source_config::GenericFamilyMappingError;
 pub use ink_bounds::TextInkBounds;
 pub use layout_state::{TextLayoutDecision, TextLayoutOutcome, TextLayoutState};
+pub use masked_projection::{TextMaskedCaretMap, TextMaskedProjection, TextMaskedProjectionError};
 pub use preedit::{TextPreeditProjection, TextPreeditProjectionError};
 pub use request::{
     TextLanguage, TextLanguageError, TextMetricSpan, TextOverflowWrap, TextParagraphStyle,
