@@ -682,8 +682,10 @@ fn public_link_is_semantically_distinct_from_button_and_navigation_is_app_owned(
     let no_action: runenui_core::Element<Action> = link("Pure reference").into_element();
     let (_, _, _, _, _, _, _, _, widget, _) = no_action.into_runtime_parts().into_parts();
     let state = widget.create_state();
-    assert!(!widget
-        .activation(&state)
-        .unwrap_or_else(|_| unreachable!("non-actionable link activation is valid"))
-        .is_actionable());
+    assert!(
+        !widget
+            .activation(&state)
+            .unwrap_or_else(|_| unreachable!("non-actionable link activation is valid"))
+            .is_actionable()
+    );
 }

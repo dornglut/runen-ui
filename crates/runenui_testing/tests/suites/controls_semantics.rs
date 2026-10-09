@@ -12,5 +12,7 @@ mod m11e_list_box_controls;
 mod m11f_tabs;
 #[path = "../m11g_content.rs"]
 mod m11g_content;
+#[path = "../m11h_link.rs"]
+mod m11h_link;
 #[path = "../semantic_state.rs"]
 mod semantic_state;

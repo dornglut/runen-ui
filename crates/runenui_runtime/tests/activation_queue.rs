@@ -216,7 +216,10 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
         calls: Rc::clone(&calls),
     });
     enabled.pump(PumpBudget::new(
-        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
     ));
     let owner = enabled.index().nodes()[0].id().clone();
     let accepted = enabled
@@ -243,7 +246,10 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
         calls: Rc::clone(&disabled_calls),
     });
     disabled.pump(PumpBudget::new(
-        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
     ));
     let owner = disabled.index().nodes()[0].id().clone();
     disabled
@@ -254,7 +260,10 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
         )
         .unwrap_or_else(|_| unreachable!("routed disabled link remains an ordinary command"));
     disabled.pump(PumpBudget::new(
-        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
     ));
     assert_eq!(disabled_calls.get(), 0);
     assert_eq!(disabled.state().updates, 0);
