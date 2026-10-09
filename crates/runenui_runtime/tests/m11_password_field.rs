@@ -456,3 +456,56 @@ fn password_reclassification_while_composing_restores_a_masked_publication() {
         None
     );
 }
+
+#[test]
+fn queued_edit_and_sensitivity_reclassification_follow_one_application_fifo() {
+    let mut runtime = mounted();
+    let owner = runtime.index().nodes()[0].id().clone();
+    runtime
+        .submit_command(owner, SemanticCommand::RequestFocus, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("password is focusable"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    publication(&mut runtime);
+
+    runtime
+        .submit_text(
+            CommittedTextEvent::new("é", None)
+                .unwrap_or_else(|_| unreachable!("committed input is valid")),
+        )
+        .unwrap_or_else(|_| unreachable!("secret insertion is queued"));
+    runtime
+        .submit_action(Action::ToggleSecret)
+        .unwrap_or_else(|_| unreachable!("app reclassification is queued"));
+    runtime.pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX));
+    let public = publication(&mut runtime);
+    assert_eq!(runtime.state().text, format!("{SECRET}é"));
+    assert_eq!(
+        public.semantic_publication().snapshot().nodes()[0]
+            .editable()
+            .and_then(|editable| editable.value()),
+        Some(runtime.state().text.as_str())
+    );
+
+    runtime
+        .submit_action(Action::ToggleSecret)
+        .unwrap_or_else(|_| unreachable!("app restores secret classification"));
+    runtime
+        .submit_text(
+            CommittedTextEvent::new("漢", None)
+                .unwrap_or_else(|_| unreachable!("committed input is valid")),
+        )
+        .unwrap_or_else(|_| unreachable!("pending input uses the M10 session"));
+    runtime.pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX));
+    let secret_again = publication(&mut runtime);
+    assert_eq!(runtime.state().text, format!("{SECRET}é漢"));
+    assert_eq!(
+        secret_again.semantic_publication().snapshot().nodes()[0]
+            .editable()
+            .and_then(|editable| editable.value()),
+        None
+    );
+    for literal in [SECRET, "é漢"] {
+        assert!(!format!("{:?}", secret_again.paint_scene()).contains(literal));
+        assert!(!runtime.trace().export_jsonl().contains(literal));
+    }
+}
