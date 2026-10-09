@@ -10,7 +10,7 @@ use crate::trace::TraceReservation;
 use crate::{
     MountedNodeId, TraceEventContext, TraceSequence, TraceTarget, queue::FocusRequestOverride,
 };
-use runenui_text::TextCaretMap;
+use crate::editing::EditingCaretMap;
 
 #[derive(Clone, Copy)]
 pub(crate) struct RoutedFailureLineage {
@@ -99,7 +99,7 @@ pub(crate) struct ScrollOwnerConsumption {
 pub(crate) struct PointerSelectionUpdate {
     pub(crate) owner: MountedNodeId,
     pub(crate) selection: runenui_core::TextSelection,
-    pub(crate) caret_map: TextCaretMap,
+    pub(crate) caret_map: EditingCaretMap,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

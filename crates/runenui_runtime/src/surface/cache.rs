@@ -7,7 +7,7 @@ use runenui_core::{
 };
 use runenui_text::{
     FontSourceSnapshot, TextCaretMap, TextCaretMapError, TextDisplaySelection, TextLayoutState,
-    TextPreeditProjection,
+    TextPreeditProjection, TextMaskedProjection,
 };
 
 use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize, MountedNodeId};
@@ -634,16 +634,16 @@ impl SurfaceCache {
         owner: &MountedNodeId,
         snapshot: TextDocumentSnapshot,
         source: &str,
-    ) -> Result<TextCaretMap, TextCaretMapError> {
+    ) -> Result<crate::editing::EditingCaretMap, TextCaretMapError> {
         let position = self
             .topology
             .position(owner)
             .ok_or(TextCaretMapError::MissingLayout)?;
-        self.layout
-            .text_layouts
-            .get(position)
-            .ok_or(TextCaretMapError::MissingLayout)?
-            .caret_map_for_source(snapshot, source)
+        let layout = self.layout.text_layouts.get(position)
+            .ok_or(TextCaretMapError::MissingLayout)?;
+        let sensitivity = self.text_editing.sensitivities
+            .get(owner).copied().unwrap_or(runenui_core::TextSensitivity::Public);
+        crate::editing::EditingCaretMap::for_source(layout, snapshot, source, sensitivity)
     }
 
     pub(crate) fn text_candidate_area(

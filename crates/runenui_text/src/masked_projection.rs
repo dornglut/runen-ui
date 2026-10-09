@@ -329,6 +329,20 @@ impl TextMaskedCaretMap {
         self.map.caret_rect(&masked, width).map_err(Into::into)
     }
 
+    /// Returns candidate rectangle from the same retained mask caret, without
+    /// exposing any source or preedit literal to M8.
+    ///
+    /// # Errors
+    ///
+    /// Rejects foreign or hidden source/preedit positions.
+    pub fn candidate_rect(
+        &self,
+        position: &TextDisplayPosition,
+    ) -> Result<LogicalRect, TextMaskedProjectionError> {
+        let masked = self.projection.to_masked_position(position)?;
+        self.map.candidate_rect(&masked).map_err(Into::into)
+    }
+
     /// Returns correlated selection geometry without exposing selected source.
     ///
     /// # Errors

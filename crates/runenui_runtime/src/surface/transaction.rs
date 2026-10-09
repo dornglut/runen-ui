@@ -12,7 +12,8 @@ use crate::{MountedNodeId, SemanticDiagnostic};
 use runenui_core::{
     LogicalSize, LogicalTransform, OverflowPolicy, OverflowStyle, TextDisplayPosition,
 };
-use runenui_text::{TextCaretMap, TextDisplaySelection, TextLayoutState, TextMaskedProjection};
+use runenui_text::{TextDisplaySelection, TextLayoutState, TextMaskedProjection};
+use crate::editing::EditingCaretMap;
 use std::{collections::HashMap, sync::Arc};
 
 use super::{
@@ -23,7 +24,7 @@ use crate::scene::SceneClip;
 
 #[derive(Clone)]
 pub(crate) struct DisplayedTextTarget {
-    map: TextCaretMap,
+    map: EditingCaretMap,
     eligible_bounds: crate::LogicalRect,
     layout_to_surface: LogicalTransform,
     clips: Arc<[SceneClip]>,
@@ -33,7 +34,7 @@ impl DisplayedTextTarget {
     pub(crate) fn hit_position(
         &self,
         point: crate::LogicalPoint,
-    ) -> Option<(TextCaretMap, TextDisplayPosition)> {
+    ) -> Option<(EditingCaretMap, TextDisplayPosition)> {
         let position = self.hit_position_in_bounds(point)?;
         Some((self.map.clone(), position))
     }
@@ -60,7 +61,7 @@ impl DisplayedTextTarget {
     pub(crate) fn captured_drag_position(
         &self,
         point: crate::LogicalPoint,
-    ) -> Option<(TextCaretMap, TextDisplayPosition)> {
+    ) -> Option<(EditingCaretMap, TextDisplayPosition)> {
         let position = self
             .map
             .nearest_position(self.map.snapshot(), point, self.layout_to_surface)
@@ -248,7 +249,9 @@ impl<'a> PlannedSurfacePublication<'a> {
             let Some(layout) = self.cache.layout.text_layouts.get(position) else {
                 continue;
             };
-            let Ok(map) = layout.caret_map_for_source(projected.snapshot, &projected.source) else {
+            let Ok(map) = EditingCaretMap::for_source(
+                layout, projected.snapshot, &projected.source, projected.sensitivity,
+            ) else {
                 continue;
             };
             let presentation = self.cache.presentation.node(position);

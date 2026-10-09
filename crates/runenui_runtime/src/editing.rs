@@ -12,9 +12,119 @@ use runenui_core::{
     TextDocumentSnapshot, TextRange,
 };
 use runenui_text::{
-    TextCaretMap, TextDisplaySelection, TextNavigation, TextNavigationMode, TextPreeditProjection,
+    TextCaretMap, TextCaretMapError, TextDisplaySelection, TextLayoutState, TextMaskedCaretMap,
+    TextMaskedProjection, TextNavigation, TextNavigationMode, TextPreeditProjection,
     TextPreferredInline,
 };
+
+
+#[derive(Clone)]
+pub(crate) enum EditingCaretMap {
+    Public(TextCaretMap),
+    Secret(TextMaskedCaretMap, TextDocumentSnapshot),
+}
+
+pub(crate) struct EditingNavigationResult {
+    selection: TextDisplaySelection,
+    preferred_inline: Option<TextPreferredInline>,
+}
+
+impl EditingNavigationResult {
+    pub(crate) const fn selection(&self) -> &TextDisplaySelection {
+        &self.selection
+    }
+
+    pub(crate) const fn preferred_inline(&self) -> Option<TextPreferredInline> {
+        self.preferred_inline
+    }
+}
+
+impl EditingCaretMap {
+    /// Bind the authoritative M10 source to the exact retained M8 layout.
+    /// Secret source bytes are never submitted to the shaping engine here.
+    pub(crate) fn for_source(
+        layout: &TextLayoutState,
+        snapshot: TextDocumentSnapshot,
+        source: &str,
+        sensitivity: runenui_core::TextSensitivity,
+    ) -> Result<Self, TextCaretMapError> {
+        if sensitivity == runenui_core::TextSensitivity::Secret {
+            let projection = TextMaskedProjection::document(snapshot, source)
+                .map_err(|_| TextCaretMapError::DisplayTextMismatch)?;
+            let map = projection.caret_map(layout)
+                .map_err(|_| TextCaretMapError::DisplayTextMismatch)?;
+            Ok(Self::Secret(map, snapshot))
+        } else {
+            layout.caret_map_for_source(snapshot, source).map(Self::Public)
+        }
+    }
+
+    pub(crate) fn snapshot(&self) -> TextDocumentSnapshot {
+        match self {
+            Self::Public(map) => map.snapshot(),
+            Self::Secret(_, snapshot) => *snapshot,
+        }
+    }
+
+    pub(crate) fn validate_position(
+        &self,
+        position: &runenui_core::TextDisplayPosition,
+    ) -> Result<(), TextCaretMapError> {
+        match self {
+            Self::Public(map) => map.validate_position(position),
+            Self::Secret(map, _) => map
+                .caret_rect(position, runenui_core::LogicalLength::from(1_u8))
+                .map(|_| ())
+                .map_err(|_| TextCaretMapError::NotCaretStop),
+        }
+    }
+
+    pub(crate) fn navigate(
+        &self,
+        selection: &TextDisplaySelection,
+        operation: TextNavigation,
+        mode: TextNavigationMode,
+        preferred_inline: Option<TextPreferredInline>,
+    ) -> Result<EditingNavigationResult, TextCaretMapError> {
+        let (selection, preferred_inline) = match self {
+            Self::Public(map) => {
+                let result = map.navigate(selection, operation, mode, preferred_inline)?;
+                (result.selection().clone(), result.preferred_inline())
+            }
+            Self::Secret(map, _) => map
+                .navigate(selection, operation, mode, preferred_inline)
+                .map_err(|_| TextCaretMapError::NotCaretStop)?,
+        };
+        Ok(EditingNavigationResult { selection, preferred_inline })
+    }
+
+    pub(crate) fn hit_test(
+        &self,
+        snapshot: TextDocumentSnapshot,
+        point: runenui_core::LogicalPoint,
+        eligible: runenui_core::LogicalRect,
+        transform: runenui_core::LogicalTransform,
+    ) -> Result<Option<runenui_core::TextDisplayPosition>, TextCaretMapError> {
+        match self {
+            Self::Public(map) => map.hit_test(snapshot, point, eligible, transform),
+            Self::Secret(map, _) => map.hit_test(snapshot, point, eligible, transform)
+                .map_err(|_| TextCaretMapError::NotCaretStop),
+        }
+    }
+
+    pub(crate) fn nearest_position(
+        &self,
+        snapshot: TextDocumentSnapshot,
+        point: runenui_core::LogicalPoint,
+        transform: runenui_core::LogicalTransform,
+    ) -> Result<runenui_core::TextDisplayPosition, TextCaretMapError> {
+        match self {
+            Self::Public(map) => map.nearest_position(snapshot, point, transform),
+            Self::Secret(map, _) => map.nearest_position(snapshot, point, transform)
+                .map_err(|_| TextCaretMapError::NotCaretStop),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub(crate) struct EditActionOrigin {
@@ -226,7 +336,7 @@ impl<Action> EditingRegistry<Action> {
     pub(crate) fn stable_selection_for_map(
         &self,
         owner: &MountedNodeId,
-        caret_map: &TextCaretMap,
+        caret_map: &EditingCaretMap,
     ) -> Option<runenui_core::TextSelection> {
         let session = self.active.get(owner)?;
         if session.invalid_suffix
@@ -460,7 +570,7 @@ impl<Action> EditingRegistry<Action> {
         &mut self,
         owner: &MountedNodeId,
         selection: runenui_core::TextSelection,
-        caret_map: &TextCaretMap,
+        caret_map: &EditingCaretMap,
     ) -> Result<bool, EditPrepareError> {
         self.validate_selection(owner, selection, caret_map)?;
         let session = self
@@ -478,7 +588,7 @@ impl<Action> EditingRegistry<Action> {
         &self,
         owner: &MountedNodeId,
         selection: runenui_core::TextSelection,
-        caret_map: &TextCaretMap,
+        caret_map: &EditingCaretMap,
     ) -> Result<(), EditPrepareError> {
         let session = self
             .active
@@ -507,7 +617,7 @@ impl<Action> EditingRegistry<Action> {
         namespace: &runenui_core::__runtime::RuntimeNamespace,
         owner: &MountedNodeId,
         command: SemanticCommand,
-        caret_map: Option<&TextCaretMap>,
+        caret_map: Option<&EditingCaretMap>,
     ) -> Result<Option<PreparedEdit<Action>>, EditPrepareError> {
         match command {
             SemanticCommand::MoveBackward
@@ -816,7 +926,7 @@ impl<Action> EditingRegistry<Action> {
         &mut self,
         owner: &MountedNodeId,
         command: SemanticCommand,
-        caret_map: &TextCaretMap,
+        caret_map: &EditingCaretMap,
     ) -> Result<(), EditPrepareError> {
         let session = self
             .active
