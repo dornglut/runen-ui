@@ -612,9 +612,9 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{
-        M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC, M10_SPEC, M11_SPEC, M13_SPEC, MATRIX_SPECS,
-        analyze_contents, audit_inventory, compare_declared_summary, declared_metric, parse_rows,
-        parse_summary, valid_id, validate_inventory,
+        M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC, M10_SPEC, M11_SPEC, M13_SPEC,
+        MATRIX_SPECS, analyze_contents, audit_inventory, compare_declared_summary, declared_metric,
+        parse_rows, parse_summary, valid_id, validate_inventory,
     };
 
     #[test]
@@ -1072,7 +1072,12 @@ mod tests {
         let mut seen = BTreeSet::new();
         let mut findings = Vec::new();
         let analysis = analyze_contents(M13_SPEC, &matrix, &mut seen, &mut findings);
-        compare_declared_summary(M13_SPEC.path, &parse_summary(&matrix), &analysis, &mut findings);
+        compare_declared_summary(
+            M13_SPEC.path,
+            &parse_summary(&matrix),
+            &analysis,
+            &mut findings,
+        );
         assert_eq!(analysis.metrics.total_rows, 10);
         assert_eq!(analysis.metrics.blocked, 10);
         assert_eq!(analysis.metrics.owner_accepted, 0);
