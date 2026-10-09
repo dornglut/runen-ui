@@ -1272,7 +1272,7 @@ fn append_shaped_text(
         )
     };
     let mut hint_clips = Vec::new();
-    if visual_hint {
+    if visual_hint && state.artifact().is_some() {
         hint_clips.extend_from_slice(owner.content_clips);
         let bounds = layout.bounds[mounted_preorder];
         let local = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())

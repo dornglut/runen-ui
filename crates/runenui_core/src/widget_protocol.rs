@@ -225,7 +225,9 @@ impl TextLeafMeasure {
     }
 
     /// Gives M8 a separate visual hint, never substituted for the editable source.
-    /// The runtime must suppress this when a live M10 preedit is present.
+    /// The hint is rendered only for an empty, checked M10 editable owner with no
+    /// active preedit. Non-editable text leaves do not acquire a placeholder.
+
     #[must_use]
     pub fn with_visual_placeholder(mut self, placeholder: impl Into<String>) -> Self {
         self.visual_placeholder = Some(placeholder.into());
