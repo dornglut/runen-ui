@@ -95,9 +95,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             work.seed_next_generation_for_test(config.initial_next_work_generation());
             (queue, work)
         };
-        let input_observation = super::input_arbitration::InputObservationState::new(
-            tree.runtime_namespace(),
-        );
+        let input_observation =
+            super::input_arbitration::InputObservationState::new(tree.runtime_namespace());
         let mut runtime = Self {
             state: Some(state),
             tree,
