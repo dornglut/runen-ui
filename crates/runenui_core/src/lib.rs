@@ -238,6 +238,7 @@ mod identity;
 mod input;
 mod layout;
 mod menu_controls;
+mod link_control;
 mod motion;
 mod motion_sampling;
 mod paint;
@@ -323,6 +324,7 @@ pub use input::{
     CompositionRangeError, CompositionStart, CompositionUpdate, KeyLocation,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, PhysicalKey,
 };
+pub use link_control::{Link, link};
 pub use menu_controls::{Menu, MenuBar, MenuButton, MenuItem, MenuItemCheckbox, MenuItemRadio};
 pub use motion::{
     AnimationId, CubicBezier, ExplicitTimeline, MotionEasing, MotionKeyframe, MotionRepeat,

@@ -175,3 +175,87 @@ fn disabled_and_non_actionable_targets_route_without_activation_factory_output()
         0
     );
 }
+
+#[derive(Debug)]
+struct LinkState {
+    enabled: bool,
+    updates: usize,
+    calls: Rc<Cell<usize>>,
+}
+struct LinkApp;
+
+impl UiApp for LinkApp {
+    type State = LinkState;
+    type Action = Action;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        let calls = Rc::clone(&state.calls);
+        runenui_core::link("Open reference")
+            .id("reference")
+            .key("reference")
+            .enabled(state.enabled)
+            .on_activate(move || {
+                calls.set(calls.get() + 1);
+                Action
+            })
+            .into_element()
+    }
+
+    fn update(state: &mut Self::State, _: Self::Action) {
+        state.updates += 1;
+    }
+}
+
+#[test]
+fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_state() {
+    let calls = Rc::new(Cell::new(0));
+    let mut enabled = AppRuntime::<LinkApp>::mount(LinkState {
+        enabled: true,
+        updates: 0,
+        calls: Rc::clone(&calls),
+    });
+    enabled.pump(PumpBudget::new(
+        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
+    ));
+    let owner = enabled.index().nodes()[0].id().clone();
+    let accepted = enabled
+        .submit_command(
+            owner,
+            SemanticCommand::Activate,
+            CommandOrigin::accessibility(),
+        )
+        .unwrap_or_else(|_| unreachable!("live link accepts semantic activation"));
+    enabled.pump(PumpBudget::new(1, 0, 0, 0));
+    assert_eq!(calls.get(), 1);
+    assert_eq!(enabled.state().updates, 0);
+    assert!(enabled.trace().records().any(|record| {
+        matches!(record.kind(), TraceRecordKind::RoutedEventCommitted)
+            && record.work_sequence() == Some(accepted.sequence())
+    }));
+    enabled.pump(PumpBudget::new(1, 0, 0, 0));
+    assert_eq!(enabled.state().updates, 1);
+
+    let disabled_calls = Rc::new(Cell::new(0));
+    let mut disabled = AppRuntime::<LinkApp>::mount(LinkState {
+        enabled: false,
+        updates: 0,
+        calls: Rc::clone(&disabled_calls),
+    });
+    disabled.pump(PumpBudget::new(
+        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
+    ));
+    let owner = disabled.index().nodes()[0].id().clone();
+    disabled
+        .submit_command(
+            owner,
+            SemanticCommand::Activate,
+            CommandOrigin::accessibility(),
+        )
+        .unwrap_or_else(|_| unreachable!("routed disabled link remains an ordinary command"));
+    disabled.pump(PumpBudget::new(
+        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
+    ));
+    assert_eq!(disabled_calls.get(), 0);
+    assert_eq!(disabled.state().updates, 0);
+}
