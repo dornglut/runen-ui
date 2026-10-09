@@ -14,6 +14,9 @@ pub(super) struct InputObservationState {
     scope: InputArbitrationScope,
     revision: InputOwnershipRevision,
     last: Option<InputOwnershipSnapshot>,
+    /// Transaction-local external pointer result, never retained across pump boundaries.
+    pointer_finality: Option<crate::UiInputFinality>,
+    external_pointer_active: bool,
 }
 
 impl InputObservationState {
@@ -22,6 +25,8 @@ impl InputObservationState {
             scope: InputArbitrationScope::new(namespace),
             revision: InputOwnershipRevision::new(1),
             last: None,
+            pointer_finality: None,
+            external_pointer_active: false,
         }
     }
 }
@@ -51,6 +56,31 @@ fn copy_snapshot(
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    pub(crate) fn begin_external_pointer_input(&mut self) {
+        debug_assert!(!self.input_observation.external_pointer_active);
+        self.input_observation.pointer_finality = None;
+        self.input_observation.external_pointer_active = true;
+    }
+
+    pub(crate) fn note_external_pointer_finality(&mut self, finality: crate::UiInputFinality) {
+        if self.input_observation.external_pointer_active {
+            debug_assert!(self.input_observation.pointer_finality.is_none());
+            self.input_observation.pointer_finality = Some(finality);
+        }
+    }
+
+    pub(crate) fn finish_external_pointer_input(&mut self) -> crate::UiInputFinality {
+        self.input_observation.external_pointer_active = false;
+        self.input_observation.pointer_finality.take().unwrap_or_else(|| {
+            match self.status {
+                crate::RuntimeStatus::Terminal(reason) =>
+                    crate::UiInputFinality::Aborted(crate::UiInputAbortReason::Terminal(reason)),
+                crate::RuntimeStatus::Running | crate::RuntimeStatus::Closed =>
+                    crate::UiInputFinality::Aborted(crate::UiInputAbortReason::RuntimeIntegrity),
+            }
+        })
+    }
+
     /// Returns a new immutable projection without changing any live authority.
     fn project_input_ownership(&mut self) -> Result<InputOwnershipSnapshot, InputObservationError> {
         let focused_node = self.focus.focused_node().cloned();

@@ -210,7 +210,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         .map_err(|_| TraceRoutedIntegrityFailure::CallbackBridgeFailure)?;
         transaction.remaining_outputs = invocation.output.remaining_outputs;
         transaction.propagation_stopped = invocation.output.propagation_stopped;
-        transaction.host_input_claimed |= invocation.output.host_input_claimed;
+        if matches!(event, UiEvent::Pointer(_) | UiEvent::Keyboard(_) | UiEvent::CommittedText(_) | UiEvent::Composition(_)) {
+            transaction.host_input_claimed |= invocation.output.host_input_claimed;
+        }
         if let Some(disposition) = invocation.output.application_command_disposition {
             transaction.application_command_resolution = Some((current.clone(), disposition));
         }

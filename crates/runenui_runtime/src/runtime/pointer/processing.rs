@@ -126,7 +126,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn process_pointer_envelope(
         &mut self,
         envelope: PointerEnvelope,
-    ) -> ProcessApplicationActionOutcome {
+    ) -> (ProcessApplicationActionOutcome, Option<crate::UiInputFinality>) {
         let PointerEnvelope {
             sequence,
             payload,
@@ -135,13 +135,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             trace_reservation,
         } = envelope;
         match payload {
-            PointerEnvelopePayload::Event(event) => self.process_pointer_work(PointerWork {
-                sequence,
-                event,
-                instant,
-                causal_parent,
-                trace_reservation,
-            }),
+            PointerEnvelopePayload::Event(event) => {
+                self.begin_external_pointer_input();
+                let outcome = self.process_pointer_work(PointerWork {
+                    sequence,
+                    event,
+                    instant,
+                    causal_parent,
+                    trace_reservation,
+                });
+                (outcome, Some(self.finish_external_pointer_input()))
+            }
             PointerEnvelopePayload::StationaryRehit(context) => {
                 let work = PointerRehitWork {
                     sequence,
@@ -150,7 +154,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     causal_parent,
                     trace_reservation,
                 };
-                self.process_stationary_pointer_rehit(&work)
+                (self.process_stationary_pointer_rehit(&work), None)
             }
         }
     }
