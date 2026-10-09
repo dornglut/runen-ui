@@ -671,9 +671,9 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                         if current_sensitivity == Some(TextSensitivity::Secret)
                             || editable.sensitivity() == TextSensitivity::Secret =>
                     {
-                        if current_sensitivity.is_some_and(|current| {
-                            current != editable.sensitivity()
-                        }) {
+                        if current_sensitivity
+                            .is_some_and(|current| current != editable.sensitivity())
+                        {
                             self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
                                 "runenui.text.secret-classification-mismatch",
                                 "authored and live M10 sensitivity disagree",

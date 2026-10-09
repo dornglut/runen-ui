@@ -137,18 +137,21 @@ fn project_editable_semantics(
 ) -> Option<(Arc<str>, runenui_core::TextSelection, Arc<[usize]>)> {
     let selection = TextDisplaySelection::from_document(projected.selection);
     let offsets = if projected.sensitivity == runenui_core::TextSensitivity::Secret {
-        let mask = TextMaskedProjection::document(
-            projected.snapshot,
-            Arc::clone(&projected.source),
-        ).ok()?;
+        let mask =
+            TextMaskedProjection::document(projected.snapshot, Arc::clone(&projected.source))
+                .ok()?;
         let map = mask.caret_map(layout).ok()?;
         // Source coordinates must be legal in the one retained shaped mask.
         // No source literal is shaped or published as semantic value.
-        map.caret_rect(selection.anchor(), runenui_core::LogicalLength::from(1_u8)).ok()?;
-        map.caret_rect(selection.active(), runenui_core::LogicalLength::from(1_u8)).ok()?;
+        map.caret_rect(selection.anchor(), runenui_core::LogicalLength::from(1_u8))
+            .ok()?;
+        map.caret_rect(selection.active(), runenui_core::LogicalLength::from(1_u8))
+            .ok()?;
         Arc::from(map.legal_source_offsets().ok()?)
     } else {
-        let map = layout.caret_map_for_source(projected.snapshot, &projected.source).ok()?;
+        let map = layout
+            .caret_map_for_source(projected.snapshot, &projected.source)
+            .ok()?;
         map.validate_position(selection.anchor()).ok()?;
         map.validate_position(selection.active()).ok()?;
         map.__runtime_legal_byte_offsets()
@@ -520,8 +523,9 @@ mod tests {
             .caret_map_for_source(snapshot, &projected.source)
             .unwrap_or_else(|_| unreachable!("planned text layout matches editable source"));
         let retained = map.__runtime_legal_byte_offsets();
-        let (_, selection, published) = project_editable_semantics(&planned.cache.layout.text_layouts[0], &projected)
-            .unwrap_or_else(|| unreachable!("controlled editable projection is valid"));
+        let (_, selection, published) =
+            project_editable_semantics(&planned.cache.layout.text_layouts[0], &projected)
+                .unwrap_or_else(|| unreachable!("controlled editable projection is valid"));
 
         assert_eq!(selection, projected.selection);
         assert!(Arc::ptr_eq(&retained, &published));

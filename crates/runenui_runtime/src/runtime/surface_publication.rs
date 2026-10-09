@@ -397,8 +397,12 @@ impl SurfacePublicationState {
             instant,
         } = candidate;
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
-        let text_editing =
-            crate::surface::TextEditingPaintInputs::new(focused_owner, editing, sensitivities, preedits);
+        let text_editing = crate::surface::TextEditingPaintInputs::new(
+            focused_owner,
+            editing,
+            sensitivities,
+            preedits,
+        );
         #[cfg(feature = "internal-test-seams")]
         let surface_plan_started = std::time::Instant::now();
         let planned = plan_mounted_surface_cached_with_text(

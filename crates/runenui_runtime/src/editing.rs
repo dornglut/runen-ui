@@ -376,9 +376,7 @@ impl<Action> EditingRegistry<Action> {
     ) -> HashMap<MountedNodeId, runenui_core::TextSensitivity> {
         self.active
             .iter()
-            .map(|(owner, session)| {
-                (owner.clone(), session.contribution.sensitivity())
-            })
+            .map(|(owner, session)| (owner.clone(), session.contribution.sensitivity()))
             .collect()
     }
 

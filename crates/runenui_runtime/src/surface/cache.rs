@@ -70,11 +70,9 @@ impl TextEditingPaintKey {
         self.sensitivities.iter().any(|(owner, old)| {
             let current = next.sensitivities.get(owner).copied();
             current != Some(*old)
-                && (*old == TextSensitivity::Secret
-                    || current == Some(TextSensitivity::Secret))
+                && (*old == TextSensitivity::Secret || current == Some(TextSensitivity::Secret))
         }) || next.sensitivities.iter().any(|(owner, current)| {
-            *current == TextSensitivity::Secret
-                && !self.sensitivities.contains_key(owner)
+            *current == TextSensitivity::Secret && !self.sensitivities.contains_key(owner)
         })
     }
 
