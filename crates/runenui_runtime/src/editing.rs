@@ -89,7 +89,9 @@ fn normalize_line_breaks(source: &str) -> String {
                 }
                 normalized.push(' ');
             }
-            '\n' => normalized.push(' '),
+            ch if runenui_core::TextNewlinePolicy::is_hard_line_break(ch) => {
+                normalized.push(' ');
+            }
             _ => normalized.push(ch),
         }
     }
@@ -604,7 +606,9 @@ impl<Action> EditingRegistry<Action> {
             .ok_or(EditPrepareError::MissingOwner)?;
         let normalized_text = if session.contribution.newline_policy()
             == runenui_core::TextNewlinePolicy::ReplaceWithSpace
-            && (replacement_text.contains('\n') || replacement_text.contains('\r'))
+            && replacement_text
+                .chars()
+                .any(runenui_core::TextNewlinePolicy::is_hard_line_break)
         {
             std::borrow::Cow::Owned(normalize_line_breaks(replacement_text))
         } else {
@@ -1591,27 +1595,27 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("checked source sessions reconcile"));
 
         let normalized = registry
-            .prepare_insert(&namespace, &normalized_owner, "b\r\nc\nd\re", None)
+            .prepare_insert(&namespace, &normalized_owner, "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j", None)
             .unwrap_or_else(|_| unreachable!("single-line edit is prepared"));
-        assert_eq!(normalized.action.replacement_text(), "b c d e");
+        assert_eq!(normalized.action.replacement_text(), "b c d e f g h i j");
         assert_eq!(
             registry.active[&normalized_owner].projected_text.as_ref(),
-            "ab c d e"
+            "ab c d e f g h i j"
         );
         assert_eq!(
             registry.active[&normalized_owner].pending[0]
                 .replacement_text
                 .as_ref(),
-            "b c d e"
+            "b c d e f g h i j"
         );
 
         let original = registry
-            .prepare_insert(&namespace, &multiline_owner, "b\r\nc\nd\re", None)
+            .prepare_insert(&namespace, &multiline_owner, "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j", None)
             .unwrap_or_else(|_| unreachable!("multiline edit is prepared"));
-        assert_eq!(original.action.replacement_text(), "b\r\nc\nd\re");
+        assert_eq!(original.action.replacement_text(), "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j");
         assert_eq!(
             registry.active[&multiline_owner].projected_text.as_ref(),
-            "ab\r\nc\nd\re"
+            "ab\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j"
         );
     }
 

@@ -90,7 +90,7 @@ impl<Action> TextField<Action> {
     ) -> Result<Self, TextFieldError> {
         let content = content.into();
         if mode == SemanticEditableMode::SingleLine
-            && (content.contains('\r') || content.contains('\n'))
+            && content.chars().any(TextNewlinePolicy::is_hard_line_break)
         {
             return Err(TextFieldError::SingleLineSourceContainsNewline);
         }

@@ -676,7 +676,10 @@ fn public_text_field_binds_checked_m10_editor_with_typed_line_policy_and_semanti
     else {
         unreachable!("text field stays a text leaf");
     };
-    assert_eq!(single_measure.wrap_mode(), runenui_core::TextLeafWrap::NoWrap);
+    assert_eq!(
+        single_measure.wrap_mode(),
+        runenui_core::TextLeafWrap::NoWrap
+    );
     assert!(!editable.read_only());
     let declaration = widget
         .semantics(&state, SemanticContributionContext::default())
@@ -727,12 +730,25 @@ fn public_text_field_binds_checked_m10_editor_with_typed_line_policy_and_semanti
     else {
         unreachable!("multiline field stays a text leaf");
     };
-    assert_eq!(multiline_measure.wrap_mode(), runenui_core::TextLeafWrap::Wrap);
+    assert_eq!(
+        multiline_measure.wrap_mode(),
+        runenui_core::TextLeafWrap::Wrap
+    );
 
     assert!(matches!(
         text_field(
             snapshot,
             "not\nallowed",
+            selection,
+            SemanticEditableMode::SingleLine,
+            |_| Action::Save,
+        ),
+        Err(TextFieldError::SingleLineSourceContainsNewline),
+    ));
+    assert!(matches!(
+        text_field(
+            snapshot,
+            "not\u{2028}allowed",
             selection,
             SemanticEditableMode::SingleLine,
             |_| Action::Save,

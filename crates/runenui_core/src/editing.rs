@@ -107,8 +107,22 @@ pub enum EditingSessionPolicy {
 pub enum TextNewlinePolicy {
     #[default]
     Preserve,
-    /// Normalize CRLF and each CR/LF to a single ASCII space before proposing.
+    /// Normalize hard line separators to ASCII spaces before proposing.
     ReplaceWithSpace,
+}
+
+impl TextNewlinePolicy {
+    /// Identifies hard line separators as interpreted by single-line input.
+    ///
+    /// Soft-wrap opportunities (ordinary spaces and punctuation) are handled
+    /// separately by M8's paragraph no-wrap policy.
+    #[must_use]
+    pub const fn is_hard_line_break(ch: char) -> bool {
+        matches!(
+            ch,
+            '\r' | '\n' | '\u{000B}' | '\u{000C}' | '\u{0085}' | '\u{2028}' | '\u{2029}'
+        )
+    }
 }
 
 /// Application-visible reason for one document-changing edit proposal.
