@@ -488,17 +488,24 @@ fn active_ime_preedit_suppresses_placeholder_without_substituting_document_sourc
         "preedit owns visual text while composition is active"
     );
     assert_eq!(runtime.state().text, "");
-    assert_eq!(
-        composing.semantic_publication().snapshot().nodes()[0]
-            .editable()
-            .and_then(|editable| editable.value()),
-        Some("")
-    );
+    let composing_semantics = &composing.semantic_publication().snapshot().nodes()[0];
+    // M10 deliberately fails closed: its retained display artifact belongs to
+    // the transient preedit, not the exact application-owned source revision.
+    // Placeholder metadata must not be substituted for either missing fact.
+    assert!(composing_semantics.editable().is_none());
+    assert!(composing_semantics.value().is_none());
+    assert_eq!(composing_semantics.placeholder(), Some("Type here"));
     runtime
         .cancel_composition(generation.generation().clone())
         .unwrap_or_else(|_| unreachable!("composition cancels"));
     runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
     let restored = publication(&mut runtime);
+    assert_eq!(
+        restored.semantic_publication().snapshot().nodes()[0]
+            .editable()
+            .and_then(|editable| editable.value()),
+        Some("")
+    );
     assert!(restored.paint_scene().items().iter().any(|item| {
         item.primitive().as_shaped_text_run().is_some()
             && item.opacity()
