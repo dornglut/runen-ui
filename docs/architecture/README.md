@@ -36,6 +36,8 @@ Application work, routed interaction, transactional edit reconciliation, schedul
 - [`runenui_render_wgpu` package contract](../../crates/runenui_render_wgpu/README.md) — accepted concrete renderer ownership, resource/text realization, M9 visual/composition realization, and the boundary that keeps deterministic motion authority out of the renderer while allowing retained sampled-publication retry and cache/device reconstruction.
 - [Styling](styling.md) — current accepted production style mechanism, M9 visual property breadth, transition/reduced-motion integration, canonical interaction-driven motion, runtime authority integration, and current limitations.
 
+The [M13 input-arbitration ADR](../adr/0019-event-correlated-host-input-arbitration.md) defines a **future target contract**, not a currently implemented public API. Its [permanent M13 conformance obligations](../conformance/m13-conformance-matrix.md) remain blocked until independently accepted executable proof.
+
 Durable decisions are recorded separately in [ADRs](../adr/). Permanent observable/proof contracts and directly supporting accepted milestone contract material are under [conformance](../conformance/README.md).
 
 ## Current boundary versus target architecture

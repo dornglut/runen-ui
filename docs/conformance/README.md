@@ -12,6 +12,7 @@ Configured matrices:
 - [M9 conformance matrix](m9-conformance-matrix.md)
 - [M10 conformance matrix](m10-conformance-matrix.md)
 - [M11 conformance matrix](m11-conformance-matrix.md)
+- [M13 host-input arbitration conformance matrix](m13-conformance-matrix.md)
 
 Supporting accepted contract material:
 
