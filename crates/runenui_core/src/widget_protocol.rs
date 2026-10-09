@@ -171,12 +171,24 @@ pub enum TextLeafWrap {
 }
 
 /// Authored text-leaf measurement over a single retained production text layout.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct TextLeafMeasure {
     content: String,
     inline_alignment: TextAlignment,
     block_placement: TextBlockPlacement,
     wrap_mode: TextLeafWrap,
+}
+
+// The leaf carries unmasked application text to the M10/M8 correlation
+// boundary. Its ordinary Debug must not turn that source into diagnostics.
+impl fmt::Debug for TextLeafMeasure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TextLeafMeasure")
+            .field("inline_alignment", &self.inline_alignment)
+            .field("block_placement", &self.block_placement)
+            .field("wrap_mode", &self.wrap_mode)
+            .finish_non_exhaustive()
+    }
 }
 
 impl TextLeafMeasure {
@@ -559,3 +571,26 @@ pub trait Widget<Action>: fmt::Debug {
 
 /// Marker for widgets whose elements may structurally own children.
 pub trait ChildBearingWidget<Action>: Widget<Action> {}
+
+#[cfg(test)]
+mod confidentiality_tests {
+    use super::{TextLeafMeasure, TextLeafWrap, WidgetMeasure};
+
+    #[test]
+    fn text_leaf_measure_debug_keeps_source_private_even_through_public_measure_enum() {
+        let source = "code-é👩‍💻漢";
+        let leaf = TextLeafMeasure::new(source).with_wrap_mode(TextLeafWrap::NoWrap);
+        assert_eq!(leaf.content(), source, "M8 still receives the exact source");
+        for debug in [
+            format!("{leaf:?}"),
+            format!("{:?}", WidgetMeasure::Text(leaf)),
+        ] {
+            for forbidden in [source, "👩‍💻", "content", "bytes"] {
+                assert!(
+                    !debug.contains(forbidden),
+                    "text entered implicit diagnostics"
+                );
+            }
+        }
+    }
+}

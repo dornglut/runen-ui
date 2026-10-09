@@ -23,6 +23,8 @@ pub enum TextFieldError {
     InvalidSelection(EditableContributionError),
     /// The application supplied a durable newline to a single-line source.
     SingleLineSourceContainsNewline,
+    /// Secret/password authoring cannot use the multiline semantic contract.
+    SecretRequiresSingleLine,
 }
 
 impl fmt::Display for TextFieldError {
@@ -32,6 +34,9 @@ impl fmt::Display for TextFieldError {
             Self::SingleLineSourceContainsNewline => {
                 f.write_str("single-line text field source contains a line break")
             }
+            Self::SecretRequiresSingleLine => {
+                f.write_str("secret text field requires single-line mode")
+            }
         }
     }
 }
@@ -39,14 +44,14 @@ impl std::error::Error for TextFieldError {}
 
 /// Host-neutral public text-input facade. M10 remains the only editing authority.
 ///
-/// The currently implemented entry modes are public single-line and multiline.
-/// A secret/password presentation must not be exposed without correlated masked
-/// text shaping and caret mapping.
+/// Public single-/multiline inputs and explicitly classified single-line
+/// passwords share one widget, M10 editor and M8 retained shaping authority.
 pub struct TextField<Action> {
     snapshot: TextDocumentSnapshot,
     content: String,
     selection: TextSelection,
     mode: SemanticEditableMode,
+    sensitivity: TextSensitivity,
     placeholder: Option<String>,
     labelled_by: Option<ElementId>,
     described_by: Option<ElementId>,
@@ -62,14 +67,19 @@ pub struct TextField<Action> {
 
 impl<Action> fmt::Debug for TextField<Action> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TextField")
+        let mut debug = f.debug_struct("TextField");
+        debug
             .field("snapshot", &self.snapshot)
-            .field("content_bytes", &self.content.len())
-            .field("selection", &self.selection)
             .field("mode", &self.mode)
+            .field("sensitivity", &self.sensitivity)
             .field("read_only", &self.read_only)
-            .field("disabled", &self.disabled)
-            .finish_non_exhaustive()
+            .field("disabled", &self.disabled);
+        if self.sensitivity == TextSensitivity::Public {
+            debug
+                .field("content_bytes", &self.content.len())
+                .field("selection", &self.selection);
+        }
+        debug.finish_non_exhaustive()
     }
 }
 
@@ -108,6 +118,7 @@ impl<Action> TextField<Action> {
             content,
             selection,
             mode,
+            sensitivity: TextSensitivity::Public,
             placeholder: None,
             labelled_by: None,
             described_by: None,
@@ -123,6 +134,21 @@ impl<Action> TextField<Action> {
     }
 
     common_node_builder_methods!();
+
+    /// Marks a checked single-line field as a secret/password presentation.
+    /// The M10 sensitivity authority disables ordinary clipboard disclosure,
+    /// while M8 shapes the already accepted grapheme-masked projection.
+    ///
+    /// # Errors
+    ///
+    /// A multiline field cannot claim secret sensitivity.
+    pub fn password(mut self) -> Result<Self, TextFieldError> {
+        if self.mode != SemanticEditableMode::SingleLine {
+            return Err(TextFieldError::SecretRequiresSingleLine);
+        }
+        self.sensitivity = TextSensitivity::Secret;
+        Ok(self)
+    }
 
     #[must_use]
     pub fn placeholder(mut self, value: impl Into<String>) -> Self {
@@ -197,12 +223,13 @@ impl<Action> TextField<Action> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct TextFieldState {
     snapshot: TextDocumentSnapshot,
     content: String,
     selection: TextSelection,
     mode: SemanticEditableMode,
+    sensitivity: TextSensitivity,
     placeholder: Option<String>,
     labelled_by: Option<ElementId>,
     described_by: Option<ElementId>,
@@ -211,6 +238,24 @@ struct TextFieldState {
     required: bool,
     read_only: bool,
     disabled: bool,
+}
+
+impl fmt::Debug for TextFieldState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = f.debug_struct("TextFieldState");
+        debug
+            .field("snapshot", &self.snapshot)
+            .field("mode", &self.mode)
+            .field("sensitivity", &self.sensitivity)
+            .field("read_only", &self.read_only)
+            .field("disabled", &self.disabled);
+        if self.sensitivity == TextSensitivity::Public {
+            debug
+                .field("content_bytes", &self.content.len())
+                .field("selection", &self.selection);
+        }
+        debug.finish_non_exhaustive()
+    }
 }
 
 struct TextFieldWidget<Action> {
@@ -235,7 +280,10 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
     }
 
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
-        if state.content != self.state.content || state.mode != self.state.mode {
+        if state.content != self.state.content
+            || state.mode != self.state.mode
+            || state.sensitivity != self.state.sensitivity
+        {
             // Mode changes wrapping and thus the retained M8 text geometry.
             context.invalidate(
                 WidgetInvalidation::LAYOUT
@@ -316,7 +364,7 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             self.state.snapshot,
             self.state.content.as_str(),
             self.state.selection,
-            TextSensitivity::Public,
+            self.state.sensitivity,
             self.state.read_only,
             self.state.disabled,
             EditingSessionPolicy::PreserveExact,
@@ -349,7 +397,7 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             self.state.snapshot,
             &self.state.content,
             self.state.selection,
-            TextSensitivity::Public,
+            self.state.sensitivity,
             self.state.read_only,
         ) else {
             return SemanticContribution::empty();
@@ -428,6 +476,7 @@ impl<Action: 'static> View<Action> for TextField<Action> {
                     content: self.content,
                     selection: self.selection,
                     mode: self.mode,
+                    sensitivity: self.sensitivity,
                     placeholder: self.placeholder,
                     labelled_by: self.labelled_by,
                     described_by: self.described_by,
@@ -479,6 +528,7 @@ mod tests {
                 content,
                 selection: TextSelection::collapsed(position),
                 mode,
+                sensitivity: TextSensitivity::Public,
                 placeholder: None,
                 labelled_by: None,
                 described_by: None,
@@ -491,6 +541,81 @@ mod tests {
             mapper: Rc::new(|_| ()),
             on_submit: None,
         }
+    }
+
+    #[test]
+    fn secret_password_builder_rejects_multiline_and_redacts_widget_state_debug() {
+        let source = "vault-secret-é漢";
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(92), TextDocumentRevision::new(1));
+        let active = TextPosition::new(snapshot, source, "vault".len(), TextAffinity::Downstream)
+            .unwrap_or_else(|_| unreachable!("source selection is valid"));
+        let make = |mode| {
+            TextField::<()>::new(
+                snapshot,
+                source,
+                TextSelection::collapsed(active),
+                mode,
+                |_| (),
+            )
+            .unwrap_or_else(|_| unreachable!("checked constructor succeeds"))
+        };
+        assert!(matches!(
+            make(SemanticEditableMode::Multiline).password(),
+            Err(TextFieldError::SecretRequiresSingleLine)
+        ));
+        let field = make(SemanticEditableMode::SingleLine)
+            .password()
+            .unwrap_or_else(|_| unreachable!("single-line password is valid"));
+        assert_eq!(field.sensitivity, TextSensitivity::Secret);
+        let facade_debug = format!("{field:?}");
+        for forbidden in [source, "content_bytes", "selection"] {
+            assert!(!facade_debug.contains(forbidden));
+        }
+        let mut widget = widget(SemanticEditableMode::SingleLine);
+        widget.state.content = source.to_owned();
+        widget.state.selection = TextSelection::collapsed(
+            TextPosition::new(
+                widget.state.snapshot,
+                source,
+                "vault".len(),
+                TextAffinity::Downstream,
+            )
+            .unwrap_or_else(|_| unreachable!("updated selection validates")),
+        );
+        widget.state.sensitivity = TextSensitivity::Secret;
+        for debug in [format!("{:?}", widget.state), format!("{widget:?}")] {
+            for forbidden in [source, "content_bytes", "selection"] {
+                assert!(
+                    !debug.contains(forbidden),
+                    "secret metadata appeared in Debug"
+                );
+            }
+        }
+        assert_eq!(
+            widget
+                .editable(&widget.state)
+                .unwrap_or_else(|| unreachable!("secret document binds"))
+                .sensitivity(),
+            TextSensitivity::Secret
+        );
+        let public = make(SemanticEditableMode::SingleLine);
+        assert!(format!("{public:?}").contains("content_bytes"));
+    }
+
+    #[test]
+    fn secret_classification_rebuild_invalidates_retained_layout_and_semantics() {
+        let before = widget(SemanticEditableMode::SingleLine);
+        let mut after = widget(SemanticEditableMode::SingleLine);
+        after.state.sensitivity = TextSensitivity::Secret;
+        let mut retained = before.create_state();
+        let mut context = WidgetUpdateContext::<()>::__runtime_new();
+        after.update(&mut retained, &mut context);
+        let flags = context.__runtime_take_invalidation();
+        assert!(flags.contains(WidgetInvalidation::LAYOUT));
+        assert!(flags.contains(WidgetInvalidation::PAINT));
+        assert!(flags.contains(WidgetInvalidation::SEMANTICS));
+        assert_eq!(retained.sensitivity, TextSensitivity::Secret);
     }
 
     #[test]
