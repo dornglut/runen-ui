@@ -36,7 +36,7 @@ use taffy::{
     },
 };
 
-use super::cache::CachedScrollChromeProjection;
+use super::cache::{CachedScrollChromeProjection, TextEditingPaintInputs};
 use super::resolve::{
     ResolvedScrollBarChrome, ResolvedSurfaceNode, ResolvedSurfaceTree, ScrollChromeLayoutPlan,
 };
@@ -110,8 +110,7 @@ pub(super) fn layout_resolved_surface<Action>(
     mounted_tree: &crate::mounted::MountedTree<Action>,
     root_constraints: LayoutConstraints,
     text_system: &mut TextSystem,
-    preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
-    sensitivities: &HashMap<crate::MountedNodeId, TextSensitivity>,
+    text_editing: TextEditingPaintInputs<'_>,
     prior_text_layouts: Option<&[TextLayoutState]>,
 ) -> Result<LayoutResult, TextLayoutError> {
     #[cfg(feature = "internal-test-seams")]
@@ -137,8 +136,8 @@ pub(super) fn layout_resolved_surface<Action>(
             gutters: gutters.as_slice(),
             mounted_tree,
             root_constraints,
-            preedits,
-            sensitivities,
+            preedits: text_editing.preedits,
+            sensitivities: text_editing.sensitivities,
             prior_text_layouts,
         };
         result = layout_resolved_surface_once(&inputs, text_system)?;
