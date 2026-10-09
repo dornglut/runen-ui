@@ -33,7 +33,8 @@ impl UiApp for SelectableApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {}
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+    }
 }
 
 #[test]
