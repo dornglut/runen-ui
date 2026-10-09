@@ -588,8 +588,16 @@ fn plan_structural_surface<'tree, Action>(
     tree.extend_surface_publication_capabilities(&mut capability_plan, DirtyPhases::ALL);
     let resolved = ResolvedSurfaceTree::for_layout(&topology, &effective);
     let chrome_plan = resolve_scroll_chrome_layout_plan(&topology)?;
-    let (size, bounds, layout_report, scroll_chrome, text_layouts, text_origins) =
-        layout_resolved_surface(
+    let (
+        size,
+        bounds,
+        layout_report,
+        scroll_chrome,
+        text_layouts,
+        text_origins,
+        placeholder_text_layouts,
+        placeholder_text_origins,
+    ) = layout_resolved_surface(
             &resolved,
             &chrome_plan,
             tree,
@@ -605,6 +613,8 @@ fn plan_structural_surface<'tree, Action>(
         scroll_chrome,
         text_layouts,
         text_origins,
+        placeholder_text_layouts,
+        placeholder_text_origins,
     };
     report.record(SurfacePhase::Layout);
     let scroll = normalize_scroll_projection(&topology, &layout, scroll)?;
