@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
+
+#[cfg(test)]
+use std::collections::HashMap;
 
 #[cfg(test)]
 use runenui_core::{FontFamilyName, GenericFontFamily};
