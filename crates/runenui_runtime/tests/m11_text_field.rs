@@ -3,8 +3,10 @@
 use runenui_core::{
     CommandOrigin, CommittedTextEvent, EditIntent, EditResolution, Effects, IntoUpdateOutput,
     KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase,
-    LayoutDimension, LayoutStyle, LogicalKey, LogicalLength, NoHostProtocol, PhysicalKey,
-    SemanticCommand, SemanticEditableMode, StyleEnvironment, TextAffinity, TextDocumentId,
+    LayoutDimension, LayoutStyle, LogicalKey, LogicalLength, LogicalPoint, NoHostProtocol,
+    PhysicalKey, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
+    PointerPhase, SemanticCommand, SemanticEditableMode, StyleEnvironment, TextAffinity,
+    TextDocumentId,
     TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, UiApp, UpdateOutput,
     View,
 };
@@ -275,5 +277,84 @@ fn controlled_font_publication_keeps_single_line_unwrapped_and_multiline_wrappin
             .items()
             .iter()
             .any(|item| item.primitive().as_shaped_text_run().is_some())
+    );
+}
+
+#[test]
+fn controlled_font_pointer_hit_and_selection_share_m10_caret_geometry() {
+    let mut runtime = app(SemanticEditableMode::SingleLine);
+    register_font(&mut runtime);
+    let initial = publication(&mut runtime);
+    let owner = runtime.index().nodes()[0].id().clone();
+    let point = LogicalPoint::try_new(2.0, 2.0)
+        .unwrap_or_else(|_| unreachable!("pointer coordinates are finite"));
+    assert_eq!(initial.hit_test_scene().target_at(point), Some(&owner));
+    let selected_before = initial.semantic_publication().snapshot().nodes()[0]
+        .editable()
+        .unwrap_or_else(|| unreachable!("field publishes M10 selection"))
+        .selection();
+    assert_eq!(selected_before.active().byte_offset(), 2);
+
+    runtime
+        .submit_command(
+            owner.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("field is focusable"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let focused = publication(&mut runtime);
+    assert_eq!(runtime.focus().focused_node(), Some(&owner));
+    assert!(
+        focused.paint_scene().items().iter().any(|item| {
+            matches!(
+                item.primitive(),
+                runenui_core::PaintPrimitive::Fill {
+                    shape: runenui_core::SceneShape::Rect(rect),
+                    ..
+                } if rect.width().to_bits() == 1.0_f32.to_bits()
+            )
+        }),
+        "focused field paints the authoritative M10 caret"
+    );
+
+    let pointer = PointerId::new(5).unwrap_or_else(|| unreachable!("pointer id is valid"));
+    let context = focused.input_context().clone();
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                point,
+                context.clone(),
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|_| unreachable!("pointer press is routed"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                point,
+                context,
+            )
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|_| unreachable!("pointer release is routed"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let clicked = publication(&mut runtime);
+    assert_eq!(clicked.hit_test_scene().target_at(point), Some(&owner));
+    let selection = clicked.semantic_publication().snapshot().nodes()[0]
+        .editable()
+        .unwrap_or_else(|| unreachable!("clicked field retains M10 selection"))
+        .selection();
+    assert!(
+        selection.active().byte_offset() < selected_before.active().byte_offset(),
+        "pointer click near the start must place the authoritative caret before the end"
     );
 }
