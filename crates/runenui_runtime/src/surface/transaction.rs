@@ -12,7 +12,7 @@ use crate::{MountedNodeId, SemanticDiagnostic};
 use runenui_core::{
     LogicalSize, LogicalTransform, OverflowPolicy, OverflowStyle, TextDisplayPosition,
 };
-use runenui_text::{TextCaretMap, TextDisplaySelection};
+use runenui_text::{TextCaretMap, TextDisplaySelection, TextLayoutState, TextMaskedProjection};
 use std::{collections::HashMap, sync::Arc};
 
 use super::{
@@ -132,17 +132,28 @@ pub(crate) struct SurfacePublicationCommit {
 }
 
 fn project_editable_semantics(
-    map: &TextCaretMap,
+    layout: &TextLayoutState,
     projected: &crate::editing::EditingSemanticProjection,
 ) -> Option<(Arc<str>, runenui_core::TextSelection, Arc<[usize]>)> {
     let selection = TextDisplaySelection::from_document(projected.selection);
-    map.validate_position(selection.anchor()).ok()?;
-    map.validate_position(selection.active()).ok()?;
-    Some((
-        Arc::clone(&projected.source),
-        projected.selection,
-        map.__runtime_legal_byte_offsets(),
-    ))
+    let offsets = if projected.sensitivity == runenui_core::TextSensitivity::Secret {
+        let mask = TextMaskedProjection::document(
+            projected.snapshot,
+            Arc::clone(&projected.source),
+        ).ok()?;
+        let map = mask.caret_map(layout).ok()?;
+        // Source coordinates must be legal in the one retained shaped mask.
+        // No source literal is shaped or published as semantic value.
+        map.caret_rect(selection.anchor(), runenui_core::LogicalLength::from(1_u8)).ok()?;
+        map.caret_rect(selection.active(), runenui_core::LogicalLength::from(1_u8)).ok()?;
+        Arc::from(map.legal_source_offsets().ok()?)
+    } else {
+        let map = layout.caret_map_for_source(projected.snapshot, &projected.source).ok()?;
+        map.validate_position(selection.anchor()).ok()?;
+        map.validate_position(selection.active()).ok()?;
+        map.__runtime_legal_byte_offsets()
+    };
+    Some((Arc::clone(&projected.source), projected.selection, offsets))
 }
 
 impl<'a> PlannedSurfacePublication<'a> {
@@ -361,14 +372,8 @@ impl<'a> PlannedSurfacePublication<'a> {
                     ) {
                         return None;
                     }
-                    let map = self
-                        .cache
-                        .layout
-                        .text_layouts
-                        .get(position)?
-                        .caret_map_for_source(projected.snapshot, &projected.source)
-                        .ok()?;
-                    project_editable_semantics(&map, projected)
+                    let layout = self.cache.layout.text_layouts.get(position)?;
+                    project_editable_semantics(layout, projected)
                 })
                 .map_or((None, None, None), |(source, selection, offsets)| {
                     (Some(source), Some(selection), Some(offsets))
@@ -515,7 +520,7 @@ mod tests {
             .caret_map_for_source(snapshot, &projected.source)
             .unwrap_or_else(|_| unreachable!("planned text layout matches editable source"));
         let retained = map.__runtime_legal_byte_offsets();
-        let (_, selection, published) = project_editable_semantics(&map, &projected)
+        let (_, selection, published) = project_editable_semantics(&planned.cache.layout.text_layouts[0], &projected)
             .unwrap_or_else(|| unreachable!("controlled editable projection is valid"));
 
         assert_eq!(selection, projected.selection);
