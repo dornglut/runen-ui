@@ -1277,9 +1277,11 @@ fn append_shaped_text(
         let bounds = layout.bounds[mounted_preorder];
         let local = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
             .unwrap_or_else(|_| unreachable!("published owner extent is finite"));
+        // The field border box does not scroll with its text content.
+        // Existing inherited viewport clips remain owner-anchored as well.
         hint_clips.push(SceneClip::new(
             SceneShape::rect(local),
-            owner.content_to_surface,
+            owner.owner_to_surface,
         ));
     }
     let clips = if visual_hint {
