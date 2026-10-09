@@ -1,7 +1,7 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::{
-    Element, ElementId, NoHostProtocol, SemanticAction, SemanticCommand,
+    ElementId, NoHostProtocol, SemanticAction, SemanticCommand,
     SemanticRelationshipKind, SemanticRole, UiApp, View, button, column, disclosure,
 };
 use runenui_runtime::PumpBudget;
@@ -96,13 +96,13 @@ fn assert_disclosure(harness: &TestHarness<DisclosureApp>, expanded: bool) {
         .find(|node| node.role() == SemanticRole::Button && node.name() == Some("Advanced"))
         .unwrap_or_else(|| unreachable!("trigger semantic node"));
     assert_eq!(node.state().expanded(), Some(expanded));
-    assert!(node.actions().contains(&SemanticAction::Activate));
+    assert!(node.supported_actions().contains(&SemanticAction::Activate));
     assert_eq!(
-        node.actions().contains(&SemanticAction::Expand),
+        node.supported_actions().contains(&SemanticAction::Expand),
         !expanded && harness.state().enabled,
     );
     assert_eq!(
-        node.actions().contains(&SemanticAction::Collapse),
+        node.supported_actions().contains(&SemanticAction::Collapse),
         expanded && harness.state().enabled,
     );
     let relations = node.relationships().iter()

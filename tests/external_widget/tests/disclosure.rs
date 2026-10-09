@@ -110,7 +110,10 @@ impl UiApp for App {
         ])
     }
 
-    fn update(state: &mut Self::State, action: Self::Action) {
+    fn update(
+        state: &mut Self::State,
+        action: Self::Action,
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             Action::Standard => state.standard = !state.standard,
             Action::Custom => state.custom = !state.custom,
@@ -143,9 +146,9 @@ fn parity(h: &TestHarness<App>, expanded: bool) {
             .node(id.node_id())
             .unwrap_or_else(|| unreachable!("target present"));
         assert_eq!(node.state().expanded(), Some(expanded));
-        assert_eq!(node.actions().contains(&SemanticAction::Activate), true);
-        assert_eq!(node.actions().contains(&SemanticAction::Expand), !expanded);
-        assert_eq!(node.actions().contains(&SemanticAction::Collapse), expanded);
+        assert!(node.supported_actions().contains(&SemanticAction::Activate));
+        assert_eq!(node.supported_actions().contains(&SemanticAction::Expand), !expanded);
+        assert_eq!(node.supported_actions().contains(&SemanticAction::Collapse), expanded);
     }
 }
 #[test]
