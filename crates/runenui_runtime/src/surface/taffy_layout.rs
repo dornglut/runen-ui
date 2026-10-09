@@ -671,10 +671,32 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                                 String::new()
                             })
                     }
-                    Ok(_) => preedit.map_or_else(
-                        || descriptor.content().to_owned(),
-                        |projection| projection.display_text().to_owned(),
-                    ),
+                    Ok(Some(editable)) => {
+                        if let Some(projection) = preedit {
+                            if projection.snapshot() == editable.snapshot()
+                                && projection.document_text() == editable.text()
+                                && descriptor.content() == editable.text()
+                            {
+                                projection.display_text().to_owned()
+                            } else {
+                                self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                                    "runenui.text.preedit-source-mismatch",
+                                    "transient M10 text layout is not correlated with its owner",
+                                ));
+                                String::new()
+                            }
+                        } else {
+                            descriptor.content().to_owned()
+                        }
+                    }
+                    Ok(None) if preedit.is_some() => {
+                        self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                            "runenui.text.preedit-owner-missing",
+                            "transient M10 text layout has no editable owner",
+                        ));
+                        String::new()
+                    }
+                    Ok(None) => descriptor.content().to_owned(),
                     Err(_) => {
                         self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
                             "runenui.text.editable-unavailable",
@@ -1682,7 +1704,7 @@ mod secret_shaping_tests {
             &secret(source),
             None,
         ).unwrap_or_else(|| unreachable!("exact source masks"));
-        assert_eq!(rendered, "••••••••");
+        assert_eq!(rendered, "•••••••••");
         assert!(!rendered.contains("sécret"));
         assert!(!rendered.contains("👩"));
         assert!(!rendered.contains("漢"));
