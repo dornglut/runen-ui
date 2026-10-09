@@ -431,7 +431,10 @@ impl From<TextPreeditProjectionError> for TextMaskedProjectionError {
 mod tests {
     use super::*;
     use crate::{FontSourcePolicy, TextConstraints, TextRequest, TextSystem};
-    use runenui_core::{TextDocumentId, TextDocumentRevision, Typography};
+    use runenui_core::{
+        __runtime::RuntimeNamespace, CompositionRange, TextDocumentId, TextDocumentRevision,
+        TextPreeditPosition, TextRange, Typography,
+    };
 
     fn snapshot() -> TextDocumentSnapshot {
         TextDocumentSnapshot::new(TextDocumentId::new(199), TextDocumentRevision::new(5))
@@ -548,5 +551,97 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("retained mask is exact"));
         assert!(projection.caret_map(&TextLayoutState::new()).is_err());
         assert!(map.is_correlated_with(expected_mask.artifact()));
+        let (moved, _) = map
+            .navigate(
+                &TextDisplaySelection::new(begin.clone(), begin.clone()),
+                TextNavigation::NextLogical,
+                TextNavigationMode::Move,
+                None,
+            )
+            .unwrap_or_else(|_| unreachable!("masked logical navigation succeeds"));
+        assert_eq!(
+            moved.active(),
+            &TextDisplayPosition::Document(
+                TextPosition::new(snapshot(), source, 3, TextAffinity::Downstream)
+                    .unwrap_or_else(|_| unreachable!("first grapheme boundary"))
+            )
+        );
+    }
+
+    #[test]
+    fn composed_secret_preedit_masks_synthetic_positions_and_preserves_caret_geometry() {
+        const FONT: &[u8] = include_bytes!("../tests/fixtures/Cantarell-Regular.ttf");
+        let source = "abXYZcd";
+        let composing = "かな";
+        let namespace = RuntimeNamespace::__runtime_new();
+        let generation = namespace.__runtime_composition_generation(91);
+        let replacement = TextRange::new(snapshot(), source, 2, 5)
+            .unwrap_or_else(|_| unreachable!("replacement is checked"));
+        let projection = Arc::new(
+            TextPreeditProjection::new(
+                snapshot(), source, replacement, generation.clone(), composing,
+                Some(CompositionRange::new(composing, 0, "か".len())
+                    .unwrap_or_else(|_| unreachable!("composition range is checked"))),
+            )
+            .unwrap_or_else(|_| unreachable!("transient preedit is checked")),
+        );
+        let mask = TextMaskedProjection::preedit(Arc::clone(&projection))
+            .unwrap_or_else(|_| unreachable!("complete preedit display can be masked"));
+        assert_eq!(mask.display_text(), "••••••");
+        assert!(!mask.display_text().contains("かな"));
+        assert!(!format!("{mask:?}").contains("かな"));
+        assert!(!format!("{mask:?}").contains("XYZ"));
+
+        let synthetic = TextDisplayPosition::Preedit(
+            TextPreeditPosition::new(snapshot(), generation, composing, "か".len(),
+                TextAffinity::Downstream)
+                .unwrap_or_else(|_| unreachable!("synthetic coordinate is valid")),
+        );
+        assert_eq!(mask.display_offset_for_position(&synthetic),
+            Ok(3 * '•'.len_utf8()));
+        assert_eq!(mask.position_from_display_offset(3 * '•'.len_utf8(),
+            TextAffinity::Downstream), Ok(synthetic.clone()));
+        let foreign = TextDisplayPosition::Preedit(
+            TextPreeditPosition::new(snapshot(),
+                namespace.__runtime_composition_generation(92), composing, "か".len(),
+                TextAffinity::Downstream)
+                .unwrap_or_else(|_| unreachable!("foreign generation is valid")),
+        );
+        assert_eq!(mask.display_offset_for_position(&foreign),
+            Err(TextMaskedProjectionError::ForeignComposition));
+
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        assert!(system.register_font_bytes(FONT.to_vec())
+            .unwrap_or_else(|_| unreachable!("font registers")) > 0);
+        let mut state = TextLayoutState::new();
+        system.layout_text(&mut state, &TextRequest::new(mask.display_text(),
+            Typography::default(), TextConstraints::unbounded()))
+            .unwrap_or_else(|_| unreachable!("mask shapes"));
+        let map = mask.caret_map(&state)
+            .unwrap_or_else(|_| unreachable!("one retained layout is correlated"));
+        assert!(map.caret_rect(&synthetic, LogicalLength::from(1_u8)).is_ok());
+    }
+
+    #[test]
+    fn preedit_that_joins_prior_grapheme_rejects_hidden_interior_caret() {
+        let source = "a";
+        let composing = "\u{0301}";
+        let namespace = RuntimeNamespace::__runtime_new();
+        let generation = namespace.__runtime_composition_generation(93);
+        let replacement = TextRange::new(snapshot(), source, source.len(), source.len())
+            .unwrap_or_else(|_| unreachable!("empty replacement range is valid"));
+        let preedit = Arc::new(TextPreeditProjection::new(
+            snapshot(), source, replacement, generation.clone(), composing, None,
+        ).unwrap_or_else(|_| unreachable!("joined grapheme preedit is valid")));
+        let mask = TextMaskedProjection::preedit(preedit)
+            .unwrap_or_else(|_| unreachable!("grapheme mask is valid"));
+        assert_eq!(mask.display_text(), "•");
+        let at_preedit_start = TextDisplayPosition::Preedit(
+            TextPreeditPosition::new(snapshot(), generation, composing, 0,
+                TextAffinity::Downstream)
+                .unwrap_or_else(|_| unreachable!("synthetic position is scalar aligned")),
+        );
+        assert_eq!(mask.display_offset_for_position(&at_preedit_start),
+            Err(TextMaskedProjectionError::NotGraphemeBoundary));
     }
 }
