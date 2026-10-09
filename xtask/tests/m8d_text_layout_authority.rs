@@ -71,8 +71,14 @@ fn production_text_measurement_and_paint_share_one_retained_artifact_path() -> R
         }
     }
     for (variant, required) in [
-        ("editable source", "            owner,\n            false,\n"),
-        ("passive visual hint", "            owner,\n            true,\n"),
+        (
+            "editable source",
+            "            owner,\n            false,\n",
+        ),
+        (
+            "passive visual hint",
+            "            owner,\n            true,\n",
+        ),
     ] {
         if !resolve.contains(required) {
             return Err(format!(
