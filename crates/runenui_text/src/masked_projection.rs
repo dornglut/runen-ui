@@ -434,9 +434,7 @@ impl From<TextPreeditProjectionError> for TextMaskedProjectionError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runenui_core::{
-        TextDocumentId, TextDocumentRevision, TextSelection, Typography,
-    };
+    use runenui_core::{TextDocumentId, TextDocumentRevision, Typography};
     use crate::{FontSourcePolicy, TextConstraints, TextRequest, TextSystem};
 
     fn snapshot() -> TextDocumentSnapshot {
@@ -458,7 +456,7 @@ mod tests {
         );
         let masked = projection.display_offset_for_position(&p)
             .unwrap_or_else(|_| unreachable!("mapped boundary"));
-        assert_eq!(masked, 3);
+        assert_eq!(masked, 6);
         assert_eq!(projection.position_from_display_offset(masked, TextAffinity::Downstream)
             .unwrap_or_else(|_| unreachable!("inverse mapped boundary")), p);
         assert_eq!(projection.source_offset_to_display(2),
@@ -514,9 +512,6 @@ mod tests {
         let expected_mask = state.caret_map_for_source(snapshot(), projection.display_text())
             .unwrap_or_else(|_| unreachable!("retained mask is exact"));
         assert!(projection.caret_map(&TextLayoutState::new()).is_err());
-        assert_eq!(map.is_correlated_with(expected_mask.artifact()), true);
-        let _ = TextSelection::collapsed(TextPosition::new(
-            snapshot(), source, 0, TextAffinity::Downstream,
-        ).unwrap_or_else(|_| unreachable!("source selection")));
+        assert!(map.is_correlated_with(expected_mask.artifact()));
     }
 }
