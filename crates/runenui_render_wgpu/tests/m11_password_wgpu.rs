@@ -1,10 +1,13 @@
 #![allow(refining_impl_trait)]
-use core::{future::Future, pin::pin, task::{Context, Poll}};
+use core::{
+    future::Future,
+    pin::pin,
+    task::{Context, Poll},
+};
 use runenui_core::{
-    Color, EditIntent, EditResolution, FontFamilyName, GenericFontFamily,
-    NoHostProtocol, SemanticEditableMode, StyleEnvironment, TextAffinity,
-    TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,
-    TextSelection, UiApp, UpdateOutput, View,
+    Color, EditIntent, EditResolution, FontFamilyName, GenericFontFamily, NoHostProtocol,
+    SemanticEditableMode, StyleEnvironment, TextAffinity, TextDocumentId, TextDocumentRevision,
+    TextDocumentSnapshot, TextPosition, TextSelection, UiApp, UpdateOutput, View,
 };
 use runenui_render_wgpu::{
     Renderer, RendererInitError, RendererOptions, ResourcePayload, ResourceProvider,
@@ -16,8 +19,13 @@ const FONT: &[u8] = include_bytes!("fixtures/Cantarell-Regular.ttf");
 const SECRET: &str = "clé-é漢🌐";
 
 #[derive(Clone, Copy)]
-struct State { masked: bool }
-enum Action { Edit(Box<EditIntent>), Toggle }
+struct State {
+    masked: bool,
+}
+enum Action {
+    Edit(Box<EditIntent>),
+    Toggle,
+}
 struct App;
 
 impl UiApp for App {
@@ -26,19 +34,25 @@ impl UiApp for App {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &State) -> impl View<Action> {
-        let snapshot = TextDocumentSnapshot::new(
-            TextDocumentId::new(999), TextDocumentRevision::new(1),
-        );
-        let position = TextPosition::new(
-            snapshot, SECRET, SECRET.len(), TextAffinity::Upstream,
-        ).unwrap_or_else(|_| unreachable!("valid source position"));
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(999), TextDocumentRevision::new(1));
+        let position = TextPosition::new(snapshot, SECRET, SECRET.len(), TextAffinity::Upstream)
+            .unwrap_or_else(|_| unreachable!("valid source position"));
         let field = runenui_core::text_field(
-            snapshot, SECRET, TextSelection::collapsed(position),
-            SemanticEditableMode::SingleLine, |intent| Action::Edit(Box::new(intent)),
-        ).unwrap_or_else(|_| unreachable!("valid single-line source"));
+            snapshot,
+            SECRET,
+            TextSelection::collapsed(position),
+            SemanticEditableMode::SingleLine,
+            |intent| Action::Edit(Box::new(intent)),
+        )
+        .unwrap_or_else(|_| unreachable!("valid single-line source"));
         let field = if state.masked {
-            field.password().unwrap_or_else(|_| unreachable!("valid password mode"))
-        } else { field };
+            field
+                .password()
+                .unwrap_or_else(|_| unreachable!("valid password mode"))
+        } else {
+            field
+        };
         field.id("gpu.password").foreground(Color::WHITE)
     }
 
@@ -50,9 +64,7 @@ impl UiApp for App {
             }
             Action::Edit(intent) => UpdateOutput::edit(EditResolution::rejected(
                 intent.request().clone(),
-                TextDocumentSnapshot::new(
-                    TextDocumentId::new(999), TextDocumentRevision::new(1),
-                ),
+                TextDocumentSnapshot::new(TextDocumentId::new(999), TextDocumentRevision::new(1)),
             )),
         }
     }
@@ -86,10 +98,13 @@ fn block_on<F: Future>(future: F) -> F::Output {
 
 fn publish(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
     let env = StyleEnvironment::default();
-    runtime.publish_surface(&SurfaceBuildContext::tight(
-        &env, LogicalSize::try_new(300.0, 60.0)
-            .unwrap_or_else(|_| unreachable!("valid logical extent")),
-    )).unwrap_or_else(|_| unreachable!("password surface publishes"))
+    runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &env,
+            LogicalSize::try_new(300.0, 60.0)
+                .unwrap_or_else(|_| unreachable!("valid logical extent")),
+        ))
+        .unwrap_or_else(|_| unreachable!("password surface publishes"))
 }
 
 #[test]
@@ -103,23 +118,30 @@ fn masked_standard_password_renders_with_real_wgpu_and_reclassifies_without_sour
     let mut runtime = AppRuntime::<App>::mount(State { masked: true });
     runtime.register_text_font_bytes(FONT.to_vec())?;
     runtime.set_text_generic_family_mapping(
-        GenericFontFamily::SansSerif, &[FontFamilyName::new("Cantarell")?],
+        GenericFontFamily::SansSerif,
+        &[FontFamilyName::new("Cantarell")?],
     )?;
     let provider = NoExternalResources;
     let masked = publish(&mut runtime);
     assert!(!format!("{:?}", masked.paint_scene()).contains(SECRET));
     assert_eq!(
         masked.semantic_publication().snapshot().nodes()[0]
-            .editable().and_then(|edit| edit.value()), None
+            .editable()
+            .and_then(|edit| edit.value()),
+        None
     );
     let initial = renderer.render_offscreen_publication(masked.paint_publication(), &provider)?;
     let pixels = initial.readback().rgba8_srgb().to_vec();
-    runtime.submit_action(Action::Toggle).unwrap_or_else(|_| unreachable!("toggle is accepted"));
+    runtime
+        .submit_action(Action::Toggle)
+        .unwrap_or_else(|_| unreachable!("toggle is accepted"));
     runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
     let public = publish(&mut runtime);
     let visible = renderer.render_offscreen_publication(public.paint_publication(), &provider)?;
     assert_ne!(pixels, visible.readback().rgba8_srgb());
-    runtime.submit_action(Action::Toggle).unwrap_or_else(|_| unreachable!("toggle is accepted"));
+    runtime
+        .submit_action(Action::Toggle)
+        .unwrap_or_else(|_| unreachable!("toggle is accepted"));
     runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
     let masked_again = publish(&mut runtime);
     assert!(!format!("{:?}", masked_again.paint_scene()).contains(SECRET));
