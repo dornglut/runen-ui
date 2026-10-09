@@ -55,6 +55,18 @@ fn copy_snapshot(
     })
 }
 
+/// One accepted stream cleanup is not a routed UI activation.
+pub(crate) fn integrity_only_pointer_finality() -> crate::UiInputFinality {
+    crate::UiInputFinality::Committed(crate::UiInputRoutingFacts {
+        conflict: crate::UiInputConflict::Unclaimed,
+        reasons: Vec::new(),
+        route: crate::UiInputRoute::Unrouted,
+        propagation_stopped: false,
+        default_prevented: false,
+        default_disposition: crate::UiDefaultDisposition::None,
+    })
+}
+
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn begin_external_pointer_input(&mut self) {
         debug_assert!(!self.input_observation.external_pointer_active);

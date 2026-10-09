@@ -344,8 +344,70 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface_context: pending.work.event.surface_context().clone(),
             surface_snapshot: pending.geometry.snapshot,
         };
+        let mut reasons = Vec::new();
+        if transaction.host_input_claimed {
+            reasons.push(crate::UiInputClaimReason::ExplicitWidgetClaim);
+        }
+        if pending.presentation_block_root.is_some() {
+            reasons.push(crate::UiInputClaimReason::ModalBarrier);
+        }
+        if pending.presentation_dismiss.is_some() {
+            reasons.push(crate::UiInputClaimReason::PresentationDismissal);
+        }
+        if pending.stream.capture_owner().is_some() || pending.previous_capture_owner.is_some() {
+            reasons.push(crate::UiInputClaimReason::PointerCapture);
+        }
+        if pending.work.event.phase() == PointerPhase::Down
+            && pending.stream.pressed_owner().is_some()
+        {
+            reasons.push(crate::UiInputClaimReason::PointerPress);
+        }
+        if pending.stream.text_selection().is_some() {
+            reasons.push(crate::UiInputClaimReason::PointerSelection);
+        }
+        if pending.work.event.device_kind() == PointerDeviceKind::Touch
+            && pending.stream.touch_gesture().and_then(TouchGestureState::winner).is_some()
+        {
+            reasons.push(crate::UiInputClaimReason::TouchGesture);
+        }
+        if transaction.default_outputs.len() > default_outputs_before {
+            reasons.push(crate::UiInputClaimReason::ActivationDefault);
+        }
+        let route = if let Some(root) = pending.presentation_block_root.as_ref() {
+            crate::UiInputRoute::PresentationBlocked { root: root.clone() }
+        } else if let Some(target) = pending.stream.capture_owner() {
+            crate::UiInputRoute::Captured { target: target.clone() }
+        } else if let Some(target) = pending.routed_target.as_ref() {
+            crate::UiInputRoute::Routed { target: target.clone() }
+        } else {
+            crate::UiInputRoute::Unrouted
+        };
+        let has_default_outputs = transaction.default_outputs.len() > default_outputs_before;
+        let routing = crate::UiInputRoutingFacts {
+            conflict: if reasons.is_empty() {
+                if matches!(&route, crate::UiInputRoute::Unrouted) {
+                    crate::UiInputConflict::Unclaimed
+                } else {
+                    crate::UiInputConflict::ObservedNonexclusive
+                }
+            } else {
+                crate::UiInputConflict::ExclusiveUi
+            },
+            reasons,
+            route,
+            propagation_stopped: transaction.propagation_stopped,
+            default_prevented: transaction.default_prevented,
+            default_disposition: if transaction.default_prevented {
+                crate::UiDefaultDisposition::Prevented
+            } else if has_default_outputs {
+                crate::UiDefaultDisposition::Queued
+            } else {
+                crate::UiDefaultDisposition::None
+            },
+        };
         self.commit_prepared_pointer_transaction(
             transaction,
+            routing,
             PointerCommitPlan {
                 pointer_id: pending.work.event.pointer_id(),
                 stream: pending.stream,
@@ -498,6 +560,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     fn commit_prepared_pointer_transaction(
         &mut self,
         transaction: RoutedTransaction<Action>,
+        routing: crate::UiInputRoutingFacts,
         plan: PointerCommitPlan,
     ) -> ProcessApplicationActionOutcome {
         let failure_facts = transaction.failure_facts();
@@ -512,6 +575,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 TraceRoutedIntegrityFailure::CommitInvariantFailure,
                 None,
             );
+        } else {
+            self.note_external_pointer_finality(crate::UiInputFinality::Committed(routing));
         }
         self.pointer_runtime_outcome()
     }
@@ -1687,6 +1752,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             self.request_redraw(parent, work.instant);
         }
+        self.note_external_pointer_finality(
+            crate::runtime::input_arbitration::integrity_only_pointer_finality(),
+        );
         ProcessApplicationActionOutcome::Completed
     }
 
