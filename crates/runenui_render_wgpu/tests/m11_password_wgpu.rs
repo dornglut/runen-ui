@@ -221,10 +221,10 @@ impl UiApp for PlaceholderApp {
     }
 }
 
-fn placeholder_publication(source: &str, hint: bool) -> Result<
-    runenui_runtime::SurfacePublication,
-    Box<dyn std::error::Error>,
-> {
+fn placeholder_publication(
+    source: &str,
+    hint: bool,
+) -> Result<runenui_runtime::SurfacePublication, Box<dyn std::error::Error>> {
     let mut runtime = AppRuntime::<PlaceholderApp>::mount(PlaceholderState {
         source: source.to_owned(),
         hint,
@@ -255,18 +255,24 @@ fn empty_standard_field_placeholder_uses_real_gpu_but_not_editable_text()
     let filled = placeholder_publication("Q", true)?;
     assert_eq!(
         hinted.semantic_publication().snapshot().nodes()[0]
-            .editable().and_then(|editable| editable.value()), Some("")
+            .editable()
+            .and_then(|editable| editable.value()),
+        Some("")
     );
     assert_eq!(
-        hinted.layout_report().root().unwrap().desired_content_size(),
-        blank.layout_report().root().unwrap().desired_content_size(),
+        hinted.layout_report().root().unwrap_or_else(|| unreachable!("layout is published")).desired_content_size(),
+        blank.layout_report().root().unwrap_or_else(|| unreachable!("layout is published")).desired_content_size(),
     );
     assert!(hinted.paint_scene().items().iter().any(|item| {
         item.primitive().as_shaped_text_run().is_some() && item.opacity().get() == 0.5
     }));
-    assert!(!blank.paint_scene().items().iter().any(|item| {
-        item.primitive().as_shaped_text_run().is_some()
-    }));
+    assert!(
+        !blank
+            .paint_scene()
+            .items()
+            .iter()
+            .any(|item| item.primitive().as_shaped_text_run().is_some())
+    );
     assert!(filled.paint_scene().items().iter().all(|item| {
         item.primitive().as_shaped_text_run().is_none() || item.opacity().get() == 1.0
     }));

@@ -861,8 +861,9 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                                         unreachable!("validated lengths are finite")
                                     });
                             if show_placeholder
-                                && let Some(hint) =
-                                    descriptor.visual_placeholder().filter(|hint| !hint.is_empty())
+                                && let Some(hint) = descriptor
+                                    .visual_placeholder()
+                                    .filter(|hint| !hint.is_empty())
                             {
                                 // M8 shapes the hint separately: source, caret, IME,
                                 // intrinsic size and ordinary semantics remain untouched.
@@ -882,9 +883,8 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                                             TextBlockPlacement::Center => slack / 2.0,
                                             TextBlockPlacement::End => slack,
                                         };
-                                        let top = padding
-                                            .top()
-                                            .saturating_add(logical_extent(offset));
+                                        let top =
+                                            padding.top().saturating_add(logical_extent(offset));
                                         self.final_placeholder_states[index] = Some(hint_state);
                                         self.final_placeholder_origins[index] =
                                             LogicalPoint::new(padding.left().get(), top.get())
