@@ -342,3 +342,117 @@ fn secret_composition_masks_preedit_before_shaping_and_keeps_candidate_geometry(
         None
     );
 }
+
+#[test]
+fn sensitive_paste_cannot_cross_secret_to_public_reclassification_at_completion() {
+    const PAYLOAD: &str = "late-classified-é🔒";
+    let mut runtime = mounted();
+    let owner = runtime.index().nodes()[0].id().clone();
+    runtime
+        .submit_command(
+            owner.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("password focus is admitted"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    publication(&mut runtime);
+    runtime
+        .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("typed clipboard request is admitted"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let token = runtime
+        .pending_framework_services()
+        .into_iter()
+        .find(|service| {
+            matches!(service.request(), FrameworkServiceRequest::ClipboardReadText { .. })
+        })
+        .unwrap_or_else(|| unreachable!("M10 owns the pending clipboard read"))
+        .token();
+
+    runtime
+        .submit_action(Action::ToggleSecret)
+        .unwrap_or_else(|_| unreachable!("application may reclassify"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let public = publication(&mut runtime);
+    assert_eq!(
+        public.semantic_publication().snapshot().nodes()[0]
+            .editable()
+            .and_then(|editable| editable.value()),
+        Some(SECRET)
+    );
+    let response = FrameworkServiceResponse::ClipboardReadText(Ok(ClipboardText::new(
+        PAYLOAD,
+        ClipboardClassification::Sensitive,
+    )));
+    // A classification transition can retire the previous service binding.
+    // An admitted completion must still fail its queue-front sensitivity check.
+    if runtime.complete_framework_service(&token, response).is_ok() {
+        runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    }
+    assert_eq!(runtime.state().text, SECRET);
+    assert!(!runtime.trace().export_jsonl().contains(PAYLOAD));
+    assert_eq!(
+        publication(&mut runtime).semantic_publication().snapshot().nodes()[0]
+            .editable()
+            .and_then(|editable| editable.value()),
+        Some(SECRET)
+    );
+}
+
+#[test]
+fn password_reclassification_while_composing_restores_a_masked_publication() {
+    const PREEDIT: &str = "e\u{301}秘密";
+    let mut runtime = mounted();
+    let owner = runtime.index().nodes()[0].id().clone();
+    runtime
+        .submit_command(owner, SemanticCommand::RequestFocus, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("password focus is admitted"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    publication(&mut runtime);
+    let started = runtime
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("password composition starts"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime
+        .submit_composition_update(started.generation().clone(), PREEDIT.to_owned(), None)
+        .unwrap_or_else(|_| unreachable!("preedit is admitted"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let initially_masked = publication(&mut runtime);
+    assert!(!format!("{:?}", initially_masked.paint_scene()).contains(PREEDIT));
+
+    runtime
+        .submit_action(Action::ToggleSecret)
+        .unwrap_or_else(|_| unreachable!("app controls classification"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let public = publication(&mut runtime);
+    assert_eq!(
+        public.semantic_publication().snapshot().nodes()[0]
+            .editable()
+            .and_then(|editable| editable.value()),
+        None,
+        "uncommitted preedit never becomes durable semantic value"
+    );
+
+    runtime
+        .submit_action(Action::ToggleSecret)
+        .unwrap_or_else(|_| unreachable!("app restores secret classification"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let masked_again = publication(&mut runtime);
+    assert_eq!(glyphs(&initially_masked), glyphs(&masked_again));
+    for literal in [SECRET, PREEDIT] {
+        assert!(!format!("{:?}", masked_again.paint_scene()).contains(literal));
+    }
+    runtime
+        .cancel_composition(started.generation().clone())
+        .unwrap_or_else(|_| unreachable!("active composition is canceled"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let after = publication(&mut runtime);
+    assert_eq!(runtime.state().text, SECRET);
+    assert_eq!(
+        after.semantic_publication().snapshot().nodes()[0]
+            .editable()
+            .and_then(|editable| editable.value()),
+        None
+    );
+}
