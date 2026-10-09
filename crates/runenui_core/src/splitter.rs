@@ -289,9 +289,7 @@ fn request_admissible(state: &SplitterState, request: SplitterRequest) -> bool {
         SplitterRequest::AdjustBy(delta) => delta.get() != 0.0,
         // An absolute request equal to the last published value still matters:
         // queued earlier relative requests may already have moved app state.
-        SplitterRequest::SetValue(value) => {
-            (min.get()..=max.get()).contains(&value.get())
-        }
+        SplitterRequest::SetValue(value) => (min.get()..=max.get()).contains(&value.get()),
         SplitterRequest::MoveBy(delta) => delta.is_finite() && delta != 0.0,
     }
 }
