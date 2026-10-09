@@ -73,7 +73,11 @@ impl Widget<Action> for CustomDisclosure {
         WidgetEventOutput::none()
     }
 
-    fn semantics(&self, state: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+    fn semantics(
+        &self,
+        state: &Self::State,
+        _: SemanticContributionContext,
+    ) -> SemanticContribution {
         let mut node = SemanticNodeContribution::primary(SemanticRole::Button)
             .with_name("Custom")
             .with_state(SemanticState::ENABLED.with_expanded(*state))
@@ -98,9 +102,11 @@ impl UiApp for App {
                 .id("standard")
                 .on_activate(|| Action::Standard)
                 .into_element(),
-            Element::new(CustomDisclosure { expanded: state.custom })
-                .id("custom")
-                .into_element(),
+            Element::new(CustomDisclosure {
+                expanded: state.custom,
+            })
+            .id("custom")
+            .into_element(),
         ])
     }
 
@@ -120,14 +126,22 @@ fn settle(h: &mut TestHarness<App>) {
     assert_eq!(h.run_until_idle(budget).outcome(), SettleOutcome::Idle);
 }
 fn target(h: &TestHarness<App>, name: &str) -> runenui_testing::SemanticTarget {
-    h.unique_semantic_target(&SemanticQuery::new().with_role(SemanticRole::Button).with_name(name))
-        .unwrap_or_else(|error| unreachable!("semantic target exists: {error:?}"))
+    h.unique_semantic_target(
+        &SemanticQuery::new()
+            .with_role(SemanticRole::Button)
+            .with_name(name),
+    )
+    .unwrap_or_else(|error| unreachable!("semantic target exists: {error:?}"))
 }
 fn parity(h: &TestHarness<App>, expanded: bool) {
-    let snapshot = h.semantic_snapshot().unwrap_or_else(|_| unreachable!("published"));
+    let snapshot = h
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("published"));
     for name in ["Standard", "Custom"] {
         let id = target(h, name);
-        let node = snapshot.node(id.node_id()).unwrap_or_else(|| unreachable!("target present"));
+        let node = snapshot
+            .node(id.node_id())
+            .unwrap_or_else(|| unreachable!("target present"));
         assert_eq!(node.state().expanded(), Some(expanded));
         assert_eq!(node.actions().contains(&SemanticAction::Activate), true);
         assert_eq!(node.actions().contains(&SemanticAction::Expand), !expanded);
@@ -136,7 +150,10 @@ fn parity(h: &TestHarness<App>, expanded: bool) {
 }
 #[test]
 fn downstream_widget_matches_public_disclosure_routing_and_app_owned_rebuild() {
-    let mut h = TestHarness::<App>::mount(State { standard: false, custom: false });
+    let mut h = TestHarness::<App>::mount(State {
+        standard: false,
+        custom: false,
+    });
     assert!(h.publish().is_ok());
     parity(&h, false);
     for name in ["Standard", "Custom"] {
@@ -149,7 +166,10 @@ fn downstream_widget_matches_public_disclosure_routing_and_app_owned_rebuild() {
     parity(&h, true);
     for name in ["Standard", "Custom"] {
         let t = target(&h, name);
-        assert!(h.submit_semantic_action(&t, SemanticAction::Collapse).is_ok());
+        assert!(
+            h.submit_semantic_action(&t, SemanticAction::Collapse)
+                .is_ok()
+        );
         settle(&mut h);
         assert!(h.publish().is_ok());
     }
