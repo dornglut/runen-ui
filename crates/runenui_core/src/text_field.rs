@@ -640,7 +640,11 @@ mod tests {
                 | EnterCase::Disabled
         );
         let emits = matches!(case, EnterCase::Ordinary | EnterCase::ReadOnly);
-        assert_eq!(output.default_prevented, !ignored, "{case:?}");
+        assert_eq!(
+            output.default_prevented,
+            !ignored || matches!(case, EnterCase::PreviouslyPrevented),
+            "{case:?}"
+        );
         assert_eq!(output.ordered.len(), usize::from(emits), "{case:?}");
         if emits {
             assert!(matches!(output.ordered[0], RoutedEventOutput::Action(())));
