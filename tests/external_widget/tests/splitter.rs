@@ -557,3 +557,49 @@ fn publish_two_pane(
         ))
         .unwrap_or_else(|_| unreachable!("two-pane application scene publishes"))
 }
+
+#[test]
+fn reverse_drag_from_a_published_bound_does_not_lose_queued_motion() {
+    let mut runtime = fresh();
+    runtime
+        .submit_action(Action::Resize(SplitterRequest::SetValue(number(100.0))))
+        .unwrap_or_else(|_| unreachable!("application update admitted"));
+    settle(&mut runtime);
+    let publication = publish(&mut runtime);
+    assert_eq!(runtime.state().size, 100.0);
+    let input = publication.input_context().clone();
+    let pointer = PointerId::new(98).unwrap_or_else(|| unreachable!());
+    runtime.submit_pointer(
+        PointerEvent::new(
+            pointer,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Down,
+            LogicalPoint::new(6.0, 40.0).unwrap_or_else(|_| unreachable!()),
+            input.clone(),
+        )
+        .with_changed_button(PointerButton::Primary)
+        .with_buttons(PointerButtons::new([PointerButton::Primary])),
+    ).unwrap_or_else(|_| unreachable!("start capture"));
+    settle(&mut runtime);
+    for (position, delta) in [(1.0, -5.0), (6.0, 5.0)] {
+        runtime
+            .submit_pointer(
+                PointerEvent::new(
+                    pointer,
+                    PointerDeviceKind::Mouse,
+                    PointerPhase::Move,
+                    LogicalPoint::new(position, 40.0).unwrap_or_else(|_| unreachable!()),
+                    input.clone(),
+                )
+                .with_movement_delta(
+                    LogicalDelta::new(delta, 0.0).unwrap_or_else(|_| unreachable!()),
+                )
+                .with_buttons(PointerButtons::new([PointerButton::Primary])),
+            )
+            .unwrap_or_else(|_| unreachable!("captured event admitted"));
+    }
+    settle(&mut runtime);
+    assert_eq!(runtime.state().size, 100.0, "one left then right delta returns to bound");
+    assert_eq!(runtime.state().proposals, 3, "both deltas must enter FIFO after SetValue");
+    inspect(&publish(&mut runtime), 100.0, true, false);
+}

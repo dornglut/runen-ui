@@ -282,19 +282,15 @@ fn request_admissible(state: &SplitterState, request: SplitterRequest) -> bool {
         return false;
     };
     match request {
-        SplitterRequest::AdjustBy(delta) => {
-            (delta.get() > 0.0 && current.get() < max.get())
-                || (delta.get() < 0.0 && current.get() > min.get())
-        }
+        // A published bound is not a live FIFO cursor: emitting one request can
+        // move the application away from that bound before another routed event
+        // is processed. Admission may reject zero, but MUST NOT filter direction
+        // using the previous mounted value; application update owns clamping.
+        SplitterRequest::AdjustBy(delta) => delta.get() != 0.0,
         SplitterRequest::SetValue(value) => {
             value != current && (min.get()..=max.get()).contains(&value.get())
         }
-        SplitterRequest::MoveBy(delta) => {
-            delta.is_finite()
-                && delta != 0.0
-                && ((delta > 0.0 && current.get() < max.get())
-                    || (delta < 0.0 && current.get() > min.get()))
-        }
+        SplitterRequest::MoveBy(delta) => delta.is_finite() && delta != 0.0,
     }
 }
 
