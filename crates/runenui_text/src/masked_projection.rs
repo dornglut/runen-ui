@@ -41,7 +41,9 @@ impl fmt::Display for TextMaskedProjectionError {
             Self::AllocationFailed => "masked display allocation failed",
             Self::ForeignSnapshot => "masked display snapshot mismatch",
             Self::ForeignComposition => "masked display composition mismatch",
-            Self::HiddenDocumentPosition => "masked display document position hidden by composition",
+            Self::HiddenDocumentPosition => {
+                "masked display document position hidden by composition"
+            }
             Self::InvalidAffinity => "masked display composition boundary affinity mismatch",
             Self::OutOfBounds => "masked display coordinate outside source",
             Self::NotGraphemeBoundary => "masked display coordinate splits a grapheme",
@@ -457,8 +459,8 @@ mod tests {
     use super::*;
     use crate::{FontSourcePolicy, TextConstraints, TextRequest, TextSystem};
     use runenui_core::{
-        __runtime::RuntimeNamespace, CompositionRange, TextDocumentId, TextDocumentRevision,
-        FontFamily, TextPreeditPosition, TextRange, Typography,
+        __runtime::RuntimeNamespace, CompositionRange, FontFamily, TextDocumentId,
+        TextDocumentRevision, TextPreeditPosition, TextRange, Typography,
     };
 
     fn snapshot() -> TextDocumentSnapshot {
@@ -469,8 +471,7 @@ mod tests {
         Typography::new(
             FontFamily::named("Cantarell")
                 .unwrap_or_else(|_| unreachable!("fixture family is valid")),
-            LogicalLength::new(20.0)
-                .unwrap_or_else(|_| unreachable!("fixture size is valid")),
+            LogicalLength::new(20.0).unwrap_or_else(|_| unreachable!("fixture size is valid")),
         )
     }
 
