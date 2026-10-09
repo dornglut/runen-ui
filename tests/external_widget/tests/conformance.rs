@@ -530,11 +530,7 @@ impl Widget<()> for DownstreamLink {
         )
     }
 
-    fn semantics(
-        &self,
-        (): &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         SemanticContribution::single(
             SemanticNodeContribution::primary(SemanticRole::Link)
                 .with_name("Reference")
@@ -607,10 +603,8 @@ fn downstream_link_matches_public_standard_link_semantics_and_activation() {
         .on_activate(|| ())
         .into_element();
 
-    let (_, _, _, _, _, _, _, _, authored_widget, _) =
-        authored.into_runtime_parts().into_parts();
-    let (_, _, _, _, _, _, _, _, builtin_widget, _) =
-        builtin.into_runtime_parts().into_parts();
+    let (_, _, _, _, _, _, _, _, authored_widget, _) = authored.into_runtime_parts().into_parts();
+    let (_, _, _, _, _, _, _, _, builtin_widget, _) = builtin.into_runtime_parts().into_parts();
     let authored_state = authored_widget.create_state();
     let builtin_state = builtin_widget.create_state();
     assert_eq!(
