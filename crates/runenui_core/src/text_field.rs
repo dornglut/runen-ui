@@ -549,8 +549,35 @@ mod tests {
         assert!(flags.contains(WidgetInvalidation::SEMANTICS));
         assert!(!flags.contains(WidgetInvalidation::LAYOUT));
     }
+    #[derive(Clone, Copy, Debug)]
+    enum EnterCase {
+        Ordinary,
+        Shift,
+        Control,
+        Repeat,
+        Composition,
+        PreviouslyPrevented,
+        ReadOnly,
+        Disabled,
+    }
+
     #[test]
     fn enter_honors_prevention_modifiers_repeat_composition_and_read_only() {
+        for case in [
+            EnterCase::Ordinary,
+            EnterCase::Shift,
+            EnterCase::Control,
+            EnterCase::Repeat,
+            EnterCase::Composition,
+            EnterCase::PreviouslyPrevented,
+            EnterCase::ReadOnly,
+            EnterCase::Disabled,
+        ] {
+            assert_enter_case(case);
+        }
+    }
+
+    fn assert_enter_case(case: EnterCase) {
         use crate::{
             __runtime::{RoutedEventOutput, RuntimeNamespace},
             CommandOrigin, KeyLocation, KeyModifiers, KeyboardEvent, MonotonicInstant, PhysicalKey,
@@ -558,110 +585,65 @@ mod tests {
         };
         use core::num::NonZeroU64;
 
-        #[derive(Clone, Copy)]
-        struct EnterCase {
-            previously_prevented: bool,
-            modifiers: KeyModifiers,
-            repeat: bool,
-            composition: KeyboardCompositionState,
-            read_only: bool,
-            disabled: bool,
-            emits: bool,
-            prevents_default: bool,
-        }
-
         let namespace = RuntimeNamespace::__runtime_new();
         let owner = namespace.__runtime_mounted_id(1, 1);
-        let ordinary = EnterCase {
-            previously_prevented: false,
-            modifiers: KeyModifiers::NONE,
-            repeat: false,
-            composition: KeyboardCompositionState::Inactive,
-            read_only: false,
-            disabled: false,
-            emits: true,
-            prevents_default: true,
+        let mut field = widget(SemanticEditableMode::SingleLine);
+        field.state.read_only = matches!(case, EnterCase::ReadOnly);
+        field.state.disabled = matches!(case, EnterCase::Disabled);
+        field.on_submit = Some(Box::new(|| ()));
+        let mut state = field.create_state();
+
+        let modifiers = match case {
+            EnterCase::Shift => KeyModifiers::SHIFT,
+            EnterCase::Control => KeyModifiers::NONE.with_control(),
+            _ => KeyModifiers::NONE,
         };
-        let cases = [
-            ordinary,
-            EnterCase {
-                modifiers: KeyModifiers::SHIFT,
-                emits: false,
-                prevents_default: false,
-                ..ordinary
-            },
-            EnterCase {
-                modifiers: KeyModifiers::NONE.with_control(),
-                emits: false,
-                prevents_default: false,
-                ..ordinary
-            },
-            EnterCase {
-                repeat: true,
-                emits: false,
-                ..ordinary
-            },
-            EnterCase {
-                composition: KeyboardCompositionState::Active,
-                emits: false,
-                prevents_default: false,
-                ..ordinary
-            },
-            EnterCase {
-                previously_prevented: true,
-                emits: false,
-                ..ordinary
-            },
-            EnterCase {
-                read_only: true,
-                ..ordinary
-            },
-            EnterCase {
-                disabled: true,
-                emits: false,
-                prevents_default: false,
-                ..ordinary
-            },
-        ];
-        for case in cases {
-            let mut field = widget(SemanticEditableMode::SingleLine);
-            field.state.read_only = case.read_only;
-            field.state.disabled = case.disabled;
-            field.on_submit = Some(Box::new(|| ()));
-            let mut state = field.create_state();
-            let event = UiEvent::Keyboard(KeyboardEvent::new(
-                KeyboardPhase::Down,
-                PhysicalKey::Code("Enter".to_owned()),
-                LogicalKey::Enter,
-                case.modifiers,
-                case.repeat,
-                KeyLocation::Standard,
-                case.composition,
-                None,
-            ));
-            let mut context = EventContext::new(
-                EventPhase::Target,
-                &owner,
-                &owner,
-                None,
-                CommandOrigin::programmatic(),
-                WorkSequence::__runtime_new(
-                    NonZeroU64::new(1).unwrap_or_else(|| unreachable!("valid work sequence")),
-                ),
-                MonotonicInstant::__runtime_from_nanos(0),
-                None,
-                true,
-                case.previously_prevented,
-                false,
-                4,
-            );
-            field.event(&mut state, &event, &mut context);
-            let output = context.into_output();
-            assert_eq!(output.default_prevented, case.prevents_default);
-            assert_eq!(output.ordered.len(), usize::from(case.emits));
-            if case.emits {
-                assert!(matches!(output.ordered[0], RoutedEventOutput::Action(())));
-            }
+        let composition = if matches!(case, EnterCase::Composition) {
+            KeyboardCompositionState::Active
+        } else {
+            KeyboardCompositionState::Inactive
+        };
+        let event = UiEvent::Keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code("Enter".to_owned()),
+            LogicalKey::Enter,
+            modifiers,
+            matches!(case, EnterCase::Repeat),
+            KeyLocation::Standard,
+            composition,
+            None,
+        ));
+        let mut context = EventContext::new(
+            EventPhase::Target,
+            &owner,
+            &owner,
+            None,
+            CommandOrigin::programmatic(),
+            WorkSequence::__runtime_new(
+                NonZeroU64::new(1).unwrap_or_else(|| unreachable!("valid work sequence")),
+            ),
+            MonotonicInstant::__runtime_from_nanos(0),
+            None,
+            true,
+            matches!(case, EnterCase::PreviouslyPrevented),
+            false,
+            4,
+        );
+        let _ = field.event(&mut state, &event, &mut context);
+        let output = context.into_output();
+        let ignored = matches!(
+            case,
+            EnterCase::Shift
+                | EnterCase::Control
+                | EnterCase::Composition
+                | EnterCase::PreviouslyPrevented
+                | EnterCase::Disabled
+        );
+        let emits = matches!(case, EnterCase::Ordinary | EnterCase::ReadOnly);
+        assert_eq!(output.default_prevented, !ignored, "{case:?}");
+        assert_eq!(output.ordered.len(), usize::from(emits), "{case:?}");
+        if emits {
+            assert!(matches!(output.ordered[0], RoutedEventOutput::Action(())));
         }
     }
 
