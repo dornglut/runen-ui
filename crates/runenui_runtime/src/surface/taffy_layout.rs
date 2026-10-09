@@ -540,6 +540,10 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         let text_layouts = prior_text_layouts
             .filter(|states| states.len() == count)
             .map_or_else(|| vec![TextLayoutState::new(); count], ToOwned::to_owned);
+        let placeholder_text_layouts = inputs
+            .prior_placeholder_layouts
+            .filter(|states| states.len() == count)
+            .map_or_else(|| vec![TextLayoutState::new(); count], ToOwned::to_owned);
         let mut diagnostics = chrome_plan.diagnostics.clone();
         debug_assert_eq!(diagnostics.len(), count);
         for (index, node) in resolved.nodes().iter().enumerate() {
@@ -585,6 +589,13 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             caches: vec![Cache::new(); count],
             layouts: vec![Layout::default(); count],
             text_layouts,
+            placeholder_text_layouts,
+            final_placeholder_states: vec![None; count],
+            final_placeholder_origins: vec![
+                LogicalPoint::new(0.0, 0.0)
+                    .unwrap_or_else(|_| unreachable!("zero is finite"));
+                count
+            ],
             final_text_states: vec![None; count],
             final_text_origins: vec![
                 LogicalPoint::new(0.0, 0.0)
@@ -677,7 +688,17 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 let request_started = std::time::Instant::now();
                 let preedit = self.preedits.get(&mounted.id);
                 let current_sensitivity = self.sensitivities.get(&mounted.id).copied();
-                let content = match mounted.widget.editable(&mounted.state) {
+                let editable = mounted.widget.editable(&mounted.state);
+                let show_placeholder = descriptor.content().is_empty()
+                    && preedit.is_none()
+                    && matches!(
+                        &editable,
+                        Ok(Some(owner))
+                            if owner.text().is_empty()
+                                && current_sensitivity
+                                    .is_none_or(|live| live == owner.sensitivity())
+                    );
+                let content = match editable {
                     Ok(Some(editable))
                         if current_sensitivity == Some(TextSensitivity::Secret)
                             || editable.sensitivity() == TextSensitivity::Secret =>
@@ -1028,6 +1049,11 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             } else {
                 self.text_layouts[index].clear();
             }
+            if let Some(state) = self.final_placeholder_states[index].take() {
+                self.placeholder_text_layouts[index] = state;
+            } else {
+                self.placeholder_text_layouts[index].clear();
+            }
         }
         let size = bounds.first().map_or(LogicalSize::ZERO, |b| b.size());
         Ok((
@@ -1036,6 +1062,8 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             SurfaceLayoutReport::new(reports),
             self.text_layouts,
             self.final_text_origins,
+            self.placeholder_text_layouts,
+            self.final_placeholder_origins,
         ))
     }
 }
