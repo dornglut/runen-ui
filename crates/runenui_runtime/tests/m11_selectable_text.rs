@@ -1,8 +1,8 @@
 use runenui_core::{
-    ClipboardWritePurpose, CommandOrigin, CommittedTextEvent, Element,
-    FrameworkServiceRequest, NoHostProtocol, SemanticAction,
-    SemanticActionRequest, SemanticCommand, StyleEnvironment, TextAffinity, TextDocumentId,
-    TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, UiApp,
+    ClipboardWritePurpose, CommandOrigin, CommittedTextEvent, Element, FrameworkServiceRequest,
+    NoHostProtocol, SemanticAction, SemanticActionRequest, SemanticCommand, StyleEnvironment,
+    TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,
+    TextSelection, UiApp,
 };
 use runenui_runtime::{
     AppRuntime, FontFamilyName, GenericFontFamily, LogicalSize, PumpBudget, SurfaceBuildContext,
@@ -21,7 +21,7 @@ impl UiApp for SelectableApp {
     fn root(_: &Self::State) -> Element<Self::Action> {
         let snapshot =
             TextDocumentSnapshot::new(TextDocumentId::new(23), TextDocumentRevision::new(1));
-        let position = TextPosition::new(snapshot, SOURCE, SOURCE.len(), TextAffinity::Downstream)
+        let position = TextPosition::new(snapshot, SOURCE, SOURCE.len(), TextAffinity::Upstream)
             .unwrap_or_else(|_| unreachable!("fixture selection is valid"));
         let control =
             runenui_core::selectable_text(snapshot, SOURCE, TextSelection::collapsed(position))
