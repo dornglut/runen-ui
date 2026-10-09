@@ -238,6 +238,7 @@ mod identity;
 mod input;
 mod layout;
 mod link_control;
+mod text_field;
 mod menu_controls;
 mod motion;
 mod motion_sampling;
@@ -325,6 +326,7 @@ pub use input::{
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, PhysicalKey,
 };
 pub use link_control::{Link, link};
+pub use text_field::{TextField, TextFieldError, text_field};
 pub use menu_controls::{Menu, MenuBar, MenuButton, MenuItem, MenuItemCheckbox, MenuItemRadio};
 pub use motion::{
     AnimationId, CubicBezier, ExplicitTimeline, MotionEasing, MotionKeyframe, MotionRepeat,

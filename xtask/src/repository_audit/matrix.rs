@@ -33,6 +33,7 @@ const M11_DELIVERY_SLICES: &[&str] = &[
     "M11TEXTLAYOUT",
     "M11SELECTABLE",
     "M11LINK",
+    "M11TEXTFIELD",
     "M11C",
     "M11D2",
     "M11SEM1",
@@ -989,6 +990,7 @@ mod tests {
         ("M11TEXTLAYOUT", &["M11CTRL-64"], "owner-accepted"),
         ("M11SELECTABLE", &["M11CTRL-65"], "owner-accepted"),
         ("M11LINK", &["M11CTRL-67"], "owner-accepted"),
+        ("M11TEXTFIELD", &["M11CTRL-66"], "implementation-complete"),
     ];
 
     #[test]
@@ -1002,7 +1004,7 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 66);
+        assert_eq!(rows.len(), 67);
 
         for (slice, ids, status) in M11_EXPECTED_SLICES {
             assert_m11_slice(&rows, slice, ids, status);
@@ -1019,6 +1021,7 @@ mod tests {
                 "M11TEXTLAYOUT",
                 "M11SELECTABLE",
                 "M11LINK",
+                "M11TEXTFIELD",
                 "M11C",
                 "M11D2",
                 "M11COLL2",
