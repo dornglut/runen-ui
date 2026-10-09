@@ -329,3 +329,124 @@ fn disabled_rejects_input_and_horizontal_orientation_changes_move_axis() {
     settle(&mut runtime);
     assert_eq!(runtime.state().size, 55.0);
 }
+
+#[test]
+fn routed_steps_accumulate_before_rebuild_and_page_step_is_not_duplicated() {
+    let mut runtime = fresh();
+    let publication = publish(&mut runtime);
+    let owner = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id() == Some(
+                &runenui_core::ElementId::new("controlled.splitter")
+                    .unwrap_or_else(|_| unreachable!()),
+            )
+        })
+        .unwrap_or_else(|| unreachable!("mounted splitter"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(
+            owner.clone(),
+            SemanticCommand::Increment,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("generic controller increment"));
+    runtime
+        .submit_command(
+            owner,
+            SemanticCommand::Increment,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("second generic controller increment"));
+    assert_eq!(runtime.state().size, 50.0);
+    settle(&mut runtime);
+    assert_eq!(runtime.state().size, 60.0, "no stale absolute proposals");
+    inspect(&publish(&mut runtime), 60.0, true, false);
+    assert_eq!(runtime.state().proposals, 2);
+    runtime
+        .submit_action(Action::Enabled(false))
+        .unwrap_or_else(|_| unreachable!());
+    settle(&mut runtime);
+    assert!(semantic_action(&mut runtime, &publication, SemanticAction::Increment).is_err());
+}
+
+#[test]
+fn disabled_mid_drag_discards_captured_motion_without_mutating_app_size() {
+    let mut runtime = fresh();
+    let publication = publish(&mut runtime);
+    let input = publication.input_context().clone();
+    let pointer = PointerId::new(84).unwrap_or_else(|| unreachable!());
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                LogicalPoint::new(6.0, 40.0).unwrap_or_else(|_| unreachable!()),
+                input.clone(),
+            )
+            .with_changed_button(PointerButton::Primary)
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|_| unreachable!());
+    settle(&mut runtime);
+    runtime
+        .submit_action(Action::Enabled(false))
+        .unwrap_or_else(|_| unreachable!());
+    settle(&mut runtime);
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Move,
+                LogicalPoint::new(20.0, 40.0).unwrap_or_else(|_| unreachable!()),
+                input,
+            )
+            .with_movement_delta(LogicalDelta::new(14.0, 0.0).unwrap_or_else(|_| unreachable!()))
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|_| unreachable!());
+    settle(&mut runtime);
+    assert_eq!(runtime.state().size, 50.0);
+    assert_eq!(runtime.state().proposals, 0);
+    inspect(&publish(&mut runtime), 50.0, false, false);
+}
+
+#[test]
+fn horizontal_divider_uses_vertical_pointer_motion_not_horizontal_motion() {
+    let mut runtime = fresh();
+    runtime.submit_action(Action::Horizontal(true)).unwrap_or_else(|_| unreachable!());
+    settle(&mut runtime);
+    let publication = publish(&mut runtime);
+    let input = publication.input_context().clone();
+    let pointer = PointerId::new(85).unwrap_or_else(|| unreachable!());
+    runtime.submit_pointer(
+        PointerEvent::new(
+            pointer, PointerDeviceKind::Touch, PointerPhase::Down,
+            LogicalPoint::new(40.0, 6.0).unwrap_or_else(|_| unreachable!()),
+            input.clone(),
+        ),
+    ).unwrap_or_else(|_| unreachable!());
+    settle(&mut runtime);
+    runtime.submit_pointer(
+        PointerEvent::new(
+            pointer, PointerDeviceKind::Touch, PointerPhase::Move,
+            LogicalPoint::new(60.0, 6.0).unwrap_or_else(|_| unreachable!()),
+            input.clone(),
+        ).with_movement_delta(LogicalDelta::new(20.0, 0.0).unwrap_or_else(|_| unreachable!())),
+    ).unwrap_or_else(|_| unreachable!());
+    runtime.submit_pointer(
+        PointerEvent::new(
+            pointer, PointerDeviceKind::Touch, PointerPhase::Move,
+            LogicalPoint::new(60.0, 21.0).unwrap_or_else(|_| unreachable!()),
+            input,
+        ).with_movement_delta(LogicalDelta::new(0.0, 15.0).unwrap_or_else(|_| unreachable!())),
+    ).unwrap_or_else(|_| unreachable!());
+    settle(&mut runtime);
+    assert_eq!(runtime.state().size, 65.0);
+    assert_eq!(runtime.state().proposals, 1);
+}
