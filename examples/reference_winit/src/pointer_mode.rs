@@ -67,10 +67,13 @@ impl Platform for WinitPointer<'_> {
             Mode::ConfinedAbsolute => CursorGrabMode::Confined,
             Mode::LockedRelative => CursorGrabMode::Locked,
         };
-        self.0.set_cursor_grab(grab).map_err(|error| match error {
-            ExternalError::NotSupported(_) => Failure::Unsupported,
-            ExternalError::Ignored => Failure::Ignored,
-            ExternalError::Os(_) => Failure::Native,
+        self.0.set_cursor_grab(grab).map_err(|error| {
+            eprintln!("reference_winit native pointer grab {mode:?} failed: {error}");
+            match error {
+                ExternalError::NotSupported(_) => Failure::Unsupported,
+                ExternalError::Ignored => Failure::Ignored,
+                ExternalError::Os(_) => Failure::Native,
+            }
         })
     }
 

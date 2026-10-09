@@ -1694,6 +1694,7 @@ impl ReferenceHost {
             self.native_release_retry_at = None;
             return;
         };
+        let previous_mode_state = self.framework_services.pointer_modes().state().clone();
         let returning_from_relative = matches!(
             self.framework_services.pointer_modes().state(),
             HostPointerState::AwaitingMotion(_)
@@ -1711,7 +1712,9 @@ impl ReferenceHost {
             .is_err()
             .then(|| Instant::now().checked_add(NATIVE_RELEASE_RETRY_INTERVAL))
             .flatten();
-        proof!("stage=host_pointer_release reason={reason:?} result={result:?}");
+        proof!(
+            "stage=host_pointer_release previous={previous_mode_state:?} reason={reason:?} result={result:?}"
+        );
         if let Err(error) = result {
             eprintln!("reference_winit native pointer release failed ({reason}): {error:?}");
         }
