@@ -1243,14 +1243,18 @@ fn append_text_preedit_and_caret(
     }
 }
 
+struct TextPaintResources<'a> {
+    text_system: &'a mut TextSystem,
+    leases: &'a mut Vec<ShapedTextLease>,
+}
+
 fn append_shaped_text(
     layout: &CachedLayoutFacts,
     computed: &ComputedStyle,
     owner: OwnerPaintContext<'_>,
     visual_hint: bool,
     next_local_order: &mut usize,
-    text_system: &mut TextSystem,
-    shaped_text_leases: &mut Vec<ShapedTextLease>,
+    resources: &mut TextPaintResources<'_>,
     ordered: &mut Vec<groups::OrderedPaintItem>,
 ) {
     #[cfg(feature = "internal-test-seams")]
@@ -1296,12 +1300,13 @@ fn append_shaped_text(
                 {
                     profiled_run_count = profiled_run_count.saturating_add(1);
                 }
-                let lease = text_system
+                let lease = resources
+                    .text_system
                     .lease_shaped_run(run.resource_ref())
                     .unwrap_or_else(|| {
                         unreachable!("published text artifact retains its exact shaped resource")
                     });
-                shaped_text_leases.push(lease);
+                resources.leases.push(lease);
                 let item = text_run_item(run, computed, origin).with_opacity(opacity);
                 append_runtime_paint_item(
                     &item,
@@ -1569,14 +1574,17 @@ pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
             );
         }
 
+        let mut text_resources = TextPaintResources {
+            text_system: &mut *text_system,
+            leases: &mut shaped_text_leases,
+        };
         append_shaped_text(
             layout,
             computed,
             owner,
             false,
             &mut next_local_order,
-            text_system,
-            &mut shaped_text_leases,
+            &mut text_resources,
             &mut ordered,
         );
         append_shaped_text(
@@ -1585,8 +1593,7 @@ pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
             owner,
             true,
             &mut next_local_order,
-            text_system,
-            &mut shaped_text_leases,
+            &mut text_resources,
             &mut ordered,
         );
 
