@@ -196,6 +196,7 @@ mod debug;
 mod editing;
 mod focus;
 mod input;
+mod input_arbitration;
 mod mounted;
 mod paint_bounds;
 mod pointer;
@@ -234,6 +235,14 @@ pub use config::{RuntimeConfig, RuntimeLimits};
 pub use constraints::{AxisConstraints, AxisLimit, LayoutConstraints};
 pub use debug::{DebugSurfaceRenderer, render_debug_surface_frame};
 pub use focus::FocusState;
+pub use input_arbitration::{
+    InputArbitrationRecord, InputArbitrationScope, InputObservationError, InputOwnershipRevision,
+    InputOwnershipSnapshot, InputOwnershipTransition, InputPumpBatch, InputPumpPauseReason,
+    InputScopeRetirement, InputScopeRetirementReason, InputShutdownBatch, KeyboardInputOwnership,
+    PointerInputOwnership, SurfaceInputOwnership, UiDefaultDisposition, UiInputAbortReason,
+    UiInputClaimReason, UiInputConflict, UiInputFamily, UiInputFinality,
+    UiInputProcessingRejection, UiInputRoute, UiInputRoutingFacts, UiInputSettlement,
+};
 pub use input::{
     AutomationSubmission, CompositionStartRequest, CompositionStartSubmission,
     CompositionSubmission, KeyboardSubmission, SubmitAutomationError, SubmitAutomationErrorKind,
