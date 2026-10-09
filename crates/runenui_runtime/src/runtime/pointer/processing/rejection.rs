@@ -186,6 +186,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             self.request_redraw(committed, work.instant);
         }
+        self.note_external_pointer_finality(
+            crate::runtime::input_arbitration::integrity_only_pointer_finality(),
+        );
         ProcessApplicationActionOutcome::Completed
     }
 
@@ -275,6 +278,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 );
                 Ok(())
             });
+        if result.is_ok() {
+            self.note_external_pointer_finality(
+                crate::runtime::input_arbitration::integrity_only_pointer_finality(),
+            );
+        }
         if result.is_err() {
             self.poison_routed_event(
                 &failure_facts,
@@ -362,6 +370,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             self.request_redraw(closed, work.instant);
         }
+        self.note_external_pointer_finality(
+            crate::runtime::input_arbitration::integrity_only_pointer_finality(),
+        );
         ProcessApplicationActionOutcome::Completed
     }
 
@@ -447,6 +458,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 );
                 Ok(())
             });
+        if result.is_ok() {
+            self.note_external_pointer_finality(
+                crate::runtime::input_arbitration::integrity_only_pointer_finality(),
+            );
+        }
         if result.is_err() {
             self.poison_routed_event(
                 &failure_facts,
@@ -596,6 +612,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             sequence,
             causal_parent,
         );
+        let cause = match outcome {
+            TracePointerRejection::ForeignRuntime
+            | TracePointerRejection::ForeignSurface
+            | TracePointerRejection::ForeignStreamSurface
+            | TracePointerRejection::CoordinateRevisionMismatch => {
+                crate::UiInputProcessingRejection::InvalidDisplayedSnapshot
+            }
+            TracePointerRejection::RetiredGeneration
+            | TracePointerRejection::MissingGeneration => {
+                crate::UiInputProcessingRejection::MissingDisplayedSnapshot
+            }
+            TracePointerRejection::NoTarget => {
+                crate::UiInputProcessingRejection::MissingTarget
+            }
+            _ => crate::UiInputProcessingRejection::InvalidPointerStream,
+        };
+        self.note_external_pointer_finality(crate::UiInputFinality::ProcessingRejected(cause));
         ProcessApplicationActionOutcome::Completed
     }
 
