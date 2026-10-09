@@ -7,7 +7,7 @@ use runenui_core::{
 };
 use runenui_text::{
     FontSourceSnapshot, TextCaretMapError, TextDisplaySelection, TextLayoutState,
-    TextPreeditProjection, TextMaskedProjection,
+    TextMaskedProjection, TextPreeditProjection,
 };
 
 use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize, MountedNodeId};
@@ -639,10 +639,17 @@ impl SurfaceCache {
             .topology
             .position(owner)
             .ok_or(TextCaretMapError::MissingLayout)?;
-        let layout = self.layout.text_layouts.get(position)
+        let layout = self
+            .layout
+            .text_layouts
+            .get(position)
             .ok_or(TextCaretMapError::MissingLayout)?;
-        let sensitivity = self.text_editing.sensitivities
-            .get(owner).copied().unwrap_or(runenui_core::TextSensitivity::Public);
+        let sensitivity = self
+            .text_editing
+            .sensitivities
+            .get(owner)
+            .copied()
+            .unwrap_or(runenui_core::TextSensitivity::Public);
         crate::editing::EditingCaretMap::for_source(layout, snapshot, source, sensitivity)
     }
 
@@ -671,7 +678,9 @@ impl SurfaceCache {
                     return Err(TextCaretMapError::DisplayTextMismatch);
                 }
                 let offset = preedit.display_preedit_start()
-                    + preedit.selection().map_or(preedit.preedit().len(), |range| range.end());
+                    + preedit
+                        .selection()
+                        .map_or(preedit.preedit().len(), |range| range.end());
                 let active = preedit
                     .position_from_display_offset(offset, runenui_core::TextAffinity::Upstream)
                     .map_err(|_| TextCaretMapError::DisplayTextMismatch)?;
@@ -681,10 +690,13 @@ impl SurfaceCache {
             } else {
                 let projection = TextMaskedProjection::document(snapshot, source)
                     .map_err(|_| TextCaretMapError::DisplayTextMismatch)?;
-                let active = TextDisplaySelection::from_document(selection).active().clone();
+                let active = TextDisplaySelection::from_document(selection)
+                    .active()
+                    .clone();
                 (projection, active)
             };
-            projection.caret_map(layout)
+            projection
+                .caret_map(layout)
                 .map_err(|_| TextCaretMapError::DisplayTextMismatch)?
                 .candidate_rect(&active)
                 .map_err(|_| TextCaretMapError::DisplayTextMismatch)?

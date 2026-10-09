@@ -1,3 +1,4 @@
+use crate::editing::EditingCaretMap;
 use crate::mounted::{
     DirtyPhases, FinalizedSemanticPublication, MountedTree, SemanticMountedCommit,
     SurfaceCapabilityPlan,
@@ -13,7 +14,6 @@ use runenui_core::{
     LogicalSize, LogicalTransform, OverflowPolicy, OverflowStyle, TextDisplayPosition,
 };
 use runenui_text::{TextDisplaySelection, TextLayoutState, TextMaskedProjection};
-use crate::editing::EditingCaretMap;
 use std::{collections::HashMap, sync::Arc};
 
 use super::{
@@ -250,7 +250,10 @@ impl<'a> PlannedSurfacePublication<'a> {
                 continue;
             };
             let Ok(map) = EditingCaretMap::for_source(
-                layout, projected.snapshot, &projected.source, projected.sensitivity,
+                layout,
+                projected.snapshot,
+                &projected.source,
+                projected.sensitivity,
             ) else {
                 continue;
             };

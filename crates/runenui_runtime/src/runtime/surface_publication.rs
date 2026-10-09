@@ -762,10 +762,7 @@ impl SurfacePublicationState {
         context: &SurfaceInputContext,
         owner: &MountedNodeId,
         point: LogicalPoint,
-    ) -> Option<(
-        EditingCaretMap,
-        runenui_core::TextDisplayPosition,
-    )> {
+    ) -> Option<(EditingCaretMap, runenui_core::TextDisplayPosition)> {
         let (snapshot, _) = self.validate_context(context).ok()?;
         snapshot
             .text_targets

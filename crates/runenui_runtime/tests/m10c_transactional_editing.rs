@@ -2762,7 +2762,6 @@ fn secret_edit_and_preedit_payloads_stay_absent_from_full_capture_trace_and_repl
         .unwrap_or_else(|error| panic!("redacted edit trace remains replayable: {error:?}"));
 }
 
-
 #[test]
 fn secret_unicode_navigation_and_backspace_reuse_the_masked_m10_source_map() {
     let mut state = mounted().state().clone();
@@ -2778,21 +2777,31 @@ fn secret_unicode_navigation_and_backspace_reuse_the_masked_m10_source_map() {
         LogicalSize::try_new(200.0, 40.0)
             .unwrap_or_else(|_| unreachable!("test surface is finite")),
     );
-    let surface = runtime.publish_surface(&context)
+    let surface = runtime
+        .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("secret mask surface publishes"));
     assert_eq!(
         surface.semantic_publication().snapshot().nodes()[0]
-            .editable().and_then(|editable| editable.value()),
+            .editable()
+            .and_then(|editable| editable.value()),
         None
     );
     let owner = runtime.index().nodes()[0].id().clone();
-    runtime.submit_command(
-        owner.clone(), SemanticCommand::MoveBackward, CommandOrigin::programmatic()
-    ).unwrap_or_else(|_| unreachable!("secret move is admitted"));
+    runtime
+        .submit_command(
+            owner.clone(),
+            SemanticCommand::MoveBackward,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("secret move is admitted"));
     runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
-    runtime.submit_command(
-        owner, SemanticCommand::DeleteBackward, CommandOrigin::programmatic()
-    ).unwrap_or_else(|_| unreachable!("secret deletion is admitted"));
+    runtime
+        .submit_command(
+            owner,
+            SemanticCommand::DeleteBackward,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("secret deletion is admitted"));
     runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.state().text, "a漢");
     assert_eq!(runtime.state().selection, 1);
