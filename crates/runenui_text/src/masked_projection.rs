@@ -458,11 +458,20 @@ mod tests {
     use crate::{FontSourcePolicy, TextConstraints, TextRequest, TextSystem};
     use runenui_core::{
         __runtime::RuntimeNamespace, CompositionRange, TextDocumentId, TextDocumentRevision,
-        TextPreeditPosition, TextRange, Typography,
+        FontFamily, TextPreeditPosition, TextRange, Typography,
     };
 
     fn snapshot() -> TextDocumentSnapshot {
         TextDocumentSnapshot::new(TextDocumentId::new(199), TextDocumentRevision::new(5))
+    }
+
+    fn fixture_typography() -> Typography {
+        Typography::new(
+            FontFamily::named("Cantarell")
+                .unwrap_or_else(|_| unreachable!("fixture family is valid")),
+            LogicalLength::new(20.0)
+                .unwrap_or_else(|_| unreachable!("fixture size is valid")),
+        )
     }
 
     #[test]
@@ -540,7 +549,7 @@ mod tests {
         let mut state = TextLayoutState::new();
         let request = TextRequest::new(
             projection.display_text(),
-            Typography::default(),
+            fixture_typography(),
             TextConstraints::unbounded(),
         );
         let artifact = system
@@ -721,7 +730,7 @@ mod tests {
                 &mut state,
                 &TextRequest::new(
                     mask.display_text(),
-                    Typography::default(),
+                    fixture_typography(),
                     TextConstraints::unbounded(),
                 ),
             )
