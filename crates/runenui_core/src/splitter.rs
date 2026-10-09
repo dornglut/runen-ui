@@ -49,7 +49,9 @@ impl fmt::Display for SplitterError {
         match self {
             Self::NonFinite => f.write_str("splitter values and steps must be finite"),
             Self::Range(error) => error.fmt(f),
-            Self::UnrepresentableSpan => f.write_str("splitter span or step count cannot be represented"),
+            Self::UnrepresentableSpan => {
+                f.write_str("splitter span or step count cannot be represented")
+            }
         }
     }
 }
@@ -242,17 +244,19 @@ fn keyboard_request(
             state.range.small_step().map(|step| signed_step(step, true))
         }
         (SemanticOrientation::Vertical, LogicalKey::ArrowLeft)
-        | (SemanticOrientation::Horizontal, LogicalKey::ArrowUp) => {
-            state.range.small_step().map(|step| signed_step(step, false))
-        }
+        | (SemanticOrientation::Horizontal, LogicalKey::ArrowUp) => state
+            .range
+            .small_step()
+            .map(|step| signed_step(step, false)),
         (_, LogicalKey::Home) => state.range.minimum().map(SplitterRequest::SetValue),
         (_, LogicalKey::End) => state.range.maximum().map(SplitterRequest::SetValue),
         (_, LogicalKey::PageDown) if state.range.large_step().is_some() => {
             state.range.large_step().map(|step| signed_step(step, true))
         }
-        (_, LogicalKey::PageUp) if state.range.large_step().is_some() => {
-            state.range.large_step().map(|step| signed_step(step, false))
-        }
+        (_, LogicalKey::PageUp) if state.range.large_step().is_some() => state
+            .range
+            .large_step()
+            .map(|step| signed_step(step, false)),
         _ => None,
     }
 }
@@ -260,7 +264,10 @@ fn keyboard_request(
 fn semantic_request(state: &SplitterState, command: SemanticCommand) -> Option<SplitterRequest> {
     match command {
         SemanticCommand::Increment => state.range.small_step().map(|step| signed_step(step, true)),
-        SemanticCommand::Decrement => state.range.small_step().map(|step| signed_step(step, false)),
+        SemanticCommand::Decrement => state
+            .range
+            .small_step()
+            .map(|step| signed_step(step, false)),
         SemanticCommand::SetValue(value) => Some(SplitterRequest::SetValue(value)),
         _ => None,
     }
@@ -278,7 +285,7 @@ fn request_admissible(state: &SplitterState, request: SplitterRequest) -> bool {
         SplitterRequest::AdjustBy(delta) => {
             (delta.get() > 0.0 && current.get() < max.get())
                 || (delta.get() < 0.0 && current.get() > min.get())
-        },
+        }
         SplitterRequest::SetValue(value) => {
             value != current && (min.get()..=max.get()).contains(&value.get())
         }
@@ -486,7 +493,10 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
             .background()
             .cloned()
             .unwrap_or_else(|| Brush::solid(Color::rgba(130, 140, 155, 255)));
-        PaintContribution::new(vec![PaintContributionItem::fill(SceneShape::rect(rect), brush)])
+        PaintContribution::new(vec![PaintContributionItem::fill(
+            SceneShape::rect(rect),
+            brush,
+        )])
     }
 
     fn hit_test(&self, state: &Self::State, context: HitContributionContext) -> HitContribution {
@@ -542,8 +552,14 @@ impl<Action: 'static> View<Action> for Splitter<Action> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Splitter, SplitterError, SplitterRequest, SplitterState, keyboard_request, request_admissible};
-    use crate::{KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, PhysicalKey, SemanticNumber, SemanticOrientation, SemanticRangeError};
+    use super::{
+        Splitter, SplitterError, SplitterRequest, SplitterState, keyboard_request,
+        request_admissible,
+    };
+    use crate::{
+        KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase,
+        LogicalKey, PhysicalKey, SemanticNumber, SemanticOrientation, SemanticRangeError,
+    };
 
     #[test]
     fn rejects_invalid_ranges_and_does_not_invent_pane_size() {
