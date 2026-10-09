@@ -384,7 +384,7 @@ impl<'a, Action> EventContext<'a, Action> {
 
     /// Explicitly claims this routed input against a concurrently embedded host.
     ///
-    /// This independent transaction-local claim does not prevent RunenUI defaults,
+    /// This independent transaction-local claim does not prevent `RunenUI` defaults,
     /// stop propagation, invoke a gameplay callback or allocate queued work.
     /// It becomes authoritative only after the enclosing routed transaction commits.
     pub const fn claim_host_input(&mut self) {
