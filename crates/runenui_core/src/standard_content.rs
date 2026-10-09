@@ -650,21 +650,29 @@ mod tests {
         let element: crate::Element<()> = determinate.into_element();
         let (_, _, _, _, _, _, _, _, widget, _) = element.into_runtime_parts().into_parts();
         let state = widget.create_state();
-        let semantic = widget.semantics(&state, SemanticContributionContext::default())
+        let semantic = widget
+            .semantics(&state, SemanticContributionContext::default())
             .unwrap_or_else(|_| unreachable!("Progress role and range valid"));
-        let node = semantic.roots()[0].as_node()
+        let node = semantic.roots()[0]
+            .as_node()
             .unwrap_or_else(|| unreachable!("single Progress node"));
         assert_eq!(node.role(), SemanticRole::Progress);
         assert_eq!(node.name(), Some("Build"));
-        let range = node.range().unwrap_or_else(|| unreachable!("semantic range required"));
+        let range = node
+            .range()
+            .unwrap_or_else(|| unreachable!("semantic range required"));
         assert_eq!(range.current(), Some(number(15.0)));
         assert_eq!(range.value_text(), Some("One quarter"));
         assert_eq!(node.actions(), []);
-        assert!(!widget.activation(&state)
-            .unwrap_or_else(|_| unreachable!("passive capability is valid"))
-            .is_actionable());
+        assert!(
+            !widget
+                .activation(&state)
+                .unwrap_or_else(|_| unreachable!("passive capability is valid"))
+                .is_actionable()
+        );
         assert_eq!(
-            widget.measure(&state, measurement())
+            widget
+                .measure(&state, measurement())
                 .unwrap_or_else(|_| unreachable!("passive measurement")),
             WidgetMeasure::measured(
                 crate::LogicalLength::from(120_u16),
@@ -676,13 +684,15 @@ mod tests {
                 .unwrap_or_else(|_| unreachable!("finite test rectangle")),
             crate::ComputedStyle::default(),
         );
-        let paint = widget.paint(&state, ctx)
+        let paint = widget
+            .paint(&state, ctx)
             .unwrap_or_else(|_| unreachable!("generic fill is valid"));
         assert_eq!(paint.items().len(), 2);
         let PaintPrimitive::Fill {
             shape: crate::SceneShape::Rect(fill),
             ..
-        } = paint.items()[1].primitive() else {
+        } = paint.items()[1].primitive()
+        else {
             unreachable!("progress uses an ordinary fill item")
         };
         assert_eq!(fill.width(), 25.0);
@@ -697,20 +707,26 @@ mod tests {
         let indeterminate: crate::Element<()> = indeterminate.into_element();
         let (_, _, _, _, _, _, _, _, widget, _) = indeterminate.into_runtime_parts().into_parts();
         let state = widget.create_state();
-        let semantic = widget.semantics(&state, SemanticContributionContext::default())
+        let semantic = widget
+            .semantics(&state, SemanticContributionContext::default())
             .unwrap_or_else(|_| unreachable!("valid indeterminate range"));
-        let node = semantic.roots()[0].as_node()
+        let node = semantic.roots()[0]
+            .as_node()
             .unwrap_or_else(|| unreachable!("one progress node"));
         assert_eq!(node.range().and_then(crate::SemanticRange::current), None);
         assert_eq!(node.actions(), []);
         assert_eq!(
-            widget.paint(
-                &state,
-                PaintContributionContext::__runtime_new(
-                    LogicalSize::try_new(100.0, 10.0).unwrap_or_else(|_| unreachable!()),
-                    crate::ComputedStyle::default(),
-                ),
-            ).unwrap_or_else(|_| unreachable!("generic paint valid")).items().len(),
+            widget
+                .paint(
+                    &state,
+                    PaintContributionContext::__runtime_new(
+                        LogicalSize::try_new(100.0, 10.0).unwrap_or_else(|_| unreachable!()),
+                        crate::ComputedStyle::default(),
+                    ),
+                )
+                .unwrap_or_else(|_| unreachable!("generic paint valid"))
+                .items()
+                .len(),
             1,
         );
         assert!(progress(number(5.0), number(3.0), None).is_err());
