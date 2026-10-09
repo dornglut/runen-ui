@@ -7,8 +7,8 @@ use core::fmt;
 use std::sync::Arc;
 
 use runenui_core::{
-    LogicalLength, LogicalPoint, LogicalRect, LogicalTransform, TextAffinity,
-    TextDisplayPosition, TextDocumentSnapshot, TextPosition,
+    LogicalLength, LogicalPoint, LogicalRect, LogicalTransform, TextAffinity, TextDisplayPosition,
+    TextDocumentSnapshot, TextPosition,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -247,12 +247,8 @@ impl TextMaskedProjection {
         position: &TextDisplayPosition,
     ) -> Result<TextDisplayPosition, TextMaskedProjectionError> {
         let offset = self.display_offset_for_position(position)?;
-        let checked = TextPosition::new(
-            self.snapshot(),
-            &self.display,
-            offset,
-            position.affinity(),
-        )
+        let checked =
+            TextPosition::new(self.snapshot(), &self.display, offset, position.affinity())
                 .map_err(|_| TextMaskedProjectionError::InvalidCoordinate)?;
         Ok(TextDisplayPosition::Document(checked))
     }
@@ -388,7 +384,9 @@ impl TextMaskedCaretMap {
     ) -> Result<(TextDisplaySelection, Option<TextPreferredInline>), TextMaskedProjectionError>
     {
         let masked = self.projection.to_masked_selection(selection)?;
-        let result = self.map.navigate(&masked, operation, mode, preferred_inline)?;
+        let result = self
+            .map
+            .navigate(&masked, operation, mode, preferred_inline)?;
         Ok((
             self.projection.from_masked_selection(result.selection())?,
             result.preferred_inline(),
