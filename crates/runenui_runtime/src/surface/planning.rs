@@ -392,10 +392,12 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     let next_context = context_key(context, text_system.source_snapshot());
     let mut current = stage_non_structural_cache(cache);
     let text_editing_dirty = current.text_editing.as_ref() != &text_editing_key;
+    let secret_layout_dirty = current.text_editing.secret_layout_changed(&text_editing_key);
     current.text_editing = Arc::new(text_editing_key);
     let style_dirty = style_product_is_dirty(pending, &current, &next_context, interaction);
-    let layout_dirty =
-        pending.contains(DirtyPhases::LAYOUT) || layout_context_changed(&current, &next_context);
+    let layout_dirty = pending.contains(DirtyPhases::LAYOUT)
+        || layout_context_changed(&current, &next_context)
+        || secret_layout_dirty;
     let hit_dirty = pending.contains(DirtyPhases::HIT_TEST);
     let paint_dirty = pending.contains(DirtyPhases::PAINT) || text_editing_dirty;
     let mut report = SurfacePhaseReport::default();
