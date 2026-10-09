@@ -988,7 +988,7 @@ mod tests {
         ("M11FOCUSVISIBLE", &["M11CTRL-63"], "owner-accepted"),
         ("M11TEXTLAYOUT", &["M11CTRL-64"], "owner-accepted"),
         ("M11SELECTABLE", &["M11CTRL-65"], "owner-accepted"),
-        ("M11LINK", &["M11CTRL-67"], "implementation-complete"),
+        ("M11LINK", &["M11CTRL-67"], "owner-accepted"),
     ];
 
     #[test]
