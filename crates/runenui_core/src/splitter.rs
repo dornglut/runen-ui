@@ -25,7 +25,7 @@ use crate::{
 /// `MoveBy` is signed surface-logical pixels along the divider's movement axis:
 /// positive moves right for a vertical divider or down for a horizontal one.
 /// The application owns the pixels-to-value mapping, constraints and rounding.
-/// AdjustBy carries the authored signed small/page step rather than a value based
+/// `AdjustBy` carries the authored signed small/page step rather than a value based
 /// on a possibly stale render. Consecutive queued actions apply the step to
 /// current application state, not the last published `SemanticRange::current`.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -312,10 +312,10 @@ impl<Action> SplitterWidget<Action> {
         request: SplitterRequest,
         context: &mut EventContext<'_, Action>,
     ) {
-        if request_admissible(state, request) {
-            if let Some(callback) = self.on_resize.as_mut() {
-                context.emit(callback(request));
-            }
+        if request_admissible(state, request)
+            && let Some(callback) = self.on_resize.as_mut()
+        {
+            context.emit(callback(request));
         }
     }
 }
