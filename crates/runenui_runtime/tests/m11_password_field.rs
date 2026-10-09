@@ -307,6 +307,7 @@ fn secret_composition_masks_preedit_before_shaping_and_keeps_candidate_geometry(
         .unwrap_or_else(|_| unreachable!("password preedit is admitted"));
     runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
     let during = publication(&mut runtime);
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(
         during.semantic_publication().snapshot().nodes()[0]
             .editable()
