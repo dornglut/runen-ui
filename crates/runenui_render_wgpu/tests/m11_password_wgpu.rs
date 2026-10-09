@@ -215,7 +215,7 @@ impl UiApp for PlaceholderApp {
 
     fn update(
         _: &mut Self::State,
-        _: Self::Action,
+        (): Self::Action,
     ) -> UpdateOutput<Self::Action, Self::HostProtocol> {
         UpdateOutput::effects(runenui_core::Effects::none())
     }
@@ -277,7 +277,8 @@ fn empty_standard_field_placeholder_uses_real_gpu_but_not_editable_text()
             .desired_content_size(),
     );
     assert!(hinted.paint_scene().items().iter().any(|item| {
-        item.primitive().as_shaped_text_run().is_some() && item.opacity().get() == 0.5
+        item.primitive().as_shaped_text_run().is_some() && item.opacity() == runenui_core::SceneOpacity::new(0.5)
+            .unwrap_or_else(|_| unreachable!("half-opacity is valid"))
     }));
     assert!(
         !blank
@@ -287,7 +288,7 @@ fn empty_standard_field_placeholder_uses_real_gpu_but_not_editable_text()
             .any(|item| item.primitive().as_shaped_text_run().is_some())
     );
     assert!(filled.paint_scene().items().iter().all(|item| {
-        item.primitive().as_shaped_text_run().is_none() || item.opacity().get() == 1.0
+        item.primitive().as_shaped_text_run().is_none() || item.opacity() == runenui_core::SceneOpacity::OPAQUE
     }));
 
     let hint_render =

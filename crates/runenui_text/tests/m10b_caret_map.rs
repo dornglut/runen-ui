@@ -85,7 +85,19 @@ fn empty_document_caret_has_downstream_stop() -> Result<(), Box<dyn Error>> {
         Ok(()),
         "empty document requires a valid downstream caret; upstream={upstream:?}"
     );
+    assert_eq!(upstream, Ok(()));
     assert_eq!(map.legal_byte_offsets(), vec![0]);
+    assert_eq!(map.legal_positions().len(), 2);
+    for affinity in [TextAffinity::Upstream, TextAffinity::Downstream] {
+        let position = document_position("", 0, affinity);
+        let caret = map.caret_rect(&position, LogicalLength::from(1_u8))?;
+        assert!(caret.width() > 0.0);
+        assert!(caret.height() >= 0.0);
+        assert!(map.selection_rects(&TextDisplaySelection::new(
+            position.clone(),
+            position,
+        ))?.is_empty());
+    }
     Ok(())
 }
 

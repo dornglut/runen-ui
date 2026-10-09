@@ -426,7 +426,8 @@ fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authorit
         Some("")
     );
     assert!(relabeled.paint_scene().items().iter().any(|item| {
-        item.primitive().as_shaped_text_run().is_some() && item.opacity().get() == 0.5
+        item.primitive().as_shaped_text_run().is_some() && item.opacity() == runenui_core::SceneOpacity::new(0.5)
+            .unwrap_or_else(|_| unreachable!("half-opacity is valid"))
     }));
 
     focus(&mut runtime);
@@ -434,7 +435,7 @@ fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authorit
     let filled = publication(&mut runtime);
     assert_eq!(runtime.state().text, "Q");
     assert!(filled.paint_scene().items().iter().all(|item| {
-        item.primitive().as_shaped_text_run().is_none() || item.opacity().get() == 1.0
+        item.primitive().as_shaped_text_run().is_none() || item.opacity() == runenui_core::SceneOpacity::OPAQUE
     }));
     assert_eq!(
         filled.semantic_publication().snapshot().nodes()[0].placeholder(),
@@ -448,7 +449,8 @@ fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authorit
     let cleared = publication(&mut runtime);
     assert_eq!(runtime.state().text, "");
     assert!(cleared.paint_scene().items().iter().any(|item| {
-        item.primitive().as_shaped_text_run().is_some() && item.opacity().get() == 0.5
+        item.primitive().as_shaped_text_run().is_some() && item.opacity() == runenui_core::SceneOpacity::new(0.5)
+            .unwrap_or_else(|_| unreachable!("half-opacity is valid"))
     }));
 }
 
@@ -459,7 +461,8 @@ fn active_ime_preedit_suppresses_placeholder_without_substituting_document_sourc
     focus(&mut runtime);
     let idle = publication(&mut runtime);
     assert!(idle.paint_scene().items().iter().any(|item| {
-        item.primitive().as_shaped_text_run().is_some() && item.opacity().get() == 0.5
+        item.primitive().as_shaped_text_run().is_some() && item.opacity() == runenui_core::SceneOpacity::new(0.5)
+            .unwrap_or_else(|_| unreachable!("half-opacity is valid"))
     }));
     let generation = runtime
         .start_composition(None)
@@ -472,7 +475,7 @@ fn active_ime_preedit_suppresses_placeholder_without_substituting_document_sourc
     let composing = publication(&mut runtime);
     assert!(
         composing.paint_scene().items().iter().all(|item| {
-            item.primitive().as_shaped_text_run().is_none() || item.opacity().get() == 1.0
+            item.primitive().as_shaped_text_run().is_none() || item.opacity() == runenui_core::SceneOpacity::OPAQUE
         }),
         "preedit owns visual text while composition is active"
     );
@@ -489,6 +492,7 @@ fn active_ime_preedit_suppresses_placeholder_without_substituting_document_sourc
     runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
     let restored = publication(&mut runtime);
     assert!(restored.paint_scene().items().iter().any(|item| {
-        item.primitive().as_shaped_text_run().is_some() && item.opacity().get() == 0.5
+        item.primitive().as_shaped_text_run().is_some() && item.opacity() == runenui_core::SceneOpacity::new(0.5)
+            .unwrap_or_else(|_| unreachable!("half-opacity is valid"))
     }));
 }
