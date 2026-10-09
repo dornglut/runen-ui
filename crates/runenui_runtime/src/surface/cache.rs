@@ -6,7 +6,7 @@ use runenui_core::{
     WidgetDiagnostic,
 };
 use runenui_text::{
-    FontSourceSnapshot, TextCaretMap, TextCaretMapError, TextDisplaySelection, TextLayoutState,
+    FontSourceSnapshot, TextCaretMapError, TextDisplaySelection, TextLayoutState,
     TextPreeditProjection, TextMaskedProjection,
 };
 
@@ -663,30 +663,57 @@ impl SurfaceCache {
             .text_layouts
             .get(position)
             .ok_or(TextCaretMapError::MissingLayout)?;
-        let (map, active) = if let Some(preedit) = preedit {
-            let map = layout.preedit_caret_map(preedit)?;
-            let active = map
-                .preedit_selection()?
-                .map(|display| display.active().clone())
-                .or_else(|| {
-                    let projection = map.preedit_projection()?;
-                    projection
-                        .position_from_display_offset(
-                            projection.display_preedit_end(),
-                            runenui_core::TextAffinity::Upstream,
-                        )
-                        .ok()
-                })
-                .ok_or(TextCaretMapError::DisplayTextMismatch)?;
-            (map, active)
+        let secret = self.text_editing.sensitivities.get(owner).copied()
+            == Some(runenui_core::TextSensitivity::Secret);
+        let local = if secret {
+            let (projection, active) = if let Some(preedit) = preedit {
+                if preedit.snapshot() != snapshot || preedit.document_text() != source {
+                    return Err(TextCaretMapError::DisplayTextMismatch);
+                }
+                let offset = preedit.display_preedit_start()
+                    + preedit.selection().map_or(preedit.preedit().len(), |range| range.end());
+                let active = preedit
+                    .position_from_display_offset(offset, runenui_core::TextAffinity::Upstream)
+                    .map_err(|_| TextCaretMapError::DisplayTextMismatch)?;
+                let projection = TextMaskedProjection::preedit(preedit)
+                    .map_err(|_| TextCaretMapError::DisplayTextMismatch)?;
+                (projection, active)
+            } else {
+                let projection = TextMaskedProjection::document(snapshot, source)
+                    .map_err(|_| TextCaretMapError::DisplayTextMismatch)?;
+                let active = TextDisplaySelection::from_document(selection).active().clone();
+                (projection, active)
+            };
+            projection.caret_map(layout)
+                .map_err(|_| TextCaretMapError::DisplayTextMismatch)?
+                .candidate_rect(&active)
+                .map_err(|_| TextCaretMapError::DisplayTextMismatch)?
         } else {
-            let map = layout.caret_map_for_source(snapshot, source)?;
-            let active = TextDisplaySelection::from_document(selection)
-                .active()
-                .clone();
-            (map, active)
+            let (map, active) = if let Some(preedit) = preedit {
+                let map = layout.preedit_caret_map(preedit)?;
+                let active = map
+                    .preedit_selection()?
+                    .map(|display| display.active().clone())
+                    .or_else(|| {
+                        let projection = map.preedit_projection()?;
+                        projection
+                            .position_from_display_offset(
+                                projection.display_preedit_end(),
+                                runenui_core::TextAffinity::Upstream,
+                            )
+                            .ok()
+                    })
+                    .ok_or(TextCaretMapError::DisplayTextMismatch)?;
+                (map, active)
+            } else {
+                let map = layout.caret_map_for_source(snapshot, source)?;
+                let active = TextDisplaySelection::from_document(selection)
+                    .active()
+                    .clone();
+                (map, active)
+            };
+            map.candidate_rect(&active)?
         };
-        let local = map.candidate_rect(&active)?;
         let presentation = self.presentation.node(position);
         if !presentation.published() {
             return Err(TextCaretMapError::InvalidGeometry);
