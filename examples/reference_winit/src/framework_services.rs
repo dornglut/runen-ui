@@ -186,9 +186,16 @@ impl NativeFrameworkServices {
                         FrameworkServiceFailure::Unavailable,
                     ));
                 };
+                let ui_presentation_realized = self.pointer_modes.ui_pointer_allowed();
                 self.pointer_modes
                     .set_ui_cursor(&mut WinitPointer(window), *shape, *visible);
-                FrameworkServiceResponse::Cursor(Ok(()))
+                if ui_presentation_realized {
+                    FrameworkServiceResponse::Cursor(Ok(()))
+                } else {
+                    // The game cursor override retains this UI baseline but does not
+                    // pretend to have applied it to the native cursor.
+                    FrameworkServiceResponse::Cursor(Err(FrameworkServiceFailure::Unavailable))
+                }
             }
             FrameworkServiceRequest::DragDrop {
                 source,

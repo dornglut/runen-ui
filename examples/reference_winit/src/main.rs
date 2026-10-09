@@ -75,7 +75,6 @@ fn raw_motion_probe_expired(start: Instant, now: Instant) -> bool {
         .is_some_and(|elapsed| elapsed >= RAW_MOTION_PROBE_TIMEOUT)
 }
 
-
 fn proof_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| env::var("RUNENUI_REFERENCE_PROOF").is_ok_and(|value| value == "1"))
@@ -2364,9 +2363,7 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             .pending_raw_motion_since
             .is_some_and(|start| raw_motion_probe_expired(start, Instant::now()))
         {
-            self.release_host_pointer(
-                "raw device motion arrived after acquisition deadline",
-            );
+            self.release_host_pointer("raw device motion arrived after acquisition deadline");
             proof!("stage=host_pointer_raw_motion_timeout");
             return;
         }
@@ -2593,7 +2590,10 @@ mod tests {
             start,
             start + RAW_MOTION_PROBE_TIMEOUT - std::time::Duration::from_nanos(1)
         ));
-        assert!(raw_motion_probe_expired(start, start + RAW_MOTION_PROBE_TIMEOUT));
+        assert!(raw_motion_probe_expired(
+            start,
+            start + RAW_MOTION_PROBE_TIMEOUT
+        ));
         assert!(raw_motion_probe_expired(
             start,
             start + RAW_MOTION_PROBE_TIMEOUT + std::time::Duration::from_nanos(1)
