@@ -64,8 +64,14 @@ impl NativeFrameworkServices {
         }
     }
 
-    const fn effective_ime_allowed(&self) -> bool {
-        self.native_window_focused && self.requested_ime_allowed
+    fn effective_ime_allowed(&self) -> bool {
+        self.native_window_focused
+            && self.requested_ime_allowed
+            && self.pointer_modes.ui_pointer_allowed()
+    }
+
+    pub fn refresh_native_input_method(&self, window: &Window) {
+        window.set_ime_allowed(self.effective_ime_allowed());
     }
 
     /// Stages native file custody under a runtime-assigned source sequence.

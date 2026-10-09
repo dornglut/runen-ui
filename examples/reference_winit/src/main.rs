@@ -1641,6 +1641,7 @@ impl ReferenceHost {
         );
         let result = self.framework_services.pointer_modes_mut()
             .release(&mut WinitPointer(window));
+        self.framework_services.refresh_native_input_method(window);
         proof!("stage=host_pointer_release reason={reason:?} result={result:?}");
         if let Err(error) = result {
             eprintln!("reference_winit native pointer release failed ({reason}): {error:?}");
@@ -1669,6 +1670,12 @@ impl ReferenceHost {
         {
             return;
         }
+        // Retire native composition/keyboard state before gameplay consumes input.
+        if desired == HostPointerMode::LockedRelative
+            && !self.cancel_focus_sensitive_input(event_loop, "switching to gameplay")
+        {
+            return;
+        }
         self.pump_runtime_once();
         let Some(window) = self.window.as_ref() else {
             return;
@@ -1677,6 +1684,7 @@ impl ReferenceHost {
         let result = self.framework_services.pointer_modes_mut().request(
             scope, desired, &mut WinitPointer(window),
         );
+        self.framework_services.refresh_native_input_method(window);
         proof!("stage=host_pointer_acquire result={result:?}");
         match result {
             Ok(HostPointerOutcome::WaitingForMotion(_)) => {
@@ -2378,7 +2386,9 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             drag_event @ (WindowEvent::HoveredFile(_)
             | WindowEvent::HoveredFileCancelled
             | WindowEvent::DroppedFile(_)) => {
-                self.handle_native_drag_drop_event(event_loop, drag_event);
+                if self.framework_services.pointer_modes().ui_pointer_allowed() {
+                    self.handle_native_drag_drop_event(event_loop, drag_event);
+                }
             }
             WindowEvent::CursorLeft { .. } => {
                 proof!("stage=cursor_left");
@@ -2406,7 +2416,11 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             } => {
                 self.handle_keyboard_input(event_loop, device_id, &event, is_synthetic);
             }
-            WindowEvent::Ime(ime) => self.handle_ime_state(event_loop, ime),
+            WindowEvent::Ime(ime) => {
+                if self.framework_services.pointer_modes().ui_pointer_allowed() {
+                    self.handle_ime_state(event_loop, ime);
+                }
+            },
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.modifiers = translate_modifiers(modifiers.state());
                 proof!("stage=modifiers_changed modifiers={:?}", self.modifiers);
