@@ -345,7 +345,7 @@ pub use surface_presentation::{
 };
 pub use text_field::{TextField, TextFieldError, text_field};
 pub use widget_protocol::{
-    ChildBearingWidget, TextAlignment, TextBlockPlacement, TextLeafMeasure, Widget,
+    ChildBearingWidget, TextAlignment, TextBlockPlacement, TextLeafMeasure, TextLeafWrap, Widget,
     WidgetActivation, WidgetActivationOutput, WidgetAvailableSpace, WidgetDiagnostic,
     WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId, WidgetTextInput,
     WidgetTypeId,

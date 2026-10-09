@@ -662,6 +662,21 @@ fn public_text_field_binds_checked_m10_editor_with_typed_line_policy_and_semanti
         editable.newline_policy(),
         TextNewlinePolicy::ReplaceWithSpace
     );
+    let WidgetMeasure::Text(single_measure) = widget
+        .measure(
+            &state,
+            WidgetMeasureInput::new(
+                None,
+                None,
+                WidgetAvailableSpace::MaxContent,
+                WidgetAvailableSpace::MaxContent,
+            ),
+        )
+        .unwrap_or_else(|_| unreachable!("field measurement is valid"))
+    else {
+        unreachable!("text field stays a text leaf");
+    };
+    assert_eq!(single_measure.wrap_mode(), runenui_core::TextLeafWrap::NoWrap);
     assert!(!editable.read_only());
     let declaration = widget
         .semantics(&state, SemanticContributionContext::default())
@@ -698,6 +713,21 @@ fn public_text_field_binds_checked_m10_editor_with_typed_line_policy_and_semanti
             .newline_policy(),
         TextNewlinePolicy::Preserve
     );
+    let WidgetMeasure::Text(multiline_measure) = widget
+        .measure(
+            &state,
+            WidgetMeasureInput::new(
+                None,
+                None,
+                WidgetAvailableSpace::MaxContent,
+                WidgetAvailableSpace::MaxContent,
+            ),
+        )
+        .unwrap_or_else(|_| unreachable!("multiline measurement is valid"))
+    else {
+        unreachable!("multiline field stays a text leaf");
+    };
+    assert_eq!(multiline_measure.wrap_mode(), runenui_core::TextLeafWrap::Wrap);
 
     assert!(matches!(
         text_field(

@@ -306,7 +306,14 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
     }
 
     fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text(crate::TextLeafMeasure::new(self.state.content.clone()))
+        let wrap = if self.state.mode == SemanticEditableMode::SingleLine {
+            crate::TextLeafWrap::NoWrap
+        } else {
+            crate::TextLeafWrap::Wrap
+        };
+        WidgetMeasure::Text(
+            crate::TextLeafMeasure::new(self.state.content.clone()).with_wrap_mode(wrap),
+        )
     }
 
     fn hit_test(&self, _: &Self::State, context: HitContributionContext) -> HitContribution {

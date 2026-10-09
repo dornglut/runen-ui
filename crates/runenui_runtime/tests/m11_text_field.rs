@@ -19,7 +19,7 @@ struct FormState {
 }
 
 enum Action {
-    Edit(EditIntent),
+    Edit(Box<EditIntent>),
     Submit,
 }
 
@@ -48,7 +48,7 @@ impl UiApp for FormApp {
             state.text.clone(),
             TextSelection::collapsed(selection),
             state.mode,
-            Action::Edit,
+            |intent| Action::Edit(Box::new(intent)),
         )
         .unwrap_or_else(|_| unreachable!("application field source remains valid"))
         .id("form.field")
@@ -81,7 +81,7 @@ impl UiApp for FormApp {
     }
 }
 
-fn snapshot(revision: u64) -> TextDocumentSnapshot {
+const fn snapshot(revision: u64) -> TextDocumentSnapshot {
     TextDocumentSnapshot::new(TextDocumentId::new(24), TextDocumentRevision::new(revision))
 }
 

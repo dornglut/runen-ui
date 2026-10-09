@@ -161,12 +161,22 @@ pub enum TextBlockPlacement {
     End,
 }
 
+/// Soft-wrap intent authored by a text leaf; shaping remains owned by M8.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum TextLeafWrap {
+    #[default]
+    Wrap,
+    NoWrap,
+}
+
 /// Authored text-leaf measurement over a single retained production text layout.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TextLeafMeasure {
     content: String,
     inline_alignment: TextAlignment,
     block_placement: TextBlockPlacement,
+    wrap_mode: TextLeafWrap,
 }
 
 impl TextLeafMeasure {
@@ -176,6 +186,7 @@ impl TextLeafMeasure {
             content: content.into(),
             inline_alignment: TextAlignment::Start,
             block_placement: TextBlockPlacement::Start,
+            wrap_mode: TextLeafWrap::Wrap,
         }
     }
 
@@ -192,6 +203,12 @@ impl TextLeafMeasure {
     }
 
     #[must_use]
+    #[must_use]
+    pub const fn with_wrap_mode(mut self, mode: TextLeafWrap) -> Self {
+        self.wrap_mode = mode;
+        self
+    }
+
     pub const fn content(&self) -> &str {
         self.content.as_str()
     }
@@ -204,6 +221,11 @@ impl TextLeafMeasure {
     #[must_use]
     pub const fn block_placement(&self) -> TextBlockPlacement {
         self.block_placement
+    }
+
+    #[must_use]
+    pub const fn wrap_mode(&self) -> TextLeafWrap {
+        self.wrap_mode
     }
 }
 
