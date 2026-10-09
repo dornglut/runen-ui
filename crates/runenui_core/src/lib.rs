@@ -266,6 +266,7 @@ mod subscription;
 mod surface_presentation;
 mod text_coordinates;
 mod text_field;
+mod toolbar_controls;
 mod typography;
 mod value;
 mod visual;
@@ -346,6 +347,7 @@ pub use surface_presentation::{
     SurfacePresentationAnchor, SurfacePresentationPlacement, SurfacePresentationSide,
 };
 pub use text_field::{TextField, TextFieldError, text_field};
+pub use toolbar_controls::{Toolbar, toolbar};
 pub use widget_protocol::{
     ChildBearingWidget, TextAlignment, TextBlockPlacement, TextLeafMeasure, TextLeafWrap, Widget,
     WidgetActivation, WidgetActivationOutput, WidgetAvailableSpace, WidgetDiagnostic,

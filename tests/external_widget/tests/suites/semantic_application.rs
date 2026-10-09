@@ -24,3 +24,5 @@ mod semantic_m5c_action_readiness;
 mod semantic_m5c_conformance;
 #[path = "../tabs.rs"]
 mod tabs;
+#[path = "../toolbar.rs"]
+mod toolbar;
