@@ -1000,7 +1000,7 @@ mod tests {
         ("M11DISCLOSURE", &["M11CTRL-70"], "owner-accepted"),
         (
             "M11SLIDER",
-            &["M11CTRL-71", "M11CTRL-72", "M11CTRL-73"],
+            &["M11CTRL-72", "M11CTRL-73", "M11CTRL-74"],
             "implementation-complete",
         ),
     ];
