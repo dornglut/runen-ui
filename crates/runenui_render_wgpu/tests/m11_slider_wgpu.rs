@@ -1,11 +1,9 @@
 #![allow(refining_impl_trait)]
 
-use core::{error::Error, future::Future, pin::pin, task::Poll};
+use core::{error::Error, future::Future, pin::pin, task::{Context, Poll}};
 use std::{fs, path::PathBuf};
 
-use runenui_core::{
-    Color, NoHostProtocol, SemanticNumber, StyleEnvironment, UiApp, View, slider,
-};
+use runenui_core::{Color, NoHostProtocol, SemanticNumber, StyleEnvironment, UiApp, View, slider};
 use runenui_render_wgpu::{
     Renderer, RendererInitError, RendererOptions, ResourcePayload, ResourceProvider,
     ResourceProviderError, ResourceProviderErrorKind, ResourceRequest,
@@ -85,27 +83,22 @@ fn standard_slider_uses_generic_wgpu_shape_pipeline_and_rebuilds_pixels()
     let items = initial.paint_scene().items();
     assert!(items.len() >= 2, "Slider has visible track and thumb");
     assert!(
-        items.iter().all(|item| matches!(
-            item.primitive(),
-            runenui_core::PaintPrimitive::Fill { .. }
-        )),
+        items
+            .iter()
+            .all(|item| matches!(item.primitive(), runenui_core::PaintPrimitive::Fill { .. })),
         "Slider uses only ordinary generic fill primitives"
     );
-    let beginning = renderer.render_offscreen_publication(
-        initial.paint_publication(), &provider,
-    )?;
+    let beginning =
+        renderer.render_offscreen_publication(initial.paint_publication(), &provider)?;
     let start_pixels = beginning.readback().rgba8_srgb().to_vec();
     runtime
         .submit_action(
-            SemanticNumber::new(100.0)
-                .unwrap_or_else(|_| unreachable!("full scale finite")),
+            SemanticNumber::new(100.0).unwrap_or_else(|_| unreachable!("full scale finite")),
         )
         .unwrap_or_else(|_| unreachable!("application update accepted"));
     runtime.pump(runenui_runtime::PumpBudget::new(32, 32, 32, 32));
     let full = publish(&mut runtime);
-    let ending = renderer.render_offscreen_publication(
-        full.paint_publication(), &provider,
-    )?;
+    let ending = renderer.render_offscreen_publication(full.paint_publication(), &provider)?;
     let end_pixels = ending.readback().rgba8_srgb().to_vec();
     assert_ne!(
         start_pixels, end_pixels,
@@ -116,12 +109,18 @@ fn standard_slider_uses_generic_wgpu_shape_pipeline_and_rebuilds_pixels()
         fs::create_dir_all(&directory)?;
         let extent = ending.readback().extent();
         image::save_buffer(
-            directory.join("m11-slider-start.png"), &start_pixels,
-            extent.width(), extent.height(), image::ColorType::Rgba8,
+            directory.join("m11-slider-start.png"),
+            &start_pixels,
+            extent.width(),
+            extent.height(),
+            image::ColorType::Rgba8,
         )?;
         image::save_buffer(
-            directory.join("m11-slider-full.png"), &end_pixels,
-            extent.width(), extent.height(), image::ColorType::Rgba8,
+            directory.join("m11-slider-full.png"),
+            &end_pixels,
+            extent.width(),
+            extent.height(),
+            image::ColorType::Rgba8,
         )?;
     }
     Ok(())

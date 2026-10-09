@@ -997,7 +997,11 @@ mod tests {
         ("M11PASSWORD", &["M11CTRL-68"], "owner-accepted"),
         ("M11PLACEHOLDER", &["M11CTRL-69"], "owner-accepted"),
         ("M11DISCLOSURE", &["M11CTRL-70"], "owner-accepted"),
-        ("M11SLIDER", &["M11CTRL-71", "M11CTRL-72", "M11CTRL-73"], "implementation-complete"),
+        (
+            "M11SLIDER",
+            &["M11CTRL-71", "M11CTRL-72", "M11CTRL-73"],
+            "implementation-complete",
+        ),
     ];
 
     #[test]

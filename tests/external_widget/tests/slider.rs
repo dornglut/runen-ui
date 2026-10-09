@@ -124,10 +124,10 @@ impl Widget<Action> for ExternalSlider {
     fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         let range = SemanticRange::new(Some(number(0.0)), Some(number(100.0)), Some(self.value))
             .unwrap_or_else(|_| unreachable!("controlled range valid"))
-        .with_small_step(number(5.0))
-        .unwrap_or_else(|_| unreachable!("positive step"))
-        .with_value_text("Volume percentage")
-        .unwrap_or_else(|_| unreachable!("has current"));
+            .with_small_step(number(5.0))
+            .unwrap_or_else(|_| unreachable!("positive step"))
+            .with_value_text("Volume percentage")
+            .unwrap_or_else(|_| unreachable!("has current"));
         let mut node = SemanticNodeContribution::primary(SemanticRole::Slider)
             .with_name("Volume")
             .with_orientation(SemanticOrientation::Horizontal)
@@ -310,7 +310,8 @@ fn keyboard_and_pointer_requests_are_routed_through_same_application_fifo() {
         None,
     );
     runtime
-        .submit_keyboard(keyboard).unwrap_or_else(|_| unreachable!("key accepted"));
+        .submit_keyboard(keyboard)
+        .unwrap_or_else(|_| unreachable!("key accepted"));
     settle(&mut runtime);
     assert_eq!(runtime.state().value, number(55.0));
     let context = publication.input_context().clone();
@@ -326,7 +327,8 @@ fn keyboard_and_pointer_requests_are_routed_through_same_application_fifo() {
     .with_changed_button(PointerButton::Primary)
     .with_buttons(PointerButtons::new([PointerButton::Primary]));
     runtime
-        .submit_pointer(down).unwrap_or_else(|_| unreachable!("pointer down accepted"));
+        .submit_pointer(down)
+        .unwrap_or_else(|_| unreachable!("pointer down accepted"));
     settle(&mut runtime);
     assert!(runtime.state().value.get() > 55.0);
     let move_event = PointerEvent::new(
@@ -338,7 +340,8 @@ fn keyboard_and_pointer_requests_are_routed_through_same_application_fifo() {
     )
     .with_buttons(PointerButtons::new([PointerButton::Primary]));
     runtime
-        .submit_pointer(move_event).unwrap_or_else(|_| unreachable!("captured drag accepted"));
+        .submit_pointer(move_event)
+        .unwrap_or_else(|_| unreachable!("captured drag accepted"));
     settle(&mut runtime);
     assert_eq!(runtime.state().value, number(100.0));
     let up = PointerEvent::new(
@@ -350,8 +353,96 @@ fn keyboard_and_pointer_requests_are_routed_through_same_application_fifo() {
     )
     .with_changed_button(PointerButton::Primary);
     runtime
-        .submit_pointer(up).unwrap_or_else(|_| unreachable!("terminal pointer accepted"));
+        .submit_pointer(up)
+        .unwrap_or_else(|_| unreachable!("terminal pointer accepted"));
     settle(&mut runtime);
     assert_eq!(runtime.state().value, number(100.0));
     inspect(&publish(&mut runtime), 100.0, true);
+}
+
+#[test]
+fn disabled_mid_drag_releases_capture_without_emitting_more_values() {
+    let mut runtime = fresh();
+    let publication = publish(&mut runtime);
+    let context = publication.input_context().clone();
+    let pointer = PointerId::new(52).unwrap_or_else(|| unreachable!("nonzero pointer"));
+    let down = PointerEvent::new(
+        pointer,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        LogicalPoint::new(120.0, 12.0).unwrap_or_else(|_| unreachable!("finite")),
+        context.clone(),
+    )
+    .with_changed_button(PointerButton::Primary)
+    .with_buttons(PointerButtons::new([PointerButton::Primary]));
+    runtime
+        .submit_pointer(down)
+        .unwrap_or_else(|_| unreachable!("down admitted"));
+    settle(&mut runtime);
+    let value_after_down = runtime.state().value;
+    assert!(value_after_down.get() > 50.0);
+
+    runtime
+        .submit_action(Action::Enabled(false))
+        .unwrap_or_else(|_| unreachable!("disable accepted"));
+    settle(&mut runtime);
+    inspect(&publish(&mut runtime), value_after_down.get(), false);
+    let previous_proposals = runtime.state().proposals;
+
+    let captured_move = PointerEvent::new(
+        pointer,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Move,
+        LogicalPoint::new(155.0, 12.0).unwrap_or_else(|_| unreachable!("finite")),
+        context.clone(),
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Primary]));
+    runtime
+        .submit_pointer(captured_move)
+        .unwrap_or_else(|_| unreachable!("captured move admitted"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().value, value_after_down);
+    assert_eq!(runtime.state().proposals, previous_proposals);
+
+    let terminal = PointerEvent::new(
+        pointer,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Up,
+        LogicalPoint::new(155.0, 12.0).unwrap_or_else(|_| unreachable!("finite")),
+        context,
+    )
+    .with_changed_button(PointerButton::Primary);
+    runtime
+        .submit_pointer(terminal)
+        .unwrap_or_else(|_| unreachable!("up admitted"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().proposals, previous_proposals);
+    runtime
+        .submit_action(Action::Enabled(true))
+        .unwrap_or_else(|_| unreachable!("enable accepted"));
+    settle(&mut runtime);
+    let resumed = publish(&mut runtime);
+    inspect(&resumed, value_after_down.get(), true);
+}
+
+#[test]
+fn nonprimary_pointer_down_cannot_modify_application_value() {
+    let mut runtime = fresh();
+    let publication = publish(&mut runtime);
+    let pointer = PointerId::new(53).unwrap_or_else(|| unreachable!("nonzero pointer"));
+    let secondary = PointerEvent::new(
+        pointer,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        LogicalPoint::new(150.0, 12.0).unwrap_or_else(|_| unreachable!("finite")),
+        publication.input_context().clone(),
+    )
+    .with_changed_button(PointerButton::Secondary)
+    .with_buttons(PointerButtons::new([PointerButton::Secondary]));
+    runtime
+        .submit_pointer(secondary)
+        .unwrap_or_else(|_| unreachable!("secondary pointer admitted"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().value, number(50.0));
+    assert_eq!(runtime.state().proposals, 0);
 }

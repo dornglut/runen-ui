@@ -380,9 +380,8 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
         state.orientation = self.orientation;
         state.enabled = self.enabled;
         state.actionable = self.on_change.is_some();
-        if !state.enabled || !state.actionable {
-            state.drag = None;
-        }
+        // Preserve only the pending capture lifetime across disabled rebuilds.
+        // The next routed pointer/capture event releases it; never retain a value.
     }
 
     fn activation(&self, _: &Self::State) -> WidgetActivation {
@@ -403,6 +402,18 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
             && state.drag.as_ref() == Some(&capture.pointer_id())
         {
             state.drag = None;
+            return WidgetEventOutput::changed();
+        }
+        if let Some(pointer) = event.as_pointer()
+            && state.drag.as_ref() == Some(&pointer.pointer_id())
+            && (matches!(pointer.phase(), PointerPhase::Up | PointerPhase::Cancel)
+                || !state.enabled
+                || !state.actionable)
+        {
+            state.drag = None;
+            context.release_pointer_capture();
+            context.prevent_default();
+            context.stop_propagation();
             return WidgetEventOutput::changed();
         }
         if !state.enabled || !state.actionable || context.default_is_prevented() {
@@ -504,13 +515,6 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
                 context.prevent_default();
                 context.stop_propagation();
                 WidgetEventOutput::none()
-            }
-            PointerPhase::Up | PointerPhase::Cancel if active => {
-                state.drag = None;
-                context.release_pointer_capture();
-                context.prevent_default();
-                context.stop_propagation();
-                WidgetEventOutput::changed()
             }
             _ => WidgetEventOutput::none(),
         }
@@ -724,6 +728,41 @@ mod tests {
         assert_eq!(
             keyboard_value(&slider.range, SemanticOrientation::Horizontal, &event),
             None
+        );
+    }
+
+    #[test]
+    fn vertical_pointer_and_page_policy_follow_checked_orientation_and_step() {
+        let vertical = SliderGeometry::new(
+            LogicalSize::try_new(24.0, 160.0)
+                .unwrap_or_else(|_| unreachable!("finite extent")),
+            SemanticOrientation::Vertical,
+        )
+        .unwrap_or_else(|| unreachable!("positive vertical track"));
+        let bottom = crate::LogicalPoint::new(12.0, 160.0)
+            .unwrap_or_else(|_| unreachable!("finite point"));
+        let top = crate::LogicalPoint::new(12.0, 0.0)
+            .unwrap_or_else(|_| unreachable!("finite point"));
+        assert_eq!(vertical.fraction_at(bottom), 0.0);
+        assert_eq!(vertical.fraction_at(top), 1.0);
+
+        let slider = Slider::<()>::new("Scale", 0.0, 100.0, 50.0, 5.0)
+            .unwrap_or_else(|_| unreachable!("finite range"))
+            .page_step(20.0)
+            .unwrap_or_else(|_| unreachable!("positive page step"));
+        let page = KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::PageUp,
+            LogicalKey::PageUp,
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        );
+        assert_eq!(
+            keyboard_value(&slider.range, SemanticOrientation::Vertical, &page),
+            SemanticNumber::new(70.0).ok()
         );
     }
 }
