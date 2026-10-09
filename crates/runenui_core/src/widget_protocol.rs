@@ -581,9 +581,15 @@ mod confidentiality_tests {
         let source = "code-é👩‍💻漢";
         let leaf = TextLeafMeasure::new(source).with_wrap_mode(TextLeafWrap::NoWrap);
         assert_eq!(leaf.content(), source, "M8 still receives the exact source");
-        for debug in [format!("{leaf:?}"), format!("{:?}", WidgetMeasure::Text(leaf))] {
+        for debug in [
+            format!("{leaf:?}"),
+            format!("{:?}", WidgetMeasure::Text(leaf)),
+        ] {
             for forbidden in [source, "👩‍💻", "content", "bytes"] {
-                assert!(!debug.contains(forbidden), "text entered implicit diagnostics");
+                assert!(
+                    !debug.contains(forbidden),
+                    "text entered implicit diagnostics"
+                );
             }
         }
     }
