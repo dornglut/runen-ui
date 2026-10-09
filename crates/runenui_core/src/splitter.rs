@@ -547,17 +547,37 @@ mod tests {
 
     #[test]
     fn rejects_invalid_ranges_and_does_not_invent_pane_size() {
-        assert!(matches!(Splitter::<()>::new("Pane", 0.0, 1.0, f64::NAN, 1.0), Err(SplitterError::NonFinite)));
-        assert!(matches!(Splitter::<()>::new("Pane", 2.0, 1.0, 1.0, 1.0), Err(SplitterError::Range(SemanticRangeError::ReversedBounds))));
-        assert!(matches!(Splitter::<()>::new("Pane", 0.0, 1.0, 2.0, 1.0), Err(SplitterError::Range(SemanticRangeError::CurrentAboveMaximum))));
-        assert!(matches!(Splitter::<()>::new("Pane", 0.0, 1.0, 0.5, 0.0), Err(SplitterError::Range(SemanticRangeError::NonPositiveSmallStep))));
-        assert!(matches!(Splitter::<()>::new("Pane", -1e308, 1e308, 0.0, 1.0), Err(SplitterError::UnrepresentableSpan)));
+        assert!(matches!(
+            Splitter::<()>::new("Pane", 0.0, 1.0, f64::NAN, 1.0),
+            Err(SplitterError::NonFinite)
+        ));
+        assert!(matches!(
+            Splitter::<()>::new("Pane", 2.0, 1.0, 1.0, 1.0),
+            Err(SplitterError::Range(SemanticRangeError::ReversedBounds))
+        ));
+        assert!(matches!(
+            Splitter::<()>::new("Pane", 0.0, 1.0, 2.0, 1.0),
+            Err(SplitterError::Range(
+                SemanticRangeError::CurrentAboveMaximum
+            ))
+        ));
+        assert!(matches!(
+            Splitter::<()>::new("Pane", 0.0, 1.0, 0.5, 0.0),
+            Err(SplitterError::Range(
+                SemanticRangeError::NonPositiveSmallStep
+            ))
+        ));
+        assert!(matches!(
+            Splitter::<()>::new("Pane", -1e308, 1e308, 0.0, 1.0),
+            Err(SplitterError::UnrepresentableSpan)
+        ));
         assert!(Splitter::<()>::new("Pane", 0.0, 100.0, 50.0, 5.0).is_ok());
     }
 
     #[test]
     fn divider_orientation_is_not_slider_orientation() {
-        let splitter = Splitter::<()>::new("Pane", 0.0, 100.0, 50.0, 5.0).unwrap_or_else(|_| unreachable!());
+        let splitter =
+            Splitter::<()>::new("Pane", 0.0, 100.0, 50.0, 5.0).unwrap_or_else(|_| unreachable!());
         let state = SplitterState {
             label: splitter.label,
             range: splitter.range,
@@ -566,24 +586,49 @@ mod tests {
             actionable: true,
             drag: None,
         };
-        let key = |logical| KeyboardEvent::new(
-            KeyboardPhase::Down,
-            PhysicalKey::ArrowRight,
-            logical,
-            KeyModifiers::NONE,
-            false,
-            KeyLocation::Standard,
-            KeyboardCompositionState::Inactive,
-            None,
+        let key = |logical| {
+            KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::ArrowRight,
+                logical,
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            )
+        };
+        assert_eq!(
+            keyboard_request(&state, &key(LogicalKey::ArrowRight)),
+            Some(SplitterRequest::AdjustBy(
+                SemanticNumber::new(5.0).unwrap_or_else(|_| unreachable!())
+            ))
         );
-        assert_eq!(keyboard_request(&state, &key(LogicalKey::ArrowRight)), Some(SplitterRequest::AdjustBy(SemanticNumber::new(5.0).unwrap_or_else(|_| unreachable!()))));
         assert_eq!(keyboard_request(&state, &key(LogicalKey::ArrowUp)), None);
         let mut across = state;
         across.orientation = SemanticOrientation::Horizontal;
-        assert_eq!(keyboard_request(&across, &key(LogicalKey::ArrowDown)), Some(SplitterRequest::AdjustBy(SemanticNumber::new(5.0).unwrap_or_else(|_| unreachable!()))));
-        assert_eq!(keyboard_request(&across, &key(LogicalKey::ArrowUp)), Some(SplitterRequest::AdjustBy(SemanticNumber::new(-5.0).unwrap_or_else(|_| unreachable!()))));
-        assert_eq!(keyboard_request(&across, &key(LogicalKey::ArrowRight)), None);
+        assert_eq!(
+            keyboard_request(&across, &key(LogicalKey::ArrowDown)),
+            Some(SplitterRequest::AdjustBy(
+                SemanticNumber::new(5.0).unwrap_or_else(|_| unreachable!())
+            ))
+        );
+        assert_eq!(
+            keyboard_request(&across, &key(LogicalKey::ArrowUp)),
+            Some(SplitterRequest::AdjustBy(
+                SemanticNumber::new(-5.0).unwrap_or_else(|_| unreachable!())
+            ))
+        );
+        assert_eq!(
+            keyboard_request(&across, &key(LogicalKey::ArrowRight)),
+            None
+        );
         assert!(!request_admissible(&across, SplitterRequest::MoveBy(0.0)));
-        assert!(!request_admissible(&across, SplitterRequest::SetValue(SemanticNumber::new(150.0).unwrap_or_else(|_| unreachable!()))));
+        assert!(!request_admissible(
+            &across,
+            SplitterRequest::SetValue(
+                SemanticNumber::new(150.0).unwrap_or_else(|_| unreachable!())
+            )
+        ));
     }
 }

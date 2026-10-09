@@ -7,7 +7,9 @@ use core::{
     task::{Context, Poll},
 };
 
-use runenui_core::{Color, NoHostProtocol, SemanticNumber, StyleEnvironment, UiApp, View, splitter};
+use runenui_core::{
+    Color, NoHostProtocol, SemanticNumber, StyleEnvironment, UiApp, View, splitter,
+};
 use runenui_render_wgpu::{
     Renderer, RendererInitError, RendererOptions, ResourcePayload, ResourceProvider,
     ResourceProviderError, ResourceProviderErrorKind, ResourceRequest,
@@ -87,12 +89,13 @@ fn standard_splitter_paints_a_thin_generic_grip_inside_wide_hit_extent()
     let items = publication.paint_scene().items();
     assert_eq!(items.len(), 1, "one ordinary generic divider shape");
     assert!(
-        items.iter().all(|item| matches!(
-            item.primitive(), runenui_core::PaintPrimitive::Fill { .. }
-        )),
+        items
+            .iter()
+            .all(|item| matches!(item.primitive(), runenui_core::PaintPrimitive::Fill { .. })),
         "no renderer-special Splitter primitive"
     );
-    let image = renderer.render_offscreen_publication(publication.paint_publication(), &provider)?;
+    let image =
+        renderer.render_offscreen_publication(publication.paint_publication(), &provider)?;
     let extent = image.readback().extent();
     let pixels = image.readback().rgba8_srgb();
     let width = usize::try_from(extent.width())?;
@@ -100,7 +103,8 @@ fn standard_splitter_paints_a_thin_generic_grip_inside_wide_hit_extent()
     let edge = (row * width) * 4;
     let grip = (row * width + 6) * 4;
     assert_ne!(
-        &pixels[edge..edge + 4], &pixels[grip..grip + 4],
+        &pixels[edge..edge + 4],
+        &pixels[grip..grip + 4],
         "generic paint produces a narrow line, not a full-width filled hit box"
     );
     Ok(())
