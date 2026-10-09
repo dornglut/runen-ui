@@ -1048,7 +1048,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub(crate) fn process_input_envelope(&mut self, envelope: InputEnvelope) {
+    pub(crate) fn process_input_envelope(&mut self, envelope: InputEnvelope) -> crate::UiInputFinality {
         let InputEnvelope {
             sequence,
             target,
@@ -1122,7 +1122,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 None,
                 CommandOrigin::__runtime_keyboard(),
             );
-            return;
+            return crate::UiInputFinality::ProcessingRejected(
+                crate::UiInputProcessingRejection::StaleCompositionGeneration,
+            );
         }
         let transaction_result = if type_ahead_context.is_some() {
             self.try_begin_focus_input_transaction(
@@ -1147,7 +1149,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     failure.causal_parent().or(causal_parent),
                     instant,
                 );
-                return;
+                return match self.status() {
+                    RuntimeStatus::Terminal(reason) => crate::UiInputFinality::Aborted(
+                        crate::UiInputAbortReason::Terminal(reason),
+                    ),
+                    RuntimeStatus::Running | RuntimeStatus::Closed =>
+                        crate::UiInputFinality::ProcessingRejected(
+                            crate::UiInputProcessingRejection::InsufficientTransactionCapacity,
+                        ),
+                };
             }
         };
         self.record_input_processing_validation(&mut transaction, &payload);
@@ -1159,15 +1169,53 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if let Err(failure) = self.invoke_routed_callbacks(&mut transaction, &event, None) {
             let current = transaction.failure_current_target.clone();
             self.poison_transaction(&transaction, failure, current.as_ref());
-            return;
+            return crate::UiInputFinality::Aborted(crate::UiInputAbortReason::RuntimeIntegrity);
         }
         if let Err(failure) =
             self.collect_input_default(&mut transaction, &payload, shortcut_candidate.as_ref())
         {
             let current = transaction.failure_current_target.clone();
             self.poison_transaction(&transaction, failure, current.as_ref());
-            return;
+            return crate::UiInputFinality::Aborted(crate::UiInputAbortReason::RuntimeIntegrity);
         }
+        // Capture committed routing/claim facts before the transaction is consumed.
+        // A candidate shortcut alone does not prove an accepted shortcut default.
+        let explicit = transaction.host_input_claimed;
+        let has_default_output = !transaction.default_outputs.is_empty();
+        let text_domain = matches!(payload, InputEnvelopePayload::CommittedText(_) | InputEnvelopePayload::Composition(_));
+        let mut reasons = Vec::new();
+        if explicit {
+            reasons.push(crate::UiInputClaimReason::ExplicitWidgetClaim);
+        }
+        if text_domain {
+            reasons.push(if matches!(payload, InputEnvelopePayload::Composition(_)) {
+                crate::UiInputClaimReason::CompositionOwner
+            } else {
+                crate::UiInputClaimReason::TextOwner
+            });
+        }
+        if has_default_output {
+            reasons.push(crate::UiInputClaimReason::ActivationDefault);
+        }
+        let claims_ui = !reasons.is_empty();
+        let routing = crate::UiInputRoutingFacts {
+            conflict: if claims_ui {
+                crate::UiInputConflict::ExclusiveUi
+            } else {
+                crate::UiInputConflict::ObservedNonexclusive
+            },
+            reasons,
+            route: crate::UiInputRoute::Routed { target: target.clone() },
+            propagation_stopped: transaction.propagation_stopped,
+            default_prevented: transaction.default_prevented,
+            default_disposition: if transaction.default_prevented {
+                crate::UiDefaultDisposition::Prevented
+            } else if has_default_output {
+                crate::UiDefaultDisposition::Queued
+            } else {
+                crate::UiDefaultDisposition::None
+            },
+        };
         let completion_parent = transaction.parent;
         let completion_instant = transaction.instant;
         let completion_origin = transaction.origin;
@@ -1178,7 +1226,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 crate::TraceRoutedIntegrityFailure::CommitInvariantFailure,
                 Some(&target),
             );
-            return;
+            return crate::UiInputFinality::Aborted(crate::UiInputAbortReason::RuntimeIntegrity);
         }
         match payload {
             InputEnvelopePayload::Composition(event) => {
@@ -1193,6 +1241,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             InputEnvelopePayload::Keyboard(_) | InputEnvelopePayload::CommittedText(_) => {}
         }
+        crate::UiInputFinality::Committed(routing)
     }
 
     const fn routed_input_event_context(payload: &InputEnvelopePayload) -> TraceEventContext {
