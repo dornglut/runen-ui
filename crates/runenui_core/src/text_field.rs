@@ -227,7 +227,7 @@ impl<Action> fmt::Debug for TextFieldWidget<Action> {
     }
 }
 
-impl<Action> Widget<Action> for TextFieldWidget<Action> {
+impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
     type State = TextFieldState;
 
     fn create_state(&self) -> Self::State {
@@ -316,11 +316,7 @@ impl<Action> Widget<Action> for TextFieldWidget<Action> {
         HitContribution::single_rect(rect)
     }
 
-    fn semantics(
-        &self,
-        _: &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         let Some(editable) = SemanticEditable::new(
             self.state.snapshot,
             &self.state.content,

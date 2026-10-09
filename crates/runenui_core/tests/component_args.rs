@@ -624,13 +624,12 @@ fn selectable_text_reuses_public_m10_selection_and_copy_without_mutation() {
 fn public_text_field_binds_checked_m10_editor_with_typed_line_policy_and_semantics() {
     use runenui_core::{
         EditableContributionError, SemanticAction, SemanticEditableMode, SemanticInvalidState,
-        TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
-        TextFieldError, TextNewlinePolicy, TextPosition, TextSelection, text_field,
+        TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextFieldError,
+        TextNewlinePolicy, TextPosition, TextSelection, text_field,
     };
 
     let source = "hello";
-    let snapshot =
-        TextDocumentSnapshot::new(TextDocumentId::new(81), TextDocumentRevision::new(4));
+    let snapshot = TextDocumentSnapshot::new(TextDocumentId::new(81), TextDocumentRevision::new(4));
     let position = TextPosition::new(snapshot, source, source.len(), TextAffinity::Upstream)
         .unwrap_or_else(|_| unreachable!("fixture caret is valid"));
     let selection = TextSelection::collapsed(position);
@@ -659,7 +658,10 @@ fn public_text_field_binds_checked_m10_editor_with_typed_line_policy_and_semanti
         .unwrap_or_else(|| unreachable!("text field uses M10"));
     assert_eq!(editable.text(), source);
     assert_eq!(editable.snapshot(), snapshot);
-    assert_eq!(editable.newline_policy(), TextNewlinePolicy::ReplaceWithSpace);
+    assert_eq!(
+        editable.newline_policy(),
+        TextNewlinePolicy::ReplaceWithSpace
+    );
     assert!(!editable.read_only());
     let declaration = widget
         .semantics(&state, SemanticContributionContext::default())
@@ -707,8 +709,7 @@ fn public_text_field_binds_checked_m10_editor_with_typed_line_policy_and_semanti
         ),
         Err(TextFieldError::SingleLineSourceContainsNewline),
     ));
-    let foreign =
-        TextDocumentSnapshot::new(TextDocumentId::new(81), TextDocumentRevision::new(5));
+    let foreign = TextDocumentSnapshot::new(TextDocumentId::new(81), TextDocumentRevision::new(5));
     let other_position = TextPosition::new(foreign, source, 0, TextAffinity::Downstream)
         .unwrap_or_else(|_| unreachable!("foreign caret is valid"));
     assert!(matches!(

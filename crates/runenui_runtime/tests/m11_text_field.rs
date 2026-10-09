@@ -4,8 +4,8 @@ use runenui_core::{
     CommandOrigin, CommittedTextEvent, EditIntent, EditResolution, Effects, IntoUpdateOutput,
     KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
     NoHostProtocol, PhysicalKey, SemanticCommand, SemanticEditableMode, TextAffinity,
-    TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection,
-    UiApp, UpdateOutput, View,
+    TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, UiApp,
+    UpdateOutput, View,
 };
 use runenui_runtime::{AppRuntime, PumpBudget};
 

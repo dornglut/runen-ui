@@ -295,8 +295,8 @@ pub use computed_style::ComputedStyle;
 pub use editing::{
     EditChangeMap, EditGroupHint, EditIntent, EditInverse, EditKind, EditRequestId, EditResolution,
     EditResolutionOutcome, EditSelection, EditableContribution, EditableContributionError,
-    EditingSessionGeneration, EditingSessionPolicy, IntoUpdateOutput, TextNewlinePolicy, TextSensitivity,
-    UpdateOutput,
+    EditingSessionGeneration, EditingSessionPolicy, IntoUpdateOutput, TextNewlinePolicy,
+    TextSensitivity, UpdateOutput,
 };
 pub use effects::{Effects, IntoEffects};
 pub use element::{AuthoringDiagnostic, Element, View, Views};
