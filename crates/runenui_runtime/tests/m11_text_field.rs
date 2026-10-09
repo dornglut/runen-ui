@@ -436,6 +436,20 @@ fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authorit
     commit(&mut runtime, "Q");
     let filled = publication(&mut runtime);
     assert_eq!(runtime.state().text, "Q");
+    // Accepted publications remain immutable; the new source publication must
+    // not lease or expose the retired placeholder's shaped resource.
+    assert!(
+        first
+            .paint_scene()
+            .shaped_text_resource(&first_hint)
+            .is_some()
+    );
+    assert!(
+        filled
+            .paint_scene()
+            .shaped_text_resource(&first_hint)
+            .is_none()
+    );
     assert!(filled.paint_scene().items().iter().all(|item| {
         item.primitive().as_shaped_text_run().is_none()
             || item.opacity() == runenui_core::SceneOpacity::OPAQUE
