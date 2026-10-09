@@ -2545,9 +2545,7 @@ impl Drop for ReferenceHost {
                 .pointer_modes_mut()
                 .retire_window(&mut WinitPointer(window))
         {
-            eprintln!(
-                "reference_winit drop could not confirm native pointer release: {error:?}"
-            );
+            eprintln!("reference_winit drop could not confirm native pointer release: {error:?}");
         }
     }
 }
