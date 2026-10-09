@@ -19,7 +19,7 @@ use crate::{
     widget_protocol::Widget,
 };
 
-/// Rejected scalar control input. No invalid Slider can be authored.
+/// Rejected scalar control input. No invalid `Slider` can be authored.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SliderError {
@@ -160,7 +160,7 @@ impl<Action> Slider<Action> {
 ///
 /// # Errors
 ///
-/// Returns SliderError for any invalid bounded scalar input.
+/// Returns `SliderError` for any invalid bounded scalar input.
 pub fn slider<Action>(
     label: impl Into<String>,
     minimum: f64,
@@ -233,7 +233,7 @@ impl SliderGeometry {
             return None;
         }
         let radius = (cross * 0.45).min(10.0).min(length / 2.0);
-        let travel = length - 2.0 * radius;
+        let travel = 2.0_f32.mul_add(-radius, length);
         if travel <= 0.0 {
             return None;
         }
@@ -252,6 +252,15 @@ impl SliderGeometry {
             SemanticOrientation::Vertical => self.length - local.y(),
         };
         f64::from(((coordinate - self.radius) / self.travel).clamp(0.0, 1.0))
+    }
+
+    fn value_at(self, range: &SemanticRange, position: LogicalPoint) -> Option<SemanticNumber> {
+        let min = range.minimum()?.get();
+        let max = range.maximum()?.get();
+        let proposed = (max - min)
+            .mul_add(self.fraction_at(position), min)
+            .clamp(min, max);
+        numeric_value(range, proposed)
     }
 
     fn rect(self, start: f32, along: f32, cross: f32) -> LogicalRect {
@@ -274,11 +283,14 @@ fn numeric_value(range: &SemanticRange, proposed: f64) -> Option<SemanticNumber>
     if !proposed.is_finite() || !(min.get()..=max.get()).contains(&proposed) {
         return None;
     }
-    if proposed == min.get() || proposed == max.get() {
-        return SemanticNumber::new(proposed).ok();
+    if proposed <= min.get() {
+        return Some(min);
+    }
+    if proposed >= max.get() {
+        return Some(max);
     }
     let count = ((proposed - min.get()) / step.get()).round();
-    let value = (min.get() + count * step.get()).clamp(min.get(), max.get());
+    let value = count.mul_add(step.get(), min.get()).clamp(min.get(), max.get());
     SemanticNumber::new(value).ok()
 }
 
@@ -310,7 +322,7 @@ fn keyboard_value(
         | (SemanticOrientation::Vertical, LogicalKey::ArrowDown) => SemanticCommand::Decrement,
         (_, LogicalKey::Home) => return range.minimum(),
         (_, LogicalKey::End) => return range.maximum(),
-        (_, LogicalKey::PageUp) | (_, LogicalKey::PageDown) => {
+        (_, LogicalKey::PageUp | LogicalKey::PageDown) => {
             let min = range.minimum()?.get();
             let max = range.maximum()?.get();
             let current = range.current()?.get();
@@ -331,6 +343,10 @@ fn keyboard_value(
 }
 
 impl<Action> SliderWidget<Action> {
+    fn actionable(&self) -> bool {
+        self.on_change.is_some() && self.range.minimum() != self.range.maximum()
+    }
+
     fn emit_value(
         &mut self,
         state: &SliderState,
@@ -355,7 +371,7 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
             range: self.range.clone(),
             orientation: self.orientation,
             enabled: self.enabled,
-            actionable: self.on_change.is_some(),
+            actionable: self.actionable(),
             drag: None,
         }
     }
@@ -367,7 +383,7 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
         if state.range != self.range || state.orientation != self.orientation {
             context.invalidate(WidgetInvalidation::PAINT | WidgetInvalidation::SEMANTICS);
         }
-        if state.enabled != self.enabled || state.actionable != self.on_change.is_some() {
+        if state.enabled != self.enabled || state.actionable != self.actionable() {
             context.invalidate(
                 WidgetInvalidation::INTERACTION
                     | WidgetInvalidation::HIT_TEST
@@ -379,13 +395,19 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
         state.range.clone_from(&self.range);
         state.orientation = self.orientation;
         state.enabled = self.enabled;
-        state.actionable = self.on_change.is_some();
+        state.actionable = self.actionable();
         // Preserve only the pending capture lifetime across disabled rebuilds.
         // The next routed pointer/capture event releases it; never retain a value.
     }
 
     fn activation(&self, _: &Self::State) -> WidgetActivation {
-        WidgetActivation::actionable(self.enabled && self.on_change.is_some())
+        if self.actionable() {
+            WidgetActivation::actionable(self.enabled)
+        } else if self.enabled {
+            WidgetActivation::NONE
+        } else {
+            WidgetActivation::disabled()
+        }
     }
 
     fn event(
@@ -458,24 +480,7 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
                 };
                 state.drag = Some(pointer.pointer_id());
                 context.capture_pointer();
-                let min = state
-                    .range
-                    .minimum()
-                    .map(SemanticNumber::get)
-                    .unwrap_or(0.0);
-                let max = state
-                    .range
-                    .maximum()
-                    .map(SemanticNumber::get)
-                    .unwrap_or(0.0);
-                self.emit_value(
-                    state,
-                    numeric_value(
-                        &state.range,
-                        min + (max - min) * geometry.fraction_at(position),
-                    ),
-                    context,
-                );
+                self.emit_value(state, geometry.value_at(&state.range, position), context);
                 context.prevent_default();
                 context.stop_propagation();
                 WidgetEventOutput::changed()
@@ -494,24 +499,7 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
                     context.release_pointer_capture();
                     return WidgetEventOutput::changed();
                 };
-                let min = state
-                    .range
-                    .minimum()
-                    .map(SemanticNumber::get)
-                    .unwrap_or(0.0);
-                let max = state
-                    .range
-                    .maximum()
-                    .map(SemanticNumber::get)
-                    .unwrap_or(0.0);
-                self.emit_value(
-                    state,
-                    numeric_value(
-                        &state.range,
-                        min + (max - min) * geometry.fraction_at(position),
-                    ),
-                    context,
-                );
+                self.emit_value(state, geometry.value_at(&state.range, position), context);
                 context.prevent_default();
                 context.stop_propagation();
                 WidgetEventOutput::none()
@@ -607,7 +595,7 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
             .with_range(state.range.clone())
             .with_orientation(state.orientation)
             .with_state(SemanticState::ENABLED.with_disabled(!state.enabled));
-        if state.actionable && state.enabled && state.range.minimum() != state.range.maximum() {
+        if state.actionable && state.enabled {
             node = node
                 .with_action(SemanticAction::Increment)
                 .with_action(SemanticAction::Decrement)
@@ -645,6 +633,37 @@ mod tests {
         LogicalKey, LogicalSize, PhysicalKey, SemanticNumber, SemanticOrientation,
         SemanticRangeError,
     };
+
+    #[test]
+    fn no_callback_and_collapsed_range_are_semantically_readable_not_actionable() {
+        use crate::Widget;
+        use super::SliderWidget;
+
+        let range = Slider::<()>::new("Volume", 0.0, 100.0, 50.0, 5.0)
+            .unwrap_or_else(|_| unreachable!("valid numeric range"));
+        let passive = SliderWidget::<()> {
+            label: range.label,
+            range: range.range,
+            orientation: range.orientation,
+            enabled: true,
+            on_change: None,
+        };
+        let passive_state = passive.create_state();
+        assert!(!passive.activation(&passive_state).is_actionable());
+
+        let collapsed = Slider::<()>::new("Locked", 4.0, 4.0, 4.0, 1.0)
+            .unwrap_or_else(|_| unreachable!("valid degenerate bounded value"));
+        let noninteractive = SliderWidget {
+            label: collapsed.label,
+            range: collapsed.range,
+            orientation: collapsed.orientation,
+            enabled: true,
+            on_change: Some(Box::new(|_| ())),
+        };
+        let state = noninteractive.create_state();
+        assert!(!state.actionable);
+        assert!(!noninteractive.activation(&state).is_actionable());
+    }
 
     #[test]
     fn invalid_numeric_authoring_fails_before_mount() {
