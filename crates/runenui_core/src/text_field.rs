@@ -294,6 +294,9 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             if state.snapshot != self.state.snapshot || state.selection != self.state.selection {
                 context.invalidate(WidgetInvalidation::PAINT | WidgetInvalidation::SEMANTICS);
             }
+            if state.content.is_empty() && state.placeholder != self.state.placeholder {
+                context.invalidate(WidgetInvalidation::LAYOUT | WidgetInvalidation::PAINT);
+            }
             if state.placeholder != self.state.placeholder
                 || state.labelled_by != self.state.labelled_by
                 || state.described_by != self.state.described_by
@@ -380,9 +383,20 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         } else {
             crate::TextLeafWrap::Wrap
         };
-        WidgetMeasure::Text(
-            crate::TextLeafMeasure::new(self.state.content.clone()).with_wrap_mode(wrap),
-        )
+        let descriptor =
+            crate::TextLeafMeasure::new(self.state.content.clone()).with_wrap_mode(wrap);
+        let descriptor = if self.state.content.is_empty() {
+            self.state
+                .placeholder
+                .as_deref()
+                .filter(|hint| !hint.is_empty())
+                .map_or_else(|| descriptor.clone(), |hint| {
+                    descriptor.with_visual_placeholder(hint)
+                })
+        } else {
+            descriptor
+        };
+        WidgetMeasure::Text(descriptor)
     }
 
     fn hit_test(&self, _: &Self::State, context: HitContributionContext) -> HitContribution {

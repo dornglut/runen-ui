@@ -174,6 +174,8 @@ pub enum TextLeafWrap {
 #[derive(Clone, Eq, PartialEq)]
 pub struct TextLeafMeasure {
     content: String,
+    // Visual-only empty-source hint; not an editable document or M10 caret source.
+    visual_placeholder: Option<String>,
     inline_alignment: TextAlignment,
     block_placement: TextBlockPlacement,
     wrap_mode: TextLeafWrap,
@@ -196,6 +198,7 @@ impl TextLeafMeasure {
     pub fn new(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
+            visual_placeholder: None,
             inline_alignment: TextAlignment::Start,
             block_placement: TextBlockPlacement::Start,
             wrap_mode: TextLeafWrap::Wrap,
@@ -218,6 +221,22 @@ impl TextLeafMeasure {
     pub const fn with_wrap_mode(mut self, mode: TextLeafWrap) -> Self {
         self.wrap_mode = mode;
         self
+    }
+
+    /// Gives M8 a separate visual hint, never substituted for the editable source.
+    /// The runtime must suppress this when a live M10 preedit is present.
+    #[must_use]
+    pub fn with_visual_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.visual_placeholder = Some(placeholder.into());
+        self
+    }
+
+    #[must_use]
+    pub const fn visual_placeholder(&self) -> Option<&str> {
+        match &self.visual_placeholder {
+            Some(text) => Some(text.as_str()),
+            None => None,
+        }
     }
 
     #[must_use]
