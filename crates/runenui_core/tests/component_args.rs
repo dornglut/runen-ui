@@ -619,3 +619,73 @@ fn selectable_text_reuses_public_m10_selection_and_copy_without_mutation() {
         Err(EditableContributionError::SelectionSnapshotMismatch),
     ));
 }
+
+#[test]
+fn public_link_is_semantically_distinct_from_button_and_navigation_is_app_owned() {
+    use runenui_core::{SemanticAction, link};
+
+    let actionable: runenui_core::Element<Action> = link("Reference")
+        .id("reference")
+        .key("reference")
+        .on_activate(|| Action::Save)
+        .into_element();
+    let (_, _, _, _, _, _, _, _, widget, _) = actionable.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    let semantics = widget
+        .semantics(&state, SemanticContributionContext::default())
+        .unwrap_or_else(|_| unreachable!("link semantics are valid"));
+    let node = semantics.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("one primary link node"));
+    assert_eq!(node.role(), SemanticRole::Link);
+    assert_eq!(node.name(), Some("Reference"));
+    assert!(!node.state().disabled());
+    assert!(node.actions().contains(&SemanticAction::Activate));
+    let activation = widget
+        .activation(&state)
+        .unwrap_or_else(|_| unreachable!("link activation is valid"));
+    assert!(activation.is_actionable());
+    assert!(activation.enabled());
+    let measure = widget
+        .measure(
+            &state,
+            WidgetMeasureInput::new(
+                None,
+                None,
+                WidgetAvailableSpace::MaxContent,
+                WidgetAvailableSpace::MaxContent,
+            ),
+        )
+        .unwrap_or_else(|_| unreachable!("link text measurement is valid"));
+    assert!(matches!(measure, WidgetMeasure::Text(_)));
+
+    let disabled: runenui_core::Element<Action> = link("Unavailable")
+        .disabled()
+        .on_activate(|| Action::Save)
+        .into_element();
+    let (_, _, _, _, _, _, _, _, widget, _) = disabled.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    let activation = widget
+        .activation(&state)
+        .unwrap_or_else(|_| unreachable!("disabled link activation is valid"));
+    assert!(activation.is_actionable());
+    assert!(!activation.enabled());
+    let sem = widget
+        .semantics(&state, SemanticContributionContext::default())
+        .unwrap_or_else(|_| unreachable!("disabled link semantics are valid"));
+    let node = sem.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("one disabled link node"));
+    assert_eq!(node.role(), SemanticRole::Link);
+    assert!(node.state().disabled());
+
+    let no_action: runenui_core::Element<Action> = link("Pure reference").into_element();
+    let (_, _, _, _, _, _, _, _, widget, _) = no_action.into_runtime_parts().into_parts();
+    let state = widget.create_state();
+    assert!(
+        !widget
+            .activation(&state)
+            .unwrap_or_else(|_| unreachable!("non-actionable link activation is valid"))
+            .is_actionable()
+    );
+}
