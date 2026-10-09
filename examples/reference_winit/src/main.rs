@@ -2386,7 +2386,11 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
         self.presentation_suppressed = false;
         // Winit allows redundant suspend/resume transitions. A retained window
         // may already have native focus without emitting another Focused event.
-        if self.window.as_ref().is_some_and(|window| window.has_focus()) {
+        if self
+            .window
+            .as_ref()
+            .is_some_and(|window| window.has_focus())
+        {
             self.handle_window_focus(event_loop, true);
         }
         if !self.establish_initial_runtime_focus(event_loop) {
@@ -2591,9 +2595,7 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             .pending_raw_motion_since
             .is_some_and(|start| raw_motion_probe_expired(start, now))
         {
-            self.release_host_pointer(
-                "raw device motion unavailable within acquisition deadline",
-            );
+            self.release_host_pointer("raw device motion unavailable within acquisition deadline");
             proof!("stage=host_pointer_raw_motion_timeout");
         }
         if native_release_retry_due(self.native_release_retry_at, now) {
@@ -2604,9 +2606,8 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             .pending_raw_motion_since
             .and_then(|start| start.checked_add(RAW_MOTION_PROBE_TIMEOUT));
         let next_deadline = earliest_host_deadline(raw_deadline, self.native_release_retry_at);
-        event_loop.set_control_flow(
-            next_deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
-        );
+        event_loop
+            .set_control_flow(next_deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
         self.request_pending_redraw();
     }
 
@@ -2650,18 +2651,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::{
         AppRuntime, CommandOrigin, CommittedTextEvent, DemoApp, DemoHistoryEntry, DemoState,
-        NATIVE_RELEASE_RETRY_INTERVAL,
         DisplayedFrame, HOST_PUMP_BUDGET, INITIAL_EDITOR_TEXT, KeyboardEvent, LARGE_DOCUMENT_LINES,
-        LogicalSize, MAX_EDITOR_HISTORY_ENTRIES, NativeMapping, PendingFrame,
-        PointIngressDiagnostic, RAW_MOTION_PROBE_TIMEOUT, ReferenceDocumentPreset,
+        LogicalSize, MAX_EDITOR_HISTORY_ENTRIES, NATIVE_RELEASE_RETRY_INTERVAL, NativeMapping,
+        PendingFrame, PointIngressDiagnostic, RAW_MOTION_PROBE_TIMEOUT, ReferenceDocumentPreset,
         STRESS_DOCUMENT_LINES, SemanticAdapter, SemanticCommand, StyleEnvironment,
-        SurfaceBuildContext,
+        SurfaceBuildContext, earliest_host_deadline,
         mouse_input::{
             MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
             translate_mouse_button,
         },
-        earliest_host_deadline, native_release_retry_due, push_editor_history,
-        raw_motion_probe_expired, translate_modifiers,
+        native_release_retry_due, push_editor_history, raw_motion_probe_expired,
+        translate_modifiers,
     };
     use runenui_core::{
         InputDeviceId, KeyModifiers, KeyboardPhase, LogicalPoint, PointerButton, PointerPhase,
@@ -2686,7 +2686,10 @@ mod tests {
             earliest_host_deadline(Some(pending_at), Some(retry_at)),
             Some(retry_at)
         );
-        assert_eq!(earliest_host_deadline(Some(pending_at), None), Some(pending_at));
+        assert_eq!(
+            earliest_host_deadline(Some(pending_at), None),
+            Some(pending_at)
+        );
         assert_eq!(earliest_host_deadline(None, Some(retry_at)), Some(retry_at));
         assert_eq!(earliest_host_deadline(None, None), None);
     }

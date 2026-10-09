@@ -601,7 +601,10 @@ mod tests {
             ]
         );
         assert!(modes.observe_motion(&scope(1), (3.0, 4.0), &mut host));
-        assert_eq!(host.calls.last(), Some(&(Mode::LockedRelative, Some(false))));
+        assert_eq!(
+            host.calls.last(),
+            Some(&(Mode::LockedRelative, Some(false)))
+        );
         assert!(modes.release(&mut host).is_ok());
         assert_eq!(host.mode, Mode::Absolute);
         assert!(host.visible);
