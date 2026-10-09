@@ -14,20 +14,23 @@ mod device_identity;
 mod framework_services;
 mod keyboard_input;
 mod mouse_input;
-mod proof_trace;
 mod pointer_mode;
+mod proof_trace;
 mod text_input;
 mod wheel_input;
 
 use accessibility::{AccessibilityEvent, SemanticAdapter};
 use device_identity::{DeviceIdentityError, DeviceIdentityMap};
 use framework_services::NativeFrameworkServices;
-use pointer_mode::{Mode as HostPointerMode, Outcome as HostPointerOutcome, Scope as HostPointerScope, State as HostPointerState, WinitPointer};
 use keyboard_input::{
     KeyboardIngressDiagnostic, KeyboardInputOutcome, KeyboardInputState, NativeKeyTransition,
 };
 use mouse_input::{
     MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
+};
+use pointer_mode::{
+    Mode as HostPointerMode, Outcome as HostPointerOutcome, Scope as HostPointerScope,
+    State as HostPointerState, WinitPointer,
 };
 use runenui_core::{
     Color, CommandOrigin, CommittedTextEvent, DragDropEvent, DragDropPayloadKind,
@@ -54,7 +57,9 @@ use text_input::{TextInputState, keyboard_committed_text_candidate, translate_pr
 use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalPosition, PhysicalSize},
-    event::{DeviceEvent, DeviceId, ElementState, Ime, MouseButton, Touch, TouchPhase, WindowEvent},
+    event::{
+        DeviceEvent, DeviceId, ElementState, Ime, MouseButton, Touch, TouchPhase, WindowEvent,
+    },
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
     keyboard::{Key, ModifiersState, NamedKey},
     window::{Window, WindowId},
@@ -856,7 +861,9 @@ impl ReferenceHost {
         let window = event_loop
             .create_window(attributes)
             .map_err(|error| format!("native window creation failed: {error}"))?;
-        self.window_epoch = self.window_epoch.checked_add(1)
+        self.window_epoch = self
+            .window_epoch
+            .checked_add(1)
             .ok_or_else(|| String::from("native host window epoch exhausted"))?;
         let activation_handler = self.semantic_adapter.activation_handler();
         let accessibility = accesskit_winit::Adapter::with_mixed_handlers(
@@ -1350,7 +1357,9 @@ impl ReferenceHost {
         proof!("stage=window_focus focused={focused}");
         if focused {
             if let Some(window) = self.window.as_ref() {
-                let result = self.framework_services.pointer_modes_mut()
+                let result = self
+                    .framework_services
+                    .pointer_modes_mut()
                     .focus_changed(true, &mut WinitPointer(window));
                 proof!("stage=host_pointer_focus_acquired result={result:?}");
             }
@@ -1365,7 +1374,9 @@ impl ReferenceHost {
 
         self.release_host_pointer("native window lost focus");
         if let Some(window) = self.window.as_ref() {
-            let result = self.framework_services.pointer_modes_mut()
+            let result = self
+                .framework_services
+                .pointer_modes_mut()
                 .focus_changed(false, &mut WinitPointer(window));
             proof!("stage=host_pointer_focus_lost result={result:?}");
         }
@@ -1623,7 +1634,12 @@ impl ReferenceHost {
     }
 
     fn current_host_pointer_scope(&self) -> Option<HostPointerScope> {
-        let surface = self.displayed_frame.as_ref()?.input_context.surface_id().clone();
+        let surface = self
+            .displayed_frame
+            .as_ref()?
+            .input_context
+            .surface_id()
+            .clone();
         (self.window_epoch != 0 && self.window.is_some()).then_some(HostPointerScope {
             window_epoch: self.window_epoch,
             surface: Some(surface),
@@ -1637,9 +1653,15 @@ impl ReferenceHost {
         };
         let returning_from_relative = matches!(
             self.framework_services.pointer_modes().state(),
-            HostPointerState::AwaitingMotion(_) | HostPointerState::Active(pointer_mode::Lease { mode: HostPointerMode::LockedRelative, .. })
+            HostPointerState::AwaitingMotion(_)
+                | HostPointerState::Active(pointer_mode::Lease {
+                    mode: HostPointerMode::LockedRelative,
+                    ..
+                })
         );
-        let result = self.framework_services.pointer_modes_mut()
+        let result = self
+            .framework_services
+            .pointer_modes_mut()
             .release(&mut WinitPointer(window));
         self.framework_services.refresh_native_input_method(window);
         proof!("stage=host_pointer_release reason={reason:?} result={result:?}");
@@ -1653,7 +1675,10 @@ impl ReferenceHost {
     }
 
     fn toggle_host_pointer(&mut self, event_loop: &ActiveEventLoop, desired: HostPointerMode) {
-        if !matches!(self.framework_services.pointer_modes().state(), HostPointerState::Absolute) {
+        if !matches!(
+            self.framework_services.pointer_modes().state(),
+            HostPointerState::Absolute
+        ) {
             self.release_host_pointer("host pointer mode toggle to UI");
             if !self.invalidate_mouse_point_authority(event_loop, "host mode returned to UI") {
                 return;
@@ -1681,8 +1706,12 @@ impl ReferenceHost {
             return;
         };
         self.raw_motion_samples = 0;
-        let result = self.framework_services.pointer_modes_mut().request(
-            scope, desired, &mut WinitPointer(window),
+        let result = self
+            .framework_services
+            .pointer_modes_mut().request(
+            scope,
+            desired,
+            &mut WinitPointer(window),
         );
         self.framework_services.refresh_native_input_method(window);
         proof!("stage=host_pointer_acquire result={result:?}");
@@ -2321,8 +2350,14 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
         let Some(scope) = self.current_host_pointer_scope() else {
             return;
         };
-        if !self.framework_services.pointer_modes_mut().observe_motion(&scope, delta)
-            || !self.framework_services.pointer_modes().gameplay_motion_allowed()
+        if !self
+            .framework_services
+            .pointer_modes_mut()
+            .observe_motion(&scope, delta)
+            || !self
+                .framework_services
+                .pointer_modes()
+                .gameplay_motion_allowed()
         {
             return;
         }
@@ -2357,7 +2392,9 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
                 proof!("stage=window_exit");
                 self.release_host_pointer("window destroy/close");
                 if let Some(window) = self.window.as_ref() {
-                    let result = self.framework_services.pointer_modes_mut()
+                    let result = self
+                    .framework_services
+                    .pointer_modes_mut()
                         .retire_window(&mut WinitPointer(window));
                     proof!("stage=host_pointer_window_retired result={result:?}");
                 }
@@ -2420,7 +2457,7 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
                 if self.framework_services.pointer_modes().ui_pointer_allowed() {
                     self.handle_ime_state(event_loop, ime);
                 }
-            },
+            }
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.modifiers = translate_modifiers(modifiers.state());
                 proof!("stage=modifiers_changed modifiers={:?}", self.modifiers);
@@ -2463,10 +2500,14 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
 impl Drop for ReferenceHost {
     fn drop(&mut self) {
         if let Some(window) = self.window.as_ref() {
-            if let Err(error) = self.framework_services.pointer_modes_mut()
+            if let Err(error) = self
+                .framework_services
+                .pointer_modes_mut()
                 .retire_window(&mut WinitPointer(window))
             {
-                eprintln!("reference_winit drop could not confirm native pointer release: {error:?}");
+                eprintln!(
+                    "reference_winit drop could not confirm native pointer release: {error:?}"
+                );
             }
         }
     }

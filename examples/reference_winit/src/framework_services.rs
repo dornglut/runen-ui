@@ -1,10 +1,10 @@
+use crate::pointer_mode::{PointerModes, WinitPointer};
 use arboard::Clipboard;
 use runenui_core::{
     ClipboardClassification, ClipboardText, CursorShape, DragDropPhase, FrameworkServiceFailure,
     FrameworkServiceRequest, FrameworkServiceResponse, WorkSequence,
 };
 use std::{collections::HashMap, path::PathBuf};
-use crate::pointer_mode::{PointerModes, WinitPointer};
 use winit::{
     dpi::{LogicalPosition, LogicalSize},
     window::{CursorIcon, Window},
@@ -186,7 +186,8 @@ impl NativeFrameworkServices {
                         FrameworkServiceFailure::Unavailable,
                     ));
                 };
-                self.pointer_modes.set_ui_cursor(&mut WinitPointer(window), *shape, *visible);
+                self.pointer_modes
+                    .set_ui_cursor(&mut WinitPointer(window), *shape, *visible);
                 FrameworkServiceResponse::Cursor(Ok(()))
             }
             FrameworkServiceRequest::DragDrop {
@@ -387,6 +388,35 @@ mod tests {
         services.requested_ime_allowed = true;
         assert!(!services.effective_ime_allowed());
         services.native_window_focused = true;
+        assert!(!services.effective_ime_allowed());
+        struct FakePointer;
+        impl crate::pointer_mode::Platform for FakePointer {
+            fn grab(
+                &mut self,
+                _mode: crate::pointer_mode::Mode,
+            ) -> Result<(), crate::pointer_mode::Failure> {
+                Ok(())
+            }
+            fn cursor(&mut self, _shape: CursorShape, _visible: bool) {}
+        }
+        services
+            .pointer_modes
+            .focus_changed(true, &mut FakePointer)
+            .expect("host focus becomes valid");
+        assert!(services.effective_ime_allowed());
+        let scope = crate::pointer_mode::Scope {
+            window_epoch: 1,
+            surface: None,
+        };
+        services
+            .pointer_modes
+            .request(scope, crate::pointer_mode::Mode::LockedRelative, &mut FakePointer)
+            .expect("fake native lock acquired");
+        assert!(!services.effective_ime_allowed());
+        services
+            .pointer_modes
+            .release(&mut FakePointer)
+            .expect("native release succeeds");
         assert!(services.effective_ime_allowed());
         services.reset_native_window_ime(None);
         assert!(!services.effective_ime_allowed());

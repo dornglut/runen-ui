@@ -109,20 +109,34 @@ impl PointerModes {
     }
 
     pub fn ui_pointer_allowed(&self) -> bool {
-        self.focused && matches!(
-            self.state,
-            State::Absolute | State::Active(Lease { mode: Mode::ConfinedAbsolute, .. })
-        )
+        self.focused
+            && matches!(
+                self.state,
+                State::Absolute
+                    | State::Active(Lease {
+                        mode: Mode::ConfinedAbsolute,
+                        ..
+                    })
+            )
     }
 
     pub fn gameplay_motion_allowed(&self) -> bool {
-        self.focused && matches!(
-            self.state,
-            State::Active(Lease { mode: Mode::LockedRelative, .. })
-        )
+        self.focused
+            && matches!(
+                self.state,
+                State::Active(Lease {
+                    mode: Mode::LockedRelative,
+                    ..
+                })
+            )
     }
 
-    pub fn set_ui_cursor(&mut self, platform: &mut impl Platform, shape: CursorShape, visible: bool) {
+    pub fn set_ui_cursor(
+        &mut self,
+        platform: &mut impl Platform,
+        shape: CursorShape,
+        visible: bool,
+    ) {
         self.ui_shape = shape;
         self.ui_visible = visible;
         self.apply_cursor(platform);
@@ -135,7 +149,11 @@ impl PointerModes {
         }
         let locked = matches!(
             self.state,
-            State::AwaitingMotion(_) | State::Active(Lease { mode: Mode::LockedRelative, .. })
+            State::AwaitingMotion(_)
+                | State::Active(Lease {
+                    mode: Mode::LockedRelative,
+                    ..
+                })
         );
         if locked {
             platform.cursor(CursorShape::Default, false);
@@ -146,7 +164,11 @@ impl PointerModes {
         }
     }
 
-    pub fn focus_changed(&mut self, focused: bool, platform: &mut impl Platform) -> Result<(), Failure> {
+    pub fn focus_changed(
+        &mut self,
+        focused: bool,
+        platform: &mut impl Platform,
+    ) -> Result<(), Failure> {
         self.focused = focused;
         if !focused {
             // Loss of activation invalidates the native lease before runtime work.
@@ -185,7 +207,11 @@ impl PointerModes {
         self.release(platform)?;
         let generation = self.next_generation.ok_or(Failure::Exhausted)?;
         self.next_generation = generation.checked_add(1);
-        let lease = Lease { generation, scope: scope.clone(), mode: desired };
+        let lease = Lease {
+            generation,
+            scope: scope.clone(),
+            mode: desired,
+        };
         // A failed native grab can still have partially changed native state.
         if let Err(error) = platform.grab(desired) {
             self.state = State::ReleaseFailed;
@@ -212,7 +238,11 @@ impl PointerModes {
     /// A genuine finite host raw-device observation certifies motion availability,
     /// without claiming a window association from a device ID.
     pub fn observe_motion(&mut self, scope: &Scope, delta: (f64, f64)) -> bool {
-        if !self.focused || self.scope.as_ref() != Some(scope) || !delta.0.is_finite() || !delta.1.is_finite() {
+        if !self.focused
+            || self.scope.as_ref() != Some(scope)
+            || !delta.0.is_finite()
+            || !delta.1.is_finite()
+        {
             return false;
         }
         match &self.state {
@@ -222,8 +252,9 @@ impl PointerModes {
                 self.state = State::Active(lease.clone());
                 true
             }
-            State::Active(lease)
-                if &lease.scope == scope && lease.mode == Mode::LockedRelative => true,
+            State::Active(lease) if &lease.scope == scope && lease.mode == Mode::LockedRelative => {
+                true
+            }
             _ => false,
         }
     }
@@ -267,7 +298,9 @@ mod tests {
         calls: Vec<(Mode, Option<bool>)>,
     }
     impl Default for Mode {
-        fn default() -> Self { Self::Absolute }
+        fn default() -> Self {
+            Self::Absolute
+        }
     }
     impl Platform for Fake {
         fn grab(&mut self, mode: Mode) -> Result<(), Failure> {
@@ -284,7 +317,10 @@ mod tests {
         }
     }
     fn scope(epoch: u64) -> Scope {
-        Scope { window_epoch: epoch, surface: None }
+        Scope {
+            window_epoch: epoch,
+            surface: None,
+        }
     }
     fn focused() -> (PointerModes, Fake) {
         let mut controller = PointerModes::default();
@@ -324,7 +360,8 @@ mod tests {
     #[test]
     fn lock_failure_does_not_fallback_to_confinement() {
         let (mut modes, mut host) = focused();
-        host.failures.push((Mode::LockedRelative, Failure::Unsupported));
+        host.failures
+            .push((Mode::LockedRelative, Failure::Unsupported));
         assert_eq!(
             modes.request(scope(1), Mode::LockedRelative, &mut host),
             Err(Failure::Unsupported)
@@ -337,7 +374,9 @@ mod tests {
     #[test]
     fn release_failure_never_reenables_input_or_accepts_new_lease() {
         let (mut modes, mut host) = focused();
-        modes.request(scope(1), Mode::LockedRelative, &mut host).unwrap();
+        modes
+            .request(scope(1), Mode::LockedRelative, &mut host)
+            .unwrap();
         host.failures.push((Mode::Absolute, Failure::Native));
         assert_eq!(modes.release(&mut host), Err(Failure::ReleaseFailed));
         assert!(!modes.ui_pointer_allowed());
@@ -354,7 +393,8 @@ mod tests {
     #[test]
     fn failure_after_partial_acquire_requires_rollback() {
         let (mut modes, mut host) = focused();
-        host.failures.push((Mode::ConfinedAbsolute, Failure::Ignored));
+        host.failures
+            .push((Mode::ConfinedAbsolute, Failure::Ignored));
         host.failures.push((Mode::Absolute, Failure::Native));
         assert_eq!(
             modes.request(scope(1), Mode::ConfinedAbsolute, &mut host),
@@ -368,7 +408,9 @@ mod tests {
     #[test]
     fn ui_cursor_updates_cannot_unhide_locked_cursor() {
         let (mut modes, mut host) = focused();
-        modes.request(scope(1), Mode::LockedRelative, &mut host).unwrap();
+        modes
+            .request(scope(1), Mode::LockedRelative, &mut host)
+            .unwrap();
         modes.set_ui_cursor(&mut host, CursorShape::Pointer, true);
         assert!(!host.visible);
         modes.focus_changed(false, &mut host).unwrap();
@@ -383,22 +425,30 @@ mod tests {
     #[test]
     fn focus_loss_revokes_pending_motion_and_requires_new_acquisition() {
         let (mut modes, mut host) = focused();
-        let pending = modes.request(scope(1), Mode::LockedRelative, &mut host).unwrap();
+        let pending = modes
+            .request(scope(1), Mode::LockedRelative, &mut host)
+            .unwrap();
         modes.focus_changed(false, &mut host).unwrap();
         assert!(!modes.observe_motion(&scope(1), (4.0, 6.0)));
         assert!(!modes.gameplay_motion_allowed());
         assert!(host.visible);
         modes.focus_changed(true, &mut host).unwrap();
-        let fresh = modes.request(scope(1), Mode::LockedRelative, &mut host).unwrap();
+        let fresh = modes
+            .request(scope(1), Mode::LockedRelative, &mut host)
+            .unwrap();
         assert_ne!(pending, fresh);
     }
 
     #[test]
     fn window_handoff_releases_old_lease_without_input_retargeting() {
         let (mut modes, mut host) = focused();
-        modes.request(scope(1), Mode::LockedRelative, &mut host).unwrap();
+        modes
+            .request(scope(1), Mode::LockedRelative, &mut host)
+            .unwrap();
         assert!(modes.observe_motion(&scope(1), (1.0, 2.0)));
-        let next = modes.request(scope(2), Mode::LockedRelative, &mut host).unwrap();
+        let next = modes
+            .request(scope(2), Mode::LockedRelative, &mut host)
+            .unwrap();
         assert!(matches!(next, Outcome::WaitingForMotion(_)));
         assert!(!modes.observe_motion(&scope(1), (8.0, 9.0)));
         assert!(modes.observe_motion(&scope(2), (8.0, 9.0)));
@@ -410,7 +460,10 @@ mod tests {
         let (mut modes, mut host) = focused();
         modes.next_generation = None;
         let before = host.calls.len();
-        assert_eq!(modes.request(scope(1), Mode::LockedRelative, &mut host), Err(Failure::Exhausted));
+        assert_eq!(
+            modes.request(scope(1), Mode::LockedRelative, &mut host),
+            Err(Failure::Exhausted)
+        );
         assert!(modes.ui_pointer_allowed());
         assert_eq!(host.calls.len(), before + 1); // harmless baseline restoration
         assert_eq!(host.mode, Mode::Absolute);
@@ -430,13 +483,21 @@ mod tests {
     #[test]
     fn repeated_request_is_idempotent_and_retirement_invalidates_lease() {
         let (mut modes, mut host) = focused();
-        let first = modes.request(scope(1), Mode::LockedRelative, &mut host).unwrap();
+        let first = modes
+            .request(scope(1), Mode::LockedRelative, &mut host)
+            .unwrap();
         let count = host.calls.len();
-        assert_eq!(modes.request(scope(1), Mode::LockedRelative, &mut host), Ok(first));
+        assert_eq!(
+            modes.request(scope(1), Mode::LockedRelative, &mut host),
+            Ok(first)
+        );
         assert_eq!(host.calls.len(), count);
         assert!(modes.observe_motion(&scope(1), (1.0, -1.0)));
         modes.retire_window(&mut host).unwrap();
         assert!(!modes.observe_motion(&scope(1), (1.0, -1.0)));
-        assert_eq!(modes.request(scope(2), Mode::LockedRelative, &mut host), Err(Failure::Inactive));
+        assert_eq!(
+            modes.request(scope(2), Mode::LockedRelative, &mut host),
+            Err(Failure::Inactive)
+        );
     }
 }
