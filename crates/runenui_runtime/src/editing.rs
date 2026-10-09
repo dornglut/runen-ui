@@ -1595,7 +1595,12 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("checked source sessions reconcile"));
 
         let normalized = registry
-            .prepare_insert(&namespace, &normalized_owner, "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j", None)
+            .prepare_insert(
+                &namespace,
+                &normalized_owner,
+                "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j",
+                None,
+            )
             .unwrap_or_else(|_| unreachable!("single-line edit is prepared"));
         assert_eq!(normalized.action.replacement_text(), "b c d e f g h i j");
         assert_eq!(
@@ -1610,9 +1615,17 @@ mod tests {
         );
 
         let original = registry
-            .prepare_insert(&namespace, &multiline_owner, "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j", None)
+            .prepare_insert(
+                &namespace,
+                &multiline_owner,
+                "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j",
+                None,
+            )
             .unwrap_or_else(|_| unreachable!("multiline edit is prepared"));
-        assert_eq!(original.action.replacement_text(), "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j");
+        assert_eq!(
+            original.action.replacement_text(),
+            "b\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j"
+        );
         assert_eq!(
             registry.active[&multiline_owner].projected_text.as_ref(),
             "ab\r\nc\nd\re\u{2028}f\u{2029}g\u{0085}h\u{000B}i\u{000C}j"

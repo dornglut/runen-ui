@@ -204,6 +204,9 @@ struct TextFieldState {
     selection: TextSelection,
     mode: SemanticEditableMode,
     placeholder: Option<String>,
+    labelled_by: Option<ElementId>,
+    described_by: Option<ElementId>,
+    error_message: Option<ElementId>,
     invalid: Option<SemanticInvalidState>,
     required: bool,
     read_only: bool,
@@ -212,9 +215,6 @@ struct TextFieldState {
 
 struct TextFieldWidget<Action> {
     state: TextFieldState,
-    labelled_by: Option<ElementId>,
-    described_by: Option<ElementId>,
-    error_message: Option<ElementId>,
     mapper: Rc<dyn Fn(EditIntent) -> Action>,
     on_submit: Option<Box<dyn FnMut() -> Action>>,
 }
@@ -235,7 +235,7 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
     }
 
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
-        if state.content != self.state.content {
+        if state.content != self.state.content || state.mode != self.state.mode {
             context.invalidate(
                 WidgetInvalidation::LAYOUT
                     | WidgetInvalidation::PAINT
@@ -243,6 +243,9 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             );
         } else if state != &self.state {
             context.invalidate(WidgetInvalidation::SEMANTICS | WidgetInvalidation::PAINT);
+        }
+        if state.disabled != self.state.disabled || state.read_only != self.state.read_only {
+            context.invalidate(WidgetInvalidation::INTERACTION);
         }
         state.clone_from(&self.state);
     }
@@ -362,9 +365,9 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             node = node.with_placeholder(placeholder.clone());
         }
         for (target, kind) in [
-            (&self.labelled_by, SemanticRelationshipKind::LabelledBy),
-            (&self.described_by, SemanticRelationshipKind::DescribedBy),
-            (&self.error_message, SemanticRelationshipKind::ErrorMessage),
+            (&self.state.labelled_by, SemanticRelationshipKind::LabelledBy),
+            (&self.state.described_by, SemanticRelationshipKind::DescribedBy),
+            (&self.state.error_message, SemanticRelationshipKind::ErrorMessage),
         ] {
             if let Some(element_id) = target {
                 node = node.with_relationship(SemanticRelationship::new(
@@ -394,14 +397,14 @@ impl<Action: 'static> View<Action> for TextField<Action> {
                     selection: self.selection,
                     mode: self.mode,
                     placeholder: self.placeholder,
+                    labelled_by: self.labelled_by,
+                    described_by: self.described_by,
+                    error_message: self.error_message,
                     invalid: self.invalid,
                     required: self.required,
                     read_only: self.read_only,
                     disabled: self.disabled,
                 },
-                labelled_by: self.labelled_by,
-                described_by: self.described_by,
-                error_message: self.error_message,
                 mapper: self.mapper,
                 on_submit: self.on_submit,
             })),
