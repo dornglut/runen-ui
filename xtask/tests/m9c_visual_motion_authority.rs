@@ -131,10 +131,18 @@ fn image_and_shaped_text_publication_paths_have_no_retired_exact_mapping_or_pain
         );
     }
 
+    // Both the ordinary source and the optional passive hint consume the
+    // same M9C effective style, retained M8 text artifacts and renderer-neutral
+    // shaped-resource lease path. Neither has a privileged paint bypass.
     for required in [
         "PaintContributionItem::shaped_text_run(",
         ".lease_shaped_run(run.resource_ref())",
-        "let item = text_run_item(run, computed, layout.text_origins[mounted_preorder]);",
+        "let computed = effective.node(mounted_preorder).computed_style();",
+        "let (state, origin) = if visual_hint {",
+        "&layout.text_layouts[mounted_preorder]",
+        "&layout.placeholder_text_layouts[mounted_preorder]",
+        "if let Some(artifact) = state.artifact() {",
+        "let item = text_run_item(run, computed, origin).with_opacity(opacity);",
     ] {
         if !resolve.contains(required) {
             return Err(format!(
