@@ -662,7 +662,6 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                     constraints = constraints.with_alignment_min_inline(minimum);
                 }
                 let wrap_mode = match descriptor.wrap_mode() {
-                    TextLeafWrap::Wrap => TextWrapMode::Wrap,
                     TextLeafWrap::NoWrap => TextWrapMode::NoWrap,
                     _ => TextWrapMode::Wrap,
                 };
