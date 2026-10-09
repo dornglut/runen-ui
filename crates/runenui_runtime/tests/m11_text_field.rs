@@ -285,7 +285,7 @@ fn controlled_font_pointer_hit_and_selection_share_m10_caret_geometry() {
     register_font(&mut runtime);
     let initial = publication(&mut runtime);
     let owner = runtime.index().nodes()[0].id().clone();
-    let point = LogicalPoint::try_new(2.0, 2.0)
+    let point = LogicalPoint::new(2.0, 2.0)
         .unwrap_or_else(|_| unreachable!("pointer coordinates are finite"));
     assert_eq!(initial.hit_test_scene().target_at(point), Some(&owner));
     let selected_before = initial.semantic_publication().snapshot().nodes()[0]
