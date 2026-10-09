@@ -857,6 +857,41 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                                     .unwrap_or_else(|_| {
                                         unreachable!("validated lengths are finite")
                                     });
+                            if show_placeholder
+                                && let Some(hint) =
+                                    descriptor.visual_placeholder().filter(|hint| !hint.is_empty())
+                            {
+                                // M8 shapes the hint separately: source, caret, IME,
+                                // intrinsic size and ordinary semantics remain untouched.
+                                let hint_request = TextRequest::new(
+                                    hint,
+                                    request.typography().clone(),
+                                    request.constraints(),
+                                )
+                                .with_paragraph_style(request.paragraph_style().clone());
+                                let mut hint_state = self.placeholder_text_layouts[index].clone();
+                                match self.text_system.layout_text(&mut hint_state, &hint_request) {
+                                    Ok(hint_outcome) => {
+                                        let hint_height = hint_outcome.artifact().size().height();
+                                        let slack = (block_extent - hint_height).max(0.0);
+                                        let offset = match descriptor.block_placement() {
+                                            TextBlockPlacement::Start => 0.0,
+                                            TextBlockPlacement::Center => slack / 2.0,
+                                            TextBlockPlacement::End => slack,
+                                        };
+                                        let top = padding
+                                            .top()
+                                            .saturating_add(logical_extent(offset));
+                                        self.final_placeholder_states[index] = Some(hint_state);
+                                        self.final_placeholder_origins[index] =
+                                            LogicalPoint::new(padding.left().get(), top.get())
+                                                .unwrap_or_else(|_| {
+                                                    unreachable!("validated origin is finite")
+                                                });
+                                    }
+                                    Err(error) => self.text_error = Some(error),
+                                }
+                            }
                         }
                         text_size
                     }
