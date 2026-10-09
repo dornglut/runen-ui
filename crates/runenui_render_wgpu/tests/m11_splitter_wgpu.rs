@@ -42,7 +42,7 @@ impl UiApp for SplitterApp {
         splitter("Audio", 0.0, 100.0, value.get(), 10.0)
             .unwrap_or_else(|_| unreachable!("finite Splitter range"))
             .on_resize(|_| SemanticNumber::new(0.0).unwrap_or_else(|_| unreachable!()))
-            .background(Color::rgba(60, 210, 120, 255))
+            .foreground(Color::rgba(60, 210, 120, 255))
     }
 
     fn update(state: &mut Self::State, value: Self::Action) {

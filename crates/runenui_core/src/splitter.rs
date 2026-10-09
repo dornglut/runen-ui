@@ -488,11 +488,12 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
             ),
         }
         .unwrap_or_else(|_| unreachable!("checked local geometry"));
-        let brush = context
-            .computed_style()
-            .background()
-            .cloned()
-            .unwrap_or_else(|| Brush::solid(Color::rgba(130, 140, 155, 255)));
+        let brush = Brush::solid(
+            context
+                .computed_style()
+                .foreground()
+                .unwrap_or(Color::rgba(130, 140, 155, 255)),
+        );
         PaintContribution::new(vec![PaintContributionItem::fill(
             SceneShape::rect(rect),
             brush,
