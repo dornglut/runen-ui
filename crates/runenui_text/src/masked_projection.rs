@@ -680,6 +680,57 @@ mod tests {
             mask.position_from_display_offset(3 * '•'.len_utf8(), TextAffinity::Downstream),
             Ok(synthetic.clone())
         );
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        assert!(
+            system
+                .register_font_bytes(FONT.to_vec())
+                .unwrap_or_else(|_| unreachable!("font registers"))
+                > 0
+        );
+        let mut state = TextLayoutState::new();
+        system
+            .layout_text(
+                &mut state,
+                &TextRequest::new(
+                    mask.display_text(),
+                    fixture_typography(),
+                    TextConstraints::unbounded(),
+                ),
+            )
+            .unwrap_or_else(|_| unreachable!("mask shapes"));
+        let map = mask
+            .caret_map(&state)
+            .unwrap_or_else(|_| unreachable!("one retained layout is correlated"));
+        assert_eq!(
+            map.legal_source_offsets(),
+            Err(TextMaskedProjectionError::ForeignComposition)
+        );
+        assert!(
+            map.caret_rect(&synthetic, LogicalLength::from(1_u8))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn composed_preedit_rejects_foreign_hidden_and_wrong_boundary_positions() {
+        let source = "abXYZcd";
+        let composing = "かな";
+        let namespace = RuntimeNamespace::__runtime_new();
+        let replacement = TextRange::new(snapshot(), source, 2, 5)
+            .unwrap_or_else(|_| unreachable!("replacement is checked"));
+        let projection = Arc::new(
+            TextPreeditProjection::new(
+                snapshot(),
+                source,
+                replacement,
+                namespace.__runtime_composition_generation(91),
+                composing,
+                None,
+            )
+            .unwrap_or_else(|_| unreachable!("preedit is checked")),
+        );
+        let mask = TextMaskedProjection::preedit(Arc::clone(&projection))
+            .unwrap_or_else(|_| unreachable!("mask is checked"));
         let foreign = TextDisplayPosition::Preedit(
             TextPreeditPosition::new(
                 snapshot(),
@@ -717,35 +768,6 @@ mod tests {
             Err(TextMaskedProjectionError::InvalidAffinity)
         );
 
-        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
-        assert!(
-            system
-                .register_font_bytes(FONT.to_vec())
-                .unwrap_or_else(|_| unreachable!("font registers"))
-                > 0
-        );
-        let mut state = TextLayoutState::new();
-        system
-            .layout_text(
-                &mut state,
-                &TextRequest::new(
-                    mask.display_text(),
-                    fixture_typography(),
-                    TextConstraints::unbounded(),
-                ),
-            )
-            .unwrap_or_else(|_| unreachable!("mask shapes"));
-        let map = mask
-            .caret_map(&state)
-            .unwrap_or_else(|_| unreachable!("one retained layout is correlated"));
-        assert_eq!(
-            map.legal_source_offsets(),
-            Err(TextMaskedProjectionError::ForeignComposition)
-        );
-        assert!(
-            map.caret_rect(&synthetic, LogicalLength::from(1_u8))
-                .is_ok()
-        );
     }
 
     #[test]
