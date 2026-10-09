@@ -603,3 +603,31 @@ fn reverse_drag_from_a_published_bound_does_not_lose_queued_motion() {
     assert_eq!(runtime.state().proposals, 3, "both deltas must enter FIFO after SetValue");
     inspect(&publish(&mut runtime), 100.0, true, false);
 }
+
+#[test]
+fn absolute_set_value_after_queued_step_is_not_dropped_as_stale_noop() {
+    let mut runtime = fresh();
+    let owner = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id().is_some_and(|id| id.as_str() == "controlled.splitter")
+        })
+        .unwrap_or_else(|| unreachable!("mounted splitter"))
+        .id()
+        .clone();
+    runtime.submit_command(
+        owner.clone(),
+        SemanticCommand::Increment,
+        CommandOrigin::programmatic(),
+    ).unwrap_or_else(|_| unreachable!("step"));
+    runtime.submit_command(
+        owner,
+        SemanticCommand::SetValue(number(50.0)),
+        CommandOrigin::programmatic(),
+    ).unwrap_or_else(|_| unreachable!("reset to previously published value"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().size, 50.0);
+    assert_eq!(runtime.state().proposals, 2, "the final absolute value must remain ordered after the step");
+}

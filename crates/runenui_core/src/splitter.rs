@@ -274,7 +274,7 @@ fn semantic_request(state: &SplitterState, command: SemanticCommand) -> Option<S
 }
 
 fn request_admissible(state: &SplitterState, request: SplitterRequest) -> bool {
-    let (Some(min), Some(max), Some(current)) = (
+    let (Some(min), Some(max), Some(_current)) = (
         state.range.minimum(),
         state.range.maximum(),
         state.range.current(),
@@ -287,8 +287,10 @@ fn request_admissible(state: &SplitterState, request: SplitterRequest) -> bool {
         // is processed. Admission may reject zero, but MUST NOT filter direction
         // using the previous mounted value; application update owns clamping.
         SplitterRequest::AdjustBy(delta) => delta.get() != 0.0,
+        // An absolute request equal to the last published value still matters:
+        // queued earlier relative requests may already have moved app state.
         SplitterRequest::SetValue(value) => {
-            value != current && (min.get()..=max.get()).contains(&value.get())
+            (min.get()..=max.get()).contains(&value.get())
         }
         SplitterRequest::MoveBy(delta) => delta.is_finite() && delta != 0.0,
     }
