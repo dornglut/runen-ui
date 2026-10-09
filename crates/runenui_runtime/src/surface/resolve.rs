@@ -16,8 +16,9 @@ use runenui_core::{
     HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
     LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
     PaintContributionItem, Radius, SceneShape, ScrollBarLayout, ScrollChrome,
-    ScrollControlSnapshot, SemanticContributionContext, StyleEnvironment, StyleInteractionState,
-    StyleResolution, SurfacePresentation, TextAffinity, WidgetDiagnostic, WidgetTypeId,
+    ScrollControlSnapshot, SemanticContributionContext, SceneOpacity, StyleEnvironment,
+    StyleInteractionState, StyleResolution, SurfacePresentation, TextAffinity,
+    WidgetDiagnostic, WidgetTypeId,
     resolve_style_in_environment, style_effects_between,
 };
 use runenui_text::{ShapedTextLease, TextDisplaySelection, TextPreeditProjection, TextSystem};
@@ -1247,6 +1248,7 @@ fn append_shaped_text(
     layout: &CachedLayoutFacts,
     computed: &ComputedStyle,
     owner: OwnerPaintContext<'_>,
+    visual_hint: bool,
     next_local_order: &mut usize,
     text_system: &mut TextSystem,
     shaped_text_leases: &mut Vec<ShapedTextLease>,
@@ -1255,7 +1257,28 @@ fn append_shaped_text(
     #[cfg(feature = "internal-test-seams")]
     let mut profiled_run_count = 0usize;
     let mounted_preorder = owner.mounted_preorder;
-    if let Some(artifact) = layout.text_layouts[mounted_preorder].artifact() {
+    let (state, origin) = if visual_hint {
+        (&layout.placeholder_text_layouts[mounted_preorder],
+         layout.placeholder_text_origins[mounted_preorder])
+    } else {
+        (&layout.text_layouts[mounted_preorder], layout.text_origins[mounted_preorder])
+    };
+    let mut hint_clips = Vec::new();
+    if visual_hint {
+        hint_clips.extend_from_slice(owner.content_clips);
+        let bounds = layout.bounds[mounted_preorder];
+        let local = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
+            .unwrap_or_else(|_| unreachable!("published owner extent is finite"));
+        hint_clips.push(SceneClip::new(SceneShape::rect(local), owner.content_to_surface));
+    }
+    let clips = if visual_hint { hint_clips.as_slice() } else { owner.content_clips };
+    let opacity = if visual_hint {
+        SceneOpacity::new(0.5)
+            .unwrap_or_else(|_| unreachable!("constant visual hint opacity is valid"))
+    } else {
+        SceneOpacity::OPAQUE
+    };
+    if let Some(artifact) = state.artifact() {
         for line in artifact.lines() {
             for run in line.runs() {
                 #[cfg(feature = "internal-test-seams")]
@@ -1268,13 +1291,13 @@ fn append_shaped_text(
                         unreachable!("published text artifact retains its exact shaped resource")
                     });
                 shaped_text_leases.push(lease);
-                let item = text_run_item(run, computed, layout.text_origins[mounted_preorder]);
+                let item = text_run_item(run, computed, origin).with_opacity(opacity);
                 append_runtime_paint_item(
                     &item,
                     owner.mounted_preorder,
                     *next_local_order,
                     owner.content_to_surface,
-                    owner.content_clips,
+                    clips,
                     ordered,
                 );
                 *next_local_order += 1;
@@ -1539,6 +1562,17 @@ pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
             layout,
             computed,
             owner,
+            false,
+            &mut next_local_order,
+            text_system,
+            &mut shaped_text_leases,
+            &mut ordered,
+        );
+        append_shaped_text(
+            layout,
+            computed,
+            owner,
+            true,
             &mut next_local_order,
             text_system,
             &mut shaped_text_leases,
