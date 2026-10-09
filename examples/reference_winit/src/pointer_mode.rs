@@ -129,6 +129,10 @@ impl PointerModes {
     }
 
     fn apply_cursor(&self, platform: &mut impl Platform) {
+        if !self.focused {
+            platform.cursor(CursorShape::Default, true);
+            return;
+        }
         let locked = matches!(
             self.state,
             State::AwaitingMotion(_) | State::Active(Lease { mode: Mode::LockedRelative, .. })
@@ -145,11 +149,10 @@ impl PointerModes {
     pub fn focus_changed(&mut self, focused: bool, platform: &mut impl Platform) -> Result<(), Failure> {
         self.focused = focused;
         if !focused {
-            let release = self.release(platform);
-            // Loss of activation requires a visible fallback, even if UI preference is hidden.
-            platform.cursor(CursorShape::Default, true);
-            release?;
+            // Loss of activation invalidates the native lease before runtime work.
+            self.release(platform)?;
         }
+        self.apply_cursor(platform);
         Ok(())
     }
 
@@ -411,6 +414,17 @@ mod tests {
         assert!(modes.ui_pointer_allowed());
         assert_eq!(host.calls.len(), before + 1); // harmless baseline restoration
         assert_eq!(host.mode, Mode::Absolute);
+    }
+
+    #[test]
+    fn unfocused_cursor_service_cannot_hide_system_cursor() {
+        let (mut modes, mut host) = focused();
+        modes.focus_changed(false, &mut host).unwrap();
+        modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
+        assert!(host.visible);
+        assert!(!modes.ui_pointer_allowed());
+        modes.focus_changed(true, &mut host).unwrap();
+        assert!(!host.visible); // UI baseline resumes only when the host is focused
     }
 
     #[test]
