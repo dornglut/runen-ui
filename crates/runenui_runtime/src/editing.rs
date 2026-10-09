@@ -17,7 +17,6 @@ use runenui_text::{
     TextPreferredInline,
 };
 
-
 #[derive(Clone)]
 pub(crate) enum EditingCaretMap {
     Public(TextCaretMap),
@@ -51,11 +50,14 @@ impl EditingCaretMap {
         if sensitivity == runenui_core::TextSensitivity::Secret {
             let projection = TextMaskedProjection::document(snapshot, source)
                 .map_err(|_| TextCaretMapError::DisplayTextMismatch)?;
-            let map = projection.caret_map(layout)
+            let map = projection
+                .caret_map(layout)
                 .map_err(|_| TextCaretMapError::DisplayTextMismatch)?;
             Ok(Self::Secret(map, snapshot))
         } else {
-            layout.caret_map_for_source(snapshot, source).map(Self::Public)
+            layout
+                .caret_map_for_source(snapshot, source)
+                .map(Self::Public)
         }
     }
 
@@ -95,7 +97,10 @@ impl EditingCaretMap {
                 .navigate(selection, operation, mode, preferred_inline)
                 .map_err(|_| TextCaretMapError::NotCaretStop)?,
         };
-        Ok(EditingNavigationResult { selection, preferred_inline })
+        Ok(EditingNavigationResult {
+            selection,
+            preferred_inline,
+        })
     }
 
     pub(crate) fn hit_test(
@@ -107,7 +112,8 @@ impl EditingCaretMap {
     ) -> Result<Option<runenui_core::TextDisplayPosition>, TextCaretMapError> {
         match self {
             Self::Public(map) => map.hit_test(snapshot, point, eligible, transform),
-            Self::Secret(map, _) => map.hit_test(snapshot, point, eligible, transform)
+            Self::Secret(map, _) => map
+                .hit_test(snapshot, point, eligible, transform)
                 .map_err(|_| TextCaretMapError::NotCaretStop),
         }
     }
@@ -120,7 +126,8 @@ impl EditingCaretMap {
     ) -> Result<runenui_core::TextDisplayPosition, TextCaretMapError> {
         match self {
             Self::Public(map) => map.nearest_position(snapshot, point, transform),
-            Self::Secret(map, _) => map.nearest_position(snapshot, point, transform)
+            Self::Secret(map, _) => map
+                .nearest_position(snapshot, point, transform)
                 .map_err(|_| TextCaretMapError::NotCaretStop),
         }
     }

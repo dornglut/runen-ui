@@ -6,11 +6,11 @@ use runenui_core::{
 };
 
 use super::super::CollectedRoutedOutput;
+use crate::editing::EditingCaretMap;
 use crate::trace::TraceReservation;
 use crate::{
     MountedNodeId, TraceEventContext, TraceSequence, TraceTarget, queue::FocusRequestOverride,
 };
-use crate::editing::EditingCaretMap;
 
 #[derive(Clone, Copy)]
 pub(crate) struct RoutedFailureLineage {

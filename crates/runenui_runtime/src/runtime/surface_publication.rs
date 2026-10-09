@@ -4,12 +4,12 @@ use std::{
     sync::Arc,
 };
 
+use crate::editing::EditingCaretMap;
 use runenui_core::{
     __runtime::RuntimeNamespace, LogicalTransform, MonotonicInstant, ScrollChrome, SurfaceId,
     SurfaceInputContext, TextDocumentSnapshot,
 };
 use runenui_text::{TextCaretMapError, TextLayoutError, TextSystem};
-use crate::editing::EditingCaretMap;
 
 use crate::{
     LogicalPoint, LogicalRect, LogicalSize, MountedNodeId, RedrawAcknowledgeError, RedrawRequest,
@@ -749,10 +749,7 @@ impl SurfacePublicationState {
         context: &SurfaceInputContext,
         owner: &MountedNodeId,
         point: LogicalPoint,
-    ) -> Option<(
-        EditingCaretMap,
-        runenui_core::TextDisplayPosition,
-    )> {
+    ) -> Option<(EditingCaretMap, runenui_core::TextDisplayPosition)> {
         let (snapshot, _) = self.validate_context(context).ok()?;
         snapshot.text_targets.get(owner)?.hit_position(point)
     }
