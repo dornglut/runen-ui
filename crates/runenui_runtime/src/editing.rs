@@ -2029,7 +2029,9 @@ mod tests {
                 &crate::queue::ApplicationActionOrigin::Edit(old.origin.clone()),
                 Some(EditResolution::accepted(old.origin.request, snapshot(1))),
             )
-            .unwrap_or_else(|_| unreachable!("old accepted edit reconciles into new application source"));
+            .unwrap_or_else(|_| {
+                unreachable!("old accepted edit reconciles into new application source")
+            });
         assert!(registry.draining.is_empty());
         assert_eq!(registry.active[&owner].contribution.text(), "abQ");
         assert_eq!(registry.active[&owner].projected_text.as_ref(), "abQ");
@@ -2038,5 +2040,4 @@ mod tests {
             TextNewlinePolicy::ReplaceWithSpace
         );
     }
-
 }
