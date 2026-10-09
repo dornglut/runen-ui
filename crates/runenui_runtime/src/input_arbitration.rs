@@ -41,7 +41,8 @@ impl Hash for InputArbitrationScope {
 }
 impl fmt::Debug for InputArbitrationScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("InputArbitrationScope").finish_non_exhaustive()
+        f.debug_struct("InputArbitrationScope")
+            .finish_non_exhaustive()
     }
 }
 

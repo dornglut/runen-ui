@@ -1,6 +1,6 @@
 //! Read-only projection of the **existing** live focus/input/presentation authority.
 
-use runenui_core::{HostProtocol, WidgetTextInput, __runtime::RuntimeNamespace};
+use runenui_core::{__runtime::RuntimeNamespace, HostProtocol, WidgetTextInput};
 
 use crate::{
     InputArbitrationScope, InputObservationError, InputOwnershipRevision, InputOwnershipSnapshot,
@@ -52,9 +52,7 @@ fn copy_snapshot(
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     /// Returns a new immutable projection without changing any live authority.
-    fn project_input_ownership(
-        &mut self,
-    ) -> Result<InputOwnershipSnapshot, InputObservationError> {
+    fn project_input_ownership(&mut self) -> Result<InputOwnershipSnapshot, InputObservationError> {
         let focused_node = self.focus.focused_node().cloned();
         let text_input_capability = focused_node
             .as_ref()
