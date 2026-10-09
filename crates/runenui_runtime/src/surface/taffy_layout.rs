@@ -78,6 +78,8 @@ type LayoutCoreResult = (
     SurfaceLayoutReport,
     Vec<TextLayoutState>,
     Vec<LogicalPoint>,
+    Vec<TextLayoutState>,
+    Vec<LogicalPoint>,
 );
 
 type LayoutResult = (
@@ -85,6 +87,8 @@ type LayoutResult = (
     Vec<LogicalRect>,
     SurfaceLayoutReport,
     Vec<Option<CachedScrollChromeProjection>>,
+    Vec<TextLayoutState>,
+    Vec<LogicalPoint>,
     Vec<TextLayoutState>,
     Vec<LogicalPoint>,
 );
@@ -98,6 +102,7 @@ struct LayoutPassInputs<'a, Action> {
     preedits: &'a HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
     sensitivities: &'a HashMap<crate::MountedNodeId, TextSensitivity>,
     prior_text_layouts: Option<&'a [TextLayoutState]>,
+    prior_placeholder_layouts: Option<&'a [TextLayoutState]>,
 }
 
 #[allow(
@@ -112,6 +117,7 @@ pub(super) fn layout_resolved_surface<Action>(
     text_system: &mut TextSystem,
     text_editing: TextEditingPaintInputs<'_>,
     prior_text_layouts: Option<&[TextLayoutState]>,
+    prior_placeholder_layouts: Option<&[TextLayoutState]>,
 ) -> Result<LayoutResult, TextLayoutError> {
     #[cfg(feature = "internal-test-seams")]
     let profile_started = std::time::Instant::now();
@@ -139,6 +145,7 @@ pub(super) fn layout_resolved_surface<Action>(
             preedits: text_editing.preedits,
             sensitivities: text_editing.sensitivities,
             prior_text_layouts,
+            prior_placeholder_layouts,
         };
         result = layout_resolved_surface_once(&inputs, text_system)?;
         let mut added = false;
@@ -172,6 +179,8 @@ pub(super) fn layout_resolved_surface<Action>(
         scroll_chrome,
         result.3,
         result.4,
+        result.5,
+        result.6,
     ))
 }
 
@@ -506,6 +515,9 @@ struct LayoutKernel<'a, Action> {
     // retaining its state avoids any post-layout geometry-based identity guess.
     final_text_states: Vec<Option<TextLayoutState>>,
     final_text_origins: Vec<LogicalPoint>,
+    placeholder_text_layouts: Vec<TextLayoutState>,
+    final_placeholder_states: Vec<Option<TextLayoutState>>,
+    final_placeholder_origins: Vec<LogicalPoint>,
     text_measurements: Vec<Vec<SurfaceTextMeasurementRecord>>,
     diagnostics: Vec<Vec<runenui_core::WidgetDiagnostic>>,
     intrinsic_sizes: Vec<LogicalSize>,
