@@ -1001,7 +1001,7 @@ mod tests {
         (
             "M11SLIDER",
             &["M11CTRL-72", "M11CTRL-73", "M11CTRL-74"],
-            "implementation-complete",
+            "owner-accepted",
         ),
     ];
 
