@@ -37,6 +37,7 @@ const M11_DELIVERY_SLICES: &[&str] = &[
     "M11PASSWORD",
     "M11PLACEHOLDER",
     "M11DISCLOSURE",
+    "M11SLIDER",
     "M11C",
     "M11D2",
     "M11SEM1",

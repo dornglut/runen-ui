@@ -290,7 +290,9 @@ fn numeric_value(range: &SemanticRange, proposed: f64) -> Option<SemanticNumber>
         return Some(max);
     }
     let count = ((proposed - min.get()) / step.get()).round();
-    let value = count.mul_add(step.get(), min.get()).clamp(min.get(), max.get());
+    let value = count
+        .mul_add(step.get(), min.get())
+        .clamp(min.get(), max.get());
     SemanticNumber::new(value).ok()
 }
 
@@ -636,8 +638,8 @@ mod tests {
 
     #[test]
     fn no_callback_and_collapsed_range_are_semantically_readable_not_actionable() {
-        use crate::Widget;
         use super::SliderWidget;
+        use crate::Widget;
 
         let range = Slider::<()>::new("Volume", 0.0, 100.0, 50.0, 5.0)
             .unwrap_or_else(|_| unreachable!("valid numeric range"));
