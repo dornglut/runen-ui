@@ -1,5 +1,7 @@
 #[path = "../content.rs"]
 mod content;
+#[path = "../disclosure.rs"]
+mod disclosure;
 #[path = "../list_box.rs"]
 mod list_box;
 #[path = "../m11_application_commands.rs"]
