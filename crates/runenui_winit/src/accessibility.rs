@@ -2815,7 +2815,7 @@ mod tests {
     }
 
     enum StandardPasswordAction {
-        Edit(EditIntent),
+        Edit(Box<EditIntent>),
         Toggle,
     }
 
@@ -2843,7 +2843,7 @@ mod tests {
                 state.content.clone(),
                 selection,
                 SemanticEditableMode::SingleLine,
-                StandardPasswordAction::Edit,
+                |edit| StandardPasswordAction::Edit(Box::new(edit)),
             )
             .unwrap_or_else(|_| unreachable!("single-line source is valid"));
             let field = if state.sensitivity == TextSensitivity::Secret {
@@ -2899,6 +2899,37 @@ mod tests {
         publication
     }
 
+    fn assert_standard_password_secret(
+        publication: &SemanticPublication,
+        adapter: &SemanticAdapter,
+    ) -> NodeId {
+        let semantic = &publication.snapshot().nodes()[0];
+        assert_eq!(
+            semantic.editable().and_then(|editable| editable.value()),
+            None
+        );
+        assert!(
+            semantic
+                .supported_actions()
+                .contains(&SemanticAction::SetSelection)
+        );
+        let parent = adapter
+            .active_id(publication.snapshot().surface_id(), semantic.id())
+            .unwrap();
+        let native = &adapter.projection.current_nodes[&parent];
+        assert_eq!(native.role(), Role::PasswordInput);
+        assert_eq!(native.value(), None);
+        assert!(!native.supports_action(Action::SetTextSelection));
+        assert!(native.supports_action(Action::ReplaceSelectedText));
+        assert!(
+            !adapter
+                .projection
+                .editable_text_runs
+                .contains_key(semantic.id())
+        );
+        parent
+    }
+
     #[test]
     fn standard_password_native_projection_retires_public_text_resources_on_reclassification() {
         const SOURCE: &str = "vault-é漢🔒";
@@ -2921,30 +2952,7 @@ mod tests {
         );
         let mut adapter = SemanticAdapter::new();
         let first = publish_standard_password(&mut runtime, &mut adapter);
-        let semantic = &first.snapshot().nodes()[0];
-        assert_eq!(
-            semantic.editable().and_then(|editable| editable.value()),
-            None
-        );
-        assert!(
-            semantic
-                .supported_actions()
-                .contains(&SemanticAction::SetSelection)
-        );
-        let parent = adapter
-            .active_id(first.snapshot().surface_id(), semantic.id())
-            .unwrap();
-        let native = &adapter.projection.current_nodes[&parent];
-        assert_eq!(native.role(), Role::PasswordInput);
-        assert_eq!(native.value(), None);
-        assert!(!native.supports_action(Action::SetTextSelection));
-        assert!(native.supports_action(Action::ReplaceSelectedText));
-        assert!(
-            !adapter
-                .projection
-                .editable_text_runs
-                .contains_key(semantic.id())
-        );
+        let parent = assert_standard_password_secret(&first, &adapter);
         assert!(
             adapter
                 .action_request(&ActionRequest {
@@ -2990,19 +2998,7 @@ mod tests {
             .unwrap();
         runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
         let again = publish_standard_password(&mut runtime, &mut adapter);
-        let again_semantic = &again.snapshot().nodes()[0];
-        let secret_parent = adapter
-            .active_id(again.snapshot().surface_id(), again_semantic.id())
-            .unwrap();
-        let secret = &adapter.projection.current_nodes[&secret_parent];
-        assert_eq!(secret.role(), Role::PasswordInput);
-        assert_eq!(secret.value(), None);
-        assert!(
-            !adapter
-                .projection
-                .editable_text_runs
-                .contains_key(again_semantic.id())
-        );
+        assert_standard_password_secret(&again, &adapter);
         assert!(
             adapter
                 .projection
