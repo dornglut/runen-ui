@@ -2827,10 +2827,8 @@ mod tests {
         type HostProtocol = NoHostProtocol;
 
         fn root(state: &Self::State) -> impl View<Self::Action> {
-            let snapshot = TextDocumentSnapshot::new(
-                TextDocumentId::new(190),
-                TextDocumentRevision::new(1),
-            );
+            let snapshot =
+                TextDocumentSnapshot::new(TextDocumentId::new(190), TextDocumentRevision::new(1));
             let selection = TextSelection::collapsed(
                 TextPosition::new(
                     snapshot,
@@ -2871,15 +2869,15 @@ mod tests {
                     };
                     UpdateOutput::effects(runenui_core::Effects::none())
                 }
-                StandardPasswordAction::Edit(intent) => UpdateOutput::edit(
-                    EditResolution::rejected(
+                StandardPasswordAction::Edit(intent) => {
+                    UpdateOutput::edit(EditResolution::rejected(
                         intent.request().clone(),
                         TextDocumentSnapshot::new(
                             TextDocumentId::new(190),
                             TextDocumentRevision::new(1),
                         ),
-                    ),
-                ),
+                    ))
+                }
             }
         }
     }
@@ -2924,8 +2922,15 @@ mod tests {
         let mut adapter = SemanticAdapter::new();
         let first = publish_standard_password(&mut runtime, &mut adapter);
         let semantic = &first.snapshot().nodes()[0];
-        assert_eq!(semantic.editable().and_then(|editable| editable.value()), None);
-        assert!(semantic.supported_actions().contains(&SemanticAction::SetSelection));
+        assert_eq!(
+            semantic.editable().and_then(|editable| editable.value()),
+            None
+        );
+        assert!(
+            semantic
+                .supported_actions()
+                .contains(&SemanticAction::SetSelection)
+        );
         let parent = adapter
             .active_id(first.snapshot().surface_id(), semantic.id())
             .unwrap();
@@ -2934,24 +2939,35 @@ mod tests {
         assert_eq!(native.value(), None);
         assert!(!native.supports_action(Action::SetTextSelection));
         assert!(native.supports_action(Action::ReplaceSelectedText));
-        assert!(!adapter.projection.editable_text_runs.contains_key(semantic.id()));
-        assert!(adapter.action_request(&ActionRequest {
-            action: Action::SetTextSelection,
-            target_tree: TreeId::ROOT,
-            target_node: parent,
-            data: Some(ActionData::SetTextSelection(AccessTextSelection {
-                anchor: AccessTextPosition {
-                    node: parent,
-                    character_index: 0,
-                },
-                focus: AccessTextPosition {
-                    node: parent,
-                    character_index: 0,
-                },
-            })),
-        }).is_err());
+        assert!(
+            !adapter
+                .projection
+                .editable_text_runs
+                .contains_key(semantic.id())
+        );
+        assert!(
+            adapter
+                .action_request(&ActionRequest {
+                    action: Action::SetTextSelection,
+                    target_tree: TreeId::ROOT,
+                    target_node: parent,
+                    data: Some(ActionData::SetTextSelection(AccessTextSelection {
+                        anchor: AccessTextPosition {
+                            node: parent,
+                            character_index: 0,
+                        },
+                        focus: AccessTextPosition {
+                            node: parent,
+                            character_index: 0,
+                        },
+                    })),
+                })
+                .is_err()
+        );
 
-        runtime.submit_action(StandardPasswordAction::Toggle).unwrap();
+        runtime
+            .submit_action(StandardPasswordAction::Toggle)
+            .unwrap();
         runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
         let public = publish_standard_password(&mut runtime, &mut adapter);
         let public_semantic = &public.snapshot().nodes()[0];
@@ -2962,9 +2978,16 @@ mod tests {
         assert_eq!(public_native.role(), Role::TextInput);
         assert_eq!(public_native.value(), Some(SOURCE));
         assert!(public_native.supports_action(Action::SetTextSelection));
-        assert!(adapter.projection.editable_text_runs.contains_key(public_semantic.id()));
+        assert!(
+            adapter
+                .projection
+                .editable_text_runs
+                .contains_key(public_semantic.id())
+        );
 
-        runtime.submit_action(StandardPasswordAction::Toggle).unwrap();
+        runtime
+            .submit_action(StandardPasswordAction::Toggle)
+            .unwrap();
         runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
         let again = publish_standard_password(&mut runtime, &mut adapter);
         let again_semantic = &again.snapshot().nodes()[0];
@@ -2974,10 +2997,18 @@ mod tests {
         let secret = &adapter.projection.current_nodes[&secret_parent];
         assert_eq!(secret.role(), Role::PasswordInput);
         assert_eq!(secret.value(), None);
-        assert!(!adapter.projection.editable_text_runs.contains_key(again_semantic.id()));
-        assert!(adapter.projection.current_nodes.values().all(|node| {
-            node.value() != Some(SOURCE)
-        }));
+        assert!(
+            !adapter
+                .projection
+                .editable_text_runs
+                .contains_key(again_semantic.id())
+        );
+        assert!(
+            adapter
+                .projection
+                .current_nodes
+                .values()
+                .all(|node| { node.value() != Some(SOURCE) })
+        );
     }
-
 }
