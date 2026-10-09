@@ -253,7 +253,7 @@ impl TextMaskedProjection {
         Ok(TextDisplayPosition::Document(checked))
     }
 
-    fn from_masked_position(
+    fn restore_source_position(
         &self,
         position: &TextDisplayPosition,
     ) -> Result<TextDisplayPosition, TextMaskedProjectionError> {
@@ -276,13 +276,13 @@ impl TextMaskedProjection {
         ))
     }
 
-    fn from_masked_selection(
+    fn restore_source_selection(
         &self,
         selection: &TextDisplaySelection,
     ) -> Result<TextDisplaySelection, TextMaskedProjectionError> {
         Ok(TextDisplaySelection::new(
-            self.from_masked_position(selection.anchor())?,
-            self.from_masked_position(selection.active())?,
+            self.restore_source_position(selection.anchor())?,
+            self.restore_source_position(selection.active())?,
         ))
     }
 }
@@ -350,7 +350,7 @@ impl TextMaskedCaretMap {
     ) -> Result<Option<TextDisplayPosition>, TextMaskedProjectionError> {
         self.map
             .hit_test(snapshot, point, eligible, transform)?
-            .map(|position| self.projection.from_masked_position(&position))
+            .map(|position| self.projection.restore_source_position(&position))
             .transpose()
     }
 
@@ -366,7 +366,7 @@ impl TextMaskedCaretMap {
         transform: LogicalTransform,
     ) -> Result<TextDisplayPosition, TextMaskedProjectionError> {
         let position = self.map.nearest_position(snapshot, point, transform)?;
-        self.projection.from_masked_position(&position)
+        self.projection.restore_source_position(&position)
     }
 
     /// Navigates against the retained shaped mask, returning source/preedit
@@ -388,7 +388,7 @@ impl TextMaskedCaretMap {
             .map
             .navigate(&masked, operation, mode, preferred_inline)?;
         Ok((
-            self.projection.from_masked_selection(result.selection())?,
+            self.projection.restore_source_selection(result.selection())?,
             result.preferred_inline(),
         ))
     }
