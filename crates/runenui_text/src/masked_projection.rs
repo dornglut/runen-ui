@@ -388,7 +388,8 @@ impl TextMaskedCaretMap {
             .map
             .navigate(&masked, operation, mode, preferred_inline)?;
         Ok((
-            self.projection.restore_source_selection(result.selection())?,
+            self.projection
+                .restore_source_selection(result.selection())?,
             result.preferred_inline(),
         ))
     }
