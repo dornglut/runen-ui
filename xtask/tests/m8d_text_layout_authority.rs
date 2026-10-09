@@ -51,16 +51,32 @@ fn production_text_measurement_and_paint_share_one_retained_artifact_path() -> R
         }
     }
 
+    // M8's source artifact remains the one measured by Taffy. A visual-only
+    // placeholder can be selected for paint, but it never supplies editable
+    // caret, hit, or IME coordinates and cannot introduce another text engine.
     for required in [
-        "if let Some(artifact) = layout.text_layouts[mounted_preorder].artifact()",
-        ".lease_shaped_run(run.resource_ref())",
+        "let (state, origin) = if visual_hint {",
+        "&layout.placeholder_text_layouts[mounted_preorder]",
+        "&layout.text_layouts[mounted_preorder]",
         "layout.text_origins[mounted_preorder]",
+        "if let Some(artifact) = state.artifact() {",
+        ".lease_shaped_run(run.resource_ref())",
         "let computed = effective.node(mounted_preorder).computed_style();",
-        "let item = text_run_item(run, computed, layout.text_origins[mounted_preorder]);",
+        "let item = text_run_item(run, computed, origin).with_opacity(opacity);",
     ] {
         if !resolve.contains(required) {
             return Err(format!(
                 "M8D paint correlation lost required retained-artifact/effective-style seam `{required}` in {RESOLVE}"
+            ));
+        }
+    }
+    for (variant, required) in [
+        ("editable source", "            owner,\n            false,\n"),
+        ("passive visual hint", "            owner,\n            true,\n"),
+    ] {
+        if !resolve.contains(required) {
+            return Err(format!(
+                "M8D paint no longer invokes the correlated {variant} variant of the shared retained-artifact lease path"
             ));
         }
     }
