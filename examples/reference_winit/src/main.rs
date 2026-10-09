@@ -1673,13 +1673,13 @@ impl ReferenceHost {
     /// Never carry a native mode across a different or unpublished UI surface.
     fn release_if_pointer_scope_changed(
         &mut self,
-        candidate: Option<HostPointerScope>,
+        candidate: Option<&HostPointerScope>,
         reason: &str,
     ) {
         if self
             .framework_services
             .pointer_modes()
-            .scope_changed(candidate.as_ref())
+            .scope_changed(candidate)
         {
             proof!("stage=host_pointer_scope_revoked reason={reason:?}");
             self.release_host_pointer(reason);
@@ -2211,7 +2211,7 @@ impl ReferenceHost {
             window_epoch: self.window_epoch,
             surface: Some(pending.publication.input_context().surface_id().clone()),
         };
-        self.release_if_pointer_scope_changed(Some(next), "displayed surface identity changed");
+        self.release_if_pointer_scope_changed(Some(&next), "displayed surface identity changed");
         self.displayed_frame = Some(DisplayedFrame::from_pending(pending));
         self.pending_frame = None;
         proof!(
@@ -2458,7 +2458,7 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
         };
         let current_scope = self.current_host_pointer_scope();
         self.release_if_pointer_scope_changed(
-            current_scope.clone(),
+            current_scope.as_ref(),
             "raw-device event without current displayed surface",
         );
         let Some(scope) = current_scope else {
