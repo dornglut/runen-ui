@@ -122,7 +122,89 @@ InputShutdownBatch; InputObservationError;
 
 Required public accessors: `InputOwnershipSnapshot::{scope,revision,status,keyboard,surfaces,pointers}`; `InputOwnershipTransition::{before_revision,after}`; `UiInputSettlement::{scope,sequence,family,surface_id,device_id,pointer_id,finality,ownership_revision}`; `UiInputRoutingFacts::{conflict,reasons,route,propagation_stopped,default_prevented,default_disposition}`; `InputPumpBatch::{report,ordered_records,processed_through,final_ownership,pause_reason}`; `InputShutdownBatch::{report,ordered_records,final_ownership}`; `InputScopeRetirement::{scope,reason}`; `SurfaceInputOwnership::{surface_id,latest_retained_context,modal_blocker}`. Neutral keyboard and pointer projections must expose existing `WidgetTextInput`, composition/Space owner and exact active pointer pressed/capture owner respectively. Do not assert `Send`/`Sync`, OS source identity, host cursor controls or downstream availability without proof.
 
-The later implementation #428 owns **exact compile-time signatures**, required trait derivations and legal method placement in the public crates as a clean cutover. Any required semantic departure from this target is an owner-reviewed ADR change; mechanical signature adjustments preserving this exact ownership/ordering/finality law must be documented in the implementation review and external consumer proof.
+### Frozen neutral enum vocabulary and accessors
+
+These names, distinctions, field privacy and semantic accessor types are **normative target API**. `#[non_exhaustive]` enums allow future variants only when unknown values remain conservatively non-permissive. A public Rust consumer must compile against the implementation of this contract before conformance promotion.
+
+| Public type | Exact target variants or signatures |
+|---|---|
+| `UiInputFamily` | `Keyboard`, `CommittedText`, `Composition`, `Pointer` |
+| `UiInputRoute` | `Unrouted`; `Routed { target: MountedNodeId }`; `Captured { target: MountedNodeId }`; `PresentationBlocked { root: MountedNodeId }` |
+| `UiInputConflict` | `Unclaimed`, `ObservedNonexclusive`, `ExclusiveUi`, `Undetermined` |
+| `UiInputClaimReason` | `TextOwner`, `CompositionOwner`, `FocusNavigation`, `ActivationDefault`, `ApplicationShortcut`, `PointerPress`, `PointerCapture`, `PointerSelection`, `TouchGesture`, `ModalBarrier`, `PresentationDismissal`, `ExplicitWidgetClaim` |
+| `UiDefaultDisposition` | `None`, `Prevented`, `Applied`, `Queued`; the latter two distinguish committed UI default from queued follow-up, neither certifies later application action completion |
+| `UiInputProcessingRejection` | `MissingTarget`, `StaleTarget`, `ForeignTarget`, `InvalidDisplayedSnapshot`, `MissingDisplayedSnapshot`, `InvalidPointerStream`, `StaleCompositionGeneration`, `InsufficientTransactionCapacity` (names classify the exact **rejected** route, not an accepted integrity-only pointer release) |
+| `UiInputAbortReason` | `RuntimeIntegrity`, `TraceOrSequenceExhausted`, `Terminal(RuntimeTerminalReason)` |
+| `UiInputFinality` | `Committed(UiInputRoutingFacts)`, `ProcessingRejected(UiInputProcessingRejection)`, `Aborted(UiInputAbortReason)` |
+| `InputArbitrationRecord` | `InputSettled(UiInputSettlement)`, `OwnershipChanged(InputOwnershipTransition)`, `ScopeRetired(InputScopeRetirement)` |
+| `InputPumpPauseReason` | `ObservationCapacity`; this is a **successful partial batch** disposition, not a hidden new `PumpOutcome::Quiescent` |
+| `InputScopeRetirementReason` | `Shutdown`, `Terminal(RuntimeTerminalReason)` |
+| `InputObservationError` | `Capacity`, `RevisionExhausted`; an error is permissible only before any mutation/observation is lost |
+
+`InputArbitrationScope` has opaque equality/hashable runtime-lifetime identity, a private constructor and no host-extractable OS window index. `InputOwnershipRevision` has a checked monotonic private counter and public `get(self) -> u64` for comparison; it does not wrap or reuse an earlier revision.
+
+Accessors and return types to preserve:
+
+```text
+UiInputRoutingFacts:
+  conflict(&self) -> UiInputConflict
+  reasons(&self) -> &[UiInputClaimReason]
+  route(&self) -> &UiInputRoute
+  propagation_stopped(&self) -> bool
+  default_prevented(&self) -> bool
+  default_disposition(&self) -> UiDefaultDisposition
+UiInputSettlement:
+  scope(&self) -> &InputArbitrationScope
+  sequence(&self) -> WorkSequence
+  family(&self) -> UiInputFamily
+  surface_id(&self) -> Option<&SurfaceId>
+  device_id(&self) -> Option<InputDeviceId>
+  pointer_id(&self) -> Option<PointerId>
+  finality(&self) -> &UiInputFinality
+  ownership_revision(&self) -> InputOwnershipRevision
+InputOwnershipSnapshot:
+  scope(&self) -> &InputArbitrationScope
+  revision(&self) -> InputOwnershipRevision
+  status(&self) -> RuntimeStatus
+  keyboard(&self) -> &KeyboardInputOwnership
+  surfaces(&self) -> &[SurfaceInputOwnership]
+  pointers(&self) -> &[PointerInputOwnership]
+KeyboardInputOwnership:
+  focused_node(&self) -> Option<&MountedNodeId>
+  text_input_capability(&self) -> WidgetTextInput
+  composition_generation(&self) -> Option<&CompositionGeneration>
+  space_activation_owner(&self) -> Option<&MountedNodeId>
+PointerInputOwnership:
+  pointer_id(&self) -> PointerId
+  device_id(&self) -> Option<InputDeviceId>
+  surface_id(&self) -> &SurfaceId
+  pressed_owner(&self) -> Option<&MountedNodeId>
+  capture_owner(&self) -> Option<&MountedNodeId>
+SurfaceInputOwnership:
+  surface_id(&self) -> &SurfaceId
+  latest_retained_context(&self) -> Option<&SurfaceInputContext>
+  modal_blocker(&self) -> Option<&MountedNodeId>
+InputOwnershipTransition:
+  before_revision(&self) -> InputOwnershipRevision
+  after(&self) -> &InputOwnershipSnapshot
+InputScopeRetirement:
+  scope(&self) -> &InputArbitrationScope
+  reason(&self) -> InputScopeRetirementReason
+InputPumpBatch:
+  report(&self) -> &PumpReport
+  ordered_records(&self) -> &[InputArbitrationRecord]
+  processed_through(&self) -> Option<WorkSequence>
+  final_ownership(&self) -> &InputOwnershipSnapshot
+  pause_reason(&self) -> Option<InputPumpPauseReason>
+InputShutdownBatch:
+  report(&self) -> &ShutdownReport
+  ordered_records(&self) -> &[InputArbitrationRecord]
+  final_ownership(&self) -> &InputOwnershipSnapshot
+```
+
+Every returned record/snapshot is immutable with private runtime-authored fields; no host mutation authority is exposed. A direct terminal observed by `input_ownership().status()` is itself sufficient to invalidate outstanding host correlations **without another pump or an individually emitted retirement record**; later `ScopeRetired` is idempotent. Likewise, `RevisionExhausted` MUST NOT become an `Err` that discards previous committed records or irreversible cleanup: report partial successful progress plus terminal scope invalidation, or reject before mutation with exact preflight. Explicit shutdown MUST return a completed retirement observation after its mutation or fail before beginning it.
+
+The later implementation #428 owns **exact compile-time signatures**, required trait derivations and legal method placement in the public crates as a clean cutover. Any public variant, accessor type or semantic departure from this frozen target requires an owner-reviewed ADR revision. Purely mechanical implementation placement that does not change these public contracts belongs in the implementation review and public consumer compile proof.
 
 ## Tradeoffs, counterexamples and conformance
 
