@@ -606,12 +606,12 @@ fn expected_visual_conformance_workflow() -> String {
         .to_owned()
         .replacen(
             "          RUNENUI_M8D_EVIDENCE_DIR: ${{ runner.temp }}/runenui-visual-conformance\n",
-            "          RUNENUI_M8D_EVIDENCE_DIR: ${{ runner.temp }}/runenui-visual-conformance\n          RUNENUI_M10F_EVIDENCE_DIR: ${{ runner.temp }}/runenui-visual-conformance\n",
+            "          RUNENUI_M8D_EVIDENCE_DIR: ${{ runner.temp }}/runenui-visual-conformance\n          RUNENUI_M10F_EVIDENCE_DIR: ${{ runner.temp }}/runenui-visual-conformance\n          RUNENUI_M11PASSWORD_EVIDENCE_DIR: ${{ runner.temp }}/runenui-visual-conformance\n",
             1,
         )
         .replacen(
             "          test -s \"${RUNENUI_M8D_EVIDENCE_DIR}/m8d-production-text-evidence.txt\"\n\n      - name: Check repository hygiene\n",
-            "          test -s \"${RUNENUI_M8D_EVIDENCE_DIR}/m8d-production-text-evidence.txt\"\n          cargo +stable test --locked -p runenui_render_wgpu --test m10f_editable correlated_editable_publication_renders_selection_preedit_scroll_and_retries_exactly -- --nocapture\n          test -s \"${RUNENUI_M10F_EVIDENCE_DIR}/m10f-editable-contact-sheet.png\"\n          test -s \"${RUNENUI_M10F_EVIDENCE_DIR}/m10f-editable-evidence.txt\"\n\n      - name: Check repository hygiene\n",
+            "          test -s \"${RUNENUI_M8D_EVIDENCE_DIR}/m8d-production-text-evidence.txt\"\n          cargo +stable test --locked -p runenui_render_wgpu --test m10f_editable correlated_editable_publication_renders_selection_preedit_scroll_and_retries_exactly -- --nocapture\n          test -s \"${RUNENUI_M10F_EVIDENCE_DIR}/m10f-editable-contact-sheet.png\"\n          test -s \"${RUNENUI_M10F_EVIDENCE_DIR}/m10f-editable-evidence.txt\"\n          cargo +stable test --locked -p runenui_render_wgpu --test m11_password_wgpu masked_standard_password_renders_with_real_wgpu_and_reclassifies_without_source_glyphs -- --nocapture\n          test -s \"${RUNENUI_M11PASSWORD_EVIDENCE_DIR}/m11-password-masked.png\"\n          test -s \"${RUNENUI_M11PASSWORD_EVIDENCE_DIR}/m11-password-public.png\"\n\n      - name: Check repository hygiene\n",
             1,
         )
 }
