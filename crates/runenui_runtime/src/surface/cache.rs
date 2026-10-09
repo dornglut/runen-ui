@@ -60,15 +60,16 @@ impl TextEditingPaintKey {
     /// M8 shaped source in a paint-only surface update.
     pub(super) fn text_source_layout_changed(&self, next: &Self) -> bool {
         use runenui_core::TextSensitivity;
-        self.preedits != next.preedits || self.editing.iter().any(|(owner, old)| {
-            let current = next.editing.get(owner).map(|item| item.sensitivity);
-            current != Some(old.sensitivity)
-                && (old.sensitivity == TextSensitivity::Secret
-                    || current == Some(TextSensitivity::Secret))
-        }) || next.editing.iter().any(|(owner, current)| {
-            current.sensitivity == TextSensitivity::Secret
-                && !self.editing.contains_key(owner)
-        })
+        self.preedits != next.preedits
+            || self.editing.iter().any(|(owner, old)| {
+                let current = next.editing.get(owner).map(|item| item.sensitivity);
+                current != Some(old.sensitivity)
+                    && (old.sensitivity == TextSensitivity::Secret
+                        || current == Some(TextSensitivity::Secret))
+            })
+            || next.editing.iter().any(|(owner, current)| {
+                current.sensitivity == TextSensitivity::Secret && !self.editing.contains_key(owner)
+            })
     }
 
     pub(super) fn new(inputs: TextEditingPaintInputs<'_>) -> Self {
