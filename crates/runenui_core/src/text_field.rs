@@ -548,13 +548,8 @@ mod tests {
         let source = "vault-secret-é漢";
         let snapshot =
             TextDocumentSnapshot::new(TextDocumentId::new(92), TextDocumentRevision::new(1));
-        let active = TextPosition::new(
-            snapshot,
-            source,
-            "vault".len(),
-            TextAffinity::Downstream,
-        )
-        .unwrap_or_else(|_| unreachable!("source selection is valid"));
+        let active = TextPosition::new(snapshot, source, "vault".len(), TextAffinity::Downstream)
+            .unwrap_or_else(|_| unreachable!("source selection is valid"));
         let make = |mode| {
             TextField::<()>::new(
                 snapshot,
@@ -591,7 +586,10 @@ mod tests {
         widget.state.sensitivity = TextSensitivity::Secret;
         for debug in [format!("{:?}", widget.state), format!("{widget:?}")] {
             for forbidden in [source, "content_bytes", "selection"] {
-                assert!(!debug.contains(forbidden), "secret metadata appeared in Debug");
+                assert!(
+                    !debug.contains(forbidden),
+                    "secret metadata appeared in Debug"
+                );
             }
         }
         assert_eq!(
