@@ -296,8 +296,8 @@ pub use computed_style::ComputedStyle;
 pub use editing::{
     EditChangeMap, EditGroupHint, EditIntent, EditInverse, EditKind, EditRequestId, EditResolution,
     EditResolutionOutcome, EditSelection, EditableContribution, EditableContributionError,
-    EditingSessionGeneration, EditingSessionPolicy, IntoUpdateOutput, TextSensitivity,
-    UpdateOutput,
+    EditingSessionGeneration, EditingSessionPolicy, IntoUpdateOutput, TextNewlinePolicy,
+    TextSensitivity, UpdateOutput,
 };
 pub use effects::{Effects, IntoEffects};
 pub use element::{AuthoringDiagnostic, Element, View, Views};
@@ -347,7 +347,7 @@ pub use surface_presentation::{
     SurfacePresentationAnchor, SurfacePresentationPlacement, SurfacePresentationSide,
 };
 pub use widget_protocol::{
-    ChildBearingWidget, TextAlignment, TextBlockPlacement, TextLeafMeasure, Widget,
+    ChildBearingWidget, TextAlignment, TextBlockPlacement, TextLeafMeasure, TextLeafWrap, Widget,
     WidgetActivation, WidgetActivationOutput, WidgetAvailableSpace, WidgetDiagnostic,
     WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId, WidgetTextInput,
     WidgetTypeId,

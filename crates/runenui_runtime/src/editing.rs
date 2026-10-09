@@ -1934,7 +1934,10 @@ mod tests {
         registry
             .initial_reconcile(
                 &namespace,
-                vec![(owner.clone(), contribution(0, "ab", 2, EditingSessionPolicy::PreserveExact))],
+                vec![(
+                    owner.clone(),
+                    contribution(0, "ab", 2, EditingSessionPolicy::PreserveExact),
+                )],
             )
             .unwrap_or_else(|_| unreachable!("initial multiline contribution is valid"));
         let old = registry

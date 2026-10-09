@@ -2,11 +2,11 @@
 
 use runenui_core::{
     CommandOrigin, CommittedTextEvent, EditIntent, EditResolution, Effects, IntoUpdateOutput,
-    KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
-    NoHostProtocol, PhysicalKey, SemanticCommand, SemanticEditableMode, StyleEnvironment,
-    LayoutDimension, LayoutStyle, LogicalLength, TextAffinity,
-    TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, UiApp,
-    UpdateOutput, View,
+    KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase,
+    LayoutDimension, LayoutStyle, LogicalKey, LogicalLength, NoHostProtocol, PhysicalKey,
+    SemanticCommand, SemanticEditableMode, StyleEnvironment, TextAffinity, TextDocumentId,
+    TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, UiApp, UpdateOutput,
+    View,
 };
 use runenui_runtime::{
     AppRuntime, FontFamilyName, GenericFontFamily, LogicalSize, PumpBudget, SurfaceBuildContext,
@@ -234,14 +234,29 @@ fn controlled_font_publication_keeps_single_line_unwrapped_and_multiline_wrappin
             .collect::<Vec<_>>();
         assert_eq!(retained[0].retained_resource_refs(), refs.as_slice());
         for run in &runs {
-            assert!(surface.paint_scene().shaped_text_resource(run.resource_ref()).is_some());
+            assert!(
+                surface
+                    .paint_scene()
+                    .shaped_text_resource(run.resource_ref())
+                    .is_some()
+            );
         }
         let semantic = &surface.semantic_publication().snapshot().nodes()[0];
-        assert_eq!(semantic.editable().and_then(|edit| edit.value()), Some(source));
+        assert_eq!(
+            semantic.editable().and_then(|edit| edit.value()),
+            Some(source)
+        );
         runs.len()
     };
-    assert_eq!(lines(&single_surface), 1, "single-line source must not soft-wrap");
-    assert!(lines(&multi_surface) > 1, "multiline source should soft-wrap");
+    assert_eq!(
+        lines(&single_surface),
+        1,
+        "single-line source must not soft-wrap"
+    );
+    assert!(
+        lines(&multi_surface) > 1,
+        "multiline source should soft-wrap"
+    );
 
     single
         .submit_action(Action::SetValue("changed by application".to_owned()))
