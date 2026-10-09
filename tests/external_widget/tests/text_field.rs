@@ -65,7 +65,12 @@ impl Widget<EditIntent> for DownstreamField {
             return SemanticContribution::empty();
         };
         let node = SemanticNodeContribution::primary(SemanticRole::EditableText)
-            .with_state(SemanticState::ENABLED)
+            .with_state(
+                SemanticState::ENABLED
+                    .with_disabled(false)
+                    .with_read_only(false)
+                    .with_required(false),
+            )
             .with_editable(editable)
             .with_editable_mode(self.mode)
             .with_action(SemanticAction::MoveBackward)
