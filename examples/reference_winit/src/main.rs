@@ -69,6 +69,19 @@ use winit::{
 const INITIAL_PHYSICAL_SIZE: PhysicalSize<u32> = PhysicalSize::new(800, 480);
 const HOST_PUMP_BUDGET: PumpBudget = PumpBudget::new(64, 64, 64, 64);
 const RAW_MOTION_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+const NATIVE_RELEASE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
+
+fn native_release_retry_due(deadline: Option<Instant>, now: Instant) -> bool {
+    deadline.is_some_and(|deadline| now >= deadline)
+}
+
+fn earliest_host_deadline(a: Option<Instant>, b: Option<Instant>) -> Option<Instant> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (Some(deadline), None) | (None, Some(deadline)) => Some(deadline),
+        (None, None) => None,
+    }
+}
 
 fn raw_motion_probe_expired(start: Instant, now: Instant) -> bool {
     now.checked_duration_since(start)
@@ -755,6 +768,7 @@ struct ReferenceHost {
     window_epoch: u64,
     raw_motion_samples: u64,
     pending_raw_motion_since: Option<Instant>,
+    native_release_retry_at: Option<Instant>,
 }
 
 impl ReferenceHost {
@@ -796,6 +810,7 @@ impl ReferenceHost {
             window_epoch: 0,
             raw_motion_samples: 0,
             pending_raw_motion_since: None,
+            native_release_retry_at: None,
         };
         host.drain_runtime_trace();
         host
@@ -1675,6 +1690,8 @@ impl ReferenceHost {
         self.pending_raw_motion_since = None;
         // Native unlock cannot depend on a running UI pump.
         let Some(window) = self.window.as_ref() else {
+            // No native window remains on which a failed release can be retried.
+            self.native_release_retry_at = None;
             return;
         };
         let returning_from_relative = matches!(
@@ -1690,6 +1707,10 @@ impl ReferenceHost {
             .pointer_modes_mut()
             .release(&mut WinitPointer(window));
         self.framework_services.refresh_native_input_method(window);
+        self.native_release_retry_at = result
+            .is_err()
+            .then(|| Instant::now().checked_add(NATIVE_RELEASE_RETRY_INTERVAL))
+            .flatten();
         proof!("stage=host_pointer_release reason={reason:?} result={result:?}");
         if let Err(error) = result {
             eprintln!("reference_winit native pointer release failed ({reason}): {error:?}");
@@ -2190,10 +2211,7 @@ impl ReferenceHost {
             window_epoch: self.window_epoch,
             surface: Some(pending.publication.input_context().surface_id().clone()),
         };
-        self.release_if_pointer_scope_changed(
-            Some(next),
-            "displayed surface identity changed",
-        );
+        self.release_if_pointer_scope_changed(Some(next), "displayed surface identity changed");
         self.displayed_frame = Some(DisplayedFrame::from_pending(pending));
         self.pending_frame = None;
         proof!(
@@ -2366,6 +2384,11 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             return;
         }
         self.presentation_suppressed = false;
+        // Winit allows redundant suspend/resume transitions. A retained window
+        // may already have native focus without emitting another Focused event.
+        if self.window.as_ref().is_some_and(|window| window.has_focus()) {
+            self.handle_window_focus(event_loop, true);
+        }
         if !self.establish_initial_runtime_focus(event_loop) {
             return;
         }
@@ -2382,6 +2405,9 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
                 .pointer_modes_mut()
                 .focus_changed(false, &mut WinitPointer(window));
             proof!("stage=host_pointer_suspended_focus_revoked result={result:?}");
+            if result.is_ok() {
+                self.native_release_retry_at = None;
+            }
         }
         if !self.cancel_native_touch_contacts(event_loop, "native host suspended") {
             return;
@@ -2560,20 +2586,27 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        if let Some(start) = self.pending_raw_motion_since {
-            let now = Instant::now();
-            if raw_motion_probe_expired(start, now) {
-                self.release_host_pointer(
-                    "raw device motion unavailable within acquisition deadline",
-                );
-                proof!("stage=host_pointer_raw_motion_timeout");
-            }
-        }
-        let control = self
+        let now = Instant::now();
+        if self
             .pending_raw_motion_since
-            .and_then(|start| start.checked_add(RAW_MOTION_PROBE_TIMEOUT))
-            .map_or(ControlFlow::Wait, ControlFlow::WaitUntil);
-        event_loop.set_control_flow(control);
+            .is_some_and(|start| raw_motion_probe_expired(start, now))
+        {
+            self.release_host_pointer(
+                "raw device motion unavailable within acquisition deadline",
+            );
+            proof!("stage=host_pointer_raw_motion_timeout");
+        }
+        if native_release_retry_due(self.native_release_retry_at, now) {
+            self.release_host_pointer("retry failed native cursor unlock");
+            proof!("stage=host_pointer_release_retry");
+        }
+        let raw_deadline = self
+            .pending_raw_motion_since
+            .and_then(|start| start.checked_add(RAW_MOTION_PROBE_TIMEOUT));
+        let next_deadline = earliest_host_deadline(raw_deadline, self.native_release_retry_at);
+        event_loop.set_control_flow(
+            next_deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
+        );
         self.request_pending_redraw();
     }
 
@@ -2617,6 +2650,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::{
         AppRuntime, CommandOrigin, CommittedTextEvent, DemoApp, DemoHistoryEntry, DemoState,
+        NATIVE_RELEASE_RETRY_INTERVAL,
         DisplayedFrame, HOST_PUMP_BUDGET, INITIAL_EDITOR_TEXT, KeyboardEvent, LARGE_DOCUMENT_LINES,
         LogicalSize, MAX_EDITOR_HISTORY_ENTRIES, NativeMapping, PendingFrame,
         PointIngressDiagnostic, RAW_MOTION_PROBE_TIMEOUT, ReferenceDocumentPreset,
@@ -2626,7 +2660,8 @@ mod tests {
             MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
             translate_mouse_button,
         },
-        push_editor_history, raw_motion_probe_expired, translate_modifiers,
+        earliest_host_deadline, native_release_retry_due, push_editor_history,
+        raw_motion_probe_expired, translate_modifiers,
     };
     use runenui_core::{
         InputDeviceId, KeyModifiers, KeyboardPhase, LogicalPoint, PointerButton, PointerPhase,
@@ -2638,6 +2673,23 @@ mod tests {
         event::{ElementState, MouseButton},
         keyboard::ModifiersState,
     };
+
+    #[test]
+    fn native_release_retry_uses_bounded_nonbusy_deadlines() {
+        let now = Instant::now();
+        let retry_at = now + NATIVE_RELEASE_RETRY_INTERVAL;
+        let pending_at = now + RAW_MOTION_PROBE_TIMEOUT;
+        assert!(!native_release_retry_due(Some(retry_at), now));
+        assert!(!native_release_retry_due(None, now));
+        assert!(native_release_retry_due(Some(retry_at), retry_at));
+        assert_eq!(
+            earliest_host_deadline(Some(pending_at), Some(retry_at)),
+            Some(retry_at)
+        );
+        assert_eq!(earliest_host_deadline(Some(pending_at), None), Some(pending_at));
+        assert_eq!(earliest_host_deadline(None, Some(retry_at)), Some(retry_at));
+        assert_eq!(earliest_host_deadline(None, None), None);
+    }
 
     #[test]
     fn raw_motion_probe_timeout_is_deterministic_at_boundary() {

@@ -140,9 +140,7 @@ impl PointerModes {
     /// A terminal failed release remains gated independently of scope admission.
     pub fn scope_changed(&self, current: Option<&Scope>) -> bool {
         match &self.state {
-            State::AwaitingMotion(lease) | State::Active(lease) => {
-                current != Some(&lease.scope)
-            }
+            State::AwaitingMotion(lease) | State::Active(lease) => current != Some(&lease.scope),
             State::Absolute | State::ReleaseFailed => false,
         }
     }
@@ -250,8 +248,8 @@ impl PointerModes {
             return Err(Failure::ReleaseFailed);
         }
         self.scope = Some(scope);
-        self.awaiting_fresh_absolute_point = false;
         if desired == Mode::LockedRelative {
+            self.awaiting_fresh_absolute_point = false;
             self.state = State::AwaitingMotion(lease.clone());
             self.apply_cursor(platform);
             Ok(Outcome::WaitingForMotion(lease))
@@ -566,6 +564,64 @@ mod tests {
     }
 
     #[test]
+    fn confined_reentry_after_lock_requires_new_absolute_point_before_cursor_policy() {
+        let (mut modes, mut host) = focused();
+        modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
+        assert!(matches!(
+            modes.request(scope(1), Mode::LockedRelative, &mut host),
+            Ok(Outcome::WaitingForMotion(_))
+        ));
+        assert!(modes.observe_motion(&scope(1), (1.0, 1.0), &mut host));
+        assert!(!host.visible);
+        assert!(matches!(
+            modes.request(scope(1), Mode::ConfinedAbsolute, &mut host),
+            Ok(Outcome::Realized(_))
+        ));
+        assert!(modes.ui_pointer_allowed());
+        assert!(host.visible);
+        modes.confirm_fresh_absolute_point(&mut host);
+        assert!(!host.visible);
+        assert_eq!(host.mode, Mode::ConfinedAbsolute);
+    }
+
+    #[test]
+    fn native_acquisition_has_a_strict_grab_then_motion_then_hide_order() {
+        let (mut modes, mut host) = focused();
+        let before = host.calls.len();
+        assert!(matches!(
+            modes.request(scope(1), Mode::LockedRelative, &mut host),
+            Ok(Outcome::WaitingForMotion(_))
+        ));
+        assert_eq!(
+            &host.calls[before..],
+            &[
+                (Mode::Absolute, Some(true)),
+                (Mode::LockedRelative, None),
+                (Mode::LockedRelative, Some(true)),
+            ]
+        );
+        assert!(modes.observe_motion(&scope(1), (3.0, 4.0), &mut host));
+        assert_eq!(host.calls.last(), Some(&(Mode::LockedRelative, Some(false))));
+        assert!(modes.release(&mut host).is_ok());
+        assert_eq!(host.mode, Mode::Absolute);
+        assert!(host.visible);
+    }
+
+    #[test]
+    fn unsupported_native_mode_pairs_have_no_implicit_downgrade() {
+        for desired in [Mode::ConfinedAbsolute, Mode::LockedRelative] {
+            for failure in [Failure::Unsupported, Failure::Ignored, Failure::Native] {
+                let (mut modes, mut host) = focused();
+                host.failures.push((desired, failure));
+                assert_eq!(modes.request(scope(1), desired, &mut host), Err(failure));
+                assert_eq!(host.mode, Mode::Absolute);
+                assert!(host.visible);
+                assert!(!modes.gameplay_motion_allowed());
+            }
+        }
+    }
+
+    #[test]
     fn native_unlock_remains_visible_until_fresh_absolute_point() {
         let (mut modes, mut host) = focused();
         modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
@@ -602,7 +658,10 @@ mod tests {
             Ok(Outcome::WaitingForMotion(_))
         ));
         host.failures.push((Mode::Absolute, Failure::Native));
-        assert_eq!(modes.focus_changed(false, &mut host), Err(Failure::ReleaseFailed));
+        assert_eq!(
+            modes.focus_changed(false, &mut host),
+            Err(Failure::ReleaseFailed)
+        );
         assert!(host.visible);
         assert!(!modes.ui_pointer_allowed());
         assert!(modes.focus_changed(true, &mut host).is_ok());
