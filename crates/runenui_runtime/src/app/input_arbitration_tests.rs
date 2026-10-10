@@ -823,15 +823,10 @@ fn rev20_pump_exhaustion_retires_scope_without_inventing_input_settlement() {
                 crate::RuntimeTerminalReason::Poisoned
             )
     )));
-    assert!(
-        !final_batch
-            .ordered_records()
-            .iter()
-            .any(|record| matches!(
-                record,
-                InputArbitrationRecord::InputSettled(settled) if settled.sequence() == pending
-            ))
-    );
+    assert!(!final_batch.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(settled) if settled.sequence() == pending
+    )));
     let repeated = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("retired scope remains observable"));
     assert!(
