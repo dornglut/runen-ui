@@ -319,3 +319,20 @@ fn opt_in_selection_follows_focus_through_generic_activation_not_tree_registry()
         TreeItemRequest::Select("a".into()),
     ]);
 }
+
+#[test]
+fn right_with_only_ineligible_descendants_never_enters_next_sibling() {
+    let mut runtime = fresh(true);
+    runtime.submit_action(Action::DisabledA(true))
+        .unwrap_or_else(|_| unreachable!("application disables the first child"));
+    runtime.submit_action(Action::ShowB(false))
+        .unwrap_or_else(|_| unreachable!("application removes the second child"));
+    settle(&mut runtime);
+    let parent = item(&mut runtime, "tree.parent");
+    command(&mut runtime, parent.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, parent.clone(), SemanticCommand::FocusRight);
+    assert_eq!(runtime.focus().focused_node(), Some(&parent),
+        "no eligible child must not enter the following root TreeItem");
+    assert_eq!(runtime.state().selected, "parent");
+    assert!(runtime.state().actions.is_empty());
+}
