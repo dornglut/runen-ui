@@ -994,7 +994,9 @@ mod tests {
             false,
             3,
         );
+        parent.claim_host_input();
         let mut child = parent.mapped_child::<NonClone>();
+        assert!(child.host_input_is_claimed());
         child.emit(NonClone(9));
         child.emit_command(SemanticCommand::CancelOrBack);
         child.emit_application_command(

@@ -377,6 +377,9 @@ pub(crate) fn pump_recorded<App: UiApp>(
                         crate::UiInputFamily::Composition,
                         match event {
                             runenui_core::CompositionEvent::Start(start) => start.device_id(),
+                            _ if runtime.composition.generation() == Some(event.generation()) => {
+                                runtime.composition.device_id()
+                            }
                             _ => None,
                         },
                     ),
