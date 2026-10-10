@@ -245,7 +245,13 @@ impl PointerModes {
             _ => {}
         }
         self.release(platform)?;
-        let generation = self.next_generation.ok_or(Failure::Exhausted)?;
+        let Some(generation) = self.next_generation else {
+            // A request whose lease identity cannot be issued must not keep
+            // an old hidden cursor policy after the attempted mode switch.
+            self.awaiting_fresh_absolute_point = true;
+            self.apply_cursor(platform);
+            return Err(Failure::Exhausted);
+        };
         self.next_generation = generation.checked_add(1);
         let lease = Lease {
             generation,
@@ -634,8 +640,10 @@ mod tests {
     }
 
     #[test]
-    fn unavailable_generation_fails_without_native_grab() {
+    fn unavailable_generation_fails_closed_without_new_native_grab() {
         let (mut modes, mut host) = focused();
+        modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
+        assert!(!host.visible);
         modes.next_generation = None;
         let before = host.calls.len();
         assert_eq!(
@@ -643,8 +651,14 @@ mod tests {
             Err(Failure::Exhausted)
         );
         assert!(modes.ui_pointer_allowed());
-        assert_eq!(host.calls.len(), before + 1); // harmless baseline restoration
+        assert!(!modes.ui_cursor_presentation_applied());
+        assert_eq!(host.calls.len(), before + 2);
+        assert!(host.calls[before..].iter().all(|(_, visible)| visible.is_some()));
         assert_eq!(host.mode, Mode::Absolute);
+        assert!(host.visible);
+        modes.confirm_fresh_absolute_point(&mut host);
+        assert!(modes.ui_cursor_presentation_applied());
+        assert!(!host.visible);
     }
 
     #[test]
