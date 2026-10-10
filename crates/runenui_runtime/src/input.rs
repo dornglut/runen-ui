@@ -1186,24 +1186,60 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // A candidate shortcut alone does not prove an accepted shortcut default.
         let explicit = transaction.host_input_claimed;
         let has_default_output = !transaction.default_outputs.is_empty();
-        let text_domain = matches!(
-            &payload,
-            InputEnvelopePayload::CommittedText(_) | InputEnvelopePayload::Composition(_)
-        );
+        let focused = transaction.focus_before.as_ref() == Some(&target);
+        let text_capability = self.tree.text_input_probe(&target).ok();
+        let owns_text_keyboard = focused
+            && matches!(&payload, InputEnvelopePayload::Keyboard(_))
+            && text_capability.is_some_and(|capability| {
+                capability.accepts_committed_text() || capability.accepts_composition()
+            });
+        let keyboard_default = match &payload {
+            InputEnvelopePayload::Keyboard(event) if has_default_output => {
+                if self.editor_owned_keyboard_default(event, &target).is_some() {
+                    Some(crate::UiInputClaimReason::TextOwner)
+                } else if shortcut_candidate.as_ref().is_some_and(|candidate| {
+                    matches!(candidate, KeyboardShortcutCandidate::Unique { .. })
+                }) {
+                    Some(crate::UiInputClaimReason::ApplicationShortcut)
+                } else if Self::generic_keyboard_default(event).is_some_and(|command| {
+                    matches!(command, SemanticCommand::Activate)
+                }) {
+                    Some(crate::UiInputClaimReason::ActivationDefault)
+                } else {
+                    Some(crate::UiInputClaimReason::FocusNavigation)
+                }
+            }
+            _ => None,
+        };
         let mut reasons = Vec::new();
         if explicit {
             reasons.push(crate::UiInputClaimReason::ExplicitWidgetClaim);
         }
-        if text_domain {
-            reasons.push(
-                if matches!(&payload, InputEnvelopePayload::Composition(_)) {
-                    crate::UiInputClaimReason::CompositionOwner
-                } else {
-                    crate::UiInputClaimReason::TextOwner
-                },
-            );
+        match &payload {
+            InputEnvelopePayload::Composition(_) => {
+                reasons.push(crate::UiInputClaimReason::CompositionOwner);
+            }
+            InputEnvelopePayload::CommittedText(_) => {
+                reasons.push(crate::UiInputClaimReason::TextOwner);
+            }
+            InputEnvelopePayload::Keyboard(_) if owns_text_keyboard => {
+                reasons.push(crate::UiInputClaimReason::TextOwner);
+            }
+            InputEnvelopePayload::Keyboard(_) => {}
         }
-        if has_default_output {
+        if let Some(reason) = keyboard_default {
+            if !reasons.contains(&reason) {
+                reasons.push(reason);
+            }
+        }
+        // A committed text-edit default is already owned by the editor.
+        // Ordinary outputs and callback invocation alone cannot claim gameplay.
+        let space_active = matches!(&payload, InputEnvelopePayload::Keyboard(event)
+            if matches!(event.physical_key(), PhysicalKey::Space))
+            && self.space_ownership.as_ref().is_some_and(|ownership| {
+                ownership.target == target
+            });
+        if space_active {
             reasons.push(crate::UiInputClaimReason::ActivationDefault);
         }
         let claims_ui = !reasons.is_empty();
