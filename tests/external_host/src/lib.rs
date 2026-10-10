@@ -312,7 +312,7 @@ mod tests {
         let mut runtime = AppRuntime::<ExternalHostClaimApp>::mount(Arc::clone(&reached));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         let id = ElementId::new("external-claim-probe")
@@ -334,7 +334,7 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("public focus request accepted"));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         let receipt = runtime
@@ -453,7 +453,7 @@ mod tests {
         );
         let _ = first
             .shutdown()
-            .expect("shutdown observation")
+            .unwrap_or_else(|_| unreachable!("shutdown observation"))
             .report()
             .to_owned();
         let closed = first
@@ -499,7 +499,7 @@ mod tests {
         steps.push(FrameStep::Pump);
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert!(runtime.state().active);
@@ -550,7 +550,7 @@ mod tests {
         steps.push(FrameStep::Pump);
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert!(!runtime.state().active);
@@ -587,7 +587,7 @@ mod tests {
 
         let _ = runtime
             .shutdown()
-            .expect("shutdown observation")
+            .unwrap_or_else(|_| unreachable!("shutdown observation"))
             .report()
             .to_owned();
         eprintln!(

@@ -2430,7 +2430,7 @@ mod tests {
         let mut runtime = AppRuntime::<DemoApp>::mount(DemoState::default());
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let style_environment = StyleEnvironment::default();
@@ -2455,7 +2455,7 @@ mod tests {
         );
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
@@ -2503,7 +2503,7 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("reference editor accepts focus"));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         runtime
@@ -2514,7 +2514,7 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("reference editor accepts committed text"));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
 
@@ -2539,9 +2539,9 @@ mod tests {
             RuntimeConfig::default()
                 .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
         );
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let owner = runtime.index().nodes()[0].id().clone();
@@ -2552,9 +2552,9 @@ mod tests {
                 CommandOrigin::programmatic(),
             )
             .unwrap_or_else(|_| unreachable!("the reference host focuses the editor at startup"));
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
@@ -2591,9 +2591,9 @@ mod tests {
         let hover = mouse.cursor_moved(device_id, translated(start));
         let hover = expect_ok(hover, "native cursor move is translated");
         expect_ok(runtime.submit_pointer(hover), "native hover is routed");
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let down_surface = runtime
@@ -2622,9 +2622,9 @@ mod tests {
             runtime.submit_pointer(down),
             "native primary press is routed",
         );
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let drag_surface = runtime
@@ -2645,9 +2645,9 @@ mod tests {
             runtime.submit_pointer(movement),
             "native drag movement is routed",
         );
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let release = mouse.button_input(
@@ -2664,9 +2664,9 @@ mod tests {
             runtime.submit_pointer(release),
             "native primary release is routed",
         );
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
 
@@ -2705,9 +2705,9 @@ mod tests {
             "second drag hover is translated",
         );
         expect_ok(runtime.submit_pointer(hover), "second drag hover is routed");
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let down = expect_ok(
@@ -2723,9 +2723,9 @@ mod tests {
             unreachable!("second primary press is admitted")
         };
         expect_ok(runtime.submit_pointer(down), "second drag press is routed");
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let movement = expect_ok(
@@ -2736,9 +2736,9 @@ mod tests {
             runtime.submit_pointer(movement),
             "second drag movement is routed",
         );
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let release = expect_ok(
@@ -2757,9 +2757,9 @@ mod tests {
             runtime.submit_pointer(release),
             "second drag release is routed",
         );
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let second_selection_publication = runtime
@@ -2791,9 +2791,9 @@ mod tests {
             runtime.submit_pointer(hover),
             "selection-collapse hover is routed",
         );
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let down = mouse.button_input(
@@ -2810,9 +2810,9 @@ mod tests {
             runtime.submit_pointer(down),
             "selection-collapse press is routed",
         );
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let up = mouse.button_input(
@@ -2829,9 +2829,9 @@ mod tests {
             runtime.submit_pointer(up),
             "selection-collapse release is routed",
         );
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let collapsed_publication = runtime
@@ -2872,9 +2872,9 @@ mod tests {
             RuntimeConfig::default()
                 .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
         );
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         let owner = runtime.index().nodes()[0].id().clone();
@@ -2886,9 +2886,9 @@ mod tests {
                 CommandOrigin::programmatic(),
             )
             .unwrap_or_else(|_| unreachable!("empty reference undo is accepted"));
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
@@ -2903,9 +2903,9 @@ mod tests {
                 CommandOrigin::programmatic(),
             )
             .unwrap_or_else(|_| unreachable!("empty reference redo is accepted"));
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
@@ -2920,9 +2920,9 @@ mod tests {
                 CommandOrigin::programmatic(),
             )
             .unwrap_or_else(|_| unreachable!("reference editor accepts focus"));
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         runtime
@@ -2931,9 +2931,9 @@ mod tests {
                     .unwrap_or_else(|_| unreachable!("fixture text is valid")),
             )
             .unwrap_or_else(|_| unreachable!("reference editor accepts committed text"));
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         assert!(runtime.state().text.ends_with('Q'));
@@ -2956,9 +2956,9 @@ mod tests {
                 None,
             ))
             .unwrap_or_else(|error| panic!("reference editor accepts Shift+Left: {error:?}"));
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         runtime
@@ -2968,9 +2968,9 @@ mod tests {
                 CommandOrigin::programmatic(),
             )
             .unwrap_or_else(|_| unreachable!("reference editor accepts undo"));
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
@@ -2979,9 +2979,9 @@ mod tests {
         let redo =
             runtime.submit_command(owner, SemanticCommand::Redo, CommandOrigin::programmatic());
         assert!(redo.is_ok(), "reference editor accepts redo: {redo:?}");
-        runtime
+        let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .expect("test pump observation")
+            .unwrap_or_else(|_| unreachable!("test pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.state().text, format!("{INITIAL_EDITOR_TEXT}Q"));
@@ -3063,9 +3063,9 @@ mod tests {
                 RuntimeConfig::default()
                     .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
             );
-            runtime
+            let _ = runtime
                 .pump(HOST_PUMP_BUDGET)
-                .expect("test pump observation")
+                .unwrap_or_else(|_| unreachable!("test pump observation"))
                 .report()
                 .to_owned();
             let owner = runtime.index().nodes()[0].id().clone();
@@ -3076,9 +3076,9 @@ mod tests {
                     CommandOrigin::programmatic(),
                 )
                 .unwrap_or_else(|_| unreachable!("measurement editor accepts focus"));
-            runtime
+            let _ = runtime
                 .pump(HOST_PUMP_BUDGET)
-                .expect("test pump observation")
+                .unwrap_or_else(|_| unreachable!("test pump observation"))
                 .report()
                 .to_owned();
             if extra_lines > 0 {
@@ -3090,9 +3090,9 @@ mod tests {
                             .unwrap_or_else(|_| unreachable!("measurement text is valid")),
                     )
                     .unwrap_or_else(|_| unreachable!("measurement editor accepts long text"));
-                runtime
+                let _ = runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
             }
@@ -3123,9 +3123,9 @@ mod tests {
                             .unwrap_or_else(|_| unreachable!("measurement commit is valid")),
                     )
                     .unwrap_or_else(|_| unreachable!("measurement text is admitted"));
-                runtime
+                let _ = runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
                 typing.push(started.elapsed());
@@ -3158,9 +3158,9 @@ mod tests {
                 RuntimeConfig::default()
                     .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
             );
-            drag_runtime
+            let _ = drag_runtime
                 .pump(HOST_PUMP_BUDGET)
-                .expect("test pump observation")
+                .unwrap_or_else(|_| unreachable!("test pump observation"))
                 .report()
                 .to_owned();
             let drag_owner = drag_runtime.index().nodes()[0].id().clone();
@@ -3171,9 +3171,9 @@ mod tests {
                     CommandOrigin::programmatic(),
                 )
                 .unwrap_or_else(|_| unreachable!("drag measurement editor accepts focus"));
-            drag_runtime
+            let _ = drag_runtime
                 .pump(HOST_PUMP_BUDGET)
-                .expect("test pump observation")
+                .unwrap_or_else(|_| unreachable!("test pump observation"))
                 .report()
                 .to_owned();
             if extra_lines > 0 {
@@ -3185,9 +3185,9 @@ mod tests {
                             .unwrap_or_else(|_| unreachable!("measurement text is valid")),
                     )
                     .unwrap_or_else(|_| unreachable!("drag measurement text is accepted"));
-                drag_runtime
+                let _ = drag_runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
             }
@@ -3212,9 +3212,9 @@ mod tests {
                     .with_changed_button(PointerButton::Primary),
                 )
                 .unwrap_or_else(|_| unreachable!("measurement drag starts"));
-            drag_runtime
+            let _ = drag_runtime
                 .pump(HOST_PUMP_BUDGET)
-                .expect("test pump observation")
+                .unwrap_or_else(|_| unreachable!("test pump observation"))
                 .report()
                 .to_owned();
             let mut drag = Vec::with_capacity(40);
@@ -3235,9 +3235,9 @@ mod tests {
                         .with_buttons(runenui_core::PointerButtons::new([PointerButton::Primary])),
                     )
                     .unwrap_or_else(|_| unreachable!("captured measurement drag is admitted"));
-                drag_runtime
+                let _ = drag_runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
                 drag.push(started.elapsed());
@@ -3290,9 +3290,9 @@ mod tests {
                     RuntimeConfig::default()
                         .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
                 );
-                runtime
+                let _ = runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
                 let owner = runtime.index().nodes()[0].id().clone();
@@ -3303,9 +3303,9 @@ mod tests {
                         CommandOrigin::programmatic(),
                     )
                     .unwrap_or_else(|_| unreachable!("paste fixture accepts focus"));
-                runtime
+                let _ = runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
                 runtime
@@ -3319,9 +3319,9 @@ mod tests {
                             .unwrap_or_else(|_| unreachable!("paste fixture text is valid")),
                     )
                     .unwrap_or_else(|_| unreachable!("paste fixture is admitted"));
-                runtime
+                let _ = runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
                 let commit_elapsed = started.elapsed();
@@ -3532,9 +3532,9 @@ mod tests {
                     .unwrap_or_else(|_| {
                         unreachable!("controlled profile generic mapping is valid")
                     });
-                runtime
+                let _ = runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
                 let owner = runtime.index().nodes()[0].id().clone();
@@ -3545,9 +3545,9 @@ mod tests {
                         CommandOrigin::programmatic(),
                     )
                     .unwrap_or_else(|_| unreachable!("profile editor accepts focus"));
-                runtime
+                let _ = runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
                 let _ = publish_profile(&mut runtime, &context);
@@ -3559,9 +3559,9 @@ mod tests {
                         CommandOrigin::programmatic(),
                     )
                     .unwrap_or_else(|_| unreachable!("profile editor accepts select-all"));
-                runtime
+                let _ = runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
                 let mutation_started = Instant::now();
@@ -3571,9 +3571,9 @@ mod tests {
                             .unwrap_or_else(|_| unreachable!("profile replacement is valid")),
                     )
                     .unwrap_or_else(|_| unreachable!("profile replacement is admitted"));
-                runtime
+                let _ = runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
                 first_mutation.push(mutation_started.elapsed().as_nanos());
@@ -3592,9 +3592,9 @@ mod tests {
                             .unwrap_or_else(|_| unreachable!("localized profile edit is valid")),
                     )
                     .unwrap_or_else(|_| unreachable!("localized profile edit is admitted"));
-                runtime
+                let _ = runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
                 localized_mutation.push(mutation_started.elapsed().as_nanos());
@@ -3609,9 +3609,9 @@ mod tests {
                         CommandOrigin::programmatic(),
                     )
                     .unwrap_or_else(|_| unreachable!("replacement profile accepts select-all"));
-                runtime
+                let _ = runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
                 let mutation_started = Instant::now();
@@ -3621,9 +3621,9 @@ mod tests {
                             .unwrap_or_else(|_| unreachable!("second replacement is valid")),
                     )
                     .unwrap_or_else(|_| unreachable!("second replacement is admitted"));
-                runtime
+                let _ = runtime
                     .pump(HOST_PUMP_BUDGET)
-                    .expect("test pump observation")
+                    .unwrap_or_else(|_| unreachable!("test pump observation"))
                     .report()
                     .to_owned();
                 replacement_mutation.push(mutation_started.elapsed().as_nanos());

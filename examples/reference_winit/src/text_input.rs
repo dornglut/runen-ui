@@ -141,9 +141,9 @@ mod tests {
 
     fn focused_composition() -> (MountedNodeId, CompositionGeneration) {
         let mut runtime = AppRuntime::<DemoApp>::mount(DemoState::default());
-        runtime
+        let _ = runtime
             .pump(full_pump())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         let owner = runtime.index().nodes()[0].id().clone();
@@ -154,9 +154,9 @@ mod tests {
                 CommandOrigin::programmatic(),
             )
             .unwrap_or_else(|_| unreachable!("the demo probe accepts focus"));
-        runtime
+        let _ = runtime
             .pump(full_pump())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         let generation = runtime
@@ -169,9 +169,9 @@ mod tests {
 
     fn distinct_owner() -> MountedNodeId {
         let mut runtime = AppRuntime::<DemoApp>::mount(DemoState::default());
-        runtime
+        let _ = runtime
             .pump(full_pump())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         runtime.index().nodes()[0].id().clone()

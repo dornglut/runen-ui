@@ -62,7 +62,7 @@ fn focus(runtime: &mut AppRuntime<App>, target: MountedNodeId) {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -171,14 +171,14 @@ fn downstream_focus_scope_events_reasons_and_focus_within_use_only_public_apis()
     let mut runtime = AppRuntime::<App>::mount(State {
         log: Rc::clone(&log),
     });
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let root = id(&mut runtime, "focus.root");
@@ -307,14 +307,14 @@ fn prevented_initiating_command_changes_modality_but_commits_no_focus_notificati
             CommandOrigin::automation(),
         )
         .unwrap_or_else(|_| unreachable!("command ingress is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.focus().focused_node(), None);
@@ -399,14 +399,14 @@ fn group_character(character: &str) -> KeyboardEvent {
 fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
     let log = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<ExternalGroupApp>::mount(Rc::clone(&log));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -447,9 +447,9 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("external before target is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
@@ -459,9 +459,9 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("external traversal command is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&b));
@@ -489,9 +489,9 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("external absolute group navigation is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&c));
@@ -503,9 +503,9 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("external first-member navigation is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&a));
@@ -513,9 +513,9 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
     runtime
         .submit_keyboard(group_character("b"))
         .unwrap_or_else(|_| unreachable!("downstream type-ahead keyboard input is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&b));
