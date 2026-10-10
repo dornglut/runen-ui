@@ -247,12 +247,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if !matches!(self.status, crate::RuntimeStatus::Closed)
             && let Some(previous) = &self.input_observation.last
         {
-            let pending = if matches!(self.status, crate::RuntimeStatus::Running)
-                || previous.status != self.status
-            {
-                self.input_observation.pending_direct_boundaries.max(1)
+            let pending = self.input_observation.pending_direct_boundaries;
+            let pending = if previous.status != self.status {
+                pending.max(1)
             } else {
-                self.input_observation.pending_direct_boundaries
+                pending
             };
             if self
                 .input_observation
@@ -265,8 +264,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 return Err(InputObservationError::RevisionExhausted);
             }
         }
-        let before_reservation = self.reserve_input_observation()?;
-        let after_reservation = self.reserve_input_observation()?;
+        // Both allocations use query-only preflight: the combined close
+        // revision requirement was checked above, and no later mutation may
+        // be admitted between these reservations and canonical shutdown.
+        let before_reservation = self.reserve_input_ownership_read()?;
+        let after_reservation = self.reserve_input_ownership_read()?;
         let (before, _) = self.input_ownership_reserved(before_reservation);
         debug_assert!(
             matches!(self.status, crate::RuntimeStatus::Closed)
@@ -344,6 +346,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn reserve_input_observation(
         &self,
     ) -> Result<InputSnapshotReservation, InputObservationError> {
+        self.reserve_input_observation_with_future_boundary(1)
+    }
+
+    // A read-only query does not reserve a phantom ownership transition.
+    // Canonical pump/checkpoint admission still requires future headroom.
+    fn reserve_input_ownership_read(
+        &self,
+    ) -> Result<InputSnapshotReservation, InputObservationError> {
+        self.reserve_input_observation_with_future_boundary(0)
+    }
+
+    fn reserve_input_observation_with_future_boundary(
+        &self,
+        future_boundaries: u64,
+    ) -> Result<InputSnapshotReservation, InputObservationError> {
         #[cfg(test)]
         if let Some(remaining) = self.input_observation.fail_reservation_after.get() {
             if remaining == 0 {
@@ -367,14 +384,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // if intermediate ownership facts were later coalesced. Keep one
         // additional checked revision for a terminal invalidation.
         if let Some(previous) = &self.input_observation.last {
-            let needed = if matches!(self.status, crate::RuntimeStatus::Running)
-                || previous.status != self.status
-            {
-                self.input_observation.pending_direct_boundaries.max(1)
+            let pending = self.input_observation.pending_direct_boundaries;
+            let needed = if previous.status != self.status {
+                // An already-committed synchronous terminal status requires
+                // exactly one observed revision even for a read-only query.
+                pending.max(1)
+            } else if matches!(self.status, crate::RuntimeStatus::Running) {
+                // Only an *admitted* future canonical envelope/checkpoint
+                // needs a spare transition; an unchanged public read does not.
+                pending.max(future_boundaries)
             } else {
-                // A terminal/closed scope with an already observed status is
-                // immutable. Re-reading that final snapshot uses no revision.
-                self.input_observation.pending_direct_boundaries
+                pending
             };
             let remaining_for_terminal =
                 u64::from(matches!(self.status, crate::RuntimeStatus::Running));
@@ -494,7 +514,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn input_ownership(
         &mut self,
     ) -> Result<InputOwnershipSnapshot, InputObservationError> {
-        let reserved = self.reserve_input_observation()?;
+        let reserved = self.reserve_input_ownership_read()?;
         Ok(self.input_ownership_reserved(reserved).0)
     }
 }
