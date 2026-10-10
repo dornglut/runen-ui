@@ -513,7 +513,10 @@ fn pane_width(
         .layout_report()
         .nodes()
         .iter()
-        .find(|node| node.authored_id().is_some_and(|candidate| candidate.as_str() == id))
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|candidate| candidate.as_str() == id)
+        })
         .unwrap_or_else(|| unreachable!("app-authored pane has layout"))
         .constrained_outer_size()
         .width()
@@ -539,7 +542,11 @@ fn splitter_requests_rebuild_both_application_owned_pane_geometries() {
             number(115.0),
         ))
         .unwrap_or_else(|_| unreachable!("semantic resize admitted"));
-    assert_eq!(runtime.state().left, 80.0, "admission alone does not mutate panes");
+    assert_eq!(
+        runtime.state().left,
+        80.0,
+        "admission alone does not mutate panes"
+    );
     settle_two_pane(&mut runtime);
     assert_eq!(runtime.state().left, 115.0);
     let second = publish_two_pane(&mut runtime);
@@ -551,9 +558,7 @@ fn settle_two_pane(runtime: &mut AppRuntime<TwoPaneApp>) {
     runtime.pump(PumpBudget::new(256, 256, 256, 256));
 }
 
-fn publish_two_pane(
-    runtime: &mut AppRuntime<TwoPaneApp>,
-) -> runenui_runtime::SurfacePublication {
+fn publish_two_pane(runtime: &mut AppRuntime<TwoPaneApp>) -> runenui_runtime::SurfacePublication {
     runtime
         .publish_surface(&SurfaceBuildContext::new(
             &StyleEnvironment::default(),
@@ -573,17 +578,19 @@ fn reverse_drag_from_a_published_bound_does_not_lose_queued_motion() {
     assert_eq!(runtime.state().size, 100.0);
     let input = publication.input_context().clone();
     let pointer = PointerId::new(98).unwrap_or_else(|| unreachable!());
-    runtime.submit_pointer(
-        PointerEvent::new(
-            pointer,
-            PointerDeviceKind::Mouse,
-            PointerPhase::Down,
-            LogicalPoint::new(6.0, 40.0).unwrap_or_else(|_| unreachable!()),
-            input.clone(),
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                LogicalPoint::new(6.0, 40.0).unwrap_or_else(|_| unreachable!()),
+                input.clone(),
+            )
+            .with_changed_button(PointerButton::Primary)
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
         )
-        .with_changed_button(PointerButton::Primary)
-        .with_buttons(PointerButtons::new([PointerButton::Primary])),
-    ).unwrap_or_else(|_| unreachable!("start capture"));
+        .unwrap_or_else(|_| unreachable!("start capture"));
     settle(&mut runtime);
     for (position, delta) in [(1.0, -5.0), (6.0, 5.0)] {
         runtime
@@ -603,8 +610,16 @@ fn reverse_drag_from_a_published_bound_does_not_lose_queued_motion() {
             .unwrap_or_else(|_| unreachable!("captured event admitted"));
     }
     settle(&mut runtime);
-    assert_eq!(runtime.state().size, 100.0, "one left then right delta returns to bound");
-    assert_eq!(runtime.state().proposals, 3, "both deltas must enter FIFO after SetValue");
+    assert_eq!(
+        runtime.state().size,
+        100.0,
+        "one left then right delta returns to bound"
+    );
+    assert_eq!(
+        runtime.state().proposals,
+        3,
+        "both deltas must enter FIFO after SetValue"
+    );
     inspect(&publish(&mut runtime), 100.0, true, false);
 }
 
@@ -616,24 +631,33 @@ fn absolute_set_value_after_queued_step_is_not_dropped_as_stale_noop() {
         .nodes()
         .iter()
         .find(|node| {
-            node.authored_id().is_some_and(|id| id.as_str() == "controlled.splitter")
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "controlled.splitter")
         })
         .unwrap_or_else(|| unreachable!("mounted splitter"))
         .id()
         .clone();
-    runtime.submit_command(
-        owner.clone(),
-        SemanticCommand::Increment,
-        CommandOrigin::programmatic(),
-    ).unwrap_or_else(|_| unreachable!("step"));
-    runtime.submit_command(
-        owner,
-        SemanticCommand::SetValue(number(50.0)),
-        CommandOrigin::programmatic(),
-    ).unwrap_or_else(|_| unreachable!("reset to previously published value"));
+    runtime
+        .submit_command(
+            owner.clone(),
+            SemanticCommand::Increment,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("step"));
+    runtime
+        .submit_command(
+            owner,
+            SemanticCommand::SetValue(number(50.0)),
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("reset to previously published value"));
     settle(&mut runtime);
     assert_eq!(runtime.state().size, 50.0);
-    assert_eq!(runtime.state().proposals, 2, "the final absolute value must remain ordered after the step");
+    assert_eq!(
+        runtime.state().proposals,
+        2,
+        "the final absolute value must remain ordered after the step"
+    );
 }
 
 #[test]
@@ -647,8 +671,11 @@ fn touch_end_applies_final_movement_but_cancel_discards_it() {
     runtime
         .submit_pointer(
             PointerEvent::new(
-                first, PointerDeviceKind::Touch, PointerPhase::Down,
-                point(6.0), input.clone(),
+                first,
+                PointerDeviceKind::Touch,
+                PointerPhase::Down,
+                point(6.0),
+                input.clone(),
             )
             .with_changed_button(PointerButton::Primary)
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
