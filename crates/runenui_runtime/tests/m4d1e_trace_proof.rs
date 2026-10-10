@@ -67,7 +67,7 @@ fn settle(runtime: &mut AppRuntime<App>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert!(report.is_quiescent(), "fixture did not settle: {report:?}");
 }
 
@@ -124,7 +124,7 @@ fn trigger_cleanup_admission_failure(runtime: &mut AppRuntime<App>) {
         .submit_action(Action::Noop)
         .unwrap_or_else(|_| unreachable!("second filler enters the queue"));
 
-    let report = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let report = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(report.processed_envelopes(), 1);
     assert_eq!(
         runtime.status(),
@@ -207,7 +207,7 @@ fn assert_idempotent_shutdown_from_terminal(
     runtime: &mut AppRuntime<App>,
     terminal_sequence: TraceSequence,
 ) {
-    let first_shutdown = runtime.shutdown();
+    let first_shutdown = runtime.shutdown().expect("shutdown observation").report().to_owned();
     assert!(!first_shutdown.already_complete());
     assert_eq!(runtime.status(), RuntimeStatus::Closed);
     let shutdown = runtime
@@ -226,7 +226,7 @@ fn assert_idempotent_shutdown_from_terminal(
         .filter(|record| matches!(record.kind(), TraceRecordKind::RuntimeShutdown { .. }))
         .count();
 
-    let second_shutdown = runtime.shutdown();
+    let second_shutdown = runtime.shutdown().expect("shutdown observation").report().to_owned();
     assert!(second_shutdown.already_complete());
     assert_eq!(runtime.status(), RuntimeStatus::Closed);
     assert_eq!(

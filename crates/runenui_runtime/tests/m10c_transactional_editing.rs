@@ -489,7 +489,7 @@ where
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("live editor accepts focus"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 }
 
 fn focus(runtime: &mut AppRuntime<App>) {
@@ -509,7 +509,7 @@ fn keyboard_down(runtime: &mut AppRuntime<App>, logical: LogicalKey, modifiers: 
             None,
         ))
         .unwrap_or_else(|error| panic!("keyboard command is submitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 }
 
 fn publish_editor(runtime: &mut AppRuntime<App>) -> SurfaceInputContext {
@@ -535,7 +535,7 @@ fn select_all(runtime: &mut AppRuntime<App>) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|error| panic!("select-all command is queued: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 }
 
 fn pending_service<TestApp>(
@@ -589,7 +589,7 @@ where
             .complete_framework_service(&token, response)
             .unwrap_or_else(|error| panic!("fake host queues state-service result: {error:?}"));
     }
-    runtime.pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 }
 
 fn install_controlled_font<TestApp>(runtime: &mut AppRuntime<TestApp>)
@@ -624,7 +624,7 @@ fn committed_text_queues_one_edit_action_and_acceptance_reconciles_authoritative
         )
         .unwrap_or_else(|_| unreachable!("focused editor accepts text"));
     assert_eq!(runtime.state().text, "ab");
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "abé");
     assert_eq!(runtime.state().revision, 1);
     assert_eq!(runtime.state().history, ["ab"]);
@@ -644,7 +644,7 @@ fn equal_opaque_edit_and_effect_action_values_keep_their_private_envelope_origin
                 .unwrap_or_else(|_| unreachable!("text is non-empty")),
         )
         .unwrap_or_else(|error| panic!("edit is queued: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     assert_eq!(runtime.state().text, "abx");
     assert!(runtime.state().equal_action_value_observed);
@@ -669,14 +669,14 @@ fn logical_character_keys_do_not_insert_and_prevented_committed_text_enqueues_no
             None,
         ))
         .unwrap_or_else(|error| panic!("logical character key is routed: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "ab");
     assert!(runtime.state().history.is_empty());
     let owner = runtime.index().nodes()[0].id().clone();
     runtime
         .submit_command(owner, SemanticCommand::Copy, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("clipboard vocabulary remains routable: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert!(runtime.trace().kinds().any(|kind| matches!(
         kind,
         TraceRecordKind::EditingDefaultUnavailable {
@@ -697,7 +697,7 @@ fn logical_character_keys_do_not_insert_and_prevented_committed_text_enqueues_no
                 .unwrap_or_else(|_| unreachable!("text is non-empty")),
         )
         .unwrap_or_else(|error| panic!("cancelable text event is routed: {error:?}"));
-    prevented.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    prevented.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(prevented.state().text, "ab");
     assert!(prevented.state().history.is_empty());
     assert_eq!(prevented.__editing_session_counts_for_test(), (1, 0));
@@ -715,7 +715,7 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
     let owner = copy.index().nodes()[0].id().clone();
     copy.submit_command(owner, SemanticCommand::Copy, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("copy default is admitted: {error:?}"));
-    copy.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    copy.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let request = pending_service(&copy, |request| {
         matches!(
             request,
@@ -737,7 +737,7 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
     copy.complete_framework_service(&token, FrameworkServiceResponse::ClipboardWriteText(Ok(())))
         .unwrap_or_else(|error| panic!("copy result queues: {error:?}"));
     assert_eq!(copy.state().text, "ab");
-    copy.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    copy.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(copy.state().text, "ab");
     assert_eq!(copy.status(), RuntimeStatus::Running);
 
@@ -750,7 +750,7 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
     failed_cut
         .submit_command(owner, SemanticCommand::Cut, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("cut default is admitted: {error:?}"));
-    failed_cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    failed_cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let token = pending_service(&failed_cut, |request| {
         matches!(
             request,
@@ -769,7 +769,7 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
             )),
         )
         .unwrap_or_else(|error| panic!("cut failure is a typed response: {error:?}"));
-    failed_cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    failed_cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(failed_cut.state().text, "ab");
     assert!(failed_cut.state().observed_edits.is_empty());
     assert!(failed_cut.trace().kinds().any(|kind| matches!(
@@ -793,7 +793,7 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
     let owner = cut.index().nodes()[0].id().clone();
     cut.submit_command(owner, SemanticCommand::Cut, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("cut default is admitted: {error:?}"));
-    cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let token = pending_service(&cut, |request| {
         matches!(
             request,
@@ -807,7 +807,7 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
     cut.complete_framework_service(&token, FrameworkServiceResponse::ClipboardWriteText(Ok(())))
         .unwrap_or_else(|error| panic!("cut success is queued before editing: {error:?}"));
     assert_eq!(cut.state().text, "ab");
-    cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(cut.state().text, "");
     assert_eq!(cut.state().observed_edits[0].kind, EditKind::Cut);
 
@@ -819,7 +819,7 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
     paste
         .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("paste default is admitted: {error:?}"));
-    paste.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    paste.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let pending = pending_service(
         &paste,
         |request| matches!(request, FrameworkServiceRequest::ClipboardReadText { max_bytes } if *max_bytes > 0),
@@ -837,7 +837,7 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
             panic!("paste data is queued, not inserted at callback time: {error:?}")
         });
     assert_eq!(paste.state().text, "ab");
-    paste.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    paste.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(paste.state().text, "abx");
     assert_eq!(paste.state().observed_edits[0].kind, EditKind::Paste);
 
@@ -849,7 +849,7 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
     unavailable
         .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("paste default is admitted: {error:?}"));
-    unavailable.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    unavailable.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let token = pending_service(&unavailable, |request| {
         matches!(request, FrameworkServiceRequest::ClipboardReadText { .. })
     })
@@ -860,7 +860,7 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
             FrameworkServiceResponse::ClipboardReadText(Err(FrameworkServiceFailure::Unavailable)),
         )
         .unwrap_or_else(|error| panic!("unavailable is not converted into empty text: {error:?}"));
-    unavailable.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    unavailable.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(unavailable.state().text, "ab");
     assert!(unavailable.state().observed_edits.is_empty());
 }
@@ -880,7 +880,7 @@ fn clipboard_copy_is_suppressed_secret_and_unclassified_paste_is_rejected() {
     secret
         .submit_command(owner, SemanticCommand::Copy, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("secret copy is routed for safe rejection: {error:?}"));
-    secret.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    secret.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert!(!has_pending_clipboard_service(&secret));
     assert_eq!(secret.state().text, "ab");
 
@@ -892,7 +892,7 @@ fn clipboard_copy_is_suppressed_secret_and_unclassified_paste_is_rejected() {
     runtime
         .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("paste is routed: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let token = pending_service(&runtime, |request| {
         matches!(request, FrameworkServiceRequest::ClipboardReadText { .. })
     })
@@ -909,7 +909,7 @@ fn clipboard_copy_is_suppressed_secret_and_unclassified_paste_is_rejected() {
             .complete_framework_service(&token, response)
             .is_err()
     );
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "ab");
     assert!(runtime.state().observed_edits.is_empty());
     assert_eq!(runtime.status(), RuntimeStatus::Running);
@@ -932,7 +932,7 @@ fn repeated_clipboard_writes_keep_their_fifo_service_effects() {
             )
             .unwrap_or_else(|error| panic!("copy default is admitted: {error:?}"));
     }
-    runtime.pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     let tokens = runtime
         .pending_framework_services()
@@ -957,7 +957,7 @@ fn repeated_clipboard_writes_keep_their_fifo_service_effects() {
             )
             .unwrap_or_else(|error| panic!("both committed copies remain live: {error:?}"));
     }
-    runtime.pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     assert_eq!(
         runtime
@@ -991,7 +991,7 @@ fn sensitive_clipboard_payload_can_only_enter_secret_document() {
     secret
         .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("secret paste default is routed: {error:?}"));
-    secret.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    secret.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let token = pending_service(&secret, |request| {
         matches!(request, FrameworkServiceRequest::ClipboardReadText { .. })
     })
@@ -1007,7 +1007,7 @@ fn sensitive_clipboard_payload_can_only_enter_secret_document() {
         .unwrap_or_else(|error| {
             panic!("sensitive payload is admitted to secret document: {error:?}")
         });
-    secret.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    secret.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(secret.state().text, "abz");
     assert_eq!(secret.state().observed_edits[0].kind, EditKind::Paste);
 }
@@ -1025,13 +1025,13 @@ fn service_effect_staged_for_old_surface_is_not_exposed_after_publication_change
         .submit_command(owner, SemanticCommand::Copy, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("copy command is admitted: {error:?}"));
 
-    let routed = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let routed = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(routed.processed_envelopes(), 1);
     assert!(routed.remaining_queued_envelopes() > 0);
     assert!(!has_pending_clipboard_service(&runtime));
 
     publish_editor(&mut runtime);
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert!(!has_pending_clipboard_service(&runtime));
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 }
@@ -1047,7 +1047,7 @@ fn clipboard_completion_is_revalidated_after_prior_queued_edits_and_cross_thread
     stale
         .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("paste default is admitted: {error:?}"));
-    stale.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    stale.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let token = pending_service(&stale, |request| {
         matches!(request, FrameworkServiceRequest::ClipboardReadText { .. })
     })
@@ -1069,7 +1069,7 @@ fn clipboard_completion_is_revalidated_after_prior_queued_edits_and_cross_thread
         .unwrap_or_else(|error| {
             panic!("clipboard completion queues behind the prior edit: {error:?}")
         });
-    stale.pump(PumpBudget::new(24, usize::MAX, usize::MAX, usize::MAX));
+    stale.pump(PumpBudget::new(24, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(stale.state().text, "aby");
     assert_eq!(stale.state().observed_edits.len(), 1);
     assert_eq!(stale.state().observed_edits[0].kind, EditKind::Insert);
@@ -1082,7 +1082,7 @@ fn clipboard_completion_is_revalidated_after_prior_queued_edits_and_cross_thread
     threaded
         .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("paste default is admitted: {error:?}"));
-    threaded.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    threaded.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let token = pending_service(&threaded, |request| {
         matches!(request, FrameworkServiceRequest::ClipboardReadText { .. })
     })
@@ -1110,7 +1110,7 @@ fn clipboard_completion_is_revalidated_after_prior_queued_edits_and_cross_thread
             )
             .is_err()
     );
-    threaded.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    threaded.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(threaded.state().text, "abq");
     assert_eq!(threaded.status(), RuntimeStatus::Running);
 }
@@ -1121,7 +1121,7 @@ fn committed_focus_derives_ime_candidate_geometry_and_text_cursor_services() {
     install_controlled_font(&mut runtime);
     focus(&mut runtime);
     let surface_context = publish_editor(&mut runtime);
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     let owner = runtime.index().nodes()[0].id().clone();
     let input_method = pending_service(&runtime, |request| {
@@ -1151,7 +1151,7 @@ fn committed_focus_derives_ime_candidate_geometry_and_text_cursor_services() {
     runtime
         .submit_pointer(pointer)
         .unwrap_or_else(|error| panic!("text cursor hit is routed: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let cursor = pending_service(&runtime, |request| {
         matches!(request, FrameworkServiceRequest::Cursor { .. })
     });
@@ -1212,7 +1212,7 @@ fn same_node_scroll_moves_committed_ime_candidate_area_with_content_not_viewport
     let initial = runtime
         .publish_surface(&build)
         .unwrap_or_else(|error| panic!("initial editable scroll surface publishes: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let before = match pending_service(&runtime, |request| {
         matches!(
             request,
@@ -1248,7 +1248,7 @@ fn same_node_scroll_moves_committed_ime_candidate_area_with_content_not_viewport
     runtime
         .submit_pointer(wheel)
         .unwrap_or_else(|error| panic!("same-node wheel input is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::LogicalScrollOwnerApplied { consumed, .. }
@@ -1268,7 +1268,7 @@ fn same_node_scroll_moves_committed_ime_candidate_area_with_content_not_viewport
             .bounds()
     };
     assert_eq!(owner_bounds(&scrolled), owner_bounds(&initial));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let after = match pending_service(&runtime, |request| {
         matches!(
             request,
@@ -1317,7 +1317,7 @@ fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal()
     runtime
         .submit_pointer(pointer)
         .unwrap_or_else(|error| panic!("displayed editable hit is submitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
@@ -1344,7 +1344,7 @@ fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal()
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
         )
         .unwrap_or_else(|error| panic!("displayed pointer drag is submitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::PointerTextSelectionUpdated { pointer_id: id } if *id == pointer_id
@@ -1371,7 +1371,7 @@ fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal()
         .unwrap_or_else(|error| {
             panic!("captured release outside the viewport is submitted: {error:?}")
         });
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::PointerTextSelectionEnded { pointer_id: id } if *id == pointer_id
@@ -1412,12 +1412,12 @@ fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal()
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|error| panic!("a fresh captured selection starts: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     runtime
         .submit_action(Action::RemoveEditor)
         .unwrap_or_else(|_| unreachable!("owner removal is queued"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(
         runtime
             .trace()
@@ -1457,7 +1457,7 @@ fn default_prevented_pointer_down_suppresses_selection_start() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|error| panic!("default-prevented primary Down is routed: {error:?}"));
-    down_runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    down_runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert!(!down_runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::PointerTextSelectionStarted { pointer_id } if pointer_id.get() == 35
@@ -1490,7 +1490,7 @@ fn shift_primary_click_preserves_selection_anchor_across_the_active_endpoint() {
             .with_modifiers(KeyModifiers::SHIFT),
         )
         .unwrap_or_else(|error| panic!("shift-click is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -1504,7 +1504,7 @@ fn shift_primary_click_preserves_selection_anchor_across_the_active_endpoint() {
             .with_modifiers(KeyModifiers::SHIFT),
         )
         .unwrap_or_else(|error| panic!("shift-click release is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     let environment = StyleEnvironment::default();
     let publication = runtime
@@ -1551,7 +1551,7 @@ fn touch_text_selection_wins_only_after_its_validated_threshold_and_uses_display
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|error| panic!("touch selection down is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert!(!runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::TouchGestureWon {
@@ -1574,7 +1574,7 @@ fn touch_text_selection_wins_only_after_its_validated_threshold_and_uses_display
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
         )
         .unwrap_or_else(|error| panic!("touch selection threshold move is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
@@ -1618,7 +1618,7 @@ fn undo_and_redo_are_application_owned_transactions_over_committed_history_only(
                 .unwrap_or_else(|_| unreachable!("text is non-empty")),
         )
         .unwrap_or_else(|_| unreachable!("edit is queued"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "abx");
     assert_eq!(runtime.state().history, ["ab"]);
 
@@ -1626,7 +1626,7 @@ fn undo_and_redo_are_application_owned_transactions_over_committed_history_only(
     runtime
         .submit_command(owner, SemanticCommand::Undo, CommandOrigin::programmatic())
         .unwrap_or_else(|_| unreachable!("undo follows the canonical command route"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "ab");
     assert!(runtime.state().history.is_empty());
     assert_eq!(runtime.state().redo, ["abx"]);
@@ -1637,7 +1637,7 @@ fn undo_and_redo_are_application_owned_transactions_over_committed_history_only(
     runtime
         .submit_command(owner, SemanticCommand::Redo, CommandOrigin::programmatic())
         .unwrap_or_else(|_| unreachable!("redo follows the canonical command route"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "abx");
     assert_eq!(runtime.state().history, ["ab"]);
     assert!(runtime.state().redo.is_empty());
@@ -1655,7 +1655,7 @@ fn undo_and_redo_are_application_owned_transactions_over_committed_history_only(
                 .unwrap_or_else(|_| unreachable!("text is non-empty")),
         )
         .unwrap_or_else(|_| unreachable!("edit is queued"));
-    rejected.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    rejected.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert!(rejected.state().history.is_empty());
     assert!(rejected.state().redo.is_empty());
 }
@@ -1682,7 +1682,7 @@ fn backward_and_forward_deletion_use_the_same_transactional_route() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|error| panic!("backward delete is routed: {error:?}"));
-    backward.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    backward.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(backward.state().text, "a");
     assert_eq!(backward.state().selection, 1);
     assert_eq!(backward.state().history, ["ab"]);
@@ -1701,7 +1701,7 @@ fn backward_and_forward_deletion_use_the_same_transactional_route() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|error| panic!("backward movement is routed: {error:?}"));
-    forward.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    forward.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     forward
         .submit_command(
             owner,
@@ -1709,7 +1709,7 @@ fn backward_and_forward_deletion_use_the_same_transactional_route() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|error| panic!("forward delete is routed: {error:?}"));
-    forward.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    forward.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(forward.state().text, "a");
     assert_eq!(forward.state().selection, 1);
     assert_eq!(forward.state().history, ["ab"]);
@@ -1742,7 +1742,7 @@ fn native_backspace_and_normalized_select_all_use_the_keyboard_default_route() {
             None,
         ))
         .unwrap_or_else(|error| panic!("native Backspace is routed: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "a");
     assert_eq!(runtime.state().history, ["ab"]);
     runtime
@@ -1761,7 +1761,7 @@ fn native_backspace_and_normalized_select_all_use_the_keyboard_default_route() {
             None,
         ))
         .unwrap_or_else(|error| panic!("normalized Select All shortcut is routed: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let publication = runtime
         .publish_surface(&context)
         .unwrap_or_else(|error| panic!("selected text republishes: {error:?}"));
@@ -1802,7 +1802,7 @@ fn native_backspace_and_normalized_select_all_use_the_keyboard_default_route() {
             None,
         ))
         .unwrap_or_else(|error| panic!("Escape reaches the editor default route: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let collapsed = runtime
         .publish_surface(&context)
         .unwrap_or_else(|error| panic!("collapsed selection republishes: {error:?}"))
@@ -1836,7 +1836,7 @@ fn native_backspace_and_normalized_select_all_use_the_keyboard_default_route() {
             None,
         ))
         .unwrap_or_else(|error| panic!("collapsed Escape remains routable: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let still_collapsed = runtime
         .publish_surface(&context)
         .unwrap_or_else(|error| panic!("unchanged selection republishes: {error:?}"))
@@ -1940,7 +1940,7 @@ fn owner_removal_retires_live_authority_drains_queued_rejection_and_keeps_app_hi
     runtime
         .submit_action(Action::RemoveEditor)
         .unwrap_or_else(|_| unreachable!("removal is queued after ingress"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "ab");
     assert!(runtime.state().history.is_empty());
     assert!(!runtime.state().editor_visible);
@@ -1955,11 +1955,11 @@ fn owner_removal_retires_live_authority_drains_queued_rejection_and_keeps_app_hi
                 .unwrap_or_else(|_| unreachable!("text is non-empty")),
         )
         .unwrap_or_else(|_| unreachable!("edit is queued"));
-    committed.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    committed.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     committed
         .submit_action(Action::RemoveEditor)
         .unwrap_or_else(|_| unreachable!("removal is queued"));
-    committed.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    committed.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(committed.state().history, ["ab"]);
     assert_eq!(committed.state().text, "abx");
     assert_eq!(committed.__editing_session_counts_for_test(), (0, 0));
@@ -1975,11 +1975,11 @@ fn shutdown_cancels_queued_edit_and_retires_all_editing_authority() {
                 .unwrap_or_else(|_| unreachable!("text is non-empty")),
         )
         .unwrap_or_else(|error| panic!("edit ingress is queued: {error:?}"));
-    let routed = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let routed = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(routed.remaining_queued_envelopes(), 1);
     assert_eq!(runtime.state().text, "ab");
 
-    let report = runtime.shutdown();
+    let report = runtime.shutdown().expect("shutdown observation").report().to_owned();
     assert_eq!(report.cancelled_queued_envelopes(), 1);
     assert_eq!(runtime.__editing_session_counts_for_test(), (0, 0));
     assert_eq!(runtime.state().text, "ab");
@@ -1999,7 +1999,7 @@ fn rejected_prefix_restores_authoritative_projection_without_mutating_document()
                 .unwrap_or_else(|_| unreachable!("text is non-empty")),
         )
         .unwrap_or_else(|_| unreachable!("focused editor accepts text"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "ab");
     assert_eq!(runtime.state().revision, 0);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
@@ -2020,7 +2020,7 @@ fn burst_edits_keep_fifo_predecessors_and_rejected_suffix_drains_without_retarge
             )
             .unwrap_or_else(|_| unreachable!("bounded burst is accepted"));
     }
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "ab");
     assert_eq!(runtime.state().revision, 0);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
@@ -2048,7 +2048,7 @@ fn transformed_prefix_rebases_a_non_overlapping_dependent_suffix() {
             )
             .unwrap_or_else(|_| unreachable!("bounded burst is accepted"));
     }
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "abXy");
     assert_eq!(runtime.state().revision, 2);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
@@ -2070,7 +2070,7 @@ fn inverse_and_grouping_hints_are_deterministic_but_history_remains_application_
             )
             .unwrap_or_else(|error| panic!("edit is queued: {error:?}"));
     }
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     let observations = &runtime.state().observed_edits;
     assert_eq!(observations.len(), 2);
@@ -2097,7 +2097,7 @@ fn inverse_and_grouping_hints_are_deterministic_but_history_remains_application_
                 .unwrap_or_else(|_| unreachable!("text is non-empty")),
         )
         .unwrap_or_else(|error| panic!("rejected edit is queued: {error:?}"));
-    rejected.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    rejected.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(rejected.state().observed_edits.len(), 1);
     assert!(rejected.state().observed_edits[0].inverse_range.is_some());
     assert!(rejected.state().observed_edits[0].group.is_some());
@@ -2132,7 +2132,7 @@ fn ordinary_action_cannot_return_an_edit_resolution() {
     runtime
         .submit_action(Action::Ordinary)
         .unwrap_or_else(|_| unreachable!("ordinary action is queued"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(
         runtime.status(),
         RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
@@ -2178,7 +2178,7 @@ fn missing_edit_resolution_poisons_after_application_mutation_without_claiming_r
                 .unwrap_or_else(|_| unreachable!("text is non-empty")),
         )
         .unwrap_or_else(|_| unreachable!("edit is queued"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "abx");
     assert_eq!(runtime.state().revision, 1);
     assert_eq!(
@@ -2230,7 +2230,7 @@ fn inconsistent_resolution_refuses_effect_commit_before_terminal_poison() {
                 .unwrap_or_else(|_| unreachable!("text is non-empty")),
         )
         .unwrap_or_else(|_| unreachable!("edit is queued"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().ordinary_count, 0);
     assert_eq!(runtime.state().text, "ab");
     assert_eq!(
@@ -2290,7 +2290,7 @@ fn foreign_resolution_request_poisons_after_application_mutation() {
                     .unwrap_or_else(|_| unreachable!("text is non-empty")),
             )
             .unwrap_or_else(|error| panic!("edit is queued: {error:?}"));
-        runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+        runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     }
     assert_eq!(runtime.state().text, "abxy");
     assert_eq!(
@@ -2349,7 +2349,7 @@ fn editable_semantics_use_the_retained_caret_map_and_runtime_selection() {
             SemanticAction::MoveBackward,
         ))
         .unwrap_or_else(|_| unreachable!("published editable action is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "ab");
     let stale = runtime
         .submit_semantic_action(runenui_core::SemanticActionRequest::new(
@@ -2381,7 +2381,7 @@ fn editable_semantics_use_the_retained_caret_map_and_runtime_selection() {
             revision_zero_selection,
         ))
         .unwrap_or_else(|error| panic!("exact retained selection is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let selected = runtime
         .publish_surface(&context)
         .unwrap_or_else(|error| panic!("selected semantic surface republishes: {error:?}"));
@@ -2398,7 +2398,7 @@ fn editable_semantics_use_the_retained_caret_map_and_runtime_selection() {
             "Z",
         ))
         .unwrap_or_else(|error| panic!("semantic replacement is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "aZb");
     let third = runtime
         .publish_surface(&context)
@@ -2522,7 +2522,7 @@ fn extend_and_select_all_update_only_the_owner_local_runtime_selection() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|error| panic!("selection extension is routed: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let extended = runtime
         .publish_surface(&context)
         .unwrap_or_else(|error| panic!("extended selection publishes: {error:?}"));
@@ -2541,7 +2541,7 @@ fn extend_and_select_all_update_only_the_owner_local_runtime_selection() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|error| panic!("select-all is routed: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let selected = runtime
         .publish_surface(&context)
         .unwrap_or_else(|error| panic!("select-all publishes: {error:?}"));
@@ -2571,16 +2571,16 @@ fn preedit_uses_the_retained_layout_without_committing_and_commit_inserts_once()
     let start = runtime
         .start_composition(None)
         .unwrap_or_else(|error| panic!("focused editor starts composition: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     runtime
         .submit_composition_update(start.generation().clone(), "xy".to_owned(), None)
         .unwrap_or_else(|error| panic!("matching preedit update is queued: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     let staged = runtime
         .publish_surface(&context)
         .unwrap_or_else(|error| panic!("preedit surface publishes: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_ne!(staged.paint_scene(), initial.paint_scene());
     assert_eq!(runtime.state().text, "ab");
     assert!(
@@ -2613,7 +2613,7 @@ fn preedit_uses_the_retained_layout_without_committing_and_commit_inserts_once()
     runtime
         .submit_composition_end(start.generation().clone())
         .unwrap_or_else(|error| panic!("matching composition ends: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "abZ");
     assert_eq!(runtime.state().revision, 1);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
@@ -2627,16 +2627,16 @@ fn owner_removal_cancels_preedit_without_a_document_mutation() {
     let start = runtime
         .start_composition(None)
         .unwrap_or_else(|error| panic!("focused editor starts composition: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     runtime
         .submit_composition_update(start.generation().clone(), "xy".to_owned(), None)
         .unwrap_or_else(|error| panic!("matching preedit update is queued: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     runtime
         .submit_action(Action::RemoveEditor)
         .unwrap_or_else(|_| unreachable!("editor removal is queued"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert!(!runtime.state().editor_visible);
     assert_eq!(runtime.state().text, "ab");
     assert_eq!(runtime.state().revision, 0);
@@ -2665,7 +2665,7 @@ fn pending_capacity_accounts_for_already_queued_committed_text_without_partial_w
     assert_eq!(rejected.kind(), SubmitTextErrorKind::EditingCapacity);
     assert_eq!(rejected.event().text(), "y");
     assert_eq!(runtime.state().text, "ab");
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "abx");
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 }
@@ -2689,7 +2689,7 @@ fn request_exhaustion_accounts_for_queued_reservations_and_is_recoverable() {
         .expect_err("non-wrapping request space is exhausted");
     assert_eq!(rejected.kind(), SubmitTextErrorKind::EditRequestExhausted);
     assert_eq!(runtime.state().text, "ab");
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "abx");
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 }
@@ -2715,22 +2715,22 @@ fn secret_edit_and_preedit_payloads_stay_absent_from_full_capture_trace_and_repl
     let start = runtime
         .start_composition(None)
         .unwrap_or_else(|error| panic!("secret editor starts composition: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     runtime
         .submit_composition_update(start.generation().clone(), PREEDIT_SECRET.to_owned(), None)
         .unwrap_or_else(|error| panic!("secret preedit is queued: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     runtime
         .cancel_composition(start.generation().clone())
         .unwrap_or_else(|error| panic!("secret preedit is cancelled: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     runtime
         .submit_text(
             CommittedTextEvent::new(COMMIT_SECRET, None)
                 .unwrap_or_else(|_| unreachable!("text is non-empty")),
         )
         .unwrap_or_else(|error| panic!("secret committed text is queued: {error:?}"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     let environment = StyleEnvironment::default();
     let publication = runtime
@@ -2794,7 +2794,7 @@ fn secret_unicode_navigation_and_backspace_reuse_the_masked_m10_source_map() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("secret move is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     runtime
         .submit_command(
             owner,
@@ -2802,7 +2802,7 @@ fn secret_unicode_navigation_and_backspace_reuse_the_masked_m10_source_map() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("secret deletion is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().text, "a漢");
     assert_eq!(runtime.state().selection, 1);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
@@ -2834,7 +2834,7 @@ fn secret_mouse_hit_uses_source_coordinates_from_the_retained_mask() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|_| unreachable!("secret pointer is submitted"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::PointerTextSelectionStarted { pointer_id } if pointer_id.get() == 83
