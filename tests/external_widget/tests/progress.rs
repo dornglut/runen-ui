@@ -50,7 +50,7 @@ impl UiApp for App {
         ])
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update(_: &mut Self::State, (): Self::Action) {}
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn public_progress_matches_downstream_widget_semantics_without_implicit_actions(
                 .iter()
                 .find(|node| node.role() == SemanticRole::Progress && node.name() == Some(name))
                 .unwrap_or_else(|| unreachable!("each authored Progress published"));
-            assert!(node.supported_actions().is_empty());
+            assert_eq!(node.supported_actions(), []);
             assert_eq!(node.state().expanded(), None);
             node.range()
                 .cloned()
