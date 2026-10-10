@@ -321,6 +321,56 @@ impl<Action> SplitterWidget<Action> {
     }
 }
 
+impl<Action> SplitterWidget<Action> {
+    /// Releases a captured pointer for a terminal transition or a reauthored
+    /// movement axis. Returning true means this event was fully consumed.
+    fn retire_captured_pointer(
+        &mut self,
+        state: &mut SplitterState,
+        pointer: &crate::PointerEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> bool {
+        if state.drag != Some(pointer.pointer_id()) {
+            return false;
+        }
+        let primary_ended = pointer.phase() == PointerPhase::Up
+            && !(pointer.device_kind() == PointerDeviceKind::Mouse
+                && pointer.changed_button() != Some(PointerButton::Primary)
+                && pointer.buttons().contains(PointerButton::Primary));
+        if !state.cancel_drag
+            && !primary_ended
+            && pointer.phase() != PointerPhase::Cancel
+            && state.enabled
+            && state.actionable
+        {
+            return false;
+        }
+        // Native touch Ended includes its final movement. Only a valid Up in
+        // the unchanged axis can commit this last segment; Cancel, disabled
+        // and reoriented captures must not change application-owned panes.
+        if primary_ended
+            && !state.cancel_drag
+            && state.enabled
+            && state.actionable
+            && !context.default_is_prevented()
+            && usable_extent(context)
+        {
+            let delta = pointer.movement_delta();
+            let axis = match state.orientation {
+                SemanticOrientation::Vertical => delta.x(),
+                SemanticOrientation::Horizontal => delta.y(),
+            };
+            self.emit(state, SplitterRequest::MoveBy(axis), context);
+        }
+        state.drag = None;
+        state.cancel_drag = false;
+        context.release_pointer_capture();
+        context.prevent_default();
+        context.stop_propagation();
+        true
+    }
+}
+
 impl<Action> Widget<Action> for SplitterWidget<Action> {
     type State = SplitterState;
 
@@ -393,50 +443,8 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
             return WidgetEventOutput::changed();
         }
         if let Some(pointer) = event.as_pointer()
-            && state.drag == Some(pointer.pointer_id())
-            && state.cancel_drag
+            && self.retire_captured_pointer(state, pointer, context)
         {
-            state.drag = None;
-            state.cancel_drag = false;
-            context.release_pointer_capture();
-            context.prevent_default();
-            context.stop_propagation();
-            return WidgetEventOutput::changed();
-        }
-        if let Some(pointer) = event.as_pointer()
-            && state.drag == Some(pointer.pointer_id())
-            && (pointer.phase() == PointerPhase::Cancel
-                || (pointer.phase() == PointerPhase::Up
-                    // Mouse buttons share one pointer stream. Releasing a
-                    // secondary button while Primary stays pressed is not the
-                    // drag's terminal event and must not relinquish capture.
-                    && !(pointer.device_kind() == PointerDeviceKind::Mouse
-                        && pointer.changed_button() != Some(PointerButton::Primary)
-                        && pointer.buttons().contains(PointerButton::Primary)))
-                || !state.enabled
-                || !state.actionable)
-        {
-            // Touch Ended carries movement since the preceding Moved event.
-            // Commit that final legitimate drag segment before ending capture;
-            // Cancel and disabled terminal events never emit a resize.
-            if pointer.phase() == PointerPhase::Up
-                && state.enabled
-                && state.actionable
-                && !context.default_is_prevented()
-                && usable_extent(context)
-            {
-                let delta = pointer.movement_delta();
-                let axis = match state.orientation {
-                    SemanticOrientation::Vertical => delta.x(),
-                    SemanticOrientation::Horizontal => delta.y(),
-                };
-                self.emit(state, SplitterRequest::MoveBy(axis), context);
-            }
-            state.drag = None;
-            state.cancel_drag = false;
-            context.release_pointer_capture();
-            context.prevent_default();
-            context.stop_propagation();
             return WidgetEventOutput::changed();
         }
         if !state.enabled || !state.actionable || context.default_is_prevented() {
