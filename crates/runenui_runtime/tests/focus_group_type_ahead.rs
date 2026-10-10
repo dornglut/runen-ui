@@ -118,14 +118,14 @@ fn member(
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -154,7 +154,7 @@ fn focus(runtime: &mut AppRuntime<App>, authored: &str) {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -199,7 +199,7 @@ fn type_character(runtime: &mut AppRuntime<App>, character: &str) {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -329,7 +329,7 @@ fn timeout_expires_at_the_exact_deadline_before_the_next_character() {
         .unwrap_or_else(|_| unreachable!("fixture timeout deadline is representable"));
     let before = runtime
         .pump(PumpBudget::new(0, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(before.next_deadline(), Some(deadline));
@@ -339,7 +339,7 @@ fn timeout_expires_at_the_exact_deadline_before_the_next_character() {
         .unwrap_or_else(|_| unreachable!("fixture time remains representable"));
     let expired = runtime
         .pump(PumpBudget::new(0, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_ne!(expired.next_deadline(), Some(deadline));
@@ -365,7 +365,7 @@ fn unrepresentable_session_deadline_does_not_retain_the_prefix() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(0, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .next_deadline(),
@@ -391,9 +391,9 @@ fn timeout_retires_private_buffer_without_requiring_another_key() {
     clock
         .advance(Duration::from_millis(500))
         .unwrap_or_else(|_| unreachable!("fixture time remains representable"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(0, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -421,7 +421,7 @@ fn timeout_cleanup_does_not_wait_for_unrelated_queue_to_empty() {
 
     let report = runtime
         .pump(PumpBudget::new(0, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(report.remaining_queued_envelopes(), 1);
@@ -449,9 +449,9 @@ fn queued_predeadline_character_keeps_ingress_time_order_across_timeout_wake() {
         .advance(Duration::from_millis(100))
         .unwrap_or_else(|_| unreachable!("fixture time remains representable"));
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -608,7 +608,7 @@ fn activate_target_type_ahead_reserves_capacity_before_focus_commit() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -644,9 +644,9 @@ fn trace_export_remains_redacted_and_replay_compatible() {
     runtime
         .submit_keyboard(key("QzxTypeAheadSecret"))
         .unwrap_or_else(|_| unreachable!("private unmatched prefix is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let jsonl = runtime.trace().export_jsonl();
@@ -699,9 +699,9 @@ fn terminal_and_shutdown_clear_private_type_ahead_state() {
     focus(&mut shutdown, "three");
     type_character(&mut shutdown, "a");
     assert!(shutdown.__focus_group_type_ahead_active_for_test());
-    shutdown
+    let _ = shutdown
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert!(!shutdown.__focus_group_type_ahead_active_for_test());
@@ -744,9 +744,9 @@ fn repeated_keyboard_events_participate_in_same_character_cycling() {
             None,
         ))
         .unwrap_or_else(|_| unreachable!("repeat character is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_focus(&mut runtime, "two");
@@ -886,9 +886,9 @@ fn policy_focus(runtime: &mut AppRuntime<PolicyResetApp>, authored: &str) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("policy-reset focus is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -897,9 +897,9 @@ fn policy_character(runtime: &mut AppRuntime<PolicyResetApp>, character: &str) {
     runtime
         .submit_keyboard(key(character))
         .unwrap_or_else(|_| unreachable!("policy-reset keyboard input is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -908,14 +908,14 @@ fn policy_action(runtime: &mut AppRuntime<PolicyResetApp>, action: PolicyResetAc
     runtime
         .submit_action(action)
         .unwrap_or_else(|_| unreachable!("policy-reset action is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -926,14 +926,14 @@ fn disabling_or_reauthoring_type_ahead_policy_clears_the_prefix() {
         enabled: true,
         timeout_ms: 500,
     });
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -996,9 +996,9 @@ fn reset_focus(runtime: &mut AppRuntime<ResetBoundaryApp>, authored: &str) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("reset-boundary focus is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -1007,9 +1007,9 @@ fn reset_character(runtime: &mut AppRuntime<ResetBoundaryApp>, character: &str) 
     runtime
         .submit_keyboard(key(character))
         .unwrap_or_else(|_| unreachable!("reset-boundary keyboard input is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -1017,14 +1017,14 @@ fn reset_character(runtime: &mut AppRuntime<ResetBoundaryApp>, character: &str) 
 #[test]
 fn group_transfer_and_focus_departure_clear_the_exact_group_buffer() {
     let mut runtime = AppRuntime::<ResetBoundaryApp>::mount(());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -1050,14 +1050,14 @@ fn group_transfer_and_focus_departure_clear_the_exact_group_buffer() {
 #[test]
 fn queued_keyboard_type_ahead_does_not_retarget_after_earlier_focus_move() {
     let mut runtime = AppRuntime::<ResetBoundaryApp>::mount(());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -1079,7 +1079,7 @@ fn queued_keyboard_type_ahead_does_not_retarget_after_earlier_focus_move() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -1152,9 +1152,9 @@ fn replacement_focus(runtime: &mut AppRuntime<ReplacementApp>, authored: &str) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("replacement focus is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -1163,9 +1163,9 @@ fn replacement_character(runtime: &mut AppRuntime<ReplacementApp>, character: &s
     runtime
         .submit_keyboard(key(character))
         .unwrap_or_else(|_| unreachable!("replacement keyboard input is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -1173,14 +1173,14 @@ fn replacement_character(runtime: &mut AppRuntime<ReplacementApp>, character: &s
 #[test]
 fn owner_replacement_retires_buffer_with_the_old_exact_group_lifetime() {
     let mut runtime = AppRuntime::<ReplacementApp>::mount(false);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     replacement_focus(&mut runtime, "replace.zulu");
@@ -1189,14 +1189,14 @@ fn owner_replacement_retires_buffer_with_the_old_exact_group_lifetime() {
     runtime
         .submit_action(ReplacementAction::Replace)
         .unwrap_or_else(|_| unreachable!("replacement action is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -1273,9 +1273,9 @@ fn removal_focus(runtime: &mut AppRuntime<RemovalApp>, authored: &str) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("removal focus is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -1284,9 +1284,9 @@ fn removal_character(runtime: &mut AppRuntime<RemovalApp>, character: &str) {
     runtime
         .submit_keyboard(key(character))
         .unwrap_or_else(|_| unreachable!("removal keyboard input is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -1294,14 +1294,14 @@ fn removal_character(runtime: &mut AppRuntime<RemovalApp>, character: &str) {
 #[test]
 fn owner_removal_and_recreation_cannot_revive_the_old_group_prefix() {
     let mut runtime = AppRuntime::<RemovalApp>::mount(true);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     removal_focus(&mut runtime, "removal.zulu");
@@ -1312,14 +1312,14 @@ fn owner_removal_and_recreation_cannot_revive_the_old_group_prefix() {
     runtime
         .submit_action(RemovalAction::Remove)
         .unwrap_or_else(|_| unreachable!("removal action is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.focus().focused_node(), None);
@@ -1327,14 +1327,14 @@ fn owner_removal_and_recreation_cannot_revive_the_old_group_prefix() {
     runtime
         .submit_action(RemovalAction::Restore)
         .unwrap_or_else(|_| unreachable!("restore action is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     removal_focus(&mut runtime, "removal.zulu");
@@ -1403,9 +1403,9 @@ fn nested_focus(runtime: &mut AppRuntime<NestedBoundaryApp>, authored: &str) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("nested fixture focus is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -1413,37 +1413,37 @@ fn nested_focus(runtime: &mut AppRuntime<NestedBoundaryApp>, authored: &str) {
 #[test]
 fn nested_group_search_enters_existing_target_and_nested_scope_is_not_searchable() {
     let mut nested = AppRuntime::<NestedBoundaryApp>::mount(());
-    nested
+    let _ = nested
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     nested_focus(&mut nested, "outer.current");
     nested
         .submit_keyboard(key("n"))
         .unwrap_or_else(|_| unreachable!("nested-group search is admitted"));
-    nested
+    let _ = nested
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let nested_first = nested_id(&mut nested, "nested.first");
     assert_eq!(nested.focus().focused_node(), Some(&nested_first));
 
     let mut scoped = AppRuntime::<NestedBoundaryApp>::mount(());
-    scoped
+    let _ = scoped
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     nested_focus(&mut scoped, "outer.current");
@@ -1451,9 +1451,9 @@ fn nested_group_search_enters_existing_target_and_nested_scope_is_not_searchable
     scoped
         .submit_keyboard(key("s"))
         .unwrap_or_else(|_| unreachable!("scope-boundary search is admitted"));
-    scoped
+    let _ = scoped
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(scoped.focus().focused_node(), Some(&current));
@@ -1530,14 +1530,14 @@ fn editable_id(runtime: &mut AppRuntime<EditableTypeAheadApp>, authored: &str) -
 #[test]
 fn editable_owner_keeps_printable_keyboard_precedence_over_type_ahead() {
     let mut runtime = AppRuntime::<EditableTypeAheadApp>::mount(());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let current = editable_id(&mut runtime, "editable.current");
@@ -1549,18 +1549,18 @@ fn editable_owner_keeps_printable_keyboard_precedence_over_type_ahead() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("editable owner focus is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
     runtime
         .submit_keyboard(key("b"))
         .unwrap_or_else(|_| unreachable!("editable keyboard input is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -1637,14 +1637,14 @@ fn prevent_id(runtime: &mut AppRuntime<PreventApp>, authored: &str) -> MountedNo
 #[test]
 fn routed_prevent_default_suppresses_type_ahead_before_buffer_or_focus_change() {
     let mut runtime = AppRuntime::<PreventApp>::mount(());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let a = prevent_id(&mut runtime, "prevent.a");
@@ -1656,18 +1656,18 @@ fn routed_prevent_default_suppresses_type_ahead_before_buffer_or_focus_change() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("fixture focus is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
     runtime
         .submit_keyboard(key("b"))
         .unwrap_or_else(|_| unreachable!("keyboard input is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 

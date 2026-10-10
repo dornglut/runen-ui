@@ -113,7 +113,7 @@ fn settle(runtime: &mut AppRuntime<App>) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(report.is_quiescent(), "fixture did not settle: {report:?}");
@@ -282,7 +282,7 @@ fn failed_cleanup_retires_without_false_delivery_and_shutdown_unmounts_once() {
     }
     let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -320,7 +320,7 @@ fn failed_cleanup_retires_without_false_delivery_and_shutdown_unmounts_once() {
 
     let report = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert_eq!(report.unmounted_lifetimes(), 2);

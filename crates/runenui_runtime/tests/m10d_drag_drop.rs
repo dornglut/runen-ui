@@ -167,9 +167,9 @@ fn harness(accept_drop: bool) -> Harness {
         )
         .unwrap_or_else(|_| unreachable!("published bounds are finite"))
     };
-    runtime
+    let _ = runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     Harness {
@@ -220,7 +220,7 @@ fn accepted_drop_uses_the_physical_hit_target_not_the_captured_pointer_owner() {
     harness
         .runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -236,7 +236,7 @@ fn accepted_drop_uses_the_physical_hit_target_not_the_captured_pointer_owner() {
     harness
         .runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -278,7 +278,7 @@ fn accepted_drop_uses_the_physical_hit_target_not_the_captured_pointer_owner() {
     harness
         .runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(
@@ -322,7 +322,7 @@ fn hover_is_provisional_until_a_separate_drop_admission() {
     harness
         .runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let token = harness
@@ -349,7 +349,7 @@ fn hover_is_provisional_until_a_separate_drop_admission() {
     harness
         .runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(harness.runtime.trace().kinds().any(|kind| matches!(
@@ -385,7 +385,7 @@ fn later_drop_does_not_supersede_a_pending_hover_service() {
     harness
         .runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let drop = harness
@@ -399,7 +399,7 @@ fn later_drop_does_not_supersede_a_pending_hover_service() {
     harness
         .runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -437,7 +437,7 @@ fn later_drop_does_not_supersede_a_pending_hover_service() {
     harness
         .runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -478,7 +478,7 @@ fn accepted_drop_failure_is_typed_and_does_not_change_runtime_lifetime() {
     harness
         .runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let token = harness
@@ -506,7 +506,7 @@ fn accepted_drop_failure_is_typed_and_does_not_change_runtime_lifetime() {
     harness
         .runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(
@@ -538,7 +538,7 @@ fn rejected_drop_does_not_stage_admission_but_cancel_is_delivered_without_accept
     harness
         .runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(harness.runtime.pending_framework_services().iter().all(|service| {
@@ -559,7 +559,7 @@ fn rejected_drop_does_not_stage_admission_but_cancel_is_delivered_without_accept
     harness
         .runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let cancel_token = harness
@@ -586,7 +586,7 @@ fn rejected_drop_does_not_stage_admission_but_cancel_is_delivered_without_accept
     harness
         .runtime
         .pump(budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(harness.runtime.trace().kinds().any(|kind| matches!(

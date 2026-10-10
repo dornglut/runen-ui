@@ -130,14 +130,14 @@ fn leaf(state: &State, name: &'static str) -> Element<Action> {
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -174,7 +174,7 @@ fn command(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: Semant
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -667,7 +667,7 @@ fn logical_scroll_boundary_delegates_through_the_canonical_command_queue() {
         .unwrap_or_else(|_| unreachable!("directional request is accepted"));
     let report = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&origin));
@@ -681,7 +681,7 @@ fn logical_scroll_boundary_delegates_through_the_canonical_command_queue() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -786,19 +786,19 @@ fn focus_notification_outputs_precede_the_initiating_command_output() {
                 CommandOrigin::programmatic(),
             )
             .unwrap_or_else(|_| unreachable!("ordering target is live"));
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
     }

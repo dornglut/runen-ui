@@ -62,14 +62,14 @@ fn key(
 }
 
 fn settle<App: UiApp>(runtime: &mut AppRuntime<App>) {
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -324,9 +324,9 @@ fn focus(runtime: &mut AppRuntime<App>, authored: &'static str) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("fixture focus request is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -633,9 +633,9 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
             KeyboardCompositionState::Inactive,
         ),
     );
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(
@@ -660,9 +660,9 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
         .unwrap_or_else(|| unreachable!("shortcut application command is accepted"));
     assert_eq!(accepted.causal_parent(), Some(matched.sequence()));
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(
@@ -677,9 +677,9 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
         }
     )));
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state().fired, ["inner"]);
@@ -821,9 +821,9 @@ fn shortcut_waiting_queue_admission_rejects_before_callbacks_or_partial_output()
             .submit_action(Action::Filler)
             .unwrap_or_else(|_| unreachable!("filler action is admitted"));
     }
-    queue_limited
+    let _ = queue_limited
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(queue_limited.state().callback_calls.get(), 0);
@@ -862,9 +862,9 @@ fn shortcut_trace_exhaustion_rejects_before_keyboard_callback() {
             KeyboardCompositionState::Inactive,
         ),
     );
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -1012,9 +1012,9 @@ fn accelerator_precedes_type_ahead_when_editor_does_not_own_key() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("type-ahead focus request is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&alpha));
@@ -1142,9 +1142,9 @@ fn editor_owned_m10_default_precedes_accelerator_matching() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("editable focus request is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 

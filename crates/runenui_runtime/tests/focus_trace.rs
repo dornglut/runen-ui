@@ -76,7 +76,7 @@ fn settle(runtime: &mut AppRuntime<App>) {
     assert!(
         runtime
             .pump(full_budget())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -106,7 +106,7 @@ fn request_focus(
     let sequence = submission.sequence();
     let _ = runtime
         .pump(full_budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     sequence

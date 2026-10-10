@@ -375,7 +375,7 @@ fn settle(runtime: &mut AppRuntime<InputApp>) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(report.is_quiescent(), "fixture did not settle: {report:?}");
@@ -806,7 +806,7 @@ fn key_05_keyboard_defaults_reserve_queue_trace_and_command_lineage_before_callb
         .unwrap_or_else(|_| unreachable!("Enter ingress is accepted"));
     let report = enter
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(report.processed_envelopes(), 1);
@@ -858,7 +858,7 @@ fn key_05_keyboard_defaults_reserve_queue_trace_and_command_lineage_before_callb
         .unwrap_or_else(|_| unreachable!("Space-up ingress is accepted"));
     let report = space
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(report.remaining_queued_envelopes(), 1);
@@ -904,7 +904,7 @@ fn key_05_keyboard_defaults_reserve_queue_trace_and_command_lineage_before_callb
         .unwrap_or_else(|_| unreachable!("raw ingress still reserves its rejection outcome"));
     let _ = boundary
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(
@@ -1442,7 +1442,7 @@ fn ime_02_composition_rejections_keep_owned_requests_and_authority_unchanged() {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(
@@ -1728,9 +1728,9 @@ fn ime_05_pending_shutdown_cleans_the_live_owner_and_trace_is_optional() {
     runtime
         .start_composition(None)
         .unwrap_or_else(|_| unreachable!("pending composition start is accepted"));
-    runtime
+    let _ = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert!(log.borrow().iter().any(|fact| {
@@ -1794,7 +1794,7 @@ fn ime_06_cleanup_admission_or_bridge_failure_terminalizes_before_tree_teardown(
     }
     let _ = bounded
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(
@@ -1882,7 +1882,7 @@ fn ime_06_cleanup_admission_or_bridge_failure_terminalizes_before_tree_teardown(
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(
@@ -2063,9 +2063,9 @@ fn key_03_space_cleanup_rejects_lost_lifetimes_and_terminal_releases() {
         .submit_keyboard(down())
         .unwrap_or_else(|_| unreachable!());
     settle(&mut shutdown);
-    shutdown
+    let _ = shutdown
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert!(kinds(&shutdown).iter().any(|kind| matches!(
@@ -2093,7 +2093,7 @@ fn key_03_space_cleanup_rejects_lost_lifetimes_and_terminal_releases() {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(
