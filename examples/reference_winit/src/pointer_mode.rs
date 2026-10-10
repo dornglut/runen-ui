@@ -242,6 +242,10 @@ impl PointerModes {
         // A failed native grab can still have partially changed native state.
         if let Err(error) = platform.grab(desired) {
             self.state = State::ReleaseFailed;
+            // Even a failed grab may have partially changed the native pointer.
+            // Keep the visible recovery override after successful rollback: an
+            // old hidden M10 baseline is not proof of a fresh absolute point.
+            self.awaiting_fresh_absolute_point = true;
             platform.cursor(CursorShape::Default, true);
             if platform.grab(Mode::Absolute).is_ok() {
                 self.state = State::Absolute;
@@ -416,6 +420,30 @@ mod tests {
         assert_eq!(host.mode, Mode::Absolute);
         assert!(host.visible);
         assert!(modes.ui_pointer_allowed());
+    }
+
+    #[test]
+    fn failed_acquisition_cannot_rehide_cursor_from_stale_ui_baseline() {
+        let (mut modes, mut host) = focused();
+        modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
+        assert!(!host.visible);
+        host.mutate_before_failure = true;
+        host.failures
+            .push((Mode::ConfinedAbsolute, Failure::Unsupported));
+        assert_eq!(
+            modes.request(scope(1), Mode::ConfinedAbsolute, &mut host),
+            Err(Failure::Unsupported)
+        );
+        assert_eq!(host.mode, Mode::Absolute);
+        assert!(host.visible);
+        assert!(modes.ui_pointer_allowed());
+        assert!(!modes.gameplay_motion_allowed());
+
+        // A stale or repeated UI cursor request cannot hide the recovery cursor.
+        modes.set_ui_cursor(&mut host, CursorShape::Grab, false);
+        assert!(host.visible);
+        modes.confirm_fresh_absolute_point(&mut host);
+        assert!(!host.visible);
     }
 
     #[test]
