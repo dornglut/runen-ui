@@ -301,7 +301,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             focused_node,
             text_input_capability,
             composition_generation: self.composition.generation().cloned(),
+            composition_device_id: self.composition.device_id(),
             space_activation_owner: self.space_ownership.as_ref().map(|x| x.target.clone()),
+            space_activation_device_id: self.space_ownership.as_ref().and_then(|x| x.device_id),
         };
         let mut pointers = projected.pointers;
         self.pointer_registry.ordered_pointer_ids_into(&mut ids);

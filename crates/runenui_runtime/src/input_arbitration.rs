@@ -66,7 +66,9 @@ pub struct KeyboardInputOwnership {
     pub(crate) focused_node: Option<MountedNodeId>,
     pub(crate) text_input_capability: WidgetTextInput,
     pub(crate) composition_generation: Option<CompositionGeneration>,
+    pub(crate) composition_device_id: Option<InputDeviceId>,
     pub(crate) space_activation_owner: Option<MountedNodeId>,
+    pub(crate) space_activation_device_id: Option<InputDeviceId>,
 }
 impl KeyboardInputOwnership {
     #[must_use]
@@ -81,9 +83,24 @@ impl KeyboardInputOwnership {
     pub const fn composition_generation(&self) -> Option<&CompositionGeneration> {
         self.composition_generation.as_ref()
     }
+
+    /// Source device associated with the UI composition lifetime, if supplied.
+    /// Absence is unknown identity, never evidence that multiple devices are one.
+    #[must_use]
+    pub const fn composition_device_id(&self) -> Option<InputDeviceId> {
+        self.composition_device_id
+    }
+
     #[must_use]
     pub const fn space_activation_owner(&self) -> Option<&MountedNodeId> {
         self.space_activation_owner.as_ref()
+    }
+
+    /// Native-provided device identity of the active Space lifetime, if known.
+    /// The host remains the authority for window and physical-key identity.
+    #[must_use]
+    pub const fn space_activation_device_id(&self) -> Option<InputDeviceId> {
+        self.space_activation_device_id
     }
 }
 

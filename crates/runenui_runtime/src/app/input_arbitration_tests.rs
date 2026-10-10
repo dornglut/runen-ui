@@ -421,6 +421,13 @@ fn space_press_ownership_is_source_qualified_through_other_device_and_own_releas
             unreachable!("Space callback commits");
         };
         assert_eq!(facts.conflict(), expected);
+        let ownership = app
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("Space snapshot available"));
+        assert_eq!(
+            ownership.keyboard().space_activation_device_id(),
+            if phase == KeyboardPhase::Up { None } else { Some(device_a) },
+        );
     }
 }
 
