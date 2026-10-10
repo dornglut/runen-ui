@@ -732,10 +732,9 @@ mod tests {
                 )
                 .unwrap_or_else(|_| unreachable!("stream fits"));
         }
-        assert_eq!(
-            registry.ordered_pointer_ids(),
-            [pointer(9), pointer(2), pointer(5)]
-        );
+        let mut ordered = Vec::with_capacity(registry.len());
+        registry.ordered_pointer_ids_into(&mut ordered);
+        assert_eq!(ordered, [pointer(9), pointer(2), pointer(5)]);
     }
 
     #[test]
