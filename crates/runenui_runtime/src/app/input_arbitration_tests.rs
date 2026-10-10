@@ -168,11 +168,8 @@ fn intervening_non_input_work_does_not_create_or_reorder_native_receipts() {
         .sequence();
 
     assert!(first < action && action < second);
-    let batch = pump::pump_recorded::<ProbeApp>(
-        &mut app.runtime,
-        PumpBudget::new(3, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("canonical mixed FIFO settles"));
+    let batch = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(3, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("canonical mixed FIFO settles"));
     assert_eq!(batch.processed_through(), Some(second));
     assert_eq!(batch.report().processed_envelopes(), 3);
     let settlements = batch
@@ -193,7 +190,9 @@ fn intervening_non_input_work_does_not_create_or_reorder_native_receipts() {
         };
         assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
         assert!(
-            facts.reasons().contains(&UiInputClaimReason::ExplicitWidgetClaim)
+            facts
+                .reasons()
+                .contains(&UiInputClaimReason::ExplicitWidgetClaim)
         );
     }
 }

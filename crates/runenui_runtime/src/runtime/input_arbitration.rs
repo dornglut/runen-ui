@@ -405,9 +405,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surfaces,
             pointers,
         };
-        let changed = self.input_observation.last.as_ref().is_some_and(|previous| {
-            !previous.same_ownership_facts(&current)
-        });
+        let changed = self
+            .input_observation
+            .last
+            .as_ref()
+            .is_some_and(|previous| !previous.same_ownership_facts(&current));
         if self.input_observation.last.is_some()
             && (changed || self.input_observation.pending_direct_boundaries != 0)
         {
