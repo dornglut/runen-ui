@@ -1278,6 +1278,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             reasons.push(crate::UiInputClaimReason::ActivationDefault);
         }
         let claims_ui = !reasons.is_empty();
+        // A newly established Space Down owner is a synchronously committed
+        // keyboard default. A repeated/foreign Down is not a new default, and
+        // the eventual Up activation command remains only queued here.
+        let applied_space_down = !space_owner_before
+            && space_active
+            && matches!(
+                &payload,
+                InputEnvelopePayload::Keyboard(event)
+                    if matches!(event.physical_key(), PhysicalKey::Space)
+                        && matches!(event.phase(), KeyboardPhase::Down)
+                        && !event.is_repeat()
+            );
         let routing = crate::UiInputRoutingFacts {
             conflict: if claims_ui {
                 crate::UiInputConflict::ExclusiveUi
@@ -1294,6 +1306,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 crate::UiDefaultDisposition::Prevented
             } else if has_default_output {
                 crate::UiDefaultDisposition::Queued
+            } else if applied_space_down {
+                crate::UiDefaultDisposition::Applied
             } else {
                 crate::UiDefaultDisposition::None
             },

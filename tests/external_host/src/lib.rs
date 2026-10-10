@@ -1228,6 +1228,8 @@ mod tests {
             UiInputFinality::Committed(facts)
                 if facts.conflict() == UiInputConflict::ExclusiveUi
                     && facts.reasons().contains(&UiInputClaimReason::PointerPress)
+                    && facts.default_disposition()
+                        == runenui_runtime::UiDefaultDisposition::Applied
         ));
         let pressed = runtime
             .input_ownership()

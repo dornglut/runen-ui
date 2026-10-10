@@ -758,6 +758,12 @@ fn space_press_ownership_is_source_qualified_through_other_device_and_own_releas
             unreachable!("Space callback commits");
         };
         assert_eq!(facts.conflict(), expected);
+        if phase == KeyboardPhase::Down && device_id == device_a {
+            assert_eq!(
+                facts.default_disposition(),
+                crate::UiDefaultDisposition::Applied
+            );
+        }
         let ownership = app
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("Space snapshot available"));

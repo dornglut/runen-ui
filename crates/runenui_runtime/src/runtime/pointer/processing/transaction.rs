@@ -415,6 +415,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             crate::UiInputRoute::Unrouted
         };
         let has_default_outputs = transaction.default_outputs.len() > default_outputs_before;
+        // Only a real synchronous Down press/modal/selection default qualifies
+        // as Applied. Trace PointerDefaultApplied for no-op Move/Cancel is
+        // diagnostic and is explicitly not an authoritative default claim.
+        let applied_pointer_default = matches!(pending.work.event.phase(), PointerPhase::Down)
+            && (default_applied
+                || matches!(
+                    transaction.pointer_selection_transition.as_ref(),
+                    Some(crate::runtime::routed::PointerSelectionTransition::Started)
+                ));
         let routing = crate::UiInputRoutingFacts {
             conflict: if reasons.is_empty() {
                 if matches!(&route, crate::UiInputRoute::Unrouted) {
@@ -433,6 +442,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 crate::UiDefaultDisposition::Prevented
             } else if has_default_outputs {
                 crate::UiDefaultDisposition::Queued
+            } else if applied_pointer_default {
+                crate::UiDefaultDisposition::Applied
             } else {
                 crate::UiDefaultDisposition::None
             },
