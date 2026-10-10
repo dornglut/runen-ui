@@ -1160,6 +1160,51 @@ mod tests {
         // RunenUI snapshots; deciding what pixels were displayed is host-owned.
     }
 
+    fn assert_public_no_hit_hover(
+        runtime: &mut AppRuntime<ExternalHostApp>,
+        publication: &SurfacePublication,
+        pointer: PointerId,
+    ) {
+        // An explicit same-surface, same-stream out-of-hit hover is the
+        // independent negative oracle: no implicit capture, no invented hit,
+        // and no exclusive ownership from Move/default diagnostics.
+        let outside = LogicalPoint::new(32.0, 32.0)
+            .unwrap_or_else(|_| unreachable!("finite point inside surface but outside widget"));
+        assert_eq!(publication.hit_test_scene().target_at(outside), None);
+        let no_hit = runtime
+            .submit_pointer(PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Move,
+                outside,
+                publication.input_context().clone(),
+            ))
+            .unwrap_or_else(|_| unreachable!("same-stream outside hover admitted"))
+            .sequence();
+        let outside_batch = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("outside hover settles"));
+        assert_eq!(outside_batch.processed_through(), Some(no_hit));
+        let outside_settlements = outside_batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(outside_settlements.len(), 1);
+        assert_eq!(outside_settlements[0].sequence(), no_hit);
+        assert!(matches!(
+            outside_settlements[0].finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::Unclaimed
+                    && facts.reasons().is_empty()
+                    && matches!(facts.route(), UiInputRoute::Unrouted)
+        ));
+        assert!(!runtime.state().active);
+    }
+
     #[test]
     fn public_hover_is_nonexclusive_even_when_routed_to_actionable_widget() {
         let mut runtime = AppRuntime::<ExternalHostApp>::mount(HostState {
@@ -1230,44 +1275,7 @@ mod tests {
         );
         assert!(!runtime.state().active);
 
-        // An explicit same-surface, same-stream out-of-hit hover is the
-        // independent negative oracle: no implicit capture, no invented hit,
-        // and no exclusive ownership from Move/default diagnostics.
-        let outside = LogicalPoint::new(32.0, 32.0)
-            .unwrap_or_else(|_| unreachable!("finite point inside surface but outside widget"));
-        assert_eq!(publication.hit_test_scene().target_at(outside), None);
-        let no_hit = runtime
-            .submit_pointer(PointerEvent::new(
-                pointer,
-                PointerDeviceKind::Mouse,
-                PointerPhase::Move,
-                outside,
-                publication.input_context().clone(),
-            ))
-            .unwrap_or_else(|_| unreachable!("same-stream outside hover admitted"))
-            .sequence();
-        let outside_batch = runtime
-            .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|_| unreachable!("outside hover settles"));
-        assert_eq!(outside_batch.processed_through(), Some(no_hit));
-        let outside_settlements = outside_batch
-            .ordered_records()
-            .iter()
-            .filter_map(|record| match record {
-                InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(outside_settlements.len(), 1);
-        assert_eq!(outside_settlements[0].sequence(), no_hit);
-        assert!(matches!(
-            outside_settlements[0].finality(),
-            UiInputFinality::Committed(facts)
-                if facts.conflict() == UiInputConflict::Unclaimed
-                    && facts.reasons().is_empty()
-                    && matches!(facts.route(), UiInputRoute::Unrouted)
-        ));
-        assert!(!runtime.state().active);
+        assert_public_no_hit_hover(&mut runtime, &publication, pointer);
     }
 
     #[test]
