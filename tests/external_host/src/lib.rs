@@ -395,6 +395,71 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct ReplaceHostState {
+        replaced: bool,
+        reached: Arc<AtomicBool>,
+    }
+
+    #[derive(Debug)]
+    enum ReplaceHostAction {
+        Replace,
+    }
+
+    #[derive(Debug)]
+    struct ReplaceHostProbe {
+        reached: Arc<AtomicBool>,
+    }
+
+    impl Widget<ReplaceHostAction> for ReplaceHostProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            _: &mut EventContext<'_, ReplaceHostAction>,
+        ) -> WidgetEventOutput {
+            if matches!(event, UiEvent::Keyboard(_)) {
+                self.reached.store(true, Ordering::Relaxed);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    struct ExternalHostReplaceApp;
+
+    impl UiApp for ExternalHostReplaceApp {
+        type State = ReplaceHostState;
+        type Action = ReplaceHostAction;
+        type HostProtocol = NoHostProtocol;
+
+        fn root(state: &Self::State) -> impl View<Self::Action> {
+            let identity = if state.replaced {
+                "host-replacement"
+            } else {
+                "host-original"
+            };
+            Element::new(ReplaceHostProbe {
+                reached: Arc::clone(&state.reached),
+            })
+            .id(identity)
+            .key(identity)
+            .focusable(true)
+        }
+
+        fn update(
+            state: &mut Self::State,
+            action: Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+            match action {
+                ReplaceHostAction::Replace => state.replaced = true,
+            }
+        }
+    }
+
     struct ExternalHostSiblingClaimApp;
 
     impl UiApp for ExternalHostSiblingClaimApp {
@@ -822,6 +887,89 @@ mod tests {
                 .ordered_records()
                 .iter()
                 .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
+    }
+
+    #[test]
+    fn public_removed_target_settles_as_typed_rejection_without_retarget_or_claim() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = AppRuntime::<ExternalHostReplaceApp>::mount(ReplaceHostState {
+            replaced: false,
+            reached: Arc::clone(&reached),
+        });
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("mount work commits"));
+        let original = runtime
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| {
+                node.authored_id() == Some(
+                    &ElementId::new("host-original")
+                        .unwrap_or_else(|_| unreachable!("fixture authored id")),
+                )
+            })
+            .unwrap_or_else(|| unreachable!("original target mounted"))
+            .id()
+            .clone();
+        runtime
+            .submit_command(
+                original,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("original focus admitted"));
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("original focus committed"));
+
+        // Ingress captures the original mounted lifetime. A preceding action
+        // removes it before this native receipt can reach the FIFO head.
+        let replacement_action = runtime
+            .submit_action(ReplaceHostAction::Replace)
+            .unwrap_or_else(|_| unreachable!("replacement action admitted"));
+        let receipt = runtime
+            .submit_keyboard(native_w_input())
+            .unwrap_or_else(|_| unreachable!("original-focused keyboard admitted"))
+            .sequence();
+        assert!(replacement_action < receipt);
+
+        let replaced = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("replacement action processed first"));
+        assert_eq!(replaced.processed_through(), Some(replacement_action));
+        assert!(runtime.state().replaced);
+        assert!(!reached.load(Ordering::Relaxed));
+
+        let input = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("stale native receipt is processed"));
+        let settlements = input
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settled) => Some(settled),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settlements.len(), 1);
+        assert_eq!(settlements[0].sequence(), receipt);
+        assert_eq!(settlements[0].scope(), input.final_ownership().scope());
+        assert!(matches!(
+            settlements[0].finality(),
+            UiInputFinality::ProcessingRejected(
+                runenui_runtime::UiInputProcessingRejection::StaleTarget
+                    | runenui_runtime::UiInputProcessingRejection::MissingTarget
+            )
+        ));
+        assert!(
+            !reached.load(Ordering::Relaxed),
+            "removed native target must not be silently retargeted"
+        );
+        assert_eq!(
+            input.final_ownership().status(),
+            runenui_runtime::RuntimeStatus::Running
         );
     }
 
