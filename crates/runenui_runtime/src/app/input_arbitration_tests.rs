@@ -491,16 +491,15 @@ fn revision_exhaustion_retains_committed_receipt_and_terminalizes_with_exact_fin
 
 #[test]
 fn pointer_release_remains_ui_owned_after_press_state_is_cleared() {
+    use crate::{LogicalSize, SurfaceBuildContext};
     use runenui_core::{
         LogicalPoint, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
         PointerPhase, StyleEnvironment,
     };
-    use crate::{LogicalSize, SurfaceBuildContext};
 
     let mut app = AppRuntime::<SpaceApp>::mount(0);
     let environment = StyleEnvironment::default();
-    let size = LogicalSize::try_new(64.0, 64.0)
-        .unwrap_or_else(|_| unreachable!("finite size"));
+    let size = LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("finite size"));
     let publication = app
         .publish_surface(&SurfaceBuildContext::tight(&environment, size))
         .unwrap_or_else(|_| unreachable!("surface published"));
@@ -517,7 +516,11 @@ fn pointer_release_remains_ui_owned_after_press_state_is_cleared() {
     let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
 
     let down = PointerEvent::new(
-        id, PointerDeviceKind::Mouse, PointerPhase::Down, point, context.clone(),
+        id,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        point,
+        context.clone(),
     )
     .with_buttons(PointerButtons::new([PointerButton::Primary]))
     .with_changed_button(PointerButton::Primary);
@@ -525,10 +528,8 @@ fn pointer_release_remains_ui_owned_after_press_state_is_cleared() {
         .submit_pointer(down)
         .unwrap_or_else(|_| unreachable!("Down admitted"))
         .sequence();
-    let down_batch = pump::pump_recorded::<SpaceApp>(
-        &mut app.runtime, PumpBudget::new(1, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("Down committed"));
+    let down_batch = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("Down committed"));
     assert_eq!(down_batch.processed_through(), Some(down_receipt));
     let down_facts = down_batch
         .ordered_records()
@@ -544,17 +545,19 @@ fn pointer_release_remains_ui_owned_after_press_state_is_cleared() {
     assert!(down.reasons().contains(&UiInputClaimReason::PointerPress));
 
     let up = PointerEvent::new(
-        id, PointerDeviceKind::Mouse, PointerPhase::Up, point, context,
+        id,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Up,
+        point,
+        context,
     )
     .with_changed_button(PointerButton::Primary);
     let up_receipt = app
         .submit_pointer(up)
         .unwrap_or_else(|_| unreachable!("Up admitted"))
         .sequence();
-    let up_batch = pump::pump_recorded::<SpaceApp>(
-        &mut app.runtime, PumpBudget::new(1, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("Up committed"));
+    let up_batch = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("Up committed"));
     assert_eq!(up_batch.processed_through(), Some(up_receipt));
     let up_facts = up_batch
         .ordered_records()
