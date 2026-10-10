@@ -625,6 +625,87 @@ fn space_key(phase: KeyboardPhase, device_id: runenui_core::InputDeviceId) -> Ke
 }
 
 #[test]
+fn keyboard_default_claim_reasons_distinguish_navigation_and_activation() {
+    for (physical, logical, reason) in [
+        (
+            PhysicalKey::Tab,
+            LogicalKey::Tab,
+            UiInputClaimReason::FocusNavigation,
+        ),
+        (
+            PhysicalKey::Enter,
+            LogicalKey::Enter,
+            UiInputClaimReason::ActivationDefault,
+        ),
+    ] {
+        let mut app = AppRuntime::<SpaceApp>::mount(0);
+        let budget = PumpBudget::new(32, 32, 32, 32);
+        let _ = app
+            .pump(budget)
+            .unwrap_or_else(|_| unreachable!("mounted button is observable"));
+        let id = ElementId::new("space")
+            .unwrap_or_else(|_| unreachable!("static button authored id"));
+        let target = app
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&id))
+            .unwrap_or_else(|| unreachable!("button is mounted"))
+            .id()
+            .clone();
+        app.submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("button focus command admitted"));
+        let _ = app
+            .pump(budget)
+            .unwrap_or_else(|_| unreachable!("button focus committed"));
+        let receipt = app
+            .submit_keyboard(KeyboardEvent::new(
+                KeyboardPhase::Down,
+                physical,
+                logical,
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            ))
+            .unwrap_or_else(|_| unreachable!("focused button keyboard admitted"))
+            .sequence();
+        let batch = app
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("one native keyboard boundary observed"));
+        assert_eq!(batch.processed_through(), Some(receipt));
+        let settled = batch
+            .ordered_records()
+            .iter()
+            .find_map(|record| match record {
+                InputArbitrationRecord::InputSettled(entry) => Some(entry),
+                _ => None,
+            })
+            .unwrap_or_else(|| unreachable!("one native keyboard finality"));
+        assert_eq!(settled.sequence(), receipt);
+        let UiInputFinality::Committed(facts) = settled.finality() else {
+            unreachable!("valid keyboard default commits");
+        };
+        assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
+        assert_eq!(facts.reasons(), [reason]);
+        assert_eq!(
+            facts.default_disposition(),
+            crate::UiDefaultDisposition::Queued
+        );
+        assert_eq!(
+            *app.state(),
+            0,
+            "keyboard input settlement does not imply descendant action completion"
+        );
+    }
+}
+
+#[test]
 fn space_press_ownership_is_source_qualified_through_other_device_and_own_release() {
     let mut app = AppRuntime::<SpaceApp>::mount(0);
     let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
