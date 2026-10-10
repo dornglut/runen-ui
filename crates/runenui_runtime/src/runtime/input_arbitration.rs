@@ -316,5 +316,4 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let reserved = self.reserve_input_observation()?;
         Ok(self.input_ownership_reserved(reserved).0)
     }
-
 }
