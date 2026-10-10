@@ -1154,53 +1154,53 @@ fn revision_exhaustion_retains_committed_receipt_and_terminalizes_with_exact_fin
     );
 }
 
+#[derive(Debug)]
+struct OverflowProbe;
+
+impl Widget<u8> for OverflowProbe {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, u8>,
+    ) -> WidgetEventOutput {
+        if matches!(event, UiEvent::Keyboard(_)) && context.phase() == EventPhase::Target {
+            context.claim_host_input();
+            context.emit(1);
+            // A second output exceeds the admitted one-output transaction.
+            // Even the explicit UI claim must not turn an aborted route
+            // into a successful exclusive settlement.
+            context.emit(2);
+        }
+        WidgetEventOutput::none()
+    }
+}
+
+struct OverflowApp;
+
+impl UiApp for OverflowApp {
+    type State = usize;
+    type Action = u8;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &Self::State) -> impl View<Self::Action> {
+        Element::new(OverflowProbe)
+            .id("overflow")
+            .key("overflow")
+            .focusable(true)
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        *state += usize::from(action);
+    }
+}
+
 #[test]
 fn overflowing_widget_callback_aborts_reached_input_and_retires_pending_receipts() {
-    #[derive(Debug)]
-    struct OverflowProbe;
-
-    impl Widget<u8> for OverflowProbe {
-        type State = ();
-
-        fn create_state(&self) -> Self::State {}
-
-        fn event(
-            &mut self,
-            (): &mut Self::State,
-            event: &UiEvent,
-            context: &mut EventContext<'_, u8>,
-        ) -> WidgetEventOutput {
-            if matches!(event, UiEvent::Keyboard(_)) && context.phase() == EventPhase::Target {
-                context.claim_host_input();
-                context.emit(1);
-                // A second output exceeds the admitted one-output transaction.
-                // Even the explicit UI claim must not turn an aborted route
-                // into a successful exclusive settlement.
-                context.emit(2);
-            }
-            WidgetEventOutput::none()
-        }
-    }
-
-    struct OverflowApp;
-
-    impl UiApp for OverflowApp {
-        type State = usize;
-        type Action = u8;
-        type HostProtocol = NoHostProtocol;
-
-        fn root(_: &Self::State) -> impl View<Self::Action> {
-            Element::new(OverflowProbe)
-                .id("overflow")
-                .key("overflow")
-                .focusable(true)
-        }
-
-        fn update(state: &mut Self::State, action: Self::Action) {
-            *state += usize::from(action);
-        }
-    }
-
     let config = crate::RuntimeConfig::default()
         .with_limits(crate::RuntimeLimits::default().with_transaction_outputs(1));
     let mut app = AppRuntime::<OverflowApp>::mount_with_config(0, config);
@@ -1290,7 +1290,7 @@ fn overflowing_widget_callback_aborts_reached_input_and_retires_pending_receipts
     let repeated = app
         .pump(budget)
         .unwrap_or_else(|_| unreachable!("terminal observations remain available"));
-    assert!(repeated.ordered_records().is_empty());
+    assert_eq!(repeated.ordered_records(), []);
 }
 
 #[test]
