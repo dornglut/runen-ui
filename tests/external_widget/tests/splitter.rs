@@ -7,9 +7,8 @@ use runenui_core::{
     PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
     SemanticAction, SemanticActionRequest, SemanticCommand, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticNumber, SemanticOrientation,
-    SemanticRange, SemanticRole, SemanticState, SplitterRequest, StyleEnvironment, UiApp,
-    UiEvent, View, Widget, WidgetActivation, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput,
-    splitter,
+    SemanticRange, SemanticRole, SemanticState, SplitterRequest, StyleEnvironment, UiApp, UiEvent,
+    View, Widget, WidgetActivation, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, splitter,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext};
 
@@ -194,7 +193,12 @@ fn publish(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication
         .unwrap_or_else(|_| unreachable!("splitter surface publishes"))
 }
 
-fn inspect(publication: &runenui_runtime::SurfacePublication, current: f64, enabled: bool, horizontal: bool) {
+fn inspect(
+    publication: &runenui_runtime::SurfacePublication,
+    current: f64,
+    enabled: bool,
+    horizontal: bool,
+) {
     let snapshot = publication.semantic_publication().snapshot();
     let node = snapshot
         .nodes()
@@ -204,9 +208,15 @@ fn inspect(publication: &runenui_runtime::SurfacePublication, current: f64, enab
     assert_eq!(node.name(), Some("Sidebar"));
     assert_eq!(
         node.orientation(),
-        Some(if horizontal { SemanticOrientation::Horizontal } else { SemanticOrientation::Vertical }),
+        Some(if horizontal {
+            SemanticOrientation::Horizontal
+        } else {
+            SemanticOrientation::Vertical
+        }),
     );
-    let range = node.range().unwrap_or_else(|| unreachable!("bounded range"));
+    let range = node
+        .range()
+        .unwrap_or_else(|| unreachable!("bounded range"));
     assert_eq!(range.minimum(), Some(number(0.0)));
     assert_eq!(range.maximum(), Some(number(100.0)));
     assert_eq!(range.current(), Some(number(current)));
@@ -214,7 +224,11 @@ fn inspect(publication: &runenui_runtime::SurfacePublication, current: f64, enab
     assert_eq!(range.large_step(), Some(number(20.0)));
     assert_eq!(range.value_text(), Some("Sidebar extent"));
     assert_eq!(node.state().disabled(), !enabled);
-    for action in [SemanticAction::Increment, SemanticAction::Decrement, SemanticAction::SetValue] {
+    for action in [
+        SemanticAction::Increment,
+        SemanticAction::Decrement,
+        SemanticAction::SetValue,
+    ] {
         assert_eq!(node.supported_actions().contains(&action), enabled);
     }
 }
@@ -225,7 +239,10 @@ fn semantic_action(
     action: SemanticAction,
 ) -> Result<runenui_runtime::CommandSubmission, runenui_runtime::SubmitSemanticActionError> {
     let snapshot = publication.semantic_publication().snapshot();
-    let node = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::Splitter)
+    let node = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::Splitter)
         .unwrap_or_else(|| unreachable!("published Splitter role"));
     runtime.submit_semantic_action(SemanticActionRequest::new(
         snapshot.surface_id().clone(),
@@ -241,19 +258,32 @@ fn routed_semantic_actions_rebuild_application_owned_range_and_downstream_parity
     inspect(&before, 50.0, true, false);
     semantic_action(&mut runtime, &before, SemanticAction::Increment)
         .unwrap_or_else(|_| unreachable!("admitted increment"));
-    assert_eq!(runtime.state().size, 50.0, "admission is not application update");
+    assert_eq!(
+        runtime.state().size,
+        50.0,
+        "admission is not application update"
+    );
     settle(&mut runtime);
     assert_eq!(runtime.state().size, 55.0);
     let next = publish(&mut runtime);
     let snapshot = next.semantic_publication().snapshot();
-    let node = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::Splitter)
+    let node = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::Splitter)
         .unwrap_or_else(|| unreachable!());
-    runtime.submit_semantic_action(SemanticActionRequest::set_value(
-        snapshot.surface_id().clone(), node.id().clone(), number(90.0)
-    )).unwrap_or_else(|_| unreachable!("SetValue admitted"));
+    runtime
+        .submit_semantic_action(SemanticActionRequest::set_value(
+            snapshot.surface_id().clone(),
+            node.id().clone(),
+            number(90.0),
+        ))
+        .unwrap_or_else(|_| unreachable!("SetValue admitted"));
     settle(&mut runtime);
     inspect(&publish(&mut runtime), 90.0, true, false);
-    runtime.submit_action(Action::External(true)).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_action(Action::External(true))
+        .unwrap_or_else(|_| unreachable!());
     settle(&mut runtime);
     let external = publish(&mut runtime);
     inspect(&external, 90.0, true, false);
