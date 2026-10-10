@@ -12,7 +12,10 @@ use runenui_external_widget_conformance::{
     ExternalInputAction, ExternalInputAncestor, ExternalInputFact, ExternalInputKind,
     ExternalInputWidget,
 };
-use runenui_runtime::{AppRuntime, PumpBudget, TraceRecordKind};
+use runenui_runtime::{
+    AppRuntime, InputArbitrationRecord, PumpBudget, TraceRecordKind, UiInputClaimReason,
+    UiInputConflict, UiInputFamily, UiInputFinality,
+};
 
 #[derive(Debug)]
 enum Action {
@@ -210,6 +213,84 @@ fn downstream_widget_uses_only_public_keyboard_text_and_composition_protocols() 
             .iter()
             .any(|kind| matches!(kind, TraceRecordKind::CommittedTextDefaultPrevented))
     );
+}
+
+#[test]
+fn downstream_text_and_composition_receipts_have_exact_exclusive_ui_finality() {
+    let facts = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<App>::mount(State {
+        facts: Rc::clone(&facts),
+        actions: Vec::new(),
+    });
+    settle(&mut runtime);
+    focus(&mut runtime);
+    let keyboard = runtime
+        .submit_keyboard(keyboard())
+        .unwrap_or_else(|_| unreachable!("focused W is admitted"))
+        .sequence();
+    let text = runtime
+        .submit_text(
+            CommittedTextEvent::new("é", None)
+                .unwrap_or_else(|_| unreachable!("valid Unicode text")),
+        )
+        .unwrap_or_else(|_| unreachable!("focused text is admitted"))
+        .sequence();
+    let composition = runtime
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("composition start is admitted"));
+    let pending = runtime
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("pending composition is synchronously visible"));
+    assert_eq!(
+        pending.keyboard().composition_generation(),
+        Some(composition.generation())
+    );
+
+    let batch = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("canonical public native input settles"));
+    assert!(batch.report().is_quiescent());
+    let settled = batch
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(settled.len(), 3);
+    for (entry, sequence, family, reason) in settled.into_iter().zip([
+        (
+            keyboard,
+            UiInputFamily::Keyboard,
+            UiInputClaimReason::TextOwner,
+        ),
+        (
+            text,
+            UiInputFamily::CommittedText,
+            UiInputClaimReason::TextOwner,
+        ),
+        (
+            composition.sequence(),
+            UiInputFamily::Composition,
+            UiInputClaimReason::CompositionOwner,
+        ),
+    ]) {
+        assert_eq!(entry.sequence(), sequence);
+        assert_eq!(entry.scope(), pending.scope());
+        assert_eq!(entry.family(), family);
+        let UiInputFinality::Committed(routing) = entry.finality() else {
+            unreachable!("accepted focused native family commits");
+        };
+        assert_eq!(routing.conflict(), UiInputConflict::ExclusiveUi);
+        assert!(routing.reasons().contains(&reason));
+        assert_eq!(entry.ownership_revision(), batch.final_ownership().revision());
+    }
 }
 
 #[derive(Debug)]
