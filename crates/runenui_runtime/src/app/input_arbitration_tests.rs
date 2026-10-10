@@ -271,19 +271,14 @@ fn trace_disabled_keeps_exact_host_receipt_and_explicit_widget_conflict() {
         .submit_keyboard(key())
         .unwrap_or_else(|_| unreachable!("native keyboard admission without trace"))
         .sequence();
-    let batch = pump::pump_recorded::<ProbeApp>(
-        &mut app.runtime,
-        PumpBudget::new(1, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("trace-independent canonical settlement"));
+    let batch = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("trace-independent canonical settlement"));
     assert_eq!(batch.processed_through(), Some(receipt));
     let facts = batch
         .ordered_records()
         .iter()
         .find_map(|record| match record {
-            InputArbitrationRecord::InputSettled(settled)
-                if settled.sequence() == receipt =>
-            {
+            InputArbitrationRecord::InputSettled(settled) if settled.sequence() == receipt => {
                 Some(settled.finality())
             }
             _ => None,
