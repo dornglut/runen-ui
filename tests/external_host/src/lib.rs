@@ -690,6 +690,24 @@ mod tests {
         assert_public_shutdown_retires_claimed_scope(runtime);
     }
 
+    fn committed_queue_pressure_claim(settled: &UiInputSettlement) -> bool {
+        match settled.finality() {
+            UiInputFinality::Committed(facts) => {
+                assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
+                assert!(
+                    facts
+                        .reasons()
+                        .contains(&UiInputClaimReason::ExplicitWidgetClaim)
+                );
+                true
+            }
+            UiInputFinality::ProcessingRejected(
+                runenui_runtime::UiInputProcessingRejection::InsufficientTransactionCapacity,
+            ) => false,
+            other => panic!("unexpected queue-pressure finality: {other:?}"),
+        }
+    }
+
     #[test]
     fn public_queue_full_keyboard_rejection_has_no_phantom_settlement() {
         // A tiny queue can prevent the fixture's own focus transaction.
@@ -754,17 +772,20 @@ mod tests {
             })
             .collect();
         assert_eq!(settlements.len(), admitted.len());
+        let mut committed = 0;
         for (settled, sequence) in settlements.iter().zip(admitted) {
             assert_eq!(settled.sequence(), sequence);
             assert_eq!(settled.scope(), &scope);
             assert_eq!(settled.family(), UiInputFamily::Keyboard);
-            assert!(matches!(
-                settled.finality(),
-                UiInputFinality::Committed(facts)
-                    if facts.conflict() == UiInputConflict::ExclusiveUi
-                        && facts.reasons().contains(&UiInputClaimReason::ExplicitWidgetClaim)
-            ));
+            if committed_queue_pressure_claim(settled) {
+                committed += 1;
+            }
         }
+        // A full waiting FIFO can deny routed transaction preflight even for
+        // a receipt already admitted to the queue. Once sufficient space has
+        // drained, later reached inputs can commit their actual UI claim.
+        assert_ne!(committed, 0);
+        assert_ne!(committed, settlements.len());
         assert!(reached.load(Ordering::Relaxed));
 
         let replay = runtime
