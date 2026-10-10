@@ -270,32 +270,59 @@ fn pointer_deltas_are_independent_of_thin_hit_box_and_fifo_cumulative() {
     let input = publication.input_context().clone();
     let pointer_id = PointerId::new(47).unwrap_or_else(|| unreachable!("nonzero pointer"));
     let down = PointerEvent::new(
-        pointer_id, PointerDeviceKind::Mouse, PointerPhase::Down,
-        LogicalPoint::new(6.0, 40.0).unwrap_or_else(|_| unreachable!()), input.clone()
-    ).with_changed_button(PointerButton::Primary)
-        .with_buttons(PointerButtons::new([PointerButton::Primary]));
-    runtime.submit_pointer(down).unwrap_or_else(|_| unreachable!("down admitted"));
+        pointer_id,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        LogicalPoint::new(6.0, 40.0).unwrap_or_else(|_| unreachable!()),
+        input.clone(),
+    )
+    .with_changed_button(PointerButton::Primary)
+    .with_buttons(PointerButtons::new([PointerButton::Primary]));
+    runtime
+        .submit_pointer(down)
+        .unwrap_or_else(|_| unreachable!("down admitted"));
     settle(&mut runtime);
-    assert_eq!(runtime.state().size, 50.0, "down must not jump to a value derived from 12px width");
+    assert_eq!(
+        runtime.state().size,
+        50.0,
+        "down must not jump to a value derived from 12px width"
+    );
     for (position, delta) in [(16.0, 10.0), (25.0, 9.0)] {
-        runtime.submit_pointer(
-            PointerEvent::new(
-                pointer_id, PointerDeviceKind::Mouse, PointerPhase::Move,
-                LogicalPoint::new(position, 40.0).unwrap_or_else(|_| unreachable!()), input.clone()
+        runtime
+            .submit_pointer(
+                PointerEvent::new(
+                    pointer_id,
+                    PointerDeviceKind::Mouse,
+                    PointerPhase::Move,
+                    LogicalPoint::new(position, 40.0).unwrap_or_else(|_| unreachable!()),
+                    input.clone(),
+                )
+                .with_movement_delta(
+                    LogicalDelta::new(delta, 0.0).unwrap_or_else(|_| unreachable!()),
+                )
+                .with_buttons(PointerButtons::new([PointerButton::Primary])),
             )
-            .with_movement_delta(LogicalDelta::new(delta, 0.0).unwrap_or_else(|_| unreachable!()))
-            .with_buttons(PointerButtons::new([PointerButton::Primary]))
-        ).unwrap_or_else(|_| unreachable!("captured move admitted"));
+            .unwrap_or_else(|_| unreachable!("captured move admitted"));
     }
     settle(&mut runtime);
-    assert_eq!(runtime.state().size, 69.0, "both relative deltas applied to live app state");
+    assert_eq!(
+        runtime.state().size,
+        69.0,
+        "both relative deltas applied to live app state"
+    );
     assert_eq!(runtime.state().proposals, 2);
-    runtime.submit_pointer(
-        PointerEvent::new(
-            pointer_id, PointerDeviceKind::Mouse, PointerPhase::Up,
-            LogicalPoint::new(25.0, 40.0).unwrap_or_else(|_| unreachable!()), input,
-        ).with_changed_button(PointerButton::Primary)
-    ).unwrap_or_else(|_| unreachable!("up admitted"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                LogicalPoint::new(25.0, 40.0).unwrap_or_else(|_| unreachable!()),
+                input,
+            )
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|_| unreachable!("up admitted"));
     settle(&mut runtime);
     inspect(&publish(&mut runtime), 69.0, true, false);
 }
@@ -303,29 +330,56 @@ fn pointer_deltas_are_independent_of_thin_hit_box_and_fifo_cumulative() {
 #[test]
 fn disabled_rejects_input_and_horizontal_orientation_changes_move_axis() {
     let mut runtime = fresh();
-    runtime.submit_action(Action::Enabled(false)).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_action(Action::Enabled(false))
+        .unwrap_or_else(|_| unreachable!());
     settle(&mut runtime);
     let disabled = publish(&mut runtime);
     inspect(&disabled, 50.0, false, false);
     assert!(semantic_action(&mut runtime, &disabled, SemanticAction::Increment).is_err());
-    runtime.submit_action(Action::Enabled(true)).unwrap_or_else(|_| unreachable!());
-    runtime.submit_action(Action::Horizontal(true)).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_action(Action::Enabled(true))
+        .unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_action(Action::Horizontal(true))
+        .unwrap_or_else(|_| unreachable!());
     settle(&mut runtime);
     let rotated = publish(&mut runtime);
     inspect(&rotated, 50.0, true, true);
-    let owner = runtime.index().nodes().iter()
-        .find(|node| node.authored_id() == Some(
-            &runenui_core::ElementId::new("controlled.splitter").unwrap_or_else(|_| unreachable!())
-        ))
-        .unwrap_or_else(|| unreachable!("mounted Splitter")).id().clone();
-    runtime.submit_command(owner, SemanticCommand::RequestFocus, CommandOrigin::programmatic())
+    let owner = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                == Some(
+                    &runenui_core::ElementId::new("controlled.splitter")
+                        .unwrap_or_else(|_| unreachable!()),
+                )
+        })
+        .unwrap_or_else(|| unreachable!("mounted Splitter"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(
+            owner,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
         .unwrap_or_else(|_| unreachable!("focus"));
     settle(&mut runtime);
-    runtime.submit_keyboard(KeyboardEvent::new(
-        KeyboardPhase::Down, PhysicalKey::ArrowDown, LogicalKey::ArrowDown,
-        KeyModifiers::NONE, false, KeyLocation::Standard,
-        KeyboardCompositionState::Inactive, None,
-    )).unwrap_or_else(|_| unreachable!("keyboard"));
+    runtime
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::ArrowDown,
+            LogicalKey::ArrowDown,
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        ))
+        .unwrap_or_else(|_| unreachable!("keyboard"));
     settle(&mut runtime);
     assert_eq!(runtime.state().size, 55.0);
 }
