@@ -465,8 +465,7 @@ mod tests {
     fn successful_rollback_after_partial_native_failure_restores_absolute_mode() {
         let (mut modes, mut host) = focused();
         host.mutate_before_failure = true;
-        host.failures
-            .push((Mode::LockedRelative, Failure::Native));
+        host.failures.push((Mode::LockedRelative, Failure::Native));
         assert_eq!(
             modes.request(scope(1), Mode::LockedRelative, &mut host),
             Err(Failure::Native)
