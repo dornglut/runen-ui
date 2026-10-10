@@ -692,13 +692,16 @@ mod tests {
 
     #[test]
     fn public_queue_full_keyboard_rejection_has_no_phantom_settlement() {
-        // A one-envelope queue can also block the fixture's own focus setup.
-        // Qualify real queue saturation only after focus has committed.
-        const CAPACITY: usize = 8;
+        // A tiny queue can prevent the fixture's own focus transaction.
+        // Use the actual configured queue bound, with optional trace disabled,
+        // and reach saturation by observed public admission results.
+        let config =
+            RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0));
+        let queue_capacity = config.queue_capacity();
         let reached = Arc::new(AtomicBool::new(false));
         let mut runtime = focused_public_claim_host_with_config::<ExternalHostClaimApp>(
             Arc::clone(&reached),
-            RuntimeConfig::default().with_queue_capacity(CAPACITY),
+            config,
         );
         assert!(runtime.focus().focused_node().is_some());
         let scope = runtime
@@ -711,7 +714,7 @@ mod tests {
         // mounted host has after its canonical focus/readiness commitments.
         let mut admitted = Vec::new();
         let mut rejection = None;
-        for _ in 0..=CAPACITY {
+        for _ in 0..=queue_capacity {
             match runtime.submit_keyboard(native_w_input()) {
                 Ok(receipt) => admitted.push(receipt.sequence()),
                 Err(error) => {
@@ -740,7 +743,7 @@ mod tests {
         assert!(!reached.load(Ordering::Relaxed));
 
         let completed = runtime
-            .pump(HOST_PUMP_BUDGET)
+            .pump(PumpBudget::new(queue_capacity, 64, 64, 64))
             .unwrap_or_else(|_| unreachable!("all admitted receipts must settle"));
         let settlements: Vec<_> = completed
             .ordered_records()
