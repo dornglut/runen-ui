@@ -414,7 +414,7 @@ fn initial_checkpoint_capacity_shortage_preserves_prior_ownership_observation_an
         partial.final_ownership().status(),
         crate::RuntimeStatus::Running
     );
-    assert!(partial.ordered_records().is_empty());
+    assert_eq!(partial.ordered_records(), []);
 
     let resumed = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("pending input remains queued"));
@@ -468,7 +468,7 @@ fn initial_snapshot_revision_after_direct_composition_admission_survives_capacit
         Some(crate::InputPumpPauseReason::ObservationCapacity)
     );
     assert_eq!(partial.processed_through(), None);
-    assert!(partial.ordered_records().is_empty());
+    assert_eq!(partial.ordered_records(), []);
     assert!(partial.final_ownership().revision() > before.revision());
     assert_eq!(
         partial
