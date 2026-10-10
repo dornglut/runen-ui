@@ -73,7 +73,7 @@ impl<Action> fmt::Debug for TreeItem<Action> {
 impl<Action> TreeItem<Action> {
     /// Authors an initially unselected, collapsed, enabled logical item.
     ///
-    /// Descendants are owned by the application-built view. A TreeView checks
+    /// Descendants are owned by the application-built view. A `TreeView` checks
     /// domain-ID uniqueness across *all* descendants, including collapsed ones.
     #[must_use]
     pub fn new(
@@ -440,7 +440,7 @@ impl<Action> ChildBearingWidget<Action> for TreeItemWidget<Action> {}
 
 /// One external focus stop containing a non-virtualized, real-focus hierarchy.
 ///
-/// Visible TreeItems share the accepted M4 focus group; the application retains
+/// Visible `TreeItems` share the accepted M4 focus group; the application retains
 /// selection, expansion, and stable domain identity. No private data source,
 /// focus index, keyboard dispatcher, or scroll manager is introduced.
 pub struct TreeView<Action> {
@@ -458,7 +458,7 @@ impl<Action> fmt::Debug for TreeView<Action> {
     }
 }
 impl<Action> TreeView<Action> {
-    /// Creates a single-selection TreeView with Manual activation, Stop
+    /// Creates a single-selection `TreeView` with Manual activation, Stop
     /// boundaries, and a bounded default type-ahead timeout.
     #[must_use]
     pub fn new(children: impl IntoIterator<Item = TreeItem<Action>>) -> Self {
@@ -660,7 +660,7 @@ impl<Action: 'static> View<Action> for TreeView<Action> {
         )
     }
 }
-/// Authors an application-domain TreeItem from its label and logical children.
+/// Authors an application-domain `TreeItem` from its label and logical children.
 #[must_use]
 pub fn tree_item<Action>(
     domain_id: impl Into<String>,
@@ -669,7 +669,7 @@ pub fn tree_item<Action>(
 ) -> TreeItem<Action> {
     TreeItem::new(domain_id, label, children)
 }
-/// Authors a non-virtualized TreeView using the generic focus and semantics.
+/// Authors a non-virtualized `TreeView` using the generic focus and semantics.
 #[must_use]
 pub fn tree_view<Action>(children: impl IntoIterator<Item = TreeItem<Action>>) -> TreeView<Action> {
     TreeView::new(children)
