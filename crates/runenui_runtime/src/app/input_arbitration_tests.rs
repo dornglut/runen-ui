@@ -433,6 +433,74 @@ fn initial_checkpoint_capacity_shortage_preserves_prior_ownership_observation_an
 }
 
 #[test]
+fn initial_snapshot_revision_after_direct_composition_admission_survives_capacity_pause() {
+    let mut app = AppRuntime::<TextOwnershipApp>::mount(());
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let target = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
+        })
+        .unwrap_or_else(|| unreachable!("editable owner mounted"))
+        .id()
+        .clone();
+    app.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("focus admission"));
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let before = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("initial observed focus owner"));
+    let receipt = app
+        .start_composition(Some(device(43)))
+        .unwrap_or_else(|_| unreachable!("pending native composition admitted"));
+    // First reservation publishes the already-committed synchronous admission
+    // revision. The following initial checkpoint reservation fails. Returning
+    // Err here would lose the ownership observation, even at zero FIFO work.
+    app.runtime.inject_input_reservation_failure_after(1);
+    let partial = pump::pump_recorded::<TextOwnershipApp>(
+        &mut app.runtime,
+        PumpBudget::new(1, 0, 0, 0),
+    )
+    .unwrap_or_else(|_| unreachable!("revision is preserved as partial success"));
+    assert_eq!(
+        partial.pause_reason(),
+        Some(crate::InputPumpPauseReason::ObservationCapacity)
+    );
+    assert_eq!(partial.processed_through(), None);
+    assert!(partial.ordered_records().is_empty());
+    assert!(partial.final_ownership().revision() > before.revision());
+    assert_eq!(
+        partial.final_ownership().keyboard().composition_generation(),
+        Some(receipt.generation())
+    );
+    assert_eq!(
+        partial.final_ownership().keyboard().composition_device_id(),
+        Some(device(43))
+    );
+    let resumed = pump::pump_recorded::<TextOwnershipApp>(
+        &mut app.runtime,
+        PumpBudget::new(1, 0, 0, 0),
+    )
+    .unwrap_or_else(|_| unreachable!("pending input resumes"));
+    assert_eq!(resumed.processed_through(), Some(receipt.sequence()));
+    assert_eq!(
+        resumed
+            .ordered_records()
+            .iter()
+            .filter(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn mid_pump_snapshot_capacity_failure_returns_lossless_partial_batch() {
     let mut app = focused_runtime(false);
     let first = app
