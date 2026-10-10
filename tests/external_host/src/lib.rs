@@ -308,6 +308,57 @@ mod tests {
 
     // An independently typed UiApp exercises the same ordinary public input
     // contract, without erasing State/Action/HostProtocol into a host facade.
+    // This widget deliberately manipulates ordinary event routing without
+    // claiming the native occurrence. Neither control is host-input ownership.
+    #[derive(Debug)]
+    struct ExternalHostNonclaimProbe {
+        reached: Arc<AtomicBool>,
+    }
+
+    impl Widget<()> for ExternalHostNonclaimProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, ()>,
+        ) -> WidgetEventOutput {
+            if matches!(event, UiEvent::Keyboard(_)) && context.phase() == EventPhase::Target {
+                context.prevent_default();
+                context.stop_propagation();
+                assert!(!context.host_input_is_claimed());
+                self.reached.store(true, Ordering::Relaxed);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    struct ExternalHostNonclaimApp;
+
+    impl UiApp for ExternalHostNonclaimApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            Element::new(ExternalHostNonclaimProbe {
+                reached: Arc::clone(reached),
+            })
+            .id("external-claim-probe")
+            .key("external-claim-probe")
+            .focusable(true)
+        }
+
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        }
+    }
+
     struct ExternalHostSiblingClaimApp;
 
     impl UiApp for ExternalHostSiblingClaimApp {
@@ -456,6 +507,58 @@ mod tests {
         assert!(reached.load(Ordering::Relaxed));
 
         assert_public_shutdown_retires_claimed_scope(runtime);
+    }
+
+    #[test]
+    fn public_nonclaiming_routing_controls_never_certify_exclusive_ui() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime =
+            focused_public_claim_host::<ExternalHostNonclaimApp>(Arc::clone(&reached));
+        let receipt = runtime
+            .submit_keyboard(KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyW")),
+                LogicalKey::Character(String::from("w")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            ))
+            .unwrap_or_else(|_| unreachable!("ordinary native key admitted"));
+
+        let batch = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("public keyboard settlement observed"));
+        assert_eq!(batch.processed_through(), Some(receipt.sequence()));
+        let settlements = batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settled) => Some(settled),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settlements.len(), 1);
+        let settled = settlements[0];
+        assert_eq!(settled.sequence(), receipt.sequence());
+        assert_eq!(settled.scope(), batch.final_ownership().scope());
+        assert!(matches!(
+            settled.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ObservedNonexclusive
+                    && facts.reasons().is_empty()
+                    && facts.propagation_stopped()
+                    && facts.default_prevented()
+        ));
+        assert!(reached.load(Ordering::Relaxed));
+        let repeated = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("already settled input does not replay"));
+        assert!(!repeated.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(_)
+        )));
     }
 
     #[test]
