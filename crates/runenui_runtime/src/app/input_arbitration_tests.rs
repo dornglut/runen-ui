@@ -745,6 +745,39 @@ fn exhausted_direct_publication_preflights_before_commit_and_exposes_last_termin
 }
 
 #[test]
+fn rev20_unchanged_running_ownership_at_penultimate_revision_remains_observable() {
+    use crate::{LogicalSize, SurfaceBuildContext};
+    use runenui_core::StyleEnvironment;
+
+    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
+    let _ = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("baseline projection"));
+    app.runtime.seed_input_revision_for_test(u64::MAX - 2);
+
+    let environment = StyleEnvironment::default();
+    let size = LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("finite viewport"));
+    let build = SurfaceBuildContext::tight(&environment, size);
+    let _ = app
+        .publish_surface(&build)
+        .unwrap_or_else(|_| unreachable!("one direct boundary with terminal headroom"));
+    let advanced = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("direct publication revision"));
+    assert_eq!(advanced.revision().get(), u64::MAX - 1);
+    assert_eq!(advanced.status(), crate::RuntimeStatus::Running);
+
+    // No further input/presentation ownership changed. A read cannot
+    // consume the sole reserved terminal revision or strand the scope.
+    let unchanged = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("unchanged ownership remains readable"));
+    assert_eq!(unchanged.revision(), advanced.revision());
+    assert_eq!(unchanged.status(), crate::RuntimeStatus::Running);
+}
+
+#[test]
 fn failed_second_shutdown_reservation_preserves_pending_composition_revision() {
     let mut app = AppRuntime::<TextOwnershipApp>::mount(());
     let budget = PumpBudget::new(32, 32, 32, 32);
