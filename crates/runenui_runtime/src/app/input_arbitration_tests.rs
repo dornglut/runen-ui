@@ -835,6 +835,14 @@ fn rev20_pump_exhaustion_retires_scope_without_inventing_input_settlement() {
             .iter()
             .any(|record| matches!(record, InputArbitrationRecord::ScopeRetired(_)))
     );
+    // Retirement already reached the host on the last valid revision.
+    // Finishing cleanup cannot repeat the marker or require MAX+1.
+    let closed = app
+        .shutdown()
+        .unwrap_or_else(|_| unreachable!("retired lifetime still closes"));
+    assert_eq!(closed.final_ownership().revision().get(), u64::MAX);
+    assert_eq!(closed.final_ownership().status(), crate::RuntimeStatus::Closed);
+    assert!(closed.ordered_records().is_empty());
 }
 
 #[test]
@@ -936,7 +944,7 @@ fn failed_second_shutdown_reservation_preserves_pending_composition_revision() {
 }
 
 #[test]
-fn observed_shutdown_rejects_before_mutation_if_final_revision_is_exhausted() {
+fn already_terminal_max_revision_can_shutdown_and_retire_without_wrap() {
     let mut app = AppRuntime::<SpaceApp>::mount(0);
     let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
     let _ = app
@@ -954,23 +962,36 @@ fn observed_shutdown_rejects_before_mutation_if_final_revision_is_exhausted() {
         terminal.status(),
         crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned)
     );
-    assert!(matches!(
-        app.runtime.shutdown_observed(),
-        Err(crate::InputObservationError::RevisionExhausted)
-    ));
-    // The rejected close has not hidden a successfully terminalized scope.
-    assert_eq!(
-        app.runtime.status(),
-        crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned)
-    );
-    let batch = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
-        .unwrap_or_else(|_| unreachable!("one scope retirement remains observable"));
-    assert!(
-        batch
-            .ordered_records()
-            .iter()
-            .any(|record| matches!(record, InputArbitrationRecord::ScopeRetired(_)))
-    );
+    // The scope has already reached terminal invalidation at MAX. A
+    // subsequent explicit shutdown is real cleanup, not another arbitrable
+    // ownership change, and cannot require a nonexistent MAX+1 revision.
+    let closed = app
+        .shutdown()
+        .unwrap_or_else(|_| unreachable!("terminal cleanup needs no further revision"));
+    assert_eq!(closed.final_ownership().revision().get(), u64::MAX);
+    assert_eq!(closed.final_ownership().status(), crate::RuntimeStatus::Closed);
+    assert!(closed.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::ScopeRetired(retired)
+            if retired.reason()
+                == crate::InputScopeRetirementReason::Terminal(
+                    crate::RuntimeTerminalReason::Poisoned
+                )
+    )));
+    assert!(!closed.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::OwnershipChanged(_)
+    )));
+    let repeated = app
+        .shutdown()
+        .unwrap_or_else(|_| unreachable!("repeated observed close is idempotent"));
+    assert!(repeated.report().already_complete());
+    assert!(repeated.ordered_records().is_empty());
+    assert_eq!(repeated.final_ownership().revision().get(), u64::MAX);
+    let batch = app
+        .pump(PumpBudget::new(0, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("closed max revision remains readable"));
+    assert!(batch.ordered_records().is_empty());
 }
 
 #[test]

@@ -253,12 +253,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             } else {
                 pending.max(1)
             };
+            // Running -> Closed invalidates live input ownership. After
+            // Terminal, the lifetime was already invalidated, so cleanup
+            // cannot consume another arbitration revision.
+            let closing_revision = u64::from(matches!(
+                self.status,
+                crate::RuntimeStatus::Running
+            ));
             if self
                 .input_observation
                 .revision
                 .get()
                 .checked_add(pending)
-                .and_then(|revision| revision.checked_add(1))
+                .and_then(|revision| revision.checked_add(closing_revision))
                 .is_none()
             {
                 return Err(InputObservationError::RevisionExhausted);
@@ -271,7 +278,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let after_reservation = self.reserve_input_ownership_read()?;
         let (before, _) = self.input_ownership_reserved(before_reservation);
         debug_assert!(
-            matches!(self.status, crate::RuntimeStatus::Closed)
+            !matches!(self.status, crate::RuntimeStatus::Running)
                 || before.revision().get() < u64::MAX
         );
         let report = self.shutdown();
@@ -487,8 +494,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .last
             .as_ref()
             .is_some_and(|previous| !previous.same_ownership_facts(&current));
+        // Once a scope is terminal, subsequent explicit cleanup changes no
+        // admissible input ownership. Preserve its last immutable revision
+        // while exposing the truthful final Closed status; no wrap or phantom
+        // terminal-to-closed arbitration transition is required.
+        let terminal_cleanup = matches!(
+            self.input_observation.last.as_ref().map(|last| last.status),
+            Some(crate::RuntimeStatus::Terminal(_))
+        ) && matches!(self.status, crate::RuntimeStatus::Closed);
         if self.input_observation.last.is_some()
             && (changed || self.input_observation.pending_direct_boundaries != 0)
+            && !terminal_cleanup
         {
             // Each committed direct boundary must remain detectable as a
             // revision gap after the host's later synchronous query.
