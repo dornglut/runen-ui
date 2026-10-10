@@ -493,7 +493,10 @@ mod tests {
             assert!(!modes.observe_motion(&scope(1), delta, &mut host));
             assert!(!modes.gameplay_motion_allowed());
             assert!(host.visible);
-            assert_eq!(modes.request(scope(1), Mode::LockedRelative, &mut host), Ok(pending.clone()));
+            assert_eq!(
+                modes.request(scope(1), Mode::LockedRelative, &mut host),
+                Ok(pending.clone())
+            );
         }
         assert!(modes.observe_motion(&scope(1), (0.0, -3.0), &mut host));
         assert!(modes.gameplay_motion_allowed());
