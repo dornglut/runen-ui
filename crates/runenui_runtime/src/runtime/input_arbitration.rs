@@ -167,6 +167,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     /// Records *existing* synchronous public mutations that occur without a
     /// canonical FIFO envelope. This is only a revision witness: the existing
     /// focus/composition/surface authorities still own all actual state.
+    /// Checked before a public synchronous operation that would create an
+    /// additional input ownership revision without any canonical pump call.
+    /// Leave space for a truthful terminal scope invalidation if admission
+    /// itself must fail on revision exhaustion.
+    pub(crate) fn can_admit_direct_input_ownership_boundary(&self) -> bool {
+        self.input_observation.last.is_none()
+            || self
+                .input_observation
+                .pending_direct_boundaries
+                .checked_add(1)
+                .and_then(|pending| self.input_observation.revision.get().checked_add(pending))
+                .and_then(|revision| revision.checked_add(1))
+                .is_some()
+    }
+
     pub(crate) fn note_direct_input_ownership_boundary(&mut self) {
         self.input_observation.pending_direct_boundaries = self
             .input_observation
@@ -327,7 +342,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .revision
                 .get()
                 .checked_add(self.input_observation.pending_direct_boundaries.max(1))
-                .and_then(|revision| revision.checked_add(1))
+                .and_then(|revision| {
+                    if matches!(self.status, crate::RuntimeStatus::Running) {
+                        revision.checked_add(1)
+                    } else {
+                        // An already retired scope does not need another
+                        // reserved future revision to expose terminal state.
+                        Some(revision)
+                    }
+                })
                 .is_none()
         {
             return Err(InputObservationError::RevisionExhausted);

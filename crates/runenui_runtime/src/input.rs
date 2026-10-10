@@ -607,6 +607,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) -> Result<CompositionStartSubmission, SubmitCompositionStartError> {
         let request = CompositionStartRequest::new(device_id);
         let target = self.composition_start_target(request)?;
+        if !self.can_admit_direct_input_ownership_boundary() {
+            let reason = RuntimeTerminalReason::Poisoned;
+            self.enter_terminal(reason, 0);
+            return Err(Self::composition_start_error(
+                SubmitCompositionErrorKind::Terminal(reason),
+                request,
+            ));
+        }
         let Some(next) = self.next_composition_generation else {
             return Err(SubmitCompositionStartError::new(
                 SubmitCompositionErrorKind::CompositionGenerationExhausted,
