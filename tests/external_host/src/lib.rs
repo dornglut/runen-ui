@@ -721,7 +721,10 @@ mod tests {
             }
         }
         assert!(!admitted.is_empty());
-        assert_eq!(rejection, Some(runenui_runtime::SubmitKeyboardErrorKind::Full));
+        assert_eq!(
+            rejection,
+            Some(runenui_runtime::SubmitKeyboardErrorKind::Full)
+        );
         assert!(!reached.load(Ordering::Relaxed));
 
         let pending = runtime
