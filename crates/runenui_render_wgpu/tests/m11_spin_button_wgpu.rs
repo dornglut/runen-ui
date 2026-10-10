@@ -101,9 +101,13 @@ fn publication(source: &str) -> Result<runenui_runtime::SurfacePublication, Box<
 #[test]
 fn spin_button_valid_and_intermediate_text_share_real_wgpu_and_semantic_authority()
 -> Result<(), Box<dyn Error>> {
+    // Ordinary workspace tests may run without a GPU. The fixed hosted
+    // visual-evidence workflow must instead fail closed if no adapter exists.
+    let evidence_required = std::env::var_os("RUNENUI_M11SPIN_EVIDENCE_DIR").is_some()
+        || std::env::var_os("RUNENUI_M11SLIDER_EVIDENCE_DIR").is_some();
     let mut renderer = match block_on(Renderer::request(RendererOptions::new())) {
         Ok(renderer) => renderer,
-        Err(RendererInitError::AdapterUnavailable { .. }) => return Ok(()),
+        Err(RendererInitError::AdapterUnavailable { .. }) if !evidence_required => return Ok(()),
         Err(error) => return Err(error.into()),
     };
     let provider = NoExternalResources;

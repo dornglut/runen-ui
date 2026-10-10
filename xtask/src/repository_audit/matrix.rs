@@ -1013,7 +1013,7 @@ mod tests {
         (
             "M11SPIN",
             &["M11CTRL-79", "M11CTRL-80", "M11CTRL-81"],
-            "blocked",
+            "owner-accepted",
         ),
         (
             "M11SLIDER",
