@@ -111,7 +111,7 @@ fn settle(runtime: &mut AppRuntime<App>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert!(report.is_quiescent(), "fixture did not settle: {report:?}");
 }
 
@@ -276,7 +276,7 @@ fn failed_cleanup_retires_without_false_delivery_and_shutdown_unmounts_once() {
             .submit_action(Action::Noop)
             .unwrap_or_else(|_| unreachable!("filler occupies cleanup capacity"));
     }
-    let _ = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     assert_eq!(
         runtime.status(),
@@ -310,7 +310,7 @@ fn failed_cleanup_retires_without_false_delivery_and_shutdown_unmounts_once() {
     ));
     let terminal_sequence = terminal.sequence();
 
-    let report = runtime.shutdown();
+    let report = runtime.shutdown().expect("shutdown observation").report().to_owned();
     assert_eq!(report.unmounted_lifetimes(), 2);
     assert_eq!(runtime.status(), RuntimeStatus::Closed);
     assert_eq!(

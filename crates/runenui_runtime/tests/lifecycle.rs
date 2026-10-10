@@ -114,7 +114,7 @@ fn replacement_unmounts_live_postorder_then_drops_before_new_preorder_mount() {
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(3, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(3, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         3
     );

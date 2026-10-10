@@ -78,7 +78,7 @@ impl Widget<Action> for TextInputProbe {
 }
 
 fn settle<Application: UiApp>(runtime: &mut AppRuntime<Application>) {
-    assert!(runtime.pump(PumpBudget::new(64, 64, 64, 64)).is_quiescent());
+    assert!(runtime.pump(PumpBudget::new(64, 64, 64, 64)).expect("pump observation").report().to_owned().is_quiescent());
 }
 
 fn mount() -> AppRuntime<App> {
@@ -241,7 +241,7 @@ fn shutdown_clears_focus_indication_with_real_focus_authority() {
     let ordinary = mounted_id(&mut app, "ordinary");
     focus(&mut app, &ordinary, CommandOrigin::controller());
     assert!(app.focus().focus_visible());
-    app.shutdown();
+    app.shutdown().expect("shutdown observation").report().to_owned();
     assert!(app.focus().focused_node().is_none());
     assert!(!app.focus().focus_visible());
 }
@@ -334,11 +334,11 @@ fn disablement_retires_focus_and_its_visibility_latch_together() {
         SemanticCommand::RequestFocus,
         CommandOrigin::programmatic(),
     ).is_ok());
-    assert!(app.pump(PumpBudget::new(64, 64, 64, 64)).is_quiescent());
+    assert!(app.pump(PumpBudget::new(64, 64, 64, 64)).expect("pump observation").report().to_owned().is_quiescent());
     assert!(app.focus().focus_visible());
 
     assert!(app.submit_action(()).is_ok());
-    assert!(app.pump(PumpBudget::new(64, 64, 64, 64)).is_quiescent());
+    assert!(app.pump(PumpBudget::new(64, 64, 64, 64)).expect("pump observation").report().to_owned().is_quiescent());
     assert!(app.focus().focused_node().is_none());
     assert!(!app.focus().focus_visible());
 }
