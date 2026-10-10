@@ -33,28 +33,65 @@ impl InputObservationState {
     }
 }
 
-/// Fallible copy of immutable observations; no unbounded or unchecked Vec clone.
-fn copy_snapshot(
-    source: &InputOwnershipSnapshot,
-) -> Result<InputOwnershipSnapshot, InputObservationError> {
-    let mut pointers = Vec::new();
-    pointers
-        .try_reserve_exact(source.pointers.len())
-        .map_err(|_| InputObservationError::Capacity)?;
-    pointers.extend_from_slice(&source.pointers);
-    let mut surfaces = Vec::new();
-    surfaces
-        .try_reserve_exact(source.surfaces.len())
-        .map_err(|_| InputObservationError::Capacity)?;
-    surfaces.extend_from_slice(&source.surfaces);
-    Ok(InputOwnershipSnapshot {
-        scope: source.scope.clone(),
-        revision: source.revision,
-        status: source.status,
-        keyboard: source.keyboard.clone(),
-        surfaces,
-        pointers,
-    })
+/// Owned vectors reserved before a canonical input/readiness/shutdown boundary.
+/// Reusing these buffers removes observation allocation from the post-commit path.
+struct SnapshotBuffer {
+    pointers: Vec<PointerInputOwnership>,
+    surfaces: Vec<SurfaceInputOwnership>,
+}
+
+impl SnapshotBuffer {
+    fn reserved(pointer_bound: usize) -> Result<Self, InputObservationError> {
+        let mut pointers = Vec::new();
+        pointers
+            .try_reserve_exact(pointer_bound)
+            .map_err(|_| InputObservationError::Capacity)?;
+        let mut surfaces = Vec::new();
+        surfaces
+            .try_reserve_exact(1)
+            .map_err(|_| InputObservationError::Capacity)?;
+        Ok(Self { pointers, surfaces })
+    }
+
+    fn clone_facts(mut self, source: &InputOwnershipSnapshot) -> InputOwnershipSnapshot {
+        debug_assert!(self.pointers.capacity() >= source.pointers.len());
+        debug_assert!(self.surfaces.capacity() >= source.surfaces.len());
+        self.pointers.extend_from_slice(&source.pointers);
+        self.surfaces.extend_from_slice(&source.surfaces);
+        InputOwnershipSnapshot {
+            scope: source.scope.clone(),
+            revision: source.revision,
+            status: source.status,
+            keyboard: source.keyboard.clone(),
+            surfaces: self.surfaces,
+            pointers: self.pointers,
+        }
+    }
+}
+
+/// Reserved once per impending canonical checkpoint or work envelope.
+/// This is not a retained input-ownership registry or an alternative queue.
+pub(crate) struct InputSnapshotReservation {
+    ids: Vec<runenui_core::PointerId>,
+    projected: SnapshotBuffer,
+    retained: SnapshotBuffer,
+    result: SnapshotBuffer,
+    transition: SnapshotBuffer,
+}
+
+impl InputSnapshotReservation {
+    fn new(pointer_bound: usize) -> Result<Self, InputObservationError> {
+        let mut ids = Vec::new();
+        ids.try_reserve_exact(pointer_bound)
+            .map_err(|_| InputObservationError::Capacity)?;
+        Ok(Self {
+            ids,
+            projected: SnapshotBuffer::reserved(pointer_bound)?,
+            retained: SnapshotBuffer::reserved(pointer_bound)?,
+            result: SnapshotBuffer::reserved(pointer_bound)?,
+            transition: SnapshotBuffer::reserved(pointer_bound)?,
+        })
+    }
 }
 
 /// One accepted stream cleanup is not a routed UI activation.
@@ -104,13 +141,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .try_reserve_exact(2)
             .map_err(|_| InputObservationError::Capacity)?;
         let before = self.input_ownership()?;
+        let reserved = self.reserve_input_observation()?;
         let report = self.shutdown();
-        let after = self.input_ownership()?;
+        let (after, transition) = self.input_ownership_reserved(reserved);
         if after.revision() != before.revision() {
             records.push(crate::InputArbitrationRecord::OwnershipChanged(
                 crate::InputOwnershipTransition {
                     before_revision: before.revision(),
-                    after: after.clone(),
+                    after: transition,
                 },
             ));
         }
@@ -152,8 +190,37 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             })
     }
 
-    /// Returns a new immutable projection without changing any live authority.
-    fn project_input_ownership(&mut self) -> Result<InputOwnershipSnapshot, InputObservationError> {
+    /// Fallibly reserves every vector needed for the next ownership projection
+    /// *before* a canonical mutation boundary.
+    pub(crate) fn reserve_input_observation(
+        &self,
+    ) -> Result<InputSnapshotReservation, InputObservationError> {
+        // A pending new native pointer can register at most one stream per
+        // canonical envelope. Use the fixed active-stream limit as a strict
+        // conservative bound even for zero-envelope readiness checkpoints.
+        let bound = self.limits.pointer_streams();
+        if self.input_observation.last.is_some()
+            && self.input_observation.revision.get() == u64::MAX
+        {
+            return Err(InputObservationError::RevisionExhausted);
+        }
+        InputSnapshotReservation::new(bound)
+    }
+
+    /// Infallible post-commit ownership publication using only preallocated
+    /// vectors. The second returned projection is for an ordered transition
+    /// record and is never synthesized by replaying a callback.
+    pub(crate) fn input_ownership_reserved(
+        &mut self,
+        reservation: InputSnapshotReservation,
+    ) -> (InputOwnershipSnapshot, InputOwnershipSnapshot) {
+        let InputSnapshotReservation {
+            mut ids,
+            projected,
+            retained,
+            result,
+            transition,
+        } = reservation;
         let focused_node = self.focus.focused_node().cloned();
         let text_input_capability = focused_node
             .as_ref()
@@ -165,16 +232,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             composition_generation: self.composition.generation().cloned(),
             space_activation_owner: self.space_ownership.as_ref().map(|x| x.target.clone()),
         };
-        let ids = self.pointer_registry.ordered_pointer_ids();
-        let mut pointers = Vec::new();
-        pointers
-            .try_reserve_exact(ids.len())
-            .map_err(|_| InputObservationError::Capacity)?;
+        let mut pointers = projected.pointers;
+        self.pointer_registry.ordered_pointer_ids_into(&mut ids);
+        debug_assert!(pointers.capacity() >= ids.len());
         for id in ids {
             let stream = self
                 .pointer_registry
                 .stream(id)
-                .unwrap_or_else(|| unreachable!("ordered pointer is active"));
+                .unwrap_or_else(|| unreachable!("pre-reserved pointer stream is live"));
             pointers.push(PointerInputOwnership {
                 pointer_id: id,
                 device_id: stream.device_id(),
@@ -183,53 +248,49 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 capture_owner: stream.capture_owner().cloned(),
             });
         }
-        // This is only the retained logical RunenUI scene: never native Present.
-        let modal_blocker = self
-            .surface_publication
-            .current_presentation_interaction_roots()
-            .into_iter()
-            .find(|entry| entry.presentation.is_modal())
-            .map(|entry| entry.root);
-        let mut surfaces = Vec::new();
-        surfaces
-            .try_reserve_exact(1)
-            .map_err(|_| InputObservationError::Capacity)?;
+
+        // This is the retained logical RunenUI scene, never native Present.
+        let mut surfaces = projected.surfaces;
         surfaces.push(SurfaceInputOwnership {
             surface_id: self.surface_publication.surface_id().clone(),
             latest_retained_context: self.surface_publication.current_surface_input_context(),
-            modal_blocker,
+            modal_blocker: self.surface_publication.current_modal_presentation_root(),
         });
-        Ok(InputOwnershipSnapshot {
+        let mut current = InputOwnershipSnapshot {
             scope: self.input_observation.scope.clone(),
             revision: self.input_observation.revision,
             status: self.status,
             keyboard,
             surfaces,
             pointers,
-        })
+        };
+        if let Some(previous) = &self.input_observation.last
+            && !previous.same_ownership_facts(&current)
+        {
+            // Reserve rejected an exhausted revision *before* entering the
+            // mutation boundary. There is no post-commit error path here.
+            let next = self
+                .input_observation
+                .revision
+                .get()
+                .checked_add(1)
+                .unwrap_or_else(|| unreachable!("revision was preflighted"));
+            current.revision = InputOwnershipRevision::new(next);
+        }
+
+        let retained = retained.clone_facts(&current);
+        let result = result.clone_facts(&current);
+        let transition = transition.clone_facts(&current);
+        self.input_observation.revision = current.revision;
+        self.input_observation.last = Some(retained);
+        (result, transition)
     }
 
     pub(crate) fn input_ownership(
         &mut self,
     ) -> Result<InputOwnershipSnapshot, InputObservationError> {
-        let mut current = self.project_input_ownership()?;
-        if let Some(previous) = &self.input_observation.last
-            && !previous.same_ownership_facts(&current)
-        {
-            let revision = self
-                .input_observation
-                .revision
-                .get()
-                .checked_add(1)
-                .ok_or(InputObservationError::RevisionExhausted)?;
-            current.revision = InputOwnershipRevision::new(revision);
-        }
-        // Construct all caller/retained projections **before** committing a
-        // new revision. A failed capacity reservation does not partially publish.
-        let retained = copy_snapshot(&current)?;
-        let result = copy_snapshot(&current)?;
-        self.input_observation.revision = current.revision;
-        self.input_observation.last = Some(retained);
-        Ok(result)
+        let reserved = self.reserve_input_observation()?;
+        Ok(self.input_ownership_reserved(reserved).0)
     }
+
 }
