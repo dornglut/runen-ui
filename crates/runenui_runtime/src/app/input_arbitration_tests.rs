@@ -798,9 +798,9 @@ fn failed_second_shutdown_reservation_preserves_pending_composition_revision() {
         crate::RuntimeStatus::Closed
     );
     assert_eq!(completed.ordered_records().len(), 2);
-    let transition = match &completed.ordered_records()[0] {
-        InputArbitrationRecord::OwnershipChanged(transition) => transition,
-        _ => unreachable!("close publishes its ownership transition"),
+    let InputArbitrationRecord::OwnershipChanged(transition) = &completed.ordered_records()[0]
+    else {
+        unreachable!("close publishes its ownership transition");
     };
     assert_eq!(
         transition.before_revision().get(),
