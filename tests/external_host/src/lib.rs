@@ -632,10 +632,12 @@ mod tests {
         let repeated = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("already settled input does not replay"));
-        assert!(!repeated.ordered_records().iter().any(|record| matches!(
-            record,
-            InputArbitrationRecord::InputSettled(_)
-        )));
+        assert!(
+            !repeated
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
     }
 
     #[test]
