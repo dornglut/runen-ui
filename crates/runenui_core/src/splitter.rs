@@ -201,6 +201,7 @@ struct SplitterState {
     enabled: bool,
     actionable: bool,
     drag: Option<PointerId>,
+    cancel_drag: bool,
 }
 
 struct SplitterWidget<Action> {
@@ -331,6 +332,7 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
             enabled: self.enabled,
             actionable: self.actionable(),
             drag: None,
+            cancel_drag: false,
         }
     }
 
@@ -348,6 +350,12 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
                     | WidgetInvalidation::SEMANTICS
                     | WidgetInvalidation::PAINT,
             );
+        }
+        // A retained pointer was captured for the old movement axis.
+        // Orientation changes must not reinterpret its next delta; release it
+        // on the next routed pointer event using the ordinary M4 authority.
+        if state.drag.is_some() && state.orientation != self.orientation {
+            state.cancel_drag = true;
         }
         state.label.clone_from(&self.label);
         state.range.clone_from(&self.range);
@@ -381,6 +389,18 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
             && state.drag == Some(capture.pointer_id())
         {
             state.drag = None;
+            state.cancel_drag = false;
+            return WidgetEventOutput::changed();
+        }
+        if let Some(pointer) = event.as_pointer()
+            && state.drag == Some(pointer.pointer_id())
+            && state.cancel_drag
+        {
+            state.drag = None;
+            state.cancel_drag = false;
+            context.release_pointer_capture();
+            context.prevent_default();
+            context.stop_propagation();
             return WidgetEventOutput::changed();
         }
         if let Some(pointer) = event.as_pointer()
@@ -413,6 +433,7 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
                 self.emit(state, SplitterRequest::MoveBy(axis), context);
             }
             state.drag = None;
+            state.cancel_drag = false;
             context.release_pointer_capture();
             context.prevent_default();
             context.stop_propagation();
@@ -451,6 +472,7 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
                     return WidgetEventOutput::none();
                 }
                 state.drag = Some(pointer.pointer_id());
+                state.cancel_drag = false;
                 context.capture_pointer();
                 context.prevent_default();
                 context.stop_propagation();
@@ -459,6 +481,7 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
             PointerPhase::Move if active => {
                 if !usable_extent(context) {
                     state.drag = None;
+                    state.cancel_drag = false;
                     context.release_pointer_capture();
                     return WidgetEventOutput::changed();
                 }
@@ -621,6 +644,7 @@ mod tests {
             enabled: true,
             actionable: true,
             drag: None,
+            cancel_drag: false,
         };
         let key = |logical| {
             KeyboardEvent::new(
