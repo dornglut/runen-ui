@@ -46,6 +46,11 @@ impl TreeItemStatus {
     }
 }
 
+/// One application-authored logical node of a non-virtualized tree.
+///
+/// `domain_id` belongs to the application and is unrelated to mounted, semantic,
+/// or reconciliation identity. Selection and expansion are never stored here
+/// across an application rebuild. Only expanded descendants are realized.
 pub struct TreeItem<Action> {
     domain_id: String,
     label: String,
@@ -66,6 +71,10 @@ impl<Action> fmt::Debug for TreeItem<Action> {
     }
 }
 impl<Action> TreeItem<Action> {
+    /// Authors an initially unselected, collapsed, enabled logical item.
+    ///
+    /// Descendants are owned by the application-built view. A TreeView checks
+    /// domain-ID uniqueness across *all* descendants, including collapsed ones.
     #[must_use]
     pub fn new(
         domain_id: impl Into<String>,
@@ -107,6 +116,8 @@ impl<Action> TreeItem<Action> {
         self.status = self.status.with(TreeItemStatus::DISCOVERABLE, value);
         self
     }
+    /// Maps a stable-domain selection or expansion request into the ordinary
+    /// application action queue. The application decides the resulting state.
     #[must_use]
     pub fn on_request(mut self, callback: impl FnMut(TreeItemRequest) -> Action + 'static) -> Self {
         self.on_request = Some(Box::new(callback));
@@ -427,6 +438,11 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
 }
 impl<Action> ChildBearingWidget<Action> for TreeItemWidget<Action> {}
 
+/// One external focus stop containing a non-virtualized, real-focus hierarchy.
+///
+/// Visible TreeItems share the accepted M4 focus group; the application retains
+/// selection, expansion, and stable domain identity. No private data source,
+/// focus index, keyboard dispatcher, or scroll manager is introduced.
 pub struct TreeView<Action> {
     children: Vec<TreeItem<Action>>,
     common: CommonNodeAuthoring,
@@ -442,6 +458,8 @@ impl<Action> fmt::Debug for TreeView<Action> {
     }
 }
 impl<Action> TreeView<Action> {
+    /// Creates a single-selection TreeView with Manual activation, Stop
+    /// boundaries, and a bounded default type-ahead timeout.
     #[must_use]
     pub fn new(children: impl IntoIterator<Item = TreeItem<Action>>) -> Self {
         Self {
@@ -458,11 +476,14 @@ impl<Action> TreeView<Action> {
         }
     }
     common_node_builder_methods!();
+    /// Opts into existing M4 focus-group target activation. The default
+    /// Manual policy never changes application selection during navigation.
     #[must_use]
     pub const fn selection_follows_focus(mut self, value: bool) -> Self {
         self.selection_follows_focus = value;
         self
     }
+    /// Sets the generic M4 focus-group type-ahead timing policy.
     #[must_use]
     pub const fn type_ahead(mut self, value: FocusGroupTypeAhead) -> Self {
         self.type_ahead = value;
@@ -639,6 +660,7 @@ impl<Action: 'static> View<Action> for TreeView<Action> {
         )
     }
 }
+/// Authors an application-domain TreeItem from its label and logical children.
 #[must_use]
 pub fn tree_item<Action>(
     domain_id: impl Into<String>,
@@ -647,6 +669,7 @@ pub fn tree_item<Action>(
 ) -> TreeItem<Action> {
     TreeItem::new(domain_id, label, children)
 }
+/// Authors a non-virtualized TreeView using the generic focus and semantics.
 #[must_use]
 pub fn tree_view<Action>(children: impl IntoIterator<Item = TreeItem<Action>>) -> TreeView<Action> {
     TreeView::new(children)
