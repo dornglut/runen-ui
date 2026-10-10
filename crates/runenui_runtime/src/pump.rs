@@ -250,12 +250,12 @@ impl RecordedPump {
                 // There is no legal next revision. Terminalize the scope before
                 // any further work and return all previous records in a successful
                 // partial batch; never discard already committed receipts.
-                self.cancelled_for_revision = runtime.enter_terminal(
-                    RuntimeTerminalReason::Poisoned, 0,
-                );
+                self.cancelled_for_revision =
+                    runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
                 self.latest.status = RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned);
                 if let Some(retirement) = runtime.input_retirement_record() {
-                    self.records.push(crate::InputArbitrationRecord::ScopeRetired(retirement));
+                    self.records
+                        .push(crate::InputArbitrationRecord::ScopeRetired(retirement));
                 }
                 self.revision_retired = true;
                 return Ok(false);
@@ -326,8 +326,11 @@ impl RecordedPump {
         paused: bool,
     ) -> crate::InputPumpBatch {
         let mut report = finish_report(
-            runtime, budget, processed,
-            cancelled.saturating_add(self.cancelled_for_revision), totals,
+            runtime,
+            budget,
+            processed,
+            cancelled.saturating_add(self.cancelled_for_revision),
+            totals,
         );
         let paused = paused && !self.revision_retired;
         if paused && matches!(report.outcome, PumpOutcome::Quiescent) {
