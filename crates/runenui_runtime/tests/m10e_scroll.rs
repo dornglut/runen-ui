@@ -465,7 +465,7 @@ fn nested_wheel_consumes_exact_remainder_and_republishes_clipped_geometry() {
     assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
 }
 
-fn assert_touch_scroll_claim(batch: &InputPumpBatch) {
+fn assert_touch_scroll_claim(batch: &InputPumpBatch, receipt: runenui_core::WorkSequence) {
     let settled = batch
         .ordered_records()
         .iter()
@@ -475,6 +475,7 @@ fn assert_touch_scroll_claim(batch: &InputPumpBatch) {
         })
         .collect::<Vec<_>>();
     assert_eq!(settled.len(), 1);
+    assert_eq!(settled[0].sequence(), receipt);
     assert_eq!(settled[0].scope(), batch.final_ownership().scope());
     assert_eq!(settled[0].family(), UiInputFamily::Pointer);
     assert!(matches!(
@@ -555,8 +556,13 @@ fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
     let winner_batch = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("touch winner pump observation"));
-    assert_eq!(winner_batch.processed_through(), Some(winner_receipt));
-    assert_touch_scroll_claim(&winner_batch);
+    assert!(
+        winner_batch
+            .processed_through()
+            .is_some_and(|fence| fence >= winner_receipt),
+        "a pump fence includes an input and may also include its later derived work"
+    );
+    assert_touch_scroll_claim(&winner_batch, winner_receipt);
 
     assert_eq!(
         state
