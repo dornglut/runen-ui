@@ -10,7 +10,10 @@ use runenui_core::{
     PresentationTranslation, StyleEnvironment, UiApp, UiEvent, UnitInterval, View, Widget,
     WidgetActivation, WidgetEventOutput, WidgetMeasure,
 };
-use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
+use runenui_runtime::{
+    AppRuntime, InputArbitrationRecord, LogicalSize, PumpBudget, SurfaceBuildContext,
+    UiInputClaimReason, UiInputConflict, UiInputFinality, UiInputRoute,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Observation {
@@ -196,6 +199,70 @@ fn settle(runtime: &mut AppRuntime<App>) {
             .to_owned()
             .is_quiescent()
     );
+}
+
+#[test]
+fn downstream_pointer_capture_outside_hit_has_exact_exclusive_finality() {
+    let observations = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<App>::mount(State {
+        observations,
+        translation: 0.0,
+        singular: false,
+    });
+    settle(&mut runtime);
+    let env = StyleEnvironment::default();
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &env,
+            LogicalSize::try_new(64.0, 64.0)
+                .unwrap_or_else(|_| unreachable!("valid surface bounds")),
+        ))
+        .unwrap_or_else(|_| unreachable!("published pointer snapshot"));
+    let inside = LogicalPoint::new(1.0, 1.0)
+        .unwrap_or_else(|_| unreachable!("finite point"));
+    let outside = LogicalPoint::new(65.0, 65.0)
+        .unwrap_or_else(|_| unreachable!("finite outside point"));
+    let target = publication
+        .hit_test_scene()
+        .target_at(inside)
+        .unwrap_or_else(|| unreachable!("explicit widget hit contribution"))
+        .clone();
+    assert_eq!(publication.hit_test_scene().target_at(outside), None);
+    let context = publication.input_context().clone();
+    for (phase, position) in [
+        (PointerPhase::Down, inside),
+        (PointerPhase::Move, outside),
+    ] {
+        let receipt = runtime
+            .submit_pointer(pointer_event(19, phase, position, context.clone()))
+            .unwrap_or_else(|_| unreachable!("native pointer receipt admitted"))
+            .sequence();
+        let batch = runtime
+            .pump(PumpBudget::new(128, 128, 128, 128))
+            .unwrap_or_else(|_| unreachable!("pointer event commits"));
+        let settlements = batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(value) => Some(value),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settlements.len(), 1);
+        assert_eq!(settlements[0].sequence(), receipt);
+        assert_eq!(settlements[0].scope(), batch.final_ownership().scope());
+        assert!(matches!(
+            settlements[0].finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::PointerCapture)
+                    && matches!(facts.route(), UiInputRoute::Captured { target: owner }
+                        if owner == &target)
+        ));
+        assert!(batch.final_ownership().pointers().iter().any(|pointer| {
+            pointer.capture_owner() == Some(&target)
+        }));
+    }
 }
 
 #[test]
