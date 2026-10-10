@@ -607,7 +607,8 @@ mod tests {
     fn public_host_slot_disposal_invalidates_only_its_pending_receipts() {
         let first_reached = Arc::new(AtomicBool::new(false));
         let second_reached = Arc::new(AtomicBool::new(false));
-        let mut first = focused_public_claim_host::<ExternalHostClaimApp>(Arc::clone(&first_reached));
+        let mut first =
+            focused_public_claim_host::<ExternalHostClaimApp>(Arc::clone(&first_reached));
         let mut second =
             focused_public_claim_host::<ExternalHostSiblingClaimApp>(Arc::clone(&second_reached));
         let first_scope = first
