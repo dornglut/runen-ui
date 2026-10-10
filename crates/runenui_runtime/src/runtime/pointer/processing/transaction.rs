@@ -384,7 +384,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             reasons.push(crate::UiInputClaimReason::TouchGesture);
         }
-        if transaction.default_outputs.len() > default_outputs_before {
+        // A staged logical scroll or presentation dismissal is not an
+        // activation default. A merely queued follow-up cannot falsely
+        // certify that gameplay input was exclusively consumed by UI.
+        if transaction.default_outputs[default_outputs_before..]
+            .iter()
+            .any(|output| {
+                matches!(
+                    output,
+                    CollectedRoutedOutput::Command {
+                        command: SemanticCommand::Activate,
+                        ..
+                    }
+                )
+            })
+        {
             reasons.push(crate::UiInputClaimReason::ActivationDefault);
         }
         let route = if let Some(root) = pending.presentation_block_root.as_ref() {
