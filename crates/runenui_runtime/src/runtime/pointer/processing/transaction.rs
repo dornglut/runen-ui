@@ -1712,7 +1712,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface_snapshot: geometry.snapshot,
         };
         let finality = crate::runtime::input_arbitration::integrity_only_pointer_finality(
-            self.pointer_registry.stream(pointer_id), Some(&stream),
+            self.pointer_registry.stream(pointer_id),
+            Some(&stream),
         );
         let pointer_interaction_before = self.pointer_registry.surface_interaction_projection(None);
         if self
@@ -1773,9 +1774,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             self.request_redraw(parent, work.instant);
         }
-        self.note_external_pointer_finality(
-            finality,
-        );
+        self.note_external_pointer_finality(finality);
         ProcessApplicationActionOutcome::Completed
     }
 

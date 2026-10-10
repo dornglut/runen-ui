@@ -135,7 +135,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let cleanup_trace = primary_release
             .then(|| RejectedPointerCleanupTrace::primary_release_from_stream(pointer_id, &stream));
         let finality = crate::runtime::input_arbitration::integrity_only_pointer_finality(
-            self.pointer_registry.stream(pointer_id), Some(&stream),
+            self.pointer_registry.stream(pointer_id),
+            Some(&stream),
         );
         stream.set_buttons(work.event.buttons().clone());
         if primary_release {
@@ -189,9 +190,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             self.request_redraw(committed, work.instant);
         }
-        self.note_external_pointer_finality(
-            finality,
-        );
+        self.note_external_pointer_finality(finality);
         ProcessApplicationActionOutcome::Completed
     }
 
@@ -283,9 +282,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Ok(())
             });
         if result.is_ok() {
-            self.note_external_pointer_finality(
-                finality,
-            );
+            self.note_external_pointer_finality(finality);
         }
         if result.is_err() {
             self.poison_routed_event(
@@ -464,7 +461,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             });
         if result.is_ok() {
             self.note_external_pointer_finality(
-                crate::runtime::input_arbitration::integrity_only_pointer_finality(Some(stream), None),
+                crate::runtime::input_arbitration::integrity_only_pointer_finality(
+                    Some(stream),
+                    None,
+                ),
             );
         }
         if result.is_err() {

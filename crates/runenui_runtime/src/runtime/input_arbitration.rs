@@ -7,7 +7,10 @@ use crate::{
     KeyboardInputOwnership, PointerInputOwnership, SurfaceInputOwnership,
 };
 
-use super::{pointer::{PointerStreamState, TouchGestureState}, Runtime};
+use super::{
+    Runtime,
+    pointer::{PointerStreamState, TouchGestureState},
+};
 
 /// Derived cached projection for change detection; never a writable focus/input authority.
 pub(super) struct InputObservationState {
@@ -108,19 +111,39 @@ pub(crate) fn integrity_only_pointer_finality(
 ) -> crate::UiInputFinality {
     let streams = [before, staged];
     let mut reasons = Vec::new();
-    if streams.iter().flatten().any(|s| s.pressed_owner().is_some()) {
+    if streams
+        .iter()
+        .flatten()
+        .any(|s| s.pressed_owner().is_some())
+    {
         reasons.push(crate::UiInputClaimReason::PointerPress);
     }
-    if streams.iter().flatten().any(|s| s.capture_owner().is_some()) {
+    if streams
+        .iter()
+        .flatten()
+        .any(|s| s.capture_owner().is_some())
+    {
         reasons.push(crate::UiInputClaimReason::PointerCapture);
     }
-    if streams.iter().flatten().any(|s| s.text_selection().is_some()) {
+    if streams
+        .iter()
+        .flatten()
+        .any(|s| s.text_selection().is_some())
+    {
         reasons.push(crate::UiInputClaimReason::PointerSelection);
     }
-    if streams.iter().flatten().any(|s| s.presentation_barrier().is_some()) {
+    if streams
+        .iter()
+        .flatten()
+        .any(|s| s.presentation_barrier().is_some())
+    {
         reasons.push(crate::UiInputClaimReason::ModalBarrier);
     }
-    if streams.iter().flatten().any(|s| s.touch_gesture().and_then(TouchGestureState::winner).is_some()) {
+    if streams.iter().flatten().any(|s| {
+        s.touch_gesture()
+            .and_then(TouchGestureState::winner)
+            .is_some()
+    }) {
         reasons.push(crate::UiInputClaimReason::TouchGesture);
     }
     crate::UiInputFinality::Committed(crate::UiInputRoutingFacts {
