@@ -274,10 +274,18 @@ pub enum UiInputClaimReason {
  * Exactly twelve distinct reasons exist; duplicates do not consume slots.
  * This is representation-private; public consumers receive a borrowed slice.
  */
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct InputClaimReasons {
     values: [UiInputClaimReason; 12],
     len: usize,
+}
+
+impl fmt::Debug for InputClaimReasons {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The remaining inline array positions are unused capacity, not
+        // actual claim reasons. Never emit them as false diagnostic evidence.
+        f.debug_list().entries(self.as_slice()).finish()
+    }
 }
 
 impl InputClaimReasons {
@@ -563,11 +571,17 @@ mod claim_reasons_tests {
         ];
         let mut reasons = InputClaimReasons::new();
         assert!(reasons.is_empty());
+        assert_eq!(format!("{reasons:?}"), "[]");
         for reason in vocabulary {
             reasons.push(reason);
             reasons.push(reason);
         }
         assert_eq!(reasons.as_slice(), vocabulary);
+        assert_eq!(
+            format!("{reasons:?}"),
+            format!("{vocabulary:?}"),
+            "public/debug claim lists must omit capacity padding"
+        );
         assert_eq!(reasons.clone(), reasons);
         assert!(!reasons.is_empty());
     }
