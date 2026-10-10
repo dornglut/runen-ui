@@ -576,6 +576,10 @@ impl PointerRegistry {
         count
     }
 
+    pub(in crate::runtime) fn len(&self) -> usize {
+        self.streams.len()
+    }
+
     pub(in crate::runtime) fn ordered_pointer_ids_into(&self, ids: &mut Vec<PointerId>) {
         debug_assert!(ids.capacity() >= self.streams.len());
         ids.clear();
