@@ -101,9 +101,9 @@ jobs:
           test -s "${RUNENUI_M11PASSWORD_EVIDENCE_DIR}/m11-placeholder-hint.png"
           test -s "${RUNENUI_M11PASSWORD_EVIDENCE_DIR}/m11-placeholder-blank.png"
           cargo +stable test --locked -p runenui_render_wgpu --test m11_slider_wgpu -- --nocapture
-          cargo +stable test --locked -p runenui_render_wgpu --test m11_splitter_wgpu -- --nocapture
           test -s "${RUNENUI_M11SLIDER_EVIDENCE_DIR}/m11-slider-start.png"
           test -s "${RUNENUI_M11SLIDER_EVIDENCE_DIR}/m11-slider-full.png"
+          cargo +stable test --locked -p runenui_render_wgpu --test m11_splitter_wgpu -- --nocapture
 
       - name: Check repository hygiene
         run: |
