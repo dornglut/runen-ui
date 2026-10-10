@@ -790,9 +790,8 @@ fn observation_capacity_pause_requests_retry_wake_even_with_empty_fifo() {
     // Initial snapshot reservation, then one zero-work readiness checkpoint.
     // Fail the mandatory terminal checkpoint even though the FIFO is empty.
     app.runtime.inject_input_reservation_failure_after(2);
-    let partial = pump::pump_recorded::<ProbeApp>(
-        &mut app.runtime, PumpBudget::new(0, 0, 0, 0)
-    ).unwrap_or_else(|_| unreachable!("after a checkpoint, capacity produces a partial batch"));
+    let partial = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("after a checkpoint, capacity produces a partial batch"));
     assert_eq!(
         partial.pause_reason(),
         Some(crate::InputPumpPauseReason::ObservationCapacity)
