@@ -515,9 +515,7 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
                 .with_name(spin.label.clone())
                 .with_range(spin.range.clone());
             if spin.actionable && !self.state.disabled && !self.state.read_only {
-                if spin.range.current().is_some()
-                    && spin.range.minimum() != spin.range.maximum()
-                {
+                if spin.range.current().is_some() && spin.range.minimum() != spin.range.maximum() {
                     node = node
                         .with_action(SemanticAction::Increment)
                         .with_action(SemanticAction::Decrement);

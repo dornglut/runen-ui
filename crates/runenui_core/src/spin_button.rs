@@ -313,9 +313,12 @@ mod tests {
         assert_eq!(unbounded.semantic_range().maximum(), None);
         assert_eq!(unbounded.semantic_range().current(), None);
         assert_eq!(
-            semantic_request(unbounded.semantic_range(), SemanticCommand::SetValue(
-                SemanticNumber::new(-1000.0).unwrap_or_else(|_| unreachable!("finite value"))
-            )),
+            semantic_request(
+                unbounded.semantic_range(),
+                SemanticCommand::SetValue(
+                    SemanticNumber::new(-1000.0).unwrap_or_else(|_| unreachable!("finite value"))
+                )
+            ),
             Some(SpinButtonRequest::SetValue(
                 SemanticNumber::new(-1000.0).unwrap_or_else(|_| unreachable!("finite value"))
             ))
@@ -329,25 +332,34 @@ mod tests {
         let upper_only = SpinButtonRange::new(None, Some(5.0), Some(-2.0), 0.5)
             .unwrap_or_else(|_| unreachable!("valid upper bound"));
         assert_eq!(
-            semantic_request(upper_only.semantic_range(), SemanticCommand::SetValue(
-                SemanticNumber::new(-9.0).unwrap_or_else(|_| unreachable!("finite value"))
-            )),
+            semantic_request(
+                upper_only.semantic_range(),
+                SemanticCommand::SetValue(
+                    SemanticNumber::new(-9.0).unwrap_or_else(|_| unreachable!("finite value"))
+                )
+            ),
             Some(SpinButtonRequest::SetValue(
                 SemanticNumber::new(-9.0).unwrap_or_else(|_| unreachable!("finite value"))
             ))
         );
         assert_eq!(
-            semantic_request(upper_only.semantic_range(), SemanticCommand::SetValue(
-                SemanticNumber::new(6.0).unwrap_or_else(|_| unreachable!("finite value"))
-            )),
+            semantic_request(
+                upper_only.semantic_range(),
+                SemanticCommand::SetValue(
+                    SemanticNumber::new(6.0).unwrap_or_else(|_| unreachable!("finite value"))
+                )
+            ),
             None
         );
         let lower_only = SpinButtonRange::new(Some(-5.0), None, Some(0.0), 0.5)
             .unwrap_or_else(|_| unreachable!("valid lower bound"));
         assert_eq!(
-            semantic_request(lower_only.semantic_range(), SemanticCommand::SetValue(
-                SemanticNumber::new(-6.0).unwrap_or_else(|_| unreachable!("finite value"))
-            )),
+            semantic_request(
+                lower_only.semantic_range(),
+                SemanticCommand::SetValue(
+                    SemanticNumber::new(-6.0).unwrap_or_else(|_| unreachable!("finite value"))
+                )
+            ),
             None
         );
         assert_eq!(

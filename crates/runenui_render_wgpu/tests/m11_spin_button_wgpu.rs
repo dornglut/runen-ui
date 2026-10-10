@@ -148,14 +148,9 @@ fn spin_button_valid_and_intermediate_text_share_real_wgpu_and_semantic_authorit
         b.readback().rgba8_srgb(),
         "ordinary retained text distinguishes valid and incomplete source pixels"
     );
-    if let Some(directory) =
-        std::env::var_os("RUNENUI_M11SPIN_EVIDENCE_DIR").map(PathBuf::from)
-    {
+    if let Some(directory) = std::env::var_os("RUNENUI_M11SPIN_EVIDENCE_DIR").map(PathBuf::from) {
         fs::create_dir_all(&directory)?;
-        for (filename, render) in [
-            ("m11-spin-valid.png", &a),
-            ("m11-spin-incomplete.png", &b),
-        ] {
+        for (filename, render) in [("m11-spin-valid.png", &a), ("m11-spin-incomplete.png", &b)] {
             let extent = render.readback().extent();
             image::save_buffer(
                 directory.join(filename),
