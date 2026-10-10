@@ -798,6 +798,12 @@ fn rev20_pump_exhaustion_retires_scope_without_inventing_input_settlement() {
         .input_ownership()
         .unwrap_or_else(|_| unreachable!("penultimate revision"));
     assert_eq!(before.revision().get(), u64::MAX - 1);
+    // An admitted but unreached native occurrence must be invalidated by
+    // one scope retirement, never fabricated as a processed settlement.
+    let pending = app
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("native occurrence queued before retirement"))
+        .sequence();
 
     let final_batch =
         pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
@@ -821,7 +827,10 @@ fn rev20_pump_exhaustion_retires_scope_without_inventing_input_settlement() {
         !final_batch
             .ordered_records()
             .iter()
-            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+            .any(|record| matches!(
+                record,
+                InputArbitrationRecord::InputSettled(settled) if settled.sequence() == pending
+            ))
     );
     let repeated = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("retired scope remains observable"));
