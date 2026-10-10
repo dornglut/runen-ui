@@ -565,8 +565,9 @@ fn pointer_release_remains_ui_owned_after_press_state_is_cleared() {
         .ordered_records()
         .iter()
         .find_map(|record| match record {
-            InputArbitrationRecord::InputSettled(settled)
-                if settled.sequence() == up_receipt => Some(settled.finality()),
+            InputArbitrationRecord::InputSettled(settled) if settled.sequence() == up_receipt => {
+                Some(settled.finality())
+            }
             _ => None,
         })
         .unwrap_or_else(|| unreachable!("exact Up receipt settled"));
