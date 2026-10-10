@@ -268,7 +268,10 @@ mod tests {
         assert_eq!(second_snapshot.revision().get(), 1);
         assert_eq!(
             first_snapshot.revision(),
-            first.input_ownership().expect("unchanged state projects").revision()
+            first
+                .input_ownership()
+                .expect("unchanged state projects")
+                .revision()
         );
         let _ = first.shutdown();
         let closed = first
@@ -276,8 +279,13 @@ mod tests {
             .expect("terminal ownership is observable without a pump");
         assert_ne!(closed.revision(), first_snapshot.revision());
         assert_eq!(closed.status(), runenui_runtime::RuntimeStatus::Closed);
-        assert_eq!(second.input_ownership().expect("other runtime remains valid").status(),
-                   runenui_runtime::RuntimeStatus::Running);
+        assert_eq!(
+            second
+                .input_ownership()
+                .expect("other runtime remains valid")
+                .status(),
+            runenui_runtime::RuntimeStatus::Running
+        );
     }
 
     #[test]
