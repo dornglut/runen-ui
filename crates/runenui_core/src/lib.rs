@@ -257,6 +257,7 @@ mod semantic;
 mod semantic_action;
 mod shortcut;
 mod slider;
+mod splitter;
 mod standard_content;
 mod style;
 mod style_effects;
@@ -425,6 +426,7 @@ pub use semantic::{
 pub use semantic_action::{SemanticActionData, SemanticActionRequest, SemanticActionTarget};
 pub use shortcut::{ShortcutBinding, ShortcutChord, ShortcutKey, ShortcutRepeatPolicy};
 pub use slider::{Slider, SliderError, slider};
+pub use splitter::{Splitter, SplitterError, SplitterRequest, splitter};
 pub use style::{
     BrushToken, BrushValue, Color, ColorToken, ColorValue, EdgeInsets, OpacityToken, OutlineToken,
     PresentationToken, Radius, RadiusToken, RadiusValue, ShadowToken, SpacingToken, SpacingValue,
