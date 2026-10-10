@@ -241,6 +241,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .try_reserve_exact(2)
             .map_err(|_| InputObservationError::Capacity)?;
         let before = self.input_ownership()?;
+        // Explicit close changes the externally observable runtime status.
+        // Do not consume the final revision and then panic or return Err
+        // after irreversible cleanup. Refuse this close beforehand instead.
+        if !matches!(self.status, crate::RuntimeStatus::Closed)
+            && before.revision().get() == u64::MAX
+        {
+            return Err(InputObservationError::RevisionExhausted);
+        }
         let reserved = self.reserve_input_observation()?;
         let report = self.shutdown();
         let (after, transition) = self.input_ownership_reserved(reserved);
