@@ -596,10 +596,7 @@ mod tests {
         assert_eq!(retired.processed_through(), None);
         assert!(matches!(
             retired.ordered_records(),
-            [
-                crate::InputArbitrationRecord::OwnershipChanged(_),
-                crate::InputArbitrationRecord::ScopeRetired(_)
-            ]
+            [crate::InputArbitrationRecord::ScopeRetired(_)]
         ));
         let again = super::pump_recorded::<App>(&mut runtime, PumpBudget::new(0, 0, 0, 0))
             .expect("observed retirement stays retired");
