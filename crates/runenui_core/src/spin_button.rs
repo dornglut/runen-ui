@@ -363,7 +363,10 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("unbounded valid current"));
         assert!(step_actions_available(no_bounds_current.semantic_range()));
         assert_eq!(
-            semantic_request(no_bounds_current.semantic_range(), SemanticCommand::Increment),
+            semantic_request(
+                no_bounds_current.semantic_range(),
+                SemanticCommand::Increment
+            ),
             Some(SpinButtonRequest::AdjustBy(
                 SemanticNumber::new(0.25).unwrap_or_else(|_| unreachable!("positive step"))
             ))
