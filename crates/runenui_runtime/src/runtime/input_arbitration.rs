@@ -18,6 +18,8 @@ pub(super) struct InputObservationState {
     pointer_finality: Option<crate::UiInputFinality>,
     external_pointer_active: bool,
     retired_recorded: bool,
+    #[cfg(test)]
+    fail_reservation_after: std::cell::Cell<Option<usize>>,
 }
 
 impl InputObservationState {
@@ -29,6 +31,8 @@ impl InputObservationState {
             pointer_finality: None,
             external_pointer_active: false,
             retired_recorded: false,
+            #[cfg(test)]
+            fail_reservation_after: std::cell::Cell::new(None),
         }
     }
 }
@@ -192,9 +196,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     /// Fallibly reserves every vector needed for the next ownership projection
     /// *before* a canonical mutation boundary.
+    #[cfg(test)]
+    pub(crate) fn inject_input_reservation_failure_after(&mut self, successful: usize) {
+        self.input_observation.fail_reservation_after.set(Some(successful));
+    }
+
     pub(crate) fn reserve_input_observation(
         &self,
     ) -> Result<InputSnapshotReservation, InputObservationError> {
+        #[cfg(test)]
+        if let Some(remaining) = self.input_observation.fail_reservation_after.get() {
+            if remaining == 0 {
+                self.input_observation.fail_reservation_after.set(None);
+                return Err(InputObservationError::Capacity);
+            }
+            self.input_observation
+                .fail_reservation_after
+                .set(Some(remaining - 1));
+        }
         // One canonical envelope can register at most one new pointer stream;
         // checkpoint/derived re-hit only operates on already registered streams.
         // Reserve the current population plus one, clamped to the existing
