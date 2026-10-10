@@ -797,6 +797,6 @@ fn observation_capacity_pause_requests_retry_wake_even_with_empty_fifo() {
         Some(crate::InputPumpPauseReason::ObservationCapacity)
     );
     assert_eq!(partial.processed_through(), None);
-    assert!(partial.report().outcome() != crate::PumpOutcome::Quiescent);
+    assert_ne!(partial.report().outcome(), crate::PumpOutcome::Quiescent);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
