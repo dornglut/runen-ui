@@ -134,7 +134,10 @@ fn settle(runtime: &mut AppRuntime<App>) {
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
-            )).expect("pump observation").report().to_owned()
+            ))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .is_quiescent()
     );
 }
@@ -303,7 +306,10 @@ fn scrollable_horizontal_runtime() -> AppRuntime<App> {
 fn pump_one(runtime: &mut AppRuntime<App>) {
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );

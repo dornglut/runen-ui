@@ -311,12 +311,16 @@ fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_reques
         events: Rc::clone(&events),
         content_height: 60.0,
     });
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,
@@ -355,7 +359,10 @@ fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_reques
     for _ in 0..2 {
         assert_eq!(
             runtime
-                .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+                .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+                .expect("pump observation")
+                .report()
+                .to_owned()
                 .processed_envelopes(),
             1
         );
@@ -382,13 +389,19 @@ fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_reques
         .unwrap_or_else(|_| unreachable!("downstream control trigger is admitted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1,
         "callback-emitted scroll request remains ordinary queued routed work"
@@ -422,12 +435,16 @@ fn non_scrollable_bound_scrollbar_remains_semantic_but_is_not_a_dead_focus_stop(
         events,
         content_height: 30.0,
     });
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,
@@ -479,12 +496,16 @@ fn non_scrollable_bound_scrollbar_remains_semantic_but_is_not_a_dead_focus_stop(
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("live target accepts routed focus command"));
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_ne!(runtime.focus().focused_node(), Some(&control));
 }
 
@@ -831,12 +852,16 @@ impl UiApp for DuplicateChromeApp {
 #[test]
 fn duplicate_scroll_chrome_is_rejected_and_diagnosed_without_losing_mounted_identity() {
     let mut runtime = AppRuntime::<DuplicateChromeApp>::mount(());
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::tight(
@@ -942,12 +967,16 @@ fn assert_thumb_moves_in_presentation_only(
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("direct bound scroll request is admitted"));
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let scrolled = chrome_publish(runtime);
     let scrolled_thumb_bounds = scrolled
         .frame()
@@ -979,12 +1008,16 @@ fn downstream_reserved_scroll_chrome_is_viewport_attached_and_thumb_moves_in_pre
     let track_callbacks = Rc::clone(&state.track_semantics);
     let thumb_callbacks = Rc::clone(&state.thumb_semantics);
     let mut runtime = AppRuntime::<ChromeApp>::mount(state);
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let initial = chrome_publish(&mut runtime);
     let viewport = chrome_node_id(&mut runtime, "chrome.viewport");
     let track = chrome_node_id(&mut runtime, "chrome.track");
@@ -1072,12 +1105,16 @@ fn downstream_scroll_chrome_clamps_thumb_to_authored_minimum_extent() {
         ScrollBarPlacement::Reserved,
         false,
     ));
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let publication = chrome_publish(&mut runtime);
     let thumb = chrome_node_id(&mut runtime, "chrome.thumb");
     let thumb_bounds = publication
@@ -1100,12 +1137,16 @@ fn assert_nonparticipating_reserved_chrome(visibility: ScrollBarVisibility, cont
     let track_callbacks = Rc::clone(&state.track_semantics);
     let thumb_callbacks = Rc::clone(&state.thumb_semantics);
     let mut runtime = AppRuntime::<ChromeApp>::mount(state);
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let publication = chrome_publish(&mut runtime);
     let track = chrome_node_id(&mut runtime, "chrome.track");
     let thumb = chrome_node_id(&mut runtime, "chrome.thumb");
@@ -1151,12 +1192,16 @@ fn assert_overlay_scrollbar_keeps_full_viewport() {
         ScrollBarPlacement::Overlay,
         false,
     ));
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let publication = chrome_publish(&mut runtime);
     let viewport = chrome_node_id(&mut runtime, "chrome.viewport");
     let layout = publication
@@ -1176,12 +1221,16 @@ fn assert_present_zero_range_chrome_can_be_explicitly_focusable() {
         ScrollBarPlacement::Reserved,
         true,
     ));
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let publication = chrome_publish(&mut runtime);
     let track = chrome_node_id(&mut runtime, "chrome.track");
     assert!(publication.hit_test_scene().contains_mounted_target(&track));
@@ -1224,12 +1273,16 @@ fn live_chrome_change_clears_focus_before_surface_republication() {
         ScrollBarPlacement::Reserved,
         true,
     ));
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let _publication = chrome_publish(&mut runtime);
     let track = chrome_node_id(&mut runtime, "chrome.track");
 
@@ -1240,23 +1293,31 @@ fn live_chrome_change_clears_focus_before_surface_republication() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("visible explicit chrome accepts focus request"));
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&track));
 
     runtime
         .submit_action(ChromeAction::SetVisibility(ScrollBarVisibility::Hidden))
         .unwrap_or_else(|_| unreachable!("chrome visibility change enters the application FIFO"));
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 
     assert_eq!(
         runtime.focus().focused_node(),

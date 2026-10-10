@@ -158,7 +158,11 @@ fn fresh() -> AppRuntime<App> {
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    runtime.pump(PumpBudget::new(256, 256, 256, 256)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(256, 256, 256, 256))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 }
 
 fn publish(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {

@@ -30,7 +30,10 @@ fn process_one(runtime: &mut AppRuntime<SceneDiagnosticApp>, action: SceneDiagno
         .unwrap_or_else(|_| unreachable!("test action is admitted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -186,12 +189,16 @@ fn singular_scene_diagnostics_are_public_fail_closed_and_cleared_by_their_owning
         paint_singular: true,
         hit_singular: true,
     });
-    let _ = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let style_environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &style_environment);
