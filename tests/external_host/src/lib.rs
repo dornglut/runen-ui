@@ -28,7 +28,7 @@ mod tests {
         SemanticActionRequest, SemanticCommand, SemanticContribution, SemanticContributionContext,
         SemanticNodeContribution, SemanticRole, StyleEnvironment, UiApp, UiEvent, View, Widget,
         WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput,
-        WidgetMeasure,
+        WidgetMeasure, column,
     };
     use runenui_render_wgpu::{
         BackendSelection, ImagePayload, OffscreenPublicationReadback, OffscreenReadback,
@@ -359,6 +359,42 @@ mod tests {
         }
     }
 
+    // Two independently focusable, downstream-authored widgets permit a real
+    // public FIFO ownership transition without private mounted-state mutation.
+    struct ExternalHostTwoFocusApp;
+
+    impl UiApp for ExternalHostTwoFocusApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            column([
+                Element::new(ExternalHostNonclaimProbe {
+                    reached: Arc::clone(reached),
+                })
+                .id("first-host-focus")
+                .key("first-host-focus")
+                .focusable(true)
+                .into_element(),
+                Element::new(ExternalHostNonclaimProbe {
+                    reached: Arc::clone(reached),
+                })
+                .id("second-host-focus")
+                .key("second-host-focus")
+                .focusable(true)
+                .into_element(),
+            ])
+            .key("two-focus-host")
+        }
+
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        }
+    }
+
     struct ExternalHostSiblingClaimApp;
 
     impl UiApp for ExternalHostSiblingClaimApp {
@@ -583,6 +619,134 @@ mod tests {
         assert_eq!(settled.len(), 1);
         assert_eq!(settled[0].sequence(), accepted.sequence());
         assert_eq!(settled[0].scope(), completed.final_ownership().scope());
+        assert!(reached.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn public_input_settlement_precedes_later_focus_command_across_bounded_pumps() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = AppRuntime::<ExternalHostTwoFocusApp>::mount(Arc::clone(&reached));
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("mount completes canonical work"));
+
+        let lookup = |name| {
+            let authored = ElementId::new(name)
+                .unwrap_or_else(|_| unreachable!("static public focus identity"));
+            runtime
+                .index()
+                .nodes()
+                .iter()
+                .find(|node| node.authored_id() == Some(&authored))
+                .unwrap_or_else(|| unreachable!("two mounted focusable public widgets"))
+                .id()
+                .clone()
+        };
+        let first = lookup("first-host-focus");
+        let second = lookup("second-host-focus");
+        assert_ne!(first, second);
+
+        runtime
+            .submit_command(
+                first.clone(),
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("initial focus command accepted"));
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("initial focus command commits"));
+        let before = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("initial public owner"));
+        assert_eq!(before.keyboard().focused_node(), Some(&first));
+
+        let key = || {
+            KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyW")),
+                LogicalKey::Character(String::from("w")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            )
+        };
+        let native = runtime
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("focused native occurrence admitted"))
+            .sequence();
+        let command = runtime
+            .submit_command(
+                second.clone(),
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("subsequent focus change queued"))
+            .sequence();
+        assert!(native < command);
+
+        let input = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("first bounded public pump"));
+        assert_eq!(input.processed_through(), Some(native));
+        assert_eq!(input.report().processed_envelopes(), 1);
+        assert!(input.report().remaining_queued_envelopes() >= 1);
+        assert_eq!(input.final_ownership().keyboard().focused_node(), Some(&first));
+        let settled = input
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settled.len(), 1);
+        assert_eq!(settled[0].sequence(), native);
+        assert_eq!(settled[0].scope(), before.scope());
+        assert_eq!(settled[0].ownership_revision(), input.final_ownership().revision());
+        assert!(matches!(
+            settled[0].finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ObservedNonexclusive
+        ));
+
+        let focus = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("second bounded public pump"));
+        assert_eq!(focus.processed_through(), Some(command));
+        assert_eq!(focus.report().processed_envelopes(), 1);
+        assert_eq!(focus.final_ownership().keyboard().focused_node(), Some(&second));
+        assert!(focus.final_ownership().revision() > input.final_ownership().revision());
+        assert!(focus.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::OwnershipChanged(transition)
+                if transition.before_revision() == input.final_ownership().revision()
+                    && transition.after().revision() == focus.final_ownership().revision()
+        )));
+        assert!(!focus.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(_)
+        )));
+
+        let later = runtime
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("new focus binds a later native occurrence"))
+            .sequence();
+        let after = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("third bounded public pump"));
+        assert_eq!(after.processed_through(), Some(later));
+        assert!(after.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(settlement)
+                if settlement.sequence() == later
+                    && settlement.scope() == before.scope()
+                    && matches!(settlement.finality(), UiInputFinality::Committed(facts)
+                        if matches!(facts.route(), runenui_runtime::UiInputRoute::Routed { target }
+                            if target == &second))
+        )));
         assert!(reached.load(Ordering::Relaxed));
     }
 
