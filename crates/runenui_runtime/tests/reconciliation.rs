@@ -6,18 +6,25 @@ use runenui_core::{
 use runenui_runtime::{AppRuntime, PumpBudget, ReconciliationDiagnostic};
 
 fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     runtime
         .submit_action(action)
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );

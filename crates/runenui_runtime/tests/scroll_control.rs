@@ -41,12 +41,16 @@ fn block_size(width: f32, height: f32, overflow: OverflowStyle) -> LayoutStyle {
 }
 
 fn settle<App: UiApp>(runtime: &mut AppRuntime<App>) {
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 }
 
 fn node_id<App: UiApp>(runtime: &mut AppRuntime<App>, authored: &str) -> MountedNodeId {
@@ -529,7 +533,10 @@ fn submit_scroll(
         .unwrap_or_else(|error| panic!("scroll-control request is admitted: {error:?}"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -663,7 +670,10 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
         .unwrap_or_else(|_| unreachable!("queued page request is admitted before resize"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -675,7 +685,10 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
     assert_eq!(last_snapshot(&runtime.state().semantics), accepted_snapshot);
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -797,7 +810,10 @@ fn zero_range_owner_stays_resolved_and_clamps_every_request_without_outer_retarg
         .unwrap_or_else(|_| unreachable!("zero-range resize is admitted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -907,7 +923,10 @@ fn bound_request_fails_closed_until_changed_layout_metrics_are_republished() {
         .unwrap_or_else(|_| unreachable!("resize action is admitted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -1094,7 +1113,10 @@ fn accepted_bound_owner_becoming_non_scrollable_fails_closed_without_outer_fallb
         .unwrap_or_else(|_| unreachable!("owner policy update is admitted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -1131,7 +1153,10 @@ fn newly_nearer_scroll_owner_requires_republication_before_binding_switches() {
         .unwrap_or_else(|_| unreachable!("inner-scrollability update is admitted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -1182,13 +1207,19 @@ fn replaced_bound_target_is_rejected_without_retargeting() {
         .unwrap_or_else(|_| unreachable!("still-live target is admitted before replacement"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -1245,7 +1276,10 @@ fn scroll_control_waiting_queue_pressure_rejects_before_callback_or_offset_mutat
 
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -1300,7 +1334,11 @@ fn scroll_control_trace_admission_rejects_before_scroll_mutation() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("command ingress retains enough trace capacity"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 
     assert_eq!(scroll_offset(&mut runtime, "inner"), (0.0, 0.0));
     assert_eq!(
