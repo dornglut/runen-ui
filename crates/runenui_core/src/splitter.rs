@@ -389,6 +389,22 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
                 || !state.enabled
                 || !state.actionable)
         {
+            // Touch Ended carries movement since the preceding Moved event.
+            // Commit that final legitimate drag segment before ending capture;
+            // Cancel and disabled terminal events never emit a resize.
+            if pointer.phase() == PointerPhase::Up
+                && state.enabled
+                && state.actionable
+                && !context.default_is_prevented()
+                && usable_extent(context)
+            {
+                let delta = pointer.movement_delta();
+                let axis = match state.orientation {
+                    SemanticOrientation::Vertical => delta.x(),
+                    SemanticOrientation::Horizontal => delta.y(),
+                };
+                self.emit(state, SplitterRequest::MoveBy(axis), context);
+            }
             state.drag = None;
             context.release_pointer_capture();
             context.prevent_default();

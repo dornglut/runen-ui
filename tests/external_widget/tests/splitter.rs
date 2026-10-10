@@ -631,3 +631,62 @@ fn absolute_set_value_after_queued_step_is_not_dropped_as_stale_noop() {
     assert_eq!(runtime.state().size, 50.0);
     assert_eq!(runtime.state().proposals, 2, "the final absolute value must remain ordered after the step");
 }
+
+#[test]
+fn touch_end_applies_final_movement_but_cancel_discards_it() {
+    let mut runtime = fresh();
+    let publication = publish(&mut runtime);
+    let input = publication.input_context().clone();
+    let point = |x: f32| LogicalPoint::new(x, 30.0).unwrap_or_else(|_| unreachable!());
+    let delta = |x: f32| LogicalDelta::new(x, 0.0).unwrap_or_else(|_| unreachable!());
+    let first = PointerId::new(117).unwrap_or_else(|| unreachable!());
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                first, PointerDeviceKind::Touch, PointerPhase::Down,
+                point(6.0), input.clone(),
+            )
+            .with_changed_button(PointerButton::Primary)
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|_| unreachable!("touch contact starts capture"));
+    settle(&mut runtime);
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                first, PointerDeviceKind::Touch, PointerPhase::Up,
+                point(26.0), input.clone(),
+            )
+            .with_movement_delta(delta(20.0))
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|_| unreachable!("native touch terminal delta admitted"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().size, 70.0, "final touch movement cannot be lost");
+    assert_eq!(runtime.state().proposals, 1);
+    let second = PointerId::new(119).unwrap_or_else(|| unreachable!());
+    let current = publish(&mut runtime);
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                second, PointerDeviceKind::Touch, PointerPhase::Down,
+                point(6.0), current.input_context().clone(),
+            )
+            .with_changed_button(PointerButton::Primary)
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|_| unreachable!("new contact begins"));
+    settle(&mut runtime);
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                second, PointerDeviceKind::Touch, PointerPhase::Cancel,
+                point(45.0), current.input_context().clone(),
+            )
+            .with_movement_delta(delta(39.0)),
+        )
+        .unwrap_or_else(|_| unreachable!("cancel admitted"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().size, 70.0, "cancel never commits motion");
+    assert_eq!(runtime.state().proposals, 1);
+}
