@@ -209,3 +209,82 @@ fn explicit_shutdown_reports_final_closed_ownership_and_one_scope_retirement() {
     );
     assert!(repeated.ordered_records().is_empty());
 }
+
+#[test]
+fn failed_observation_preflight_does_not_pop_or_settle_input() {
+    let mut app = focused_runtime(false);
+    let receipt = app
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("focused key admission"))
+        .sequence();
+    app.runtime.inject_input_reservation_failure_after(0);
+    let outcome = pump::pump_recorded::<ProbeApp>(
+        &mut app.runtime,
+        PumpBudget::new(1, 0, 0, 0),
+    );
+    assert!(matches!(outcome, Err(crate::InputObservationError::Capacity)));
+    assert_eq!(app.runtime.status(), crate::RuntimeStatus::Running);
+
+    let resumed = pump::pump_recorded::<ProbeApp>(
+        &mut app.runtime,
+        PumpBudget::new(1, 0, 0, 0),
+    )
+    .unwrap_or_else(|_| unreachable!("preflight fault is one-shot"));
+    assert_eq!(resumed.processed_through(), Some(receipt));
+    let settled = resumed.ordered_records().iter().filter_map(|record| {
+        match record {
+            InputArbitrationRecord::InputSettled(settled) => Some(settled.sequence()),
+            _ => None,
+        }
+    }).collect::<Vec<_>>();
+    assert_eq!(settled, vec![receipt]);
+}
+
+#[test]
+fn mid_pump_snapshot_capacity_failure_returns_lossless_partial_batch() {
+    let mut app = focused_runtime(false);
+    let first = app
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("first admitted"))
+        .sequence();
+    let second = app
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("second admitted"))
+        .sequence();
+
+    // One reservation for the initial read, one for the initial readiness
+    // checkpoint, and one for the first canonical FIFO envelope. Refuse the
+    // next checkpoint before it can mutate or dequeue the next envelope.
+    app.runtime.inject_input_reservation_failure_after(3);
+    let partial = pump::pump_recorded::<ProbeApp>(
+        &mut app.runtime,
+        PumpBudget::new(2, 0, 0, 0),
+    )
+    .unwrap_or_else(|_| unreachable!("after progress the result is a partial success"));
+    assert_eq!(
+        partial.pause_reason(),
+        Some(crate::InputPumpPauseReason::ObservationCapacity)
+    );
+    assert_eq!(partial.processed_through(), Some(first));
+    let first_settled = partial.ordered_records().iter().filter_map(|record| {
+        match record {
+            InputArbitrationRecord::InputSettled(settled) => Some(settled.sequence()),
+            _ => None,
+        }
+    }).collect::<Vec<_>>();
+    assert_eq!(first_settled, vec![first]);
+
+    let resumed = pump::pump_recorded::<ProbeApp>(
+        &mut app.runtime,
+        PumpBudget::new(1, 0, 0, 0),
+    )
+    .unwrap_or_else(|_| unreachable!("next retained receipt settles once"));
+    assert_eq!(resumed.processed_through(), Some(second));
+    let second_settled = resumed.ordered_records().iter().filter_map(|record| {
+        match record {
+            InputArbitrationRecord::InputSettled(settled) => Some(settled.sequence()),
+            _ => None,
+        }
+    }).collect::<Vec<_>>();
+    assert_eq!(second_settled, vec![second]);
+}
