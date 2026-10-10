@@ -57,7 +57,7 @@ fn delayed_timeline() -> ExplicitTimeline {
 fn observe(runtime: &mut AppRuntime<DelayedMotionApp>) -> runenui_runtime::PumpReport {
     runtime
         .pump(PumpBudget::new(0, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned()
 }

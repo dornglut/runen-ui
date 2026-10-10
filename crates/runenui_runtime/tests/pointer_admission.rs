@@ -173,7 +173,7 @@ fn pump_all(runtime: &mut AppRuntime<App>) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -239,7 +239,7 @@ fn closed_and_terminal_rejections_recover_the_exact_event() {
     closed
         .runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     let closed_event = pointer_event(&closed, 102, PointerPhase::Move, false);

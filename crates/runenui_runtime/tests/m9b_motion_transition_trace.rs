@@ -127,7 +127,7 @@ fn dispatch(runtime: &mut AppRuntime<TraceTransitionApp>, action: TraceTransitio
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(report.processed_envelopes() >= 1);
