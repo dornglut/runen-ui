@@ -643,8 +643,8 @@ fn keyboard_default_claim_reasons_distinguish_navigation_and_activation() {
         let _ = app
             .pump(budget)
             .unwrap_or_else(|_| unreachable!("mounted button is observable"));
-        let id = ElementId::new("space")
-            .unwrap_or_else(|_| unreachable!("static button authored id"));
+        let id =
+            ElementId::new("space").unwrap_or_else(|_| unreachable!("static button authored id"));
         let target = app
             .index()
             .nodes()
