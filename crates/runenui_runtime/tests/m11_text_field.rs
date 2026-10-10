@@ -122,7 +122,12 @@ fn app_with_source(mode: SemanticEditableMode, source: &str) -> AppRuntime<FormA
 
 fn pump_form_boundary(runtime: &mut AppRuntime<FormApp>, max_envelopes: usize) {
     let _ = runtime
-        .pump(PumpBudget::new(max_envelopes, usize::MAX, usize::MAX, usize::MAX))
+        .pump(PumpBudget::new(
+            max_envelopes,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
         .unwrap_or_else(|_| unreachable!("canonical pump observation"));
 }
 

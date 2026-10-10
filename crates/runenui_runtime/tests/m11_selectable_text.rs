@@ -39,7 +39,12 @@ impl UiApp for SelectableApp {
 
 fn pump_selectable(runtime: &mut AppRuntime<SelectableApp>, max_envelopes: usize) {
     let _ = runtime
-        .pump(PumpBudget::new(max_envelopes, usize::MAX, usize::MAX, usize::MAX))
+        .pump(PumpBudget::new(
+            max_envelopes,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
         .unwrap_or_else(|_| unreachable!("canonical pump observation"));
 }
 
