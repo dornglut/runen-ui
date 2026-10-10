@@ -306,7 +306,7 @@ mod tests {
     fn downstream_widget_can_claim_keyboard_input_using_only_public_framework_api() {
         let reached = Arc::new(AtomicBool::new(false));
         let mut runtime = AppRuntime::<ExternalHostClaimApp>::mount(Arc::clone(&reached));
-        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        let _ = runtime.pump(HOST_PUMP_BUDGET).expect("pump observation").report().to_owned();
         let id = ElementId::new("external-claim-probe")
             .unwrap_or_else(|_| unreachable!("static authored id"));
         let target = runtime
@@ -324,7 +324,7 @@ mod tests {
                 CommandOrigin::programmatic(),
             )
             .unwrap_or_else(|_| unreachable!("public focus request accepted"));
-        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        let _ = runtime.pump(HOST_PUMP_BUDGET).expect("pump observation").report().to_owned();
         runtime
             .submit_keyboard(KeyboardEvent::new(
                 KeyboardPhase::Down,
@@ -337,7 +337,7 @@ mod tests {
                 None,
             ))
             .unwrap_or_else(|_| unreachable!("native keyboard input accepted"));
-        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        let _ = runtime.pump(HOST_PUMP_BUDGET).expect("pump observation").report().to_owned();
         assert!(reached.load(Ordering::Relaxed));
     }
 
@@ -367,7 +367,7 @@ mod tests {
                 .unwrap_or_else(|_| unreachable!("unchanged state projects"))
                 .revision()
         );
-        let _ = first.shutdown();
+        let _ = first.shutdown().expect("shutdown observation").report().to_owned();
         let closed = first
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("terminal ownership is observable without a pump"));
@@ -409,7 +409,7 @@ mod tests {
             .map_err(|error| io::Error::other(error.to_string()))?;
 
         steps.push(FrameStep::Pump);
-        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        let _ = runtime.pump(HOST_PUMP_BUDGET).expect("pump observation").report().to_owned();
         assert!(runtime.state().active);
 
         steps.push(FrameStep::TakeRedraw);
@@ -456,7 +456,7 @@ mod tests {
             .map_err(|error| debug_error("semantic action submission failed", &error))?;
 
         steps.push(FrameStep::Pump);
-        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        let _ = runtime.pump(HOST_PUMP_BUDGET).expect("pump observation").report().to_owned();
         assert!(!runtime.state().active);
 
         steps.push(FrameStep::TakeRedraw);
@@ -489,7 +489,7 @@ mod tests {
         assert_eq!(publication_count, 2);
         assert_eq!(steps, expected_steps());
 
-        let _ = runtime.shutdown();
+        let _ = runtime.shutdown().expect("shutdown observation").report().to_owned();
         eprintln!(
             "M7D EXTERNAL HOST PROOF: retained-publication retry and two host-owned frames succeeded; adapter={:?} backend={}",
             renderer.diagnostics().adapter_info().name,

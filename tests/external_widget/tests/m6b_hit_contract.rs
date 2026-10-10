@@ -85,7 +85,7 @@ fn hit_regions_membership_and_focusability_are_independent_authorities() {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     let focusable_id = authored("focusable-no-hit");
     let hit_only_id = authored("hit-only");
     let focusable = runtime
@@ -171,7 +171,7 @@ fn hit_regions_membership_and_focusability_are_independent_authorities() {
         });
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );

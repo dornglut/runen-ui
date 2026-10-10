@@ -167,7 +167,7 @@ fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
 }
 
 fn publish<App: UiApp>(
@@ -428,7 +428,7 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
         submit_layout_activate(&mut runtime, action);
         assert_eq!(
             runtime
-                .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+                .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
                 .processed_envelopes(),
             2
         );
