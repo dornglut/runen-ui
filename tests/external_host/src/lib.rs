@@ -21,7 +21,8 @@ mod tests {
 
     use runenui_core::{
         Brush, Color, CommandOrigin, Element, ElementId, EventContext, EventPhase, ImageDescriptor,
-        ImageIntrinsicSize, ImageMapping, ImagePaintDescriptor, KeyLocation, KeyModifiers,
+        HitContribution, HitContributionContext, ImageIntrinsicSize, ImageMapping,
+        ImagePaintDescriptor, KeyLocation, KeyModifiers,
         KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, LogicalLength,
         LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol, PaintContribution,
         PaintContributionContext, PaintContributionItem, PhysicalKey, PointerDeviceKind,
@@ -93,6 +94,14 @@ mod tests {
             WidgetMeasure::measured(
                 LogicalLength::from(SURFACE_EXTENT),
                 LogicalLength::from(SURFACE_EXTENT),
+            )
+        }
+
+        fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
+            let size = context.local_size();
+            HitContribution::single_rect(
+                LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+                    .unwrap_or_else(|_| unreachable!("finite published widget size")),
             )
         }
 
@@ -1175,6 +1184,10 @@ mod tests {
             .bounds();
         let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
             .unwrap_or_else(|_| unreachable!("finite point inside authored root"));
+        assert!(
+            publication.hit_test_scene().target_at(point).is_some(),
+            "the hovered public widget must contribute an explicit target hit region"
+        );
         let pointer = PointerId::new(17).unwrap_or_else(|| unreachable!("positive pointer id"));
         let receipt = runtime
             .submit_pointer(PointerEvent::new(
