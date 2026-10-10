@@ -11,7 +11,7 @@ mod tests {
     use std::{
         cell::Cell,
         io,
-        sync::Arc,
+        sync::{atomic::{AtomicBool, Ordering}, Arc},
         task::{Context, Wake, Waker},
         thread,
     };
@@ -23,7 +23,9 @@ mod tests {
         ResourceRef, SceneShape, SemanticAction, SemanticActionRequest, SemanticContribution,
         SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment,
         UiApp, View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
-        WidgetMeasure,
+        WidgetMeasure, CommandOrigin, ElementId, EventContext, EventPhase, KeyLocation,
+        KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
+        PhysicalKey, SemanticCommand, UiEvent, WidgetEventOutput,
     };
     use runenui_render_wgpu::{
         BackendSelection, ImagePayload, OffscreenPublicationReadback, OffscreenReadback,
@@ -245,6 +247,92 @@ mod tests {
             }
             Ok(ResourcePayload::Image(self.payload.clone()))
         }
+    }
+
+    // Downstream public-only authoring proof: no runtime-internal types,
+    // event outcome inspectors, extra input FIFO, or gameplay manager.
+    struct ExternalHostClaimProbe {
+        reached: Arc<AtomicBool>,
+    }
+
+    impl Widget<()> for ExternalHostClaimProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, ()>,
+        ) -> WidgetEventOutput {
+            if matches!(event, UiEvent::Keyboard(_))
+                && context.phase() == EventPhase::Target
+            {
+                context.claim_host_input();
+                assert!(context.host_input_is_claimed());
+                self.reached.store(true, Ordering::Relaxed);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    struct ExternalHostClaimApp;
+
+    impl UiApp for ExternalHostClaimApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            Element::new(ExternalHostClaimProbe {
+                reached: Arc::clone(reached),
+            })
+            .id("external-claim-probe")
+            .key("external-claim-probe")
+            .focusable(true)
+        }
+
+        fn update(_: &mut Self::State, (): Self::Action) {}
+    }
+
+    #[test]
+    fn downstream_widget_can_claim_keyboard_input_using_only_public_framework_api() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = AppRuntime::<ExternalHostClaimApp>::mount(Arc::clone(&reached));
+        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        let id = ElementId::new("external-claim-probe")
+            .unwrap_or_else(|_| unreachable!("static authored id"));
+        let target = runtime
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&id))
+            .unwrap_or_else(|| unreachable!("fixture node mounted"))
+            .id()
+            .clone();
+        runtime
+            .submit_command(
+                target,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("public focus request accepted"));
+        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        runtime
+            .submit_keyboard(KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyW")),
+                LogicalKey::Character(String::from("w")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            ))
+            .unwrap_or_else(|_| unreachable!("native keyboard input accepted"));
+        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        assert!(reached.load(Ordering::Relaxed));
     }
 
     #[test]
