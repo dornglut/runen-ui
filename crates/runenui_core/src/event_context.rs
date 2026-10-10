@@ -1003,6 +1003,7 @@ mod tests {
         );
         child.invalidate(WidgetInvalidation::SEMANTICS);
         child.prevent_default();
+        child.claim_host_input();
         let mapper: Rc<dyn Fn(NonClone) -> String> = Rc::new(|value| value.0.to_string());
         parent.absorb_mapped(child.into_output(), &mapper);
         let output = parent.into_output();
@@ -1025,6 +1026,7 @@ mod tests {
         ));
         assert!(output.invalidation.contains(WidgetInvalidation::SEMANTICS));
         assert!(output.default_prevented);
+        assert!(output.host_input_claimed);
         assert_eq!(output.remaining_outputs, 0);
     }
 
