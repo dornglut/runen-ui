@@ -1,6 +1,7 @@
 //! Hierarchical collection authoring over the existing M4 real-focus group.
 //! Expansion, selection and domain identity are exclusively application-owned.
 use core::{fmt, time::Duration};
+use std::collections::BTreeSet;
 use crate::{
     EventContext, EventPhase, FlexContainerStyle, FlexDirection, FocusGroup,
     HitContribution, HitContributionContext,
@@ -10,7 +11,7 @@ use crate::{
     SemanticContribution, SemanticContributionContext, SemanticHierarchyLevel,
     SemanticNodeContribution, SemanticRole, SemanticSelectionMode, SemanticState, UiEvent,
     WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput,
-    WidgetInvalidation, WidgetMeasure, WidgetMeasureInput, WidgetUpdateContext,
+    WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetMeasureInput, WidgetUpdateContext,
     element::{CommonNodeAuthoring, Element, View, common_node_builder_methods},
     widget_erasure::WidgetAdapter, widget_protocol::{ChildBearingWidget, Widget},
 };
@@ -80,6 +81,23 @@ impl<Action> TreeItem<Action> {
         (self.eligible() && self.selected)
             || (self.expanded && self.children.iter().any(Self::visible_selected))
     }
+    /// Check all logical IDs, including collapsed descendants whose realization
+    /// is absent. Mounted keys and semantic IDs are never domain identity.
+    fn validate_ids(&self, seen: &mut BTreeSet<String>) -> Option<TreeAuthoringError> {
+        if self.domain_id.is_empty() {
+            return Some(TreeAuthoringError::EmptyDomainId);
+        }
+        if !seen.insert(self.domain_id.clone()) {
+            return Some(TreeAuthoringError::DuplicateDomainId);
+        }
+        self.children.iter().find_map(|child| child.validate_ids(seen))
+    }
+
+    fn selected_count(&self) -> usize {
+        usize::from(self.selected) +
+            self.children.iter().map(Self::selected_count).sum::<usize>()
+    }
+
     fn build(self, level: u32, position: SemanticCollectionPosition,
         prefer_selected: bool, preferred_used: &mut bool) -> Element<Action>
     where Action: 'static {
@@ -375,18 +393,37 @@ impl<Action> TreeView<Action> {
         self
     }
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TreeAuthoringError {
+    EmptyDomainId,
+    DuplicateDomainId,
+    MultipleSelected,
+}
+
 #[derive(Debug)]
-struct TreeViewWidget;
+struct TreeViewWidget {
+    invalid: Option<TreeAuthoringError>,
+}
 impl<Action> Widget<Action> for TreeViewWidget {
-    type State = ();
-    fn create_state(&self) -> Self::State {}
+    type State = Option<TreeAuthoringError>;
+    fn create_state(&self) -> Self::State { self.invalid }
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
+        if *state != self.invalid {
+            context.invalidate(
+                WidgetInvalidation::INTERACTION
+                    | WidgetInvalidation::SEMANTICS
+                    | WidgetInvalidation::DIAGNOSTICS
+            );
+        }
+        *state = self.invalid;
+    }
     fn event(
         &mut self,
-        (): &mut Self::State,
+        _: &mut Self::State,
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
-        if context.phase() != EventPhase::Bubble || context.default_is_prevented() {
+        if self.invalid.is_some() || context.phase() != EventPhase::Bubble || context.default_is_prevented() {
             return WidgetEventOutput::none();
         }
         let delegated = if let Some(command) = event
@@ -430,9 +467,12 @@ impl<Action> Widget<Action> for TreeViewWidget {
     }
     fn semantics(
         &self,
-        (): &Self::State,
+        state: &Self::State,
         context: SemanticContributionContext,
     ) -> SemanticContribution {
+        if state.is_some() {
+            return SemanticContribution::empty();
+        }
         let mut node = SemanticNodeContribution::primary(SemanticRole::Tree)
             .with_selection_mode(SemanticSelectionMode::Single);
         if context.has_mounted_children() {
@@ -440,10 +480,40 @@ impl<Action> Widget<Action> for TreeViewWidget {
         }
         SemanticContribution::single(node)
     }
+    fn diagnostics(&self, state: &Self::State) -> Vec<WidgetDiagnostic> {
+        match state {
+            None => Vec::new(),
+            Some(TreeAuthoringError::EmptyDomainId) => vec![WidgetDiagnostic::new(
+                "runenui.control.tree.empty-domain-id",
+                "TreeItem domain identity must not be empty",
+            )],
+            Some(TreeAuthoringError::DuplicateDomainId) => vec![WidgetDiagnostic::new(
+                "runenui.control.tree.duplicate-domain-id",
+                "TreeItem domain identities must be unique even in collapsed subtrees",
+            )],
+            Some(TreeAuthoringError::MultipleSelected) => vec![WidgetDiagnostic::new(
+                "runenui.control.tree.multiple-selected",
+                "single-selection TreeView cannot author multiple selected TreeItems",
+            )],
+        }
+    }
 }
 impl<Action> ChildBearingWidget<Action> for TreeViewWidget {}
 impl<Action: 'static> View<Action> for TreeView<Action> {
     fn into_element(self) -> Element<Action> {
+        let mut ids = BTreeSet::new();
+        let invalid = self.children.iter()
+            .find_map(|item| item.validate_ids(&mut ids))
+            .or_else(|| (self.children.iter().map(TreeItem::selected_count).sum::<usize>() > 1)
+                .then_some(TreeAuthoringError::MultipleSelected));
+        if invalid.is_some() {
+            let (fields, diagnostics) = self.common
+                .into_authored_fields(Focusability::NotFocusable, None);
+            return Element::from_authored_parts(
+                fields, Box::new(WidgetAdapter(TreeViewWidget { invalid })),
+                Vec::new(), diagnostics,
+            );
+        }
         let prefer_selected = self.children.iter().any(TreeItem::visible_selected);
         let size = u64::try_from(self.children.len()).unwrap_or_else(|_| unreachable!());
         let mut used = false;
@@ -463,7 +533,7 @@ impl<Action: 'static> View<Action> for TreeView<Action> {
             .into_authored_fields(Focusability::Automatic, None);
         Element::from_authored_parts(
             fields,
-            Box::new(WidgetAdapter(TreeViewWidget)),
+            Box::new(WidgetAdapter(TreeViewWidget { invalid: None })),
             children,
             diagnostics,
         )
