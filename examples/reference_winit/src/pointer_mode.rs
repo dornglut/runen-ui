@@ -128,6 +128,15 @@ impl PointerModes {
             )
     }
 
+    /// Whether the currently retained M10 cursor preference is being written
+    /// to the native cursor. Unlike UI ingress eligibility, this is false
+    /// during visible recovery after unlock, native failure, or focus loss.
+    /// The host cursor-service result must not report success while false.
+    /// This reports controller policy, not independent OS realization proof.
+    pub const fn ui_cursor_presentation_applied(&self) -> bool {
+        self.ui_pointer_allowed() && !self.awaiting_fresh_absolute_point
+    }
+
     pub const fn gameplay_motion_allowed(&self) -> bool {
         self.focused
             && matches!(
@@ -198,6 +207,10 @@ impl PointerModes {
     ) -> Result<(), Failure> {
         self.focused = focused;
         if !focused {
+            // Even ordinary absolute mode must not resurrect a stale hidden
+            // UI cursor baseline upon refocus. A fresh translated absolute
+            // point is required before the old preference may be reapplied.
+            self.awaiting_fresh_absolute_point = true;
             // Loss of activation invalidates the native lease before runtime work.
             self.release(platform)?;
         }
@@ -635,18 +648,54 @@ mod tests {
     }
 
     #[test]
-    fn unfocused_cursor_service_cannot_hide_system_cursor() {
+    fn absolute_focus_reentry_needs_fresh_point_before_hidden_ui_baseline_resumes() {
         let (mut modes, mut host) = focused();
+        modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
+        assert!(!host.visible);
+        assert!(modes.ui_cursor_presentation_applied());
         modes
             .focus_changed(false, &mut host)
             .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
-        modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
+        modes.set_ui_cursor(&mut host, CursorShape::Grab, false);
         assert!(host.visible);
         assert!(!modes.ui_pointer_allowed());
+        assert!(!modes.ui_cursor_presentation_applied());
         modes
             .focus_changed(true, &mut host)
             .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
-        assert!(!host.visible); // UI baseline resumes only when the host is focused
+        assert!(modes.ui_pointer_allowed());
+        assert!(!modes.ui_cursor_presentation_applied());
+        assert!(host.visible);
+        modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
+        assert!(host.visible);
+        modes.confirm_fresh_absolute_point(&mut host);
+        assert!(modes.ui_cursor_presentation_applied());
+        assert!(!host.visible);
+    }
+
+    #[test]
+    fn native_game_lock_and_failed_release_never_report_ui_cursor_realization() {
+        let (mut modes, mut host) = focused();
+        assert!(modes.ui_cursor_presentation_applied());
+        assert!(matches!(
+            modes.request(scope(1), Mode::LockedRelative, &mut host),
+            Ok(Outcome::WaitingForMotion(_))
+        ));
+        assert!(!modes.ui_cursor_presentation_applied());
+        assert!(modes.observe_motion(&scope(1), (2.0, 1.0), &mut host));
+        assert!(!modes.ui_cursor_presentation_applied());
+
+        host.failures.push((Mode::Absolute, Failure::Native));
+        assert_eq!(modes.release(&mut host), Err(Failure::ReleaseFailed));
+        assert!(!modes.ui_cursor_presentation_applied());
+        assert!(modes.release(&mut host).is_ok());
+        // UI may now receive the fresh absolute point; the retained cursor
+        // preference is still overridden until that point has been submitted.
+        assert!(modes.ui_pointer_allowed());
+        assert!(!modes.ui_cursor_presentation_applied());
+        assert!(host.visible);
+        modes.confirm_fresh_absolute_point(&mut host);
+        assert!(modes.ui_cursor_presentation_applied());
     }
 
     #[test]
