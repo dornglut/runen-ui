@@ -134,6 +134,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let primary_release = work.event.changed_button() == Some(PointerButton::Primary);
         let cleanup_trace = primary_release
             .then(|| RejectedPointerCleanupTrace::primary_release_from_stream(pointer_id, &stream));
+        let finality = crate::runtime::input_arbitration::integrity_only_pointer_finality(
+            self.pointer_registry.stream(pointer_id), Some(&stream),
+        );
         stream.set_buttons(work.event.buttons().clone());
         if primary_release {
             stream.set_pressed_owner(None);
@@ -147,7 +150,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .cloned()
         {
             return self.settle_unavailable_partial_pointer_up_with_live_capture(
-                work, rejected, stream, cleanup, &owner,
+                work, rejected, stream, cleanup, &owner, finality,
             );
         }
         let pointer_interaction_before = self.pointer_registry.surface_interaction_projection(None);
@@ -187,7 +190,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.request_redraw(committed, work.instant);
         }
         self.note_external_pointer_finality(
-            crate::runtime::input_arbitration::integrity_only_pointer_finality(),
+            finality,
         );
         ProcessApplicationActionOutcome::Completed
     }
@@ -199,6 +202,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         stream: PointerStreamState,
         cleanup_trace: &RejectedPointerCleanupTrace,
         owner: &MountedNodeId,
+        finality: crate::UiInputFinality,
     ) -> ProcessApplicationActionOutcome {
         let pointer_id = work.event.pointer_id();
         let facts = Self::rejected_capture_ingress_facts(work, owner, rejected);
@@ -280,7 +284,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             });
         if result.is_ok() {
             self.note_external_pointer_finality(
-                crate::runtime::input_arbitration::integrity_only_pointer_finality(),
+                finality,
             );
         }
         if result.is_err() {
@@ -371,7 +375,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.request_redraw(closed, work.instant);
         }
         self.note_external_pointer_finality(
-            crate::runtime::input_arbitration::integrity_only_pointer_finality(),
+            crate::runtime::input_arbitration::integrity_only_pointer_finality(Some(&stream), None),
         );
         ProcessApplicationActionOutcome::Completed
     }
@@ -460,7 +464,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             });
         if result.is_ok() {
             self.note_external_pointer_finality(
-                crate::runtime::input_arbitration::integrity_only_pointer_finality(),
+                crate::runtime::input_arbitration::integrity_only_pointer_finality(Some(stream), None),
             );
         }
         if result.is_err() {

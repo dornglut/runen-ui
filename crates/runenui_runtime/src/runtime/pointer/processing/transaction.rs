@@ -1711,6 +1711,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface_context: work.event.surface_context().clone(),
             surface_snapshot: geometry.snapshot,
         };
+        let finality = crate::runtime::input_arbitration::integrity_only_pointer_finality(
+            self.pointer_registry.stream(pointer_id), Some(&stream),
+        );
         let pointer_interaction_before = self.pointer_registry.surface_interaction_projection(None);
         if self
             .commit_unrouted_pointer_stream(pointer_id, stream, kind, work.sequence, &mut parent)
@@ -1771,7 +1774,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.request_redraw(parent, work.instant);
         }
         self.note_external_pointer_finality(
-            crate::runtime::input_arbitration::integrity_only_pointer_finality(),
+            finality,
         );
         ProcessApplicationActionOutcome::Completed
     }
