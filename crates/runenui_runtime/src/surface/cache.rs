@@ -522,6 +522,18 @@ impl SurfaceCache {
     ///
     /// Ordering is derived from the accepted #341 mounted-preorder presentation band;
     /// this retains no separate "latest popup" state.
+    /// Queries only the topmost published modal blocker, without assembling
+    /// the presentation-root vector or allocating after an input commit.
+    pub(crate) fn topmost_modal_presentation_root(&self) -> Option<MountedNodeId> {
+        self.topology.nodes.iter().enumerate().rev().find_map(|(position, node)| {
+            let policy = node.surface_presentation.as_ref()?;
+            (self.presentation.published(position)
+                && self.presentation.stack_root(position) == Some(position)
+                && policy.is_modal())
+                .then(|| node.id.clone())
+        })
+    }
+
     pub(crate) fn presentation_interaction_roots(&self) -> Vec<PresentationInteractionRoot> {
         self.topology
             .nodes

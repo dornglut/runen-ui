@@ -589,9 +589,22 @@ impl PointerRegistry {
             .collect()
     }
 
-    #[cfg(test)]
     pub(in crate::runtime) fn len(&self) -> usize {
         self.streams.len()
+    }
+
+    /// Writes existing active stream IDs into a caller-preallocated buffer.
+    /// Never allocates during mutation-boundary ownership observation.
+    pub(in crate::runtime) fn ordered_pointer_ids_into(&self, ids: &mut Vec<PointerId>) {
+        debug_assert!(ids.capacity() >= self.streams.len());
+        ids.clear();
+        ids.extend(self.streams.keys().copied());
+        ids.sort_unstable_by_key(|id| {
+            self.streams
+                .get(id)
+                .unwrap_or_else(|| unreachable!("listed stream is live"))
+                .registration_sequence()
+        });
     }
 }
 
