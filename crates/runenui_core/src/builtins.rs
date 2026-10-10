@@ -1491,6 +1491,7 @@ pub struct OptionItem<Action> {
     common: CommonNodeAuthoring,
     enabled: bool,
     discoverable_when_disabled: bool,
+    combo_box_proxy: bool,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     collection_position: Option<SemanticCollectionPosition>,
 }
@@ -1511,6 +1512,7 @@ impl<Action> fmt::Debug for OptionItem<Action> {
             )
             .field("actionable", &self.activation_factory.is_some())
             .field("has_callback", &self.activation_factory.is_some())
+            .field("combo_box_proxy", &self.combo_box_proxy)
             .field("collection_position", &self.collection_position)
             .field("style", &self.common.style)
             .field("timelines", &self.common.timelines)
@@ -1528,6 +1530,7 @@ impl<Action> OptionItem<Action> {
             common: CommonNodeAuthoring::default(),
             enabled: true,
             discoverable_when_disabled: false,
+            combo_box_proxy: false,
             activation_factory: None,
             collection_position: None,
         }
@@ -1550,6 +1553,15 @@ impl<Action> OptionItem<Action> {
     #[must_use]
     pub const fn discoverable_when_disabled(mut self, discoverable: bool) -> Self {
         self.discoverable_when_disabled = discoverable;
+        self
+    }
+
+    /// Use this existing Option in a ComboBox popup without M4 real focus
+    /// or a semantic RequestFocus action. Popup activation and selected value
+    /// still flow through the standard application-owned Option callback.
+    #[must_use]
+    pub const fn combo_box_proxy(mut self) -> Self {
+        self.combo_box_proxy = true;
         self
     }
 
@@ -1582,6 +1594,7 @@ struct OptionItemWidget<Action> {
     label: String,
     selected: bool,
     enabled: bool,
+    combo_box_proxy: bool,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     collection_position: Option<SemanticCollectionPosition>,
 }
@@ -1593,6 +1606,7 @@ impl<Action> fmt::Debug for OptionItemWidget<Action> {
             .field("label", &self.label)
             .field("selected", &self.selected)
             .field("enabled", &self.enabled)
+            .field("combo_box_proxy", &self.combo_box_proxy)
             .field("actionable", &self.activation_factory.is_some())
             .field("has_callback", &self.activation_factory.is_some())
             .field("collection_position", &self.collection_position)
@@ -1605,6 +1619,7 @@ struct OptionItemWidgetState {
     label: String,
     selected: bool,
     enabled: bool,
+    combo_box_proxy: bool,
     actionable: bool,
     collection_position: Option<SemanticCollectionPosition>,
 }
@@ -1617,6 +1632,7 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
             label: self.label.clone(),
             selected: self.selected,
             enabled: self.enabled,
+            combo_box_proxy: self.combo_box_proxy,
             actionable: self.activation_factory.is_some(),
             collection_position: self.collection_position,
         }
@@ -1634,6 +1650,9 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
         {
             context.invalidate(WidgetInvalidation::SEMANTICS);
         }
+        if state.combo_box_proxy != self.combo_box_proxy {
+            context.invalidate(WidgetInvalidation::INTERACTION | WidgetInvalidation::SEMANTICS);
+        }
         if state.enabled != self.enabled {
             context.invalidate(
                 WidgetInvalidation::INTERACTION
@@ -1648,6 +1667,7 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
         state.label.clone_from(&self.label);
         state.selected = self.selected;
         state.enabled = self.enabled;
+        state.combo_box_proxy = self.combo_box_proxy;
         state.actionable = actionable;
         state.collection_position = self.collection_position;
     }
@@ -1697,7 +1717,10 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
                     .with_disabled(!state.enabled)
                     .with_selected(state.selected),
             )
-            .with_action(SemanticAction::RequestFocus);
+;
+        if !state.combo_box_proxy {
+            node = node.with_action(SemanticAction::RequestFocus);
+        }
         if let Some(position) = state.collection_position {
             node = node.with_collection_position(position);
         }
@@ -1710,7 +1733,9 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
 
 impl<Action: 'static> View<Action> for OptionItem<Action> {
     fn into_element(self) -> Element<Action> {
-        let focusability = if self.discoverable_when_disabled {
+        let focusability = if self.combo_box_proxy {
+            Focusability::NotFocusable
+        } else if self.discoverable_when_disabled {
             Focusability::FocusableWhenDisabled
         } else {
             Focusability::Focusable
@@ -1722,6 +1747,7 @@ impl<Action: 'static> View<Action> for OptionItem<Action> {
                 label: self.label,
                 selected: self.selected,
                 enabled: self.enabled,
+                combo_box_proxy: self.combo_box_proxy,
                 activation_factory: self.activation_factory,
                 collection_position: self.collection_position,
             })),
