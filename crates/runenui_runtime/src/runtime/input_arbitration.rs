@@ -18,6 +18,7 @@ pub(super) struct InputObservationState {
     pointer_finality: Option<crate::UiInputFinality>,
     external_pointer_active: bool,
     retired_recorded: bool,
+    retirement_cause: Option<crate::InputScopeRetirementReason>,
     #[cfg(test)]
     fail_reservation_after: std::cell::Cell<Option<usize>>,
 }
@@ -31,6 +32,7 @@ impl InputObservationState {
             pointer_finality: None,
             external_pointer_active: false,
             retired_recorded: false,
+            retirement_cause: None,
             #[cfg(test)]
             fail_reservation_after: std::cell::Cell::new(None),
         }
@@ -115,12 +117,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if self.input_observation.retired_recorded {
             return None;
         }
-        let reason = match self.status {
-            crate::RuntimeStatus::Closed => crate::InputScopeRetirementReason::Shutdown,
-            crate::RuntimeStatus::Terminal(reason) => {
-                crate::InputScopeRetirementReason::Terminal(reason)
-            }
-            crate::RuntimeStatus::Running => return None,
+        let reason = match self.input_observation.retirement_cause {
+            Some(reason) => reason,
+            None => match self.status {
+                crate::RuntimeStatus::Closed => crate::InputScopeRetirementReason::Shutdown,
+                crate::RuntimeStatus::Terminal(reason) => {
+                    crate::InputScopeRetirementReason::Terminal(reason)
+                }
+                crate::RuntimeStatus::Running => return None,
+            },
         };
         self.input_observation.retired_recorded = true;
         Some(crate::InputScopeRetirement {
