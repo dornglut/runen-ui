@@ -1165,11 +1165,11 @@ mod tests {
         publication: &SurfacePublication,
         pointer: PointerId,
     ) {
-        // An explicit same-surface, same-stream out-of-hit hover is the
-        // independent negative oracle: no implicit capture, no invented hit,
-        // and no exclusive ownership from Move/default diagnostics.
-        let outside = LogicalPoint::new(32.0, 32.0)
-            .unwrap_or_else(|_| unreachable!("finite point inside surface but outside widget"));
+        // An explicit same-surface-context, same-stream hover beyond the
+        // published 64x64 surface is the negative oracle: no implicit capture,
+        // invented hit or exclusive claim from Move/default diagnostics.
+        let outside = LogicalPoint::new(65.0, 65.0)
+            .unwrap_or_else(|_| unreachable!("finite point beyond published surface bounds"));
         assert_eq!(publication.hit_test_scene().target_at(outside), None);
         let no_hit = runtime
             .submit_pointer(PointerEvent::new(
