@@ -658,23 +658,33 @@ fn touch_end_applies_final_movement_but_cancel_discards_it() {
     runtime
         .submit_pointer(
             PointerEvent::new(
-                first, PointerDeviceKind::Touch, PointerPhase::Up,
-                point(26.0), input.clone(),
+                first,
+                PointerDeviceKind::Touch,
+                PointerPhase::Up,
+                point(26.0),
+                input.clone(),
             )
             .with_movement_delta(delta(20.0))
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|_| unreachable!("native touch terminal delta admitted"));
     settle(&mut runtime);
-    assert_eq!(runtime.state().size, 70.0, "final touch movement cannot be lost");
+    assert_eq!(
+        runtime.state().size,
+        70.0,
+        "final touch movement cannot be lost"
+    );
     assert_eq!(runtime.state().proposals, 1);
     let second = PointerId::new(119).unwrap_or_else(|| unreachable!());
     let current = publish(&mut runtime);
     runtime
         .submit_pointer(
             PointerEvent::new(
-                second, PointerDeviceKind::Touch, PointerPhase::Down,
-                point(6.0), current.input_context().clone(),
+                second,
+                PointerDeviceKind::Touch,
+                PointerPhase::Down,
+                point(6.0),
+                current.input_context().clone(),
             )
             .with_changed_button(PointerButton::Primary)
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
@@ -684,8 +694,11 @@ fn touch_end_applies_final_movement_but_cancel_discards_it() {
     runtime
         .submit_pointer(
             PointerEvent::new(
-                second, PointerDeviceKind::Touch, PointerPhase::Cancel,
-                point(45.0), current.input_context().clone(),
+                second,
+                PointerDeviceKind::Touch,
+                PointerPhase::Cancel,
+                point(45.0),
+                current.input_context().clone(),
             )
             .with_movement_delta(delta(39.0)),
         )
@@ -702,37 +715,63 @@ fn secondary_mouse_release_during_primary_drag_does_not_retire_capture() {
     let input = publication.input_context().clone();
     let point = |x: f32| LogicalPoint::new(x, 40.0).unwrap_or_else(|_| unreachable!());
     let pointer = PointerId::new(123).unwrap_or_else(|| unreachable!());
-    runtime.submit_pointer(
-        PointerEvent::new(
-            pointer, PointerDeviceKind::Mouse, PointerPhase::Down,
-            point(6.0), input.clone(),
-        ).with_changed_button(PointerButton::Primary)
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                point(6.0),
+                input.clone(),
+            )
+            .with_changed_button(PointerButton::Primary)
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
-    ).unwrap_or_else(|_| unreachable!("primary press"));
+        )
+        .unwrap_or_else(|_| unreachable!("primary press"));
     settle(&mut runtime);
-    runtime.submit_pointer(
-        PointerEvent::new(
-            pointer, PointerDeviceKind::Mouse, PointerPhase::Down,
-            point(6.0), input.clone(),
-        ).with_changed_button(PointerButton::Secondary)
-            .with_buttons(PointerButtons::new([PointerButton::Primary, PointerButton::Secondary])),
-    ).unwrap_or_else(|_| unreachable!("secondary press"));
-    runtime.submit_pointer(
-        PointerEvent::new(
-            pointer, PointerDeviceKind::Mouse, PointerPhase::Up,
-            point(6.0), input.clone(),
-        ).with_changed_button(PointerButton::Secondary)
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                point(6.0),
+                input.clone(),
+            )
+            .with_changed_button(PointerButton::Secondary)
+            .with_buttons(PointerButtons::new([
+                PointerButton::Primary,
+                PointerButton::Secondary,
+            ])),
+        )
+        .unwrap_or_else(|_| unreachable!("secondary press"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                point(6.0),
+                input.clone(),
+            )
+            .with_changed_button(PointerButton::Secondary)
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
-    ).unwrap_or_else(|_| unreachable!("secondary released"));
+        )
+        .unwrap_or_else(|_| unreachable!("secondary released"));
     settle(&mut runtime);
-    runtime.submit_pointer(
-        PointerEvent::new(
-            pointer, PointerDeviceKind::Mouse, PointerPhase::Move,
-            point(26.0), input.clone(),
-        ).with_movement_delta(
-            LogicalDelta::new(20.0, 0.0).unwrap_or_else(|_| unreachable!()),
-        ).with_buttons(PointerButtons::new([PointerButton::Primary])),
-    ).unwrap_or_else(|_| unreachable!("captured motion after secondary release"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Move,
+                point(26.0),
+                input.clone(),
+            )
+            .with_movement_delta(LogicalDelta::new(20.0, 0.0).unwrap_or_else(|_| unreachable!()))
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|_| unreachable!("captured motion after secondary release"));
     settle(&mut runtime);
     assert_eq!(runtime.state().size, 70.0);
     assert_eq!(runtime.state().proposals, 1);
