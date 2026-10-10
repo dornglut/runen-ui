@@ -21,7 +21,7 @@ pub(super) struct InputObservationState {
 }
 
 impl InputObservationState {
-    pub(super) fn new(namespace: RuntimeNamespace) -> Self {
+    pub(super) const fn new(namespace: RuntimeNamespace) -> Self {
         Self {
             scope: InputArbitrationScope::new(namespace),
             revision: InputOwnershipRevision::new(1),
@@ -95,6 +95,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     /// The records are reserved before the canonical shutdown begins. Snapshot
     /// allocation and checked-revision exhaustion still require a full reserved
     /// projection before this may become the accepted public return path.
+    #[allow(dead_code)] // Draft-only: public shutdown cutover waits for native host #429 ownership.
     pub(crate) fn shutdown_observed(
         &mut self,
     ) -> Result<crate::InputShutdownBatch, InputObservationError> {

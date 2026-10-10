@@ -1237,10 +1237,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             InputEnvelopePayload::Keyboard(_) => {}
         }
-        if let Some(reason) = keyboard_default {
-            if !reasons.contains(&reason) {
-                reasons.push(reason);
-            }
+        if let Some(reason) = keyboard_default
+            && !reasons.contains(&reason)
+        {
+            reasons.push(reason);
         }
         // A committed text-edit default is already owned by the editor.
         // Ordinary outputs and callback invocation alone cannot claim gameplay.

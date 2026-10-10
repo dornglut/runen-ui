@@ -186,9 +186,26 @@ pub(crate) fn pump<App: UiApp>(
     runtime: &mut Runtime<App::State, App::Action, App::HostProtocol>,
     budget: PumpBudget,
 ) -> PumpReport {
-    *pump_recorded::<App>(runtime, budget)
-        .expect("draft-only report adapter cannot express input observation failure")
-        .report()
+    match pump_recorded::<App>(runtime, budget) {
+        Ok(batch) => *batch.report(),
+        Err(_) => {
+            // A legacy report-only caller cannot receive a typed capacity
+            // error. Fail closed instead of claiming successful game admission.
+            let cancelled = runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+            finish_report(
+                runtime, budget, 0, cancelled, ReadinessTotals::default(),
+            )
+        }
+    }
+}
+
+struct ReachedInput {
+    sequence: runenui_core::WorkSequence,
+    family: crate::UiInputFamily,
+    surface_id: Option<runenui_core::SurfaceId>,
+    device_id: Option<runenui_core::InputDeviceId>,
+    pointer_id: Option<runenui_core::PointerId>,
+    finality: crate::UiInputFinality,
 }
 
 struct RecordedPump {
@@ -225,14 +242,7 @@ impl RecordedPump {
     fn observe<State, Action, Protocol: runenui_core::HostProtocol>(
         &mut self,
         runtime: &mut Runtime<State, Action, Protocol>,
-        input: Option<(
-            runenui_core::WorkSequence,
-            crate::UiInputFamily,
-            Option<runenui_core::SurfaceId>,
-            Option<runenui_core::InputDeviceId>,
-            Option<runenui_core::PointerId>,
-            crate::UiInputFinality,
-        )>,
+        input: Option<ReachedInput>,
     ) -> Result<(), crate::InputObservationError> {
         let latest = runtime.input_ownership()?;
         if latest.revision() != self.latest.revision() {
@@ -244,7 +254,9 @@ impl RecordedPump {
                     },
                 ));
         }
-        if let Some((sequence, family, surface_id, device_id, pointer_id, finality)) = input {
+        if let Some(ReachedInput {
+            sequence, family, surface_id, device_id, pointer_id, finality,
+        }) = input {
             self.records
                 .push(crate::InputArbitrationRecord::InputSettled(
                     crate::UiInputSettlement {
@@ -360,8 +372,13 @@ pub(crate) fn pump_recorded<App: UiApp>(
                     outcome,
                     identity
                         .zip(finality)
-                        .map(|((family, surface, device, pointer), finality)| {
-                            (sequence, family, surface, device, pointer, finality)
+                        .map(|((family, surface, device, pointer), finality)| ReachedInput {
+                            sequence,
+                            family,
+                            surface_id: surface,
+                            device_id: device,
+                            pointer_id: pointer,
+                            finality,
                         }),
                 )
             }
@@ -387,7 +404,10 @@ pub(crate) fn pump_recorded<App: UiApp>(
                 let finality = runtime.process_input_envelope(envelope);
                 (
                     ProcessApplicationActionOutcome::Completed,
-                    Some((sequence, family, None, device, None, finality)),
+                    Some(ReachedInput {
+                        sequence, family, surface_id: None, device_id: device,
+                        pointer_id: None, finality,
+                    }),
                 )
             }
             WorkEnvelope::EffectStart(work) => {
@@ -428,10 +448,11 @@ pub(crate) fn pump_recorded<App: UiApp>(
         observed.processed_through = Some(sequence);
         observed.observe(runtime, settled)?;
         if let ProcessApplicationActionOutcome::Terminal {
-            reason: _,
+            reason,
             cancelled: terminal_cancelled,
         } = result
         {
+            debug_assert_eq!(runtime.status(), RuntimeStatus::Terminal(reason));
             cancelled = terminal_cancelled;
             if !observed.admit()? {
                 return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
