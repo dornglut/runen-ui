@@ -218,11 +218,15 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
         }
         let request = match command {
             SemanticCommand::Expand | SemanticCommand::FocusRight
-                if self.has_children && !self.expanded
-                => Some(TreeItemRequest::Expand(self.domain_id.clone())),
+                if self.has_children && !self.expanded =>
+            {
+                Some(TreeItemRequest::Expand(self.domain_id.clone()))
+            }
             SemanticCommand::Collapse | SemanticCommand::FocusLeft
-                if self.has_children && self.expanded
-                => Some(TreeItemRequest::Collapse(self.domain_id.clone())),
+                if self.has_children && self.expanded =>
+            {
+                Some(TreeItemRequest::Collapse(self.domain_id.clone()))
+            }
             _ => None,
         };
         if let Some(request) = request {
@@ -248,21 +252,31 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
             .unwrap_or_else(|_| unreachable!("measured local TreeItem size is finite"));
         HitContribution::single_rect(rect)
     }
-    fn semantics(&self, state: &Self::State, context: SemanticContributionContext)
-        -> SemanticContribution {
-        let mut flags = SemanticState::ENABLED.with_selected(state.selected)
+    fn semantics(
+        &self,
+        state: &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let mut flags = SemanticState::ENABLED
+            .with_selected(state.selected)
             .with_disabled(!state.enabled);
-        if state.has_children { flags = flags.with_expanded(state.expanded); }
+        if state.has_children {
+            flags = flags.with_expanded(state.expanded);
+        }
         let mut node = SemanticNodeContribution::primary(SemanticRole::TreeItem)
-            .with_name(state.label.clone()).with_state(flags)
-            .with_hierarchy_level(state.level).with_collection_position(state.position)
+            .with_name(state.label.clone())
+            .with_state(flags)
+            .with_hierarchy_level(state.level)
+            .with_collection_position(state.position)
             .with_action(SemanticAction::RequestFocus);
         if state.actionable && state.enabled {
             node = node.with_action(SemanticAction::Activate);
             if state.has_children {
                 node = node.with_action(if state.expanded {
                     SemanticAction::Collapse
-                } else { SemanticAction::Expand });
+                } else {
+                    SemanticAction::Expand
+                });
             }
         }
         if state.has_children && state.expanded && context.has_mounted_children() {
@@ -274,12 +288,15 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
 impl<Action> ChildBearingWidget<Action> for TreeItemWidget<Action> {}
 
 pub struct TreeView<Action> {
-    children: Vec<TreeItem<Action>>, common: CommonNodeAuthoring,
-    selection_follows_focus: bool, type_ahead: FocusGroupTypeAhead,
+    children: Vec<TreeItem<Action>>,
+    common: CommonNodeAuthoring,
+    selection_follows_focus: bool,
+    type_ahead: FocusGroupTypeAhead,
 }
 impl<Action> fmt::Debug for TreeView<Action> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TreeView").field("children", &self.children.len())
+        f.debug_struct("TreeView")
+            .field("children", &self.children.len())
             .field("selection_follows_focus", &self.selection_follows_focus)
             .finish_non_exhaustive()
     }
@@ -288,24 +305,28 @@ impl<Action> TreeView<Action> {
     #[must_use]
     pub fn new(children: impl IntoIterator<Item = TreeItem<Action>>) -> Self {
         Self {
-            children: children.into_iter().collect(), selection_follows_focus: false,
+            children: children.into_iter().collect(),
+            selection_follows_focus: false,
             type_ahead: FocusGroupTypeAhead::new(Duration::from_millis(500))
                 .unwrap_or_else(|_| unreachable!()),
             common: CommonNodeAuthoring {
                 layout: LayoutStyle::default().with_container(LayoutContainer::Flex(
                     FlexContainerStyle::default().with_direction(FlexDirection::Column),
-                )), ..CommonNodeAuthoring::default()
+                )),
+                ..CommonNodeAuthoring::default()
             },
         }
     }
     common_node_builder_methods!();
     #[must_use]
     pub const fn selection_follows_focus(mut self, value: bool) -> Self {
-        self.selection_follows_focus = value; self
+        self.selection_follows_focus = value;
+        self
     }
     #[must_use]
     pub const fn type_ahead(mut self, value: FocusGroupTypeAhead) -> Self {
-        self.type_ahead = value; self
+        self.type_ahead = value;
+        self
     }
 }
 #[derive(Debug)]
