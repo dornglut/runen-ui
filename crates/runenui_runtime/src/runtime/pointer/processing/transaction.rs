@@ -357,9 +357,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if pending.stream.capture_owner().is_some() || pending.previous_capture_owner.is_some() {
             reasons.push(crate::UiInputClaimReason::PointerCapture);
         }
-        if pending.work.event.phase() == PointerPhase::Down
-            && pending.stream.pressed_owner().is_some()
-        {
+        // An existing pressed UI owner claims subsequent move/wheel input as
+        // well, even if that event creates no new Down/default action.
+        if pending.stream.pressed_owner().is_some() {
             reasons.push(crate::UiInputClaimReason::PointerPress);
         }
         if pending.stream.text_selection().is_some() {
