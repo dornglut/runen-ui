@@ -1019,7 +1019,7 @@ mod tests {
         (
             "M11TREE",
             &["M11CTRL-82", "M11CTRL-83", "M11CTRL-84"],
-            "blocked",
+            "owner-accepted",
         ),
         (
             "M11SLIDER",
