@@ -212,14 +212,14 @@ fn make_single(config: RuntimeConfig) -> AppRuntime<SingleApp> {
 }
 
 fn settle_single(runtime: &mut AppRuntime<SingleApp>) {
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -233,9 +233,9 @@ fn submit_single(runtime: &mut AppRuntime<SingleApp>) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -263,14 +263,14 @@ fn make_runtime_with_config(
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -295,7 +295,7 @@ fn submit_and_route(runtime: &mut AppRuntime<App>, command: SemanticCommand) {
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
     let report = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(report.processed_envelopes(), 1);
@@ -406,9 +406,9 @@ fn routed_non_clone_actions_preserve_callback_order_before_default() {
     let mut runtime = make_runtime(Behavior::Emit, Behavior::Emit, Behavior::Emit);
     settle(&mut runtime);
     submit_and_route(&mut runtime, SemanticCommand::Activate);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(
@@ -433,9 +433,9 @@ fn delegated_command_targets_current_node_and_runs_later_without_recursion() {
             CommandOrigin::automation(),
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let accepted: Vec<_> = runtime
@@ -453,9 +453,9 @@ fn delegated_command_targets_current_node_and_runs_later_without_recursion() {
     assert_eq!(accepted[1].1.as_ref(), Some(&target_id));
     assert_eq!(runtime.state().log.borrow().len(), 6);
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state().log.borrow().len(), 11);
@@ -473,9 +473,9 @@ fn route_only_commands_have_no_default_action() {
         settle(&mut runtime);
         runtime.state().log.borrow_mut().clear();
         submit_and_route(&mut runtime, command);
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert!(runtime.state().updates.is_empty());
@@ -615,9 +615,9 @@ fn six_ordinary_submission_rejections_recover_inputs_and_consume_no_authority() 
     let mut closed = make_runtime(Behavior::Observe, Behavior::Observe, Behavior::Observe);
     settle(&mut closed);
     let closed_target = target(&mut closed);
-    closed
+    let _ = closed
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert_ordinary_submission_rejection_is_inert(
@@ -763,9 +763,9 @@ fn ordinary_rejection_preserves_publication_and_command_trace_authority() {
         Some(u64::MAX - 1)
     );
     assert_eq!(runtime.__routed_trace_reservations_for_test(), 1);
-    runtime
+    let _ = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.__routed_trace_reservations_for_test(), 0);
@@ -812,9 +812,9 @@ fn accepted_command_consumes_reserved_outcome_before_publication_authority() {
             unreachable!("three trace sequences retain publication, acceptance, and outcome")
         });
     assert_eq!(runtime.__routed_trace_reservations_for_test(), 1);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(runtime.state().log.borrow().is_empty());
@@ -880,9 +880,9 @@ fn route_wide_bridge_mismatch_invokes_no_callback() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(runtime.state().log.borrow().is_empty());
@@ -941,9 +941,9 @@ fn routed_integrity_trace_distinguishes_broken_topology() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("the target is live at submission"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(runtime.state().log.borrow().is_empty());
@@ -1219,9 +1219,9 @@ fn routed_trace_links_acceptance_route_default_commit_and_later_action() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -1331,14 +1331,14 @@ fn accepted_command_can_become_stale_before_processing() {
         }
     }
     let mut runtime = AppRuntime::<ReplaceApp>::mount(ReplaceState(false));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let old = runtime.index().nodes()[0].id().clone();
@@ -1352,9 +1352,9 @@ fn accepted_command_can_become_stale_before_processing() {
             CommandOrigin::accessibility(),
         )
         .unwrap_or_else(|_| unreachable!("the target is live at submission time"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let rejected = runtime

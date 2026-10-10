@@ -34,9 +34,9 @@ impl UiApp for OrderedApp {
 fn submission_sequences_full_recovery_and_fifo_are_exact() {
     let config = RuntimeConfig::default().with_queue_capacity(2);
     let mut runtime = AppRuntime::<OrderedApp>::mount_with_config(Vec::new(), config);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let first = runtime
@@ -56,7 +56,7 @@ fn submission_sequences_full_recovery_and_fifo_are_exact() {
 
     let first_pump = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(first_pump.processed_envelopes(), 2);
@@ -71,7 +71,7 @@ fn submission_sequences_full_recovery_and_fifo_are_exact() {
     assert_eq!(third.get(), 4, "full rejection consumed no sequence");
     let final_pump = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(final_pump.processed_envelopes(), 1);
@@ -89,9 +89,9 @@ const fn rejected_action() -> Action {
 #[test]
 fn zero_and_n_budgets_preserve_the_exact_remaining_order() {
     let mut runtime = AppRuntime::<OrderedApp>::mount(Vec::new());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     for value in 0..5 {
@@ -101,7 +101,7 @@ fn zero_and_n_budgets_preserve_the_exact_remaining_order() {
     }
     let zero = runtime
         .pump(PumpBudget::new(0, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(zero.processed_envelopes(), 0);
@@ -109,7 +109,7 @@ fn zero_and_n_budgets_preserve_the_exact_remaining_order() {
     assert_eq!(zero.outcome(), PumpOutcome::BudgetExhausted);
     let two = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(two.processed_envelopes(), 2);
@@ -121,7 +121,7 @@ fn zero_and_n_budgets_preserve_the_exact_remaining_order() {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(rest.processed_envelopes(), 3);
@@ -188,9 +188,9 @@ fn every_action_reconciles_before_the_next_update_begins() {
         mounted_values_seen_by_update: Vec::new(),
     };
     let mut runtime = AppRuntime::<TransactionApp>::mount(state);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
@@ -203,7 +203,7 @@ fn every_action_reconciles_before_the_next_update_begins() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -218,9 +218,9 @@ fn every_action_reconciles_before_the_next_update_begins() {
 fn capacity_zero_mounts_state_but_rejects_the_atomic_initial_scheduler_plan() {
     let config = RuntimeConfig::default().with_queue_capacity(0);
     let mut runtime = AppRuntime::<OrderedApp>::mount_with_config(Vec::new(), config);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.index().nodes().len(), 1);
@@ -235,7 +235,7 @@ fn capacity_zero_mounts_state_but_rejects_the_atomic_initial_scheduler_plan() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .outcome(),
@@ -247,9 +247,9 @@ fn capacity_zero_mounts_state_but_rejects_the_atomic_initial_scheduler_plan() {
 fn logical_queue_capacity_does_not_eagerly_reserve() {
     let config = RuntimeConfig::default().with_queue_capacity(usize::MAX);
     let mut runtime = AppRuntime::<OrderedApp>::mount_with_config(Vec::new(), config);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -258,7 +258,7 @@ fn logical_queue_capacity_does_not_eagerly_reserve() {
         .unwrap_or_else(|_| unreachable!());
     let report = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -273,9 +273,9 @@ fn a_large_queue_is_processed_iteratively() {
     const COUNT: usize = 10_000;
     let config = RuntimeConfig::default().with_queue_capacity(COUNT);
     let mut runtime = AppRuntime::<OrderedApp>::mount_with_config(Vec::new(), config);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     for value in 0..COUNT {
@@ -287,7 +287,7 @@ fn a_large_queue_is_processed_iteratively() {
     }
     let report = runtime
         .pump(PumpBudget::new(COUNT, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(report.processed_envelopes(), COUNT);
@@ -322,16 +322,16 @@ impl UiApp for LocalOnlyApp {
 #[test]
 fn actions_need_neither_clone_send_nor_debug() {
     let mut runtime = AppRuntime::<LocalOnlyApp>::mount(0);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let action = LocalOnlyAction(Rc::new(()));
     assert!(runtime.submit_action(action).is_ok());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state(), &1);
@@ -341,9 +341,9 @@ fn actions_need_neither_clone_send_nor_debug() {
 #[allow(clippy::assert_is_empty)]
 fn shutdown_is_idempotent_cancels_waiting_actions_and_closes_submission() {
     let mut runtime = AppRuntime::<OrderedApp>::mount(Vec::new());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
@@ -354,7 +354,7 @@ fn shutdown_is_idempotent_cancels_waiting_actions_and_closes_submission() {
         .unwrap_or_else(|_| unreachable!());
     let first = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert!(!first.already_complete());
@@ -364,7 +364,7 @@ fn shutdown_is_idempotent_cancels_waiting_actions_and_closes_submission() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .outcome(),
@@ -378,7 +378,7 @@ fn shutdown_is_idempotent_cancels_waiting_actions_and_closes_submission() {
     assert_eq!(error.into_action(), Action(3));
     let second = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert!(second.already_complete());

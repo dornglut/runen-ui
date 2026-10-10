@@ -171,7 +171,7 @@ fn harness() -> Harness {
     assert!(
         runtime
             .pump(full_budget())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -223,7 +223,7 @@ const fn full_budget() -> PumpBudget {
 fn pump(runtime: &mut AppRuntime<App>) -> PumpReport {
     runtime
         .pump(full_budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned()
 }
@@ -352,7 +352,7 @@ fn publication_does_not_rebind_an_older_accepted_pointer_event() {
     let partial = harness
         .runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(partial.processed_envelopes(), 1);

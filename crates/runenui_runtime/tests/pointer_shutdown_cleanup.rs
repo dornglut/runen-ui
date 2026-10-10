@@ -167,7 +167,7 @@ fn pump_all(runtime: &mut AppRuntime<App>) {
     assert!(
         runtime
             .pump(full_budget())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -412,7 +412,7 @@ fn shutdown_drains_pointer_streams_in_registration_order_without_callbacks() {
     let report = harness
         .runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
 
@@ -465,7 +465,7 @@ fn shutdown_drains_pointer_streams_in_registration_order_without_callbacks() {
         harness
             .runtime
             .shutdown()
-            .expect("shutdown observation")
+            .unwrap_or_else(|_| unreachable!("shutdown observation"))
             .report()
             .to_owned()
             .already_complete()

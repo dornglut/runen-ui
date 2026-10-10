@@ -195,7 +195,7 @@ fn pump_all(runtime: &mut AppRuntime<App>) {
     assert!(
         runtime
             .pump(full_budget())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()

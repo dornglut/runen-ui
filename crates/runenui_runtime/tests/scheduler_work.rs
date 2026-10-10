@@ -103,7 +103,7 @@ fn ready_local_task_reaches_update_only_through_canonical_envelopes() {
     let mut runtime = AppRuntime::<LocalTaskApp>::mount(Vec::new());
     let report = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state(), &["ready"]);
@@ -138,7 +138,7 @@ fn pending_local_task_does_not_prevent_quiescence() {
     let mut runtime = AppRuntime::<PendingTaskApp>::mount(());
     let report = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(report.processed_envelopes(), 2);
@@ -182,7 +182,7 @@ fn equal_deadline_timers_fire_in_creation_order() {
     assert!(
         runtime
             .pump(PumpBudget::new(3, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -193,7 +193,7 @@ fn equal_deadline_timers_fire_in_creation_order() {
     assert!(
         runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -227,17 +227,17 @@ impl UiApp for RepeatingTimerApp {
 #[test]
 fn repeating_timer_coalesces_missed_ticks_from_logical_deadline() {
     let mut runtime = AppRuntime::<RepeatingTimerApp>::mount(0);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
         .advance_time(Duration::from_millis(35))
         .unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(*runtime.state(), 1);
@@ -247,7 +247,7 @@ fn repeating_timer_coalesces_missed_ticks_from_logical_deadline() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -256,9 +256,9 @@ fn repeating_timer_coalesces_missed_ticks_from_logical_deadline() {
     runtime
         .advance_time(Duration::from_millis(1))
         .unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(*runtime.state(), 2);
@@ -315,9 +315,9 @@ impl UiApp for OverflowingRepeatingTimerApp {
 #[test]
 fn repeating_deadline_overflow_terminates_only_the_timer_after_current_firing() {
     let mut runtime = AppRuntime::<OverflowingRepeatingTimerApp>::mount(0);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
@@ -326,7 +326,7 @@ fn repeating_deadline_overflow_terminates_only_the_timer_after_current_firing() 
 
     let report = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -346,7 +346,7 @@ fn repeating_deadline_overflow_terminates_only_the_timer_after_current_firing() 
     assert_eq!(
         runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -382,7 +382,7 @@ fn zero_repeating_interval_is_explicit_and_non_poisoning() {
     assert!(
         runtime
             .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -442,9 +442,9 @@ fn send_task_transports_output_without_requiring_action_send() {
     let jobs = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<SendTaskApp>::mount(0);
     runtime.set_send_task_executor(HoldingExecutor(Rc::clone(&jobs)));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(
@@ -453,9 +453,9 @@ fn send_task_transports_output_without_requiring_action_send() {
     );
     let job = jobs.borrow_mut().pop().unwrap_or_else(|| unreachable!());
     run_ready(job).unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(*runtime.state(), 1);
@@ -515,7 +515,7 @@ fn executor_refusal_is_terminal_for_work_but_recoverable_for_runtime() {
     assert!(
         runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -572,7 +572,7 @@ fn assert_executor_refusal(
     assert!(
         runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -660,18 +660,18 @@ fn full_completion_ingress_returns_exact_retryable_completion() {
         RuntimeConfig::default().with_limits(limits),
     );
     runtime.set_send_task_executor(HoldingExecutor(Rc::clone(&jobs)));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let job = jobs.borrow_mut().pop().unwrap_or_else(|| unreachable!());
     let Err(SendTaskCompletionError::Full(completion)) = run_ready(job) else {
         unreachable!()
     };
-    runtime
+    let _ = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert!(matches!(
@@ -714,18 +714,18 @@ fn work_sequence_exhaustion_prevents_send_completion_mapper() {
     let jobs = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<SendMapperIntegrityApp>::mount(Rc::clone(&calls));
     runtime.set_send_task_executor(HoldingExecutor(Rc::clone(&jobs)));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     run_ready(jobs.borrow_mut().pop().unwrap_or_else(|| unreachable!()))
         .unwrap_or_else(|_| unreachable!());
     runtime.__seed_next_work_sequence_for_test(0);
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(0, 1, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -755,15 +755,15 @@ fn accepted_last_sequence<App: UiApp>(runtime: &AppRuntime<App>) -> usize {
 #[allow(clippy::assert_is_empty)]
 fn one_remaining_sequence_is_consumed_only_by_each_final_scheduler_action() {
     let mut local = AppRuntime::<LocalTaskApp>::mount(Vec::new());
-    local
+    let _ = local
         .pump(PumpBudget::new(2, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     local.__seed_next_work_sequence_for_test(u64::MAX);
-    local
+    let _ = local
         .pump(PumpBudget::new(0, 0, 1, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(accepted_last_sequence(&local), 1);
@@ -773,15 +773,15 @@ fn one_remaining_sequence_is_consumed_only_by_each_final_scheduler_action() {
     let jobs = Rc::new(RefCell::new(Vec::new()));
     let mut send = AppRuntime::<SendTaskApp>::mount(0);
     send.set_send_task_executor(HoldingExecutor(Rc::clone(&jobs)));
-    send.pump(PumpBudget::new(2, 0, 0, 0))
-        .expect("pump observation")
+    let _ = send.pump(PumpBudget::new(2, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     run_ready(jobs.borrow_mut().pop().unwrap_or_else(|| unreachable!()))
         .unwrap_or_else(|_| unreachable!());
     send.__seed_next_work_sequence_for_test(u64::MAX);
-    send.pump(PumpBudget::new(0, 1, 0, 0))
-        .expect("pump observation")
+    let _ = send.pump(PumpBudget::new(0, 1, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(accepted_last_sequence(&send), 1);
@@ -789,23 +789,23 @@ fn one_remaining_sequence_is_consumed_only_by_each_final_scheduler_action() {
     assert_eq!(send.state(), &0);
 
     let mut timer = AppRuntime::<RepeatingTimerApp>::mount(0);
-    timer
+    let _ = timer
         .pump(PumpBudget::new(2, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     timer
         .advance_time(Duration::from_millis(10))
         .unwrap_or_else(|_| unreachable!());
-    timer
+    let _ = timer
         .pump(PumpBudget::new(0, 0, 0, 1))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     timer.__seed_next_work_sequence_for_test(u64::MAX);
-    timer
+    let _ = timer
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(accepted_last_sequence(&timer), 1);
@@ -818,15 +818,15 @@ fn one_remaining_sequence_is_consumed_only_by_each_final_scheduler_action() {
         kind: RefusalKind::Unavailable,
         calls: Rc::clone(&refusal_calls),
     });
-    refusal
+    let _ = refusal
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     refusal.__seed_next_work_sequence_for_test(u64::MAX);
-    refusal
+    let _ = refusal
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(refusal_calls.get(), 1);
@@ -885,17 +885,17 @@ fn cancelled_send_completion_never_invokes_ui_mapper() {
         completed_updates: 0,
     });
     runtime.set_send_task_executor(HoldingExecutor(Rc::clone(&jobs)));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
         .submit_action(false)
         .unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -907,7 +907,7 @@ fn cancelled_send_completion_never_invokes_ui_mapper() {
     assert!(
         runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -930,9 +930,9 @@ fn trace_boundary_send_task() -> (AppRuntime<SendCancelApp>, Rc<Cell<usize>>, Se
         completed_updates: 0,
     });
     runtime.set_send_task_executor(HoldingExecutor(Rc::clone(&jobs)));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let job = jobs
@@ -949,9 +949,9 @@ fn send_task_completion_admits_its_exact_three_record_plan_beside_publication_au
     run_ready(job).unwrap_or_else(|_| unreachable!("live completion enters ingress"));
     assert!(runtime.__surface_publication_trace_reserved_for_test());
     runtime.__seed_next_trace_sequence_for_test(u64::MAX - 3);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(0, 1, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -973,9 +973,9 @@ fn send_task_completion_with_only_two_unreserved_records_never_runs_mapper() {
     run_ready(job).unwrap_or_else(|_| unreachable!("live completion enters ingress"));
     assert!(runtime.__surface_publication_trace_reserved_for_test());
     runtime.__seed_next_trace_sequence_for_test(u64::MAX - 2);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(0, 1, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -1002,9 +1002,9 @@ fn disabled_trace_changes_no_send_completion_behavior() {
         RuntimeConfig::default().with_trace_config(TraceConfig::new(0)),
     );
     runtime.set_send_task_executor(HoldingExecutor(Rc::clone(&jobs)));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let job = jobs
@@ -1012,9 +1012,9 @@ fn disabled_trace_changes_no_send_completion_behavior() {
         .pop()
         .unwrap_or_else(|| unreachable!("executor retained one exact job"));
     run_ready(job).unwrap_or_else(|_| unreachable!("live completion enters ingress"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(0, 1, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -1058,25 +1058,25 @@ fn timer_key() -> WorkKey {
 #[test]
 fn cancellation_before_timer_firing_suppresses_action_factory_result() {
     let mut runtime = AppRuntime::<CancelTimerApp>::mount(0);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
         .submit_action(false)
         .unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
         .advance_time(Duration::from_millis(5))
         .unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(*runtime.state(), 0);

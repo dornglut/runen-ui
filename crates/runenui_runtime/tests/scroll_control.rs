@@ -41,14 +41,14 @@ fn block_size(width: f32, height: f32, overflow: OverflowStyle) -> LayoutStyle {
 }
 
 fn settle<App: UiApp>(runtime: &mut AppRuntime<App>) {
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -534,7 +534,7 @@ fn submit_scroll(
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -671,7 +671,7 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -686,7 +686,7 @@ fn bound_control_uses_nearest_owner_projects_snapshots_and_revalidates_processin
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -811,7 +811,7 @@ fn zero_range_owner_stays_resolved_and_clamps_every_request_without_outer_retarg
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -924,7 +924,7 @@ fn bound_request_fails_closed_until_changed_layout_metrics_are_republished() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -1114,7 +1114,7 @@ fn accepted_bound_owner_becoming_non_scrollable_fails_closed_without_outer_fallb
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -1154,7 +1154,7 @@ fn newly_nearer_scroll_owner_requires_republication_before_binding_switches() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -1208,7 +1208,7 @@ fn replaced_bound_target_is_rejected_without_retargeting() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -1217,7 +1217,7 @@ fn replaced_bound_target_is_rejected_without_retargeting() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -1277,7 +1277,7 @@ fn scroll_control_waiting_queue_pressure_rejects_before_callback_or_offset_mutat
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -1334,9 +1334,9 @@ fn scroll_control_trace_admission_rejects_before_scroll_mutation() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("command ingress retains enough trace capacity"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 

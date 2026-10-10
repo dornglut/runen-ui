@@ -45,7 +45,7 @@ fn ten_thousand_completed_anonymous_tasks_leave_no_registry_records() {
     let mut runtime = AppRuntime::<App>::mount(0);
     let report = runtime
         .pump(PumpBudget::new(40_000, usize::MAX, TASK_COUNT, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(report.is_quiescent());
