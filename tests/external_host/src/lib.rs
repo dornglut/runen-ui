@@ -716,10 +716,12 @@ mod tests {
             .pump(PumpBudget::new(0, 0, 0, 0))
             .unwrap_or_else(|_| unreachable!("zero-budget checkpoint remains observable"));
         assert_eq!(pending.processed_through(), None);
-        assert!(!pending.ordered_records().iter().any(|record| matches!(
-            record,
-            InputArbitrationRecord::InputSettled(_)
-        )));
+        assert!(
+            !pending
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
         assert!(!reached.load(Ordering::Relaxed));
 
         let completed = runtime
@@ -748,10 +750,12 @@ mod tests {
         let replay = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("ordinary later host pump"));
-        assert!(!replay.ordered_records().iter().any(|record| matches!(
-            record,
-            InputArbitrationRecord::InputSettled(_)
-        )));
+        assert!(
+            !replay
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
     }
 
     #[test]
