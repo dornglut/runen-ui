@@ -21,7 +21,7 @@ pub enum SpinButtonRequest {
     SetValue(SemanticNumber),
 }
 
-pub(crate) fn semantic_request(
+pub fn semantic_request(
     range: &SemanticRange,
     command: SemanticCommand,
 ) -> Option<SpinButtonRequest> {
@@ -48,7 +48,7 @@ pub(crate) fn semantic_request(
     }
 }
 
-pub(crate) fn keyboard_request(
+pub fn keyboard_request(
     range: &SemanticRange,
     key: &KeyboardEvent,
 ) -> Option<SpinButtonRequest> {
@@ -107,7 +107,7 @@ pub struct SpinButtonRange(SemanticRange);
 
 impl SpinButtonRange {
     /// A temporarily invalid or incomplete text source uses `current=None`.
-    /// Optional bounds permit open-ended SpinButtons, unlike bounded Sliders.
+    /// Optional bounds permit open-ended `SpinButton` inputs, unlike bounded `Slider` controls.
     /// Both ordinary f64 bounds and explicit `Option<f64>` bounds are accepted.
     /// Step intents remain relative; application policy owns finite arithmetic
     /// and clamping against its latest state.
