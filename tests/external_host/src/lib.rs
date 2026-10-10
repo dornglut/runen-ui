@@ -622,14 +622,30 @@ mod tests {
         assert!(reached.load(Ordering::Relaxed));
     }
 
-    #[test]
-    fn public_input_settlement_precedes_later_focus_command_across_bounded_pumps() {
-        let reached = Arc::new(AtomicBool::new(false));
-        let mut runtime = AppRuntime::<ExternalHostTwoFocusApp>::mount(Arc::clone(&reached));
+    fn native_w_input() -> KeyboardEvent {
+        KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("KeyW")),
+            LogicalKey::Character(String::from("w")),
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        )
+    }
+
+    fn focused_public_pair(
+        reached: Arc<AtomicBool>,
+    ) -> (
+        AppRuntime<ExternalHostTwoFocusApp>,
+        runenui_core::MountedNodeId,
+        runenui_core::MountedNodeId,
+    ) {
+        let mut runtime = AppRuntime::<ExternalHostTwoFocusApp>::mount(reached);
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("mount completes canonical work"));
-
         let mut lookup = |name| {
             let authored = ElementId::new(name)
                 .unwrap_or_else(|_| unreachable!("static public focus identity"));
@@ -645,7 +661,6 @@ mod tests {
         let first = lookup("first-host-focus");
         let second = lookup("second-host-focus");
         assert_ne!(first, second);
-
         runtime
             .submit_command(
                 first.clone(),
@@ -656,25 +671,20 @@ mod tests {
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("initial focus command commits"));
+        (runtime, first, second)
+    }
+
+    #[test]
+    fn public_input_settlement_precedes_later_focus_command_across_bounded_pumps() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let (mut runtime, first, second) = focused_public_pair(Arc::clone(&reached));
         let before = runtime
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("initial public owner"));
         assert_eq!(before.keyboard().focused_node(), Some(&first));
 
-        let key = || {
-            KeyboardEvent::new(
-                KeyboardPhase::Down,
-                PhysicalKey::Code(String::from("KeyW")),
-                LogicalKey::Character(String::from("w")),
-                KeyModifiers::NONE,
-                false,
-                KeyLocation::Standard,
-                KeyboardCompositionState::Inactive,
-                None,
-            )
-        };
         let native = runtime
-            .submit_keyboard(key())
+            .submit_keyboard(native_w_input())
             .unwrap_or_else(|_| unreachable!("focused native occurrence admitted"))
             .sequence();
         let command = runtime
@@ -742,7 +752,7 @@ mod tests {
         );
 
         let later = runtime
-            .submit_keyboard(key())
+            .submit_keyboard(native_w_input())
             .unwrap_or_else(|_| unreachable!("new focus binds a later native occurrence"))
             .sequence();
         let after = runtime
