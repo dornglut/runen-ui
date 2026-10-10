@@ -122,14 +122,14 @@ impl UiApp for App {
 #[test]
 fn raw_keyboard_focus_commands_never_activate_or_emit_actions() {
     let mut runtime = AppRuntime::<App>::mount(0);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let a = runtime.index().nodes()[1].id().clone();
@@ -140,9 +140,9 @@ fn raw_keyboard_focus_commands_never_activate_or_emit_actions() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("live focus target is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
@@ -157,9 +157,9 @@ fn raw_keyboard_focus_commands_never_activate_or_emit_actions() {
             None,
         ))
         .unwrap_or_else(|_| unreachable!("focused keyboard event is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_ne!(runtime.focus().focused_node(), Some(&a));
@@ -180,14 +180,14 @@ fn non_finite_pointer_positions_are_rejected() {
 #[test]
 fn command_modalities_are_retained_only_after_accepted_processing() {
     let mut runtime = AppRuntime::<App>::mount(0);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let target = runtime.index().nodes()[1].id().clone();
@@ -201,9 +201,9 @@ fn command_modalities_are_retained_only_after_accepted_processing() {
         runtime
             .submit_command(target.clone(), SemanticCommand::RequestFocus, origin)
             .unwrap_or_else(|_| unreachable!("normalized command is accepted"));
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.focus().modality(), Some(expected));
@@ -222,14 +222,14 @@ fn command_modalities_are_retained_only_after_accepted_processing() {
 #[test]
 fn shutdown_clears_focus_memory_with_shutdown_reason_and_retains_modality() {
     let mut runtime = AppRuntime::<App>::mount(0);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let target = runtime.index().nodes()[1].id().clone();
@@ -240,14 +240,14 @@ fn shutdown_clears_focus_memory_with_shutdown_reason_and_retains_modality() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("live focus target is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
-    runtime
+    let _ = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.focus().focused_node(), None);
@@ -306,14 +306,14 @@ fn disabled_trace_preserves_focus_behavior() {
             CommandOrigin::automation(),
         )
         .unwrap_or_else(|_| unreachable!("disabled tracing does not reject focus"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&target));
@@ -334,14 +334,14 @@ fn processing_admission_exhaustion_commits_no_partial_focus_or_modality() {
             CommandOrigin::controller(),
         )
         .unwrap_or_else(|_| unreachable!("ingress accepts before routed admission"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.focus().focused_node(), None);
@@ -351,14 +351,14 @@ fn processing_admission_exhaustion_commits_no_partial_focus_or_modality() {
 #[test]
 fn focus_trace_admission_exhaustion_commits_no_partial_focus_or_modality() {
     let mut runtime = AppRuntime::<App>::mount(0);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let target = runtime.index().nodes()[1].id().clone();
@@ -375,14 +375,14 @@ fn focus_trace_admission_exhaustion_commits_no_partial_focus_or_modality() {
             unreachable!("submission retains publication and routed outcome reservations")
         });
     assert_eq!(runtime.__routed_trace_reservations_for_test(), 1);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.focus().focused_node(), None);
@@ -397,14 +397,14 @@ fn focus_trace_admission_exhaustion_commits_no_partial_focus_or_modality() {
 fn composition_focus_transfer_routes_cancel_before_focus_out_and_retires_generation() {
     let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<CompositionApp>::mount(std::rc::Rc::clone(&log));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let a = composition_target(&mut runtime, "a");
@@ -415,25 +415,25 @@ fn composition_focus_transfer_routes_cancel_before_focus_out_and_retires_generat
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("focus request is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let start = runtime
         .start_composition(None)
         .unwrap_or_else(|_| unreachable!("composition start is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
         .submit_command(a, SemanticCommand::FocusNext, CommandOrigin::programmatic())
         .unwrap_or_else(|_| unreachable!("focus navigation is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -477,14 +477,14 @@ fn composition_focus_transfer_routes_cancel_before_focus_out_and_retires_generat
 fn composition_shutdown_routes_cancel_while_the_tree_is_still_live() {
     let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<CompositionApp>::mount(std::rc::Rc::clone(&log));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let a = composition_target(&mut runtime, "a");
@@ -495,23 +495,23 @@ fn composition_shutdown_routes_cancel_while_the_tree_is_still_live() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("focus request is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
         .start_composition(None)
         .unwrap_or_else(|_| unreachable!("composition start is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
-    runtime
+    let _ = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
 

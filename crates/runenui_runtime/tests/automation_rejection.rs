@@ -40,7 +40,7 @@ fn settle(runtime: &mut AppRuntime<App>) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(report.is_quiescent(), "fixture did not settle: {report:?}");
@@ -78,7 +78,7 @@ fn trace_exhaustion_rejects_automation_without_terminalizing_or_consuming_author
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -130,7 +130,7 @@ fn work_sequence_exhaustion_rejects_after_resolution_without_terminalizing() {
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()

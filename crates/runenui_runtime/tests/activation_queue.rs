@@ -51,14 +51,14 @@ fn state(calls: &Rc<Cell<usize>>) -> State {
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -77,9 +77,9 @@ fn exact_target_activate_routes_then_appends_its_action() {
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(calls.get(), 1);
@@ -89,9 +89,9 @@ fn exact_target_activate_routes_then_appends_its_action() {
             && record.work_sequence() == Some(submission.sequence())
     }));
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state().updates, 1);
@@ -122,9 +122,9 @@ fn full_and_closed_submission_recover_without_invoking_the_factory() {
     let closed_calls = Rc::new(Cell::new(0));
     let mut closed = AppRuntime::<App>::mount(state(&closed_calls));
     let target = closed.index().nodes()[0].id().clone();
-    closed
+    let _ = closed
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     let Err(error) = closed.submit_command(
@@ -161,14 +161,14 @@ fn disabled_and_non_actionable_targets_route_without_activation_factory_output()
         fn update((): &mut Self::State, (): Self::Action) {}
     }
     let mut runtime = AppRuntime::<NoopApp>::mount(());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let targets: Vec<_> = runtime
@@ -187,15 +187,15 @@ fn disabled_and_non_actionable_targets_route_without_activation_factory_output()
             )
             .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
     }
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, 0, 0, 0))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -242,14 +242,14 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
         updates: 0,
         calls: Rc::clone(&calls),
     });
-    enabled
+    let _ = enabled
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let owner = enabled.index().nodes()[0].id().clone();
@@ -260,9 +260,9 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
             CommandOrigin::accessibility(),
         )
         .unwrap_or_else(|_| unreachable!("live link accepts semantic activation"));
-    enabled
+    let _ = enabled
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(calls.get(), 1);
@@ -271,9 +271,9 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
         matches!(record.kind(), TraceRecordKind::RoutedEventCommitted)
             && record.work_sequence() == Some(accepted.sequence())
     }));
-    enabled
+    let _ = enabled
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(enabled.state().updates, 1);
@@ -284,14 +284,14 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
         updates: 0,
         calls: Rc::clone(&disabled_calls),
     });
-    disabled
+    let _ = disabled
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let owner = disabled.index().nodes()[0].id().clone();
@@ -302,14 +302,14 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
             CommandOrigin::accessibility(),
         )
         .unwrap_or_else(|_| unreachable!("routed disabled link remains an ordinary command"));
-    disabled
+    let _ = disabled
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(disabled_calls.get(), 0);
