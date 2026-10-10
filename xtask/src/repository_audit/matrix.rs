@@ -39,6 +39,7 @@ const M11_DELIVERY_SLICES: &[&str] = &[
     "M11PLACEHOLDER",
     "M11DISCLOSURE",
     "M11SLIDER",
+    "M11SPIN",
     "M11SPLITTER",
     "M11PROGRESS",
     "M11TOOLBAR",
@@ -1010,6 +1011,11 @@ mod tests {
         ("M11PROGRESS", &["M11CTRL-71"], "owner-accepted"),
         ("M11TOOLBAR", &["M11CTRL-78"], "owner-accepted"),
         (
+            "M11SPIN",
+            &["M11CTRL-79", "M11CTRL-80", "M11CTRL-81"],
+            "blocked",
+        ),
+        (
             "M11SLIDER",
             &["M11CTRL-72", "M11CTRL-73", "M11CTRL-74"],
             "owner-accepted",
@@ -1032,7 +1038,7 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 78);
+        assert_eq!(rows.len(), 81);
 
         for (slice, ids, status) in M11_EXPECTED_SLICES {
             assert_m11_slice(&rows, slice, ids, status);
@@ -1054,6 +1060,7 @@ mod tests {
                 "M11PLACEHOLDER",
                 "M11DISCLOSURE",
                 "M11SLIDER",
+                "M11SPIN",
                 "M11SPLITTER",
                 "M11PROGRESS",
                 "M11TOOLBAR",

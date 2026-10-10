@@ -257,6 +257,7 @@ mod semantic;
 mod semantic_action;
 mod shortcut;
 mod slider;
+mod spin_button;
 mod splitter;
 mod standard_content;
 mod style;
@@ -349,6 +350,7 @@ pub use surface_presentation::{
     SurfacePresentationAnchor, SurfacePresentationPlacement, SurfacePresentationSide,
 };
 pub use text_field::{TextField, TextFieldError, text_field};
+pub use spin_button::{SpinButton, SpinButtonError, SpinButtonRange, SpinButtonRequest, spin_button};
 pub use toolbar_controls::{Toolbar, toolbar};
 pub use widget_protocol::{
     ChildBearingWidget, TextAlignment, TextBlockPlacement, TextLeafMeasure, TextLeafWrap, Widget,
