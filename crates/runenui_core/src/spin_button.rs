@@ -25,9 +25,12 @@ pub(crate) fn semantic_request(
     range: &SemanticRange,
     command: SemanticCommand,
 ) -> Option<SpinButtonRequest> {
+    let step_ready = range.current().is_some() && range.minimum() != range.maximum();
     match command {
-        SemanticCommand::Increment => range.small_step().map(SpinButtonRequest::AdjustBy),
-        SemanticCommand::Decrement => range
+        SemanticCommand::Increment if step_ready => {
+            range.small_step().map(SpinButtonRequest::AdjustBy)
+        }
+        SemanticCommand::Decrement if step_ready => range
             .small_step()
             .and_then(|step| SemanticNumber::new(-step.get()).ok())
             .map(SpinButtonRequest::AdjustBy),

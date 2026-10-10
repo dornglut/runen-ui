@@ -398,8 +398,6 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             && !self.state.read_only
             && let Some(spin) = self.state.spin.as_ref()
             && spin.actionable
-            && spin.range.current().is_some()
-            && spin.range.minimum() != spin.range.maximum()
             && let Some(callback) = self.on_adjust.as_mut()
         {
             let request = event.as_semantic_command().map_or_else(
@@ -516,16 +514,15 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             node = node
                 .with_name(spin.label.clone())
                 .with_range(spin.range.clone());
-            if spin.actionable
-                && !self.state.disabled
-                && !self.state.read_only
-                && spin.range.current().is_some()
-                && spin.range.minimum() != spin.range.maximum()
-            {
-                node = node
-                    .with_action(SemanticAction::Increment)
-                    .with_action(SemanticAction::Decrement)
-                    .with_action(SemanticAction::SetValue);
+            if spin.actionable && !self.state.disabled && !self.state.read_only {
+                if spin.range.current().is_some()
+                    && spin.range.minimum() != spin.range.maximum()
+                {
+                    node = node
+                        .with_action(SemanticAction::Increment)
+                        .with_action(SemanticAction::Decrement);
+                }
+                node = node.with_action(SemanticAction::SetValue);
             }
         }
         for (target, kind) in [

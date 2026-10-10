@@ -48,11 +48,13 @@ impl State {
     }
 
     fn apply_request(&mut self, request: SpinButtonRequest) {
-        if let Some(current) = self.value() {
-            let next = match request {
-                SpinButtonRequest::AdjustBy(delta) => (current + delta.get()).clamp(-10.0, 100.0),
-                SpinButtonRequest::SetValue(value) => value.get().clamp(-10.0, 100.0),
-            };
+        let next = match request {
+            SpinButtonRequest::AdjustBy(delta) => {
+                self.value().map(|current| (current + delta.get()).clamp(-10.0, 100.0))
+            }
+            SpinButtonRequest::SetValue(value) => Some(value.get().clamp(-10.0, 100.0)),
+        };
+        if let Some(next) = next {
             self.text = next.to_string();
             self.revision += 1;
         }
@@ -280,6 +282,32 @@ fn numeric_bounds_and_absolute_action_reject_out_of_range_without_stale_value_fi
         SpinButtonRequest::AdjustBy(number(0.5)),
         SpinButtonRequest::AdjustBy(number(-0.5)),
     ]);
+}
+
+#[test]
+fn absolute_set_value_recovers_invalid_text_without_fabricating_prior_current() {
+    let mut runtime = runtime("-");
+    let before = publish(&mut runtime);
+    let (surface, target) = semantic_target(&before);
+    let node = before.semantic_publication().snapshot().node(&target)
+        .unwrap_or_else(|| unreachable!("typed SpinButton target resolves"));
+    assert_eq!(node.range().and_then(runenui_core::SemanticRange::current), None);
+    assert!(node.supported_actions().contains(&SemanticAction::SetValue));
+    assert!(!node.supported_actions().contains(&SemanticAction::Increment));
+    runtime.submit_semantic_action(SemanticActionRequest::set_value(
+        surface, target, number(7.5),
+    )).unwrap_or_else(|_| unreachable!("absolute SetValue is valid without prior current"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().text, "7.5");
+    assert_eq!(runtime.state().requests, [SpinButtonRequest::SetValue(number(7.5))]);
+    let after = publish(&mut runtime);
+    let (_, target) = semantic_target(&after);
+    assert_eq!(
+        after.semantic_publication().snapshot().node(&target)
+            .and_then(|node| node.range())
+            .and_then(runenui_core::SemanticRange::current),
+        Some(number(7.5)),
+    );
 }
 
 #[test]
