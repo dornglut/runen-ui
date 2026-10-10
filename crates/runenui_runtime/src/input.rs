@@ -1157,9 +1157,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         crate::UiInputFinality::Aborted(crate::UiInputAbortReason::Terminal(reason))
                     }
                     RuntimeStatus::Running | RuntimeStatus::Closed => {
-                        crate::UiInputFinality::ProcessingRejected(
-                            crate::UiInputProcessingRejection::InsufficientTransactionCapacity,
-                        )
+                        let reason = match self.tree.target_status(&target) {
+                            TargetStatus::Foreign => {
+                                crate::UiInputProcessingRejection::ForeignTarget
+                            }
+                            TargetStatus::Stale => crate::UiInputProcessingRejection::StaleTarget,
+                            TargetStatus::Missing => crate::UiInputProcessingRejection::MissingTarget,
+                            TargetStatus::Live => {
+                                crate::UiInputProcessingRejection::InsufficientTransactionCapacity
+                            }
+                        };
+                        crate::UiInputFinality::ProcessingRejected(reason)
                     }
                 };
             }
