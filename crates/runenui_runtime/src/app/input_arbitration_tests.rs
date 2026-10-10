@@ -845,7 +845,7 @@ fn rev20_pump_exhaustion_retires_scope_without_inventing_input_settlement() {
         closed.final_ownership().status(),
         crate::RuntimeStatus::Closed
     );
-    assert!(closed.ordered_records().is_empty());
+    assert_eq!(closed.ordered_records(), []);
 }
 
 #[test]
@@ -994,12 +994,12 @@ fn already_terminal_max_revision_can_shutdown_and_retire_without_wrap() {
         .shutdown()
         .unwrap_or_else(|_| unreachable!("repeated observed close is idempotent"));
     assert!(repeated.report().already_complete());
-    assert!(repeated.ordered_records().is_empty());
+    assert_eq!(repeated.ordered_records(), []);
     assert_eq!(repeated.final_ownership().revision().get(), u64::MAX);
     let batch = app
         .pump(PumpBudget::new(0, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("closed max revision remains readable"));
-    assert!(batch.ordered_records().is_empty());
+    assert_eq!(batch.ordered_records(), []);
 }
 
 #[test]
@@ -1454,7 +1454,7 @@ fn initial_observation_capacity_error_rearms_wake_without_fifo_work() {
     let retried = app
         .pump(PumpBudget::new(0, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("one-time capacity fault is recoverable"));
-    assert!(retried.ordered_records().is_empty());
+    assert_eq!(retried.ordered_records(), []);
     assert_eq!(retried.pause_reason(), None);
     assert_eq!(retried.final_ownership().status(), crate::RuntimeStatus::Running);
 }
