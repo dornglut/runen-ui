@@ -591,6 +591,45 @@ fn exhausted_direct_publication_preflights_before_commit_and_exposes_last_termin
 }
 
 #[test]
+fn observed_shutdown_rejects_before_mutation_if_final_revision_is_exhausted() {
+    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
+    let _ = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("initial snapshot"));
+    app.runtime.seed_input_revision_for_test(u64::MAX - 1);
+    let _ = app
+        .runtime
+        .enter_terminal(crate::RuntimeTerminalReason::Poisoned, 0);
+    let terminal = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("last terminal revision is available"));
+    assert_eq!(terminal.revision().get(), u64::MAX);
+    assert_eq!(
+        terminal.status(),
+        crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned)
+    );
+    assert!(matches!(
+        app.runtime.shutdown_observed(),
+        Err(crate::InputObservationError::RevisionExhausted)
+    ));
+    // The rejected close has not hidden a successfully terminalized scope.
+    assert_eq!(
+        app.runtime.status(),
+        crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned)
+    );
+    let batch = pump::pump_recorded::<SpaceApp>(
+        &mut app.runtime,
+        PumpBudget::new(0, 0, 0, 0),
+    )
+    .unwrap_or_else(|_| unreachable!("one scope retirement remains observable"));
+    assert!(batch.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::ScopeRetired(_)
+    )));
+}
+
+#[test]
 fn revision_exhaustion_retains_committed_receipt_and_terminalizes_with_exact_final_snapshot() {
     let mut app = AppRuntime::<SpaceApp>::mount(0);
     let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
