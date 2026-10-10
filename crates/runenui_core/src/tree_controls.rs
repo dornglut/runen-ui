@@ -138,43 +138,66 @@ impl<Action> Widget<Action> for TreeLabelWidget {
     fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::Text(crate::TextLeafMeasure::new(self.label.clone()))
     }
-    fn semantics(&self, _: &Self::State, _: SemanticContributionContext)
-        -> SemanticContribution {
+    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         SemanticContribution::empty()
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct TreeItemFacts {
-    label: String, selected: bool, expanded: bool, enabled: bool, discoverable: bool,
-    has_children: bool, has_visible_child: bool,
-    level: SemanticHierarchyLevel, position: SemanticCollectionPosition, actionable: bool,
+    label: String,
+    selected: bool,
+    expanded: bool,
+    enabled: bool,
+    discoverable: bool,
+    has_children: bool,
+    has_visible_child: bool,
+    level: SemanticHierarchyLevel,
+    position: SemanticCollectionPosition,
+    actionable: bool,
 }
 struct TreeItemWidget<Action> {
-    domain_id: String, label: String, selected: bool, expanded: bool,
-    enabled: bool, discoverable: bool, has_children: bool, has_visible_child: bool,
-    level: SemanticHierarchyLevel, position: SemanticCollectionPosition,
+    domain_id: String,
+    label: String,
+    selected: bool,
+    expanded: bool,
+    enabled: bool,
+    discoverable: bool,
+    has_children: bool,
+    has_visible_child: bool,
+    level: SemanticHierarchyLevel,
+    position: SemanticCollectionPosition,
     on_request: Option<Box<dyn FnMut(TreeItemRequest) -> Action>>,
 }
 impl<Action> TreeItemWidget<Action> {
     fn facts(&self) -> TreeItemFacts {
         TreeItemFacts {
-            label: self.label.clone(), selected: self.selected, expanded: self.expanded,
-            enabled: self.enabled, discoverable: self.discoverable,
-            has_children: self.has_children, has_visible_child: self.has_visible_child,
-            level: self.level, position: self.position, actionable: self.on_request.is_some(),
+            label: self.label.clone(),
+            selected: self.selected,
+            expanded: self.expanded,
+            enabled: self.enabled,
+            discoverable: self.discoverable,
+            has_children: self.has_children,
+            has_visible_child: self.has_visible_child,
+            level: self.level,
+            position: self.position,
+            actionable: self.on_request.is_some(),
         }
     }
 }
 impl<Action> fmt::Debug for TreeItemWidget<Action> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TreeItemWidget").field("domain_id", &self.domain_id)
-            .field("facts", &self.facts()).finish_non_exhaustive()
+        f.debug_struct("TreeItemWidget")
+            .field("domain_id", &self.domain_id)
+            .field("facts", &self.facts())
+            .finish_non_exhaustive()
     }
 }
 impl<Action> Widget<Action> for TreeItemWidget<Action> {
     type State = TreeItemFacts;
-    fn create_state(&self) -> Self::State { self.facts() }
+    fn create_state(&self) -> Self::State {
+        self.facts()
+    }
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         let next = self.facts();
         if state.label != next.label {
@@ -186,22 +209,45 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
         *state = next;
     }
     fn activation(&self, _: &Self::State) -> WidgetActivation {
-        if self.on_request.is_some() { WidgetActivation::actionable(self.enabled) }
-        else if self.enabled { WidgetActivation::NONE }
-        else { WidgetActivation::disabled() }
+        if self.on_request.is_some() {
+            WidgetActivation::actionable(self.enabled)
+        } else if self.enabled {
+            WidgetActivation::NONE
+        } else {
+            WidgetActivation::disabled()
+        }
     }
-    fn activate(&mut self, _: &mut Self::State, _: &mut WidgetActivationContext<Action>)
-        -> WidgetActivationOutput<Action> {
-        if !self.enabled { return WidgetActivationOutput::none(); }
-        self.on_request.as_mut().map_or_else(WidgetActivationOutput::none, |callback| {
-            WidgetActivationOutput::action(callback(TreeItemRequest::Select(self.domain_id.clone())))
-        })
+    fn activate(
+        &mut self,
+        _: &mut Self::State,
+        _: &mut WidgetActivationContext<Action>,
+    ) -> WidgetActivationOutput<Action> {
+        if !self.enabled {
+            return WidgetActivationOutput::none();
+        }
+        self.on_request
+            .as_mut()
+            .map_or_else(WidgetActivationOutput::none, |callback| {
+                WidgetActivationOutput::action(callback(TreeItemRequest::Select(
+                    self.domain_id.clone(),
+                )))
+            })
     }
-    fn event(&mut self, _: &mut Self::State, event: &UiEvent,
-        context: &mut EventContext<'_, Action>) -> WidgetEventOutput {
-        if context.default_is_prevented() { return WidgetEventOutput::none(); }
-        let Some(command) = event.as_semantic_command().map(SemanticCommandEvent::command)
-        else { return WidgetEventOutput::none(); };
+    fn event(
+        &mut self,
+        _: &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        if context.default_is_prevented() {
+            return WidgetEventOutput::none();
+        }
+        let Some(command) = event
+            .as_semantic_command()
+            .map(SemanticCommandEvent::command)
+        else {
+            return WidgetEventOutput::none();
+        };
         if context.phase() == EventPhase::Bubble
             && command == SemanticCommand::FocusLeft
             && context.original_target() != context.current_target()
