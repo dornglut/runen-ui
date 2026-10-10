@@ -510,6 +510,83 @@ mod tests {
     }
 
     #[test]
+    fn public_rejected_keyboard_ingress_never_fabricates_settlement_or_game_permission() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = AppRuntime::<ExternalHostNonclaimApp>::mount(Arc::clone(&reached));
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("public mount settles before native input"));
+        assert!(runtime.focus().focused_node().is_none());
+        let key = || {
+            KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyW")),
+                LogicalKey::Character(String::from("w")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            )
+        };
+        let refused = runtime.submit_keyboard(key());
+        assert!(matches!(
+            refused,
+            Err(error) if error.kind() == runenui_runtime::SubmitKeyboardErrorKind::NoFocusedTarget
+        ));
+        let unadmitted = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("rejected ingress did not mutate FIFO"));
+        assert_eq!(unadmitted.processed_through(), None);
+        assert!(unadmitted.ordered_records().is_empty());
+        assert_eq!(
+            unadmitted.final_ownership().status(),
+            runenui_runtime::RuntimeStatus::Running
+        );
+
+        let id = ElementId::new("external-claim-probe")
+            .unwrap_or_else(|_| unreachable!("public fixture id"));
+        let target = runtime
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&id))
+            .unwrap_or_else(|| unreachable!("public mounted target"))
+            .id()
+            .clone();
+        runtime
+            .submit_command(
+                target,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("focus change admitted after rejection"));
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("focus command committed"));
+
+        let accepted = runtime
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("later native input can be admitted"));
+        let completed = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("later native input has exact settlement"));
+        assert_eq!(completed.processed_through(), Some(accepted.sequence()));
+        let settled = completed
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settled.len(), 1);
+        assert_eq!(settled[0].sequence(), accepted.sequence());
+        assert_eq!(settled[0].scope(), completed.final_ownership().scope());
+        assert!(reached.load(Ordering::Relaxed));
+    }
+
+    #[test]
     fn public_nonclaiming_routing_controls_never_certify_exclusive_ui() {
         let reached = Arc::new(AtomicBool::new(false));
         let mut runtime =
