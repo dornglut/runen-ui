@@ -289,7 +289,10 @@ fn downstream_text_and_composition_receipts_have_exact_exclusive_ui_finality() {
         };
         assert_eq!(routing.conflict(), UiInputConflict::ExclusiveUi);
         assert!(routing.reasons().contains(&reason));
-        assert_eq!(entry.ownership_revision(), batch.final_ownership().revision());
+        assert_eq!(
+            entry.ownership_revision(),
+            batch.final_ownership().revision()
+        );
     }
 }
 
