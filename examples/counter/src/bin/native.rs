@@ -446,7 +446,7 @@ impl CounterHost {
         let batch = self
             .runtime
             .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|error| panic!("native Counter lost input arbitration: {error:?}"));
+            .unwrap_or_else(|error| unreachable!("native Counter lost input arbitration: {error:?}"));
         if !batch.ordered_records().is_empty() {
             eprintln!(
                 "counter native input batch: {} ordered records, revision {}",
@@ -460,7 +460,7 @@ impl CounterHost {
         let batch = self
             .runtime
             .shutdown()
-            .unwrap_or_else(|error| panic!("native Counter lost input retirement: {error:?}"));
+            .unwrap_or_else(|error| unreachable!("native Counter lost input retirement: {error:?}"));
         if !batch.ordered_records().is_empty() {
             eprintln!(
                 "counter native close: {} ordered records, revision {}",

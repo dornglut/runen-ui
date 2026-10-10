@@ -964,7 +964,7 @@ impl ReferenceHost {
         let batch = self
             .runtime
             .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|error| panic!("reference host lost input arbitration: {error:?}"));
+            .unwrap_or_else(|error| unreachable!("reference host lost input arbitration: {error:?}"));
         if !batch.ordered_records().is_empty() {
             proof!(
                 "stage=host_input_batch ordered_records={} final_revision={}",
@@ -978,7 +978,7 @@ impl ReferenceHost {
         let batch = self
             .runtime
             .shutdown()
-            .unwrap_or_else(|error| panic!("reference host lost input retirement: {error:?}"));
+            .unwrap_or_else(|error| unreachable!("reference host lost input retirement: {error:?}"));
         proof!(
             "stage=host_input_shutdown ordered_records={} final_revision={}",
             batch.ordered_records().len(),
