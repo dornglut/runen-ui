@@ -838,14 +838,16 @@ mod tests {
         let descendant = runtime
             .pump(PumpBudget::new(1, 0, 0, 0))
             .unwrap_or_else(|_| unreachable!("callback-emitted command processed later"));
-        assert!(descendant.processed_through().is_some_and(|next| next > sequence));
+        assert!(
+            descendant
+                .processed_through()
+                .is_some_and(|next| next > sequence)
+        );
         assert_eq!(
             descendant.final_ownership().keyboard().focused_node(),
             Some(&second)
         );
-        assert!(
-            descendant.final_ownership().revision() > input.final_ownership().revision()
-        );
+        assert!(descendant.final_ownership().revision() > input.final_ownership().revision());
         assert!(descendant.ordered_records().iter().any(|record| matches!(
             record,
             InputArbitrationRecord::OwnershipChanged(transition)
