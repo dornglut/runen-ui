@@ -278,13 +278,19 @@ struct TreeViewWidget;
 impl<Action> Widget<Action> for TreeViewWidget {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn event(&mut self, (): &mut Self::State, event: &UiEvent,
-        context: &mut EventContext<'_, Action>) -> WidgetEventOutput {
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
         if context.phase() != EventPhase::Bubble || context.default_is_prevented() {
             return WidgetEventOutput::none();
         }
-        let delegated = if let Some(command) = event.as_semantic_command()
-            .map(SemanticCommandEvent::command) {
+        let delegated = if let Some(command) = event
+            .as_semantic_command()
+            .map(SemanticCommandEvent::command)
+        {
             match command {
                 SemanticCommand::FocusUp => Some(SemanticCommand::FocusGroupPrevious),
                 SemanticCommand::FocusDown => Some(SemanticCommand::FocusGroupNext),
@@ -293,29 +299,43 @@ impl<Action> Widget<Action> for TreeViewWidget {
         } else if let Some(key) = event.as_keyboard() {
             if key.phase() == KeyboardPhase::Down
                 && key.modifiers() == crate::KeyModifiers::NONE
-                && key.composition_state() == KeyboardCompositionState::Inactive {
+                && key.composition_state() == KeyboardCompositionState::Inactive
+            {
                 match key.logical_key() {
                     LogicalKey::Home => Some(SemanticCommand::FocusGroupFirst),
                     LogicalKey::End => Some(SemanticCommand::FocusGroupLast),
                     _ => None,
                 }
-            } else { None }
-        } else { None };
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         if let Some(command) = delegated {
-            context.prevent_default(); context.stop_propagation(); context.emit_command(command);
-        } else if event.as_semantic_command().is_some_and(|event|
-            event.command() == SemanticCommand::FocusLeft) {
+            context.prevent_default();
+            context.stop_propagation();
+            context.emit_command(command);
+        } else if event
+            .as_semantic_command()
+            .is_some_and(|event| event.command() == SemanticCommand::FocusLeft)
+        {
             // Root has no higher tree parent; do not escape by directional fallback.
             context.prevent_default();
             context.stop_propagation();
         }
         WidgetEventOutput::none()
     }
-    fn semantics(&self, (): &Self::State, context: SemanticContributionContext)
-        -> SemanticContribution {
+    fn semantics(
+        &self,
+        (): &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
         let mut node = SemanticNodeContribution::primary(SemanticRole::Tree)
             .with_selection_mode(SemanticSelectionMode::Single);
-        if context.has_mounted_children() { node = node.with_mounted_children(); }
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
         SemanticContribution::single(node)
     }
 }
@@ -325,29 +345,47 @@ impl<Action: 'static> View<Action> for TreeView<Action> {
         let prefer_selected = self.children.iter().any(TreeItem::visible_selected);
         let size = u64::try_from(self.children.len()).unwrap_or_else(|_| unreachable!());
         let mut used = false;
-        let children = self.children.into_iter().enumerate().map(|(index, item)| {
-            let index = u64::try_from(index).unwrap_or_else(|_| unreachable!());
-            let position = SemanticCollectionPosition::new(index, Some(size))
-                .unwrap_or_else(|_| unreachable!());
-            item.build(1, position, prefer_selected, &mut used)
-        }).collect();
-        let (fields, diagnostics) = self.common.into_authored_fields(Focusability::Automatic, None);
-        Element::from_authored_parts(fields, Box::new(WidgetAdapter(TreeViewWidget)),
-            children, diagnostics).focus_group(FocusGroup::new()
-            .with_boundary(FocusGroupBoundaryPolicy::Stop)
-            .with_activation(if self.selection_follows_focus {
-                FocusGroupActivationPolicy::ActivateTarget
-            } else { FocusGroupActivationPolicy::Manual })
-            .with_type_ahead(self.type_ahead))
+        let children = self
+            .children
+            .into_iter()
+            .enumerate()
+            .map(|(index, item)| {
+                let index = u64::try_from(index).unwrap_or_else(|_| unreachable!());
+                let position = SemanticCollectionPosition::new(index, Some(size))
+                    .unwrap_or_else(|_| unreachable!());
+                item.build(1, position, prefer_selected, &mut used)
+            })
+            .collect();
+        let (fields, diagnostics) = self
+            .common
+            .into_authored_fields(Focusability::Automatic, None);
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(TreeViewWidget)),
+            children,
+            diagnostics,
+        )
+        .focus_group(
+            FocusGroup::new()
+                .with_boundary(FocusGroupBoundaryPolicy::Stop)
+                .with_activation(if self.selection_follows_focus {
+                    FocusGroupActivationPolicy::ActivateTarget
+                } else {
+                    FocusGroupActivationPolicy::Manual
+                })
+                .with_type_ahead(self.type_ahead),
+        )
     }
 }
 #[must_use]
-pub fn tree_item<Action>(domain_id: impl Into<String>, label: impl Into<String>,
-    children: impl IntoIterator<Item = TreeItem<Action>>) -> TreeItem<Action> {
+pub fn tree_item<Action>(
+    domain_id: impl Into<String>,
+    label: impl Into<String>,
+    children: impl IntoIterator<Item = TreeItem<Action>>,
+) -> TreeItem<Action> {
     TreeItem::new(domain_id, label, children)
 }
 #[must_use]
-pub fn tree_view<Action>(children: impl IntoIterator<Item = TreeItem<Action>>)
-    -> TreeView<Action> {
+pub fn tree_view<Action>(children: impl IntoIterator<Item = TreeItem<Action>>) -> TreeView<Action> {
     TreeView::new(children)
 }
