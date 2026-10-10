@@ -5,9 +5,9 @@ pub use crate::{
     HostProtocol, Image, IntoEffects, Link, LogicalLength, Menu, MenuBar, MenuButton, MenuItem,
     MenuItemCheckbox, MenuItemRadio, NoHostProtocol, Popover, PresentationDismissReason,
     PresentationFocusEntry, PresentationFocusPolicy, PresentationOutsidePointerPolicy, ScrollBar,
-    ScrollContainer, SemanticEditableMode, Separator, Slider, SliderError, SubscriptionSet,
+    ScrollContainer, SemanticEditableMode, Separator, Slider, SliderError, Splitter, SplitterError, SplitterRequest, SubscriptionSet,
     SurfacePresentation, SurfacePresentationAlignment, SurfacePresentationAnchor,
     SurfacePresentationPlacement, SurfacePresentationSide, Text, TextField, Toolbar, Tooltip,
     TooltipTrigger, UiApp, View, Widget, WorkKey, button, column, container, image, link, row,
-    scroll_bar, scroll_container, separator, slider, text, text_field, toolbar,
+    scroll_bar, scroll_container, separator, slider, splitter, text, text_field, toolbar,
 };
