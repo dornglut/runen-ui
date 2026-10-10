@@ -385,7 +385,14 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
         }
         if let Some(pointer) = event.as_pointer()
             && state.drag == Some(pointer.pointer_id())
-            && (matches!(pointer.phase(), PointerPhase::Up | PointerPhase::Cancel)
+            && (pointer.phase() == PointerPhase::Cancel
+                || (pointer.phase() == PointerPhase::Up
+                    // Mouse buttons share one pointer stream. Releasing a
+                    // secondary button while Primary stays pressed is not the
+                    // drag's terminal event and must not relinquish capture.
+                    && !(pointer.device_kind() == PointerDeviceKind::Mouse
+                        && pointer.changed_button() != Some(PointerButton::Primary)
+                        && pointer.buttons().contains(PointerButton::Primary)))
                 || !state.enabled
                 || !state.actionable)
         {
