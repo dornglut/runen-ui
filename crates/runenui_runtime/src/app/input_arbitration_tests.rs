@@ -640,8 +640,9 @@ fn accepted_composition_start_publishes_pending_ownership_without_pumping() {
         .input_ownership()
         .unwrap_or_else(|_| unreachable!("focused owner observable"));
     assert_eq!(before.keyboard().composition_generation(), None);
+    assert_eq!(before.keyboard().composition_device_id(), None);
     let receipt = app
-        .start_composition(None)
+        .start_composition(Some(device(42)))
         .unwrap_or_else(|_| unreachable!("composition start admitted"));
     // Admission installs a pending generation synchronously, even though
     // the accepted native receipt has not reached the canonical FIFO head.
@@ -652,6 +653,7 @@ fn accepted_composition_start_publishes_pending_ownership_without_pumping() {
         pending.keyboard().composition_generation(),
         Some(receipt.generation())
     );
+    assert_eq!(pending.keyboard().composition_device_id(), Some(device(42)));
     assert!(pending.revision().get() > before.revision().get());
     let unchanged = app
         .input_ownership()
