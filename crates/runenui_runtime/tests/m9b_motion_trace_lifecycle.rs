@@ -78,12 +78,16 @@ fn dispatch(runtime: &mut AppRuntime<TraceLifecycleApp>, duration: Duration) {
     runtime
         .submit_action(duration)
         .unwrap_or_else(|_| unreachable!("motion lifecycle trace action is admitted"));
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(report.processed_envelopes() >= 1);
     assert!(report.is_quiescent());
 }
