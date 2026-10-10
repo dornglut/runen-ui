@@ -248,10 +248,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             && let Some(previous) = &self.input_observation.last
         {
             let pending = self.input_observation.pending_direct_boundaries;
-            let pending = if previous.status != self.status {
-                pending.max(1)
-            } else {
+            let pending = if previous.status == self.status {
                 pending
+            } else {
+                pending.max(1)
             };
             if self
                 .input_observation
