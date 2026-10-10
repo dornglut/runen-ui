@@ -242,6 +242,12 @@ impl<App: UiApp> AppRuntime<App> {
         if self.runtime.report().generation() != generation_before {
             self.runtime.note_surface_focus_validation();
         }
+        // Wake acknowledgement precedes the first fallible snapshot. Even
+        // when the FIFO is empty, a failed observation must remain retriable
+        // through the normal host wake path rather than silently disarming it.
+        if batch.is_err() {
+            self.runtime.request_input_observation_retry_wake();
+        }
         self.runtime.rearm_wake_if_needed();
         batch
     }

@@ -1423,3 +1423,38 @@ fn observation_capacity_pause_requests_retry_wake_even_with_empty_fifo() {
     assert_ne!(partial.report().outcome(), crate::PumpOutcome::Quiescent);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn initial_observation_capacity_error_rearms_wake_without_fifo_work() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    let mut app = focused_runtime(false);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let callback_calls = Arc::clone(&calls);
+    app.set_wake_transport(move || {
+        callback_calls.fetch_add(1, Ordering::SeqCst);
+    });
+    app.runtime.acknowledge_wake();
+    app.runtime.inject_input_reservation_failure_after(0);
+
+    assert!(matches!(
+        app.pump(PumpBudget::new(0, 0, 0, 0)),
+        Err(crate::InputObservationError::Capacity)
+    ));
+    assert_eq!(app.status(), crate::RuntimeStatus::Running);
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "initial preflight failure must rearm even without serviceable FIFO work"
+    );
+
+    let retried = app
+        .pump(PumpBudget::new(0, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("one-time capacity fault is recoverable"));
+    assert!(retried.ordered_records().is_empty());
+    assert_eq!(retried.pause_reason(), None);
+    assert_eq!(retried.final_ownership().status(), crate::RuntimeStatus::Running);
+}
