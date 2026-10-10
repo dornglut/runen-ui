@@ -692,24 +692,36 @@ mod tests {
 
     #[test]
     fn public_queue_full_keyboard_rejection_has_no_phantom_settlement() {
+        // A one-envelope queue can also block the fixture's own focus setup.
+        // Qualify real queue saturation only after focus has committed.
+        const CAPACITY: usize = 8;
         let reached = Arc::new(AtomicBool::new(false));
         let mut runtime = focused_public_claim_host_with_config::<ExternalHostClaimApp>(
             Arc::clone(&reached),
-            RuntimeConfig::default().with_queue_capacity(1),
+            RuntimeConfig::default().with_queue_capacity(CAPACITY),
         );
+        assert!(runtime.focus().focused_node().is_some());
         let scope = runtime
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("focused public scope"))
             .scope()
             .clone();
-        let admitted = runtime
-            .submit_keyboard(native_w_input())
-            .unwrap_or_else(|_| unreachable!("first native receipt admitted"));
-        let refused = runtime.submit_keyboard(native_w_input());
-        assert!(matches!(
-            refused,
-            Err(error) if error.kind() == runenui_runtime::SubmitKeyboardErrorKind::Full
-        ));
+
+        // Admission does not imply settlement; do not guess how many slots a
+        // mounted host has after its canonical focus/readiness commitments.
+        let mut admitted = Vec::new();
+        let mut rejection = None;
+        for _ in 0..=CAPACITY {
+            match runtime.submit_keyboard(native_w_input()) {
+                Ok(receipt) => admitted.push(receipt.sequence()),
+                Err(error) => {
+                    rejection = Some(error.kind());
+                    break;
+                }
+            }
+        }
+        assert!(!admitted.is_empty());
+        assert_eq!(rejection, Some(runenui_runtime::SubmitKeyboardErrorKind::Full));
         assert!(!reached.load(Ordering::Relaxed));
 
         let pending = runtime
@@ -726,7 +738,7 @@ mod tests {
 
         let completed = runtime
             .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|_| unreachable!("admitted exact receipt must settle"));
+            .unwrap_or_else(|_| unreachable!("all admitted receipts must settle"));
         let settlements: Vec<_> = completed
             .ordered_records()
             .iter()
@@ -735,16 +747,18 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(settlements.len(), 1);
-        assert_eq!(settlements[0].sequence(), admitted.sequence());
-        assert_eq!(settlements[0].scope(), &scope);
-        assert_eq!(settlements[0].family(), UiInputFamily::Keyboard);
-        assert!(matches!(
-            settlements[0].finality(),
-            UiInputFinality::Committed(facts)
-                if facts.conflict() == UiInputConflict::ExclusiveUi
-                    && facts.reasons().contains(&UiInputClaimReason::ExplicitWidgetClaim)
-        ));
+        assert_eq!(settlements.len(), admitted.len());
+        for (settled, sequence) in settlements.iter().zip(admitted) {
+            assert_eq!(settled.sequence(), sequence);
+            assert_eq!(settled.scope(), &scope);
+            assert_eq!(settled.family(), UiInputFamily::Keyboard);
+            assert!(matches!(
+                settled.finality(),
+                UiInputFinality::Committed(facts)
+                    if facts.conflict() == UiInputConflict::ExclusiveUi
+                        && facts.reasons().contains(&UiInputClaimReason::ExplicitWidgetClaim)
+            ));
+        }
         assert!(reached.load(Ordering::Relaxed));
 
         let replay = runtime
