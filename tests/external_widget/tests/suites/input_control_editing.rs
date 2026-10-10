@@ -12,6 +12,8 @@ mod routed_event;
 mod scroll_control;
 #[path = "../slider.rs"]
 mod slider;
+#[path = "../splitter.rs"]
+mod splitter;
 #[path = "../standard_scrollbar.rs"]
 mod standard_scrollbar;
 #[path = "../subscriptions.rs"]
