@@ -581,9 +581,7 @@ mod tests {
 
         let _ = runtime
             .shutdown()
-            .unwrap_or_else(|_| unreachable!("shutdown observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("shutdown observation"));
         eprintln!(
             "M7D EXTERNAL HOST PROOF: retained-publication retry and two host-owned frames succeeded; adapter={:?} backend={}",
             renderer.diagnostics().adapter_info().name,
