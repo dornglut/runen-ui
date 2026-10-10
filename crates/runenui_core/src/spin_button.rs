@@ -6,9 +6,8 @@ use core::fmt;
 
 use crate::{
     EditIntent, IntoElementId, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
-    SemanticCommand, SemanticInvalidState, SemanticNumber, SemanticNumberError,
-    SemanticRange, SemanticRangeError, TextDocumentSnapshot, TextField, TextFieldError,
-    TextSelection,
+    SemanticCommand, SemanticInvalidState, SemanticNumber, SemanticNumberError, SemanticRange,
+    SemanticRangeError, TextDocumentSnapshot, TextField, TextFieldError, TextSelection,
     element::{CommonNodeAuthoring, Element, View, common_node_builder_methods},
 };
 

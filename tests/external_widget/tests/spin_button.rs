@@ -28,6 +28,7 @@ enum Action {
     Text(String),
     ReadOnly(bool),
     Disabled(bool),
+    Remove,
 }
 
 struct State {
@@ -35,6 +36,7 @@ struct State {
     revision: u64,
     read_only: bool,
     disabled: bool,
+    present: bool,
     requests: Vec<SpinButtonRequest>,
 }
 
@@ -66,6 +68,9 @@ impl UiApp for NumericApp {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> impl View<Self::Action> {
+        if !state.present {
+            return runenui_core::text("retired numeric owner").into_element();
+        }
         let doc = snapshot(state.revision);
         let position = TextPosition::new(
             doc, &state.text, state.text.len(), TextAffinity::Upstream,
@@ -81,6 +86,7 @@ impl UiApp for NumericApp {
         .read_only(state.read_only)
         .disabled(state.disabled)
         .id("form.amount")
+        .into_element()
     }
 
     fn update(state: &mut Self::State, action: Self::Action) -> impl IntoUpdateOutput<Self::Action, Self::HostProtocol> {
@@ -108,6 +114,10 @@ impl UiApp for NumericApp {
                 state.disabled = value;
                 UpdateOutput::effects(Effects::none())
             }
+            Action::Remove => {
+                state.present = false;
+                UpdateOutput::effects(Effects::none())
+            }
         }
     }
 }
@@ -116,7 +126,8 @@ const FONT: &[u8] = include_bytes!("../../../crates/runenui_text/tests/fixtures/
 
 fn runtime(text: &str) -> AppRuntime<NumericApp> {
     let mut runtime = AppRuntime::<NumericApp>::mount(State {
-        text: text.into(), revision: 1, read_only: false, disabled: false, requests: Vec::new(),
+        text: text.into(), revision: 1, read_only: false, disabled: false,
+        present: true, requests: Vec::new(),
     });
     assert!(runtime.register_text_font_bytes(FONT.to_vec())
         .unwrap_or_else(|_| unreachable!("fixture font registers")) > 0);
@@ -246,6 +257,63 @@ fn keyboard_up_and_down_emit_signed_app_steps_without_replacing_caret_arrows() {
         SpinButtonRequest::AdjustBy(number(0.5)),
         SpinButtonRequest::AdjustBy(number(-0.5)),
     ]);
+}
+
+
+#[test]
+fn numeric_bounds_and_absolute_action_reject_out_of_range_without_stale_value_filter() {
+    let mut runtime = runtime("100");
+    let published = publish(&mut runtime);
+    let (surface, target) = semantic_target(&published);
+    assert!(runtime.submit_semantic_action(SemanticActionRequest::set_value(
+        surface.clone(), target.clone(), number(1000.0),
+    )).is_err());
+    runtime.submit_semantic_action(SemanticActionRequest::new(
+        surface.clone(), target.clone(), SemanticAction::Increment,
+    )).unwrap_or_else(|_| unreachable!("bound step is still a relative intent"));
+    runtime.submit_semantic_action(SemanticActionRequest::new(
+        surface, target, SemanticAction::Decrement,
+    )).unwrap_or_else(|_| unreachable!("reverse step is admitted"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().text, "99.5");
+    assert_eq!(runtime.state().requests, [
+        SpinButtonRequest::AdjustBy(number(0.5)),
+        SpinButtonRequest::AdjustBy(number(-0.5)),
+    ]);
+}
+
+#[test]
+fn exact_removed_semantic_target_is_not_reused_for_replacement_text() {
+    let mut runtime = runtime("4.5");
+    let before = publish(&mut runtime);
+    let (surface, target) = semantic_target(&before);
+    runtime.submit_action(Action::Remove)
+        .unwrap_or_else(|_| unreachable!("app removes owner"));
+    settle(&mut runtime);
+    let after = publish(&mut runtime);
+    assert!(after.semantic_publication().snapshot().nodes()
+        .iter().all(|node| node.role() != SemanticRole::SpinButton));
+    assert!(runtime.submit_semantic_action(SemanticActionRequest::new(
+        surface, target, SemanticAction::Increment,
+    )).is_err());
+    assert!(runtime.state().requests.is_empty());
+}
+
+#[test]
+fn composition_active_key_rejects_numeric_adjustment() {
+    let mut runtime = runtime("-1");
+    let id = runtime.index().nodes()[0].id().clone();
+    runtime.submit_command(id, SemanticCommand::RequestFocus, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("focus request"));
+    settle(&mut runtime);
+    runtime.submit_keyboard(KeyboardEvent::new(
+        KeyboardPhase::Down, PhysicalKey::Code("ArrowUp".to_owned()),
+        LogicalKey::ArrowUp, KeyModifiers::NONE, false, KeyLocation::Standard,
+        KeyboardCompositionState::Active, None,
+    )).unwrap_or_else(|_| unreachable!("composition-time key routed"));
+    settle(&mut runtime);
+    assert!(runtime.state().requests.is_empty());
+    assert_eq!(runtime.state().text, "-1");
 }
 
 #[derive(Debug)]
