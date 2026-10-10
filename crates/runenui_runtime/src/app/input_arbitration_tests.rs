@@ -864,6 +864,62 @@ impl UiApp for TextOwnershipApp {
 }
 
 #[test]
+fn direct_composition_start_preflights_last_revision_without_binding_a_pending_owner() {
+    let mut app = AppRuntime::<TextOwnershipApp>::mount(());
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let target = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id() == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
+        })
+        .unwrap_or_else(|| unreachable!("editor mounted"))
+        .id()
+        .clone();
+    app.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("focus accepted"));
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let _ = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("focus owner observed"));
+    app.runtime.seed_input_revision_for_test(u64::MAX - 1);
+    let start = app.start_composition(Some(device(73)));
+    assert!(matches!(
+        start,
+        Err(error)
+            if error.kind()
+                == crate::SubmitCompositionErrorKind::Terminal(
+                    crate::RuntimeTerminalReason::Poisoned
+                )
+    ));
+    let terminal = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("final terminal owner observed"));
+    assert_eq!(terminal.revision().get(), u64::MAX);
+    assert_eq!(
+        terminal.status(),
+        crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned)
+    );
+    assert_eq!(terminal.keyboard().composition_generation(), None);
+    assert_eq!(terminal.keyboard().composition_device_id(), None);
+    let batch = pump::pump_recorded::<TextOwnershipApp>(
+        &mut app.runtime,
+        PumpBudget::new(0, 0, 0, 0),
+    )
+    .unwrap_or_else(|_| unreachable!("retirement is observable without consumed input"));
+    assert_eq!(batch.processed_through(), None);
+    assert!(batch.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::ScopeRetired(_)
+    )));
+}
+
+#[test]
 fn accepted_composition_start_publishes_pending_ownership_without_pumping() {
     let mut app = AppRuntime::<TextOwnershipApp>::mount(());
     let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
