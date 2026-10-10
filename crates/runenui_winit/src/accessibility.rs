@@ -1921,9 +1921,9 @@ mod tests {
         runtime
             .submit_action(FixtureAction)
             .unwrap_or_else(|_| unreachable!("fixture phase transition is admitted"));
-        runtime
+        let _ = runtime
             .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         let second_publication = publication(&mut runtime);
@@ -2178,9 +2178,9 @@ mod tests {
         adapter.projection.next_node_id = None;
 
         let _ = runtime.submit_action(FixtureAction);
-        runtime
+        let _ = runtime
             .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         let second_publication = publication(&mut runtime);
@@ -2212,9 +2212,9 @@ mod tests {
         let before_tree = activation.request_initial_tree().unwrap();
 
         let _ = runtime.submit_action(FixtureAction);
-        runtime
+        let _ = runtime
             .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         let third_publication = publication(&mut runtime);
@@ -2308,9 +2308,9 @@ mod tests {
             SemanticAction::Activate,
         );
         runtime.submit_semantic_action(request).unwrap();
-        runtime
+        let _ = runtime
             .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         let second_publication = publication(&mut runtime);
@@ -2325,9 +2325,9 @@ mod tests {
                 runenui_core::CommandOrigin::programmatic(),
             )
             .unwrap();
-        runtime
+        let _ = runtime
             .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         let third_publication = publication(&mut runtime);
@@ -2423,9 +2423,9 @@ mod tests {
         let first_root = adapter.projection.synthetic_root.unwrap();
 
         let _ = runtime.submit_action(FixtureAction);
-        runtime
+        let _ = runtime
             .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         let second_publication = publication(&mut runtime);
@@ -3000,9 +3000,9 @@ mod tests {
         runtime
             .submit_action(StandardPasswordAction::Toggle)
             .unwrap();
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         let public = publish_standard_password(&mut runtime, &mut adapter);
@@ -3024,9 +3024,9 @@ mod tests {
         runtime
             .submit_action(StandardPasswordAction::Toggle)
             .unwrap();
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         let again = publish_standard_password(&mut runtime, &mut adapter);

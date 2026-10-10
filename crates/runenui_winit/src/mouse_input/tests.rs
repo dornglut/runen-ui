@@ -22,14 +22,14 @@ fn device(value: u64) -> InputDeviceId {
 
 fn translated_point(position: LogicalPoint, modifiers: KeyModifiers) -> TranslatedPointerPoint {
     let mut runtime = AppRuntime::<DemoApp>::mount(());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let style_environment = StyleEnvironment::default();

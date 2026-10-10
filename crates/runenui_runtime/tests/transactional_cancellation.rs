@@ -108,23 +108,23 @@ fn run(action: Action) -> RunResult {
         first: Rc::clone(&first),
         second: Rc::clone(&second),
     });
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, 0, 1, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     old.set(0);
     runtime
         .submit_action(action)
         .unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, 0, 1, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, 0, 16, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let trace_generations = |kind: fn(&TraceRecordKind) -> bool| {
@@ -338,9 +338,9 @@ fn run_mounted(action: Action) -> (Vec<(&'static str, u64)>, Vec<u64>, u64) {
         first,
         second,
     });
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, 0, 1, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     old.set(0);
@@ -352,9 +352,9 @@ fn run_mounted(action: Action) -> (Vec<(&'static str, u64)>, Vec<u64>, u64) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let routed_start_sequence = runtime
@@ -366,9 +366,9 @@ fn run_mounted(action: Action) -> (Vec<(&'static str, u64)>, Vec<u64>, u64) {
             || unreachable!("routed transaction start is retained"),
             |record| record.sequence().get(),
         );
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, 0, 16, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let semantic = runtime
@@ -468,18 +468,18 @@ fn trace_retention_eviction_does_not_change_live_cancellation_authority() {
         },
         config,
     );
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, 0, 1, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     old.set(0);
     runtime
         .submit_action(Action::CancelTwice)
         .unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, 0, 16, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -597,9 +597,9 @@ fn assert_mounted_subscription_authority_is_stale_before_unmount(replace: bool) 
         sink: Arc::clone(&sink),
         mapped: Arc::clone(&mapped),
     });
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let retained = sink
@@ -620,9 +620,9 @@ fn assert_mounted_subscription_authority_is_stale_before_unmount(replace: bool) 
     runtime
         .submit_action(UnmountAction::Remove)
         .unwrap_or_else(|_| unreachable!("removal action is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let Err(SendSubscriptionSinkError::Stale(recovered)) = worker
@@ -741,9 +741,9 @@ fn mounted_send_task_completion_is_stale_during_unmount_callback() {
         mapped: Arc::clone(&mapped),
     });
     runtime.set_send_task_executor(RetainingSendTaskExecutor(Arc::clone(&jobs)));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let job = jobs
@@ -761,9 +761,9 @@ fn mounted_send_task_completion_is_stale_during_unmount_callback() {
     runtime
         .submit_action(UnmountAction::Remove)
         .unwrap_or_else(|_| unreachable!("removal action is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(matches!(

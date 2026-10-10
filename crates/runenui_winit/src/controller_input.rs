@@ -353,9 +353,9 @@ mod tests {
         runtime
             .submit_command(target.clone(), pressed.command(), pressed.origin())
             .unwrap_or_else(|error| panic!("normalized command enters the runtime: {error:?}"));
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
 
@@ -368,9 +368,9 @@ mod tests {
         runtime
             .submit_command(target, repeated.command(), repeated.origin())
             .unwrap_or_else(|error| panic!("normalized repeat enters the runtime: {error:?}"));
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
 

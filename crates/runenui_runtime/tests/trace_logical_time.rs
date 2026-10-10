@@ -52,9 +52,9 @@ fn required_instant(record: &TraceRecord) -> MonotonicInstant {
 #[test]
 fn scheduler_work_facts_retain_monotonic_logical_time() {
     let mut runtime = AppRuntime::<LogicalTimeApp>::mount(0);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(3, 0, 1, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -229,9 +229,9 @@ fn update_application_transaction_facts_share_one_accepted_instant() {
         .advance_time(Duration::from_millis(1))
         .unwrap_or_else(|_| unreachable!());
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -273,7 +273,7 @@ fn terminal_and_shutdown_facts_retain_transition_time() {
 
     let report = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert!(!report.already_complete());
@@ -288,7 +288,7 @@ fn terminal_and_shutdown_facts_retain_transition_time() {
     assert!(
         runtime
             .shutdown()
-            .expect("shutdown observation")
+            .unwrap_or_else(|_| unreachable!("shutdown observation"))
             .report()
             .to_owned()
             .already_complete()

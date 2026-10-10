@@ -49,7 +49,7 @@ fn settle_initial_work(runtime: &mut AppRuntime<CounterApp>) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -109,14 +109,14 @@ fn main() {
             LogicalKey::Space,
         ))
         .unwrap_or_else(|_| unreachable!("raw Space release is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     for _ in 2..WIN_COUNT {
@@ -124,14 +124,14 @@ fn main() {
             .submit_automation_command(authored_id("counter.increment"), SemanticCommand::Activate)
             .unwrap_or_else(|_| unreachable!("automation resolves the increment control"));
     }
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             WIN_COUNT as usize,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     settle_initial_work(&mut runtime);
@@ -141,9 +141,9 @@ fn main() {
     runtime
         .submit_automation_command(authored_id("counter.reset"), SemanticCommand::Activate)
         .unwrap_or_else(|_| unreachable!("automation resolves reset"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -278,9 +278,9 @@ mod tests {
             .submit_automation_command(authored_id("counter.reset"), SemanticCommand::Activate)
             .unwrap_or_else(|_| unreachable!("automation resolves the live reset target"));
         assert_eq!(runtime.state(), &Counter { count: 10 });
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.state(), &Counter { count: 0 });
@@ -304,14 +304,14 @@ mod tests {
                 .unwrap_or_else(|_| unreachable!("automation resolves live increment target"));
         }
         assert_eq!(runtime.state(), &Counter::new());
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(
                 (WIN_COUNT * 2) as usize,
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.state(), &Counter { count: 10 });
@@ -413,9 +413,9 @@ mod tests {
             .submit_action(CounterAction::Increment)
             .unwrap_or_else(|_| unreachable!());
         assert_eq!(runtime.state(), &Counter::new());
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.state(), &Counter { count: 1 });
@@ -447,9 +447,9 @@ mod tests {
         runtime
             .submit_automation_command(authored_id("counter.increment"), SemanticCommand::Activate)
             .unwrap_or_else(|_| unreachable!("automation resolves increment"));
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(
@@ -468,7 +468,7 @@ mod tests {
         assert_eq!(
             runtime
                 .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-                .expect("pump observation")
+                .unwrap_or_else(|_| unreachable!("pump observation"))
                 .report()
                 .to_owned()
                 .processed_envelopes(),
@@ -521,14 +521,14 @@ mod tests {
                 .submit_action(CounterAction::Increment)
                 .unwrap_or_else(|_| unreachable!());
         }
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(
                 WIN_COUNT as usize,
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
 
@@ -559,9 +559,9 @@ mod tests {
         runtime
             .submit_automation_command(authored_id("counter.increment"), SemanticCommand::Activate)
             .unwrap_or_else(|_| unreachable!("automation resolves increment"));
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.state(), &Counter { count: 1 });
@@ -585,14 +585,14 @@ mod tests {
                 )
                 .unwrap_or_else(|_| unreachable!("automation resolves increment"));
         }
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(
                 ((WIN_COUNT - 1) * 2) as usize,
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.focus().focused_node(), None);
@@ -600,9 +600,9 @@ mod tests {
         runtime
             .submit_automation_command(authored_id("counter.reset"), SemanticCommand::Activate)
             .unwrap_or_else(|_| unreachable!("automation resolves reset on win screen"));
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.state(), &Counter::new());
