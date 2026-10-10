@@ -12,4 +12,4 @@ Architecture-defining choices—layout algorithms, text stack, renderer, windowi
 
 Keep `Cargo.lock` committed and use `--locked` in validation. Version and feature changes must be intentional, minimal, reviewed in the lockfile, and reflected in policy/docs when they change support. Git dependencies and unreviewed forks require exceptional justification and a replacement plan.
 
-Automated dependency, vulnerability, and license enforcement belongs to the **M15 feature-complete 0.1 release-qualification gate** in the [roadmap](roadmap.md). Until that enforcement is accepted, maintainers manually review dependency and license/security implications of every change affecting dependencies, including transitive changes, and must not claim automated supply-chain coverage.
+Automated dependency, vulnerability, and license enforcement belongs to the **M15 feature-complete 0.1 release-qualification gate** in the [roadmap](roadmap.md). Until that enforcement is accepted, maintainers must continue to review dependencies manually in every change, including applicable transitive license and security implications, and must not claim automated supply-chain coverage.
