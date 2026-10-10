@@ -402,25 +402,22 @@ fn initial_checkpoint_capacity_shortage_preserves_prior_ownership_observation_an
     // The first reservation belongs to the initial ownership snapshot. The
     // second would prepare the initial zero-work readiness checkpoint.
     app.runtime.inject_input_reservation_failure_after(1);
-    let partial = pump::pump_recorded::<ProbeApp>(
-        &mut app.runtime,
-        PumpBudget::new(1, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("snapshot after initial progress must be returned"));
+    let partial = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("snapshot after initial progress must be returned"));
     assert_eq!(
         partial.pause_reason(),
         Some(crate::InputPumpPauseReason::ObservationCapacity)
     );
     assert_eq!(partial.processed_through(), None);
     assert_eq!(partial.report().processed_envelopes(), 0);
-    assert_eq!(partial.final_ownership().status(), crate::RuntimeStatus::Running);
+    assert_eq!(
+        partial.final_ownership().status(),
+        crate::RuntimeStatus::Running
+    );
     assert!(partial.ordered_records().is_empty());
 
-    let resumed = pump::pump_recorded::<ProbeApp>(
-        &mut app.runtime,
-        PumpBudget::new(1, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("pending input remains queued"));
+    let resumed = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pending input remains queued"));
     assert_eq!(resumed.processed_through(), Some(pending));
     assert_eq!(
         resumed

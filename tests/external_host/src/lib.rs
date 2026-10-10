@@ -298,7 +298,8 @@ mod tests {
         fn update(
             _: &mut Self::State,
             (): Self::Action,
-        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {}
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        }
     }
 
     #[test]
