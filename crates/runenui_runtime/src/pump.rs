@@ -224,7 +224,11 @@ impl RecordedPump {
             records: Vec::new(),
             latest: runtime.input_ownership()?,
             processed_through: None,
-            progress: false,
+            // The initial projection may publish pending outside-pump revision
+            // changes before the first readiness reservation. It is therefore
+            // already observable progress: subsequent capacity failures MUST
+            // return its snapshot instead of discarding it via a bare Err.
+            progress: true,
             prepared: None,
             revision_retired: false,
             cancelled_for_revision: 0,
@@ -377,7 +381,10 @@ pub(crate) fn pump_recorded<App: UiApp>(
     let mut totals = ReadinessTotals::default();
 
     if !observed.admit(runtime)? {
-        unreachable!("initial admission has no prior progress");
+        // Even with zero reached FIFO work, the initial immutable ownership
+        // snapshot may have advanced a synchronous revision. Retain that fact
+        // and preserve all queued receipts for a later exact retry.
+        return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
     }
     readiness_checkpoint(runtime, budget, &mut totals);
     observed.observe(runtime, None);
