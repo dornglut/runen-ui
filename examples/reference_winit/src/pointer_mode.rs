@@ -178,26 +178,26 @@ impl PointerModes {
     }
 
     fn apply_cursor(&self, platform: &mut impl Platform) {
-        if !self.focused || self.awaiting_fresh_absolute_point {
-            platform.cursor(CursorShape::Default, true);
-            return;
-        }
-        match &self.state {
-            // Native grab alone is not proof that raw motion can drive a game.
-            // While acquiring, keep the cursor ordinary and visible.
-            State::AwaitingMotion(_) | State::ReleaseFailed => {
-                platform.cursor(CursorShape::Default, true);
-            }
-            State::Active(Lease {
-                mode: Mode::LockedRelative,
-                ..
-            }) => platform.cursor(CursorShape::Default, false),
-            State::Absolute
-            | State::Active(Lease {
-                mode: Mode::ConfinedAbsolute | Mode::Absolute,
-                ..
-            }) => platform.cursor(self.ui_shape, self.ui_visible),
-        }
+        // One native cursor writer, with a strict priority:
+        // applied M10 baseline > acquired gameplay override > visible recovery.
+        // A pending grab or failed release must never hide the cursor.
+        let (shape, visible) = if self.ui_cursor_presentation_applied() {
+            (self.ui_shape, self.ui_visible)
+        } else if self.focused
+            && !self.awaiting_fresh_absolute_point
+            && matches!(
+                self.state,
+                State::Active(Lease {
+                    mode: Mode::LockedRelative,
+                    ..
+                })
+            )
+        {
+            (CursorShape::Default, false)
+        } else {
+            (CursorShape::Default, true)
+        };
+        platform.cursor(shape, visible);
     }
 
     pub fn focus_changed(
