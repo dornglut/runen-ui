@@ -236,10 +236,10 @@ impl<Action> Widget<Action> for ProgressWidget {
             };
             let width = size.width() * (fraction as f32);
             if width > 0.0 {
-                let fill = LogicalRect::try_new(0.0, 0.0, width, size.height())
+                let filled_rect = LogicalRect::try_new(0.0, 0.0, width, size.height())
                     .unwrap_or_else(|_| unreachable!("normalized fill fits the owner"));
                 items.push(PaintContributionItem::fill(
-                    SceneShape::rect(fill),
+                    SceneShape::rect(filled_rect),
                     Brush::solid(color),
                 ));
             }
