@@ -117,7 +117,7 @@ fn dropping_runtime_closes_active_pointer_before_one_widget_unmount_without_call
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
-            ))
+            )).expect("pump observation").report().to_owned()
             .is_quiescent()
     );
     let pointer_id =
@@ -141,7 +141,7 @@ fn dropping_runtime_closes_active_pointer_before_one_widget_unmount_without_call
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
-            ))
+            )).expect("pump observation").report().to_owned()
             .is_quiescent()
     );
     callbacks.borrow_mut().clear();

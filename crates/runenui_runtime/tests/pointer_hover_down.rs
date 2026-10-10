@@ -124,7 +124,7 @@ fn pump_all<Application: UiApp>(runtime: &mut AppRuntime<Application>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert!(report.is_quiescent());
 }
 

@@ -155,7 +155,7 @@ fn submit_and_pump(harness: &mut Harness, event: PointerEvent) -> WorkSequence {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert!(report.is_quiescent());
     submission.sequence()
 }
@@ -393,7 +393,7 @@ fn callback_failure_never_claims_boundary_delivery() {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
 
     let records = harness.runtime.trace().records().collect::<Vec<_>>();
     assert!(records.iter().any(|record| {

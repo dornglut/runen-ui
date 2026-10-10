@@ -277,7 +277,7 @@ fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) -> WorkSe
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert!(report.is_quiescent());
     sequence
 }
