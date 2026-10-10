@@ -1,19 +1,20 @@
 //! Internal constructor access, exercising the same actual public widget contract.
 #![allow(refining_impl_trait)]
 
+use super::AppRuntime;
+use crate::{
+    InputArbitrationRecord, PumpBudget, UiInputClaimReason, UiInputConflict, UiInputFinality, pump,
+};
 use runenui_core::{
     CommandOrigin, Element, ElementId, EventContext, EventPhase, KeyLocation, KeyModifiers,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
     PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetEventOutput,
 };
-use crate::{
-    InputArbitrationRecord, PumpBudget, UiInputClaimReason, UiInputConflict, UiInputFinality,
-    pump,
-};
-use super::AppRuntime;
 
 #[derive(Debug)]
-struct HostClaimProbe { claim: bool }
+struct HostClaimProbe {
+    claim: bool,
+}
 
 enum ProbeAction {}
 
@@ -98,32 +99,42 @@ fn key() -> KeyboardEvent {
 fn only_explicit_widget_claim_is_exclusive_not_propagation_or_default_control() {
     for claim in [false, true] {
         let mut app = focused_runtime(claim);
-        let receipt = app.submit_keyboard(key()).expect("focused admission").sequence();
-        let batch = pump::pump_recorded::<ProbeApp>(
-            &mut app.runtime,
-            PumpBudget::new(1, 0, 0, 0),
-        )
-        .expect("canonical pump observation");
+        let receipt = app
+            .submit_keyboard(key())
+            .expect("focused admission")
+            .sequence();
+        let batch = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
+            .expect("canonical pump observation");
         assert_eq!(batch.processed_through(), Some(receipt));
-        let settled = batch.ordered_records().iter().find_map(|record| {
-            match record {
+        let settled = batch
+            .ordered_records()
+            .iter()
+            .find_map(|record| match record {
                 InputArbitrationRecord::InputSettled(settled) => Some(settled),
                 _ => None,
-            }
-        }).expect("one exact reached input settlement");
+            })
+            .expect("one exact reached input settlement");
         assert_eq!(settled.sequence(), receipt);
         assert_eq!(settled.scope(), batch.final_ownership().scope());
-        assert_eq!(settled.ownership_revision(), batch.final_ownership().revision());
+        assert_eq!(
+            settled.ownership_revision(),
+            batch.final_ownership().revision()
+        );
         let UiInputFinality::Committed(facts) = settled.finality() else {
             panic!("successful callback transaction must commit");
         };
         assert_eq!(
             facts.conflict(),
-            if claim { UiInputConflict::ExclusiveUi }
-            else { UiInputConflict::ObservedNonexclusive },
+            if claim {
+                UiInputConflict::ExclusiveUi
+            } else {
+                UiInputConflict::ObservedNonexclusive
+            },
         );
         assert_eq!(
-            facts.reasons().contains(&UiInputClaimReason::ExplicitWidgetClaim),
+            facts
+                .reasons()
+                .contains(&UiInputClaimReason::ExplicitWidgetClaim),
             claim,
         );
         assert_eq!(facts.default_prevented(), !claim);
@@ -172,7 +183,10 @@ fn explicit_shutdown_reports_final_closed_ownership_and_one_scope_retirement() {
         .runtime
         .shutdown_observed()
         .expect("preflighted canonical shutdown observation");
-    assert_eq!(first.final_ownership().status(), crate::RuntimeStatus::Closed);
+    assert_eq!(
+        first.final_ownership().status(),
+        crate::RuntimeStatus::Closed
+    );
     assert_eq!(first.ordered_records().len(), 2);
     assert!(matches!(
         first.ordered_records()[0],
@@ -189,6 +203,9 @@ fn explicit_shutdown_reports_final_closed_ownership_and_one_scope_retirement() {
         .runtime
         .shutdown_observed()
         .expect("repeated close is idempotent");
-    assert_eq!(repeated.final_ownership().status(), crate::RuntimeStatus::Closed);
+    assert_eq!(
+        repeated.final_ownership().status(),
+        crate::RuntimeStatus::Closed
+    );
     assert!(repeated.ordered_records().is_empty());
 }
