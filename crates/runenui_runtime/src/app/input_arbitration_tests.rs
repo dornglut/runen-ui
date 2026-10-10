@@ -740,4 +740,6 @@ fn unavailable_context_pointer_up_preserves_exclusive_press_without_activation()
     assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
     assert!(facts.reasons().contains(&UiInputClaimReason::PointerPress));
     assert!(matches!(facts.route(), UiInputRoute::Unrouted));
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    assert_eq!(*app.state(), 0, "integrity-only release may not activate the widget");
 }
