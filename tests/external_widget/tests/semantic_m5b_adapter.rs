@@ -287,7 +287,14 @@ fn set_adapter_phase(runtime: &mut AppRuntime<AdapterApp>, phase: AdapterPhase) 
     runtime
         .submit_action(SetAdapterPhase(phase))
         .unwrap_or_else(|_| unreachable!("adapter phase change is admitted"));
-    assert!(runtime.pump(full_budget()).expect("pump observation").report().to_owned().is_quiescent());
+    assert!(
+        runtime
+            .pump(full_budget())
+            .expect("pump observation")
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
 }
 
 fn expect_delta<'a>(
@@ -387,7 +394,14 @@ fn commit_focus_and_assert_delta(
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("ordinary RequestFocus command is admitted"));
-    assert!(runtime.pump(full_budget()).expect("pump observation").report().to_owned().is_quiescent());
+    assert!(
+        runtime
+            .pump(full_budget())
+            .expect("pump observation")
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
     assert_eq!(runtime.focus().focused_node(), Some(&owner));
 
     let focused = publish_adapter(runtime);
