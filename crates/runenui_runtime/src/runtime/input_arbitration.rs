@@ -195,10 +195,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn reserve_input_observation(
         &self,
     ) -> Result<InputSnapshotReservation, InputObservationError> {
-        // A pending new native pointer can register at most one stream per
-        // canonical envelope. Use the fixed active-stream limit as a strict
-        // conservative bound even for zero-envelope readiness checkpoints.
-        let bound = self.limits.pointer_streams();
+        // One canonical envelope can register at most one new pointer stream;
+        // checkpoint/derived re-hit only operates on already registered streams.
+        // Reserve the current population plus one, clamped to the existing
+        // registry limit, rather than allocating for every permitted slot.
+        let bound = self
+            .pointer_registry
+            .len()
+            .saturating_add(1)
+            .min(self.limits.pointer_streams());
         if self.input_observation.last.is_some()
             && self.input_observation.revision.get() == u64::MAX
         {
