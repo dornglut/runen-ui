@@ -312,9 +312,7 @@ mod tests {
         let mut runtime = AppRuntime::<ExternalHostClaimApp>::mount(Arc::clone(&reached));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         let id = ElementId::new("external-claim-probe")
             .unwrap_or_else(|_| unreachable!("static authored id"));
         let target = runtime
@@ -334,9 +332,7 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("public focus request accepted"));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         let receipt = runtime
             .submit_keyboard(KeyboardEvent::new(
                 KeyboardPhase::Down,
@@ -453,9 +449,7 @@ mod tests {
         );
         let _ = first
             .shutdown()
-            .unwrap_or_else(|_| unreachable!("shutdown observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("shutdown observation"));
         let closed = first
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("terminal ownership is observable without a pump"));
@@ -499,9 +493,7 @@ mod tests {
         steps.push(FrameStep::Pump);
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         assert!(runtime.state().active);
 
         steps.push(FrameStep::TakeRedraw);
@@ -550,9 +542,7 @@ mod tests {
         steps.push(FrameStep::Pump);
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         assert!(!runtime.state().active);
 
         steps.push(FrameStep::TakeRedraw);

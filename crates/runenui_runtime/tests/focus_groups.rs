@@ -915,9 +915,7 @@ fn absolute_group_navigation_does_not_escape_a_nested_focus_scope() {
             .unwrap_or_else(|_| unreachable!("absolute ancestor-group command routes normally"));
         let _ = runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         assert_eq!(runtime.status(), RuntimeStatus::Running);
         assert_eq!(
             runtime.focus().focused_node(),

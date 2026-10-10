@@ -1923,9 +1923,7 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("fixture phase transition is admitted"));
         let _ = runtime
             .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         let second_publication = publication(&mut runtime);
         let second = adapter.update(&second_publication);
         assert_eq!(second.mode, UpdateMode::Delta);
@@ -2180,9 +2178,7 @@ mod tests {
         let _ = runtime.submit_action(FixtureAction);
         let _ = runtime
             .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         let second_publication = publication(&mut runtime);
         let second = adapter.update(&second_publication);
         assert_eq!(second.mode, UpdateMode::Delta);
@@ -2214,9 +2210,7 @@ mod tests {
         let _ = runtime.submit_action(FixtureAction);
         let _ = runtime
             .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         let third_publication = publication(&mut runtime);
         let rejected = adapter.update(&third_publication);
 
@@ -2310,9 +2304,7 @@ mod tests {
         runtime.submit_semantic_action(request).unwrap();
         let _ = runtime
             .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         let second_publication = publication(&mut runtime);
         let delta = adapter.update(&second_publication);
         assert_eq!(delta.mode, UpdateMode::Delta);
@@ -2327,9 +2319,7 @@ mod tests {
             .unwrap();
         let _ = runtime
             .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         let third_publication = publication(&mut runtime);
         let mut skipped_adapter = SemanticAdapter::new();
         skipped_adapter.update(&first_publication);
@@ -2425,9 +2415,7 @@ mod tests {
         let _ = runtime.submit_action(FixtureAction);
         let _ = runtime
             .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         let second_publication = publication(&mut runtime);
         assert_eq!(second_publication.snapshot().surface_id(), &surface);
         assert_eq!(second_publication.snapshot().roots().len(), 1);
@@ -3002,9 +2990,7 @@ mod tests {
             .unwrap();
         let _ = runtime
             .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         let public = publish_standard_password(&mut runtime, &mut adapter);
         let public_semantic = &public.snapshot().nodes()[0];
         let public_parent = adapter
@@ -3026,9 +3012,7 @@ mod tests {
             .unwrap();
         let _ = runtime
             .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         let again = publish_standard_password(&mut runtime, &mut adapter);
         assert_standard_password_secret(&again, &adapter);
         assert!(
