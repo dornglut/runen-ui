@@ -1249,7 +1249,11 @@ fn overflowing_widget_callback_aborts_reached_input_and_retires_pending_receipts
         crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned),
     );
     assert_eq!(batch.final_ownership().scope(), &scope);
-    assert_eq!(*app.state(), 0, "overflow must not commit any staged action");
+    assert_eq!(
+        *app.state(),
+        0,
+        "overflow must not commit any staged action"
+    );
 
     let settled: Vec<_> = batch
         .ordered_records()
@@ -1259,7 +1263,11 @@ fn overflowing_widget_callback_aborts_reached_input_and_retires_pending_receipts
             _ => None,
         })
         .collect();
-    assert_eq!(settled.len(), 1, "pending input must not gain fake finality");
+    assert_eq!(
+        settled.len(),
+        1,
+        "pending input must not gain fake finality"
+    );
     assert_eq!(settled[0].sequence(), first);
     assert_eq!(settled[0].scope(), &scope);
     assert!(matches!(
