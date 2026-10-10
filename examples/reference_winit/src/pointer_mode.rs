@@ -341,14 +341,14 @@ mod tests {
         mode: Mode,
         visible: bool,
         failures: Vec<(Mode, Failure)>,
-        mutate_before_failure: bool,
+        mutate_before_failure: Option<Mode>,
         calls: Vec<(Mode, Option<bool>)>,
     }
     impl Platform for Fake {
         fn grab(&mut self, mode: Mode) -> Result<(), Failure> {
             self.calls.push((mode, None));
             if let Some(at) = self.failures.iter().position(|(when, _)| *when == mode) {
-                if self.mutate_before_failure {
+                if self.mutate_before_failure == Some(mode) {
                     // Some native failures may follow partial OS state changes.
                     self.mode = mode;
                 }
@@ -427,7 +427,7 @@ mod tests {
         let (mut modes, mut host) = focused();
         modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
         assert!(!host.visible);
-        host.mutate_before_failure = true;
+        host.mutate_before_failure = Some(Mode::ConfinedAbsolute);
         host.failures
             .push((Mode::ConfinedAbsolute, Failure::Unsupported));
         assert_eq!(
@@ -468,9 +468,38 @@ mod tests {
     }
 
     #[test]
+    fn partially_succeeded_native_unlock_stays_gated_until_release_is_confirmed() {
+        let (mut modes, mut host) = focused();
+        assert!(matches!(
+            modes.request(scope(1), Mode::LockedRelative, &mut host),
+            Ok(Outcome::WaitingForMotion(_))
+        ));
+        assert!(modes.observe_motion(&scope(1), (1.0, 0.0), &mut host));
+        assert!(!host.visible);
+
+        host.mutate_before_failure = Some(Mode::Absolute);
+        host.failures.push((Mode::Absolute, Failure::Native));
+        assert_eq!(modes.release(&mut host), Err(Failure::ReleaseFailed));
+        assert_eq!(host.mode, Mode::Absolute);
+        assert!(host.visible);
+        assert!(!modes.ui_pointer_allowed());
+        assert!(!modes.gameplay_motion_allowed());
+        assert_eq!(
+            modes.request(scope(2), Mode::LockedRelative, &mut host),
+            Err(Failure::ReleaseFailed)
+        );
+
+        // Native state may already have changed; only an explicit successful
+        // release confirmation permits fresh absolute UI ingress.
+        assert!(modes.release(&mut host).is_ok());
+        assert!(modes.ui_pointer_allowed());
+        assert!(host.visible);
+    }
+
+    #[test]
     fn failure_after_partial_acquire_requires_rollback() {
         let (mut modes, mut host) = focused();
-        host.mutate_before_failure = true;
+        host.mutate_before_failure = Some(Mode::ConfinedAbsolute);
         host.failures
             .push((Mode::ConfinedAbsolute, Failure::Ignored));
         host.failures.push((Mode::Absolute, Failure::Native));
@@ -492,7 +521,7 @@ mod tests {
     #[test]
     fn successful_rollback_after_partial_native_failure_restores_absolute_mode() {
         let (mut modes, mut host) = focused();
-        host.mutate_before_failure = true;
+        host.mutate_before_failure = Some(Mode::LockedRelative);
         host.failures.push((Mode::LockedRelative, Failure::Native));
         assert_eq!(
             modes.request(scope(1), Mode::LockedRelative, &mut host),
