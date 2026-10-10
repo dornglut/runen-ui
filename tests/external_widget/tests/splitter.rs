@@ -96,20 +96,20 @@ impl Widget<Action> for DownstreamSplitter {
 
     fn create_state(&self) -> Self::State {}
 
-    fn activation(&self, _: &Self::State) -> WidgetActivation {
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
         WidgetActivation::actionable(self.enabled)
     }
 
     fn event(
         &mut self,
-        _: &mut Self::State,
+        (): &mut Self::State,
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
         if context.phase() != EventPhase::Target || !self.enabled {
             return WidgetEventOutput::none();
         }
-        let request = match event.as_semantic_command().map(|event| event.command()) {
+        let request = match event.as_semantic_command().map(runenui_core::SemanticCommandEvent::command) {
             Some(SemanticCommand::Increment) => SplitterRequest::AdjustBy(number(5.0)),
             Some(SemanticCommand::Decrement) => SplitterRequest::AdjustBy(number(-5.0)),
             Some(SemanticCommand::SetValue(value)) => SplitterRequest::SetValue(value),
@@ -121,14 +121,14 @@ impl Widget<Action> for DownstreamSplitter {
         WidgetEventOutput::none()
     }
 
-    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+    fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::measured(
             runenui_core::LogicalLength::from(12_u16),
             runenui_core::LogicalLength::from(160_u16),
         )
     }
 
-    fn hit_test(&self, _: &Self::State, context: HitContributionContext) -> HitContribution {
+    fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
         let size = context.local_size();
         HitContribution::single_rect(
             LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
@@ -136,7 +136,7 @@ impl Widget<Action> for DownstreamSplitter {
         )
     }
 
-    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         let range = SemanticRange::new(
             Some(number(0.0)),
             Some(number(100.0)),
@@ -787,7 +787,7 @@ fn touch_end_applies_final_movement_but_cancel_discards_it() {
                 PointerDeviceKind::Touch,
                 PointerPhase::Up,
                 point(26.0),
-                input.clone(),
+                input,
             )
             .with_movement_delta(delta(20.0))
             .with_changed_button(PointerButton::Primary),
