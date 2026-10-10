@@ -548,8 +548,7 @@ fn exhausted_direct_publication_preflights_before_commit_and_exposes_last_termin
     app.runtime.seed_input_revision_for_test(u64::MAX - 1);
 
     let environment = StyleEnvironment::default();
-    let size = LogicalSize::try_new(64.0, 64.0)
-        .unwrap_or_else(|_| unreachable!("finite viewport"));
+    let size = LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("finite viewport"));
     let build = SurfaceBuildContext::tight(&environment, size);
     // One publication would consume the sole remaining revision and leave
     // no final revision for invalidation. Reject before publication changes.
@@ -575,11 +574,9 @@ fn exhausted_direct_publication_preflights_before_commit_and_exposes_last_termin
             .revision(),
         retired.revision(),
     );
-    let final_batch = pump::pump_recorded::<SpaceApp>(
-        &mut app.runtime,
-        PumpBudget::new(0, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("terminal retirement is still observable"));
+    let final_batch =
+        pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("terminal retirement is still observable"));
     assert!(final_batch.ordered_records().iter().any(|record| matches!(
         record,
         InputArbitrationRecord::ScopeRetired(retired)

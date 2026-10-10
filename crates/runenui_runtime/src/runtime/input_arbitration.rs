@@ -354,10 +354,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 // immutable. Re-reading that final snapshot uses no revision.
                 self.input_observation.pending_direct_boundaries
             };
-            let remaining_for_terminal = u64::from(matches!(
-                self.status,
-                crate::RuntimeStatus::Running
-            ));
+            let remaining_for_terminal =
+                u64::from(matches!(self.status, crate::RuntimeStatus::Running));
             if self
                 .input_observation
                 .revision
