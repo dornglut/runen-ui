@@ -576,25 +576,6 @@ impl PointerRegistry {
         count
     }
 
-    pub(in crate::runtime) fn ordered_pointer_ids(&self) -> Vec<PointerId> {
-        let mut registered = self
-            .streams
-            .iter()
-            .map(|(pointer_id, stream)| (*pointer_id, stream.registration_sequence()))
-            .collect::<Vec<_>>();
-        registered.sort_unstable_by_key(|(_, sequence)| *sequence);
-        registered
-            .into_iter()
-            .map(|(pointer_id, _)| pointer_id)
-            .collect()
-    }
-
-    pub(in crate::runtime) fn len(&self) -> usize {
-        self.streams.len()
-    }
-
-    /// Writes existing active stream IDs into a caller-preallocated buffer.
-    /// Never allocates during mutation-boundary ownership observation.
     pub(in crate::runtime) fn ordered_pointer_ids_into(&self, ids: &mut Vec<PointerId>) {
         debug_assert!(ids.capacity() >= self.streams.len());
         ids.clear();
