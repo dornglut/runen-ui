@@ -34,12 +34,16 @@ pub(crate) fn semantic_request(
             .small_step()
             .and_then(|step| SemanticNumber::new(-step.get()).ok())
             .map(SpinButtonRequest::AdjustBy),
-        SemanticCommand::SetValue(value) => match (range.minimum(), range.maximum()) {
-            (Some(min), Some(max)) if (min.get()..=max.get()).contains(&value.get()) => {
-                Some(SpinButtonRequest::SetValue(value))
-            }
-            _ => None,
-        },
+        SemanticCommand::SetValue(value)
+            if range
+                .minimum()
+                .is_none_or(|minimum| value.get() >= minimum.get())
+                && range
+                    .maximum()
+                    .is_none_or(|maximum| value.get() <= maximum.get()) =>
+        {
+            Some(SpinButtonRequest::SetValue(value))
+        }
         _ => None,
     }
 }
@@ -68,7 +72,6 @@ pub enum SpinButtonError {
     Text(TextFieldError),
     NonFinite,
     Range(SemanticRangeError),
-    UnrepresentableSpan,
 }
 
 impl fmt::Display for SpinButtonError {
@@ -77,9 +80,6 @@ impl fmt::Display for SpinButtonError {
             Self::Text(error) => error.fmt(f),
             Self::NonFinite => f.write_str("numeric input bounds, value and step must be finite"),
             Self::Range(error) => error.fmt(f),
-            Self::UnrepresentableSpan => {
-                f.write_str("numeric input range and step span are unrepresentable")
-            }
         }
     }
 }
@@ -107,26 +107,25 @@ pub struct SpinButtonRange(SemanticRange);
 
 impl SpinButtonRange {
     /// A temporarily invalid or incomplete text source uses `current=None`.
-    /// The bounds and authored positive step remain well-defined.
+    /// Optional bounds permit open-ended SpinButtons, unlike bounded Sliders.
+    /// Both ordinary f64 bounds and explicit `Option<f64>` bounds are accepted.
+    /// Step intents remain relative; application policy owns finite arithmetic
+    /// and clamping against its latest state.
     ///
     /// # Errors
-    /// Rejects non-finite, reversed, out-of-range, zero/negative step or
-    /// unrepresentable span arithmetic before mounting.
+    /// Rejects non-finite numbers, reversed bounds, out-of-range current
+    /// or non-positive steps before mounting.
     pub fn new(
-        minimum: f64,
-        maximum: f64,
+        minimum: impl Into<Option<f64>>,
+        maximum: impl Into<Option<f64>>,
         current: Option<f64>,
         step: f64,
     ) -> Result<Self, SpinButtonError> {
-        let min = SemanticNumber::new(minimum)?;
-        let max = SemanticNumber::new(maximum)?;
+        let minimum = minimum.into().map(SemanticNumber::new).transpose()?;
+        let maximum = maximum.into().map(SemanticNumber::new).transpose()?;
         let current = current.map(SemanticNumber::new).transpose()?;
         let step = SemanticNumber::new(step)?;
-        let range = SemanticRange::new(Some(min), Some(max), current)?.with_small_step(step)?;
-        let span = maximum - minimum;
-        if !span.is_finite() || !(span / step.get()).is_finite() {
-            return Err(SpinButtonError::UnrepresentableSpan);
-        }
+        let range = SemanticRange::new(minimum, maximum, current)?.with_small_step(step)?;
         Ok(Self(range))
     }
 
@@ -302,7 +301,60 @@ mod tests {
         assert!(SpinButtonRange::new(0.0, 10.0, None, 0.0).is_err());
         assert!(SpinButtonRange::new(0.0, 10.0, None, -1.0).is_err());
         assert!(SpinButtonRange::new(f64::NEG_INFINITY, 10.0, None, 1.0).is_err());
-        assert!(SpinButtonRange::new(-f64::MAX, f64::MAX, None, f64::MIN_POSITIVE).is_err());
+        assert!(SpinButtonRange::new(-f64::MAX, f64::MAX, None, f64::MIN_POSITIVE).is_ok());
         assert!(SpinButtonRange::new(0.0, 10.0, Some(f64::NAN), 1.0).is_err());
+    }
+
+    #[test]
+    fn optional_bounds_preserve_exact_set_value_and_relative_step_intents() {
+        let unbounded = SpinButtonRange::new(None, None, None, 0.25)
+            .unwrap_or_else(|_| unreachable!("checked unbounded range"));
+        assert_eq!(unbounded.semantic_range().minimum(), None);
+        assert_eq!(unbounded.semantic_range().maximum(), None);
+        assert_eq!(unbounded.semantic_range().current(), None);
+        assert_eq!(
+            semantic_request(unbounded.semantic_range(), SemanticCommand::SetValue(
+                SemanticNumber::new(-1000.0).unwrap_or_else(|_| unreachable!("finite value"))
+            )),
+            Some(SpinButtonRequest::SetValue(
+                SemanticNumber::new(-1000.0).unwrap_or_else(|_| unreachable!("finite value"))
+            ))
+        );
+        assert_eq!(
+            semantic_request(unbounded.semantic_range(), SemanticCommand::Increment),
+            None,
+            "an absent parsed value never becomes a fabricated stepping baseline"
+        );
+
+        let upper_only = SpinButtonRange::new(None, Some(5.0), Some(-2.0), 0.5)
+            .unwrap_or_else(|_| unreachable!("valid upper bound"));
+        assert_eq!(
+            semantic_request(upper_only.semantic_range(), SemanticCommand::SetValue(
+                SemanticNumber::new(-9.0).unwrap_or_else(|_| unreachable!("finite value"))
+            )),
+            Some(SpinButtonRequest::SetValue(
+                SemanticNumber::new(-9.0).unwrap_or_else(|_| unreachable!("finite value"))
+            ))
+        );
+        assert_eq!(
+            semantic_request(upper_only.semantic_range(), SemanticCommand::SetValue(
+                SemanticNumber::new(6.0).unwrap_or_else(|_| unreachable!("finite value"))
+            )),
+            None
+        );
+        let lower_only = SpinButtonRange::new(Some(-5.0), None, Some(0.0), 0.5)
+            .unwrap_or_else(|_| unreachable!("valid lower bound"));
+        assert_eq!(
+            semantic_request(lower_only.semantic_range(), SemanticCommand::SetValue(
+                SemanticNumber::new(-6.0).unwrap_or_else(|_| unreachable!("finite value"))
+            )),
+            None
+        );
+        assert_eq!(
+            semantic_request(lower_only.semantic_range(), SemanticCommand::Increment),
+            Some(SpinButtonRequest::AdjustBy(
+                SemanticNumber::new(0.5).unwrap_or_else(|_| unreachable!("positive step"))
+            ))
+        );
     }
 }

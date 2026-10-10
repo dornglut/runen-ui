@@ -37,24 +37,31 @@ struct State {
     read_only: bool,
     disabled: bool,
     present: bool,
+    minimum: Option<f64>,
+    maximum: Option<f64>,
     requests: Vec<SpinButtonRequest>,
 }
 
 impl State {
     fn value(&self) -> Option<f64> {
         self.text.parse::<f64>().ok().filter(|value| {
-            value.is_finite() && (-10.0..=100.0).contains(value)
+            value.is_finite()
+                && self.minimum.is_none_or(|minimum| *value >= minimum)
+                && self.maximum.is_none_or(|maximum| *value <= maximum)
         })
     }
 
     fn apply_request(&mut self, request: SpinButtonRequest) {
         let next = match request {
-            SpinButtonRequest::AdjustBy(delta) => {
-                self.value().map(|current| (current + delta.get()).clamp(-10.0, 100.0))
-            }
-            SpinButtonRequest::SetValue(value) => Some(value.get().clamp(-10.0, 100.0)),
+            SpinButtonRequest::AdjustBy(delta) => self.value().and_then(|current| {
+                let sum = current + delta.get();
+                sum.is_finite().then_some(sum)
+            }),
+            SpinButtonRequest::SetValue(value) => Some(value.get()),
         };
         if let Some(next) = next {
+            let next = self.minimum.map_or(next, |minimum| next.max(minimum));
+            let next = self.maximum.map_or(next, |maximum| next.min(maximum));
             self.text = next.to_string();
             self.revision += 1;
         }
@@ -77,7 +84,7 @@ impl UiApp for NumericApp {
         let position = TextPosition::new(
             doc, &state.text, state.text.len(), TextAffinity::Upstream,
         ).unwrap_or_else(|_| unreachable!("app-owned UTF-8 caret"));
-        let range = SpinButtonRange::new(-10.0, 100.0, state.value(), 0.5)
+        let range = SpinButtonRange::new(state.minimum, state.maximum, state.value(), 0.5)
             .unwrap_or_else(|_| unreachable!("app-owned finite validated range"));
         spin_button(
             "Amount", doc, state.text.clone(), TextSelection::collapsed(position),
@@ -127,9 +134,13 @@ impl UiApp for NumericApp {
 const FONT: &[u8] = include_bytes!("../../../crates/runenui_text/tests/fixtures/Cantarell-Regular.ttf");
 
 fn runtime(text: &str) -> AppRuntime<NumericApp> {
+    runtime_with_bounds(text, Some(-10.0), Some(100.0))
+}
+
+fn runtime_with_bounds(text: &str, minimum: Option<f64>, maximum: Option<f64>) -> AppRuntime<NumericApp> {
     let mut runtime = AppRuntime::<NumericApp>::mount(State {
         text: text.into(), revision: 1, read_only: false, disabled: false,
-        present: true, requests: Vec::new(),
+        present: true, minimum, maximum, requests: Vec::new(),
     });
     assert!(runtime.register_text_font_bytes(FONT.to_vec())
         .unwrap_or_else(|_| unreachable!("fixture font registers")) > 0);
@@ -308,6 +319,45 @@ fn absolute_set_value_recovers_invalid_text_without_fabricating_prior_current() 
             .and_then(runenui_core::SemanticRange::current),
         Some(number(7.5)),
     );
+}
+
+#[test]
+fn open_ended_ranges_admit_exact_recovery_and_reject_only_present_bounds() {
+    for (minimum, maximum, admitted, rejected) in [
+        (None, Some(5.0), -40.0, 6.0),
+        (Some(-2.0), None, 55.0, -3.0),
+    ] {
+        let mut runtime = runtime_with_bounds("-", minimum, maximum);
+        let publication = publish(&mut runtime);
+        let (surface, target) = semantic_target(&publication);
+        let snapshot = publication.semantic_publication().snapshot();
+        let node = snapshot.node(&target)
+            .unwrap_or_else(|| unreachable!("current SpinButton semantic target"));
+        let range = node.range().unwrap_or_else(|| unreachable!("authored range"));
+        assert_eq!(range.current(), None);
+        assert_eq!(range.minimum().map(runenui_core::SemanticNumber::get), minimum);
+        assert_eq!(range.maximum().map(runenui_core::SemanticNumber::get), maximum);
+        assert!(node.supported_actions().contains(&SemanticAction::SetValue));
+        assert!(!node.supported_actions().contains(&SemanticAction::Increment));
+        assert!(runtime.submit_semantic_action(SemanticActionRequest::set_value(
+            surface.clone(), target.clone(), number(rejected),
+        )).is_err(), "out-of-range SetValue must reject against the present bound");
+        runtime.submit_semantic_action(SemanticActionRequest::set_value(
+            surface, target, number(admitted),
+        )).unwrap_or_else(|_| unreachable!("open-ended absolute SetValue admitted"));
+        settle(&mut runtime);
+        assert_eq!(runtime.state().value(), Some(admitted));
+        assert_eq!(runtime.state().requests, [SpinButtonRequest::SetValue(number(admitted))]);
+    }
+
+    let mut runtime = runtime_with_bounds("-", None, None);
+    let before = publish(&mut runtime);
+    let (surface, target) = semantic_target(&before);
+    runtime.submit_semantic_action(SemanticActionRequest::set_value(
+        surface, target, number(-600.0),
+    )).unwrap_or_else(|_| unreachable!("unbounded absolute numeric recovery"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().text, "-600");
 }
 
 #[test]
