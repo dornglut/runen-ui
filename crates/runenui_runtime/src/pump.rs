@@ -211,6 +211,7 @@ struct RecordedPump {
     latest: crate::InputOwnershipSnapshot,
     processed_through: Option<runenui_core::WorkSequence>,
     progress: bool,
+    prepared: Option<crate::runtime::InputSnapshotReservation>,
 }
 
 impl RecordedPump {
@@ -222,18 +223,28 @@ impl RecordedPump {
             latest: runtime.input_ownership()?,
             processed_through: None,
             progress: false,
+            prepared: None,
         })
     }
 
-    /// Reserve a strict upper bound of three ordered records *before* the boundary.
-    /// A pending storage failure never consumes another canonical envelope.
-    fn admit(&mut self) -> Result<bool, crate::InputObservationError> {
+    /// Reserve three ordered records and all nested ownership snapshot storage
+    /// before reaching the next canonical mutation/checkpoint.
+    fn admit<State, Action, Protocol: runenui_core::HostProtocol>(
+        &mut self,
+        runtime: &Runtime<State, Action, Protocol>,
+    ) -> Result<bool, crate::InputObservationError> {
         if self.records.try_reserve(3).is_err() {
             if self.progress {
                 return Ok(false);
             }
             return Err(crate::InputObservationError::Capacity);
         }
+        let reserved = match runtime.reserve_input_observation() {
+            Ok(reserved) => reserved,
+            Err(crate::InputObservationError::Capacity) if self.progress => return Ok(false),
+            Err(error) => return Err(error),
+        };
+        self.prepared = Some(reserved);
         Ok(true)
     }
 
@@ -241,14 +252,18 @@ impl RecordedPump {
         &mut self,
         runtime: &mut Runtime<State, Action, Protocol>,
         input: Option<ReachedInput>,
-    ) -> Result<(), crate::InputObservationError> {
-        let latest = runtime.input_ownership()?;
+    ) {
+        let prepared = self
+            .prepared
+            .take()
+            .unwrap_or_else(|| unreachable!("canonical boundary was pre-reserved"));
+        let (latest, transition) = runtime.input_ownership_reserved(prepared);
         if latest.revision() != self.latest.revision() {
             self.records
                 .push(crate::InputArbitrationRecord::OwnershipChanged(
                     crate::InputOwnershipTransition {
                         before_revision: self.latest.revision(),
-                        after: latest.clone(),
+                        after: transition,
                     },
                 ));
         }
@@ -281,7 +296,6 @@ impl RecordedPump {
                 .push(crate::InputArbitrationRecord::ScopeRetired(retirement));
         }
         self.progress = true;
-        Ok(())
     }
 
     fn finish<State, Action, Protocol: runenui_core::HostProtocol>(
@@ -319,33 +333,33 @@ pub(crate) fn pump_recorded<App: UiApp>(
     let mut cancelled = 0usize;
     let mut totals = ReadinessTotals::default();
 
-    if !observed.admit()? {
+    if !observed.admit(runtime)? {
         unreachable!("initial admission has no prior progress");
     }
     readiness_checkpoint(runtime, budget, &mut totals);
-    observed.observe(runtime, None)?;
+    observed.observe(runtime, None);
     while processed < budget.max_processed_envelopes() {
         if runtime.queue_is_empty() {
-            if !observed.admit()? {
+            if !observed.admit(runtime)? {
                 return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
             }
             readiness_checkpoint(runtime, budget, &mut totals);
-            observed.observe(runtime, None)?;
+            observed.observe(runtime, None);
             if runtime.queue_is_empty() {
                 return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
             }
         }
-        if !observed.admit()? {
+        if !observed.admit(runtime)? {
             return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
         }
         let Some(envelope) = runtime.pop_work() else {
             // A popped envelope is never silently lost. An empty pop only
             // happens after an ordinary checkpoint; preserve its work fence.
-            if !observed.admit()? {
+            if !observed.admit(runtime)? {
                 return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
             }
             readiness_checkpoint(runtime, budget, &mut totals);
-            observed.observe(runtime, None)?;
+            observed.observe(runtime, None);
             return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
         };
         let sequence = envelope.sequence();
@@ -456,7 +470,7 @@ pub(crate) fn pump_recorded<App: UiApp>(
         };
         processed += 1;
         observed.processed_through = Some(sequence);
-        observed.observe(runtime, settled)?;
+        observed.observe(runtime, settled);
         if let ProcessApplicationActionOutcome::Terminal {
             reason,
             cancelled: terminal_cancelled,
@@ -464,26 +478,26 @@ pub(crate) fn pump_recorded<App: UiApp>(
         {
             debug_assert_eq!(runtime.status(), RuntimeStatus::Terminal(reason));
             cancelled = terminal_cancelled;
-            if !observed.admit()? {
+            if !observed.admit(runtime)? {
                 return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
             }
             readiness_checkpoint(runtime, budget, &mut totals);
-            observed.observe(runtime, None)?;
+            observed.observe(runtime, None);
             return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
         }
         if processed < budget.max_processed_envelopes() {
-            if !observed.admit()? {
+            if !observed.admit(runtime)? {
                 return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
             }
             readiness_checkpoint(runtime, budget, &mut totals);
-            observed.observe(runtime, None)?;
+            observed.observe(runtime, None);
         }
     }
-    if !observed.admit()? {
+    if !observed.admit(runtime)? {
         return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
     }
     readiness_checkpoint(runtime, budget, &mut totals);
-    observed.observe(runtime, None)?;
+    observed.observe(runtime, None);
     Ok(observed.finish(runtime, budget, processed, cancelled, totals, false))
 }
 
