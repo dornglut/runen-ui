@@ -900,8 +900,8 @@ mod tests {
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("mount work commits"));
-        let authored = ElementId::new("host-original")
-            .unwrap_or_else(|_| unreachable!("fixture authored id"));
+        let authored =
+            ElementId::new("host-original").unwrap_or_else(|_| unreachable!("fixture authored id"));
         let original = runtime
             .index()
             .nodes()
