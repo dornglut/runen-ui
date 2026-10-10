@@ -630,7 +630,7 @@ mod tests {
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("mount completes canonical work"));
 
-        let lookup = |name| {
+        let mut lookup = |name| {
             let authored = ElementId::new(name)
                 .unwrap_or_else(|_| unreachable!("static public focus identity"));
             runtime
