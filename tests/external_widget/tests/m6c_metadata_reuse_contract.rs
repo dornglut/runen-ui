@@ -86,12 +86,16 @@ impl UiApp for App {
 }
 
 fn drain_mount(runtime: &mut AppRuntime<App>) {
-    let outcome = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    let outcome = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(outcome.is_quiescent());
 }
 
@@ -160,7 +164,10 @@ fn semantic_only_publication_changes_semantics_without_allocating_a_paint_revisi
         .unwrap_or_else(|_| unreachable!("semantic-only action is admitted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );

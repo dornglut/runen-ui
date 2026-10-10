@@ -125,12 +125,16 @@ fn foreground_only_change_reuses_ref_while_logical_content_replacement_uses_a_ne
         foreground: initial_foreground,
     });
     let environment = StyleEnvironment::default();
-    let initial_pump = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    let initial_pump = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(initial_pump.is_quiescent());
 
     let initial = publish(&mut runtime, &environment);
@@ -143,7 +147,10 @@ fn foreground_only_change_reuses_ref_while_logical_content_replacement_uses_a_ne
         .unwrap_or_else(|_| unreachable!("recolor action is admitted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -162,7 +169,10 @@ fn foreground_only_change_reuses_ref_while_logical_content_replacement_uses_a_ne
         .unwrap_or_else(|_| unreachable!("resource replacement action is admitted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );

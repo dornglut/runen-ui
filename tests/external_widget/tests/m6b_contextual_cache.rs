@@ -122,7 +122,10 @@ fn paint_contribution_cache_is_keyed_by_exact_owner_visible_context() {
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
-            )).expect("pump observation").report().to_owned()
+            ))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .is_quiescent()
     );
     let environment = StyleEnvironment::default();
@@ -137,7 +140,10 @@ fn paint_contribution_cache_is_keyed_by_exact_owner_visible_context() {
         .unwrap_or_else(|_| unreachable!("style change action is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
