@@ -232,8 +232,7 @@ impl<Action> Widget<Action> for ProgressWidget {
                 // f64. Scale the operands first so the fraction remains
                 // truthful instead of treating a valid midpoint as zero.
                 let scale = min.abs().max(max.abs());
-                ((value / scale - min / scale) / (max / scale - min / scale))
-                    .clamp(0.0, 1.0)
+                ((value / scale - min / scale) / (max / scale - min / scale)).clamp(0.0, 1.0)
             };
             let width = size.width() * (fraction as f32);
             if width > 0.0 {
