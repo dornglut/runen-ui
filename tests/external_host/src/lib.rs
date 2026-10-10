@@ -503,7 +503,8 @@ mod tests {
 
     #[test]
     fn different_typed_public_hosts_settle_only_their_own_receipts_or_retire_their_scope() {
-        let mut first = focused_public_claim_host::<ExternalHostClaimApp>(Arc::new(AtomicBool::new(false)));
+        let mut first =
+            focused_public_claim_host::<ExternalHostClaimApp>(Arc::new(AtomicBool::new(false)));
         let mut second =
             focused_public_claim_host::<ExternalHostSiblingClaimApp>(Arc::new(AtomicBool::new(false)));
         let first_scope = first
