@@ -25,7 +25,8 @@ mod tests {
         ImagePaintDescriptor, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
         KeyboardPhase, LogicalKey, LogicalLength, LogicalPoint, LogicalRect, LogicalSize,
         NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionItem,
-        PhysicalKey, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, ResourceKind,
+        PhysicalKey, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
+        PointerPhase, ResourceKind,
         ResourceRef, SceneShape, SemanticAction, SemanticActionRequest, SemanticCommand,
         SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
         StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
@@ -40,7 +41,7 @@ mod tests {
     use runenui_runtime::{
         AppRuntime, InputArbitrationRecord, InputScopeRetirementReason, PumpBudget,
         SurfaceBuildContext, SurfacePublication, UiInputClaimReason, UiInputConflict,
-        UiInputFamily, UiInputFinality, UiInputRoute,
+        UiInputFamily, UiInputFinality, UiInputRoute, UiInputSettlement,
     };
 
     const SURFACE_EXTENT: u16 = 8;
@@ -1158,6 +1159,109 @@ mod tests {
         );
         // No native render/Present was attempted. These are strictly retained
         // RunenUI snapshots; deciding what pixels were displayed is host-owned.
+    }
+
+    fn settled_public_pointer(
+        runtime: &mut AppRuntime<ExternalHostApp>,
+        event: PointerEvent,
+    ) -> UiInputSettlement {
+        let receipt = runtime
+            .submit_pointer(event)
+            .unwrap_or_else(|_| unreachable!("public pointer event admitted"))
+            .sequence();
+        let batch = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("public pointer event settled"));
+        let settled = batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(value) => Some(value),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settled.len(), 1);
+        assert_eq!(settled[0].sequence(), receipt);
+        assert_eq!(settled[0].scope(), batch.final_ownership().scope());
+        assert_eq!(settled[0].family(), UiInputFamily::Pointer);
+        settled[0].clone()
+    }
+
+    #[test]
+    fn public_mouse_press_and_release_remain_exclusive_through_cleanup() {
+        let mut runtime = AppRuntime::<ExternalHostApp>::mount(HostState {
+            image: ResourceRef::new(ResourceKind::Image),
+            active: false,
+        });
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("mount settled"));
+        let env = StyleEnvironment::default();
+        let size =
+            LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("finite surface"));
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(&env, size))
+            .unwrap_or_else(|_| unreachable!("published hit context"));
+        let rect = publication.frame().nodes()[0].bounds();
+        let point = LogicalPoint::new(rect.x() + 1.0, rect.y() + 1.0)
+            .unwrap_or_else(|_| unreachable!("finite hit point"));
+        let target = publication
+            .hit_test_scene()
+            .target_at(point)
+            .unwrap_or_else(|| unreachable!("authored target hit region"))
+            .clone();
+        let pointer = PointerId::new(41).unwrap_or_else(|| unreachable!("positive pointer id"));
+        let down = settled_public_pointer(
+            &mut runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                point,
+                publication.input_context().clone(),
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        );
+        assert!(matches!(
+            down.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::PointerPress)
+        ));
+        let pressed = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("pressed owner is queryable"));
+        assert!(pressed.pointers().iter().any(|stream| {
+            stream.pointer_id() == pointer && stream.pressed_owner() == Some(&target)
+        }));
+
+        let up = settled_public_pointer(
+            &mut runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                point,
+                publication.input_context().clone(),
+            )
+            .with_changed_button(PointerButton::Primary),
+        );
+        assert!(matches!(
+            up.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::PointerPress)
+        ));
+        let released = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("released owner is queryable"));
+        assert!(
+            released
+                .pointers()
+                .iter()
+                .all(|stream| stream.pointer_id() != pointer)
+        );
     }
 
     fn assert_public_no_hit_hover(
