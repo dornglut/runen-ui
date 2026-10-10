@@ -1456,5 +1456,8 @@ fn initial_observation_capacity_error_rearms_wake_without_fifo_work() {
         .unwrap_or_else(|_| unreachable!("one-time capacity fault is recoverable"));
     assert_eq!(retried.ordered_records(), []);
     assert_eq!(retried.pause_reason(), None);
-    assert_eq!(retried.final_ownership().status(), crate::RuntimeStatus::Running);
+    assert_eq!(
+        retried.final_ownership().status(),
+        crate::RuntimeStatus::Running
+    );
 }
