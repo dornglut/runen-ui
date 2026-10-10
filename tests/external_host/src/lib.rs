@@ -720,7 +720,7 @@ mod tests {
                 }
             }
         }
-        assert!(!admitted.is_empty());
+        assert_ne!(admitted.len(), 0);
         assert_eq!(
             rejection,
             Some(runenui_runtime::SubmitKeyboardErrorKind::Full)
