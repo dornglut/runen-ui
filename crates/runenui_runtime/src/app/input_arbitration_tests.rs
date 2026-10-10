@@ -330,3 +330,96 @@ fn terminal_reason_is_not_rewritten_as_shutdown_when_retirement_is_observed_late
             .is_empty()
     );
 }
+
+struct SpaceApp;
+
+impl UiApp for SpaceApp {
+    type State = usize;
+    type Action = usize;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &Self::State) -> impl View<Self::Action> {
+        runenui_core::button("Space")
+            .id("space")
+            .key("space")
+            .on_activate(|| 1)
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        *state += action;
+    }
+}
+
+fn device(value: u64) -> runenui_core::InputDeviceId {
+    runenui_core::InputDeviceId::new(value)
+        .unwrap_or_else(|| unreachable!("nonzero fixture device"))
+}
+
+fn space_key(phase: KeyboardPhase, device_id: runenui_core::InputDeviceId) -> KeyboardEvent {
+    KeyboardEvent::new(
+        phase,
+        PhysicalKey::Space,
+        LogicalKey::Space,
+        KeyModifiers::NONE,
+        false,
+        KeyLocation::Standard,
+        KeyboardCompositionState::Inactive,
+        Some(device_id),
+    )
+}
+
+#[test]
+fn space_press_ownership_is_source_qualified_through_other_device_and_own_release() {
+    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let target = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                == Some(&ElementId::new("space").unwrap_or_else(|_| unreachable!()))
+        })
+        .unwrap_or_else(|| unreachable!("space widget mounted"))
+        .id()
+        .clone();
+    app.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("focus accepted"));
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let device_a = device(11);
+    let device_b = device(12);
+    let cases = [
+        (KeyboardPhase::Down, device_a, UiInputConflict::ExclusiveUi),
+        (KeyboardPhase::Down, device_b, UiInputConflict::ObservedNonexclusive),
+        (KeyboardPhase::Up, device_a, UiInputConflict::ExclusiveUi),
+    ];
+    for (phase, device_id, expected) in cases {
+        let receipt = app
+            .submit_keyboard(space_key(phase, device_id))
+            .unwrap_or_else(|_| unreachable!("focused Space accepted"))
+            .sequence();
+        let batch = pump::pump_recorded::<SpaceApp>(
+            &mut app.runtime,
+            PumpBudget::new(1, 0, 0, 0),
+        )
+        .unwrap_or_else(|_| unreachable!("Space receipt is settled"));
+        assert_eq!(batch.processed_through(), Some(receipt));
+        let settled = batch
+            .ordered_records()
+            .iter()
+            .find_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settled) => Some(settled),
+                _ => None,
+            })
+            .unwrap_or_else(|| unreachable!("one source-qualified receipt"));
+        assert_eq!(settled.device_id(), Some(device_id));
+        let UiInputFinality::Committed(facts) = settled.finality() else {
+            unreachable!("Space callback commits");
+        };
+        assert_eq!(facts.conflict(), expected);
+    }
+}
