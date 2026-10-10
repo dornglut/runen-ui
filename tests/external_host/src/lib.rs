@@ -693,7 +693,10 @@ mod tests {
         assert_eq!(input.processed_through(), Some(native));
         assert_eq!(input.report().processed_envelopes(), 1);
         assert!(input.report().remaining_queued_envelopes() >= 1);
-        assert_eq!(input.final_ownership().keyboard().focused_node(), Some(&first));
+        assert_eq!(
+            input.final_ownership().keyboard().focused_node(),
+            Some(&first)
+        );
         let settled = input
             .ordered_records()
             .iter()
@@ -705,7 +708,10 @@ mod tests {
         assert_eq!(settled.len(), 1);
         assert_eq!(settled[0].sequence(), native);
         assert_eq!(settled[0].scope(), before.scope());
-        assert_eq!(settled[0].ownership_revision(), input.final_ownership().revision());
+        assert_eq!(
+            settled[0].ownership_revision(),
+            input.final_ownership().revision()
+        );
         assert!(matches!(
             settled[0].finality(),
             UiInputFinality::Committed(facts)
@@ -717,7 +723,10 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("second bounded public pump"));
         assert_eq!(focus.processed_through(), Some(command));
         assert_eq!(focus.report().processed_envelopes(), 1);
-        assert_eq!(focus.final_ownership().keyboard().focused_node(), Some(&second));
+        assert_eq!(
+            focus.final_ownership().keyboard().focused_node(),
+            Some(&second)
+        );
         assert!(focus.final_ownership().revision() > input.final_ownership().revision());
         assert!(focus.ordered_records().iter().any(|record| matches!(
             record,
@@ -725,10 +734,12 @@ mod tests {
                 if transition.before_revision() == input.final_ownership().revision()
                     && transition.after().revision() == focus.final_ownership().revision()
         )));
-        assert!(!focus.ordered_records().iter().any(|record| matches!(
-            record,
-            InputArbitrationRecord::InputSettled(_)
-        )));
+        assert!(
+            !focus
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
 
         let later = runtime
             .submit_keyboard(key())
