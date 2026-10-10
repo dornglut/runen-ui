@@ -182,7 +182,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .is_some()
     }
 
-    pub(crate) fn note_direct_input_ownership_boundary(&mut self) {
+    pub(crate) const fn note_direct_input_ownership_boundary(&mut self) {
         self.input_observation.pending_direct_boundaries = self
             .input_observation
             .pending_direct_boundaries
