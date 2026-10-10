@@ -782,7 +782,7 @@ fn rev20_pump_exhaustion_retires_scope_without_inventing_input_settlement() {
     use crate::{LogicalSize, SurfaceBuildContext};
     use runenui_core::StyleEnvironment;
 
-    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let mut app = focused_runtime(false);
     let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
     let _ = app
         .input_ownership()
@@ -806,7 +806,7 @@ fn rev20_pump_exhaustion_retires_scope_without_inventing_input_settlement() {
         .sequence();
 
     let final_batch =
-        pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
+        pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
             .unwrap_or_else(|_| {
                 unreachable!("checked exhaustion retires scope with an owned batch")
             });
@@ -827,7 +827,7 @@ fn rev20_pump_exhaustion_retires_scope_without_inventing_input_settlement() {
         record,
         InputArbitrationRecord::InputSettled(settled) if settled.sequence() == pending
     )));
-    let repeated = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
+    let repeated = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("retired scope remains observable"));
     assert!(
         !repeated
