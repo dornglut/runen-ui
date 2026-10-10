@@ -65,7 +65,7 @@ fn settle(runtime: &mut AppRuntime<TraceApp>) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(report.is_quiescent());
@@ -104,7 +104,7 @@ fn trace_export_04_public_non_debug_labels_are_optional_and_dormant_when_trace_i
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),

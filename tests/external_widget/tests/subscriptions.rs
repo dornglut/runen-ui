@@ -70,14 +70,14 @@ impl UiApp for SubscriptionApp {
 }
 
 fn pump<Application: UiApp>(runtime: &mut AppRuntime<Application>) {
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -195,9 +195,9 @@ impl UiApp for ActivationSubscriptionApp {
 fn downstream_activation_invalidates_current_declaration_before_ordered_actions() {
     let log = Rc::new(ExternalSubscriptionLog::default());
     let mut runtime = AppRuntime::<ActivationSubscriptionApp>::mount((Rc::clone(&log), Vec::new()));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(log.observed_states(), [0]);
@@ -210,15 +210,15 @@ fn downstream_activation_invalidates_current_declaration_before_ordered_actions(
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(log.observed_states(), [0]);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(log.observed_states(), [0, 1]);
@@ -277,9 +277,9 @@ fn queued_mounted_reconciliation_observes_the_newest_live_widget_state() {
         log: Rc::clone(&log),
         widget_state: 0,
     });
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let target = runtime.index().nodes()[0].id().clone();
@@ -294,21 +294,21 @@ fn queued_mounted_reconciliation_observes_the_newest_live_widget_state() {
     runtime
         .submit_action(NewestAction::SetNewest)
         .unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(log.observed_states(), [0]);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(log.observed_states(), [0]);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(log.observed_states(), [0, 7]);
@@ -360,9 +360,9 @@ fn removed_dirty_owner_suppresses_the_declaration_callback_at_its_envelope() {
         log: Rc::clone(&log),
         visible: true,
     });
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let target = runtime.index().nodes()[0].id().clone();
@@ -377,9 +377,9 @@ fn removed_dirty_owner_suppresses_the_declaration_callback_at_its_envelope() {
         .submit_action(RemovedDirtyAction::Remove)
         .unwrap_or_else(|_| unreachable!());
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(3, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(log.declarations(), 1);
