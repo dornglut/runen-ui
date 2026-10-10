@@ -336,3 +336,22 @@ fn right_with_only_ineligible_descendants_never_enters_next_sibling() {
     assert_eq!(runtime.state().selected, "parent");
     assert!(runtime.state().actions.is_empty());
 }
+
+#[test]
+fn nested_tree_child_hit_wins_over_ancestor_container_extent() {
+    let mut runtime = fresh(true);
+    let child = item(&mut runtime, "tree.b");
+    let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
+        &runenui_core::StyleEnvironment::default(),
+        LogicalSize::try_new(640.0, 480.0).unwrap_or_else(|_| unreachable!()),
+    )).unwrap_or_else(|error| unreachable!("tree hit publication: {error:?}"));
+    let bounds = publication.frame().node(&child)
+        .unwrap_or_else(|| unreachable!("nested child has published geometry"))
+        .bounds();
+    let point = runenui_core::LogicalPoint::new(
+        bounds.x() + bounds.width() / 2.0,
+        bounds.y() + bounds.height() / 2.0,
+    ).unwrap_or_else(|_| unreachable!("finite child center"));
+    assert_eq!(publication.hit_test_scene().target_at(point), Some(&child),
+        "nested child must win hit routing despite parent container covering descendants");
+}
