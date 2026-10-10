@@ -17,6 +17,8 @@ use runenui_core::{
 };
 use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext};
 
+const FULL_PUMP: PumpBudget = PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX);
+
 fn length(value: f32) -> LogicalLength {
     LogicalLength::new(value).unwrap_or_else(|_| unreachable!("fixture length is finite"))
 }
@@ -312,15 +314,8 @@ fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_reques
         content_height: 60.0,
     });
     let _ = runtime
-        .pump(PumpBudget::new(
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-        ))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .pump(FULL_PUMP)
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,
