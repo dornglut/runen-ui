@@ -204,7 +204,7 @@ fn settle(runtime: &mut AppRuntime<App>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
 }
 
 fn submit(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: SemanticCommand) {
@@ -213,7 +213,7 @@ fn submit(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: Semanti
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
+            .pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );
@@ -359,7 +359,7 @@ fn downstream_commit_orders_coalesced_reconciliation_interleaved_outputs_and_lat
 
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
+            .pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );
@@ -370,7 +370,7 @@ fn downstream_commit_orders_coalesced_reconciliation_interleaved_outputs_and_lat
 
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
+            .pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );
@@ -379,7 +379,7 @@ fn downstream_commit_orders_coalesced_reconciliation_interleaved_outputs_and_lat
 
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
+            .pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );
@@ -387,7 +387,7 @@ fn downstream_commit_orders_coalesced_reconciliation_interleaved_outputs_and_lat
 
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
+            .pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );
@@ -396,7 +396,7 @@ fn downstream_commit_orders_coalesced_reconciliation_interleaved_outputs_and_lat
 
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
+            .pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );
@@ -404,7 +404,7 @@ fn downstream_commit_orders_coalesced_reconciliation_interleaved_outputs_and_lat
 
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
+            .pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );
@@ -562,7 +562,7 @@ fn submit_control(runtime: &mut AppRuntime<ControlApp>, command: SemanticCommand
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
+            .pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );
@@ -656,5 +656,5 @@ fn settle_control(runtime: &mut AppRuntime<ControlApp>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
 }

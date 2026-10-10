@@ -98,7 +98,7 @@ fn drain_mount(runtime: &mut AppRuntime<App>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert!(outcome.is_quiescent());
 }
 
@@ -235,7 +235,7 @@ fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
         .unwrap_or_else(|_| unreachable!("recolor action is admitted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );
@@ -273,7 +273,7 @@ fn consumer_uses_damage_only_for_matching_surface_and_base_revision() {
         .unwrap_or_else(|_| unreachable!("recolor action is admitted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );

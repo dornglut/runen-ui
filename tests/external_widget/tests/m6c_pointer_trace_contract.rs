@@ -108,7 +108,7 @@ fn drain_mount(runtime: &mut AppRuntime<App>) {
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
-            ))
+            )).expect("pump observation").report().to_owned()
             .is_quiescent()
     );
 }
@@ -152,7 +152,7 @@ fn submit_down(runtime: &mut AppRuntime<App>, publication: &SurfacePublication) 
         .sequence();
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );
