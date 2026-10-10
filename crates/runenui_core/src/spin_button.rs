@@ -48,10 +48,7 @@ pub fn semantic_request(
     }
 }
 
-pub fn keyboard_request(
-    range: &SemanticRange,
-    key: &KeyboardEvent,
-) -> Option<SpinButtonRequest> {
+pub fn keyboard_request(range: &SemanticRange, key: &KeyboardEvent) -> Option<SpinButtonRequest> {
     if key.phase() != KeyboardPhase::Down
         || key.modifiers() != crate::KeyModifiers::NONE
         || key.composition_state() != KeyboardCompositionState::Inactive
