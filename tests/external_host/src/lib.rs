@@ -39,7 +39,7 @@ mod tests {
         ResourceProviderErrorKind, ResourceRequest, ResourceResolveError,
     };
     use runenui_runtime::{
-        AppRuntime, InputArbitrationRecord, InputScopeRetirementReason, PumpBudget,
+        AppRuntime, InputArbitrationRecord, InputScopeRetirementReason, PumpBudget, RuntimeConfig,
         SurfaceBuildContext, SurfacePublication, UiInputClaimReason, UiInputConflict,
         UiInputFamily, UiInputFinality, UiInputRoute, UiInputSettlement,
     };
@@ -592,7 +592,17 @@ mod tests {
     where
         App: UiApp<State = Arc<AtomicBool>, Action = (), HostProtocol = NoHostProtocol>,
     {
-        let mut runtime = AppRuntime::<App>::mount(reached);
+        focused_public_claim_host_with_config::<App>(reached, RuntimeConfig::default())
+    }
+
+    fn focused_public_claim_host_with_config<App>(
+        reached: Arc<AtomicBool>,
+        config: RuntimeConfig,
+    ) -> AppRuntime<App>
+    where
+        App: UiApp<State = Arc<AtomicBool>, Action = (), HostProtocol = NoHostProtocol>,
+    {
+        let mut runtime = AppRuntime::<App>::mount_with_config(reached, config);
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("fixture mount pump"));
@@ -678,6 +688,70 @@ mod tests {
         assert!(reached.load(Ordering::Relaxed));
 
         assert_public_shutdown_retires_claimed_scope(runtime);
+    }
+
+    #[test]
+    fn public_queue_full_keyboard_rejection_has_no_phantom_settlement() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = focused_public_claim_host_with_config::<ExternalHostClaimApp>(
+            Arc::clone(&reached),
+            RuntimeConfig::default().with_queue_capacity(1),
+        );
+        let scope = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("focused public scope"))
+            .scope()
+            .clone();
+        let admitted = runtime
+            .submit_keyboard(native_w_input())
+            .unwrap_or_else(|_| unreachable!("first native receipt admitted"));
+        let refused = runtime.submit_keyboard(native_w_input());
+        assert!(matches!(
+            refused,
+            Err(error) if error.kind() == runenui_runtime::SubmitKeyboardErrorKind::Full
+        ));
+        assert!(!reached.load(Ordering::Relaxed));
+
+        let pending = runtime
+            .pump(PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("zero-budget checkpoint remains observable"));
+        assert_eq!(pending.processed_through(), None);
+        assert!(!pending.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(_)
+        )));
+        assert!(!reached.load(Ordering::Relaxed));
+
+        let completed = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("admitted exact receipt must settle"));
+        let settlements: Vec<_> = completed
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settled) => Some(settled),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(settlements.len(), 1);
+        assert_eq!(settlements[0].sequence(), admitted.sequence());
+        assert_eq!(settlements[0].scope(), &scope);
+        assert_eq!(settlements[0].family(), UiInputFamily::Keyboard);
+        assert!(matches!(
+            settlements[0].finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::ExplicitWidgetClaim)
+        ));
+        assert!(reached.load(Ordering::Relaxed));
+
+        let replay = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("ordinary later host pump"));
+        assert!(!replay.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(_)
+        )));
     }
 
     #[test]
