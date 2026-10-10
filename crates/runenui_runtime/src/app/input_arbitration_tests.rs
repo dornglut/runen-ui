@@ -242,6 +242,65 @@ fn coalesced_direct_publications_expose_a_revision_gap_without_claiming_present(
 }
 
 #[test]
+fn trace_disabled_keeps_exact_host_receipt_and_explicit_widget_conflict() {
+    use crate::{RuntimeConfig, TraceConfig};
+
+    let mut app = AppRuntime::<ProbeApp>::mount_with_config(
+        true,
+        RuntimeConfig::default().with_trace_config(TraceConfig::new(0)),
+    );
+    let budget = PumpBudget::new(16, 16, 16, 16);
+    let _ = app.pump(budget);
+    let id = ElementId::new("probe").unwrap_or_else(|_| unreachable!("fixture identity"));
+    let target = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&id))
+        .unwrap_or_else(|| unreachable!("mounted fixture"))
+        .id()
+        .clone();
+    app.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("focus accepted without trace"));
+    let _ = app.pump(budget);
+    let receipt = app
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("native keyboard admission without trace"))
+        .sequence();
+    let batch = pump::pump_recorded::<ProbeApp>(
+        &mut app.runtime,
+        PumpBudget::new(1, 0, 0, 0),
+    )
+    .unwrap_or_else(|_| unreachable!("trace-independent canonical settlement"));
+    assert_eq!(batch.processed_through(), Some(receipt));
+    let facts = batch
+        .ordered_records()
+        .iter()
+        .find_map(|record| match record {
+            InputArbitrationRecord::InputSettled(settled)
+                if settled.sequence() == receipt =>
+            {
+                Some(settled.finality())
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| unreachable!("exact native receipt exists without trace"));
+    let UiInputFinality::Committed(facts) = facts else {
+        unreachable!("routed trace-disabled event committed");
+    };
+    assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
+    assert!(
+        facts
+            .reasons()
+            .contains(&UiInputClaimReason::ExplicitWidgetClaim)
+    );
+}
+
+#[test]
 fn terminal_scope_invalidates_unprocessed_native_receipts_without_fake_settlement() {
     let mut app = focused_runtime(false);
     let pending = app
