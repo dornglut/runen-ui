@@ -232,7 +232,12 @@ mod tests {
         let absent = SpinButtonRange::new(-100.0, 100.0, None, 0.5)
             .unwrap_or_else(|_| unreachable!("valid checked range"));
         assert_eq!(absent.semantic_range().current(), None);
-        assert!(matches!(absent.value_text("unknown"), Err(SpinButtonError::Range(SemanticRangeError::ValueTextWithoutCurrent))));
+        assert!(matches!(
+            absent.value_text("unknown"),
+            Err(SpinButtonError::Range(
+                SemanticRangeError::ValueTextWithoutCurrent
+            ))
+        ));
         assert!(SpinButtonRange::new(0.0, 10.0, Some(12.0), 1.0).is_err());
         assert!(SpinButtonRange::new(10.0, 0.0, None, 1.0).is_err());
         assert!(SpinButtonRange::new(0.0, 10.0, None, 0.0).is_err());

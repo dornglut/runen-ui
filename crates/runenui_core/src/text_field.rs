@@ -4,13 +4,12 @@ use std::rc::Rc;
 use crate::{
     EditIntent, EditableContribution, EditableContributionError, EditingSessionPolicy, ElementId,
     EventContext, EventPhase, Focusability, HitContribution, HitContributionContext, IntoElementId,
-    KeyboardCompositionState, KeyboardPhase, LogicalKey, SemanticAction, SemanticContribution,
-    SemanticContributionContext, SemanticEditable, SemanticEditableMode, SemanticInvalidState,
-    SemanticNodeContribution, SemanticReference, SemanticRelationship, SemanticRelationshipKind,
-    SemanticRole, SemanticState, TextDocumentSnapshot, TextNewlinePolicy, TextSelection,
-    TextSensitivity, UiEvent, WidgetInvalidation, WidgetMeasure, WidgetMeasureInput,
-    SemanticCommand, SemanticNumber, SemanticRange,
-    WidgetTextInput, WidgetUpdateContext,
+    KeyboardCompositionState, KeyboardPhase, LogicalKey, SemanticAction, SemanticCommand,
+    SemanticContribution, SemanticContributionContext, SemanticEditable, SemanticEditableMode,
+    SemanticInvalidState, SemanticNodeContribution, SemanticNumber, SemanticRange,
+    SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
+    TextDocumentSnapshot, TextNewlinePolicy, TextSelection, TextSensitivity, UiEvent,
+    WidgetInvalidation, WidgetMeasure, WidgetMeasureInput, WidgetTextInput, WidgetUpdateContext,
     element::{
         AuthoringDiagnostic, CommonNodeAuthoring, Element, View, common_node_builder_methods,
     },
@@ -138,8 +137,17 @@ impl<Action> TextField<Action> {
 
     common_node_builder_methods!();
 
-    pub(crate) fn with_spin_button(mut self, label: String, range: SemanticRange, on_adjust: Option<Box<dyn FnMut(crate::SpinButtonRequest) -> Action>>) -> Self {
-        self.spin = Some(SpinEditing { label, range, on_adjust });
+    pub(crate) fn with_spin_button(
+        mut self,
+        label: String,
+        range: SemanticRange,
+        on_adjust: Option<Box<dyn FnMut(crate::SpinButtonRequest) -> Action>>,
+    ) -> Self {
+        self.spin = Some(SpinEditing {
+            label,
+            range,
+            on_adjust,
+        });
         self
     }
 
@@ -391,20 +399,30 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             && let Some(spin) = self.state.spin.as_ref()
             && spin.actionable
             && spin.range.current().is_some()
+            && spin.range.minimum() != spin.range.maximum()
             && let Some(callback) = self.on_adjust.as_mut()
         {
             let request = if let Some(command) = event.as_semantic_command() {
                 match command.command() {
-                    SemanticCommand::Increment => spin.range.small_step().map(crate::SpinButtonRequest::AdjustBy),
+                    SemanticCommand::Increment => spin
+                        .range
+                        .small_step()
+                        .map(crate::SpinButtonRequest::AdjustBy),
                     SemanticCommand::Decrement => spin.range.small_step().and_then(|step| {
-                        SemanticNumber::new(-step.get()).ok().map(crate::SpinButtonRequest::AdjustBy)
+                        SemanticNumber::new(-step.get())
+                            .ok()
+                            .map(crate::SpinButtonRequest::AdjustBy)
                     }),
-                    SemanticCommand::SetValue(value) => match (spin.range.minimum(), spin.range.maximum()) {
-                        (Some(min), Some(max)) if (min.get()..=max.get()).contains(&value.get()) => {
-                            Some(crate::SpinButtonRequest::SetValue(value))
+                    SemanticCommand::SetValue(value) => {
+                        match (spin.range.minimum(), spin.range.maximum()) {
+                            (Some(min), Some(max))
+                                if (min.get()..=max.get()).contains(&value.get()) =>
+                            {
+                                Some(crate::SpinButtonRequest::SetValue(value))
+                            }
+                            _ => None,
                         }
-                        _ => None,
-                    },
+                    }
                     _ => None,
                 }
             } else if let Some(key) = event.as_keyboard()
@@ -413,9 +431,14 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
                 && key.composition_state() == KeyboardCompositionState::Inactive
             {
                 match key.logical_key() {
-                    LogicalKey::ArrowUp => spin.range.small_step().map(crate::SpinButtonRequest::AdjustBy),
+                    LogicalKey::ArrowUp => spin
+                        .range
+                        .small_step()
+                        .map(crate::SpinButtonRequest::AdjustBy),
                     LogicalKey::ArrowDown => spin.range.small_step().and_then(|step| {
-                        SemanticNumber::new(-step.get()).ok().map(crate::SpinButtonRequest::AdjustBy)
+                        SemanticNumber::new(-step.get())
+                            .ok()
+                            .map(crate::SpinButtonRequest::AdjustBy)
                     }),
                     _ => None,
                 }
@@ -498,7 +521,11 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         if let Some(invalid) = self.state.invalid {
             state = state.with_invalid(invalid);
         }
-        let role = if self.state.spin.is_some() { SemanticRole::SpinButton } else { SemanticRole::EditableText };
+        let role = if self.state.spin.is_some() {
+            SemanticRole::SpinButton
+        } else {
+            SemanticRole::EditableText
+        };
         let mut node = SemanticNodeContribution::primary(role)
             .with_state(state)
             .with_editable(editable)
@@ -521,11 +548,17 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             node = node.with_placeholder(placeholder.clone());
         }
         if let Some(spin) = &self.state.spin {
-            node = node.with_name(spin.label.clone()).with_range(spin.range.clone());
-            if spin.actionable && !self.state.disabled && !self.state.read_only
+            node = node
+                .with_name(spin.label.clone())
+                .with_range(spin.range.clone());
+            if spin.actionable
+                && !self.state.disabled
+                && !self.state.read_only
                 && spin.range.current().is_some()
-                && spin.range.minimum() != spin.range.maximum() {
-                node = node.with_action(SemanticAction::Increment)
+                && spin.range.minimum() != spin.range.maximum()
+            {
+                node = node
+                    .with_action(SemanticAction::Increment)
                     .with_action(SemanticAction::Decrement)
                     .with_action(SemanticAction::SetValue);
             }
@@ -569,7 +602,9 @@ impl<Action: 'static> View<Action> for TextField<Action> {
             None,
         );
         let spin_state = self.spin.as_ref().map(|spin| SpinFacts {
-            label: spin.label.clone(), range: spin.range.clone(), actionable: spin.on_adjust.is_some(),
+            label: spin.label.clone(),
+            range: spin.range.clone(),
+            actionable: spin.on_adjust.is_some(),
         });
         let on_adjust = self.spin.and_then(|spin| spin.on_adjust);
         Element::from_authored_parts(
