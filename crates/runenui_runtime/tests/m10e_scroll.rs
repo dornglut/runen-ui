@@ -15,8 +15,9 @@ use runenui_core::{
     WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, children, row,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, PumpBudget, RuntimeConfig, SurfaceBuildContext, TraceConfig,
-    TraceRecordKind,
+    AppRuntime, InputArbitrationRecord, InputPumpBatch, LogicalSize, PumpBudget, RuntimeConfig,
+    SurfaceBuildContext, TraceConfig, TraceRecordKind, UiInputClaimReason, UiInputConflict,
+    UiInputFamily, UiInputFinality,
 };
 
 fn length(value: f32) -> LogicalLength {
@@ -464,6 +465,26 @@ fn nested_wheel_consumes_exact_remainder_and_republishes_clipped_geometry() {
     assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
 }
 
+fn assert_touch_scroll_claim(batch: &InputPumpBatch) {
+    let settled = batch
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::InputSettled(value) => Some(value),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(settled.len(), 1);
+    assert_eq!(settled[0].scope(), batch.final_ownership().scope());
+    assert_eq!(settled[0].family(), UiInputFamily::Pointer);
+    assert!(matches!(
+        settled[0].finality(),
+        UiInputFinality::Committed(facts)
+            if facts.conflict() == UiInputConflict::ExclusiveUi
+                && facts.reasons().contains(&UiInputClaimReason::TouchGesture)
+    ));
+}
+
 #[test]
 fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
     let state = TouchScrollState {
@@ -527,14 +548,15 @@ fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
         publication.input_context().clone(),
     )
     .with_buttons(PointerButtons::new([PointerButton::Primary]));
-    runtime
+    let winner_receipt = runtime
         .submit_pointer(later_move)
-        .unwrap_or_else(|error| panic!("touch winner move is admitted: {error:?}"));
-    let _ = runtime
+        .unwrap_or_else(|error| panic!("touch winner move is admitted: {error:?}"))
+        .sequence();
+    let winner_batch = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("touch winner pump observation"));
+    assert_eq!(winner_batch.processed_through(), Some(winner_receipt));
+    assert_touch_scroll_claim(&winner_batch);
 
     assert_eq!(
         state
