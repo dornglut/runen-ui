@@ -16,10 +16,12 @@ use crate::{
 };
 
 fn toolbar_container(orientation: Axis) -> LayoutContainer {
-    LayoutContainer::Flex(FlexContainerStyle::default().with_direction(match orientation {
-        Axis::Horizontal => FlexDirection::Row,
-        Axis::Vertical => FlexDirection::Column,
-    }))
+    LayoutContainer::Flex(
+        FlexContainerStyle::default().with_direction(match orientation {
+            Axis::Horizontal => FlexDirection::Row,
+            Axis::Vertical => FlexDirection::Column,
+        }),
+    )
 }
 
 fn toolbar_layout(orientation: Axis) -> LayoutStyle {
