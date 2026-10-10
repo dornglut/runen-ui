@@ -229,7 +229,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     #[cfg(test)]
-    pub(crate) fn inject_input_reservation_failure_after(&mut self, successful: usize) {
+    pub(crate) fn inject_input_reservation_failure_after(&self, successful: usize) {
         self.input_observation
             .fail_reservation_after
             .set(Some(successful));

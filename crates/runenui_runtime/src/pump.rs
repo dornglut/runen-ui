@@ -649,7 +649,7 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("bounded processing observation succeeds"));
         assert_eq!(work.processed_through(), Some(receipt));
         assert_eq!(work.report().processed_envelopes(), 1);
-        assert!(work.ordered_records().is_empty());
+        assert_eq!(work.ordered_records(), []);
 
         let _ = runtime.shutdown();
         let retired = super::pump_recorded::<App>(&mut runtime, PumpBudget::new(0, 0, 0, 0))
@@ -661,7 +661,7 @@ mod tests {
         ));
         let again = super::pump_recorded::<App>(&mut runtime, PumpBudget::new(0, 0, 0, 0))
             .unwrap_or_else(|_| unreachable!("observed retirement stays retired"));
-        assert!(again.ordered_records().is_empty());
+        assert_eq!(again.ordered_records(), []);
     }
 
     #[test]

@@ -207,7 +207,7 @@ fn explicit_shutdown_reports_final_closed_ownership_and_one_scope_retirement() {
         repeated.final_ownership().status(),
         crate::RuntimeStatus::Closed
     );
-    assert!(repeated.ordered_records().is_empty());
+    assert_eq!(repeated.ordered_records(), []);
 }
 
 #[test]
@@ -322,12 +322,12 @@ fn terminal_reason_is_not_rewritten_as_shutdown_when_retirement_is_observed_late
         record,
         InputArbitrationRecord::InputSettled(settled) if settled.sequence() == pending
     )));
-    assert!(
+    assert_eq!(
         app.runtime
             .shutdown_observed()
             .unwrap_or_else(|_| unreachable!("shutdown is idempotent"))
-            .ordered_records()
-            .is_empty()
+            .ordered_records(),
+        []
     );
 }
 
