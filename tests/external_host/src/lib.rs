@@ -541,10 +541,12 @@ mod tests {
             .pump(PumpBudget::new(0, 0, 0, 0))
             .unwrap_or_else(|_| unreachable!("zero-budget observation"));
         assert_eq!(pending.processed_through(), None);
-        assert!(!pending.ordered_records().iter().any(|record| matches!(
-            record,
-            InputArbitrationRecord::InputSettled(_)
-        )));
+        assert!(
+            !pending
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
 
         let retired = second
             .shutdown()
@@ -565,11 +567,13 @@ mod tests {
         let own_settlements = completed
             .ordered_records()
             .iter()
-            .filter(|record| matches!(
-                record,
-                InputArbitrationRecord::InputSettled(receipt)
-                    if receipt.scope() == &first_scope && receipt.sequence() == first_sequence
-            ))
+            .filter(|record| {
+                matches!(
+                    record,
+                    InputArbitrationRecord::InputSettled(receipt)
+                        if receipt.scope() == &first_scope && receipt.sequence() == first_sequence
+                )
+            })
             .count();
         assert_eq!(own_settlements, 1);
         let repeated = first
