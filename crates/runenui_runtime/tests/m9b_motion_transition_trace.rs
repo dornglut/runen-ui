@@ -120,12 +120,16 @@ fn dispatch(runtime: &mut AppRuntime<TraceTransitionApp>, action: TraceTransitio
     runtime
         .submit_action(action)
         .unwrap_or_else(|_| unreachable!("transition trace action is admitted"));
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(report.processed_envelopes() >= 1);
     assert!(report.is_quiescent());
 }

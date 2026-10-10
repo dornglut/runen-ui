@@ -109,12 +109,16 @@ fn key(value: &str) -> WorkKey {
 }
 
 fn drain<Application: UiApp>(runtime: &mut AppRuntime<Application>) {
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 }
 
 fn submit_activate<Application: UiApp>(
@@ -229,13 +233,21 @@ fn routed_activation_commits_subscription_then_primary_and_auxiliary_actions() {
     let declarations = Rc::new(RefCell::new(Vec::new()));
     let mut runtime =
         AppRuntime::<ActivationOrderApp>::mount((Rc::clone(&declarations), Vec::new()));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(&*declarations.borrow(), &[0]);
 
     let target = runtime.index().nodes()[0].id().clone();
     let command_sequence = submit_activate(&mut runtime, target);
     assert_eq!(command_sequence.get(), 2);
-    runtime.pump(PumpBudget::new(1, usize::MAX, 0, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, usize::MAX, 0, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let action_sequences: Vec<_> = runtime
         .trace()
         .records()
@@ -253,7 +265,11 @@ fn routed_activation_commits_subscription_then_primary_and_auxiliary_actions() {
     assert_eq!(&*declarations.borrow(), &[0]);
     assert!(runtime.state().1.is_empty());
 
-    runtime.pump(PumpBudget::new(1, usize::MAX, 0, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, usize::MAX, 0, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(&*declarations.borrow(), &[0, 1]);
     assert!(runtime.state().1.is_empty());
 
@@ -336,7 +352,11 @@ fn routed_activation_separates_scheduler_wake_from_redraw() {
 
     let auxiliary = submit_activate(&mut runtime, target.clone());
     assert_eq!(wakes.load(Ordering::SeqCst), 1);
-    runtime.pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(runtime.take_redraw_request().is_none());
     drain(&mut runtime);
     let action_redraw = runtime
@@ -348,7 +368,11 @@ fn routed_activation_separates_scheduler_wake_from_redraw() {
 
     let task = submit_activate(&mut runtime, target.clone());
     assert!(task > auxiliary);
-    runtime.pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(runtime.take_redraw_request().is_none());
     drain(&mut runtime);
 
@@ -359,10 +383,18 @@ fn routed_activation_separates_scheduler_wake_from_redraw() {
     drain(&mut runtime);
 
     submit_activate(&mut runtime, target.clone());
-    runtime.pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(runtime.take_redraw_request().is_some());
     submit_activate(&mut runtime, target);
-    runtime.pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 }
 
 #[derive(Debug)]
@@ -408,7 +440,11 @@ fn coalesced_subscription_invalidation_is_an_effect_not_no_effect() {
     let target = runtime.index().nodes()[0].id().clone();
     submit_activate(&mut runtime, target.clone());
     submit_activate(&mut runtime, target);
-    runtime.pump(PumpBudget::new(2, 0, 0, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(2, 0, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(
         runtime
             .trace()

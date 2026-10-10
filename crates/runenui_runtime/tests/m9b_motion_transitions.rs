@@ -112,7 +112,11 @@ fn dispatch(runtime: &mut AppRuntime<TransitionApp>, action: TransitionAction) {
     runtime
         .submit_action(action)
         .unwrap_or_else(|_| unreachable!("transition continuity action is accepted"));
-    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 }
 
 #[test]

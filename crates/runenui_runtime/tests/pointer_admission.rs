@@ -166,12 +166,16 @@ fn pointer_event(
 }
 
 fn pump_all(runtime: &mut AppRuntime<App>) {
-    let _ = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 }
 
 fn assert_causal_ancestor(
@@ -232,7 +236,12 @@ fn queue_full_rejection_recovers_event_and_consumes_no_sequence_or_trace() {
 #[test]
 fn closed_and_terminal_rejections_recover_the_exact_event() {
     let mut closed = harness(RuntimeConfig::default());
-    closed.runtime.shutdown().expect("shutdown observation").report().to_owned();
+    closed
+        .runtime
+        .shutdown()
+        .expect("shutdown observation")
+        .report()
+        .to_owned();
     let closed_event = pointer_event(&closed, 102, PointerPhase::Move, false);
     let closed_trace_len = closed.runtime.trace().len();
     let Err(closed_error) = closed.runtime.submit_pointer(closed_event.clone()) else {
