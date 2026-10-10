@@ -15,7 +15,7 @@ fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
 }
 
 fn widget_identity_for_authored<App: UiApp>(
@@ -76,7 +76,7 @@ fn concrete_widget_state_and_action_mapping_identity_are_mounted_and_stable() {
     assert_eq!(*runtime.state(), 0);
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         4
     );
@@ -134,7 +134,7 @@ fn nested_recursive_mapping_preserves_non_clone_action_and_widget_state_identity
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         2
     );

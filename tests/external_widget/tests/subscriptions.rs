@@ -75,7 +75,7 @@ fn pump<Application: UiApp>(runtime: &mut AppRuntime<Application>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
 }
 
 #[test]
@@ -191,7 +191,7 @@ impl UiApp for ActivationSubscriptionApp {
 fn downstream_activation_invalidates_current_declaration_before_ordered_actions() {
     let log = Rc::new(ExternalSubscriptionLog::default());
     let mut runtime = AppRuntime::<ActivationSubscriptionApp>::mount((Rc::clone(&log), Vec::new()));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(log.observed_states(), [0]);
 
     let target = runtime.index().nodes()[0].id().clone();
@@ -202,9 +202,9 @@ fn downstream_activation_invalidates_current_declaration_before_ordered_actions(
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(log.observed_states(), [0]);
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(log.observed_states(), [0, 1]);
     assert!(runtime.state().1.is_empty());
 
@@ -261,7 +261,7 @@ fn queued_mounted_reconciliation_observes_the_newest_live_widget_state() {
         log: Rc::clone(&log),
         widget_state: 0,
     });
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let target = runtime.index().nodes()[0].id().clone();
 
     runtime
@@ -274,11 +274,11 @@ fn queued_mounted_reconciliation_observes_the_newest_live_widget_state() {
     runtime
         .submit_action(NewestAction::SetNewest)
         .unwrap_or_else(|_| unreachable!());
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(log.observed_states(), [0]);
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(log.observed_states(), [0]);
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(log.observed_states(), [0, 7]);
 }
 
@@ -328,7 +328,7 @@ fn removed_dirty_owner_suppresses_the_declaration_callback_at_its_envelope() {
         log: Rc::clone(&log),
         visible: true,
     });
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let target = runtime.index().nodes()[0].id().clone();
     runtime
         .submit_command(
@@ -341,7 +341,7 @@ fn removed_dirty_owner_suppresses_the_declaration_callback_at_its_envelope() {
         .submit_action(RemovedDirtyAction::Remove)
         .unwrap_or_else(|_| unreachable!());
 
-    runtime.pump(PumpBudget::new(3, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(3, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     assert_eq!(log.declarations(), 1);
     assert!(runtime.trace().records().any(|record| {
         matches!(

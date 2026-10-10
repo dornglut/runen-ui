@@ -47,7 +47,7 @@ fn settle(runtime: &mut AppRuntime<TraceApp>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert!(report.is_quiescent());
 }
 
@@ -86,7 +86,7 @@ fn public_trace_reconstructs_non_debug_direct_and_effect_actions() {
 
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );
@@ -132,7 +132,7 @@ fn public_trace_reconstructs_non_debug_direct_and_effect_actions() {
 
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );

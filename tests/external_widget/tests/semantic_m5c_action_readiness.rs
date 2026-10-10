@@ -117,7 +117,7 @@ fn expect_rejection(
 #[test]
 fn explicitly_focusable_disabled_owner_retains_focus_support_but_is_unavailable() {
     let mut runtime = runtime(Case::FocusOwnerDisabled);
-    runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0));
+    runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0)).expect("pump observation").report().to_owned();
     let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
@@ -156,7 +156,7 @@ fn explicitly_focusable_disabled_owner_retains_focus_support_but_is_unavailable(
 #[test]
 fn disabled_discoverable_owner_accepts_focus_but_not_activation() {
     let mut runtime = runtime(Case::FocusOwnerDisabledDiscoverable);
-    runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0));
+    runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0)).expect("pump observation").report().to_owned();
     let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
@@ -204,7 +204,7 @@ fn disabled_discoverable_owner_accepts_focus_but_not_activation() {
         .unwrap_or_else(|error| unreachable!("discoverable disabled focus is accepted: {error:?}"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );
@@ -215,7 +215,7 @@ fn disabled_discoverable_owner_accepts_focus_but_not_activation() {
 fn menu_actions_retain_support_but_reject_disabled_and_inert_named_nodes() {
     for case in [Case::MenuNodeDisabled, Case::MenuNodeInert] {
         let mut runtime = runtime(case);
-        runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0));
+        runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0)).expect("pump observation").report().to_owned();
         let style_environment = StyleEnvironment::default();
         let publication = runtime
             .publish_surface(&SurfaceBuildContext::new(
