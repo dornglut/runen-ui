@@ -667,3 +667,75 @@ fn accepted_composition_start_publishes_pending_ownership_without_pumping() {
             if entry.sequence() == receipt.sequence()
     )));
 }
+
+#[test]
+fn unavailable_context_pointer_up_preserves_exclusive_press_without_activation() {
+    use core::num::NonZeroUsize;
+    use runenui_core::{
+        LogicalPoint, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
+        PointerPhase, StyleEnvironment,
+    };
+    use crate::{LogicalSize, RuntimeConfig, SurfaceBuildContext, UiInputRoute};
+    let retention = NonZeroUsize::new(1).unwrap_or_else(|| unreachable!("positive retention"));
+    let mut app = AppRuntime::<SpaceApp>::mount_with_config(
+        0, RuntimeConfig::default().with_surface_snapshot_retention(retention),
+    );
+    let environment = StyleEnvironment::default();
+    let first_size = LogicalSize::try_new(64.0, 64.0)
+        .unwrap_or_else(|_| unreachable!("finite first size"));
+    let first_pub = app
+        .publish_surface(&SurfaceBuildContext::tight(&environment, first_size))
+        .unwrap_or_else(|_| unreachable!("first surface accepted"));
+    let root = first_pub.frame().nodes().first().unwrap_or_else(|| unreachable!("root"));
+    let bounds = root.bounds();
+    let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
+        .unwrap_or_else(|_| unreachable!("point inside root"));
+    let old_context = first_pub.input_context().clone();
+    let pointer_id = PointerId::new(91).unwrap_or_else(|| unreachable!("positive pointer"));
+    let down = PointerEvent::new(
+        pointer_id, PointerDeviceKind::Mouse, PointerPhase::Down, point,
+        old_context.clone(),
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Primary]))
+    .with_changed_button(PointerButton::Primary);
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let down_receipt = app.submit_pointer(down)
+        .unwrap_or_else(|_| unreachable!("Down admitted")).sequence();
+    let down_batch = pump::pump_recorded::<SpaceApp>(
+        &mut app.runtime, PumpBudget::new(1, 0, 0, 0)
+    ).unwrap_or_else(|_| unreachable!("Down settled"));
+    assert_eq!(down_batch.processed_through(), Some(down_receipt));
+    assert!(down_batch.ordered_records().iter().any(|r| matches!(
+        r, InputArbitrationRecord::InputSettled(s) if
+            matches!(s.finality(), UiInputFinality::Committed(f)
+                if f.reasons().contains(&UiInputClaimReason::PointerPress))
+    )));
+    let second_size = LogicalSize::try_new(96.0, 96.0)
+        .unwrap_or_else(|_| unreachable!("finite second size"));
+    let newer = app
+        .publish_surface(&SurfaceBuildContext::tight(&environment, second_size))
+        .unwrap_or_else(|_| unreachable!("republication accepted"));
+    assert_ne!(
+        old_context.hit_test_generation(), newer.input_context().hit_test_generation(),
+        "republication must create a new generation to evict the old context"
+    );
+    let up = PointerEvent::new(
+        pointer_id, PointerDeviceKind::Mouse, PointerPhase::Up, point, old_context,
+    ).with_changed_button(PointerButton::Primary);
+    let up_receipt = app.submit_pointer(up)
+        .unwrap_or_else(|_| unreachable!("stale-context Up admitted")).sequence();
+    let up_batch = pump::pump_recorded::<SpaceApp>(
+        &mut app.runtime, PumpBudget::new(1, 0, 0, 0)
+    ).unwrap_or_else(|_| unreachable!("integrity cleanup settled"));
+    assert_eq!(up_batch.processed_through(), Some(up_receipt));
+    let observed = up_batch.ordered_records().iter().find_map(|r| match r {
+        InputArbitrationRecord::InputSettled(s) => Some(s),
+        _ => None,
+    }).unwrap_or_else(|| unreachable!("exact reached Up settlement"));
+    let UiInputFinality::Committed(facts) = observed.finality() else {
+        unreachable!("unavailable-context Up is committed integrity cleanup");
+    };
+    assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
+    assert!(facts.reasons().contains(&UiInputClaimReason::PointerPress));
+    assert!(matches!(facts.route(), UiInputRoute::Unrouted));
+}
