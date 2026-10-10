@@ -535,6 +535,62 @@ fn space_press_ownership_is_source_qualified_through_other_device_and_own_releas
 }
 
 #[test]
+fn exhausted_direct_publication_preflights_before_commit_and_exposes_last_terminal_revision() {
+    use crate::{LogicalSize, PublishSurfaceError, SurfaceBuildContext};
+    use runenui_core::StyleEnvironment;
+
+    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
+    let original = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("baseline observed"));
+    assert_eq!(original.status(), crate::RuntimeStatus::Running);
+    app.runtime.seed_input_revision_for_test(u64::MAX - 1);
+
+    let environment = StyleEnvironment::default();
+    let size = LogicalSize::try_new(64.0, 64.0)
+        .unwrap_or_else(|_| unreachable!("finite viewport"));
+    let build = SurfaceBuildContext::tight(&environment, size);
+    // One publication would consume the sole remaining revision and leave
+    // no final revision for invalidation. Reject before publication changes.
+    let rejected = app.publish_surface(&build);
+    assert!(matches!(
+        rejected,
+        Err(PublishSurfaceError::Terminal(
+            crate::RuntimeTerminalReason::Poisoned
+        ))
+    ));
+    let retired = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("final terminal snapshot is readable"));
+    assert_eq!(
+        retired.status(),
+        crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned)
+    );
+    assert_eq!(retired.revision().get(), u64::MAX);
+    assert!(retired.surfaces()[0].latest_retained_context().is_none());
+    assert_eq!(
+        app.input_ownership()
+            .unwrap_or_else(|_| unreachable!("terminal snapshot remains readable"))
+            .revision(),
+        retired.revision(),
+    );
+    let final_batch = pump::pump_recorded::<SpaceApp>(
+        &mut app.runtime,
+        PumpBudget::new(0, 0, 0, 0),
+    )
+    .unwrap_or_else(|_| unreachable!("terminal retirement is still observable"));
+    assert!(final_batch.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::ScopeRetired(retired)
+            if retired.reason()
+                == crate::InputScopeRetirementReason::Terminal(
+                    crate::RuntimeTerminalReason::Poisoned
+                )
+    )));
+}
+
+#[test]
 fn revision_exhaustion_retains_committed_receipt_and_terminalizes_with_exact_final_snapshot() {
     let mut app = AppRuntime::<SpaceApp>::mount(0);
     let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
