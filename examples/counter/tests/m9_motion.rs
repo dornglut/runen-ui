@@ -22,7 +22,7 @@ fn pump_all(runtime: &mut AppRuntime<CounterApp>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert!(report.is_quiescent());
 }
 

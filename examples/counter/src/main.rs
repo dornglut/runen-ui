@@ -47,7 +47,7 @@ fn settle_initial_work(runtime: &mut AppRuntime<CounterApp>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
 }
 
 fn authored_id(value: &str) -> ElementId {
@@ -110,7 +110,7 @@ fn main() {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     for _ in 2..WIN_COUNT {
         runtime
             .submit_automation_command(authored_id("counter.increment"), SemanticCommand::Activate)
@@ -121,7 +121,7 @@ fn main() {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     settle_initial_work(&mut runtime);
 
     print_debug_surface("counter.surface.win", &mut runtime);
@@ -129,7 +129,7 @@ fn main() {
     runtime
         .submit_automation_command(authored_id("counter.reset"), SemanticCommand::Activate)
         .unwrap_or_else(|_| unreachable!("automation resolves reset"));
-    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 
     print_debug_surface("counter.surface.reset", &mut runtime);
 
@@ -262,7 +262,7 @@ mod tests {
             .submit_automation_command(authored_id("counter.reset"), SemanticCommand::Activate)
             .unwrap_or_else(|_| unreachable!("automation resolves the live reset target"));
         assert_eq!(runtime.state(), &Counter { count: 10 });
-        runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
+        runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
         assert_eq!(runtime.state(), &Counter { count: 0 });
         assert!(
             published_names(runtime.into_state())
@@ -289,7 +289,7 @@ mod tests {
             usize::MAX,
             usize::MAX,
             usize::MAX,
-        ));
+        )).expect("pump observation").report().to_owned();
         assert_eq!(runtime.state(), &Counter { count: 10 });
         assert!(
             published_names(runtime.into_state())
@@ -389,7 +389,7 @@ mod tests {
             .submit_action(CounterAction::Increment)
             .unwrap_or_else(|_| unreachable!());
         assert_eq!(runtime.state(), &Counter::new());
-        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
         assert_eq!(runtime.state(), &Counter { count: 1 });
     }
 
@@ -419,7 +419,7 @@ mod tests {
         runtime
             .submit_automation_command(authored_id("counter.increment"), SemanticCommand::Activate)
             .unwrap_or_else(|_| unreachable!("automation resolves increment"));
-        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
         assert_eq!(
             runtime.status(),
             RuntimeStatus::Terminal(RuntimeTerminalReason::ReconciliationGenerationExhausted)
@@ -435,7 +435,7 @@ mod tests {
         );
         assert_eq!(
             runtime
-                .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+                .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
                 .processed_envelopes(),
             0
         );
@@ -491,7 +491,7 @@ mod tests {
             usize::MAX,
             usize::MAX,
             usize::MAX,
-        ));
+        )).expect("pump observation").report().to_owned();
 
         let surface = debug_surface(&mut runtime);
 
@@ -520,7 +520,7 @@ mod tests {
         runtime
             .submit_automation_command(authored_id("counter.increment"), SemanticCommand::Activate)
             .unwrap_or_else(|_| unreachable!("automation resolves increment"));
-        runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
+        runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
         assert_eq!(runtime.state(), &Counter { count: 1 });
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
         let style_environment = crate::ui::style_environment();
@@ -547,13 +547,13 @@ mod tests {
             usize::MAX,
             usize::MAX,
             usize::MAX,
-        ));
+        )).expect("pump observation").report().to_owned();
         assert_eq!(runtime.focus().focused_node(), None);
         settle_initial_work(&mut runtime);
         runtime
             .submit_automation_command(authored_id("counter.reset"), SemanticCommand::Activate)
             .unwrap_or_else(|_| unreachable!("automation resolves reset on win screen"));
-        runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
+        runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
         assert_eq!(runtime.state(), &Counter::new());
     }
 }
