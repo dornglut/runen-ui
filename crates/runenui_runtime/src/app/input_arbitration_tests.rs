@@ -157,3 +157,35 @@ fn terminal_scope_invalidates_unprocessed_native_receipts_without_fake_settlemen
         record, InputArbitrationRecord::ScopeRetired(_)
     )));
 }
+
+#[test]
+fn explicit_shutdown_reports_final_closed_ownership_and_one_scope_retirement() {
+    let mut app = focused_runtime(false);
+    let receipt = app
+        .submit_keyboard(key())
+        .expect("pending input admitted before shutdown")
+        .sequence();
+    let first = app
+        .runtime
+        .shutdown_observed()
+        .expect("preflighted canonical shutdown observation");
+    assert_eq!(first.final_ownership().status(), crate::RuntimeStatus::Closed);
+    assert_eq!(first.ordered_records().len(), 2);
+    assert!(matches!(
+        first.ordered_records()[0],
+        InputArbitrationRecord::OwnershipChanged(_)
+    ));
+    assert!(matches!(
+        first.ordered_records()[1],
+        InputArbitrationRecord::ScopeRetired(_)
+    ));
+    assert!(!first.ordered_records().iter().any(|record| matches!(
+        record, InputArbitrationRecord::InputSettled(settled) if settled.sequence() == receipt
+    )));
+    let repeated = app
+        .runtime
+        .shutdown_observed()
+        .expect("repeated close is idempotent");
+    assert_eq!(repeated.final_ownership().status(), crate::RuntimeStatus::Closed);
+    assert!(repeated.ordered_records().is_empty());
+}
