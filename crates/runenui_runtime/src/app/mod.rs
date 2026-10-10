@@ -15,8 +15,9 @@ use runenui_core::{CommandOrigin, ElementId, SemanticCommand, UiApp, View};
 use crate::{
     FocusState, FontFamilyName, FontRegistrationError, FontSourcePolicy, FontSourceSnapshot,
     GenericFamilyMappingError, GenericFontFamily, MountedNodeId, MountedTreeIndex, PumpBudget,
-    PumpReport, ReconciliationReport, RuntimeConfig, RuntimeStatus, ShutdownReport,
-    SubmitActionResult, SurfaceBuildContext, SurfacePublication, Trace, TraceActionCategory,
+    InputObservationError, InputPumpBatch, InputShutdownBatch, ReconciliationReport,
+    RuntimeConfig, RuntimeStatus, SubmitActionResult, SurfaceBuildContext, SurfacePublication,
+    Trace, TraceActionCategory,
     WorkSequence, pump, runtime::Runtime,
 };
 
@@ -230,16 +231,20 @@ impl<App: UiApp> AppRuntime<App> {
         self.runtime.input_ownership()
     }
 
-    /// Processes at most the requested number of canonical work envelopes.
-    pub fn pump(&mut self, budget: PumpBudget) -> PumpReport {
+    /// Processes the canonical FIFO and returns ordered public input observations.
+    ///
+    /// # Errors
+    /// Returns an observation-admission error if the required bounded capacity
+    /// cannot be reserved before processing.
+    pub fn pump(&mut self, budget: PumpBudget) -> Result<InputPumpBatch, InputObservationError> {
         self.runtime.acknowledge_wake();
         let generation_before = self.runtime.report().generation();
-        let report = pump::pump::<App>(&mut self.runtime, budget);
+        let batch = pump::pump_recorded::<App>(&mut self.runtime, budget);
         if self.runtime.report().generation() != generation_before {
             self.runtime.note_surface_focus_validation();
         }
         self.runtime.rearm_wake_if_needed();
-        report
+        batch
     }
 
     /// Advances the deterministic headless monotonic clock.
@@ -428,8 +433,12 @@ impl<App: UiApp> AppRuntime<App> {
         self.runtime.status()
     }
 
-    /// Explicitly and idempotently closes the runtime.
-    pub fn shutdown(&mut self) -> ShutdownReport {
-        self.runtime.shutdown()
+    /// Closes the runtime with the final revisioned ownership and retirement.
+    ///
+    /// # Errors
+    /// No closure occurs if mandatory capacity or final revision headroom
+    /// cannot be reserved before the irreversible shutdown transition.
+    pub fn shutdown(&mut self) -> Result<InputShutdownBatch, InputObservationError> {
+        self.runtime.shutdown_observed()
     }
 }

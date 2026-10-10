@@ -179,24 +179,6 @@ impl PumpReport {
     }
 }
 
-/// One canonical execution path; the outer legacy report adapter is temporary
-/// draft-only until #429/M11 shared-file serialization permits the public cutover.
-/// It must be removed before #428 acceptance.
-pub(crate) fn pump<App: UiApp>(
-    runtime: &mut Runtime<App::State, App::Action, App::HostProtocol>,
-    budget: PumpBudget,
-) -> PumpReport {
-    pump_recorded::<App>(runtime, budget).map_or_else(
-        |_| {
-            // Temporary legacy report-only adapter: fail closed on observation
-            // failure rather than claiming a successful input arbitration.
-            let cancelled = runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
-            finish_report(runtime, budget, 0, cancelled, ReadinessTotals::default())
-        },
-        |batch| *batch.report(),
-    )
-}
-
 struct ReachedInput {
     sequence: runenui_core::WorkSequence,
     family: crate::UiInputFamily,
