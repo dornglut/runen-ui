@@ -289,7 +289,7 @@ fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(report.is_quiescent());

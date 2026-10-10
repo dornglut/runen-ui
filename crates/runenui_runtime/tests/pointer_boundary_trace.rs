@@ -158,7 +158,7 @@ fn submit_and_pump(harness: &mut Harness, event: PointerEvent) -> WorkSequence {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(report.is_quiescent());
@@ -401,7 +401,7 @@ fn callback_failure_never_claims_boundary_delivery() {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 

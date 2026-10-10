@@ -118,7 +118,7 @@ fn dropping_runtime_closes_active_pointer_before_one_widget_unmount_without_call
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -145,7 +145,7 @@ fn dropping_runtime_closes_active_pointer_before_one_widget_unmount_without_call
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
