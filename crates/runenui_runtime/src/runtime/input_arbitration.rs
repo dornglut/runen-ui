@@ -160,13 +160,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if let Some(previous) = &self.input_observation.last
             && !previous.same_ownership_facts(&current)
         {
-                let revision = self
-                    .input_observation
-                    .revision
-                    .get()
-                    .checked_add(1)
-                    .ok_or(InputObservationError::RevisionExhausted)?;
-                current.revision = InputOwnershipRevision::new(revision);
+            let revision = self
+                .input_observation
+                .revision
+                .get()
+                .checked_add(1)
+                .ok_or(InputObservationError::RevisionExhausted)?;
+            current.revision = InputOwnershipRevision::new(revision);
         }
         // Construct all caller/retained projections **before** committing a
         // new revision. A failed capacity reservation does not partially publish.

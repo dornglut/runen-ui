@@ -418,7 +418,7 @@ impl<'a, Action> EventContext<'a, Action> {
     }
 
     pub(crate) const fn mapped_child<ChildAction>(&self) -> EventContext<'a, ChildAction> {
-        EventContext::new_with_pointer_facts(
+        let mut child = EventContext::new_with_pointer_facts(
             self.phase,
             self.original_target,
             self.current_target,
@@ -437,7 +437,9 @@ impl<'a, Action> EventContext<'a, Action> {
             self.default_prevented,
             self.propagation_stopped,
             self.remaining_outputs,
-        )
+        );
+        child.host_input_claimed = self.host_input_claimed;
+        child
     }
 
     pub(crate) fn absorb_mapped<ChildAction: 'static>(
