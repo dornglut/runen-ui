@@ -119,12 +119,16 @@ impl Widget<()> for PassiveHitWidget {
 }
 
 fn pump_all<Application: UiApp>(runtime: &mut AppRuntime<Application>) {
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(report.is_quiescent());
 }
 

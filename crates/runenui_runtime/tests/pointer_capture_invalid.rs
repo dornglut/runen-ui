@@ -272,12 +272,16 @@ fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) -> WorkSe
         .submit_pointer(event)
         .unwrap_or_else(|_| unreachable!("the pointer event is accepted"));
     let sequence = submission.sequence();
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(report.is_quiescent());
     sequence
 }
