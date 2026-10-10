@@ -12,10 +12,17 @@ struct State {
     expanded: bool,
     selected: String,
     actions: Vec<TreeItemRequest>,
+    disabled_a: bool,
+    discover_a: bool,
+    show_b: bool,
 }
 #[derive(Clone, Debug)]
 enum Action {
     Request(TreeItemRequest),
+    DisabledA(bool),
+    DiscoverA(bool),
+    ShowB(bool),
+    Expanded(bool),
 }
 struct App;
 impl UiApp for App {
@@ -25,11 +32,14 @@ impl UiApp for App {
     fn root(state: &Self::State) -> impl View<Self::Action> {
         let first = tree_item("a", "Alpha", Vec::new())
             .selected(state.selected == "a")
+            .enabled(!state.disabled_a)
+            .discoverable_when_disabled(state.discover_a)
             .on_request(Action::Request).id("tree.a");
         let second = tree_item("b", "Bravo", Vec::new())
             .selected(state.selected == "b")
             .on_request(Action::Request).id("tree.b");
-        let parent = tree_item("parent", "Folder", vec![first, second])
+        let children = if state.show_b { vec![first, second] } else { vec![first] };
+        let parent = tree_item("parent", "Folder", children)
             .expanded(state.expanded)
             .selected(state.selected == "parent")
             .on_request(Action::Request).id("tree.parent");
@@ -40,6 +50,10 @@ impl UiApp for App {
     }
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
+            Action::DisabledA(value) => state.disabled_a = value,
+            Action::DiscoverA(value) => state.discover_a = value,
+            Action::ShowB(value) => state.show_b = value,
+            Action::Expanded(value) => state.expanded = value,
             Action::Request(intent) => {
                 match &intent {
                     TreeItemRequest::Expand(id) if id == "parent" => state.expanded = true,
@@ -55,6 +69,7 @@ impl UiApp for App {
 fn fresh(expanded: bool) -> AppRuntime<App> {
     let mut runtime = AppRuntime::<App>::mount(State {
         expanded, selected: "parent".to_owned(), actions: Vec::new(),
+        disabled_a: false, discover_a: false, show_b: true,
     });
     settle(&mut runtime);
     runtime
@@ -140,4 +155,51 @@ fn exact_semantic_tree_hierarchy_selection_and_expand_commands() {
         node.role() == SemanticRole::TreeItem && node.name() == Some("Alpha")
     ).unwrap_or_else(|| unreachable!("nested TreeItem"));
     assert_eq!(first.hierarchy_level().map(runenui_core::SemanticHierarchyLevel::get), Some(2));
+}
+
+#[test]
+fn disabled_discoverability_is_generic_group_focus_without_disabled_activation() {
+    let mut runtime = fresh(true);
+    runtime.submit_action(Action::DisabledA(true))
+        .unwrap_or_else(|_| unreachable!("application authors disabled state"));
+    settle(&mut runtime);
+    let parent = item(&mut runtime, "tree.parent");
+    let b = item(&mut runtime, "tree.b");
+    command(&mut runtime, parent.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, parent.clone(), SemanticCommand::FocusRight);
+    assert_eq!(runtime.focus().focused_node(), Some(&b),
+        "ineligible disabled child skipped without private Tree registry");
+    runtime.submit_action(Action::DiscoverA(true))
+        .unwrap_or_else(|_| unreachable!("application authors discoverability"));
+    settle(&mut runtime);
+    let parent = item(&mut runtime, "tree.parent");
+    command(&mut runtime, parent.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, parent.clone(), SemanticCommand::FocusRight);
+    let a = item(&mut runtime, "tree.a");
+    assert_eq!(runtime.focus().focused_node(), Some(&a));
+    command(&mut runtime, a.clone(), SemanticCommand::Activate);
+    assert_eq!(runtime.state().selected, "parent");
+    assert!(runtime.state().actions.is_empty(),
+        "disabled but discoverable item never activates");
+}
+
+#[test]
+fn collapsing_or_removing_focused_descendant_retires_exact_target_identity() {
+    let mut runtime = fresh(true);
+    let old_b = item(&mut runtime, "tree.b");
+    command(&mut runtime, old_b.clone(), SemanticCommand::RequestFocus);
+    assert_eq!(runtime.focus().focused_node(), Some(&old_b));
+    runtime.submit_action(Action::Expanded(false))
+        .unwrap_or_else(|_| unreachable!("application collapses"));
+    settle(&mut runtime);
+    assert_ne!(runtime.focus().focused_node(), Some(&old_b));
+    assert!(!runtime.index().nodes().iter().any(|n| n.id() == &old_b));
+    runtime.submit_action(Action::ShowB(false))
+        .unwrap_or_else(|_| unreachable!("application removes domain item"));
+    runtime.submit_action(Action::Expanded(true))
+        .unwrap_or_else(|_| unreachable!("application expands"));
+    settle(&mut runtime);
+    assert!(!runtime.index().nodes().iter().any(|n| n.id() == &old_b));
+    assert!(runtime.state().actions.is_empty(),
+        "collapse and retirement do not fabricate an app selection");
 }
