@@ -169,9 +169,7 @@ fn harness(accept_drop: bool) -> Harness {
     };
     let _ = runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     Harness {
         runtime,
         surface: publication.input_context().clone(),
@@ -220,9 +218,7 @@ fn accepted_drop_uses_the_physical_hit_target_not_the_captured_pointer_owner() {
     harness
         .runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
 
     let submission = harness
         .runtime
@@ -236,9 +232,7 @@ fn accepted_drop_uses_the_physical_hit_target_not_the_captured_pointer_owner() {
     harness
         .runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
 
     let observations = harness.observations.borrow();
     assert_eq!(observations.len(), 1);
@@ -278,9 +272,7 @@ fn accepted_drop_uses_the_physical_hit_target_not_the_captured_pointer_owner() {
     harness
         .runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert!(
         harness
             .runtime
@@ -322,9 +314,7 @@ fn hover_is_provisional_until_a_separate_drop_admission() {
     harness
         .runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let token = harness
         .runtime
         .pending_framework_services()
@@ -349,9 +339,7 @@ fn hover_is_provisional_until_a_separate_drop_admission() {
     harness
         .runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert!(harness.runtime.trace().kinds().any(|kind| matches!(
         kind,
         TraceRecordKind::FrameworkServiceResponseOutcome {
@@ -385,9 +373,7 @@ fn later_drop_does_not_supersede_a_pending_hover_service() {
     harness
         .runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let drop = harness
         .runtime
         .submit_pointer(drop_event(
@@ -399,9 +385,7 @@ fn later_drop_does_not_supersede_a_pending_hover_service() {
     harness
         .runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
 
     let (hover_token, drop_token) = {
         let services = harness.runtime.pending_framework_services();
@@ -437,9 +421,7 @@ fn later_drop_does_not_supersede_a_pending_hover_service() {
     harness
         .runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
 
     assert!(harness.runtime.trace().kinds().any(|kind| matches!(
         kind,
@@ -478,9 +460,7 @@ fn accepted_drop_failure_is_typed_and_does_not_change_runtime_lifetime() {
     harness
         .runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let token = harness
         .runtime
         .pending_framework_services()
@@ -506,9 +486,7 @@ fn accepted_drop_failure_is_typed_and_does_not_change_runtime_lifetime() {
     harness
         .runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert_eq!(
         harness.runtime.status(),
         runenui_runtime::RuntimeStatus::Running
@@ -538,9 +516,7 @@ fn rejected_drop_does_not_stage_admission_but_cancel_is_delivered_without_accept
     harness
         .runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert!(harness.runtime.pending_framework_services().iter().all(|service| {
         !matches!(
             service.request(),
@@ -559,9 +535,7 @@ fn rejected_drop_does_not_stage_admission_but_cancel_is_delivered_without_accept
     harness
         .runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let cancel_token = harness
         .runtime
         .pending_framework_services()
@@ -586,9 +560,7 @@ fn rejected_drop_does_not_stage_admission_but_cancel_is_delivered_without_accept
     harness
         .runtime
         .pump(budget())
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert!(harness.runtime.trace().kinds().any(|kind| matches!(
         kind,
         TraceRecordKind::FrameworkServiceResponseOutcome {
