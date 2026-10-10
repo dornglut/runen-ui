@@ -275,7 +275,7 @@ pub enum UiInputClaimReason {
  * This is representation-private; public consumers receive a borrowed slice.
  */
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct InputClaimReasons {
+pub struct InputClaimReasons {
     values: [UiInputClaimReason; 12],
     len: usize,
 }
@@ -289,7 +289,7 @@ impl InputClaimReasons {
     }
 
     pub(crate) fn push(&mut self, reason: UiInputClaimReason) {
-        if self.contains(&reason) {
+        if self.contains(reason) {
             return;
         }
         let slot = self
@@ -300,8 +300,8 @@ impl InputClaimReasons {
         self.len += 1;
     }
 
-    pub(crate) fn contains(&self, reason: &UiInputClaimReason) -> bool {
-        self.as_slice().contains(reason)
+    pub fn contains(&self, reason: UiInputClaimReason) -> bool {
+        self.as_slice().contains(&reason)
     }
 
     pub(crate) const fn is_empty(&self) -> bool {

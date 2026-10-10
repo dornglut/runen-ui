@@ -1259,7 +1259,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             InputEnvelopePayload::Keyboard(_) => {}
         }
         if let Some(reason) = keyboard_default
-            && !reasons.contains(&reason)
+            && !reasons.contains(reason)
         {
             reasons.push(reason);
         }
