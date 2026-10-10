@@ -193,7 +193,7 @@ fn root_opacity(publication: &SurfacePublication) -> f32 {
 }
 
 fn pump_one_action<App: UiApp>(runtime: &mut AppRuntime<App>) {
-    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 }
 
 #[test]

@@ -34,7 +34,7 @@ fn settle(runtime: &mut AppRuntime<ReplayApp>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert!(
         report.is_quiescent(),
         "replay fixture did not settle: {report:?}"

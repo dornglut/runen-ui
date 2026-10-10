@@ -125,7 +125,7 @@ fn dispatch(runtime: &mut AppRuntime<TraceTransitionApp>, action: TraceTransitio
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert!(report.processed_envelopes() >= 1);
     assert!(report.is_quiescent());
 }

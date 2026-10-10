@@ -92,11 +92,11 @@ fn settle(runtime: &mut AppRuntime<RetirementApp>) -> runenui_runtime::PumpRepor
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ))
+    )).expect("pump observation").report().to_owned()
 }
 
 fn observe(runtime: &mut AppRuntime<RetirementApp>) -> runenui_runtime::PumpReport {
-    runtime.pump(PumpBudget::new(0, 0, 0, 0))
+    runtime.pump(PumpBudget::new(0, 0, 0, 0)).expect("pump observation").report().to_owned()
 }
 
 #[test]

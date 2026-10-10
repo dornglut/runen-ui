@@ -85,7 +85,7 @@ fn pump_all(runtime: &mut AppRuntime<HoverTransitionApp>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert!(report.is_quiescent());
 }
 
