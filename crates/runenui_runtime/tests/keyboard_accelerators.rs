@@ -13,10 +13,10 @@ use runenui_core::{
     command_binding, command_scope, container, shortcut_scope,
 };
 use runenui_runtime::{
-    AppRuntime, InputArbitrationRecord, LayoutConstraints, PumpBudget, RuntimeConfig, RuntimeLimits,
-    RuntimeStatus, SurfaceBuildContext, TraceApplicationCommandOutcome, TraceRecordKind,
-    TraceRoutedAdmissionRejection, TraceTargetRejection, UiDefaultDisposition, UiInputClaimReason,
-    UiInputConflict, UiInputFinality,
+    AppRuntime, InputArbitrationRecord, LayoutConstraints, PumpBudget, RuntimeConfig,
+    RuntimeLimits, RuntimeStatus, SurfaceBuildContext, TraceApplicationCommandOutcome,
+    TraceRecordKind, TraceRoutedAdmissionRejection, TraceTargetRejection, UiDefaultDisposition,
+    UiInputClaimReason, UiInputConflict, UiInputFinality,
 };
 
 const SHORTCUT_DIAGNOSTIC: &str = "runenui.shortcut-scope.duplicate-chord";
@@ -622,7 +622,12 @@ fn public_shortcut_claim_requires_committed_default_not_candidate_or_prevention(
     let control = KeyModifiers::NONE.with_control();
     for (mode, expected_claim, expected_default, prevented) in [
         (Mode::Unique, true, UiDefaultDisposition::Queued, false),
-        (Mode::PreventDefault, false, UiDefaultDisposition::Prevented, true),
+        (
+            Mode::PreventDefault,
+            false,
+            UiDefaultDisposition::Prevented,
+            true,
+        ),
         (Mode::Ambiguous, false, UiDefaultDisposition::None, false),
         (Mode::Disabled, false, UiDefaultDisposition::None, false),
     ] {
@@ -679,7 +684,11 @@ fn public_shortcut_claim_requires_committed_default_not_candidate_or_prevention(
         settle(&mut runtime);
         assert_eq!(
             runtime.state().fired.as_slice(),
-            if expected_claim { &["inner"][..] } else { &[][..] }
+            if expected_claim {
+                &["inner"][..]
+            } else {
+                &[][..]
+            }
         );
     }
 }

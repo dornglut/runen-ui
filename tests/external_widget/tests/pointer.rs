@@ -218,10 +218,9 @@ fn downstream_pointer_capture_outside_hit_has_exact_exclusive_finality() {
                 .unwrap_or_else(|_| unreachable!("valid surface bounds")),
         ))
         .unwrap_or_else(|_| unreachable!("published pointer snapshot"));
-    let inside = LogicalPoint::new(1.0, 1.0)
-        .unwrap_or_else(|_| unreachable!("finite point"));
-    let outside = LogicalPoint::new(65.0, 65.0)
-        .unwrap_or_else(|_| unreachable!("finite outside point"));
+    let inside = LogicalPoint::new(1.0, 1.0).unwrap_or_else(|_| unreachable!("finite point"));
+    let outside =
+        LogicalPoint::new(65.0, 65.0).unwrap_or_else(|_| unreachable!("finite outside point"));
     let target = publication
         .hit_test_scene()
         .target_at(inside)
@@ -259,9 +258,13 @@ fn downstream_pointer_capture_outside_hit_has_exact_exclusive_finality() {
                     && matches!(facts.route(), UiInputRoute::Captured { target: owner }
                         if owner == &target)
         ));
-        assert!(batch.final_ownership().pointers().iter().any(|pointer| {
-            pointer.capture_owner() == Some(&target)
-        }));
+        assert!(
+            batch
+                .final_ownership()
+                .pointers()
+                .iter()
+                .any(|pointer| { pointer.capture_owner() == Some(&target) })
+        );
     }
 }
 
