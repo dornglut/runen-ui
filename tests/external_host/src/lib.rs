@@ -306,9 +306,7 @@ mod tests {
         }
     }
 
-    fn assert_public_shutdown_retires_claimed_scope(
-        mut runtime: AppRuntime<ExternalHostClaimApp>,
-    ) {
+    fn assert_public_shutdown_retires_claimed_scope(mut runtime: AppRuntime<ExternalHostClaimApp>) {
         let closed = runtime
             .shutdown()
             .unwrap_or_else(|_| unreachable!("observed final shutdown"));
