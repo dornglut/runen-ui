@@ -732,12 +732,18 @@ fn secondary_mouse_release_during_primary_drag_does_not_retire_capture() {
     settle(&mut runtime);
     assert_eq!(runtime.state().size, 70.0);
     assert_eq!(runtime.state().proposals, 1);
-    runtime.submit_pointer(
-        PointerEvent::new(
-            pointer, PointerDeviceKind::Mouse, PointerPhase::Up,
-            point(26.0), input,
-        ).with_changed_button(PointerButton::Primary),
-    ).unwrap_or_else(|_| unreachable!("primary ends capture"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                point(26.0),
+                input,
+            )
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|_| unreachable!("primary ends capture"));
     settle(&mut runtime);
     assert_eq!(runtime.state().size, 70.0);
 }
@@ -747,52 +753,76 @@ fn changing_divider_orientation_mid_drag_releases_old_axis_capture() {
     let mut runtime = fresh();
     let initial = publish(&mut runtime);
     let pointer = PointerId::new(131).unwrap_or_else(|| unreachable!());
-    runtime.submit_pointer(
-        PointerEvent::new(
-            pointer, PointerDeviceKind::Touch, PointerPhase::Down,
-            LogicalPoint::new(6.0, 40.0).unwrap_or_else(|_| unreachable!()),
-            initial.input_context().clone(),
-        ).with_changed_button(PointerButton::Primary)
-         .with_buttons(PointerButtons::new([PointerButton::Primary])),
-    ).unwrap_or_else(|_| unreachable!("original vertical capture"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Touch,
+                PointerPhase::Down,
+                LogicalPoint::new(6.0, 40.0).unwrap_or_else(|_| unreachable!()),
+                initial.input_context().clone(),
+            )
+            .with_changed_button(PointerButton::Primary)
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|_| unreachable!("original vertical capture"));
     settle(&mut runtime);
-    runtime.submit_action(Action::Horizontal(true)).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_action(Action::Horizontal(true))
+        .unwrap_or_else(|_| unreachable!());
     settle(&mut runtime);
     let rotated = publish(&mut runtime);
     inspect(&rotated, 50.0, true, true);
-    runtime.submit_pointer(
-        PointerEvent::new(
-            pointer, PointerDeviceKind::Touch, PointerPhase::Move,
-            LogicalPoint::new(40.0, 10.0).unwrap_or_else(|_| unreachable!()),
-            rotated.input_context().clone(),
-        ).with_movement_delta(
-            LogicalDelta::new(0.0, 10.0).unwrap_or_else(|_| unreachable!()),
-        ).with_buttons(PointerButtons::new([PointerButton::Primary])),
-    ).unwrap_or_else(|_| unreachable!("stale-axis stream is routed to former owner"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Touch,
+                PointerPhase::Move,
+                LogicalPoint::new(40.0, 10.0).unwrap_or_else(|_| unreachable!()),
+                rotated.input_context().clone(),
+            )
+            .with_movement_delta(LogicalDelta::new(0.0, 10.0).unwrap_or_else(|_| unreachable!()))
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|_| unreachable!("stale-axis stream is routed to former owner"));
     settle(&mut runtime);
-    assert_eq!(runtime.state().size, 50.0, "reorientation cannot reinterpret captured delta");
+    assert_eq!(
+        runtime.state().size,
+        50.0,
+        "reorientation cannot reinterpret captured delta"
+    );
     assert_eq!(runtime.state().proposals, 0);
     // A new contact can start on the rebuilt horizontal divider.
     let fresh_pointer = PointerId::new(133).unwrap_or_else(|| unreachable!());
     let new_frame = publish(&mut runtime);
-    runtime.submit_pointer(
-        PointerEvent::new(
-            fresh_pointer, PointerDeviceKind::Touch, PointerPhase::Down,
-            LogicalPoint::new(40.0, 6.0).unwrap_or_else(|_| unreachable!()),
-            new_frame.input_context().clone(),
-        ).with_changed_button(PointerButton::Primary)
-         .with_buttons(PointerButtons::new([PointerButton::Primary])),
-    ).unwrap_or_else(|_| unreachable!("new horizontal capture starts"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                fresh_pointer,
+                PointerDeviceKind::Touch,
+                PointerPhase::Down,
+                LogicalPoint::new(40.0, 6.0).unwrap_or_else(|_| unreachable!()),
+                new_frame.input_context().clone(),
+            )
+            .with_changed_button(PointerButton::Primary)
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|_| unreachable!("new horizontal capture starts"));
     settle(&mut runtime);
-    runtime.submit_pointer(
-        PointerEvent::new(
-            fresh_pointer, PointerDeviceKind::Touch, PointerPhase::Move,
-            LogicalPoint::new(40.0, 16.0).unwrap_or_else(|_| unreachable!()),
-            new_frame.input_context().clone(),
-        ).with_movement_delta(
-            LogicalDelta::new(0.0, 10.0).unwrap_or_else(|_| unreachable!()),
-        ).with_buttons(PointerButtons::new([PointerButton::Primary])),
-    ).unwrap_or_else(|_| unreachable!("fresh horizontal delta"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                fresh_pointer,
+                PointerDeviceKind::Touch,
+                PointerPhase::Move,
+                LogicalPoint::new(40.0, 16.0).unwrap_or_else(|_| unreachable!()),
+                new_frame.input_context().clone(),
+            )
+            .with_movement_delta(LogicalDelta::new(0.0, 10.0).unwrap_or_else(|_| unreachable!()))
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|_| unreachable!("fresh horizontal delta"));
     settle(&mut runtime);
     assert_eq!(runtime.state().size, 60.0);
 }
