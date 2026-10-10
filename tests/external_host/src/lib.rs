@@ -11,21 +11,24 @@ mod tests {
     use std::{
         cell::Cell,
         io,
-        sync::{atomic::{AtomicBool, Ordering}, Arc},
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
         task::{Context, Wake, Waker},
         thread,
     };
 
     use runenui_core::{
-        Brush, Color, Element, ImageDescriptor, ImageIntrinsicSize, ImageMapping,
-        ImagePaintDescriptor, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol,
-        PaintContribution, PaintContributionContext, PaintContributionItem, ResourceKind,
-        ResourceRef, SceneShape, SemanticAction, SemanticActionRequest, SemanticContribution,
-        SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment,
-        UiApp, View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
-        WidgetMeasure, CommandOrigin, ElementId, EventContext, EventPhase, KeyLocation,
-        KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
-        PhysicalKey, SemanticCommand, UiEvent, WidgetEventOutput,
+        Brush, Color, CommandOrigin, Element, ElementId, EventContext, EventPhase, ImageDescriptor,
+        ImageIntrinsicSize, ImageMapping, ImagePaintDescriptor, KeyLocation, KeyModifiers,
+        KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, LogicalLength,
+        LogicalRect, LogicalSize, NoHostProtocol, PaintContribution, PaintContributionContext,
+        PaintContributionItem, PhysicalKey, ResourceKind, ResourceRef, SceneShape, SemanticAction,
+        SemanticActionRequest, SemanticCommand, SemanticContribution, SemanticContributionContext,
+        SemanticNodeContribution, SemanticRole, StyleEnvironment, UiApp, UiEvent, View, Widget,
+        WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput,
+        WidgetMeasure,
     };
     use runenui_render_wgpu::{
         BackendSelection, ImagePayload, OffscreenPublicationReadback, OffscreenReadback,
@@ -251,6 +254,7 @@ mod tests {
 
     // Downstream public-only authoring proof: no runtime-internal types,
     // event outcome inspectors, extra input FIFO, or gameplay manager.
+    #[derive(Debug)]
     struct ExternalHostClaimProbe {
         reached: Arc<AtomicBool>,
     }
@@ -266,9 +270,7 @@ mod tests {
             event: &UiEvent,
             context: &mut EventContext<'_, ()>,
         ) -> WidgetEventOutput {
-            if matches!(event, UiEvent::Keyboard(_))
-                && context.phase() == EventPhase::Target
-            {
+            if matches!(event, UiEvent::Keyboard(_)) && context.phase() == EventPhase::Target {
                 context.claim_host_input();
                 assert!(context.host_input_is_claimed());
                 self.reached.store(true, Ordering::Relaxed);
@@ -293,7 +295,10 @@ mod tests {
             .focusable(true)
         }
 
-        fn update(_: &mut Self::State, (): Self::Action) {}
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {}
     }
 
     #[test]
