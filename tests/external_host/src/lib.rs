@@ -306,6 +306,31 @@ mod tests {
         }
     }
 
+    // An independently typed UiApp exercises the same ordinary public input
+    // contract, without erasing State/Action/HostProtocol into a host facade.
+    struct ExternalHostSiblingClaimApp;
+
+    impl UiApp for ExternalHostSiblingClaimApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            Element::new(ExternalHostClaimProbe {
+                reached: Arc::clone(reached),
+            })
+            .id("external-claim-probe")
+            .key("external-claim-probe")
+            .focusable(true)
+        }
+
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        }
+    }
+
     fn assert_public_shutdown_retires_claimed_scope(mut runtime: AppRuntime<ExternalHostClaimApp>) {
         let closed = runtime
             .shutdown()
@@ -341,8 +366,11 @@ mod tests {
         assert!(returned.load(Ordering::Relaxed));
     }
 
-    fn focused_public_claim_host(reached: Arc<AtomicBool>) -> AppRuntime<ExternalHostClaimApp> {
-        let mut runtime = AppRuntime::<ExternalHostClaimApp>::mount(reached);
+    fn focused_public_claim_host<App>(reached: Arc<AtomicBool>) -> AppRuntime<App>
+    where
+        App: UiApp<State = Arc<AtomicBool>, Action = (), HostProtocol = NoHostProtocol>,
+    {
+        let mut runtime = AppRuntime::<App>::mount(reached);
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("fixture mount pump"));
@@ -372,7 +400,7 @@ mod tests {
     #[test]
     fn downstream_widget_can_claim_keyboard_input_using_only_public_framework_api() {
         let reached = Arc::new(AtomicBool::new(false));
-        let mut runtime = focused_public_claim_host(Arc::clone(&reached));
+        let mut runtime = focused_public_claim_host::<ExternalHostClaimApp>(Arc::clone(&reached));
         let receipt = runtime
             .submit_keyboard(KeyboardEvent::new(
                 KeyboardPhase::Down,
@@ -474,9 +502,10 @@ mod tests {
     }
 
     #[test]
-    fn independent_typed_public_hosts_settle_only_their_own_receipts_or_retire_their_scope() {
-        let mut first = focused_public_claim_host(Arc::new(AtomicBool::new(false)));
-        let mut second = focused_public_claim_host(Arc::new(AtomicBool::new(false)));
+    fn different_typed_public_hosts_settle_only_their_own_receipts_or_retire_their_scope() {
+        let mut first = focused_public_claim_host::<ExternalHostClaimApp>(Arc::new(AtomicBool::new(false)));
+        let mut second =
+            focused_public_claim_host::<ExternalHostSiblingClaimApp>(Arc::new(AtomicBool::new(false)));
         let first_scope = first
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("first host has a scope"))
