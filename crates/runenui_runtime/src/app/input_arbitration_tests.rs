@@ -784,20 +784,26 @@ fn rev20_pump_exhaustion_retires_scope_without_inventing_input_settlement() {
 
     let mut app = AppRuntime::<SpaceApp>::mount(0);
     let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
-    let _ = app.input_ownership().unwrap_or_else(|_| unreachable!("mounted snapshot"));
+    let _ = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("mounted snapshot"));
     app.runtime.seed_input_revision_for_test(u64::MAX - 2);
     let environment = StyleEnvironment::default();
     let size = LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("finite viewport"));
     let build = SurfaceBuildContext::tight(&environment, size);
-    let _ = app.publish_surface(&build).unwrap_or_else(|_| unreachable!("publication admitted"));
-    let before = app.input_ownership().unwrap_or_else(|_| unreachable!("penultimate revision"));
+    let _ = app
+        .publish_surface(&build)
+        .unwrap_or_else(|_| unreachable!("publication admitted"));
+    let before = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("penultimate revision"));
     assert_eq!(before.revision().get(), u64::MAX - 1);
 
-    let final_batch = pump::pump_recorded::<SpaceApp>(
-        &mut app.runtime,
-        PumpBudget::new(0, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("checked exhaustion retires scope with an owned batch"));
+    let final_batch =
+        pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| {
+                unreachable!("checked exhaustion retires scope with an owned batch")
+            });
     assert_eq!(final_batch.processed_through(), None);
     assert_eq!(final_batch.final_ownership().revision().get(), u64::MAX);
     assert_eq!(
@@ -811,37 +817,45 @@ fn rev20_pump_exhaustion_retires_scope_without_inventing_input_settlement() {
                 crate::RuntimeTerminalReason::Poisoned
             )
     )));
-    assert!(!final_batch.ordered_records().iter().any(|record| matches!(
-        record,
-        InputArbitrationRecord::InputSettled(_)
-    )));
-    let repeated = pump::pump_recorded::<SpaceApp>(
-        &mut app.runtime,
-        PumpBudget::new(0, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("retired scope remains observable"));
-    assert!(!repeated.ordered_records().iter().any(|record| matches!(
-        record,
-        InputArbitrationRecord::ScopeRetired(_)
-    )));
+    assert!(
+        !final_batch
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+    );
+    let repeated = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("retired scope remains observable"));
+    assert!(
+        !repeated
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::ScopeRetired(_)))
+    );
 }
 
 #[test]
 fn rev20_explicit_shutdown_uses_last_revision_without_phantom_boundary() {
     let mut app = AppRuntime::<SpaceApp>::mount(0);
     let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
-    let _ = app.input_ownership().unwrap_or_else(|_| unreachable!("baseline observed"));
+    let _ = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("baseline observed"));
     app.runtime.seed_input_revision_for_test(u64::MAX - 1);
     let completed = app
         .runtime
         .shutdown_observed()
         .unwrap_or_else(|_| unreachable!("one remaining revision permits exact close"));
     assert_eq!(completed.final_ownership().revision().get(), u64::MAX);
-    assert_eq!(completed.final_ownership().status(), crate::RuntimeStatus::Closed);
-    assert!(completed.ordered_records().iter().any(|record| matches!(
-        record,
-        InputArbitrationRecord::ScopeRetired(_)
-    )));
+    assert_eq!(
+        completed.final_ownership().status(),
+        crate::RuntimeStatus::Closed
+    );
+    assert!(
+        completed
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::ScopeRetired(_)))
+    );
 }
 
 #[test]
