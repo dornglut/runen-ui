@@ -1716,8 +1716,7 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
                 SemanticState::ENABLED
                     .with_disabled(!state.enabled)
                     .with_selected(state.selected),
-            )
-;
+            );
         if !state.combo_box_proxy {
             node = node.with_action(SemanticAction::RequestFocus);
         }
