@@ -37,6 +37,17 @@ impl UiApp for SelectableApp {
     }
 }
 
+fn pump_selectable(runtime: &mut AppRuntime<SelectableApp>, max_envelopes: usize) {
+    let _ = runtime
+        .pump(PumpBudget::new(
+            max_envelopes,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("canonical pump observation"));
+}
+
 #[test]
 fn selectable_text_uses_m10_for_read_only_selection_and_blocks_mutation() {
     let mut runtime = AppRuntime::<SelectableApp>::mount(());
@@ -98,11 +109,7 @@ fn selectable_text_uses_m10_for_read_only_selection_and_blocks_mutation() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("read-only text can focus"));
-    let _ = runtime
-        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    pump_selectable(&mut runtime, 8);
     assert!(
         runtime
             .submit_text(
@@ -118,11 +125,7 @@ fn selectable_text_uses_m10_for_read_only_selection_and_blocks_mutation() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("read-only selection is routed"));
-    let _ = runtime
-        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    pump_selectable(&mut runtime, 8);
     let selected = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("selected surface publishes"));
@@ -142,11 +145,7 @@ fn selectable_text_uses_m10_for_read_only_selection_and_blocks_mutation() {
     runtime
         .submit_command(owner, SemanticCommand::Copy, CommandOrigin::programmatic())
         .unwrap_or_else(|_| unreachable!("read-only copy command routes"));
-    let _ = runtime
-        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    pump_selectable(&mut runtime, 16);
     assert!(runtime.pending_framework_services().iter().any(|service| {
         matches!(
             service.request(),

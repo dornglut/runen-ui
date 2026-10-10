@@ -120,6 +120,17 @@ fn app_with_source(mode: SemanticEditableMode, source: &str) -> AppRuntime<FormA
     })
 }
 
+fn pump_form_boundary(runtime: &mut AppRuntime<FormApp>, max_envelopes: usize) {
+    let _ = runtime
+        .pump(PumpBudget::new(
+            max_envelopes,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("canonical pump observation"));
+}
+
 fn focus(runtime: &mut AppRuntime<FormApp>) {
     let owner = runtime.index().nodes()[0].id().clone();
     runtime
@@ -436,11 +447,7 @@ fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authorit
             "A much longer visual hint".to_owned(),
         ))
         .unwrap_or_else(|_| unreachable!("placeholder is application-authored"));
-    let _ = runtime
-        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    pump_form_boundary(&mut runtime, 16);
     let relabeled = publication(&mut runtime);
     assert_eq!(runtime.index().nodes()[0].id(), &owner);
     assert_eq!(
@@ -494,11 +501,7 @@ fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authorit
     runtime
         .submit_action(Action::SetValue(String::new()))
         .unwrap_or_else(|_| unreachable!("application can clear durable text"));
-    let _ = runtime
-        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    pump_form_boundary(&mut runtime, 16);
     let cleared = publication(&mut runtime);
     assert_eq!(runtime.state().text, "");
     assert!(cleared.paint_scene().items().iter().any(|item| {
