@@ -5,9 +5,9 @@
 use core::fmt;
 
 use crate::{
-    EditIntent, IntoElementId, SemanticInvalidState, SemanticNumber,
-    SemanticNumberError, SemanticRange, SemanticRangeError, TextDocumentSnapshot,
-    TextField, TextFieldError, TextSelection,
+    EditIntent, IntoElementId, SemanticInvalidState, SemanticNumber, SemanticNumberError,
+    SemanticRange, SemanticRangeError, TextDocumentSnapshot, TextField, TextFieldError,
+    TextSelection,
     element::{CommonNodeAuthoring, Element, View, common_node_builder_methods},
 };
 
@@ -36,19 +36,27 @@ impl fmt::Display for SpinButtonError {
             Self::Text(error) => error.fmt(f),
             Self::NonFinite => f.write_str("numeric input bounds, value and step must be finite"),
             Self::Range(error) => error.fmt(f),
-            Self::UnrepresentableSpan => f.write_str("numeric input range and step span are unrepresentable"),
+            Self::UnrepresentableSpan => {
+                f.write_str("numeric input range and step span are unrepresentable")
+            }
         }
     }
 }
 impl std::error::Error for SpinButtonError {}
 impl From<TextFieldError> for SpinButtonError {
-    fn from(error: TextFieldError) -> Self { Self::Text(error) }
+    fn from(error: TextFieldError) -> Self {
+        Self::Text(error)
+    }
 }
 impl From<SemanticNumberError> for SpinButtonError {
-    fn from(_: SemanticNumberError) -> Self { Self::NonFinite }
+    fn from(_: SemanticNumberError) -> Self {
+        Self::NonFinite
+    }
 }
 impl From<SemanticRangeError> for SpinButtonError {
-    fn from(error: SemanticRangeError) -> Self { Self::Range(error) }
+    fn from(error: SemanticRangeError) -> Self {
+        Self::Range(error)
+    }
 }
 
 /// Convenience checked constructor for the existing #310 semantic range.
@@ -91,7 +99,9 @@ impl SpinButtonRange {
     }
 
     #[must_use]
-    pub const fn semantic_range(&self) -> &SemanticRange { &self.0 }
+    pub const fn semantic_range(&self) -> &SemanticRange {
+        &self.0
+    }
 }
 
 /// One standard single-line TextField whose primary role is SpinButton.
@@ -131,7 +141,11 @@ impl<Action> SpinButton<Action> {
         on_edit: impl Fn(EditIntent) -> Action + 'static,
     ) -> Result<Self, SpinButtonError> {
         let field = TextField::new(
-            snapshot, content, selection, crate::SemanticEditableMode::SingleLine, on_edit,
+            snapshot,
+            content,
+            selection,
+            crate::SemanticEditableMode::SingleLine,
+            on_edit,
         )?;
         Ok(Self {
             field,
@@ -147,7 +161,10 @@ impl<Action> SpinButton<Action> {
     /// Emits relative/absolute intents; each app update commits or clamps
     /// against its latest numeric state and independently reauthors text.
     #[must_use]
-    pub fn on_adjust(mut self, callback: impl FnMut(SpinButtonRequest) -> Action + 'static) -> Self {
+    pub fn on_adjust(
+        mut self,
+        callback: impl FnMut(SpinButtonRequest) -> Action + 'static,
+    ) -> Self {
         self.on_adjust = Some(Box::new(callback));
         self
     }

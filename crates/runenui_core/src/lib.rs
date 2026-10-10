@@ -343,6 +343,9 @@ pub use paint::{
 pub use paint_group::{PaintContributionEntry, PaintContributionGroup};
 pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
 pub use presentation_controls::{Dialog, Popover, Tooltip, TooltipTrigger};
+pub use spin_button::{
+    SpinButton, SpinButtonError, SpinButtonRange, SpinButtonRequest, spin_button,
+};
 pub use standard_content::{Image, Progress, Separator, image, progress, separator};
 pub use surface_presentation::{
     PresentationDismissReason, PresentationFocusEntry, PresentationFocusPolicy,
@@ -350,7 +353,6 @@ pub use surface_presentation::{
     SurfacePresentationAnchor, SurfacePresentationPlacement, SurfacePresentationSide,
 };
 pub use text_field::{TextField, TextFieldError, text_field};
-pub use spin_button::{SpinButton, SpinButtonError, SpinButtonRange, SpinButtonRequest, spin_button};
 pub use toolbar_controls::{Toolbar, toolbar};
 pub use widget_protocol::{
     ChildBearingWidget, TextAlignment, TextBlockPlacement, TextLeafMeasure, TextLeafWrap, Widget,
