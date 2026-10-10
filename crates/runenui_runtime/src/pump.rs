@@ -612,7 +612,7 @@ mod tests {
 
     use runenui_core::{Element, NoHostProtocol, UiApp, View, text};
 
-    use super::{PumpBudget, pump};
+    use super::{PumpBudget, pump_recorded};
     use crate::{RuntimeConfig, TraceActionCategory, runtime::Runtime};
 
     struct App;
@@ -663,17 +663,19 @@ mod tests {
             .submit_action((), TraceActionCategory::DirectSubmission, None, None)
             .unwrap_or_else(|_| unreachable!());
         assert_eq!(runtime.readiness_checkpoint_count_for_test(), 0);
-        let report = pump::<App>(
+        let report = pump_recorded::<App>(
             &mut runtime,
             PumpBudget::new(0, usize::MAX, usize::MAX, usize::MAX),
-        );
-        assert_eq!(report.processed_envelopes(), 0);
+        )
+        .unwrap_or_else(|_| unreachable!("bounded pump snapshot"));
+        assert_eq!(report.report().processed_envelopes(), 0);
         assert_eq!(runtime.readiness_checkpoint_count_for_test(), 2);
-        let report = pump::<App>(
+        let report = pump_recorded::<App>(
             &mut runtime,
             PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX),
-        );
-        assert_eq!(report.processed_envelopes(), 1);
+        )
+        .unwrap_or_else(|_| unreachable!("bounded pump snapshot"));
+        assert_eq!(report.report().processed_envelopes(), 1);
         assert_eq!(runtime.readiness_checkpoint_count_for_test(), 4);
     }
 }
