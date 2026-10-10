@@ -604,6 +604,68 @@ mod tests {
     }
 
     #[test]
+    fn public_host_slot_disposal_invalidates_only_its_pending_receipts() {
+        let first_reached = Arc::new(AtomicBool::new(false));
+        let second_reached = Arc::new(AtomicBool::new(false));
+        let mut first = focused_public_claim_host::<ExternalHostClaimApp>(Arc::clone(&first_reached));
+        let mut second =
+            focused_public_claim_host::<ExternalHostSiblingClaimApp>(Arc::clone(&second_reached));
+        let first_scope = first
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("first scope is public"))
+            .scope()
+            .clone();
+        let second_scope = second
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("second scope is public"))
+            .scope()
+            .clone();
+        let key = || {
+            KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyW")),
+                LogicalKey::Character(String::from("w")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            )
+        };
+        let first_sequence = first
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("first receipt is pending"))
+            .sequence();
+        let second_sequence = second
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("second receipt is pending"))
+            .sequence();
+        // This is the host's receipt-correlation map, not another RunenUI queue.
+        let mut host_pending = vec![
+            (first_scope.clone(), first_sequence),
+            (second_scope.clone(), second_sequence),
+        ];
+        let returned = first.into_state();
+        assert!(!returned.load(Ordering::Relaxed));
+        // Drop/into_state cannot return a Rust retirement record. The host
+        // removes the exact lifetime before reusing its slot or game source.
+        host_pending.retain(|(scope, _)| scope != &first_scope);
+        assert_eq!(host_pending, [(second_scope.clone(), second_sequence)]);
+        let surviving = second
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("unrelated host still processes"));
+        assert!(surviving.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(receipt)
+                if receipt.scope() == &second_scope && receipt.sequence() == second_sequence
+        )));
+        assert!(!first_reached.load(Ordering::Relaxed));
+        assert!(second_reached.load(Ordering::Relaxed));
+        host_pending.clear();
+        assert_eq!(host_pending, []);
+    }
+
+    #[test]
     fn downstream_host_owns_publication_acknowledgement_renderer_retry_and_semantic_next_frame()
     -> Result<(), Box<dyn Error>> {
         let Some(mut renderer) = renderer_or_adapterless()? else {
