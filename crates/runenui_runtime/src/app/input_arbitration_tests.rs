@@ -143,6 +143,62 @@ fn only_explicit_widget_claim_is_exclusive_not_propagation_or_default_control() 
 }
 
 #[test]
+fn intervening_non_input_work_does_not_create_or_reorder_native_receipts() {
+    let mut app = focused_runtime(true);
+    let target = app
+        .focus()
+        .focused_node()
+        .unwrap_or_else(|| unreachable!("fixture is focused"))
+        .clone();
+    let first = app
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("first native input accepted"))
+        .sequence();
+    let action = app
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("unrelated semantic work accepted"))
+        .sequence();
+    let second = app
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("second native input accepted"))
+        .sequence();
+
+    assert!(first < action && action < second);
+    let batch = pump::pump_recorded::<ProbeApp>(
+        &mut app.runtime,
+        PumpBudget::new(3, 0, 0, 0),
+    )
+    .unwrap_or_else(|_| unreachable!("canonical mixed FIFO settles"));
+    assert_eq!(batch.processed_through(), Some(second));
+    assert_eq!(batch.report().processed_envelopes(), 3);
+    let settlements = batch
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::InputSettled(settled) => Some(settled),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(settlements.len(), 2);
+    assert_eq!(settlements[0].sequence(), first);
+    assert_eq!(settlements[1].sequence(), second);
+    assert_eq!(settlements[0].scope(), settlements[1].scope());
+    for settled in settlements {
+        let UiInputFinality::Committed(facts) = settled.finality() else {
+            unreachable!("explicit host claims committed");
+        };
+        assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
+        assert!(
+            facts.reasons().contains(&UiInputClaimReason::ExplicitWidgetClaim)
+        );
+    }
+}
+
+#[test]
 fn terminal_scope_invalidates_unprocessed_native_receipts_without_fake_settlement() {
     let mut app = focused_runtime(false);
     let pending = app
