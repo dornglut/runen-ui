@@ -21,16 +21,26 @@ pub enum SpinButtonRequest {
     SetValue(SemanticNumber),
 }
 
+/// Whether relative stepping is meaningful for the current authored
+/// publication. Two absent bounds mean unbounded, not a zero-width range.
+pub fn step_actions_available(range: &SemanticRange) -> bool {
+    range.current().is_some()
+        && range.small_step().is_some()
+        && !range
+            .minimum()
+            .zip(range.maximum())
+            .is_some_and(|(minimum, maximum)| minimum == maximum)
+}
+
 pub fn semantic_request(
     range: &SemanticRange,
     command: SemanticCommand,
 ) -> Option<SpinButtonRequest> {
-    let step_ready = range.current().is_some() && range.minimum() != range.maximum();
     match command {
-        SemanticCommand::Increment if step_ready => {
+        SemanticCommand::Increment if step_actions_available(range) => {
             range.small_step().map(SpinButtonRequest::AdjustBy)
         }
-        SemanticCommand::Decrement if step_ready => range
+        SemanticCommand::Decrement if step_actions_available(range) => range
             .small_step()
             .and_then(|step| SemanticNumber::new(-step.get()).ok())
             .map(SpinButtonRequest::AdjustBy),
@@ -309,6 +319,7 @@ mod tests {
         assert_eq!(unbounded.semantic_range().minimum(), None);
         assert_eq!(unbounded.semantic_range().maximum(), None);
         assert_eq!(unbounded.semantic_range().current(), None);
+        assert!(!step_actions_available(unbounded.semantic_range()));
         assert_eq!(
             semantic_request(
                 unbounded.semantic_range(),
@@ -348,6 +359,18 @@ mod tests {
             ),
             None
         );
+        let no_bounds_current = SpinButtonRange::new(None, None, Some(-2.0), 0.25)
+            .unwrap_or_else(|_| unreachable!("unbounded valid current"));
+        assert!(step_actions_available(no_bounds_current.semantic_range()));
+        assert_eq!(
+            semantic_request(no_bounds_current.semantic_range(), SemanticCommand::Increment),
+            Some(SpinButtonRequest::AdjustBy(
+                SemanticNumber::new(0.25).unwrap_or_else(|_| unreachable!("positive step"))
+            ))
+        );
+        let fixed = SpinButtonRange::new(Some(1.0), Some(1.0), Some(1.0), 0.25)
+            .unwrap_or_else(|_| unreachable!("equal finite bounds"));
+        assert!(!step_actions_available(fixed.semantic_range()));
         let lower_only = SpinButtonRange::new(Some(-5.0), None, Some(0.0), 0.5)
             .unwrap_or_else(|_| unreachable!("valid lower bound"));
         assert_eq!(

@@ -411,6 +411,34 @@ fn optional_ordinary_step_buttons_share_app_actions_and_fifo_without_another_edi
 }
 
 #[test]
+fn unbounded_valid_current_supports_increment_decrement_in_one_fifo() {
+    let mut runtime = runtime_with_bounds("-2", None, None);
+    let published = publish(&mut runtime);
+    let (surface, target) = semantic_target(&published);
+    let snapshot = published.semantic_publication().snapshot();
+    let node = snapshot.node(&target)
+        .unwrap_or_else(|| unreachable!("unbounded current spin target"));
+    assert_eq!(node.range().and_then(runenui_core::SemanticRange::current), Some(number(-2.0)));
+    for action in [SemanticAction::Increment, SemanticAction::Decrement] {
+        assert!(node.supported_actions().contains(&action));
+        runtime.submit_semantic_action(SemanticActionRequest::new(
+            surface.clone(), target.clone(), action,
+        )).unwrap_or_else(|_| unreachable!("unbounded step action admitted"));
+    }
+    runtime.submit_semantic_action(SemanticActionRequest::new(
+        surface, target, SemanticAction::Increment,
+    )).unwrap_or_else(|_| unreachable!("second increment admitted"));
+    assert_eq!(runtime.state().text, "-2", "not mutated during ingress");
+    settle(&mut runtime);
+    assert_eq!(runtime.state().text, "-1.5");
+    assert_eq!(runtime.state().requests, [
+        SpinButtonRequest::AdjustBy(number(0.5)),
+        SpinButtonRequest::AdjustBy(number(-0.5)),
+        SpinButtonRequest::AdjustBy(number(0.5)),
+    ]);
+}
+
+#[test]
 fn exact_removed_semantic_target_is_not_reused_for_replacement_text() {
     let mut runtime = runtime("4.5");
     let before = publish(&mut runtime);
