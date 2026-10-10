@@ -256,10 +256,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             // Running -> Closed invalidates live input ownership. After
             // Terminal, the lifetime was already invalidated, so cleanup
             // cannot consume another arbitration revision.
-            let closing_revision = u64::from(matches!(
-                self.status,
-                crate::RuntimeStatus::Running
-            ));
+            let closing_revision = u64::from(matches!(self.status, crate::RuntimeStatus::Running));
             if self
                 .input_observation
                 .revision

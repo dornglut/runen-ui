@@ -841,7 +841,10 @@ fn rev20_pump_exhaustion_retires_scope_without_inventing_input_settlement() {
         .shutdown()
         .unwrap_or_else(|_| unreachable!("retired lifetime still closes"));
     assert_eq!(closed.final_ownership().revision().get(), u64::MAX);
-    assert_eq!(closed.final_ownership().status(), crate::RuntimeStatus::Closed);
+    assert_eq!(
+        closed.final_ownership().status(),
+        crate::RuntimeStatus::Closed
+    );
     assert!(closed.ordered_records().is_empty());
 }
 
@@ -969,7 +972,10 @@ fn already_terminal_max_revision_can_shutdown_and_retire_without_wrap() {
         .shutdown()
         .unwrap_or_else(|_| unreachable!("terminal cleanup needs no further revision"));
     assert_eq!(closed.final_ownership().revision().get(), u64::MAX);
-    assert_eq!(closed.final_ownership().status(), crate::RuntimeStatus::Closed);
+    assert_eq!(
+        closed.final_ownership().status(),
+        crate::RuntimeStatus::Closed
+    );
     assert!(closed.ordered_records().iter().any(|record| matches!(
         record,
         InputArbitrationRecord::ScopeRetired(retired)
@@ -978,10 +984,12 @@ fn already_terminal_max_revision_can_shutdown_and_retire_without_wrap() {
                     crate::RuntimeTerminalReason::Poisoned
                 )
     )));
-    assert!(!closed.ordered_records().iter().any(|record| matches!(
-        record,
-        InputArbitrationRecord::OwnershipChanged(_)
-    )));
+    assert!(
+        !closed
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::OwnershipChanged(_)))
+    );
     let repeated = app
         .shutdown()
         .unwrap_or_else(|_| unreachable!("repeated observed close is idempotent"));
