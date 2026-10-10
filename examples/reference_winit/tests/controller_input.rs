@@ -66,7 +66,11 @@ fn reference_host_normalizes_controller_transitions_through_public_runtime()
         assert_eq!(command.origin(), CommandOrigin::controller());
         assert_eq!(command.is_repeat(), expected_repeat);
         runtime.submit_command(target.clone(), command.command(), command.origin())?;
-        runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+        runtime
+            .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned();
     }
 
     assert_eq!(

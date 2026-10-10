@@ -310,7 +310,11 @@ mod tests {
     fn downstream_widget_can_claim_keyboard_input_using_only_public_framework_api() {
         let reached = Arc::new(AtomicBool::new(false));
         let mut runtime = AppRuntime::<ExternalHostClaimApp>::mount(Arc::clone(&reached));
-        let _ = runtime.pump(HOST_PUMP_BUDGET).expect("pump observation").report().to_owned();
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .expect("pump observation")
+            .report()
+            .to_owned();
         let id = ElementId::new("external-claim-probe")
             .unwrap_or_else(|_| unreachable!("static authored id"));
         let target = runtime
@@ -328,7 +332,11 @@ mod tests {
                 CommandOrigin::programmatic(),
             )
             .unwrap_or_else(|_| unreachable!("public focus request accepted"));
-        let _ = runtime.pump(HOST_PUMP_BUDGET).expect("pump observation").report().to_owned();
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .expect("pump observation")
+            .report()
+            .to_owned();
         let receipt = runtime
             .submit_keyboard(KeyboardEvent::new(
                 KeyboardPhase::Down,
@@ -347,9 +355,12 @@ mod tests {
             .pump(PumpBudget::new(0, 0, 0, 0))
             .unwrap_or_else(|_| unreachable!("bounded empty checkpoint"));
         assert_eq!(pending.processed_through(), None);
-        assert!(!pending.ordered_records().iter().any(|record| {
-            matches!(record, InputArbitrationRecord::InputSettled(_))
-        }));
+        assert!(
+            !pending
+                .ordered_records()
+                .iter()
+                .any(|record| { matches!(record, InputArbitrationRecord::InputSettled(_)) })
+        );
         assert!(!reached.load(Ordering::Relaxed));
 
         let committed = runtime
@@ -363,7 +374,11 @@ mod tests {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(settlement.len(), 1, "exactly one reached host input settles");
+        assert_eq!(
+            settlement.len(),
+            1,
+            "exactly one reached host input settles"
+        );
         let settled = settlement[0];
         assert_eq!(settled.sequence(), receipt.sequence());
         assert_eq!(settled.scope(), committed.final_ownership().scope());
@@ -379,17 +394,30 @@ mod tests {
         let closed = runtime
             .shutdown()
             .unwrap_or_else(|_| unreachable!("observed final shutdown"));
-        assert_eq!(closed.final_ownership().status(), runenui_runtime::RuntimeStatus::Closed);
-        assert_eq!(closed.ordered_records().iter().filter(|record| {
-            matches!(record, InputArbitrationRecord::ScopeRetired(retirement)
+        assert_eq!(
+            closed.final_ownership().status(),
+            runenui_runtime::RuntimeStatus::Closed
+        );
+        assert_eq!(
+            closed
+                .ordered_records()
+                .iter()
+                .filter(|record| {
+                    matches!(record, InputArbitrationRecord::ScopeRetired(retirement)
                 if retirement.reason() == InputScopeRetirementReason::Shutdown)
-        }).count(), 1);
+                })
+                .count(),
+            1
+        );
         let again = runtime
             .shutdown()
             .unwrap_or_else(|_| unreachable!("idempotent final observation"));
-        assert!(!again.ordered_records().iter().any(|record| {
-            matches!(record, InputArbitrationRecord::ScopeRetired(_))
-        }));
+        assert!(
+            !again
+                .ordered_records()
+                .iter()
+                .any(|record| { matches!(record, InputArbitrationRecord::ScopeRetired(_)) })
+        );
         // A host that retains native receipt associations must settle the
         // scope before consuming the runtime; no second implicit retirement
         // is synthesized by into_state.
@@ -423,7 +451,11 @@ mod tests {
                 .unwrap_or_else(|_| unreachable!("unchanged state projects"))
                 .revision()
         );
-        let _ = first.shutdown().expect("shutdown observation").report().to_owned();
+        let _ = first
+            .shutdown()
+            .expect("shutdown observation")
+            .report()
+            .to_owned();
         let closed = first
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("terminal ownership is observable without a pump"));
@@ -465,7 +497,11 @@ mod tests {
             .map_err(|error| io::Error::other(error.to_string()))?;
 
         steps.push(FrameStep::Pump);
-        let _ = runtime.pump(HOST_PUMP_BUDGET).expect("pump observation").report().to_owned();
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .expect("pump observation")
+            .report()
+            .to_owned();
         assert!(runtime.state().active);
 
         steps.push(FrameStep::TakeRedraw);
@@ -512,7 +548,11 @@ mod tests {
             .map_err(|error| debug_error("semantic action submission failed", &error))?;
 
         steps.push(FrameStep::Pump);
-        let _ = runtime.pump(HOST_PUMP_BUDGET).expect("pump observation").report().to_owned();
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .expect("pump observation")
+            .report()
+            .to_owned();
         assert!(!runtime.state().active);
 
         steps.push(FrameStep::TakeRedraw);
@@ -545,7 +585,11 @@ mod tests {
         assert_eq!(publication_count, 2);
         assert_eq!(steps, expected_steps());
 
-        let _ = runtime.shutdown().expect("shutdown observation").report().to_owned();
+        let _ = runtime
+            .shutdown()
+            .expect("shutdown observation")
+            .report()
+            .to_owned();
         eprintln!(
             "M7D EXTERNAL HOST PROOF: retained-publication retry and two host-owned frames succeeded; adapter={:?} backend={}",
             renderer.diagnostics().adapter_info().name,

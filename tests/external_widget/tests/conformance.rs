@@ -22,7 +22,10 @@ fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -39,7 +42,10 @@ fn route_activate<App: UiApp>(runtime: &mut AppRuntime<App>, target: MountedNode
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -56,19 +62,26 @@ fn route_focus<App: UiApp>(runtime: &mut AppRuntime<App>, target: MountedNodeId)
         .unwrap_or_else(|_| unreachable!("the exact live focus target is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX,)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX,))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
 }
 
 fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>) {
-    let _ = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 }
 
 const fn context(environment: &StyleEnvironment) -> SurfaceBuildContext<'_> {
@@ -586,12 +599,16 @@ fn assert_link_action_is_ordinary<
             CommandOrigin::accessibility(),
         )
         .unwrap_or_else(|_| unreachable!("link uses the ordinary semantic route"));
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(*runtime.state(), 1);
 }
 

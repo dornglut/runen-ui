@@ -33,12 +33,16 @@ const SURFACE_SIZE: LogicalSize = LogicalSize::new(
 );
 
 fn pump_all(runtime: &mut AppRuntime<CounterApp>) {
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(report.is_quiescent(), "Counter did not settle: {report:?}");
 }
 

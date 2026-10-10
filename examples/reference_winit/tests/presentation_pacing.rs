@@ -105,7 +105,10 @@ fn pump_all(runtime: &mut AppRuntime<App>) {
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
-            )).expect("pump observation").report().to_owned()
+            ))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .is_quiescent()
     );
 }
