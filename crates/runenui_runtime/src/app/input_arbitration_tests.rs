@@ -300,7 +300,10 @@ fn terminal_reason_is_not_rewritten_as_shutdown_when_retirement_is_observed_late
         .runtime
         .shutdown_observed()
         .unwrap_or_else(|_| unreachable!("terminal and shutdown observations remain available"));
-    assert_eq!(batch.final_ownership().status(), crate::RuntimeStatus::Closed);
+    assert_eq!(
+        batch.final_ownership().status(),
+        crate::RuntimeStatus::Closed
+    );
     let reasons = batch
         .ordered_records()
         .iter()
@@ -319,10 +322,11 @@ fn terminal_reason_is_not_rewritten_as_shutdown_when_retirement_is_observed_late
         record,
         InputArbitrationRecord::InputSettled(settled) if settled.sequence() == pending
     )));
-    assert!(app
-        .runtime
-        .shutdown_observed()
-        .unwrap_or_else(|_| unreachable!("shutdown is idempotent"))
-        .ordered_records()
-        .is_empty());
+    assert!(
+        app.runtime
+            .shutdown_observed()
+            .unwrap_or_else(|_| unreachable!("shutdown is idempotent"))
+            .ordered_records()
+            .is_empty()
+    );
 }
