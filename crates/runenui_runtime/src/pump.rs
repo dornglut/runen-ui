@@ -375,11 +375,8 @@ pub(crate) fn pump_recorded<App: UiApp>(
             return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
         }
         let Some(envelope) = runtime.pop_work() else {
-            // A popped envelope is never silently lost. An empty pop only
-            // happens after an ordinary checkpoint; preserve its work fence.
-            if !observed.admit(runtime)? {
-                return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
-            }
+            // A canonical pop can be empty after its preflight; no envelope
+            // was consumed. The previously reserved boundary is sufficient.
             readiness_checkpoint(runtime, budget, &mut totals);
             observed.observe(runtime, None);
             return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));

@@ -62,7 +62,7 @@ fn focused_runtime(claim: bool) -> AppRuntime<ProbeApp> {
     let mut app = AppRuntime::<ProbeApp>::mount(claim);
     let budget = PumpBudget::new(16, 16, 16, 16);
     let _ = app.pump(budget);
-    let id = ElementId::new("probe").unwrap_or_else(|| unreachable!("fixture id"));
+    let id = ElementId::new("probe").unwrap_or_else(|_| unreachable!("fixture id"));
     let target = app
         .index()
         .nodes()
