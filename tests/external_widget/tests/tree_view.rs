@@ -4,6 +4,8 @@
 use runenui_core::{
     CommandOrigin, NoHostProtocol, SemanticAction, SemanticCollectionPosition, SemanticCommand,
     SemanticRole, TreeItemRequest, UiApp, View, tree_item, tree_view,
+    KeyboardEvent, KeyboardPhase, KeyboardCompositionState, KeyLocation, KeyModifiers,
+    LogicalKey, PhysicalKey,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext};
 
@@ -15,6 +17,7 @@ struct State {
     disabled_a: bool,
     discover_a: bool,
     show_b: bool,
+    follow_focus: bool,
 }
 #[derive(Clone, Debug)]
 enum Action {
@@ -23,6 +26,7 @@ enum Action {
     DiscoverA(bool),
     ShowB(bool),
     Expanded(bool),
+    FollowFocus(bool),
 }
 struct App;
 impl UiApp for App {
@@ -46,7 +50,9 @@ impl UiApp for App {
         let other = tree_item("other", "Outside", Vec::new())
             .selected(state.selected == "other")
             .on_request(Action::Request).id("tree.other");
-        tree_view(vec![parent, other]).id("tree.root")
+        tree_view(vec![parent, other])
+            .selection_follows_focus(state.follow_focus)
+            .id("tree.root")
     }
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
@@ -54,6 +60,7 @@ impl UiApp for App {
             Action::DiscoverA(value) => state.discover_a = value,
             Action::ShowB(value) => state.show_b = value,
             Action::Expanded(value) => state.expanded = value,
+            Action::FollowFocus(value) => state.follow_focus = value,
             Action::Request(intent) => {
                 match &intent {
                     TreeItemRequest::Expand(id) if id == "parent" => state.expanded = true,
@@ -70,6 +77,7 @@ fn fresh(expanded: bool) -> AppRuntime<App> {
     let mut runtime = AppRuntime::<App>::mount(State {
         expanded, selected: "parent".to_owned(), actions: Vec::new(),
         disabled_a: false, discover_a: false, show_b: true,
+        follow_focus: false,
     });
     settle(&mut runtime);
     runtime
@@ -254,4 +262,60 @@ fn invalid_domain_id_and_single_selection_fail_closed_even_under_collapsed_ances
     )).unwrap_or_else(|error| unreachable!("restored valid tree: {error:?}"));
     assert!(publication.semantic_publication().snapshot().nodes().iter()
         .any(|node| node.role() == SemanticRole::Tree));
+}
+
+fn navigation_key(physical: PhysicalKey, logical: LogicalKey) -> KeyboardEvent {
+    KeyboardEvent::new(
+        KeyboardPhase::Down, physical, logical, KeyModifiers::NONE, false,
+        KeyLocation::Standard, KeyboardCompositionState::Inactive, None,
+    )
+}
+#[test]
+fn ordered_real_focus_home_end_and_type_ahead_leave_selection_application_owned() {
+    let mut runtime = fresh(true);
+    let parent = item(&mut runtime, "tree.parent");
+    let a = item(&mut runtime, "tree.a");
+    let b = item(&mut runtime, "tree.b");
+    let other = item(&mut runtime, "tree.other");
+    command(&mut runtime, parent.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, parent.clone(), SemanticCommand::FocusDown);
+    assert_eq!(runtime.focus().focused_node(), Some(&a));
+    command(&mut runtime, a.clone(), SemanticCommand::FocusDown);
+    assert_eq!(runtime.focus().focused_node(), Some(&b));
+    command(&mut runtime, b.clone(), SemanticCommand::FocusDown);
+    assert_eq!(runtime.focus().focused_node(), Some(&other));
+    command(&mut runtime, other.clone(), SemanticCommand::FocusDown);
+    assert_eq!(runtime.focus().focused_node(), Some(&other), "Stop not Wrap");
+
+    runtime.submit_keyboard(navigation_key(PhysicalKey::Home, LogicalKey::Home))
+        .unwrap_or_else(|_| unreachable!("Home key ingress"));
+    settle(&mut runtime);
+    assert_eq!(runtime.focus().focused_node(), Some(&parent));
+    runtime.submit_keyboard(navigation_key(PhysicalKey::End, LogicalKey::End))
+        .unwrap_or_else(|_| unreachable!("End key ingress"));
+    settle(&mut runtime);
+    assert_eq!(runtime.focus().focused_node(), Some(&other));
+
+    runtime.submit_keyboard(navigation_key(
+        PhysicalKey::Code("KeyB".into()), LogicalKey::Character("b".into()),
+    )).unwrap_or_else(|_| unreachable!("type-ahead ingress"));
+    settle(&mut runtime);
+    assert_eq!(runtime.focus().focused_node(), Some(&b));
+    assert_eq!(runtime.state().selected, "parent");
+    assert!(runtime.state().actions.is_empty(), "navigation cannot commit selection");
+}
+
+#[test]
+fn opt_in_selection_follows_focus_through_generic_activation_not_tree_registry() {
+    let mut runtime = fresh(true);
+    runtime.submit_action(Action::FollowFocus(true))
+        .unwrap_or_else(|_| unreachable!("application authors follow policy"));
+    settle(&mut runtime);
+    let parent = item(&mut runtime, "tree.parent");
+    command(&mut runtime, parent.clone(), SemanticCommand::RequestFocus);
+    command(&mut runtime, parent, SemanticCommand::FocusDown);
+    assert_eq!(runtime.state().selected, "a");
+    assert_eq!(runtime.state().actions, [
+        TreeItemRequest::Select("a".into()),
+    ]);
 }
