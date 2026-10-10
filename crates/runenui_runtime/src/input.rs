@@ -1186,7 +1186,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // A candidate shortcut alone does not prove an accepted shortcut default.
         let explicit = transaction.host_input_claimed;
         let has_default_output = !transaction.default_outputs.is_empty();
-        let focused = transaction.focus_before.as_ref() == Some(&target);
+        let focused = self.focus.focused_node() == Some(&target);
         let text_capability = self.tree.text_input_probe(&target).ok();
         let owns_text_keyboard = focused
             && matches!(&payload, InputEnvelopePayload::Keyboard(_))
