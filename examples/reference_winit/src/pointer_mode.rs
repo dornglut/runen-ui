@@ -653,7 +653,11 @@ mod tests {
         assert!(modes.ui_pointer_allowed());
         assert!(!modes.ui_cursor_presentation_applied());
         assert_eq!(host.calls.len(), before + 2);
-        assert!(host.calls[before..].iter().all(|(_, visible)| visible.is_some()));
+        assert!(
+            host.calls[before..]
+                .iter()
+                .all(|(_, visible)| visible.is_some())
+        );
         assert_eq!(host.mode, Mode::Absolute);
         assert!(host.visible);
         modes.confirm_fresh_absolute_point(&mut host);
