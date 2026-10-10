@@ -771,3 +771,31 @@ fn unavailable_context_pointer_up_preserves_exclusive_press_without_activation()
         "integrity-only release may not activate the widget"
     );
 }
+
+#[test]
+fn observation_capacity_pause_requests_retry_wake_even_with_empty_fifo() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    let mut app = focused_runtime(false);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let callback_calls = Arc::clone(&calls);
+    app.set_wake_transport(move || {
+        callback_calls.fetch_add(1, Ordering::SeqCst);
+    });
+    app.runtime.acknowledge_wake();
+    // Initial snapshot reservation, then one zero-work readiness checkpoint.
+    // Fail the mandatory terminal checkpoint even though the FIFO is empty.
+    app.runtime.inject_input_reservation_failure_after(2);
+    let partial = pump::pump_recorded::<ProbeApp>(
+        &mut app.runtime, PumpBudget::new(0, 0, 0, 0)
+    ).unwrap_or_else(|_| unreachable!("after a checkpoint, capacity produces a partial batch"));
+    assert_eq!(
+        partial.pause_reason(),
+        Some(crate::InputPumpPauseReason::ObservationCapacity)
+    );
+    assert_eq!(partial.processed_through(), None);
+    assert!(partial.report().outcome() != crate::PumpOutcome::Quiescent);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}

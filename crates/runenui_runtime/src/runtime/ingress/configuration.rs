@@ -39,6 +39,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    /// An observation-capacity pause is mandatory further host work even if
+    /// the canonical queue is empty: another readiness checkpoint is still due.
+    pub(crate) fn request_input_observation_retry_wake(&mut self) {
+        if !matches!(self.status, RuntimeStatus::Running) {
+            return;
+        }
+        if matches!(
+            self.wake.handle().request(),
+            crate::WakeRequestOutcome::Requested
+        ) {
+            self.record_optional(TraceRecordKind::WakeRequested, None, None, None);
+        }
+    }
+
     pub(crate) fn rearm_wake_if_needed(&mut self) {
         let observation = self.scheduler_observation();
         let serviceable = !self.queue.is_empty()

@@ -340,6 +340,10 @@ impl RecordedPump {
         totals: ReadinessTotals,
         paused: bool,
     ) -> crate::InputPumpBatch {
+        let paused = paused && !self.revision_retired;
+        if paused {
+            runtime.request_input_observation_retry_wake();
+        }
         let mut report = finish_report(
             runtime,
             budget,
@@ -347,7 +351,6 @@ impl RecordedPump {
             cancelled.saturating_add(self.cancelled_for_revision),
             totals,
         );
-        let paused = paused && !self.revision_retired;
         if paused && matches!(report.outcome, PumpOutcome::Quiescent) {
             report.outcome = PumpOutcome::BudgetExhausted;
         }
