@@ -429,7 +429,9 @@ fn horizontal_divider_uses_vertical_pointer_motion_not_horizontal_motion() {
             pointer, PointerDeviceKind::Touch, PointerPhase::Down,
             LogicalPoint::new(40.0, 6.0).unwrap_or_else(|_| unreachable!()),
             input.clone(),
-        ),
+        )
+        .with_buttons(PointerButtons::new([PointerButton::Primary]))
+        .with_changed_button(PointerButton::Primary),
     ).unwrap_or_else(|_| unreachable!());
     settle(&mut runtime);
     runtime.submit_pointer(
@@ -437,14 +439,16 @@ fn horizontal_divider_uses_vertical_pointer_motion_not_horizontal_motion() {
             pointer, PointerDeviceKind::Touch, PointerPhase::Move,
             LogicalPoint::new(60.0, 6.0).unwrap_or_else(|_| unreachable!()),
             input.clone(),
-        ).with_movement_delta(LogicalDelta::new(20.0, 0.0).unwrap_or_else(|_| unreachable!())),
+        ).with_movement_delta(LogicalDelta::new(20.0, 0.0).unwrap_or_else(|_| unreachable!()))
+        .with_buttons(PointerButtons::new([PointerButton::Primary])),
     ).unwrap_or_else(|_| unreachable!());
     runtime.submit_pointer(
         PointerEvent::new(
             pointer, PointerDeviceKind::Touch, PointerPhase::Move,
             LogicalPoint::new(60.0, 21.0).unwrap_or_else(|_| unreachable!()),
             input,
-        ).with_movement_delta(LogicalDelta::new(0.0, 15.0).unwrap_or_else(|_| unreachable!())),
+        ).with_movement_delta(LogicalDelta::new(0.0, 15.0).unwrap_or_else(|_| unreachable!()))
+        .with_buttons(PointerButtons::new([PointerButton::Primary])),
     ).unwrap_or_else(|_| unreachable!());
     settle(&mut runtime);
     assert_eq!(runtime.state().size, 65.0);
