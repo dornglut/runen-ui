@@ -52,7 +52,7 @@ fn required_instant(record: &TraceRecord) -> MonotonicInstant {
 #[test]
 fn scheduler_work_facts_retain_monotonic_logical_time() {
     let mut runtime = AppRuntime::<LogicalTimeApp>::mount(0);
-    runtime.pump(PumpBudget::new(3, 0, 1, 0));
+    runtime.pump(PumpBudget::new(3, 0, 1, 0)).expect("pump observation").report().to_owned();
 
     let work_records: Vec<_> = runtime
         .trace()
@@ -225,7 +225,7 @@ fn update_application_transaction_facts_share_one_accepted_instant() {
         .advance_time(Duration::from_millis(1))
         .unwrap_or_else(|_| unreachable!());
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    runtime.pump(PumpBudget::new(8, 0, 0, 0));
+    runtime.pump(PumpBudget::new(8, 0, 0, 0)).expect("pump observation").report().to_owned();
 
     let records: Vec<_> = runtime
         .trace()
@@ -263,7 +263,7 @@ fn terminal_and_shutdown_facts_retain_transition_time() {
         .unwrap_or_else(|| unreachable!());
     assert_eq!(cancelled_instant, terminal_instant);
 
-    let report = runtime.shutdown();
+    let report = runtime.shutdown().expect("shutdown observation").report().to_owned();
     assert!(!report.already_complete());
     let shutdown_records: Vec<_> = runtime
         .trace()
@@ -273,7 +273,7 @@ fn terminal_and_shutdown_facts_retain_transition_time() {
     assert_eq!(shutdown_records.len(), 1);
     assert!(required_instant(shutdown_records[0]) >= terminal_instant);
 
-    assert!(runtime.shutdown().already_complete());
+    assert!(runtime.shutdown().expect("shutdown observation").report().to_owned().already_complete());
     assert_eq!(
         runtime
             .trace()

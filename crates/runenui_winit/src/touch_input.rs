@@ -376,7 +376,7 @@ mod tests {
             usize::MAX,
             usize::MAX,
             usize::MAX,
-        ));
+        )).expect("pump observation").report().to_owned();
     }
 
     #[test]

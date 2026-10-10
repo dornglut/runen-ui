@@ -68,7 +68,7 @@ fn settle(runtime: &mut AppRuntime<RouteApp>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert!(report.is_quiescent(), "fixture did not settle: {report:?}");
 }
 

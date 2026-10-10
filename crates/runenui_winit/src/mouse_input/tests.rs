@@ -27,7 +27,7 @@ fn translated_point(position: LogicalPoint, modifiers: KeyModifiers) -> Translat
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     let style_environment = StyleEnvironment::default();
     let logical_size = LogicalSize::try_new(200.0, 120.0)
         .unwrap_or_else(|_| unreachable!("fixture logical size is valid"));
