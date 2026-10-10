@@ -316,9 +316,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .stream(pointer_id)
             .cloned()
             .unwrap_or_else(|| unreachable!("terminal cleanup follows active-stream validation"));
-        let finality = crate::runtime::input_arbitration::integrity_only_pointer_finality(
-            Some(&stream), None,
-        );
+        let finality =
+            crate::runtime::input_arbitration::integrity_only_pointer_finality(Some(&stream), None);
         let rejected = self.trace.record_reserved(
             work.trace_reservation,
             TraceRecordKind::PointerIngressRejected {
@@ -374,9 +373,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             self.request_redraw(closed, work.instant);
         }
-        self.note_external_pointer_finality(
-            finality,
-        );
+        self.note_external_pointer_finality(finality);
         ProcessApplicationActionOutcome::Completed
     }
 
@@ -464,9 +461,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Ok(())
             });
         if result.is_ok() {
-            self.note_external_pointer_finality(
-                finality,
-            );
+            self.note_external_pointer_finality(finality);
         }
         if result.is_err() {
             self.poison_routed_event(
