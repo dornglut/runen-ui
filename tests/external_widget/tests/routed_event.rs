@@ -342,6 +342,14 @@ fn assert_interleaved_acceptance_trace(
     assert_eq!(delegated.original_target(), Some(target));
 }
 
+fn pump_one_canonical_envelope(runtime: &mut AppRuntime<App>) -> usize {
+    runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("bounded canonical pump observation"))
+        .report()
+        .processed_envelopes()
+}
+
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn downstream_commit_orders_coalesced_reconciliation_interleaved_outputs_and_later_delegation() {
@@ -364,75 +372,27 @@ fn downstream_commit_orders_coalesced_reconciliation_interleaved_outputs_and_lat
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
 
-    assert_eq!(
-        runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .processed_envelopes(),
-        1
-    );
+    assert_eq!(pump_one_canonical_envelope(&mut runtime), 1);
     assert!(runtime.state().actions.is_empty());
     assert_eq!(observations.borrow().len(), 3);
     assert_eq!(subscription_calls.get(), subscription_baseline);
     assert_interleaved_acceptance_trace(&runtime, direct, &target);
 
-    assert_eq!(
-        runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .processed_envelopes(),
-        1
-    );
+    assert_eq!(pump_one_canonical_envelope(&mut runtime), 1);
     assert_eq!(subscription_calls.get(), subscription_baseline + 1);
     assert!(runtime.state().actions.is_empty());
 
-    assert_eq!(
-        runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .processed_envelopes(),
-        1
-    );
+    assert_eq!(pump_one_canonical_envelope(&mut runtime), 1);
     assert_eq!(runtime.state().actions, ["routed-first"]);
 
-    assert_eq!(
-        runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .processed_envelopes(),
-        1
-    );
+    assert_eq!(pump_one_canonical_envelope(&mut runtime), 1);
     assert_eq!(observations.borrow().len(), 6);
     assert_eq!(runtime.state().actions, ["routed-first"]);
 
-    assert_eq!(
-        runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .processed_envelopes(),
-        1
-    );
+    assert_eq!(pump_one_canonical_envelope(&mut runtime), 1);
     assert_eq!(runtime.state().actions, ["routed-first", "routed-second"]);
 
-    assert_eq!(
-        runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .processed_envelopes(),
-        1
-    );
+    assert_eq!(pump_one_canonical_envelope(&mut runtime), 1);
     assert_eq!(
         runtime.state().actions,
         ["routed-first", "routed-second", "semantic-default"]
