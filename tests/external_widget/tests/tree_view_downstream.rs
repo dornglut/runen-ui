@@ -7,7 +7,7 @@ use runenui_core::{
     FocusGroupBoundaryPolicy, FocusGroupTypeAhead, Focusability, NoHostProtocol,
     SemanticAction, SemanticCollectionPosition, SemanticCommand, SemanticContribution,
     SemanticContributionContext, SemanticHierarchyLevel, SemanticNodeContribution,
-    SemanticRole, SemanticSelectionMode, SemanticState, UiApp, Widget, WidgetActivation,
+    SemanticRole, SemanticSelectionMode, SemanticState, UiApp, View, Widget, WidgetActivation,
     WidgetActivationContext, WidgetActivationOutput, WidgetUpdateContext, container,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
