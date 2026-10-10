@@ -264,7 +264,7 @@ fn downstream_text_and_composition_receipts_have_exact_exclusive_ui_finality() {
         })
         .collect::<Vec<_>>();
     assert_eq!(settled.len(), 3);
-    for (entry, sequence, family, reason) in settled.into_iter().zip([
+    for (entry, (sequence, family, reason)) in settled.into_iter().zip([
         (
             keyboard,
             UiInputFamily::Keyboard,
