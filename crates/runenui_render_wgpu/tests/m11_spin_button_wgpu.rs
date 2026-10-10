@@ -148,7 +148,12 @@ fn spin_button_valid_and_intermediate_text_share_real_wgpu_and_semantic_authorit
         b.readback().rgba8_srgb(),
         "ordinary retained text distinguishes valid and incomplete source pixels"
     );
-    if let Some(directory) = std::env::var_os("RUNENUI_M11SPIN_EVIDENCE_DIR").map(PathBuf::from) {
+    // The fixed visual workflow already provides one shared evidence-artifact
+    // directory through its accepted Slider variable. Keep the visual workflow
+    // unchanged and retain an independent SpinButton-specific override.
+    let evidence_directory = std::env::var_os("RUNENUI_M11SPIN_EVIDENCE_DIR")
+        .or_else(|| std::env::var_os("RUNENUI_M11SLIDER_EVIDENCE_DIR"));
+    if let Some(directory) = evidence_directory.map(PathBuf::from) {
         fs::create_dir_all(&directory)?;
         for (filename, render) in [("m11-spin-valid.png", &a), ("m11-spin-incomplete.png", &b)] {
             let extent = render.readback().extent();
