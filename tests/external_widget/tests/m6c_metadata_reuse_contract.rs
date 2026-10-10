@@ -93,7 +93,7 @@ fn drain_mount(runtime: &mut AppRuntime<App>) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(outcome.is_quiescent());
@@ -165,7 +165,7 @@ fn semantic_only_publication_changes_semantics_without_allocating_a_paint_revisi
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),

@@ -166,9 +166,9 @@ fn publish(
     runenui_core::SemanticNodeId,
     runenui_core::SemanticNodeId,
 ) {
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let style = StyleEnvironment::default();
@@ -209,7 +209,7 @@ fn pump_one(runtime: &mut AppRuntime<App>) {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -422,7 +422,7 @@ fn unhandled_increment_has_no_runtime_or_application_default_mutation() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),

@@ -82,7 +82,7 @@ fn disabled_semantic_state_does_not_implicitly_remove_physical_hit_targetability
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let style_environment = StyleEnvironment::default();
@@ -119,7 +119,7 @@ fn disabled_semantic_state_does_not_implicitly_remove_physical_hit_targetability
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),

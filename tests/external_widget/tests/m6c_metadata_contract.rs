@@ -100,7 +100,7 @@ fn drain_mount(runtime: &mut AppRuntime<App>) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(outcome.is_quiescent());
@@ -240,7 +240,7 @@ fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -281,7 +281,7 @@ fn consumer_uses_damage_only_for_matching_surface_and_base_revision() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),

@@ -123,7 +123,7 @@ fn paint_contribution_cache_is_keyed_by_exact_owner_visible_context() {
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -141,7 +141,7 @@ fn paint_contribution_cache_is_keyed_by_exact_owner_visible_context() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),

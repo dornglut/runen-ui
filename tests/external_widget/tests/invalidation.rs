@@ -19,7 +19,7 @@ fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -169,7 +169,7 @@ fn mounted_cache() -> (Rc<Calls>, AppRuntime<CacheApp>, StyleEnvironment) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     (calls, runtime, StyleEnvironment::default())

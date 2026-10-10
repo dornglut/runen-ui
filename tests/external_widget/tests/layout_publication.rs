@@ -169,7 +169,7 @@ fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -433,7 +433,7 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
         assert_eq!(
             runtime
                 .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-                .expect("pump observation")
+                .unwrap_or_else(|_| unreachable!("pump observation"))
                 .report()
                 .to_owned()
                 .processed_envelopes(),

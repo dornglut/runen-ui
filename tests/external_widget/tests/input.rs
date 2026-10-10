@@ -67,7 +67,7 @@ fn settle(runtime: &mut AppRuntime<App>) {
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -281,7 +281,7 @@ fn downstream_widget_observes_structured_navigation_key_identities() {
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -311,7 +311,7 @@ fn downstream_widget_observes_structured_navigation_key_identities() {
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -344,7 +344,7 @@ fn downstream_widget_observes_structured_navigation_key_identities() {
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()

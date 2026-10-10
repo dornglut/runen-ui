@@ -127,14 +127,14 @@ impl UiApp for App {
 #[test]
 fn downstream_widgets_emit_and_resolve_application_commands_through_public_contracts() {
     let mut runtime = AppRuntime::<App>::mount(0);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let target = runtime.index().nodes()[1].id().clone();
@@ -147,23 +147,23 @@ fn downstream_widgets_emit_and_resolve_application_commands_through_public_contr
         )
         .unwrap_or_else(|_| unreachable!("live target is accepted"));
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state(), &0, "emission is non-reentrant");
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state(), &0, "resolved action remains queued");
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state(), &1);
@@ -181,14 +181,14 @@ fn downstream_widgets_emit_and_resolve_application_commands_through_public_contr
 #[test]
 fn downstream_mapped_activation_emits_the_same_scoped_application_command() {
     let mut runtime = AppRuntime::<App>::mount(0);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let authored = runenui_core::ElementId::from_static("command.target")
@@ -210,14 +210,14 @@ fn downstream_mapped_activation_emits_the_same_scoped_application_command() {
         )
         .unwrap_or_else(|_| unreachable!("live activation target is accepted"));
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state(), &1);
@@ -303,14 +303,14 @@ impl UiApp for ShortcutApp {
 #[test]
 fn downstream_custom_widget_publishes_shortcuts_without_builtin_type_knowledge() {
     let mut runtime = AppRuntime::<ShortcutApp>::mount(0);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let authored = runenui_core::ElementId::from_static("shortcut.target")
@@ -331,9 +331,9 @@ fn downstream_custom_widget_publishes_shortcuts_without_builtin_type_knowledge()
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("shortcut target focus is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -349,14 +349,14 @@ fn downstream_custom_widget_publishes_shortcuts_without_builtin_type_knowledge()
             None,
         ))
         .unwrap_or_else(|_| unreachable!("unmatched downstream key is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(
@@ -377,14 +377,14 @@ fn downstream_custom_widget_publishes_shortcuts_without_builtin_type_knowledge()
             None,
         ))
         .unwrap_or_else(|_| unreachable!("matching downstream shortcut key is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
