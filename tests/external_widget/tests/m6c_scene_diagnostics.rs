@@ -31,7 +31,7 @@ fn process_one(runtime: &mut AppRuntime<SceneDiagnosticApp>, action: SceneDiagno
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -196,7 +196,7 @@ fn singular_scene_diagnostics_are_public_fail_closed_and_cleared_by_their_owning
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let style_environment = StyleEnvironment::default();

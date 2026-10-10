@@ -180,14 +180,14 @@ fn command(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: Semant
     runtime
         .submit_command(target, command, CommandOrigin::programmatic())
         .unwrap_or_else(|_| unreachable!("downstream radio command is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -195,14 +195,14 @@ fn command(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: Semant
 #[test]
 fn downstream_radio_composite_matches_public_focus_semantic_and_selection_contracts() {
     let mut runtime = AppRuntime::<App>::mount(State { selected: 1 });
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 

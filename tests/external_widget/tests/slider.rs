@@ -158,9 +158,9 @@ fn fresh() -> AppRuntime<App> {
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(256, 256, 256, 256))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }

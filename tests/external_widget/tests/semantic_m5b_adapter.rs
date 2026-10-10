@@ -290,7 +290,7 @@ fn set_adapter_phase(runtime: &mut AppRuntime<AdapterApp>, phase: AdapterPhase) 
     assert!(
         runtime
             .pump(full_budget())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -397,7 +397,7 @@ fn commit_focus_and_assert_delta(
     assert!(
         runtime
             .pump(full_budget())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()

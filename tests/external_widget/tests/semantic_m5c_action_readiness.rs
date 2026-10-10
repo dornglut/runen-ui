@@ -117,9 +117,9 @@ fn expect_rejection(
 #[test]
 fn explicitly_focusable_disabled_owner_retains_focus_support_but_is_unavailable() {
     let mut runtime = runtime(Case::FocusOwnerDisabled);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let style_environment = StyleEnvironment::default();
@@ -160,9 +160,9 @@ fn explicitly_focusable_disabled_owner_retains_focus_support_but_is_unavailable(
 #[test]
 fn disabled_discoverable_owner_accepts_focus_but_not_activation() {
     let mut runtime = runtime(Case::FocusOwnerDisabledDiscoverable);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let style_environment = StyleEnvironment::default();
@@ -213,7 +213,7 @@ fn disabled_discoverable_owner_accepts_focus_but_not_activation() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -226,9 +226,9 @@ fn disabled_discoverable_owner_accepts_focus_but_not_activation() {
 fn menu_actions_retain_support_but_reject_disabled_and_inert_named_nodes() {
     for case in [Case::MenuNodeDisabled, Case::MenuNodeInert] {
         let mut runtime = runtime(case);
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         let style_environment = StyleEnvironment::default();

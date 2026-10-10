@@ -408,7 +408,7 @@ fn request(
 fn drain_queued_work(runtime: &mut AppRuntime<ProbeApp>) {
     let report = runtime
         .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(report.remaining_queued_envelopes(), 0);
@@ -418,7 +418,7 @@ fn pump_one(runtime: &mut AppRuntime<ProbeApp>) {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, 0, 0, 0))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -767,9 +767,9 @@ fn assert_full_and_closed_rejections_are_inert() {
 
     let mut closed = runtime(ProbeConfig::actionable());
     let closed_targets = publish(&mut closed);
-    closed
+    let _ = closed
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert_exact_rejection(
