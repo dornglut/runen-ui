@@ -199,6 +199,50 @@ fn intervening_non_input_work_does_not_create_or_reorder_native_receipts() {
 }
 
 #[test]
+fn coalesced_direct_publications_expose_a_revision_gap_without_claiming_present() {
+    use crate::{LogicalSize, SurfaceBuildContext};
+    use runenui_core::StyleEnvironment;
+
+    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
+    let before = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("initial ownership projection"));
+    let environment = StyleEnvironment::default();
+    let size = LogicalSize::try_new(64.0, 64.0)
+        .unwrap_or_else(|_| unreachable!("finite logical viewport"));
+    let build = SurfaceBuildContext::tight(&environment, size);
+    let first = app
+        .publish_surface(&build)
+        .unwrap_or_else(|_| unreachable!("first logical publication"));
+    let second = app
+        .publish_surface(&build)
+        .unwrap_or_else(|_| unreachable!("second logical publication"));
+    assert_ne!(
+        first.input_context().hit_test_generation(),
+        second.input_context().hit_test_generation(),
+    );
+    // Neither publication was followed by a pump or intermediate host query.
+    // The gap tells a host it cannot infer uninterrupted input eligibility.
+    let observed = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("post-publication ownership projection"));
+    assert_eq!(observed.revision().get(), before.revision().get() + 2);
+    assert_eq!(
+        observed.surfaces()[0]
+            .latest_retained_context()
+            .unwrap_or_else(|| unreachable!("latest logical retained context")),
+        second.input_context(),
+    );
+    assert_eq!(
+        app.input_ownership()
+            .unwrap_or_else(|_| unreachable!("repeat snapshot is unchanged"))
+            .revision(),
+        observed.revision(),
+    );
+}
+
+#[test]
 fn terminal_scope_invalidates_unprocessed_native_receipts_without_fake_settlement() {
     let mut app = focused_runtime(false);
     let pending = app
