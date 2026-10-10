@@ -247,12 +247,27 @@ impl RecordedPump {
             Ok(reserved) => reserved,
             Err(crate::InputObservationError::Capacity) if self.progress => return Ok(false),
             Err(crate::InputObservationError::RevisionExhausted) if self.progress => {
-                // There is no legal next revision. Terminalize the scope before
-                // any further work and return all previous records in a successful
-                // partial batch; never discard already committed receipts.
+                // Reserve even the final terminal snapshot before changing
+                // any runtime authority; a temporary capacity refusal pauses
+                // without discarding earlier settled input.
+                let terminal_reservation = match runtime.reserve_input_terminal_projection() {
+                    Ok(reservation) => reservation,
+                    Err(crate::InputObservationError::Capacity) => return Ok(false),
+                    Err(error) => return Err(error),
+                };
                 self.cancelled_for_revision =
                     runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
-                self.latest.status = RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned);
+                let (latest, transition) =
+                    runtime.input_ownership_reserved(terminal_reservation);
+                if latest.revision() != self.latest.revision() {
+                    self.records.push(crate::InputArbitrationRecord::OwnershipChanged(
+                        crate::InputOwnershipTransition {
+                            before_revision: self.latest.revision(),
+                            after: transition,
+                        },
+                    ));
+                }
+                self.latest = latest;
                 if let Some(retirement) = runtime.input_retirement_record() {
                     self.records
                         .push(crate::InputArbitrationRecord::ScopeRetired(retirement));

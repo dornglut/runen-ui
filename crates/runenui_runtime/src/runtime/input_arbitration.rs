@@ -242,11 +242,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .len()
             .saturating_add(1)
             .min(self.limits.pointer_streams());
+        // Keep the final nonwrapping revision available to certify a
+        // terminal ownership transition after already reported progress.
         if self.input_observation.last.is_some()
-            && self.input_observation.revision.get() == u64::MAX
+            && self.input_observation.revision.get() >= u64::MAX - 1
         {
             return Err(InputObservationError::RevisionExhausted);
         }
+        InputSnapshotReservation::new(bound)
+    }
+
+    pub(crate) fn reserve_input_terminal_projection(
+        &self,
+    ) -> Result<InputSnapshotReservation, InputObservationError> {
+        let bound = self
+            .pointer_registry
+            .len()
+            .saturating_add(1)
+            .min(self.limits.pointer_streams());
         InputSnapshotReservation::new(bound)
     }
 
