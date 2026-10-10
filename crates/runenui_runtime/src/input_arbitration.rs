@@ -266,6 +266,53 @@ pub enum UiInputClaimReason {
     ExplicitWidgetClaim,
 }
 
+/**
+ * A fixed-size ordered set of the complete neutral claim vocabulary.
+ *
+ * Routing commitments are constructed after widget/default processing, where
+ * an observation-only heap allocation could fail after irreversible mutation.
+ * Exactly twelve distinct reasons exist; duplicates do not consume slots.
+ * This is representation-private; public consumers receive a borrowed slice.
+ */
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct InputClaimReasons {
+    values: [UiInputClaimReason; 12],
+    len: usize,
+}
+
+impl InputClaimReasons {
+    pub(crate) const fn new() -> Self {
+        Self {
+            values: [UiInputClaimReason::TextOwner; 12],
+            len: 0,
+        }
+    }
+
+    pub(crate) fn push(&mut self, reason: UiInputClaimReason) {
+        if self.contains(&reason) {
+            return;
+        }
+        let slot = self
+            .values
+            .get_mut(self.len)
+            .unwrap_or_else(|| unreachable!("the fixed claim vocabulary has at most 12 variants"));
+        *slot = reason;
+        self.len += 1;
+    }
+
+    pub(crate) fn contains(&self, reason: &UiInputClaimReason) -> bool {
+        self.as_slice().contains(reason)
+    }
+
+    pub(crate) const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    pub(crate) fn as_slice(&self) -> &[UiInputClaimReason] {
+        &self.values[..self.len]
+    }
+}
+
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UiDefaultDisposition {
@@ -279,7 +326,7 @@ pub enum UiDefaultDisposition {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UiInputRoutingFacts {
     pub(crate) conflict: UiInputConflict,
-    pub(crate) reasons: Vec<UiInputClaimReason>,
+    pub(crate) reasons: InputClaimReasons,
     pub(crate) route: UiInputRoute,
     pub(crate) propagation_stopped: bool,
     pub(crate) default_prevented: bool,
@@ -292,7 +339,7 @@ impl UiInputRoutingFacts {
     }
     #[must_use]
     pub fn reasons(&self) -> &[UiInputClaimReason] {
-        &self.reasons
+        self.reasons.as_slice()
     }
     #[must_use]
     pub const fn route(&self) -> &UiInputRoute {
@@ -491,5 +538,37 @@ impl InputShutdownBatch {
     #[must_use]
     pub const fn final_ownership(&self) -> &InputOwnershipSnapshot {
         &self.final_ownership
+    }
+}
+
+#[cfg(test)]
+mod claim_reasons_tests {
+    use super::{InputClaimReasons, UiInputClaimReason};
+
+    #[test]
+    fn all_claim_reasons_are_inline_ordered_and_unique() {
+        let vocabulary = [
+            UiInputClaimReason::TextOwner,
+            UiInputClaimReason::CompositionOwner,
+            UiInputClaimReason::FocusNavigation,
+            UiInputClaimReason::ActivationDefault,
+            UiInputClaimReason::ApplicationShortcut,
+            UiInputClaimReason::PointerPress,
+            UiInputClaimReason::PointerCapture,
+            UiInputClaimReason::PointerSelection,
+            UiInputClaimReason::TouchGesture,
+            UiInputClaimReason::ModalBarrier,
+            UiInputClaimReason::PresentationDismissal,
+            UiInputClaimReason::ExplicitWidgetClaim,
+        ];
+        let mut reasons = InputClaimReasons::new();
+        assert!(reasons.is_empty());
+        for reason in vocabulary {
+            reasons.push(reason);
+            reasons.push(reason);
+        }
+        assert_eq!(reasons.as_slice(), vocabulary);
+        assert_eq!(reasons.clone(), reasons);
+        assert!(!reasons.is_empty());
     }
 }

@@ -1242,7 +1242,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             _ => None,
         };
-        let mut reasons = Vec::new();
+        let mut reasons = crate::input_arbitration::InputClaimReasons::new();
         if explicit {
             reasons.push(crate::UiInputClaimReason::ExplicitWidgetClaim);
         }

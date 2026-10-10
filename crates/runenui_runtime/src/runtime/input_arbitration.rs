@@ -113,7 +113,7 @@ pub(crate) fn integrity_only_pointer_finality(
     staged: Option<&PointerStreamState>,
 ) -> crate::UiInputFinality {
     let streams = [before, staged];
-    let mut reasons = Vec::new();
+    let mut reasons = crate::input_arbitration::InputClaimReasons::new();
     if streams
         .iter()
         .flatten()

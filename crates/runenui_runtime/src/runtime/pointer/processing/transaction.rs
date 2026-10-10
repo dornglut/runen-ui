@@ -353,7 +353,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface_context: pending.work.event.surface_context().clone(),
             surface_snapshot: pending.geometry.snapshot,
         };
-        let mut reasons = Vec::new();
+        let mut reasons = crate::input_arbitration::InputClaimReasons::new();
         if transaction.host_input_claimed {
             reasons.push(crate::UiInputClaimReason::ExplicitWidgetClaim);
         }
