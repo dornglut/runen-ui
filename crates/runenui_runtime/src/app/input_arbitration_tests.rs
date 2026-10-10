@@ -907,16 +907,16 @@ fn direct_composition_start_preflights_last_revision_without_binding_a_pending_o
     );
     assert_eq!(terminal.keyboard().composition_generation(), None);
     assert_eq!(terminal.keyboard().composition_device_id(), None);
-    let batch = pump::pump_recorded::<TextOwnershipApp>(
-        &mut app.runtime,
-        PumpBudget::new(0, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("retirement is observable without consumed input"));
+    let batch =
+        pump::pump_recorded::<TextOwnershipApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("retirement is observable without consumed input"));
     assert_eq!(batch.processed_through(), None);
-    assert!(batch.ordered_records().iter().any(|record| matches!(
-        record,
-        InputArbitrationRecord::ScopeRetired(_)
-    )));
+    assert!(
+        batch
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::ScopeRetired(_)))
+    );
 }
 
 #[test]
