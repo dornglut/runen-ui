@@ -36,7 +36,11 @@ mod tests {
         RendererOptions, ResourcePayload, ResourceProvider, ResourceProviderError,
         ResourceProviderErrorKind, ResourceRequest, ResourceResolveError,
     };
-    use runenui_runtime::{AppRuntime, PumpBudget, SurfaceBuildContext, SurfacePublication};
+    use runenui_runtime::{
+        AppRuntime, InputArbitrationRecord, InputScopeRetirementReason, PumpBudget,
+        SurfaceBuildContext, SurfacePublication, UiInputClaimReason, UiInputConflict,
+        UiInputFamily, UiInputFinality,
+    };
 
     const SURFACE_EXTENT: u16 = 8;
     const IMAGE_EXTENT: f32 = 4.0;
@@ -325,7 +329,7 @@ mod tests {
             )
             .unwrap_or_else(|_| unreachable!("public focus request accepted"));
         let _ = runtime.pump(HOST_PUMP_BUDGET).expect("pump observation").report().to_owned();
-        runtime
+        let receipt = runtime
             .submit_keyboard(KeyboardEvent::new(
                 KeyboardPhase::Down,
                 PhysicalKey::Code(String::from("KeyW")),
@@ -337,8 +341,55 @@ mod tests {
                 None,
             ))
             .unwrap_or_else(|_| unreachable!("native keyboard input accepted"));
-        let _ = runtime.pump(HOST_PUMP_BUDGET).expect("pump observation").report().to_owned();
+
+        // The queue receipt is Pending until this exact FIFO boundary commits.
+        let pending = runtime
+            .pump(PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("bounded empty checkpoint"));
+        assert_eq!(pending.processed_through(), None);
+        assert!(!pending.ordered_records().iter().any(|record| {
+            matches!(record, InputArbitrationRecord::InputSettled(_))
+        }));
+        assert!(!reached.load(Ordering::Relaxed));
+
+        let committed = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("host input settlement returned"));
+        let settlement = committed
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settlement.len(), 1, "exactly one reached host input settles");
+        let settled = settlement[0];
+        assert_eq!(settled.sequence(), receipt.sequence());
+        assert_eq!(settled.scope(), committed.final_ownership().scope());
+        assert_eq!(settled.family(), UiInputFamily::Keyboard);
+        assert!(matches!(
+            settled.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::ExplicitWidgetClaim)
+        ));
         assert!(reached.load(Ordering::Relaxed));
+
+        let closed = runtime
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("observed final shutdown"));
+        assert_eq!(closed.final_ownership().status(), runenui_runtime::RuntimeStatus::Closed);
+        assert_eq!(closed.ordered_records().iter().filter(|record| {
+            matches!(record, InputArbitrationRecord::ScopeRetired(retirement)
+                if retirement.reason() == InputScopeRetirementReason::Shutdown)
+        }).count(), 1);
+        let again = runtime
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("idempotent final observation"));
+        assert!(!again.ordered_records().iter().any(|record| {
+            matches!(record, InputArbitrationRecord::ScopeRetired(_))
+        }));
     }
 
     #[test]
