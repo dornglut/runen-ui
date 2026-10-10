@@ -538,7 +538,7 @@ mod tests {
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("rejected ingress did not mutate FIFO"));
         assert_eq!(unadmitted.processed_through(), None);
-        assert!(unadmitted.ordered_records().is_empty());
+        assert_eq!(unadmitted.ordered_records(), []);
         assert_eq!(
             unadmitted.final_ownership().status(),
             runenui_runtime::RuntimeStatus::Running
