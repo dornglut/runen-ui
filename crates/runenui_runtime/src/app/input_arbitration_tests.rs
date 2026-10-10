@@ -766,9 +766,16 @@ fn failed_second_shutdown_reservation_preserves_pending_composition_revision() {
     )
     .unwrap_or_else(|_| unreachable!("focus admitted"));
     let _ = app.pump(budget);
-    let before = app
+    let _ = app
         .input_ownership()
         .unwrap_or_else(|_| unreachable!("focused owner observed"));
+    // Only two revisions remain: pending IME ownership and terminal close.
+    // If the failed attempt consumes the former, retry cannot complete.
+    app.runtime.seed_input_revision_for_test(u64::MAX - 2);
+    let before = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("seeded baseline is readable"));
+    assert_eq!(before.revision().get(), u64::MAX - 2);
     let receipt = app
         .start_composition(Some(device(84)))
         .unwrap_or_else(|_| unreachable!("synchronous composition admission"));
@@ -792,8 +799,8 @@ fn failed_second_shutdown_reservation_preserves_pending_composition_revision() {
         InputArbitrationRecord::OwnershipChanged(transition) => transition,
         _ => unreachable!("close publishes its ownership transition"),
     };
-    assert_eq!(transition.before_revision(), before.revision());
-    assert!(transition.after().revision() > before.revision());
+    assert_eq!(transition.before_revision().get(), before.revision().get() + 1);
+    assert_eq!(transition.after().revision().get(), u64::MAX);
     assert!(matches!(
         completed.ordered_records()[1],
         InputArbitrationRecord::ScopeRetired(_)
