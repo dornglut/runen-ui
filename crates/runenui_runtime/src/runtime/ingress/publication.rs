@@ -169,14 +169,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         context: &crate::SurfaceBuildContext<'_>,
     ) -> Result<crate::SurfacePublication, PublishSurfaceError> {
-        if matches!(self.status, RuntimeStatus::Running)
-            && !self.can_admit_direct_input_ownership_boundary()
-        {
+        // First preserve established surface/queue/trace rejection precedence:
+        // admission only checks reservations and does not publish input state.
+        let admission = self.admit_surface_publication()?;
+        if !self.can_admit_direct_input_ownership_boundary() {
             let reason = RuntimeTerminalReason::Poisoned;
             self.enter_terminal(reason, 0);
             return Err(PublishSurfaceError::Terminal(reason));
         }
-        let admission = self.admit_surface_publication()?;
         let instant = self.now();
         let focused_owner = self.focus.focused_node().cloned();
         let interaction = self
