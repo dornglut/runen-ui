@@ -109,7 +109,10 @@ impl Widget<Action> for DownstreamSplitter {
         if context.phase() != EventPhase::Target || !self.enabled {
             return WidgetEventOutput::none();
         }
-        let request = match event.as_semantic_command().map(runenui_core::SemanticCommandEvent::command) {
+        let request = match event
+            .as_semantic_command()
+            .map(runenui_core::SemanticCommandEvent::command)
+        {
             Some(SemanticCommand::Increment) => SplitterRequest::AdjustBy(number(5.0)),
             Some(SemanticCommand::Decrement) => SplitterRequest::AdjustBy(number(-5.0)),
             Some(SemanticCommand::SetValue(value)) => SplitterRequest::SetValue(value),
