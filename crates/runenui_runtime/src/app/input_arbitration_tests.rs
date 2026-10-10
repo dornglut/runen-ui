@@ -305,7 +305,7 @@ fn terminal_scope_invalidates_unprocessed_native_receipts_without_fake_settlemen
     let batch = app
         .shutdown()
         .unwrap_or_else(|_| unreachable!("public shutdown returns the final retirement"));
-    assert_eq!(batch.processed_through(), None);
+    assert_eq!(batch.report().cancelled_queued_envelopes(), 1);
     assert!(
         batch
             .ordered_records()
