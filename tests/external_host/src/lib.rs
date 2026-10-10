@@ -390,6 +390,11 @@ mod tests {
         assert!(!again.ordered_records().iter().any(|record| {
             matches!(record, InputArbitrationRecord::ScopeRetired(_))
         }));
+        // A host that retains native receipt associations must settle the
+        // scope before consuming the runtime; no second implicit retirement
+        // is synthesized by into_state.
+        let returned = runtime.into_state();
+        assert!(returned.load(Ordering::Relaxed));
     }
 
     #[test]

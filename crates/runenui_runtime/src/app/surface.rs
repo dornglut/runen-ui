@@ -103,6 +103,13 @@ impl<App: UiApp> AppRuntime<App> {
     pub const fn last_surface_phase_report(&self) -> &crate::SurfacePhaseReport {
         self.runtime.last_surface_phase_report()
     }
+    /// Consumes the runtime and recovers the final application state.
+    ///
+    /// This consumes the mounted scope and performs implicit cleanup, but
+    /// cannot return an input-arbitration retirement record. A host retaining
+    /// native receipts MUST first call `shutdown()` and reconcile its public
+    /// `InputShutdownBatch`, or revoke every receipt for this known scope
+    /// when intentionally discarding the whole runtime lifetime.
     #[must_use]
     pub fn into_state(self) -> App::State {
         self.runtime.into_state()
