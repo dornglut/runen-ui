@@ -1494,7 +1494,9 @@ fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal()
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pointer selection settles"));
     assert!(
-        input.processed_through().is_some_and(|fence| fence >= receipt),
+        input
+            .processed_through()
+            .is_some_and(|fence| fence >= receipt),
         "the canonical pump also may process derived editor work after the native press"
     );
     assert_pointer_selection_conflict(&input, receipt);
