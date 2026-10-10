@@ -556,17 +556,20 @@ fn pointer_release_remains_ui_owned_after_press_state_is_cleared() {
         .submit_pointer(up)
         .unwrap_or_else(|_| unreachable!("Up admitted"))
         .sequence();
-    let up_batch = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
-        .unwrap_or_else(|_| unreachable!("Up committed"));
-    assert_eq!(up_batch.processed_through(), Some(up_receipt));
+    // Down may have queued a derived action before this native Up. The one
+    // canonical FIFO executes that work first; match exact native receipt,
+    // never assume the next popped envelope belongs to this submission.
+    let up_batch = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(32, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("bounded canonical FIFO settles Up"));
     let up_facts = up_batch
         .ordered_records()
         .iter()
         .find_map(|record| match record {
-            InputArbitrationRecord::InputSettled(settled) => Some(settled.finality()),
+            InputArbitrationRecord::InputSettled(settled)
+                if settled.sequence() == up_receipt => Some(settled.finality()),
             _ => None,
         })
-        .unwrap_or_else(|| unreachable!("Up settled"));
+        .unwrap_or_else(|| unreachable!("exact Up receipt settled"));
     let UiInputFinality::Committed(up) = up_facts else {
         unreachable!("valid button Up committed");
     };
