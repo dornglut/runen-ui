@@ -3,6 +3,7 @@
 use core::{fmt, time::Duration};
 use crate::{
     EventContext, EventPhase, FlexContainerStyle, FlexDirection, FocusGroup,
+    HitContribution, HitContributionContext,
     FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, FocusGroupTypeAhead, Focusability,
     KeyboardCompositionState, KeyboardPhase, LayoutContainer, LayoutStyle, LogicalKey,
     SemanticAction, SemanticCollectionPosition, SemanticCommand, SemanticCommandEvent,
@@ -90,15 +91,21 @@ impl<Action> TreeItem<Action> {
             && self.children.iter().any(Self::visible_eligible);
         let size = u64::try_from(self.children.len())
             .unwrap_or_else(|_| unreachable!("bounded mounted tree child count"));
-        let children = if self.expanded {
-            self.children.into_iter().enumerate().map(|(index, child)| {
+        // Keep the ordinary M8 label as a measured child so it reserves its
+        // own Flex space before hierarchical descendants; never paint text
+        // directly on a container whose children would overlap it.
+        let mut children = vec![Element::new(TreeLabelWidget {
+            label: self.label.clone(),
+        }).with_focusability(Focusability::NotFocusable)];
+        if self.expanded {
+            children.extend(self.children.into_iter().enumerate().map(|(index, child)| {
                 let index = u64::try_from(index).unwrap_or_else(|_| unreachable!());
                 let position = SemanticCollectionPosition::new(index, Some(size))
                     .unwrap_or_else(|_| unreachable!("valid tree sibling position"));
                 child.build(level.checked_add(1).unwrap_or_else(|| unreachable!()),
                     position, prefer_selected, preferred_used)
-            }).collect()
-        } else { Vec::new() };
+            }));
+        }
         let (fields, diagnostics) = self.common.into_authored_fields(
             if self.discoverable { Focusability::FocusableWhenDisabled }
             else { Focusability::Focusable }, None,
@@ -111,6 +118,29 @@ impl<Action> TreeItem<Action> {
             position, on_request: self.on_request,
         })), children, diagnostics)
             .focus_group_preferred(preferred).focus_group_search_text(self.label)
+    }
+}
+
+/// Passive ordinary text leaf, with no duplicate accessible name or focus target.
+#[derive(Debug)]
+struct TreeLabelWidget {
+    label: String,
+}
+impl<Action> Widget<Action> for TreeLabelWidget {
+    type State = String;
+    fn create_state(&self) -> Self::State { self.label.clone() }
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
+        if state != &self.label {
+            context.invalidate(WidgetInvalidation::LAYOUT | WidgetInvalidation::PAINT);
+        }
+        state.clone_from(&self.label);
+    }
+    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::Text(crate::TextLeafMeasure::new(self.label.clone()))
+    }
+    fn semantics(&self, _: &Self::State, _: SemanticContributionContext)
+        -> SemanticContribution {
+        SemanticContribution::empty()
     }
 }
 
@@ -212,8 +242,11 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
         }
         WidgetEventOutput::none()
     }
-    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text(crate::TextLeafMeasure::new(self.label.clone()))
+    fn hit_test(&self, _: &Self::State, context: HitContributionContext) -> HitContribution {
+        let size = context.local_size();
+        let rect = crate::LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+            .unwrap_or_else(|_| unreachable!("measured local TreeItem size is finite"));
+        HitContribution::single_rect(rect)
     }
     fn semantics(&self, state: &Self::State, context: SemanticContributionContext)
         -> SemanticContribution {
@@ -232,7 +265,9 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
                 } else { SemanticAction::Expand });
             }
         }
-        if context.has_mounted_children() { node = node.with_mounted_children(); }
+        if state.has_children && state.expanded && context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
         SemanticContribution::single(node)
     }
 }
