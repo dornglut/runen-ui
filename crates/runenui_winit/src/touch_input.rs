@@ -371,12 +371,16 @@ mod tests {
         runtime
             .submit_pointer(event)
             .unwrap_or_else(|_| unreachable!("the neutral pointer queue admits touch work"));
-        let _ = runtime.pump(PumpBudget::new(
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-        )).expect("pump observation").report().to_owned();
+        let _ = runtime
+            .pump(PumpBudget::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ))
+            .expect("pump observation")
+            .report()
+            .to_owned();
     }
 
     #[test]

@@ -353,7 +353,11 @@ mod tests {
         runtime
             .submit_command(target.clone(), pressed.command(), pressed.origin())
             .unwrap_or_else(|error| panic!("normalized command enters the runtime: {error:?}"));
-        runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+        runtime
+            .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned();
 
         let ControllerInputOutcome::Submit(repeated) =
             input.transition(ControllerButton::Accept, ControllerTransition::Repeated)
@@ -364,7 +368,11 @@ mod tests {
         runtime
             .submit_command(target, repeated.command(), repeated.origin())
             .unwrap_or_else(|error| panic!("normalized repeat enters the runtime: {error:?}"));
-        runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+        runtime
+            .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned();
 
         assert_eq!(
             input.transition(ControllerButton::Accept, ControllerTransition::Cancelled),

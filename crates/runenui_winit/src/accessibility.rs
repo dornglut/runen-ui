@@ -1921,7 +1921,11 @@ mod tests {
         runtime
             .submit_action(FixtureAction)
             .unwrap_or_else(|_| unreachable!("fixture phase transition is admitted"));
-        runtime.pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64)).expect("pump observation").report().to_owned();
+        runtime
+            .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
+            .expect("pump observation")
+            .report()
+            .to_owned();
         let second_publication = publication(&mut runtime);
         let second = adapter.update(&second_publication);
         assert_eq!(second.mode, UpdateMode::Delta);
@@ -2174,7 +2178,11 @@ mod tests {
         adapter.projection.next_node_id = None;
 
         let _ = runtime.submit_action(FixtureAction);
-        runtime.pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64)).expect("pump observation").report().to_owned();
+        runtime
+            .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
+            .expect("pump observation")
+            .report()
+            .to_owned();
         let second_publication = publication(&mut runtime);
         let second = adapter.update(&second_publication);
         assert_eq!(second.mode, UpdateMode::Delta);
@@ -2204,7 +2212,11 @@ mod tests {
         let before_tree = activation.request_initial_tree().unwrap();
 
         let _ = runtime.submit_action(FixtureAction);
-        runtime.pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64)).expect("pump observation").report().to_owned();
+        runtime
+            .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
+            .expect("pump observation")
+            .report()
+            .to_owned();
         let third_publication = publication(&mut runtime);
         let rejected = adapter.update(&third_publication);
 
@@ -2296,7 +2308,11 @@ mod tests {
             SemanticAction::Activate,
         );
         runtime.submit_semantic_action(request).unwrap();
-        runtime.pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64)).expect("pump observation").report().to_owned();
+        runtime
+            .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
+            .expect("pump observation")
+            .report()
+            .to_owned();
         let second_publication = publication(&mut runtime);
         let delta = adapter.update(&second_publication);
         assert_eq!(delta.mode, UpdateMode::Delta);
@@ -2309,7 +2325,11 @@ mod tests {
                 runenui_core::CommandOrigin::programmatic(),
             )
             .unwrap();
-        runtime.pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64)).expect("pump observation").report().to_owned();
+        runtime
+            .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
+            .expect("pump observation")
+            .report()
+            .to_owned();
         let third_publication = publication(&mut runtime);
         let mut skipped_adapter = SemanticAdapter::new();
         skipped_adapter.update(&first_publication);
@@ -2403,7 +2423,11 @@ mod tests {
         let first_root = adapter.projection.synthetic_root.unwrap();
 
         let _ = runtime.submit_action(FixtureAction);
-        runtime.pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64)).expect("pump observation").report().to_owned();
+        runtime
+            .pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64))
+            .expect("pump observation")
+            .report()
+            .to_owned();
         let second_publication = publication(&mut runtime);
         assert_eq!(second_publication.snapshot().surface_id(), &surface);
         assert_eq!(second_publication.snapshot().roots().len(), 1);
@@ -2976,7 +3000,11 @@ mod tests {
         runtime
             .submit_action(StandardPasswordAction::Toggle)
             .unwrap();
-        runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+        runtime
+            .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned();
         let public = publish_standard_password(&mut runtime, &mut adapter);
         let public_semantic = &public.snapshot().nodes()[0];
         let public_parent = adapter
@@ -2996,7 +3024,11 @@ mod tests {
         runtime
             .submit_action(StandardPasswordAction::Toggle)
             .unwrap();
-        runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+        runtime
+            .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned();
         let again = publish_standard_password(&mut runtime, &mut adapter);
         assert_standard_password_secret(&again, &adapter);
         assert!(
