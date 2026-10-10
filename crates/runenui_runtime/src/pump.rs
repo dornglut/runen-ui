@@ -212,6 +212,8 @@ struct RecordedPump {
     processed_through: Option<runenui_core::WorkSequence>,
     progress: bool,
     prepared: Option<crate::runtime::InputSnapshotReservation>,
+    revision_retired: bool,
+    cancelled_for_revision: usize,
 }
 
 impl RecordedPump {
@@ -224,6 +226,8 @@ impl RecordedPump {
             processed_through: None,
             progress: false,
             prepared: None,
+            revision_retired: false,
+            cancelled_for_revision: 0,
         })
     }
 
@@ -231,7 +235,7 @@ impl RecordedPump {
     /// before reaching the next canonical mutation/checkpoint.
     fn admit<State, Action, Protocol: runenui_core::HostProtocol>(
         &mut self,
-        runtime: &Runtime<State, Action, Protocol>,
+        runtime: &mut Runtime<State, Action, Protocol>,
     ) -> Result<bool, crate::InputObservationError> {
         if self.records.try_reserve(3).is_err() {
             if self.progress {
@@ -242,6 +246,20 @@ impl RecordedPump {
         let reserved = match runtime.reserve_input_observation() {
             Ok(reserved) => reserved,
             Err(crate::InputObservationError::Capacity) if self.progress => return Ok(false),
+            Err(crate::InputObservationError::RevisionExhausted) if self.progress => {
+                // There is no legal next revision. Terminalize the scope before
+                // any further work and return all previous records in a successful
+                // partial batch; never discard already committed receipts.
+                self.cancelled_for_revision = runtime.enter_terminal(
+                    RuntimeTerminalReason::Poisoned, 0,
+                );
+                self.latest.status = RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned);
+                if let Some(retirement) = runtime.input_retirement_record() {
+                    self.records.push(crate::InputArbitrationRecord::ScopeRetired(retirement));
+                }
+                self.revision_retired = true;
+                return Ok(false);
+            }
             Err(error) => return Err(error),
         };
         self.prepared = Some(reserved);
@@ -307,7 +325,11 @@ impl RecordedPump {
         totals: ReadinessTotals,
         paused: bool,
     ) -> crate::InputPumpBatch {
-        let mut report = finish_report(runtime, budget, processed, cancelled, totals);
+        let mut report = finish_report(
+            runtime, budget, processed,
+            cancelled.saturating_add(self.cancelled_for_revision), totals,
+        );
+        let paused = paused && !self.revision_retired;
         if paused && matches!(report.outcome, PumpOutcome::Quiescent) {
             report.outcome = PumpOutcome::BudgetExhausted;
         }
