@@ -113,6 +113,21 @@ pub(crate) const fn integrity_only_pointer_finality() -> crate::UiInputFinality 
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    pub(crate) fn note_input_terminal_retirement(
+        &mut self,
+        reason: crate::RuntimeTerminalReason,
+    ) {
+        self.input_observation.retirement_cause =
+            Some(crate::InputScopeRetirementReason::Terminal(reason));
+    }
+
+    pub(crate) fn note_input_shutdown_retirement(&mut self) {
+        if self.input_observation.retirement_cause.is_none() {
+            self.input_observation.retirement_cause =
+                Some(crate::InputScopeRetirementReason::Shutdown);
+        }
+    }
+
     pub(crate) fn input_retirement_record(&mut self) -> Option<crate::InputScopeRetirement> {
         if self.input_observation.retired_recorded {
             return None;

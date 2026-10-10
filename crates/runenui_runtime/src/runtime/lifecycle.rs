@@ -53,8 +53,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // route; if that route or its bounded admission is irrecoverable, the
         // exact lifetime is retired without falsely claiming callback delivery.
         self.status = RuntimeStatus::Terminal(reason);
-        self.input_observation.retirement_cause =
-            Some(crate::InputScopeRetirementReason::Terminal(reason));
+        self.note_input_terminal_retirement(reason);
         self.focus_group_type_ahead.clear();
         let cleanup_cause = InputLifetimeCleanupCause::new(
             None,
@@ -206,10 +205,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         self.trace.close_sink();
         self.status = RuntimeStatus::Closed;
-        if self.input_observation.retirement_cause.is_none() {
-            self.input_observation.retirement_cause =
-                Some(crate::InputScopeRetirementReason::Shutdown);
-        }
+        self.note_input_shutdown_retirement();
         ShutdownReport {
             already_complete: false,
             cancelled_queued_envelopes,
