@@ -112,30 +112,53 @@ impl<Action> TreeItem<Action> {
         // Keep the ordinary M8 label as a measured child so it reserves its
         // own Flex space before hierarchical descendants; never paint text
         // directly on a container whose children would overlap it.
-        let mut children = vec![Element::new(TreeLabelWidget {
-            label: self.label.clone(),
-        }).with_focusability(Focusability::NotFocusable)];
+        let mut children = vec![
+            Element::new(TreeLabelWidget {
+                label: self.label.clone(),
+            })
+            .with_focusability(Focusability::NotFocusable),
+        ];
         if self.expanded {
             children.extend(self.children.into_iter().enumerate().map(|(index, child)| {
                 let index = u64::try_from(index).unwrap_or_else(|_| unreachable!());
                 let position = SemanticCollectionPosition::new(index, Some(size))
                     .unwrap_or_else(|_| unreachable!("valid tree sibling position"));
-                child.build(level.checked_add(1).unwrap_or_else(|| unreachable!()),
-                    position, prefer_selected, preferred_used)
+                child.build(
+                    level.checked_add(1).unwrap_or_else(|| unreachable!()),
+                    position,
+                    prefer_selected,
+                    preferred_used,
+                )
             }));
         }
         let (fields, diagnostics) = self.common.into_authored_fields(
-            if self.discoverable { Focusability::FocusableWhenDisabled }
-            else { Focusability::Focusable }, None,
+            if self.discoverable {
+                Focusability::FocusableWhenDisabled
+            } else {
+                Focusability::Focusable
+            },
+            None,
         );
-        Element::from_authored_parts(fields, Box::new(WidgetAdapter(TreeItemWidget {
-            domain_id: self.domain_id, label: self.label.clone(), selected: self.selected,
-            expanded: self.expanded, enabled: self.enabled, discoverable: self.discoverable,
-            has_children, has_visible_child,
-            level: SemanticHierarchyLevel::new(level).unwrap_or_else(|_| unreachable!()),
-            position, on_request: self.on_request,
-        })), children, diagnostics)
-            .focus_group_preferred(preferred).focus_group_search_text(self.label)
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(TreeItemWidget {
+                domain_id: self.domain_id,
+                label: self.label.clone(),
+                selected: self.selected,
+                expanded: self.expanded,
+                enabled: self.enabled,
+                discoverable: self.discoverable,
+                has_children,
+                has_visible_child,
+                level: SemanticHierarchyLevel::new(level).unwrap_or_else(|_| unreachable!()),
+                position,
+                on_request: self.on_request,
+            })),
+            children,
+            diagnostics,
+        )
+        .focus_group_preferred(preferred)
+        .focus_group_search_text(self.label)
     }
 }
 
@@ -146,7 +169,9 @@ struct TreeLabelWidget {
 }
 impl<Action> Widget<Action> for TreeLabelWidget {
     type State = String;
-    fn create_state(&self) -> Self::State { self.label.clone() }
+    fn create_state(&self) -> Self::State {
+        self.label.clone()
+    }
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         if state != &self.label {
             context.invalidate(WidgetInvalidation::LAYOUT | WidgetInvalidation::PAINT);
@@ -409,13 +434,15 @@ struct TreeViewWidget {
 }
 impl<Action> Widget<Action> for TreeViewWidget {
     type State = Option<TreeAuthoringError>;
-    fn create_state(&self) -> Self::State { self.invalid }
+    fn create_state(&self) -> Self::State {
+        self.invalid
+    }
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         if *state != self.invalid {
             context.invalidate(
                 WidgetInvalidation::INTERACTION
                     | WidgetInvalidation::SEMANTICS
-                    | WidgetInvalidation::DIAGNOSTICS
+                    | WidgetInvalidation::DIAGNOSTICS,
             );
         }
         *state = self.invalid;
@@ -426,7 +453,10 @@ impl<Action> Widget<Action> for TreeViewWidget {
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
-        if self.invalid.is_some() || context.phase() != EventPhase::Bubble || context.default_is_prevented() {
+        if self.invalid.is_some()
+            || context.phase() != EventPhase::Bubble
+            || context.default_is_prevented()
+        {
             return WidgetEventOutput::none();
         }
         let delegated = if let Some(command) = event
@@ -505,16 +535,28 @@ impl<Action> ChildBearingWidget<Action> for TreeViewWidget {}
 impl<Action: 'static> View<Action> for TreeView<Action> {
     fn into_element(self) -> Element<Action> {
         let mut ids = BTreeSet::new();
-        let invalid = self.children.iter()
+        let invalid = self
+            .children
+            .iter()
             .find_map(|item| item.validate_ids(&mut ids))
-            .or_else(|| (self.children.iter().map(TreeItem::selected_count).sum::<usize>() > 1)
-                .then_some(TreeAuthoringError::MultipleSelected));
+            .or_else(|| {
+                (self
+                    .children
+                    .iter()
+                    .map(TreeItem::selected_count)
+                    .sum::<usize>()
+                    > 1)
+                .then_some(TreeAuthoringError::MultipleSelected)
+            });
         if invalid.is_some() {
-            let (fields, diagnostics) = self.common
+            let (fields, diagnostics) = self
+                .common
                 .into_authored_fields(Focusability::NotFocusable, None);
             return Element::from_authored_parts(
-                fields, Box::new(WidgetAdapter(TreeViewWidget { invalid })),
-                Vec::new(), diagnostics,
+                fields,
+                Box::new(WidgetAdapter(TreeViewWidget { invalid })),
+                Vec::new(),
+                diagnostics,
             );
         }
         let prefer_selected = self.children.iter().any(TreeItem::visible_selected);
