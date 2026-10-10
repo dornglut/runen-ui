@@ -231,30 +231,33 @@ impl RecordedPump {
     ) -> Result<(), crate::InputObservationError> {
         let latest = runtime.input_ownership()?;
         if latest.revision() != self.latest.revision() {
-            self.records.push(crate::InputArbitrationRecord::OwnershipChanged(
-                crate::InputOwnershipTransition {
-                    before_revision: self.latest.revision(),
-                    after: latest.clone(),
-                },
-            ));
+            self.records
+                .push(crate::InputArbitrationRecord::OwnershipChanged(
+                    crate::InputOwnershipTransition {
+                        before_revision: self.latest.revision(),
+                        after: latest.clone(),
+                    },
+                ));
         }
         if let Some((sequence, family, surface_id, device_id, pointer_id, finality)) = input {
-            self.records.push(crate::InputArbitrationRecord::InputSettled(
-                crate::UiInputSettlement {
-                    scope: latest.scope().clone(),
-                    sequence,
-                    family,
-                    surface_id,
-                    device_id,
-                    pointer_id,
-                    finality,
-                    ownership_revision: latest.revision(),
-                },
-            ));
+            self.records
+                .push(crate::InputArbitrationRecord::InputSettled(
+                    crate::UiInputSettlement {
+                        scope: latest.scope().clone(),
+                        sequence,
+                        family,
+                        surface_id,
+                        device_id,
+                        pointer_id,
+                        finality,
+                        ownership_revision: latest.revision(),
+                    },
+                ));
         }
         self.latest = latest;
         if let Some(retirement) = runtime.input_retirement_record() {
-            self.records.push(crate::InputArbitrationRecord::ScopeRetired(retirement));
+            self.records
+                .push(crate::InputArbitrationRecord::ScopeRetired(retirement));
         }
         self.progress = true;
         Ok(())
@@ -326,9 +329,9 @@ pub(crate) fn pump_recorded<App: UiApp>(
         };
         let sequence = envelope.sequence();
         let (result, settled) = match envelope {
-            WorkEnvelope::ApplicationAction(envelope) => (
-                process_application_action::<App>(runtime, envelope), None
-            ),
+            WorkEnvelope::ApplicationAction(envelope) => {
+                (process_application_action::<App>(runtime, envelope), None)
+            }
             WorkEnvelope::SemanticCommand(envelope) => {
                 runtime.process_semantic_command(envelope);
                 (ProcessApplicationActionOutcome::Completed, None)
@@ -348,18 +351,23 @@ pub(crate) fn pump_recorded<App: UiApp>(
                     crate::queue::PointerEnvelopePayload::StationaryRehit(_) => None,
                 };
                 let (outcome, finality) = runtime.process_pointer_envelope(envelope);
-                (outcome, identity.zip(finality).map(|((family,surface,device,pointer),finality)| {
-                    (sequence, family, surface, device, pointer, finality)
-                }))
+                (
+                    outcome,
+                    identity
+                        .zip(finality)
+                        .map(|((family, surface, device, pointer), finality)| {
+                            (sequence, family, surface, device, pointer, finality)
+                        }),
+                )
             }
             WorkEnvelope::Input(envelope) => {
                 let (family, device) = match &envelope.payload {
-                    crate::queue::InputEnvelopePayload::Keyboard(event) => (
-                        crate::UiInputFamily::Keyboard, event.device_id(),
-                    ),
-                    crate::queue::InputEnvelopePayload::CommittedText(event) => (
-                        crate::UiInputFamily::CommittedText, event.device_id(),
-                    ),
+                    crate::queue::InputEnvelopePayload::Keyboard(event) => {
+                        (crate::UiInputFamily::Keyboard, event.device_id())
+                    }
+                    crate::queue::InputEnvelopePayload::CommittedText(event) => {
+                        (crate::UiInputFamily::CommittedText, event.device_id())
+                    }
                     crate::queue::InputEnvelopePayload::Composition(event) => (
                         crate::UiInputFamily::Composition,
                         match event {
@@ -380,22 +388,29 @@ pub(crate) fn pump_recorded<App: UiApp>(
             }
             WorkEnvelope::WorkCancellation(work) => {
                 runtime.process_work_cancellation(
-                    work.sequence, work.generation, work.identity, work.causal_parent,
+                    work.sequence,
+                    work.generation,
+                    work.identity,
+                    work.causal_parent,
                 );
                 (ProcessApplicationActionOutcome::Completed, None)
             }
             WorkEnvelope::FrameworkServiceResponse(envelope) => (
-                runtime.process_framework_service_response(envelope)
+                runtime
+                    .process_framework_service_response(envelope)
                     .map_or(ProcessApplicationActionOutcome::Completed, |action| {
                         process_application_action::<App>(runtime, action)
-                    }), None
+                    }),
+                None,
             ),
             WorkEnvelope::TimerFiring(work) => {
                 runtime.process_timer_firing(work.sequence, work.generation);
                 (ProcessApplicationActionOutcome::Completed, None)
             }
             WorkEnvelope::MountedSubscriptionReconcile {
-                sequence, owner, causal_parent,
+                sequence,
+                owner,
+                causal_parent,
             } => {
                 runtime.process_mounted_subscription_reconcile(sequence, &owner, causal_parent);
                 (ProcessApplicationActionOutcome::Completed, None)
@@ -405,8 +420,10 @@ pub(crate) fn pump_recorded<App: UiApp>(
         observed.processed_through = Some(sequence);
         observed.observe(runtime, settled)?;
         if let ProcessApplicationActionOutcome::Terminal {
-            reason: _, cancelled: terminal_cancelled,
-        } = result {
+            reason: _,
+            cancelled: terminal_cancelled,
+        } = result
+        {
             cancelled = terminal_cancelled;
             if !observed.admit()? {
                 return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
