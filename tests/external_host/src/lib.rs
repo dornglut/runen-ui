@@ -395,6 +395,66 @@ mod tests {
         }
     }
 
+    // A real external callback queues a causal descendant behind its own
+    // native receipt; the host does not fabricate or reorder that command.
+    #[derive(Debug)]
+    struct ExternalHostDerivedFocusProbe {
+        reached: Arc<AtomicBool>,
+    }
+
+    impl Widget<()> for ExternalHostDerivedFocusProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, ()>,
+        ) -> WidgetEventOutput {
+            if matches!(event, UiEvent::Keyboard(_)) && context.phase() == EventPhase::Target {
+                context.emit_command(SemanticCommand::FocusNext);
+                self.reached.store(true, Ordering::Relaxed);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    struct ExternalHostDerivedFocusApp;
+
+    impl UiApp for ExternalHostDerivedFocusApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            column([
+                Element::new(ExternalHostDerivedFocusProbe {
+                    reached: Arc::clone(reached),
+                })
+                .id("first-host-focus")
+                .key("first-host-focus")
+                .focusable(true)
+                .into_element(),
+                Element::new(ExternalHostNonclaimProbe {
+                    reached: Arc::clone(reached),
+                })
+                .id("second-host-focus")
+                .key("second-host-focus")
+                .focusable(true)
+                .into_element(),
+            ])
+            .key("derived-focus-host")
+        }
+
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        }
+    }
+
     #[derive(Debug)]
     struct ReplaceHostState {
         replaced: bool,
@@ -700,14 +760,17 @@ mod tests {
         )
     }
 
-    fn focused_public_pair(
+    fn focused_public_pair<App>(
         reached: Arc<AtomicBool>,
     ) -> (
-        AppRuntime<ExternalHostTwoFocusApp>,
+        AppRuntime<App>,
         runenui_core::MountedNodeId,
         runenui_core::MountedNodeId,
-    ) {
-        let mut runtime = AppRuntime::<ExternalHostTwoFocusApp>::mount(reached);
+    )
+    where
+        App: UiApp<State = Arc<AtomicBool>, Action = (), HostProtocol = NoHostProtocol>,
+    {
+        let mut runtime = AppRuntime::<App>::mount(reached);
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("mount completes canonical work"));
@@ -740,9 +803,68 @@ mod tests {
     }
 
     #[test]
+    fn public_callback_derived_focus_command_is_not_closed_by_input_settlement() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let (mut runtime, first, second) =
+            focused_public_pair::<ExternalHostDerivedFocusApp>(Arc::clone(&reached));
+        let before = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("focused public owner"));
+        assert_eq!(before.keyboard().focused_node(), Some(&first));
+        let sequence = runtime
+            .submit_keyboard(native_w_input())
+            .unwrap_or_else(|_| unreachable!("public keyboard admitted"))
+            .sequence();
+
+        let input = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("native keyboard processed"));
+        assert_eq!(input.processed_through(), Some(sequence));
+        assert!(reached.load(Ordering::Relaxed));
+        assert!(input.report().remaining_queued_envelopes() > 0);
+        assert_eq!(
+            input.final_ownership().keyboard().focused_node(),
+            Some(&first)
+        );
+        assert!(input.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(settled)
+                if settled.sequence() == sequence
+                    && settled.ownership_revision() == input.final_ownership().revision()
+                    && matches!(settled.finality(), UiInputFinality::Committed(facts)
+                        if facts.conflict() == UiInputConflict::ObservedNonexclusive)
+        )));
+
+        let descendant = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("callback-emitted command processed later"));
+        assert!(descendant.processed_through().is_some_and(|next| next > sequence));
+        assert_eq!(
+            descendant.final_ownership().keyboard().focused_node(),
+            Some(&second)
+        );
+        assert!(
+            descendant.final_ownership().revision() > input.final_ownership().revision()
+        );
+        assert!(descendant.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::OwnershipChanged(transition)
+                if transition.before_revision() == input.final_ownership().revision()
+                    && transition.after().revision() == descendant.final_ownership().revision()
+        )));
+        assert!(
+            !descendant
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
+    }
+
+    #[test]
     fn public_input_settlement_precedes_later_focus_command_across_bounded_pumps() {
         let reached = Arc::new(AtomicBool::new(false));
-        let (mut runtime, first, second) = focused_public_pair(Arc::clone(&reached));
+        let (mut runtime, first, second) =
+            focused_public_pair::<ExternalHostTwoFocusApp>(Arc::clone(&reached));
         let before = runtime
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("initial public owner"));
