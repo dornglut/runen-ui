@@ -341,21 +341,21 @@ mod tests {
         assert!(returned.load(Ordering::Relaxed));
     }
 
-    #[test]
-    fn downstream_widget_can_claim_keyboard_input_using_only_public_framework_api() {
-        let reached = Arc::new(AtomicBool::new(false));
-        let mut runtime = AppRuntime::<ExternalHostClaimApp>::mount(Arc::clone(&reached));
+    fn focused_public_claim_host(
+        reached: Arc<AtomicBool>,
+    ) -> AppRuntime<ExternalHostClaimApp> {
+        let mut runtime = AppRuntime::<ExternalHostClaimApp>::mount(reached);
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|_| unreachable!("pump observation"));
-        let id = ElementId::new("external-claim-probe")
+            .unwrap_or_else(|_| unreachable!("fixture mount pump"));
+        let authored = ElementId::new("external-claim-probe")
             .unwrap_or_else(|_| unreachable!("static authored id"));
         let target = runtime
             .index()
             .nodes()
             .iter()
-            .find(|node| node.authored_id() == Some(&id))
-            .unwrap_or_else(|| unreachable!("fixture node mounted"))
+            .find(|node| node.authored_id() == Some(&authored))
+            .unwrap_or_else(|| unreachable!("mounted focusable probe"))
             .id()
             .clone();
         runtime
@@ -367,7 +367,14 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("public focus request accepted"));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|_| unreachable!("pump observation"));
+            .unwrap_or_else(|_| unreachable!("focus commits in canonical pump"));
+        runtime
+    }
+
+    #[test]
+    fn downstream_widget_can_claim_keyboard_input_using_only_public_framework_api() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = focused_public_claim_host(Arc::clone(&reached));
         let receipt = runtime
             .submit_keyboard(KeyboardEvent::new(
                 KeyboardPhase::Down,
@@ -470,36 +477,8 @@ mod tests {
 
     #[test]
     fn independent_typed_public_hosts_settle_only_their_own_receipts_or_retire_their_scope() {
-        let reached = Arc::new(AtomicBool::new(false));
-        let mut first = AppRuntime::<ExternalHostClaimApp>::mount(reached);
-        let mut second =
-            AppRuntime::<ExternalHostClaimApp>::mount(Arc::new(AtomicBool::new(false)));
-        let focus = |host: &mut AppRuntime<ExternalHostClaimApp>| {
-            let _ = host
-                .pump(HOST_PUMP_BUDGET)
-                .unwrap_or_else(|_| unreachable!("host mounts"));
-            let authored = ElementId::new("external-claim-probe")
-                .unwrap_or_else(|_| unreachable!("fixture id is valid"));
-            let target = host
-                .index()
-                .nodes()
-                .iter()
-                .find(|node| node.authored_id() == Some(&authored))
-                .unwrap_or_else(|| unreachable!("focusable probe is mounted"))
-                .id()
-                .clone();
-            host.submit_command(
-                target,
-                SemanticCommand::RequestFocus,
-                CommandOrigin::programmatic(),
-            )
-            .unwrap_or_else(|_| unreachable!("host focuses its own widget"));
-            let _ = host
-                .pump(HOST_PUMP_BUDGET)
-                .unwrap_or_else(|_| unreachable!("focus commits"));
-        };
-        focus(&mut first);
-        focus(&mut second);
+        let mut first = focused_public_claim_host(Arc::new(AtomicBool::new(false)));
+        let mut second = focused_public_claim_host(Arc::new(AtomicBool::new(false)));
         let first_scope = first
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("first host has a scope"))
