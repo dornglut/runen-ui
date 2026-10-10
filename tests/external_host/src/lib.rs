@@ -472,16 +472,34 @@ mod tests {
     fn independent_typed_public_hosts_settle_only_their_own_receipts_or_retire_their_scope() {
         let reached = Arc::new(AtomicBool::new(false));
         let mut first = AppRuntime::<ExternalHostClaimApp>::mount(reached);
-        let mut second = AppRuntime::<ExternalHostApp>::mount(HostState {
-            image: ResourceRef::new(ResourceKind::Image),
-            active: false,
-        });
-        let _ = first
-            .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|_| unreachable!("first host mounts"));
-        let _ = second
-            .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|_| unreachable!("second host mounts"));
+        let mut second =
+            AppRuntime::<ExternalHostClaimApp>::mount(Arc::new(AtomicBool::new(false)));
+        let focus = |host: &mut AppRuntime<ExternalHostClaimApp>| {
+            let _ = host
+                .pump(HOST_PUMP_BUDGET)
+                .unwrap_or_else(|_| unreachable!("host mounts"));
+            let authored = ElementId::new("external-claim-probe")
+                .unwrap_or_else(|_| unreachable!("fixture id is valid"));
+            let target = host
+                .index()
+                .nodes()
+                .iter()
+                .find(|node| node.authored_id() == Some(&authored))
+                .unwrap_or_else(|| unreachable!("focusable probe is mounted"))
+                .id()
+                .clone();
+            host.submit_command(
+                target,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("host focuses its own widget"));
+            let _ = host
+                .pump(HOST_PUMP_BUDGET)
+                .unwrap_or_else(|_| unreachable!("focus commits"));
+        };
+        focus(&mut first);
+        focus(&mut second);
         let first_scope = first
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("first host has a scope"))
@@ -514,6 +532,10 @@ mod tests {
             .submit_keyboard(key())
             .unwrap_or_else(|_| unreachable!("second native input admitted"))
             .sequence();
+        assert_eq!(
+            first_sequence, second_sequence,
+            "work sequences alone cannot identify independent runtime lifetimes"
+        );
 
         let pending = first
             .pump(PumpBudget::new(0, 0, 0, 0))
