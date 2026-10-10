@@ -355,3 +355,20 @@ fn nested_tree_child_hit_wins_over_ancestor_container_extent() {
     assert_eq!(publication.hit_test_scene().target_at(point), Some(&child),
         "nested child must win hit routing despite parent container covering descendants");
 }
+
+#[test]
+fn explicit_semantic_expand_and_collapse_share_application_owned_fifo() {
+    let mut runtime = fresh(false);
+    let parent = item(&mut runtime, "tree.parent");
+    command(&mut runtime, parent.clone(), SemanticCommand::Expand);
+    assert!(runtime.state().expanded);
+    assert_eq!(runtime.state().actions, [
+        TreeItemRequest::Expand("parent".to_owned()),
+    ]);
+    command(&mut runtime, parent, SemanticCommand::Collapse);
+    assert!(!runtime.state().expanded);
+    assert_eq!(runtime.state().actions, [
+        TreeItemRequest::Expand("parent".to_owned()),
+        TreeItemRequest::Collapse("parent".to_owned()),
+    ]);
+}
