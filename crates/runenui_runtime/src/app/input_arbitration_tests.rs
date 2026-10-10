@@ -377,8 +377,7 @@ fn space_press_ownership_is_source_qualified_through_other_device_and_own_releas
         .nodes()
         .iter()
         .find(|node| {
-            node.authored_id()
-                == Some(&ElementId::new("space").unwrap_or_else(|_| unreachable!()))
+            node.authored_id() == Some(&ElementId::new("space").unwrap_or_else(|_| unreachable!()))
         })
         .unwrap_or_else(|| unreachable!("space widget mounted"))
         .id()
@@ -394,7 +393,11 @@ fn space_press_ownership_is_source_qualified_through_other_device_and_own_releas
     let device_b = device(12);
     let cases = [
         (KeyboardPhase::Down, device_a, UiInputConflict::ExclusiveUi),
-        (KeyboardPhase::Down, device_b, UiInputConflict::ObservedNonexclusive),
+        (
+            KeyboardPhase::Down,
+            device_b,
+            UiInputConflict::ObservedNonexclusive,
+        ),
         (KeyboardPhase::Up, device_a, UiInputConflict::ExclusiveUi),
     ];
     for (phase, device_id, expected) in cases {
@@ -402,11 +405,8 @@ fn space_press_ownership_is_source_qualified_through_other_device_and_own_releas
             .submit_keyboard(space_key(phase, device_id))
             .unwrap_or_else(|_| unreachable!("focused Space accepted"))
             .sequence();
-        let batch = pump::pump_recorded::<SpaceApp>(
-            &mut app.runtime,
-            PumpBudget::new(1, 0, 0, 0),
-        )
-        .unwrap_or_else(|_| unreachable!("Space receipt is settled"));
+        let batch = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("Space receipt is settled"));
         assert_eq!(batch.processed_through(), Some(receipt));
         let settled = batch
             .ordered_records()
