@@ -1199,10 +1199,62 @@ impl UiApp for OverflowApp {
     }
 }
 
-#[test]
-fn overflowing_widget_callback_aborts_reached_input_and_retires_pending_receipts() {
+fn assert_overflow_settlement_and_retirement(
+    batch: &crate::InputPumpBatch,
+    first: runenui_core::WorkSequence,
+    pending: runenui_core::WorkSequence,
+    scope: &crate::InputArbitrationScope,
+) {
+    assert_ne!(first, pending);
+    assert_eq!(batch.processed_through(), Some(first));
+    assert_eq!(batch.final_ownership().scope(), scope);
+    assert_eq!(
+        batch.final_ownership().status(),
+        crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned),
+    );
+
+    let settlements: Vec<_> = batch
+        .ordered_records()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, record)| match record {
+            InputArbitrationRecord::InputSettled(settled) => Some((index, settled)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(settlements.len(), 1);
+    let (settlement_index, settled) = settlements[0];
+    assert_eq!(settled.sequence(), first);
+    assert_eq!(settled.scope(), scope);
+    assert_eq!(settled.family(), crate::UiInputFamily::Keyboard);
+    assert!(matches!(
+        settled.finality(),
+        UiInputFinality::Aborted(crate::UiInputAbortReason::RuntimeIntegrity)
+    ));
+
+    let retirements: Vec<_> = batch
+        .ordered_records()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, record)| match record {
+            InputArbitrationRecord::ScopeRetired(retirement) => Some((index, retirement)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(retirements.len(), 1);
+    let (retirement_index, retirement) = retirements[0];
+    assert!(retirement_index > settlement_index);
+    assert_eq!(retirement.scope(), scope);
+    assert_eq!(
+        retirement.reason(),
+        crate::InputScopeRetirementReason::Terminal(crate::RuntimeTerminalReason::Poisoned),
+    );
+}
+
+fn assert_overflow_aborts_with_trace(trace_config: crate::TraceConfig) {
     let config = crate::RuntimeConfig::default()
-        .with_limits(crate::RuntimeLimits::default().with_transaction_outputs(1));
+        .with_limits(crate::RuntimeLimits::default().with_transaction_outputs(1))
+        .with_trace_config(trace_config);
     let mut app = AppRuntime::<OverflowApp>::mount_with_config(0, config);
     let budget = PumpBudget::new(16, 16, 16, 16);
     app.pump(budget)
@@ -1243,54 +1295,28 @@ fn overflowing_widget_callback_aborts_reached_input_and_retires_pending_receipts
     let batch = app
         .pump(PumpBudget::new(2, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("poison must not discard reached finality"));
-    assert_eq!(batch.processed_through(), Some(first));
-    assert_eq!(
-        batch.final_ownership().status(),
-        crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned),
-    );
-    assert_eq!(batch.final_ownership().scope(), &scope);
     assert_eq!(
         *app.state(),
         0,
         "overflow must not commit any staged action"
     );
-
-    let settled: Vec<_> = batch
-        .ordered_records()
-        .iter()
-        .filter_map(|record| match record {
-            InputArbitrationRecord::InputSettled(settled) => Some(settled),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(
-        settled.len(),
-        1,
-        "pending input must not gain fake finality"
-    );
-    assert_eq!(settled[0].sequence(), first);
-    assert_eq!(settled[0].scope(), &scope);
-    assert!(matches!(
-        settled[0].finality(),
-        UiInputFinality::Aborted(crate::UiInputAbortReason::RuntimeIntegrity)
-    ));
-    assert!(
-        batch.ordered_records().iter().any(|record| matches!(
-            record,
-            InputArbitrationRecord::ScopeRetired(retired)
-                if retired.scope() == &scope
-                    && retired.reason()
-                        == crate::InputScopeRetirementReason::Terminal(
-                            crate::RuntimeTerminalReason::Poisoned
-                        )
-        )),
-        "one scope retirement invalidates the second still-pending receipt",
-    );
-    assert_ne!(pending, first);
+    assert_overflow_settlement_and_retirement(&batch, first, pending, &scope);
+    if trace_config.capacity() == 0 {
+        assert_eq!(app.trace().len(), 0);
+    }
     let repeated = app
         .pump(budget)
         .unwrap_or_else(|_| unreachable!("terminal observations remain available"));
     assert_eq!(repeated.ordered_records(), []);
+}
+
+#[test]
+fn overflowing_widget_callback_aborts_reached_input_and_retires_pending_receipts() {
+    // Keep the same exact negative oracle for redacted canonical trace and
+    // for completely disabled trace. Neither is a gameplay input authority.
+    for trace_config in [crate::TraceConfig::default(), crate::TraceConfig::new(0)] {
+        assert_overflow_aborts_with_trace(trace_config);
+    }
 }
 
 #[test]
