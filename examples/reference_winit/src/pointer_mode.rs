@@ -428,8 +428,7 @@ mod tests {
         modes.set_ui_cursor(&mut host, CursorShape::Grabbing, false);
         assert!(!host.visible);
         host.mutate_before_failure = true;
-        host.failures
-            .push((Mode::ConfinedAbsolute, Failure::Unsupported));
+        host.failures.push((Mode::ConfinedAbsolute, Failure::Unsupported));
         assert_eq!(
             modes.request(scope(1), Mode::ConfinedAbsolute, &mut host),
             Err(Failure::Unsupported)
