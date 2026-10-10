@@ -270,6 +270,7 @@ mod surface_presentation;
 mod text_coordinates;
 mod text_field;
 mod toolbar_controls;
+mod tree_controls;
 mod typography;
 mod value;
 mod visual;
@@ -354,6 +355,7 @@ pub use surface_presentation::{
 };
 pub use text_field::{TextField, TextFieldError, text_field};
 pub use toolbar_controls::{Toolbar, toolbar};
+pub use tree_controls::{TreeItem, TreeItemRequest, TreeView, tree_item, tree_view};
 pub use widget_protocol::{
     ChildBearingWidget, TextAlignment, TextBlockPlacement, TextLeafMeasure, TextLeafWrap, Widget,
     WidgetActivation, WidgetActivationOutput, WidgetAvailableSpace, WidgetDiagnostic,
