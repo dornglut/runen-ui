@@ -71,7 +71,11 @@ fn pump_acknowledgment_and_rearm_do_not_strand_work() {
         count.fetch_add(1, Ordering::SeqCst);
     });
     assert_eq!(wake_count.load(Ordering::SeqCst), 1);
-    runtime.pump(PumpBudget::new(2, 0, 0, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(2, 0, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(wake_count.load(Ordering::SeqCst), 1);
 
     let job = jobs
@@ -81,11 +85,19 @@ fn pump_acknowledgment_and_rearm_do_not_strand_work() {
         .unwrap_or_else(|| unreachable!());
     run_ready(job).unwrap_or_else(|_| unreachable!());
     assert_eq!(wake_count.load(Ordering::SeqCst), 2);
-    let blocked = runtime.pump(PumpBudget::new(0, 0, 0, 0)).expect("pump observation").report().to_owned();
+    let blocked = runtime
+        .pump(PumpBudget::new(0, 0, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(blocked.completion_imports_pending());
     assert!(blocked.exhausted_budgets().completion_imports());
     assert_eq!(wake_count.load(Ordering::SeqCst), 3);
-    runtime.pump(PumpBudget::new(3, 1, 0, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(3, 1, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(*runtime.state(), 1);
     assert_eq!(wake_count.load(Ordering::SeqCst), 3);
 }
@@ -101,7 +113,11 @@ fn terminal_transition_closes_retained_producers_without_external_wake() {
     runtime.set_wake_transport(move || {
         count.fetch_add(1, Ordering::SeqCst);
     });
-    runtime.pump(PumpBudget::new(2, 0, 0, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(2, 0, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let job = jobs
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -147,15 +163,27 @@ fn redraw_acknowledgment_retains_a_newer_dirty_revision() {
         .acknowledge_redraw(&initial)
         .unwrap_or_else(|_| unreachable!());
     assert!(runtime.take_redraw_request().is_none());
-    runtime.pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    runtime.pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let older = runtime
         .take_redraw_request()
         .unwrap_or_else(|| unreachable!());
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    runtime.pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     runtime
         .acknowledge_redraw(&older)
         .unwrap_or_else(|_| unreachable!());

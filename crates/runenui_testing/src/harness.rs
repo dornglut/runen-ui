@@ -209,7 +209,9 @@ impl<App: UiApp> TestHarness<App> {
             let batch = self
                 .runtime
                 .pump(budget.pump_budget())
-                .unwrap_or_else(|error| unreachable!("test-harness settle observation failed: {error:?}"));
+                .unwrap_or_else(|error| {
+                    unreachable!("test-harness settle observation failed: {error:?}")
+                });
             let report = *batch.report();
             let at_limit = iteration >= budget.max_iterations().get();
             if let Some(outcome) = outcome_for(report, at_limit) {

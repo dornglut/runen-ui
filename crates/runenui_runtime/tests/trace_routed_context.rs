@@ -63,12 +63,16 @@ impl UiApp for RouteApp {
 }
 
 fn settle(runtime: &mut AppRuntime<RouteApp>) {
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(report.is_quiescent(), "fixture did not settle: {report:?}");
 }
 

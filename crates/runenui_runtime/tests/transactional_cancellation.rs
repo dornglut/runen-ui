@@ -108,13 +108,25 @@ fn run(action: Action) -> RunResult {
         first: Rc::clone(&first),
         second: Rc::clone(&second),
     });
-    runtime.pump(PumpBudget::new(2, 0, 1, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(2, 0, 1, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     old.set(0);
     runtime
         .submit_action(action)
         .unwrap_or_else(|_| unreachable!());
-    runtime.pump(PumpBudget::new(1, 0, 1, 0)).expect("pump observation").report().to_owned();
-    runtime.pump(PumpBudget::new(16, 0, 16, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, 0, 1, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
+    runtime
+        .pump(PumpBudget::new(16, 0, 16, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let trace_generations = |kind: fn(&TraceRecordKind) -> bool| {
         runtime
             .trace()
@@ -326,7 +338,11 @@ fn run_mounted(action: Action) -> (Vec<(&'static str, u64)>, Vec<u64>, u64) {
         first,
         second,
     });
-    runtime.pump(PumpBudget::new(2, 0, 1, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(2, 0, 1, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     old.set(0);
     let target = runtime.index().nodes()[0].id().clone();
     runtime
@@ -336,7 +352,11 @@ fn run_mounted(action: Action) -> (Vec<(&'static str, u64)>, Vec<u64>, u64) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
-    runtime.pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let routed_start_sequence = runtime
         .trace()
         .records()
@@ -346,7 +366,11 @@ fn run_mounted(action: Action) -> (Vec<(&'static str, u64)>, Vec<u64>, u64) {
             || unreachable!("routed transaction start is retained"),
             |record| record.sequence().get(),
         );
-    runtime.pump(PumpBudget::new(16, 0, 16, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(16, 0, 16, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let semantic = runtime
         .trace()
         .records()
@@ -444,12 +468,20 @@ fn trace_retention_eviction_does_not_change_live_cancellation_authority() {
         },
         config,
     );
-    runtime.pump(PumpBudget::new(2, 0, 1, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(2, 0, 1, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     old.set(0);
     runtime
         .submit_action(Action::CancelTwice)
         .unwrap_or_else(|_| unreachable!());
-    runtime.pump(PumpBudget::new(16, 0, 16, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(16, 0, 16, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 
     assert_eq!(old.get(), 0);
     assert!(runtime.trace().dropped_before_sequence().is_some());
@@ -565,7 +597,11 @@ fn assert_mounted_subscription_authority_is_stale_before_unmount(replace: bool) 
         sink: Arc::clone(&sink),
         mapped: Arc::clone(&mapped),
     });
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let retained = sink
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -584,7 +620,11 @@ fn assert_mounted_subscription_authority_is_stale_before_unmount(replace: bool) 
     runtime
         .submit_action(UnmountAction::Remove)
         .unwrap_or_else(|_| unreachable!("removal action is accepted"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let Err(SendSubscriptionSinkError::Stale(recovered)) = worker
         .join()
         .unwrap_or_else(|_| unreachable!("producer thread remains deterministic"))
@@ -701,7 +741,11 @@ fn mounted_send_task_completion_is_stale_during_unmount_callback() {
         mapped: Arc::clone(&mapped),
     });
     runtime.set_send_task_executor(RetainingSendTaskExecutor(Arc::clone(&jobs)));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let job = jobs
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -717,7 +761,11 @@ fn mounted_send_task_completion_is_stale_during_unmount_callback() {
     runtime
         .submit_action(UnmountAction::Remove)
         .unwrap_or_else(|_| unreachable!("removal action is accepted"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(matches!(
         worker
             .join()

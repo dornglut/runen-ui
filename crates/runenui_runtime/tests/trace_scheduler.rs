@@ -31,7 +31,11 @@ impl UiApp for TraceApp {
 #[test]
 fn scheduler_trace_covers_effect_checkpoint_update_and_redraw_transitions() {
     let mut runtime = AppRuntime::<TraceApp>::mount(0);
-    runtime.pump(PumpBudget::new(3, 0, 1, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(3, 0, 1, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let kinds: Vec<_> = runtime.trace().kinds().collect();
     assert!(
         kinds
@@ -255,21 +259,29 @@ fn sequence_value(sequence: Option<WorkSequence>) -> u64 {
 #[test]
 fn application_transaction_assigns_the_global_adr_order_exactly() {
     let mut runtime = AppRuntime::<OrderedTransactionApp>::mount(OrderedState { revision: 0 });
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let trigger_sequence = runtime
         .submit_action(OrderedAction::Trigger)
         .unwrap_or_else(|_| unreachable!());
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 
     let records: Vec<_> = runtime.trace().records().collect();
     let transaction = records
