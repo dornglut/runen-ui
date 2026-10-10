@@ -661,7 +661,12 @@ mod tests {
         )));
         assert!(!first_reached.load(Ordering::Relaxed));
         assert!(second_reached.load(Ordering::Relaxed));
-        host_pending.clear();
+        host_pending.retain(|(scope, seq)| {
+            !surviving.ordered_records().iter().any(|record| {
+                matches!(record, InputArbitrationRecord::InputSettled(receipt)
+                    if receipt.scope() == scope && receipt.sequence() == *seq)
+            })
+        });
         assert_eq!(host_pending, []);
     }
 
