@@ -4,9 +4,9 @@ use std::rc::Rc;
 use crate::{
     EditIntent, EditableContribution, EditableContributionError, EditingSessionPolicy, ElementId,
     EventContext, EventPhase, Focusability, HitContribution, HitContributionContext, IntoElementId,
-    KeyboardCompositionState, KeyboardPhase, LogicalKey, SemanticAction, SemanticCommand,
+    KeyboardCompositionState, KeyboardPhase, LogicalKey, SemanticAction,
     SemanticContribution, SemanticContributionContext, SemanticEditable, SemanticEditableMode,
-    SemanticInvalidState, SemanticNodeContribution, SemanticNumber, SemanticRange,
+    SemanticInvalidState, SemanticNodeContribution, SemanticRange,
     SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
     TextDocumentSnapshot, TextNewlinePolicy, TextSelection, TextSensitivity, UiEvent,
     WidgetInvalidation, WidgetMeasure, WidgetMeasureInput, WidgetTextInput, WidgetUpdateContext,
@@ -402,49 +402,14 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             && spin.range.minimum() != spin.range.maximum()
             && let Some(callback) = self.on_adjust.as_mut()
         {
-            let request = if let Some(command) = event.as_semantic_command() {
-                match command.command() {
-                    SemanticCommand::Increment => spin
-                        .range
-                        .small_step()
-                        .map(crate::SpinButtonRequest::AdjustBy),
-                    SemanticCommand::Decrement => spin.range.small_step().and_then(|step| {
-                        SemanticNumber::new(-step.get())
-                            .ok()
-                            .map(crate::SpinButtonRequest::AdjustBy)
-                    }),
-                    SemanticCommand::SetValue(value) => {
-                        match (spin.range.minimum(), spin.range.maximum()) {
-                            (Some(min), Some(max))
-                                if (min.get()..=max.get()).contains(&value.get()) =>
-                            {
-                                Some(crate::SpinButtonRequest::SetValue(value))
-                            }
-                            _ => None,
-                        }
-                    }
-                    _ => None,
-                }
-            } else if let Some(key) = event.as_keyboard()
-                && key.phase() == KeyboardPhase::Down
-                && key.modifiers() == crate::KeyModifiers::NONE
-                && key.composition_state() == KeyboardCompositionState::Inactive
-            {
-                match key.logical_key() {
-                    LogicalKey::ArrowUp => spin
-                        .range
-                        .small_step()
-                        .map(crate::SpinButtonRequest::AdjustBy),
-                    LogicalKey::ArrowDown => spin.range.small_step().and_then(|step| {
-                        SemanticNumber::new(-step.get())
-                            .ok()
-                            .map(crate::SpinButtonRequest::AdjustBy)
-                    }),
-                    _ => None,
-                }
-            } else {
-                None
-            };
+            let request = event.as_semantic_command().map_or_else(
+                || {
+                    event
+                        .as_keyboard()
+                        .and_then(|key| crate::spin_button::keyboard_request(&spin.range, key))
+                },
+                |command| crate::spin_button::semantic_request(&spin.range, command.command()),
+            );
             if let Some(request) = request {
                 context.emit(callback(request));
                 context.prevent_default();

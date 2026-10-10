@@ -1,23 +1,62 @@
-//! Application-owned numeric editing through the accepted single M10 TextField.
+//! Application-owned numeric editing through the accepted single M10 `TextField`.
 //! This file supplies checked range authoring and step intents, not an editor,
 //! parser, formatter, value cache, or a second semantic-command queue.
 
 use core::fmt;
 
 use crate::{
-    EditIntent, IntoElementId, SemanticInvalidState, SemanticNumber, SemanticNumberError,
+    EditIntent, IntoElementId, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
+    SemanticCommand, SemanticInvalidState, SemanticNumber, SemanticNumberError,
     SemanticRange, SemanticRangeError, TextDocumentSnapshot, TextField, TextFieldError,
     TextSelection,
     element::{CommonNodeAuthoring, Element, View, common_node_builder_methods},
 };
 
 /// A checked signed relative step or exact absolute numeric request.
+///
 /// The application applies each request to its latest state, in ordinary FIFO
 /// order; the published range is never used as a hidden accumulating cursor.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SpinButtonRequest {
     AdjustBy(SemanticNumber),
     SetValue(SemanticNumber),
+}
+
+pub(crate) fn semantic_request(
+    range: &SemanticRange,
+    command: SemanticCommand,
+) -> Option<SpinButtonRequest> {
+    match command {
+        SemanticCommand::Increment => range.small_step().map(SpinButtonRequest::AdjustBy),
+        SemanticCommand::Decrement => range
+            .small_step()
+            .and_then(|step| SemanticNumber::new(-step.get()).ok())
+            .map(SpinButtonRequest::AdjustBy),
+        SemanticCommand::SetValue(value) => match (range.minimum(), range.maximum()) {
+            (Some(min), Some(max)) if (min.get()..=max.get()).contains(&value.get()) => {
+                Some(SpinButtonRequest::SetValue(value))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+pub(crate) fn keyboard_request(
+    range: &SemanticRange,
+    key: &KeyboardEvent,
+) -> Option<SpinButtonRequest> {
+    if key.phase() != KeyboardPhase::Down
+        || key.modifiers() != crate::KeyModifiers::NONE
+        || key.composition_state() != KeyboardCompositionState::Inactive
+    {
+        return None;
+    }
+    match key.logical_key() {
+        LogicalKey::ArrowUp => semantic_request(range, SemanticCommand::Increment),
+        LogicalKey::ArrowDown => semantic_request(range, SemanticCommand::Decrement),
+        _ => None,
+    }
 }
 
 /// Checked authoring rejection, with no source text in diagnostics.
@@ -104,9 +143,10 @@ impl SpinButtonRange {
     }
 }
 
-/// One standard single-line TextField whose primary role is SpinButton.
+/// One standard single-line `TextField` whose primary role is `SpinButton`.
+///
 /// All document, selection, caret, composition and edit transactions use the
-/// accepted TextField/M10 widget unchanged. Only range semantics and ordinary
+/// accepted `TextField`/M10 widget unchanged. Only range semantics and ordinary
 /// application step-intent emission are added.
 pub struct SpinButton<Action> {
     field: TextField<Action>,
@@ -225,7 +265,7 @@ impl<Action: 'static> View<Action> for SpinButton<Action> {
     }
 }
 
-/// Creates a SpinButton as a single TextField editing owner.
+/// Creates a `SpinButton` as a single `TextField` editing owner.
 ///
 /// # Errors
 /// Rejects invalid source document, selection or newline policy.
