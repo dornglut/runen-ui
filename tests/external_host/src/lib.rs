@@ -259,10 +259,10 @@ mod tests {
         });
         let first_snapshot = first
             .input_ownership()
-            .expect("first runtime can project its initial input ownership");
+            .unwrap_or_else(|_| unreachable!("first runtime can project its initial input ownership"));
         let second_snapshot = second
             .input_ownership()
-            .expect("second runtime can project its initial input ownership");
+            .unwrap_or_else(|_| unreachable!("second runtime can project its initial input ownership"));
         assert_ne!(first_snapshot.scope(), second_snapshot.scope());
         assert_eq!(first_snapshot.revision().get(), 1);
         assert_eq!(second_snapshot.revision().get(), 1);
@@ -270,19 +270,19 @@ mod tests {
             first_snapshot.revision(),
             first
                 .input_ownership()
-                .expect("unchanged state projects")
+                .unwrap_or_else(|_| unreachable!("unchanged state projects"))
                 .revision()
         );
         let _ = first.shutdown();
         let closed = first
             .input_ownership()
-            .expect("terminal ownership is observable without a pump");
+            .unwrap_or_else(|_| unreachable!("terminal ownership is observable without a pump"));
         assert_ne!(closed.revision(), first_snapshot.revision());
         assert_eq!(closed.status(), runenui_runtime::RuntimeStatus::Closed);
         assert_eq!(
             second
                 .input_ownership()
-                .expect("other runtime remains valid")
+                .unwrap_or_else(|_| unreachable!("other runtime remains valid"))
                 .status(),
             runenui_runtime::RuntimeStatus::Running
         );

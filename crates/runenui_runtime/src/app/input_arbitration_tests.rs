@@ -62,13 +62,13 @@ fn focused_runtime(claim: bool) -> AppRuntime<ProbeApp> {
     let mut app = AppRuntime::<ProbeApp>::mount(claim);
     let budget = PumpBudget::new(16, 16, 16, 16);
     let _ = app.pump(budget);
-    let id = ElementId::new("probe").expect("fixture id");
+    let id = ElementId::new("probe").unwrap_or_else(|| unreachable!("fixture id"));
     let target = app
         .index()
         .nodes()
         .iter()
         .find(|node| node.authored_id() == Some(&id))
-        .expect("mounted fixture")
+        .unwrap_or_else(|| unreachable!("mounted fixture"))
         .id()
         .clone();
     app.submit_command(
@@ -76,7 +76,7 @@ fn focused_runtime(claim: bool) -> AppRuntime<ProbeApp> {
         SemanticCommand::RequestFocus,
         CommandOrigin::programmatic(),
     )
-    .expect("focus admission");
+    .unwrap_or_else(|_| unreachable!("focus admission"));
     let _ = app.pump(budget);
     assert_eq!(app.focus().focused_node(), Some(&target));
     app
@@ -101,10 +101,10 @@ fn only_explicit_widget_claim_is_exclusive_not_propagation_or_default_control() 
         let mut app = focused_runtime(claim);
         let receipt = app
             .submit_keyboard(key())
-            .expect("focused admission")
+            .unwrap_or_else(|_| unreachable!("focused admission"))
             .sequence();
         let batch = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
-            .expect("canonical pump observation");
+            .unwrap_or_else(|_| unreachable!("canonical pump observation"));
         assert_eq!(batch.processed_through(), Some(receipt));
         let settled = batch
             .ordered_records()
@@ -113,7 +113,7 @@ fn only_explicit_widget_claim_is_exclusive_not_propagation_or_default_control() 
                 InputArbitrationRecord::InputSettled(settled) => Some(settled),
                 _ => None,
             })
-            .expect("one exact reached input settlement");
+            .unwrap_or_else(|| unreachable!("one exact reached input settlement"));
         assert_eq!(settled.sequence(), receipt);
         assert_eq!(settled.scope(), batch.final_ownership().scope());
         assert_eq!(
@@ -121,7 +121,7 @@ fn only_explicit_widget_claim_is_exclusive_not_propagation_or_default_control() 
             batch.final_ownership().revision()
         );
         let UiInputFinality::Committed(facts) = settled.finality() else {
-            panic!("successful callback transaction must commit");
+            unreachable!("successful callback transaction must commit");
         };
         assert_eq!(
             facts.conflict(),
@@ -147,11 +147,11 @@ fn terminal_scope_invalidates_unprocessed_native_receipts_without_fake_settlemen
     let mut app = focused_runtime(false);
     let pending = app
         .submit_keyboard(key())
-        .expect("receipt is admitted")
+        .unwrap_or_else(|_| unreachable!("receipt is admitted"))
         .sequence();
     let _ = app.shutdown();
     let batch = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
-        .expect("closed runtime still reports its retirement");
+        .unwrap_or_else(|_| unreachable!("closed runtime still reports its retirement"));
     assert_eq!(batch.processed_through(), None);
     assert!(
         batch
@@ -163,7 +163,7 @@ fn terminal_scope_invalidates_unprocessed_native_receipts_without_fake_settlemen
         record, InputArbitrationRecord::InputSettled(settled) if settled.sequence() == pending
     )));
     let second = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
-        .expect("repeated observation is allowed");
+        .unwrap_or_else(|_| unreachable!("repeated observation is allowed"));
     assert!(
         !second
             .ordered_records()
@@ -177,12 +177,12 @@ fn explicit_shutdown_reports_final_closed_ownership_and_one_scope_retirement() {
     let mut app = focused_runtime(false);
     let receipt = app
         .submit_keyboard(key())
-        .expect("pending input admitted before shutdown")
+        .unwrap_or_else(|_| unreachable!("pending input admitted before shutdown"))
         .sequence();
     let first = app
         .runtime
         .shutdown_observed()
-        .expect("preflighted canonical shutdown observation");
+        .unwrap_or_else(|_| unreachable!("preflighted canonical shutdown observation"));
     assert_eq!(
         first.final_ownership().status(),
         crate::RuntimeStatus::Closed
@@ -202,7 +202,7 @@ fn explicit_shutdown_reports_final_closed_ownership_and_one_scope_retirement() {
     let repeated = app
         .runtime
         .shutdown_observed()
-        .expect("repeated close is idempotent");
+        .unwrap_or_else(|_| unreachable!("repeated close is idempotent"));
     assert_eq!(
         repeated.final_ownership().status(),
         crate::RuntimeStatus::Closed
