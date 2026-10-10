@@ -3,7 +3,8 @@ use core::num::NonZeroUsize;
 use runenui_core::{
     Axis, ElementId, FocusGroupBoundaryPolicy, Focusability, KeyLocation, KeyModifiers,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
-    FlexDirection, LayoutContainer, LogicalLength, PhysicalKey, SemanticCommand,
+    FlexContainerStyle, FlexDirection, LayoutContainer, LayoutStyle, LogicalLength,
+    MainAxisAlignment, PhysicalKey, SemanticCommand,
     SemanticOrientation, SemanticRole, UiApp, View, button, column,
     radio_button, radio_group, toolbar,
 };
@@ -251,4 +252,27 @@ fn toolbar_gap_is_retained_across_orientation_builder_order() {
         first.layout().container(),
         LayoutContainer::Flex(style) if style.direction() == FlexDirection::Column
     ));
+}
+
+#[test]
+fn toolbar_orientation_preserves_authored_flex_alignment_and_gap() {
+    let layout = LayoutStyle::default()
+        .with_container(LayoutContainer::Flex(
+            FlexContainerStyle::default()
+                .with_justify_content(MainAxisAlignment::SpaceBetween),
+        ))
+        .with_gap(LogicalLength::from(10_u16));
+    let node: runenui_core::Element<()> = toolbar([
+        button("A").into_element(),
+        button("B").into_element(),
+    ])
+    .with_layout(layout.clone())
+    .orientation(Axis::Vertical)
+    .into_element();
+    assert_eq!(node.layout().gap(), layout.gap());
+    let LayoutContainer::Flex(style) = node.layout().container() else {
+        unreachable!("Toolbar must use Flex")
+    };
+    assert_eq!(style.direction(), FlexDirection::Column);
+    assert_eq!(style.justify_content(), MainAxisAlignment::SpaceBetween);
 }

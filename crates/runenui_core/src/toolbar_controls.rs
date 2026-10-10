@@ -78,7 +78,17 @@ impl<Action> Toolbar<Action> {
     #[must_use]
     pub fn orientation(mut self, orientation: Axis) -> Self {
         self.orientation = orientation;
-        self.common.layout = self.common.layout.with_container(toolbar_container(orientation));
+        let direction = match orientation {
+            Axis::Horizontal => FlexDirection::Row,
+            Axis::Vertical => FlexDirection::Column,
+        };
+        let container = match self.common.layout.container() {
+            LayoutContainer::Flex(style) => {
+                LayoutContainer::Flex((*style).with_direction(direction))
+            }
+            _ => toolbar_container(orientation),
+        };
+        self.common.layout = self.common.layout.with_container(container);
         self
     }
 
