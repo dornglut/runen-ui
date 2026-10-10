@@ -13,9 +13,10 @@ use runenui_core::{
     command_binding, command_scope, container, shortcut_scope,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus,
-    SurfaceBuildContext, TraceApplicationCommandOutcome, TraceRecordKind,
-    TraceRoutedAdmissionRejection, TraceTargetRejection,
+    AppRuntime, InputArbitrationRecord, LayoutConstraints, PumpBudget, RuntimeConfig, RuntimeLimits,
+    RuntimeStatus, SurfaceBuildContext, TraceApplicationCommandOutcome, TraceRecordKind,
+    TraceRoutedAdmissionRejection, TraceTargetRejection, UiDefaultDisposition, UiInputClaimReason,
+    UiInputConflict, UiInputFinality,
 };
 
 const SHORTCUT_DIAGNOSTIC: &str = "runenui.shortcut-scope.duplicate-chord";
@@ -614,6 +615,71 @@ fn routed_prevent_default_suppresses_accelerator_after_callbacks() {
         kind,
         TraceRecordKind::KeyboardShortcutMatched
     )));
+}
+
+#[test]
+fn public_shortcut_claim_requires_committed_default_not_candidate_or_prevention() {
+    let control = KeyModifiers::NONE.with_control();
+    for (mode, expected_claim, expected_default) in [
+        (Mode::Unique, true, UiDefaultDisposition::Queued),
+        (Mode::PreventDefault, false, UiDefaultDisposition::Prevented),
+    ] {
+        let mut runtime = AppRuntime::<App>::mount(State::new(mode));
+        settle(&mut runtime);
+        focus(&mut runtime, "target.a");
+        let receipt = submit_shortcut(
+            &mut runtime,
+            key(
+                "s",
+                "KeyS",
+                control,
+                false,
+                KeyboardCompositionState::Inactive,
+            ),
+        );
+        let batch = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("one canonical keyboard boundary settles"));
+        assert_eq!(batch.processed_through(), Some(receipt));
+        let settlements = batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settled) => Some(settled),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settlements.len(), 1);
+        assert_eq!(settlements[0].sequence(), receipt);
+        assert_eq!(settlements[0].scope(), batch.final_ownership().scope());
+        let UiInputFinality::Committed(facts) = settlements[0].finality() else {
+            unreachable!("valid shortcut routing commits");
+        };
+        assert_eq!(
+            facts.conflict(),
+            if expected_claim {
+                UiInputConflict::ExclusiveUi
+            } else {
+                UiInputConflict::ObservedNonexclusive
+            }
+        );
+        assert_eq!(
+            facts.reasons(),
+            if expected_claim {
+                &[UiInputClaimReason::ApplicationShortcut][..]
+            } else {
+                &[][..]
+            }
+        );
+        assert_eq!(facts.default_disposition(), expected_default);
+        assert_eq!(facts.default_prevented(), !expected_claim);
+        assert_eq!(runtime.state().fired, [] as [&str; 0]);
+        settle(&mut runtime);
+        assert_eq!(
+            runtime.state().fired.as_slice(),
+            if expected_claim { &["inner"][..] } else { &[][..] }
+        );
+    }
 }
 
 #[test]
