@@ -203,3 +203,55 @@ fn collapsing_or_removing_focused_descendant_retires_exact_target_identity() {
     assert!(runtime.state().actions.is_empty(),
         "collapse and retirement do not fabricate an app selection");
 }
+
+struct InvalidTreeApp;
+impl UiApp for InvalidTreeApp {
+    type State = u8;
+    type Action = u8;
+    type HostProtocol = NoHostProtocol;
+    fn root(mode: &Self::State) -> impl View<Self::Action> {
+        let child_id = if *mode == 1 { "root" } else if *mode == 2 { "" } else { "child" };
+        let child = tree_item(child_id, "Nested", Vec::new())
+            .selected(*mode == 3);
+        let parent = tree_item("root", "Parent", vec![child])
+            .expanded(false)
+            .selected(*mode == 3);
+        tree_view(vec![parent]).id("tree.invalid")
+    }
+    fn update(state: &mut Self::State, action: Self::Action) {
+        *state = action;
+    }
+}
+
+#[test]
+fn invalid_domain_id_and_single_selection_fail_closed_even_under_collapsed_ancestor() {
+    let mut runtime = AppRuntime::<InvalidTreeApp>::mount(0);
+    for mode in [1_u8, 2, 3] {
+        runtime.submit_action(mode).unwrap_or_else(|_| unreachable!("authoring transition"));
+        assert!(runtime.pump(PumpBudget::new(
+            usize::MAX, usize::MAX, usize::MAX, usize::MAX,
+        )).is_quiescent());
+        let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
+            &runenui_core::StyleEnvironment::default(),
+            LogicalSize::try_new(600.0, 300.0)
+                .unwrap_or_else(|_| unreachable!("finite tree surface")),
+        )).unwrap_or_else(|error| unreachable!("invalid tree reports diagnostic: {error:?}"));
+        let snapshot = publication.semantic_publication().snapshot();
+        assert!(!snapshot.nodes().iter().any(|node| node.role() == SemanticRole::Tree));
+        assert!(!snapshot.nodes().iter().any(|node| node.role() == SemanticRole::TreeItem));
+        assert!(runtime.index().nodes().iter().all(|node|
+            node.authored_id().is_none_or(|id| id.as_str() != "tree.invalid")
+            || runtime.focus().focused_node() != Some(node.id())
+        ));
+    }
+    runtime.submit_action(0).unwrap_or_else(|_| unreachable!("valid authoring transition"));
+    assert!(runtime.pump(PumpBudget::new(
+        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
+    )).is_quiescent());
+    let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
+        &runenui_core::StyleEnvironment::default(),
+        LogicalSize::try_new(600.0, 300.0).unwrap_or_else(|_| unreachable!()),
+    )).unwrap_or_else(|error| unreachable!("restored valid tree: {error:?}"));
+    assert!(publication.semantic_publication().snapshot().nodes().iter()
+        .any(|node| node.role() == SemanticRole::Tree));
+}
