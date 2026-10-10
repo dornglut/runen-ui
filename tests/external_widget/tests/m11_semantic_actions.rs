@@ -166,7 +166,11 @@ fn publish(
     runenui_core::SemanticNodeId,
     runenui_core::SemanticNodeId,
 ) {
-    runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let style = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
@@ -204,7 +208,10 @@ fn expect_rejection(
 fn pump_one(runtime: &mut AppRuntime<App>) {
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -414,7 +421,10 @@ fn unhandled_increment_has_no_runtime_or_application_default_mutation() {
     );
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         0
     );

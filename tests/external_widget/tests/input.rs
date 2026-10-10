@@ -66,7 +66,10 @@ fn settle(runtime: &mut AppRuntime<App>) {
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
-            )).expect("pump observation").report().to_owned()
+            ))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .is_quiescent()
     );
 }
@@ -277,7 +280,10 @@ fn downstream_widget_observes_structured_navigation_key_identities() {
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
-            )).expect("pump observation").report().to_owned()
+            ))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .is_quiescent()
     );
     let authored = runenui_core::ElementId::new("navigation.key.probe")
@@ -304,7 +310,10 @@ fn downstream_widget_observes_structured_navigation_key_identities() {
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
-            )).expect("pump observation").report().to_owned()
+            ))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .is_quiescent()
     );
 
@@ -334,7 +343,10 @@ fn downstream_widget_observes_structured_navigation_key_identities() {
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
-            )).expect("pump observation").report().to_owned()
+            ))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .is_quiescent()
     );
 
