@@ -240,18 +240,40 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         records
             .try_reserve_exact(2)
             .map_err(|_| InputObservationError::Capacity)?;
-        let before = self.input_ownership()?;
-        // Explicit close changes the externally observable runtime status.
-        // Do not consume the final revision and then panic or return Err
-        // after irreversible cleanup. Refuse this close beforehand instead.
-        if !matches!(self.status, crate::RuntimeStatus::Closed)
-            && before.revision().get() == u64::MAX
-        {
-            return Err(InputObservationError::RevisionExhausted);
+        // A pending direct ownership boundary can advance the revision when
+        // the pre-close snapshot is published. Preflight *both* snapshots and
+        // the final close revision before publishing either one: a second
+        // reservation failure must not discard an already committed revision.
+        if !matches!(self.status, crate::RuntimeStatus::Closed) {
+            if let Some(previous) = &self.input_observation.last {
+                let pending = if matches!(self.status, crate::RuntimeStatus::Running)
+                    || previous.status != self.status
+                {
+                    self.input_observation.pending_direct_boundaries.max(1)
+                } else {
+                    self.input_observation.pending_direct_boundaries
+                };
+                if self
+                    .input_observation
+                    .revision
+                    .get()
+                    .checked_add(pending)
+                    .and_then(|revision| revision.checked_add(1))
+                    .is_none()
+                {
+                    return Err(InputObservationError::RevisionExhausted);
+                }
+            }
         }
-        let reserved = self.reserve_input_observation()?;
+        let before_reservation = self.reserve_input_observation()?;
+        let after_reservation = self.reserve_input_observation()?;
+        let (before, _) = self.input_ownership_reserved(before_reservation);
+        debug_assert!(
+            matches!(self.status, crate::RuntimeStatus::Closed)
+                || before.revision().get() < u64::MAX
+        );
         let report = self.shutdown();
-        let (after, transition) = self.input_ownership_reserved(reserved);
+        let (after, transition) = self.input_ownership_reserved(after_reservation);
         if after.revision() != before.revision() {
             records.push(crate::InputArbitrationRecord::OwnershipChanged(
                 crate::InputOwnershipTransition {

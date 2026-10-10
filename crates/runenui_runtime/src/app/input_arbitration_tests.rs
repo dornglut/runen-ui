@@ -745,6 +745,66 @@ fn exhausted_direct_publication_preflights_before_commit_and_exposes_last_termin
 }
 
 #[test]
+fn failed_second_shutdown_reservation_preserves_pending_composition_revision() {
+    let mut app = AppRuntime::<TextOwnershipApp>::mount(());
+    let budget = PumpBudget::new(32, 32, 32, 32);
+    let _ = app.pump(budget);
+    let target = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id() == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
+        })
+        .unwrap_or_else(|| unreachable!("editable owner is mounted"))
+        .id()
+        .clone();
+    app.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("focus admitted"));
+    let _ = app.pump(budget);
+    let before = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("focused owner observed"));
+    let receipt = app
+        .start_composition(Some(device(84)))
+        .unwrap_or_else(|_| unreachable!("synchronous composition admission"));
+
+    // The first snapshot allocation succeeds; the second fails. Neither
+    // revision projection nor irreversible shutdown may have run yet.
+    app.runtime.inject_input_reservation_failure_after(1);
+    assert!(matches!(
+        app.runtime.shutdown_observed(),
+        Err(crate::InputObservationError::Capacity)
+    ));
+    assert_eq!(app.runtime.status(), crate::RuntimeStatus::Running);
+
+    let completed = app
+        .runtime
+        .shutdown_observed()
+        .unwrap_or_else(|_| unreachable!("retry preflights both snapshots"));
+    assert_eq!(completed.final_ownership().status(), crate::RuntimeStatus::Closed);
+    assert_eq!(completed.ordered_records().len(), 2);
+    let transition = match &completed.ordered_records()[0] {
+        InputArbitrationRecord::OwnershipChanged(transition) => transition,
+        _ => unreachable!("close publishes its ownership transition"),
+    };
+    assert_eq!(transition.before_revision(), before.revision());
+    assert!(transition.after().revision() > before.revision());
+    assert!(matches!(
+        completed.ordered_records()[1],
+        InputArbitrationRecord::ScopeRetired(_)
+    ));
+    assert!(!completed.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(settled) if settled.sequence() == receipt.sequence()
+    )));
+}
+
+#[test]
 fn observed_shutdown_rejects_before_mutation_if_final_revision_is_exhausted() {
     let mut app = AppRuntime::<SpaceApp>::mount(0);
     let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
