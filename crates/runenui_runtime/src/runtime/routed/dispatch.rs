@@ -132,6 +132,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
     }
 
+    #[allow(clippy::too_many_lines)] // One checked routed callback bridge owns its atomic facts.
     fn invoke_routed_callback(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,

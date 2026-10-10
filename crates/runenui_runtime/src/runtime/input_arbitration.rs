@@ -56,7 +56,7 @@ fn copy_snapshot(
 }
 
 /// One accepted stream cleanup is not a routed UI activation.
-pub(crate) fn integrity_only_pointer_finality() -> crate::UiInputFinality {
+pub(crate) const fn integrity_only_pointer_finality() -> crate::UiInputFinality {
     crate::UiInputFinality::Committed(crate::UiInputRoutingFacts {
         conflict: crate::UiInputConflict::Unclaimed,
         reasons: Vec::new(),
@@ -86,7 +86,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.input_observation
             .pointer_finality
             .take()
-            .unwrap_or_else(|| match self.status {
+            .unwrap_or(match self.status {
                 crate::RuntimeStatus::Terminal(reason) => {
                     crate::UiInputFinality::Aborted(crate::UiInputAbortReason::Terminal(reason))
                 }
@@ -157,8 +157,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
     ) -> Result<InputOwnershipSnapshot, InputObservationError> {
         let mut current = self.project_input_ownership()?;
-        if let Some(previous) = &self.input_observation.last {
-            if !previous.same_ownership_facts(&current) {
+        if let Some(previous) = &self.input_observation.last
+            && !previous.same_ownership_facts(&current)
+        {
                 let revision = self
                     .input_observation
                     .revision
@@ -166,7 +167,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     .checked_add(1)
                     .ok_or(InputObservationError::RevisionExhausted)?;
                 current.revision = InputOwnershipRevision::new(revision);
-            }
         }
         // Construct all caller/retained projections **before** committing a
         // new revision. A failed capacity reservation does not partially publish.

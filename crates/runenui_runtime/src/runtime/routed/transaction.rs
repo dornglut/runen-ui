@@ -110,6 +110,7 @@ pub(crate) enum PointerSelectionTransition {
     Cancelled,
 }
 
+#[allow(clippy::struct_excessive_bools)] // Independent routed default, propagation and host-claim facts.
 pub(crate) struct RoutedTransaction<Action> {
     pub(crate) sequence: WorkSequence,
     pub(crate) target: MountedNodeId,

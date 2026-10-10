@@ -23,7 +23,7 @@ pub struct InputArbitrationScope {
 }
 
 impl InputArbitrationScope {
-    pub(crate) fn new(namespace: RuntimeNamespace) -> Self {
+    pub(crate) const fn new(namespace: RuntimeNamespace) -> Self {
         Self { namespace }
     }
 }
