@@ -533,6 +533,41 @@ mod tests {
     }
 
     #[test]
+    fn processed_fence_and_shutdown_retirement_are_exact_and_nonrepeating() {
+        let mut runtime = Runtime::mount(0, App::root, RuntimeConfig::default());
+        let receipt = runtime
+            .submit_action((), TraceActionCategory::DirectSubmission, None, None)
+            .unwrap_or_else(|_| unreachable!("bounded action ingress succeeds"));
+        let work = super::pump_recorded::<App>(
+            &mut runtime,
+            PumpBudget::new(1, 0, 0, 0),
+        )
+        .expect("bounded processing observation succeeds");
+        assert_eq!(work.processed_through(), Some(receipt));
+        assert_eq!(work.report().processed_envelopes(), 1);
+        assert!(work.ordered_records().is_empty());
+
+        let _ = runtime.shutdown();
+        let retired = super::pump_recorded::<App>(
+            &mut runtime,
+            PumpBudget::new(0, 0, 0, 0),
+        )
+        .expect("shutdown requires no individual cancelled receipt");
+        assert_eq!(retired.processed_through(), None);
+        assert!(matches!(
+            retired.ordered_records(),
+            [crate::InputArbitrationRecord::OwnershipChanged(_),
+             crate::InputArbitrationRecord::ScopeRetired(_)]
+        ));
+        let again = super::pump_recorded::<App>(
+            &mut runtime,
+            PumpBudget::new(0, 0, 0, 0),
+        )
+        .expect("observed retirement stays retired");
+        assert!(again.ordered_records().is_empty());
+    }
+
+    #[test]
     fn one_checkpoint_authority_runs_before_and_at_the_final_boundary() {
         let mut runtime = Runtime::mount(0, App::root, RuntimeConfig::default());
         runtime
