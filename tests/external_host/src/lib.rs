@@ -306,6 +306,43 @@ mod tests {
         }
     }
 
+    fn assert_public_shutdown_retires_claimed_scope(
+        mut runtime: AppRuntime<ExternalHostClaimApp>,
+    ) {
+        let closed = runtime
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("observed final shutdown"));
+        assert_eq!(
+            closed.final_ownership().status(),
+            runenui_runtime::RuntimeStatus::Closed
+        );
+        assert_eq!(
+            closed
+                .ordered_records()
+                .iter()
+                .filter(|record| {
+                    matches!(record, InputArbitrationRecord::ScopeRetired(retirement)
+                if retirement.reason() == InputScopeRetirementReason::Shutdown)
+                })
+                .count(),
+            1
+        );
+        let again = runtime
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("idempotent final observation"));
+        assert!(
+            !again
+                .ordered_records()
+                .iter()
+                .any(|record| { matches!(record, InputArbitrationRecord::ScopeRetired(_)) })
+        );
+        // A host that retains native receipt associations must settle the
+        // scope before consuming the runtime; no second implicit retirement
+        // is synthesized by into_state.
+        let returned = runtime.into_state();
+        assert!(returned.load(Ordering::Relaxed));
+    }
+
     #[test]
     fn downstream_widget_can_claim_keyboard_input_using_only_public_framework_api() {
         let reached = Arc::new(AtomicBool::new(false));
@@ -387,38 +424,7 @@ mod tests {
         ));
         assert!(reached.load(Ordering::Relaxed));
 
-        let closed = runtime
-            .shutdown()
-            .unwrap_or_else(|_| unreachable!("observed final shutdown"));
-        assert_eq!(
-            closed.final_ownership().status(),
-            runenui_runtime::RuntimeStatus::Closed
-        );
-        assert_eq!(
-            closed
-                .ordered_records()
-                .iter()
-                .filter(|record| {
-                    matches!(record, InputArbitrationRecord::ScopeRetired(retirement)
-                if retirement.reason() == InputScopeRetirementReason::Shutdown)
-                })
-                .count(),
-            1
-        );
-        let again = runtime
-            .shutdown()
-            .unwrap_or_else(|_| unreachable!("idempotent final observation"));
-        assert!(
-            !again
-                .ordered_records()
-                .iter()
-                .any(|record| { matches!(record, InputArbitrationRecord::ScopeRetired(_)) })
-        );
-        // A host that retains native receipt associations must settle the
-        // scope before consuming the runtime; no second implicit retirement
-        // is synthesized by into_state.
-        let returned = runtime.into_state();
-        assert!(returned.load(Ordering::Relaxed));
+        assert_public_shutdown_retires_claimed_scope(runtime);
     }
 
     #[test]
