@@ -186,15 +186,15 @@ pub(crate) fn pump<App: UiApp>(
     runtime: &mut Runtime<App::State, App::Action, App::HostProtocol>,
     budget: PumpBudget,
 ) -> PumpReport {
-    match pump_recorded::<App>(runtime, budget) {
-        Ok(batch) => *batch.report(),
-        Err(_) => {
-            // A legacy report-only caller cannot receive a typed capacity
-            // error. Fail closed instead of claiming successful game admission.
+    pump_recorded::<App>(runtime, budget).map_or_else(
+        |_| {
+            // Temporary legacy report-only adapter: fail closed on observation
+            // failure rather than claiming a successful input arbitration.
             let cancelled = runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
             finish_report(runtime, budget, 0, cancelled, ReadinessTotals::default())
-        }
-    }
+        },
+        |batch| *batch.report(),
+    )
 }
 
 struct ReachedInput {
