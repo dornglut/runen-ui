@@ -960,10 +960,17 @@ impl ReferenceHost {
         }
     }
 
-    fn observe_runtime_pump(&mut self) {
-        let batch = self.runtime.pump(HOST_PUMP_BUDGET).unwrap_or_else(|error| {
-            unreachable!("reference host lost input arbitration: {error:?}")
-        });
+    fn observe_runtime_pump(&mut self) -> bool {
+        // Observation errors are typed, recoverable preflight failures, not
+        // unreachable invariants. The runtime re-wakes an initial failure;
+        // later framework-service work must not run as if it had settled.
+        let batch = match self.runtime.pump(HOST_PUMP_BUDGET) {
+            Ok(batch) => batch,
+            Err(error) => {
+                eprintln!("reference_winit input observation deferred: {error}");
+                return false;
+            }
+        };
         if !batch.ordered_records().is_empty() {
             proof!(
                 "stage=host_input_batch ordered_records={} final_revision={}",
@@ -971,12 +978,23 @@ impl ReferenceHost {
                 batch.final_ownership().revision().get()
             );
         }
+        if let Some(reason) = batch.pause_reason() {
+            proof!("stage=host_input_observation_paused reason={reason:?}");
+            return false;
+        }
+        true
     }
 
     fn shutdown_runtime_checked(&mut self) {
-        let batch = self.runtime.shutdown().unwrap_or_else(|error| {
-            unreachable!("reference host lost input retirement: {error:?}")
-        });
+        let batch = match self.runtime.shutdown() {
+            Ok(batch) => batch,
+            Err(error) => {
+                // The host is closing its runtime lifetime regardless. No
+                // unobserved native receipt may survive slot disposal.
+                eprintln!("reference_winit shutdown observation unavailable: {error}");
+                return;
+            }
+        };
         proof!(
             "stage=host_input_shutdown ordered_records={} final_revision={}",
             batch.ordered_records().len(),
@@ -985,11 +1003,17 @@ impl ReferenceHost {
     }
 
     fn pump_runtime_once(&mut self) {
-        self.observe_runtime_pump();
+        if !self.observe_runtime_pump() {
+            return;
+        }
         self.retry_deferred_framework_service_completions();
-        self.observe_runtime_pump();
+        if !self.observe_runtime_pump() {
+            return;
+        }
         self.execute_pending_framework_services();
-        self.observe_runtime_pump();
+        if !self.observe_runtime_pump() {
+            return;
+        }
         self.drain_runtime_trace();
         self.sync_runtime_text_input();
         for (source, paths) in self.framework_services.take_admitted_drop_batches() {
