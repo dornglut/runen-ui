@@ -408,7 +408,7 @@ fn queue_closed_work_and_trace_capacity_failures_remain_structured() {
     let closed_point = authored_center(&closed_publication, "surface.primary");
     let _ = closed
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     let closed_error = rejected(

@@ -27,14 +27,14 @@ fn focus<App: UiApp>(runtime: &mut AppRuntime<App>, target: MountedNodeId) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("the exact live focus target is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -93,9 +93,9 @@ fn post_update_dynamic_trace_admission_failure_is_poisoned() {
         mounted: true,
         updates: 0,
     });
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.__live_work_record_count_for_test(), 1);
@@ -104,9 +104,9 @@ fn post_update_dynamic_trace_admission_failure_is_poisoned() {
         .unwrap_or_else(|_| unreachable!("removal action is accepted"));
     assert!(runtime.__surface_publication_trace_reserved_for_test());
     runtime.__seed_next_trace_sequence_for_test(u64::MAX - 5);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -183,16 +183,16 @@ impl UiApp for PollApp {
 fn work_sequence_exhaustion_prevents_local_future_poll() {
     let calls = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<PollApp>::mount(Rc::clone(&calls));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime.__seed_next_work_sequence_for_test(0);
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(0, 0, 1, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -207,16 +207,16 @@ fn work_sequence_exhaustion_prevents_local_future_poll() {
 fn trace_sequence_exhaustion_prevents_local_future_poll() {
     let calls = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<PollApp>::mount(Rc::clone(&calls));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime.__seed_next_trace_sequence_for_test(0);
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(0, 0, 1, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -251,7 +251,7 @@ fn direct_work_sequence_exhaustion_returns_action_and_closes_mutation() {
 
     let report = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(report.processed_envelopes(), 0);
@@ -337,7 +337,7 @@ fn direct_trace_sequence_exhaustion_returns_action_and_closes_mutation() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -355,14 +355,14 @@ fn direct_trace_sequence_exhaustion_returns_action_and_closes_mutation() {
 fn trace_exhaustion_during_pump_cancels_failed_and_waiting_envelopes() {
     let calls = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<App>::mount(state(&calls));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let target = runtime.index().nodes()[0].id().clone();
@@ -383,7 +383,7 @@ fn trace_exhaustion_during_pump_cancels_failed_and_waiting_envelopes() {
 
     let report = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(report.processed_envelopes(), 1);
@@ -418,7 +418,7 @@ fn trace_exhaustion_during_pump_cancels_failed_and_waiting_envelopes() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -431,14 +431,14 @@ fn trace_exhaustion_during_pump_cancels_failed_and_waiting_envelopes() {
 fn reconciliation_generation_exhaustion_cancels_accepted_envelopes() {
     let calls = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<App>::mount(state(&calls));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let target = runtime.index().nodes()[0].id().clone();
@@ -462,7 +462,7 @@ fn reconciliation_generation_exhaustion_cancels_accepted_envelopes() {
 
     let report = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(report.processed_envelopes(), 1);
@@ -500,7 +500,7 @@ fn reconciliation_generation_exhaustion_cancels_accepted_envelopes() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -614,23 +614,23 @@ fn post_update_mounted_identity_exhaustion_poisoned_without_partial_tree_mutatio
         config,
     );
     assert_eq!(runtime.index().nodes().len(), 1);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
     runtime
         .submit_action(())
         .unwrap_or_else(|_| unreachable!("capacity transition action is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 

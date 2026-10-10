@@ -87,17 +87,17 @@ fn subscription_state() -> SubscriptionState {
 #[test]
 fn application_subscription_starts_initially_and_equal_identity_is_retained() {
     let mut runtime = AppRuntime::<SubscriptionApp>::mount(subscription_state());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state().updates, 1);
     let polls_after_item = runtime.state().source_polls.get();
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state().updates, 2);
@@ -133,7 +133,7 @@ fn duplicate_subscription_key_is_diagnosed_and_starts_no_stream() {
     assert!(
         runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -155,15 +155,15 @@ fn subscription_diagnostic_retention_is_explicitly_bounded() {
         (),
         RuntimeConfig::default().with_limits(limits),
     );
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.subscription_diagnostics().len(), 1);
@@ -173,9 +173,9 @@ fn subscription_diagnostic_retention_is_explicitly_bounded() {
         (),
         RuntimeConfig::default().with_limits(disabled_limits),
     );
-    disabled
+    let _ = disabled
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(disabled.subscription_diagnostics().is_empty());
@@ -242,9 +242,9 @@ fn send_subscription_item_uses_ingress_without_requiring_action_send() {
     let sink = Arc::new(Mutex::new(None));
     let mut runtime =
         AppRuntime::<SendSubscriptionApp>::mount((Rc::clone(&mapped), 0, Arc::clone(&sink)));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let sender = lock(&sink)
@@ -255,9 +255,9 @@ fn send_subscription_item_uses_ingress_without_requiring_action_send() {
         .join()
         .unwrap_or_else(|_| unreachable!("producer thread remains deterministic"))
         .unwrap_or_else(|_| unreachable!("post-start item is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(mapped.get());
@@ -430,9 +430,9 @@ fn assert_host_success_causal_chain(runtime: &AppRuntime<HostApp>) {
 fn host_commands_are_exposed_after_start_and_map_only_valid_live_responses() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
     assert!(runtime.pending_host_requests().is_empty());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let first = runtime.pending_host_requests();
@@ -441,27 +441,27 @@ fn host_commands_are_exposed_after_start_and_map_only_valid_live_responses() {
     assert_eq!(first[0].command(), &Command::Number(1));
     let stale_token = first[0].token();
     drop(first);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
     runtime
         .submit_action(HostAction::Replace)
         .unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(matches!(
         runtime.complete_host_request(&stale_token, Response::Number(9)),
         Err(HostResponseError::Stale(Response::Number(9)))
     ));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -478,9 +478,9 @@ fn host_commands_are_exposed_after_start_and_map_only_valid_live_responses() {
     runtime
         .complete_host_request(&token, Response::Number(7))
         .unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state(), &[7]);
@@ -492,9 +492,9 @@ fn host_commands_are_exposed_after_start_and_map_only_valid_live_responses() {
 #[test]
 fn host_cancellation_is_exact_and_suppresses_later_completion() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let requests = runtime.pending_host_requests();
@@ -503,9 +503,9 @@ fn host_cancellation_is_exact_and_suppresses_later_completion() {
     runtime
         .cancel_host_request(&token)
         .unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.__host_response_slot_count_for_test(), 0);
@@ -523,9 +523,9 @@ fn host_cancellation_is_exact_and_suppresses_later_completion() {
 #[test]
 fn repeated_host_cancellation_and_replacement_retain_only_live_authority() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     for _ in 0..10_000 {
@@ -533,9 +533,9 @@ fn repeated_host_cancellation_and_replacement_retain_only_live_authority() {
         runtime
             .cancel_host_request(&token)
             .unwrap_or_else(|_| unreachable!("current request cancels exactly once"));
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.__host_response_slot_count_for_test(), 0);
@@ -544,9 +544,9 @@ fn repeated_host_cancellation_and_replacement_retain_only_live_authority() {
         runtime
             .submit_action(HostAction::Replace)
             .unwrap_or_else(|_| unreachable!("replacement action remains bounded"));
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(runtime.__host_response_slot_count_for_test(), 1);
@@ -556,9 +556,9 @@ fn repeated_host_cancellation_and_replacement_retain_only_live_authority() {
     runtime
         .cancel_host_request(&token)
         .unwrap_or_else(|_| unreachable!("final request cancels"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.__host_response_slot_count_for_test(), 0);
@@ -609,9 +609,9 @@ fn trace_boundary_host_runtime() -> (
         mapper_calls: Rc::clone(&mapper_calls),
         updates: 0,
     });
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let token = runtime.pending_host_requests()[0].token();
@@ -630,9 +630,9 @@ fn detached_host_completion_admits_its_exact_four_record_plan_beside_publication
         .unwrap_or_else(|_| unreachable!("live completion enters ingress"));
     assert!(runtime.__surface_publication_trace_reserved_for_test());
     runtime.__seed_next_trace_sequence_for_test(u64::MAX - 4);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(0, 1, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -671,9 +671,9 @@ fn detached_host_completion_with_only_three_unreserved_records_never_runs_mapper
         .unwrap_or_else(|_| unreachable!("live completion enters ingress"));
     assert!(runtime.__surface_publication_trace_reserved_for_test());
     runtime.__seed_next_trace_sequence_for_test(u64::MAX - 3);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(0, 1, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -691,9 +691,9 @@ fn detached_host_completion_with_only_three_unreserved_records_never_runs_mapper
 #[allow(clippy::assert_is_empty)]
 fn host_cancellation_sequence_exhaustion_terminalizes_and_closes_authority() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let token = runtime.pending_host_requests()[0].token();
@@ -728,14 +728,14 @@ fn host_cancellation_sequence_exhaustion_terminalizes_and_closes_authority() {
         unreachable!("terminal runtime rejects the exact action");
     };
     assert!(matches!(error.into_action(), HostAction::Replace));
-    runtime
+    let _ = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
-    runtime
+    let _ = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
 }
@@ -744,9 +744,9 @@ fn host_cancellation_sequence_exhaustion_terminalizes_and_closes_authority() {
 fn host_cancellation_queue_full_is_recoverable() {
     let config = RuntimeConfig::default().with_queue_capacity(2);
     let mut runtime = AppRuntime::<HostApp>::mount_with_config(Vec::new(), config);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let token = runtime.pending_host_requests()[0].token();
@@ -770,9 +770,9 @@ fn host_cancellation_queue_full_is_recoverable() {
 #[allow(clippy::assert_is_empty)]
 fn one_remaining_sequence_is_the_final_host_mapper_action() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let token = runtime.pending_host_requests()[0].token();
@@ -810,9 +810,9 @@ fn one_remaining_sequence_is_the_final_host_mapper_action() {
 #[allow(clippy::assert_is_empty)]
 fn cancellation_invalidates_accepted_detached_response_before_ui_mapping() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let token = runtime.pending_host_requests()[0].token();
@@ -831,9 +831,9 @@ fn cancellation_invalidates_accepted_detached_response_before_ui_mapping() {
         Err(HostResponseCompletionError::Stale(_))
     ));
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(runtime.state().is_empty());
@@ -846,9 +846,9 @@ fn cancellation_invalidates_accepted_detached_response_before_ui_mapping() {
 #[test]
 fn concrete_send_host_response_crosses_ingress_before_ui_mapping() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let requests = runtime.pending_host_requests();
@@ -861,9 +861,9 @@ fn concrete_send_host_response_crosses_ingress_before_ui_mapping() {
         .join()
         .unwrap_or_else(|_| unreachable!());
     assert!(submitted);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state(), &[11]);
@@ -872,9 +872,9 @@ fn concrete_send_host_response_crosses_ingress_before_ui_mapping() {
 #[test]
 fn detached_host_completion_reserves_only_after_successful_ingress_acceptance() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let token = runtime.pending_host_requests()[0].token();
@@ -893,9 +893,9 @@ fn detached_host_completion_reserves_only_after_successful_ingress_acceptance() 
         replacement.submit(),
         Err(HostResponseCompletionError::Stale(_))
     ));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state(), &[22]);
@@ -909,9 +909,9 @@ fn cancellation_claims_before_detached_submission_and_retry_after_full_is_stale(
         Vec::new(),
         RuntimeConfig::default().with_limits(limits),
     );
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let token = runtime.pending_host_requests()[0].token();
@@ -928,9 +928,9 @@ fn cancellation_claims_before_detached_submission_and_retry_after_full_is_stale(
         completion.submit(),
         Err(HostResponseCompletionError::Stale(_))
     ));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(runtime.state().is_empty());
@@ -939,9 +939,9 @@ fn cancellation_claims_before_detached_submission_and_retry_after_full_is_stale(
 #[test]
 fn replacement_and_shutdown_invalidate_detached_completion_ownership() {
     let mut replacement = AppRuntime::<HostApp>::mount(Vec::new());
-    replacement
+    let _ = replacement
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let token = replacement.pending_host_requests()[0].token();
@@ -951,9 +951,9 @@ fn replacement_and_shutdown_invalidate_detached_completion_ownership() {
     replacement
         .submit_action(HostAction::Replace)
         .unwrap_or_else(|_| unreachable!());
-    replacement
+    let _ = replacement
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(matches!(
@@ -962,18 +962,18 @@ fn replacement_and_shutdown_invalidate_detached_completion_ownership() {
     ));
 
     let mut shutdown = AppRuntime::<HostApp>::mount(Vec::new());
-    shutdown
+    let _ = shutdown
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let token = shutdown.pending_host_requests()[0].token();
     let completion = shutdown
         .host_response_completion(&token, Response::Number(51))
         .unwrap_or_else(|_| unreachable!());
-    shutdown
+    let _ = shutdown
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert!(matches!(
@@ -986,9 +986,9 @@ fn replacement_and_shutdown_invalidate_detached_completion_ownership() {
 fn direct_completion_and_public_cancellation_each_arm_one_coalesced_wake() {
     let direct_wakes = Arc::new(AtomicUsize::new(0));
     let mut direct = AppRuntime::<HostApp>::mount(Vec::new());
-    direct
+    let _ = direct
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let probe = Arc::clone(&direct_wakes);
@@ -1003,9 +1003,9 @@ fn direct_completion_and_public_cancellation_each_arm_one_coalesced_wake() {
 
     let cancellation_wakes = Arc::new(AtomicUsize::new(0));
     let mut cancellation = AppRuntime::<HostApp>::mount(Vec::new());
-    cancellation
+    let _ = cancellation
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let probe = Arc::clone(&cancellation_wakes);
@@ -1026,9 +1026,9 @@ fn full_detached_host_submission_returns_ownership_without_reserving_request() {
         Vec::new(),
         RuntimeConfig::default().with_limits(limits),
     );
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let token = runtime.pending_host_requests()[0].token();
@@ -1043,9 +1043,9 @@ fn full_detached_host_submission_returns_ownership_without_reserving_request() {
     runtime
         .complete_host_request(&token, Response::Number(31))
         .unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state(), &[31]);
@@ -1054,9 +1054,9 @@ fn full_detached_host_submission_returns_ownership_without_reserving_request() {
 #[test]
 fn first_detached_host_submission_wins_and_later_submission_is_stale() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let token = runtime.pending_host_requests()[0].token();
@@ -1075,9 +1075,9 @@ fn first_detached_host_submission_wins_and_later_submission_is_stale() {
         runtime.host_response_completion(&token, Response::Number(42)),
         Err(HostResponseError::Stale(Response::Number(42)))
     ));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state(), &[40]);

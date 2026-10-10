@@ -182,7 +182,7 @@ fn local_sources_share_budget_sleep_wake_in_order_and_stop_after_cancellation() 
 
     let first_report = runtime
         .pump(PumpBudget::new(16, usize::MAX, 1, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(first_report.polled_local_work(), 1);
@@ -190,7 +190,7 @@ fn local_sources_share_budget_sleep_wake_in_order_and_stop_after_cancellation() 
 
     let second_report = runtime
         .pump(PumpBudget::new(16, usize::MAX, 1, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(second_report.polled_local_work(), 1);
@@ -198,16 +198,16 @@ fn local_sources_share_budget_sleep_wake_in_order_and_stop_after_cancellation() 
 
     let sleeping = runtime
         .pump(PumpBudget::new(16, usize::MAX, 8, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(sleeping.is_quiescent());
     assert_eq!(sleeping.polled_local_work(), 0);
 
     second.wake();
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(32, usize::MAX, 1, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state().updates, 1);
@@ -217,7 +217,7 @@ fn local_sources_share_budget_sleep_wake_in_order_and_stop_after_cancellation() 
     second.wake();
     let cancelled = runtime
         .pump(PumpBudget::new(16, usize::MAX, 8, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(cancelled.is_quiescent());
@@ -344,9 +344,9 @@ fn send_source_starts_once_and_full_or_closed_sink_returns_the_exact_item() {
         RuntimeConfig::default().with_limits(limits),
     );
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(control.starts.load(Ordering::Relaxed), 1);
@@ -364,15 +364,15 @@ fn send_source_starts_once_and_full_or_closed_sink_returns_the_exact_item() {
     assert!(Arc::ptr_eq(&recovered, &first));
     assert!(!mapped.load(Ordering::Relaxed));
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(control.starts.load(Ordering::Relaxed), 1);
-    runtime
+    let _ = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
 
@@ -515,18 +515,18 @@ fn send_subscription_start_outcomes_are_once_only_reclaimed_and_explicitly_retry
         ),
     ] {
         let (mut runtime, control) = start_runtime(outcome);
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(control.starts.load(Ordering::Relaxed), 1);
         assert_eq!(control.startup_not_started.load(Ordering::Relaxed), 1);
         assert_eq!(control.mapped.load(Ordering::Relaxed), 0);
         assert_eq!(runtime.__live_work_record_count_for_test(), 0);
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(control.starts.load(Ordering::Relaxed), 1);
@@ -550,9 +550,9 @@ fn send_subscription_start_outcomes_are_once_only_reclaimed_and_explicitly_retry
         runtime
             .submit_action(StartAction::Retry)
             .unwrap_or_else(|_| unreachable!());
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(64, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(control.starts.load(Ordering::Relaxed), 2);
@@ -562,9 +562,9 @@ fn send_subscription_start_outcomes_are_once_only_reclaimed_and_explicitly_retry
             .unwrap_or_else(|| unreachable!("retry retained its started sink"));
         sink.try_send(Arc::new(SendItem(12)))
             .unwrap_or_else(|_| unreachable!("post-start item is accepted"));
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(64, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(control.mapped.load(Ordering::Relaxed), 1);
@@ -575,9 +575,9 @@ fn send_subscription_start_outcomes_are_once_only_reclaimed_and_explicitly_retry
 #[test]
 fn started_send_subscription_starts_once_and_maps_accepted_items() {
     let (mut runtime, control) = start_runtime(SendSubscriptionStartOutcome::Started);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(control.starts.load(Ordering::Relaxed), 1);
@@ -589,9 +589,9 @@ fn started_send_subscription_starts_once_and_maps_accepted_items() {
         .unwrap_or_else(|| unreachable!("started source retained its sink"));
     sink.try_send(Arc::new(SendItem(13)))
         .unwrap_or_else(|_| unreachable!("post-start item is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(control.mapped.load(Ordering::Relaxed), 1);
@@ -636,9 +636,9 @@ fn started_send_subscription_starts_once_and_maps_accepted_items() {
 #[cfg(feature = "internal-test-seams")]
 fn trace_boundary_send_subscription() -> (AppRuntime<StartOutcomeApp>, Arc<StartControl>) {
     let (mut runtime, control) = start_runtime(SendSubscriptionStartOutcome::Started);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     (runtime, control)
@@ -656,9 +656,9 @@ fn send_subscription_item_admits_its_exact_three_record_plan_beside_publication_
         .unwrap_or_else(|_| unreachable!("post-start item enters ingress"));
     assert!(runtime.__surface_publication_trace_reserved_for_test());
     runtime.__seed_next_trace_sequence_for_test(u64::MAX - 3);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(0, 1, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -684,9 +684,9 @@ fn send_subscription_item_with_only_two_unreserved_records_never_runs_mapper() {
         .unwrap_or_else(|_| unreachable!("post-start item enters ingress"));
     assert!(runtime.__surface_publication_trace_reserved_for_test());
     runtime.__seed_next_trace_sequence_for_test(u64::MAX - 2);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(0, 1, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -704,9 +704,9 @@ fn send_subscription_item_with_only_two_unreserved_records_never_runs_mapper() {
 #[test]
 fn cancelled_send_subscription_sink_returns_the_exact_stale_item() {
     let (mut runtime, control) = start_runtime(SendSubscriptionStartOutcome::Started);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let sink = lock(&control.sink)
@@ -716,9 +716,9 @@ fn cancelled_send_subscription_sink_returns_the_exact_stale_item() {
     runtime
         .submit_action(StartAction::Disable)
         .unwrap_or_else(|_| unreachable!());
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let item = Arc::new(SendItem(11));
@@ -816,9 +816,9 @@ fn initial_effect_action_replaces_the_old_subscription_before_its_start_callback
         new_maps: Rc::clone(&new_maps),
     });
 
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state().revision, 1);
@@ -859,15 +859,15 @@ impl UiApp for ExactLocalSubscriptionApp {
 fn one_remaining_sequence_is_the_final_local_or_send_subscription_action() {
     let local_calls = Rc::new(Cell::new(0));
     let mut local = AppRuntime::<ExactLocalSubscriptionApp>::mount(Rc::clone(&local_calls));
-    local
+    let _ = local
         .pump(PumpBudget::new(2, 0, 0, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     local.__seed_next_work_sequence_for_test(u64::MAX);
-    local
+    let _ = local
         .pump(PumpBudget::new(0, 0, 1, 0))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(local_calls.get(), 1);
@@ -880,8 +880,8 @@ fn one_remaining_sequence_is_the_final_local_or_send_subscription_action() {
     assert_eq!(local.status(), runenui_runtime::RuntimeStatus::Running);
 
     let (mut send, control) = start_runtime(SendSubscriptionStartOutcome::Started);
-    send.pump(PumpBudget::new(2, 0, 0, 0))
-        .expect("pump observation")
+    let _ = send.pump(PumpBudget::new(2, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(control.mapped.load(Ordering::Relaxed), 0);
@@ -892,8 +892,8 @@ fn one_remaining_sequence_is_the_final_local_or_send_subscription_action() {
     sink.try_send(Arc::new(SendItem(14)))
         .unwrap_or_else(|_| unreachable!("post-start item is accepted"));
     send.__seed_next_work_sequence_for_test(u64::MAX);
-    send.pump(PumpBudget::new(0, 1, 0, 0))
-        .expect("pump observation")
+    let _ = send.pump(PumpBudget::new(0, 1, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(control.mapped.load(Ordering::Relaxed), 1);

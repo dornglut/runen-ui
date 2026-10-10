@@ -254,7 +254,7 @@ fn retained_paint_publication_keeps_old_shaped_binding_after_text_changes() {
     assert!(
         runtime
             .pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes()
@@ -612,9 +612,9 @@ fn final_text_request_selects_the_matching_artifact_resource() {
     runtime
         .submit_action(CorrelationPhase::Candidates)
         .unwrap_or_else(|_| unreachable!("correlation phase action is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let second = publish(

@@ -146,7 +146,7 @@ pub fn pump_all(runtime: &mut AppRuntime<SurfaceApp>) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }

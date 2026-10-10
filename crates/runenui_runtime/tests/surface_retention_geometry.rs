@@ -84,7 +84,7 @@ fn pump_all(runtime: &mut AppRuntime<RetentionApp>) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }

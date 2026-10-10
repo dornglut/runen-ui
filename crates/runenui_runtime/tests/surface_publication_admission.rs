@@ -145,7 +145,7 @@ fn prepared_runtime() -> (
     assert!(
         runtime
             .pump(full_budget())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -157,7 +157,7 @@ fn prepared_runtime() -> (
     assert!(
         runtime
             .pump(full_budget())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -267,7 +267,7 @@ fn queued_pointer_rehit_backpressure_refuses_without_commit_and_retries_exactly(
     assert!(
         runtime
             .pump(full_budget())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -280,7 +280,7 @@ fn queued_pointer_rehit_backpressure_refuses_without_commit_and_retries_exactly(
     assert!(
         runtime
             .pump(full_budget())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()
@@ -306,7 +306,7 @@ fn queued_pointer_rehit_backpressure_refuses_without_commit_and_retries_exactly(
 
     let filler = runtime
         .pump(full_budget())
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(filler.is_quiescent());
@@ -362,7 +362,7 @@ fn queued_pointer_rehit_backpressure_refuses_without_commit_and_retries_exactly(
     assert!(
         runtime
             .pump(full_budget())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()

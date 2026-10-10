@@ -176,14 +176,14 @@ fn warm_and_change(
         &mut runtime,
         &SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded()),
     );
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
@@ -192,7 +192,7 @@ fn warm_and_change(
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
@@ -464,14 +464,14 @@ fn warm_common_fields(
     let context = SurfaceBuildContext::new(&environment, constraints);
     let before = publish(&mut runtime, &context);
     let identities = mounted_identities(&mut runtime);
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
@@ -480,7 +480,7 @@ fn warm_common_fields(
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .processed_envelopes(),
