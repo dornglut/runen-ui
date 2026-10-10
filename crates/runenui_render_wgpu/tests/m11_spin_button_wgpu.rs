@@ -125,7 +125,7 @@ fn spin_button_valid_and_intermediate_text_share_real_wgpu_and_semantic_authorit
         valid_node
             .range()
             .and_then(SemanticRange::current)
-            .map(SemanticNumber::get),
+            .map(runenui_core::SemanticNumber::get),
         Some(4.5)
     );
     assert_eq!(invalid_node.range().and_then(SemanticRange::current), None);
