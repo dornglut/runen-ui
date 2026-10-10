@@ -201,11 +201,14 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
                 context.prevent_default();
                 context.stop_propagation();
             }
-        } else if command == SemanticCommand::FocusRight && self.expanded {
-            // Do not jump to the next sibling when no descendant can take focus.
+        } else if command == SemanticCommand::FocusRight {
+            // A leaf or an expanded item without an eligible child cannot advance
+            // into a sibling merely because generic focus-group movement exists.
             context.prevent_default();
             context.stop_propagation();
-            if self.has_visible_child { context.emit_command(SemanticCommand::FocusGroupNext); }
+            if self.expanded && self.has_visible_child {
+                context.emit_command(SemanticCommand::FocusGroupNext);
+            }
         }
         WidgetEventOutput::none()
     }
@@ -300,6 +303,11 @@ impl<Action> Widget<Action> for TreeViewWidget {
         } else { None };
         if let Some(command) = delegated {
             context.prevent_default(); context.stop_propagation(); context.emit_command(command);
+        } else if event.as_semantic_command().is_some_and(|event|
+            event.command() == SemanticCommand::FocusLeft) {
+            // Root has no higher tree parent; do not escape by directional fallback.
+            context.prevent_default();
+            context.stop_propagation();
         }
         WidgetEventOutput::none()
     }
