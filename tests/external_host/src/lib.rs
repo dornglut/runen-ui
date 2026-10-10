@@ -469,6 +469,107 @@ mod tests {
     }
 
     #[test]
+    fn independent_typed_public_hosts_settle_only_their_own_receipts_or_retire_their_scope() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut first = AppRuntime::<ExternalHostClaimApp>::mount(reached);
+        let mut second = AppRuntime::<ExternalHostApp>::mount(HostState {
+            image: ResourceRef::new(ResourceKind::Image),
+            active: false,
+        });
+        let _ = first
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("first host mounts"));
+        let _ = second
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("second host mounts"));
+        let first_scope = first
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("first host has a scope"))
+            .scope()
+            .clone();
+        let second_scope = second
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("second host has a scope"))
+            .scope()
+            .clone();
+        assert_ne!(first_scope, second_scope);
+
+        let key = || {
+            KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyW")),
+                LogicalKey::Character(String::from("w")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            )
+        };
+        let first_sequence = first
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("first native input admitted"))
+            .sequence();
+        let second_sequence = second
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("second native input admitted"))
+            .sequence();
+
+        let pending = first
+            .pump(PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("zero-budget observation"));
+        assert_eq!(pending.processed_through(), None);
+        assert!(!pending.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(_)
+        )));
+
+        let retired = second
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("second host retires pending receipt"));
+        assert!(retired.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::ScopeRetired(scope) if scope.scope() == &second_scope
+        )));
+        assert!(!retired.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(receipt)
+                if receipt.sequence() == second_sequence
+        )));
+
+        let completed = first
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("first host independently settles"));
+        let own_settlements = completed
+            .ordered_records()
+            .iter()
+            .filter(|record| matches!(
+                record,
+                InputArbitrationRecord::InputSettled(receipt)
+                    if receipt.scope() == &first_scope && receipt.sequence() == first_sequence
+            ))
+            .count();
+        assert_eq!(own_settlements, 1);
+        let repeated = first
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("settled native input cannot replay"));
+        assert!(!repeated.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(receipt)
+                if receipt.scope() == &first_scope && receipt.sequence() == first_sequence
+        )));
+        assert!(second.submit_keyboard(key()).is_err());
+        let after_close = second
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("closed host remains observable"));
+        assert!(!after_close.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(receipt)
+                if receipt.scope() == &second_scope && receipt.sequence() == second_sequence
+        )));
+    }
+
+    #[test]
     fn downstream_host_owns_publication_acknowledgement_renderer_retry_and_semantic_next_frame()
     -> Result<(), Box<dyn Error>> {
         let Some(mut renderer) = renderer_or_adapterless()? else {
