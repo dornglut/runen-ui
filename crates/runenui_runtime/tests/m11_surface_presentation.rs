@@ -599,7 +599,7 @@ fn placement_rebuild_retains_one_mounted_and_semantic_lifetime() {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    )).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
     assert!(report.is_quiescent());
 
     let second = runtime
@@ -705,7 +705,7 @@ fn owner_anchor_follows_accepted_scroll_without_inflating_scroll_extent() {
     runtime
         .submit_pointer(wheel)
         .unwrap_or_else(|_| unreachable!("wheel is admitted"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
 
     let scrolled = runtime
         .publish_surface(&context)
@@ -794,7 +794,7 @@ fn direct_presentation_siblings_follow_current_keyed_mounted_preorder() {
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
-            )).expect("pump observation").report().to_owned()
+            )).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned()
             .is_quiescent()
     );
 
@@ -864,7 +864,7 @@ fn directional_focus_uses_projected_presentation_geometry() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("focus request is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&start));
 
     runtime
@@ -874,7 +874,7 @@ fn directional_focus_uses_projected_presentation_geometry() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("directional focus command is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
     assert_eq!(
         runtime.focus().focused_node(),
         Some(&projected),
@@ -976,7 +976,7 @@ fn projected_target_keeps_ordinary_logical_routed_ancestry() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("route command is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
 
     assert_eq!(
         facts.borrow().as_slice(),
@@ -1113,7 +1113,7 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|_| unreachable!("capture-start pointer is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
 
     let move_point = LogicalPoint::new(60.0, 10.0)
         .unwrap_or_else(|_| unreachable!("fixture move point is finite"));
@@ -1129,7 +1129,7 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
         )
         .unwrap_or_else(|_| unreachable!("captured move is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
 
     assert_eq!(
         moves.borrow().as_slice(),

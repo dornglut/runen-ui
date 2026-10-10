@@ -129,9 +129,9 @@ fn focus(runtime: &mut AppRuntime<FormApp>) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("field is focusable"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -143,9 +143,9 @@ fn commit(runtime: &mut AppRuntime<FormApp>, text: &str) {
                 .unwrap_or_else(|_| unreachable!("fixture committed text is nonempty")),
         )
         .unwrap_or_else(|_| unreachable!("active field admits text"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 }
@@ -171,9 +171,9 @@ fn public_single_line_edit_normalizes_m10_text_and_enter_submits_without_mutatio
             None,
         ))
         .unwrap_or_else(|_| unreachable!("Enter is routed"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state().submits, 1);
@@ -281,9 +281,9 @@ fn controlled_font_publication_keeps_single_line_unwrapped_and_multiline_wrappin
     single
         .submit_action(Action::SetValue("changed by application".to_owned()))
         .unwrap_or_else(|_| unreachable!("ordinary application rebuild is accepted"));
-    single
+    let _ = single
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let rebuilt = publication(&mut single);
@@ -324,9 +324,9 @@ fn controlled_font_pointer_hit_and_selection_share_m10_caret_geometry() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("field is focusable"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let focused = publication(&mut runtime);
@@ -359,9 +359,9 @@ fn controlled_font_pointer_hit_and_selection_share_m10_caret_geometry() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|_| unreachable!("pointer press is routed"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
@@ -376,9 +376,9 @@ fn controlled_font_pointer_hit_and_selection_share_m10_caret_geometry() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|_| unreachable!("pointer release is routed"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let clicked = publication(&mut runtime);
@@ -436,9 +436,9 @@ fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authorit
             "A much longer visual hint".to_owned(),
         ))
         .unwrap_or_else(|_| unreachable!("placeholder is application-authored"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let relabeled = publication(&mut runtime);
@@ -494,9 +494,9 @@ fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authorit
     runtime
         .submit_action(Action::SetValue(String::new()))
         .unwrap_or_else(|_| unreachable!("application can clear durable text"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let cleared = publication(&mut runtime);
@@ -524,17 +524,17 @@ fn active_ime_preedit_suppresses_placeholder_without_substituting_document_sourc
     let generation = runtime
         .start_composition(None)
         .unwrap_or_else(|_| unreachable!("composition begins"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
         .submit_composition_update(generation.generation().clone(), "é".to_owned(), None)
         .unwrap_or_else(|_| unreachable!("preedit is admitted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let composing = publication(&mut runtime);
@@ -556,9 +556,9 @@ fn active_ime_preedit_suppresses_placeholder_without_substituting_document_sourc
     runtime
         .cancel_composition(generation.generation().clone())
         .unwrap_or_else(|_| unreachable!("composition cancels"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let restored = publication(&mut runtime);

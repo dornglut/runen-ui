@@ -69,7 +69,7 @@ fn settle(runtime: &mut AppRuntime<App>) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(report.is_quiescent(), "fixture did not settle: {report:?}");
@@ -130,7 +130,7 @@ fn trigger_cleanup_admission_failure(runtime: &mut AppRuntime<App>) {
 
     let report = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(report.processed_envelopes(), 1);
@@ -217,7 +217,7 @@ fn assert_idempotent_shutdown_from_terminal(
 ) {
     let first_shutdown = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert!(!first_shutdown.already_complete());
@@ -240,7 +240,7 @@ fn assert_idempotent_shutdown_from_terminal(
 
     let second_shutdown = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert!(second_shutdown.already_complete());

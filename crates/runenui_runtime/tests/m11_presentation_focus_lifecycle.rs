@@ -36,7 +36,7 @@ fn settle<App: UiApp>(runtime: &mut AppRuntime<App>) {
                 usize::MAX,
                 usize::MAX,
             ))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
             .is_quiescent()

@@ -70,7 +70,7 @@ fn settle(runtime: &mut AppRuntime<TestApp>) {
             usize::MAX,
             usize::MAX,
         ))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert!(report.is_quiescent(), "fixture did not settle: {report:?}");
@@ -340,7 +340,7 @@ fn trace_export_06_closed_sink_is_diagnosed_once_then_retired_before_shutdown() 
     let before_shutdown = runtime.trace().len();
     let _ = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     assert!(runtime.trace().len() > before_shutdown);
@@ -442,7 +442,7 @@ fn open_sink_delivers_shutdown_then_closes_after_buffer_drains() {
 
     let _ = runtime
         .shutdown()
-        .expect("shutdown observation")
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
         .report()
         .to_owned();
     let mut saw_shutdown = false;

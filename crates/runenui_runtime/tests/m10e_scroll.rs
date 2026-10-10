@@ -311,9 +311,9 @@ fn nested_wheel_consumes_exact_remainder_and_republishes_clipped_geometry() {
     runtime
         .submit_pointer(wheel)
         .unwrap_or_else(|error| panic!("wheel is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -428,9 +428,9 @@ fn nested_wheel_consumes_exact_remainder_and_republishes_clipped_geometry() {
             ),
         )
         .unwrap_or_else(|error| panic!("bounded overscroll input is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let no_visual_overscroll = runtime
@@ -496,9 +496,9 @@ fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
     runtime
         .submit_pointer(down)
         .unwrap_or_else(|error| panic!("touch down is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -513,9 +513,9 @@ fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
     runtime
         .submit_pointer(crossing_move)
         .unwrap_or_else(|error| panic!("touch threshold move is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -530,9 +530,9 @@ fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
     runtime
         .submit_pointer(later_move)
         .unwrap_or_else(|error| panic!("touch winner move is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -595,18 +595,18 @@ fn touch_gesture_is_cancelled_once_when_its_origin_is_unmounted() {
     runtime
         .submit_pointer(down)
         .unwrap_or_else(|error| panic!("touch down is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
     runtime
         .submit_action(TouchScrollAction::RemoveContent)
         .unwrap_or_else(|error| panic!("content removal action is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -666,9 +666,9 @@ fn independent_touch_streams_resolve_scroll_and_tap_without_cross_ownership() {
                 .with_changed_button(PointerButton::Primary),
             )
             .unwrap_or_else(|error| panic!("independent touch down is admitted: {error:?}"));
-        runtime
+        let _ = runtime
             .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
     }
@@ -685,9 +685,9 @@ fn independent_touch_streams_resolve_scroll_and_tap_without_cross_ownership() {
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
         )
         .unwrap_or_else(|error| panic!("scrolling touch move is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
@@ -703,9 +703,9 @@ fn independent_touch_streams_resolve_scroll_and_tap_without_cross_ownership() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|error| panic!("scrolling touch release is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
@@ -720,9 +720,9 @@ fn independent_touch_streams_resolve_scroll_and_tap_without_cross_ownership() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|error| panic!("tap release is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -817,9 +817,9 @@ fn committed_touch_capture_beats_scroll_and_retains_its_original_owner() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|error| panic!("capturing touch down is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
@@ -835,9 +835,9 @@ fn committed_touch_capture_beats_scroll_and_retains_its_original_owner() {
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
         )
         .unwrap_or_else(|error| panic!("captured touch move is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -893,9 +893,9 @@ fn touch_wheel_is_diagnosed_instead_of_creating_a_parallel_stream_profile() {
         .unwrap_or_else(|error| {
             panic!("unsupported touch event is admitted for diagnosis: {error:?}")
         });
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -945,9 +945,9 @@ fn prevented_nested_wheel_does_not_partially_commit_scroll() {
             ),
         )
         .unwrap_or_else(|error| panic!("wheel is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -997,9 +997,9 @@ fn logical_focus_scroll_moves_nearest_scroll_owner_and_commits_a_new_publication
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|error| panic!("focus target accepts focus request: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     runtime
@@ -1009,9 +1009,9 @@ fn logical_focus_scroll_moves_nearest_scroll_owner_and_commits_a_new_publication
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|error| panic!("focus boundary request is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
@@ -1080,9 +1080,9 @@ fn scroll_into_view_uses_the_exact_target_and_clamps_to_the_nearest_scroll_owner
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|error| panic!("scroll-to-target command is admitted: {error:?}"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
 
