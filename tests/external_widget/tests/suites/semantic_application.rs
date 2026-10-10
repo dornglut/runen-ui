@@ -10,6 +10,8 @@ mod m11_application_commands;
 mod m11_semantic_actions;
 #[path = "../m11_semantic_vocabulary.rs"]
 mod m11_semantic_vocabulary;
+#[path = "../progress.rs"]
+mod progress;
 #[path = "../radio.rs"]
 mod radio;
 #[path = "../semantic_m5a.rs"]
