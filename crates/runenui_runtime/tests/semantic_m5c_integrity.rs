@@ -69,7 +69,11 @@ fn state() -> State {
 }
 
 fn current_request(runtime: &mut AppRuntime<App>) -> SemanticActionRequest {
-    runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0));
+    let _ = runtime
+        .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(

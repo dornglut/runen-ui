@@ -30,7 +30,11 @@ fn capacity_zero_retains_nothing_and_changes_no_behavior() {
     let mut runtime = AppRuntime::<App>::mount_with_config(0, config);
     assert!(runtime.trace().is_empty());
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(runtime.state(), &1);
     assert!(runtime.trace().is_empty());
     assert_eq!(runtime.trace().dropped_before_sequence(), None);
@@ -43,7 +47,11 @@ fn logical_trace_capacity_does_not_eagerly_reserve() {
     let mut runtime = AppRuntime::<App>::mount_with_config(0, config);
 
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    let report = runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
+    let report = runtime
+        .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     assert_eq!(report.processed_envelopes(), 2);
     assert_eq!(runtime.state(), &1);
@@ -146,7 +154,11 @@ fn direct_submission_records_work_sequence_without_a_causal_parent() {
 #[test]
 fn routed_action_acceptance_links_target_collection_and_application_transaction() {
     let mut runtime = AppRuntime::<App>::mount(0);
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let target = runtime.index().nodes()[0].id().clone();
     runtime
         .submit_command(
@@ -155,7 +167,11 @@ fn routed_action_acceptance_links_target_collection_and_application_transaction(
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
-    runtime.pump(PumpBudget::new(1, 0, 0, 0));
+    let _ = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(runtime.state(), &0);
     let records: Vec<_> = runtime.trace().records().collect();
     let acceptance = records
@@ -174,7 +190,11 @@ fn routed_action_acceptance_links_target_collection_and_application_transaction(
         Some(&target)
     );
 
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let started = runtime
         .trace()
         .records()
@@ -213,7 +233,11 @@ fn routed_action_acceptance_links_target_collection_and_application_transaction(
 fn logical_record_order() -> Vec<TraceRecordKind> {
     let mut runtime = AppRuntime::<App>::mount(0);
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     runtime.trace().kinds().cloned().collect()
 }
 
@@ -225,10 +249,18 @@ fn identical_logical_execution_has_identical_record_order() {
 #[test]
 fn shutdown_cancellation_is_visible_in_the_canonical_trace() {
     let mut runtime = AppRuntime::<App>::mount(0);
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    let shutdown = runtime.shutdown();
+    let shutdown = runtime
+        .shutdown()
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
+        .report()
+        .to_owned();
     assert_eq!(shutdown.cancelled_queued_envelopes(), 2);
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),

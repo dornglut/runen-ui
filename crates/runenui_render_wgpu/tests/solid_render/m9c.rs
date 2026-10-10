@@ -368,12 +368,16 @@ fn render_initial_and_start_transition(
     runtime
         .submit_action(Action::SetDimmed(true))
         .unwrap_or_else(|_| unreachable!("M9C transition action is admitted"));
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(report.is_quiescent());
     let transition_start = publish(runtime);
     assert!((sampled_opacity(&transition_start) - 1.0).abs() <= f32::EPSILON);

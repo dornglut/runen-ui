@@ -11,18 +11,23 @@ mod tests {
     use std::{
         cell::Cell,
         io,
-        sync::Arc,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
         task::{Context, Wake, Waker},
         thread,
     };
 
     use runenui_core::{
-        Brush, Color, Element, ImageDescriptor, ImageIntrinsicSize, ImageMapping,
-        ImagePaintDescriptor, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol,
-        PaintContribution, PaintContributionContext, PaintContributionItem, ResourceKind,
-        ResourceRef, SceneShape, SemanticAction, SemanticActionRequest, SemanticContribution,
-        SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment,
-        UiApp, View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
+        Brush, Color, CommandOrigin, Element, ElementId, EventContext, EventPhase, ImageDescriptor,
+        ImageIntrinsicSize, ImageMapping, ImagePaintDescriptor, KeyLocation, KeyModifiers,
+        KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, LogicalLength,
+        LogicalRect, LogicalSize, NoHostProtocol, PaintContribution, PaintContributionContext,
+        PaintContributionItem, PhysicalKey, ResourceKind, ResourceRef, SceneShape, SemanticAction,
+        SemanticActionRequest, SemanticCommand, SemanticContribution, SemanticContributionContext,
+        SemanticNodeContribution, SemanticRole, StyleEnvironment, UiApp, UiEvent, View, Widget,
+        WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput,
         WidgetMeasure,
     };
     use runenui_render_wgpu::{
@@ -31,7 +36,11 @@ mod tests {
         RendererOptions, ResourcePayload, ResourceProvider, ResourceProviderError,
         ResourceProviderErrorKind, ResourceRequest, ResourceResolveError,
     };
-    use runenui_runtime::{AppRuntime, PumpBudget, SurfaceBuildContext, SurfacePublication};
+    use runenui_runtime::{
+        AppRuntime, InputArbitrationRecord, InputScopeRetirementReason, PumpBudget,
+        SurfaceBuildContext, SurfacePublication, UiInputClaimReason, UiInputConflict,
+        UiInputFamily, UiInputFinality,
+    };
 
     const SURFACE_EXTENT: u16 = 8;
     const IMAGE_EXTENT: f32 = 4.0;
@@ -247,6 +256,353 @@ mod tests {
         }
     }
 
+    // Downstream public-only authoring proof: no runtime-internal types,
+    // event outcome inspectors, extra input FIFO, or gameplay manager.
+    #[derive(Debug)]
+    struct ExternalHostClaimProbe {
+        reached: Arc<AtomicBool>,
+    }
+
+    impl Widget<()> for ExternalHostClaimProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, ()>,
+        ) -> WidgetEventOutput {
+            if matches!(event, UiEvent::Keyboard(_)) && context.phase() == EventPhase::Target {
+                context.claim_host_input();
+                assert!(context.host_input_is_claimed());
+                self.reached.store(true, Ordering::Relaxed);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    struct ExternalHostClaimApp;
+
+    impl UiApp for ExternalHostClaimApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            Element::new(ExternalHostClaimProbe {
+                reached: Arc::clone(reached),
+            })
+            .id("external-claim-probe")
+            .key("external-claim-probe")
+            .focusable(true)
+        }
+
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        }
+    }
+
+    // An independently typed UiApp exercises the same ordinary public input
+    // contract, without erasing State/Action/HostProtocol into a host facade.
+    struct ExternalHostSiblingClaimApp;
+
+    impl UiApp for ExternalHostSiblingClaimApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            Element::new(ExternalHostClaimProbe {
+                reached: Arc::clone(reached),
+            })
+            .id("external-claim-probe")
+            .key("external-claim-probe")
+            .focusable(true)
+        }
+
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        }
+    }
+
+    fn assert_public_shutdown_retires_claimed_scope(mut runtime: AppRuntime<ExternalHostClaimApp>) {
+        let closed = runtime
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("observed final shutdown"));
+        assert_eq!(
+            closed.final_ownership().status(),
+            runenui_runtime::RuntimeStatus::Closed
+        );
+        assert_eq!(
+            closed
+                .ordered_records()
+                .iter()
+                .filter(|record| {
+                    matches!(record, InputArbitrationRecord::ScopeRetired(retirement)
+                if retirement.reason() == InputScopeRetirementReason::Shutdown)
+                })
+                .count(),
+            1
+        );
+        let again = runtime
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("idempotent final observation"));
+        assert!(
+            !again
+                .ordered_records()
+                .iter()
+                .any(|record| { matches!(record, InputArbitrationRecord::ScopeRetired(_)) })
+        );
+        // A host that retains native receipt associations must settle the
+        // scope before consuming the runtime; no second implicit retirement
+        // is synthesized by into_state.
+        let returned = runtime.into_state();
+        assert!(returned.load(Ordering::Relaxed));
+    }
+
+    fn focused_public_claim_host<App>(reached: Arc<AtomicBool>) -> AppRuntime<App>
+    where
+        App: UiApp<State = Arc<AtomicBool>, Action = (), HostProtocol = NoHostProtocol>,
+    {
+        let mut runtime = AppRuntime::<App>::mount(reached);
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("fixture mount pump"));
+        let authored = ElementId::new("external-claim-probe")
+            .unwrap_or_else(|_| unreachable!("static authored id"));
+        let target = runtime
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored))
+            .unwrap_or_else(|| unreachable!("mounted focusable probe"))
+            .id()
+            .clone();
+        runtime
+            .submit_command(
+                target,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("public focus request accepted"));
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("focus commits in canonical pump"));
+        runtime
+    }
+
+    #[test]
+    fn downstream_widget_can_claim_keyboard_input_using_only_public_framework_api() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = focused_public_claim_host::<ExternalHostClaimApp>(Arc::clone(&reached));
+        let receipt = runtime
+            .submit_keyboard(KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyW")),
+                LogicalKey::Character(String::from("w")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            ))
+            .unwrap_or_else(|_| unreachable!("native keyboard input accepted"));
+
+        // The queue receipt is Pending until this exact FIFO boundary commits.
+        let pending = runtime
+            .pump(PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("bounded empty checkpoint"));
+        assert_eq!(pending.processed_through(), None);
+        assert!(
+            !pending
+                .ordered_records()
+                .iter()
+                .any(|record| { matches!(record, InputArbitrationRecord::InputSettled(_)) })
+        );
+        assert!(!reached.load(Ordering::Relaxed));
+
+        let committed = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("host input settlement returned"));
+        let settlement = committed
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            settlement.len(),
+            1,
+            "exactly one reached host input settles"
+        );
+        let settled = settlement[0];
+        assert_eq!(settled.sequence(), receipt.sequence());
+        assert_eq!(settled.scope(), committed.final_ownership().scope());
+        assert_eq!(settled.family(), UiInputFamily::Keyboard);
+        assert!(matches!(
+            settled.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::ExplicitWidgetClaim)
+        ));
+        assert!(reached.load(Ordering::Relaxed));
+
+        assert_public_shutdown_retires_claimed_scope(runtime);
+    }
+
+    #[test]
+    fn independent_public_host_slots_have_disjoint_runtime_scopes() {
+        let mut first = AppRuntime::<ExternalHostApp>::mount(HostState {
+            image: ResourceRef::new(ResourceKind::Image),
+            active: false,
+        });
+        let mut second = AppRuntime::<ExternalHostApp>::mount(HostState {
+            image: ResourceRef::new(ResourceKind::Image),
+            active: false,
+        });
+        let first_snapshot = first.input_ownership().unwrap_or_else(|_| {
+            unreachable!("first runtime can project its initial input ownership")
+        });
+        let second_snapshot = second.input_ownership().unwrap_or_else(|_| {
+            unreachable!("second runtime can project its initial input ownership")
+        });
+        assert_ne!(first_snapshot.scope(), second_snapshot.scope());
+        assert_eq!(first_snapshot.revision().get(), 1);
+        assert_eq!(second_snapshot.revision().get(), 1);
+        assert_eq!(
+            first_snapshot.revision(),
+            first
+                .input_ownership()
+                .unwrap_or_else(|_| unreachable!("unchanged state projects"))
+                .revision()
+        );
+        let _ = first
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("shutdown observation"));
+        let closed = first
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("terminal ownership is observable without a pump"));
+        assert_ne!(closed.revision(), first_snapshot.revision());
+        assert_eq!(closed.status(), runenui_runtime::RuntimeStatus::Closed);
+        assert_eq!(
+            second
+                .input_ownership()
+                .unwrap_or_else(|_| unreachable!("other runtime remains valid"))
+                .status(),
+            runenui_runtime::RuntimeStatus::Running
+        );
+    }
+
+    #[test]
+    fn different_typed_public_hosts_settle_only_their_own_receipts_or_retire_their_scope() {
+        let mut first =
+            focused_public_claim_host::<ExternalHostClaimApp>(Arc::new(AtomicBool::new(false)));
+        let mut second = focused_public_claim_host::<ExternalHostSiblingClaimApp>(Arc::new(
+            AtomicBool::new(false),
+        ));
+        let first_scope = first
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("first host has a scope"))
+            .scope()
+            .clone();
+        let second_scope = second
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("second host has a scope"))
+            .scope()
+            .clone();
+        assert_ne!(first_scope, second_scope);
+
+        let key = || {
+            KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyW")),
+                LogicalKey::Character(String::from("w")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            )
+        };
+        let first_sequence = first
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("first native input admitted"))
+            .sequence();
+        let second_sequence = second
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("second native input admitted"))
+            .sequence();
+        assert_eq!(
+            first_sequence, second_sequence,
+            "work sequences alone cannot identify independent runtime lifetimes"
+        );
+
+        let pending = first
+            .pump(PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("zero-budget observation"));
+        assert_eq!(pending.processed_through(), None);
+        assert!(
+            !pending
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
+
+        let retired = second
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("second host retires pending receipt"));
+        assert!(retired.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::ScopeRetired(scope) if scope.scope() == &second_scope
+        )));
+        assert!(!retired.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(receipt)
+                if receipt.sequence() == second_sequence
+        )));
+
+        let completed = first
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("first host independently settles"));
+        let own_settlements = completed
+            .ordered_records()
+            .iter()
+            .filter(|record| {
+                matches!(
+                    record,
+                    InputArbitrationRecord::InputSettled(receipt)
+                        if receipt.scope() == &first_scope && receipt.sequence() == first_sequence
+                )
+            })
+            .count();
+        assert_eq!(own_settlements, 1);
+        let repeated = first
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("settled native input cannot replay"));
+        assert!(!repeated.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(receipt)
+                if receipt.scope() == &first_scope && receipt.sequence() == first_sequence
+        )));
+        assert!(second.submit_keyboard(key()).is_err());
+        let after_close = second
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("closed host remains observable"));
+        assert!(!after_close.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(receipt)
+                if receipt.scope() == &second_scope && receipt.sequence() == second_sequence
+        )));
+    }
+
     #[test]
     fn downstream_host_owns_publication_acknowledgement_renderer_retry_and_semantic_next_frame()
     -> Result<(), Box<dyn Error>> {
@@ -274,7 +630,9 @@ mod tests {
             .map_err(|error| io::Error::other(error.to_string()))?;
 
         steps.push(FrameStep::Pump);
-        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         assert!(runtime.state().active);
 
         steps.push(FrameStep::TakeRedraw);
@@ -321,7 +679,9 @@ mod tests {
             .map_err(|error| debug_error("semantic action submission failed", &error))?;
 
         steps.push(FrameStep::Pump);
-        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         assert!(!runtime.state().active);
 
         steps.push(FrameStep::TakeRedraw);
@@ -354,7 +714,9 @@ mod tests {
         assert_eq!(publication_count, 2);
         assert_eq!(steps, expected_steps());
 
-        let _ = runtime.shutdown();
+        let _ = runtime
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("shutdown observation"));
         eprintln!(
             "M7D EXTERNAL HOST PROOF: retained-publication retry and two host-owned frames succeeded; adapter={:?} backend={}",
             renderer.diagnostics().adapter_info().name,

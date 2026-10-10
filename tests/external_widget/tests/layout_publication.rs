@@ -162,12 +162,16 @@ fn register_controlled_text<App: UiApp>(runtime: &mut AppRuntime<App>) {
 }
 
 fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>) {
-    let _ = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 }
 
 fn publish<App: UiApp>(
@@ -429,6 +433,9 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
         assert_eq!(
             runtime
                 .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+                .unwrap_or_else(|_| unreachable!("pump observation"))
+                .report()
+                .to_owned()
                 .processed_envelopes(),
             2
         );

@@ -142,12 +142,26 @@ fn prepared_runtime() -> (
         ))
         .unwrap_or_else(|_| unreachable!("initial publication is admitted"));
     assert!(measure_calls.get() > 0);
-    assert!(runtime.pump(full_budget()).is_quiescent());
+    assert!(
+        runtime
+            .pump(full_budget())
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
     runtime
         .submit_action(Replace)
         .unwrap_or_else(|_| unreachable!("replacement action is admitted"));
     let calls_before_replacement = measure_calls.get();
-    assert!(runtime.pump(full_budget()).is_quiescent());
+    assert!(
+        runtime
+            .pump(full_budget())
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
     assert!(runtime.state().replaced);
     assert_eq!(measure_calls.get(), calls_before_replacement);
     (runtime, measure_calls, first.input_context().clone())
@@ -233,6 +247,15 @@ fn coordinate_revision_exhaustion_terminalizes_before_surface_callbacks() {
     assert_eq!(published_count(&runtime), published_before);
 }
 
+fn pump_quiescent(runtime: &mut AppRuntime<App>) -> bool {
+    runtime
+        .pump(full_budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned()
+        .is_quiescent()
+}
+
 #[test]
 fn queued_pointer_rehit_backpressure_refuses_without_commit_and_retries_exactly() {
     let measure_calls = Rc::new(Cell::new(0));
@@ -250,13 +273,13 @@ fn queued_pointer_rehit_backpressure_refuses_without_commit_and_retries_exactly(
     let first = runtime
         .publish_surface(&build_context)
         .unwrap_or_else(|_| unreachable!("initial publication is admitted"));
-    assert!(runtime.pump(full_budget()).is_quiescent());
+    assert!(pump_quiescent(&mut runtime));
 
     runtime
         .submit_action(Replace)
         .unwrap_or_else(|_| unreachable!("the dirtying action is accepted"));
     let calls_before_update = measure_calls.get();
-    assert!(runtime.pump(full_budget()).is_quiescent());
+    assert!(pump_quiescent(&mut runtime));
     assert!(runtime.state().replaced);
     assert_eq!(measure_calls.get(), calls_before_update);
 
@@ -276,7 +299,11 @@ fn queued_pointer_rehit_backpressure_refuses_without_commit_and_retries_exactly(
     assert_eq!(publication_trace_state(&runtime), trace_before_refusal);
     assert!(has_pending_redraw(publication_trace_state(&runtime)));
 
-    let filler = runtime.pump(full_budget());
+    let filler = runtime
+        .pump(full_budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(filler.is_quiescent());
     assert_eq!(filler.processed_envelopes(), 1);
     let calls_before_retry = measure_calls.get();
@@ -327,6 +354,6 @@ fn queued_pointer_rehit_backpressure_refuses_without_commit_and_retries_exactly(
         trace_after_retry.latest_redraw_requested
     );
 
-    assert!(runtime.pump(full_budget()).is_quiescent());
+    assert!(pump_quiescent(&mut runtime));
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 }

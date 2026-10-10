@@ -32,16 +32,28 @@ fn local_poll_budget_is_independent_and_exact() {
     assert_eq!(budget.max_timer_promotions(), 4);
 
     let mut runtime = AppRuntime::<LocalApp>::mount(0);
-    let blocked = runtime.pump(PumpBudget::new(2, 0, 0, 0));
+    let blocked = runtime
+        .pump(PumpBudget::new(2, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(blocked.polled_local_work(), 0);
     assert!(blocked.exhausted_budgets().local_polls());
     assert_eq!(blocked.outcome(), PumpOutcome::BudgetExhausted);
 
-    let ready = runtime.pump(PumpBudget::new(0, 0, 1, 0));
+    let ready = runtime
+        .pump(PumpBudget::new(0, 0, 1, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(ready.polled_local_work(), 1);
     assert!(ready.exhausted_budgets().processed_envelopes());
     assert_eq!(*runtime.state(), 0);
-    runtime.pump(PumpBudget::new(2, 0, 0, 0));
+    let _ = runtime
+        .pump(PumpBudget::new(2, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(*runtime.state(), 1);
 }
 
@@ -66,7 +78,11 @@ impl UiApp for TimerApp {
 #[test]
 fn timer_budget_and_future_deadline_observation_are_exact() {
     let mut runtime = AppRuntime::<TimerApp>::mount(0);
-    let future = runtime.pump(PumpBudget::new(2, 0, 0, 0));
+    let future = runtime
+        .pump(PumpBudget::new(2, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(future.is_quiescent());
     assert_eq!(
         future
@@ -77,13 +93,25 @@ fn timer_budget_and_future_deadline_observation_are_exact() {
     runtime
         .advance_time(Duration::from_millis(5))
         .unwrap_or_else(|_| unreachable!());
-    let blocked = runtime.pump(PumpBudget::new(0, 0, 0, 0));
+    let blocked = runtime
+        .pump(PumpBudget::new(0, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(blocked.due_timers_pending());
     assert!(blocked.exhausted_budgets().timer_promotions());
-    let promoted = runtime.pump(PumpBudget::new(0, 0, 0, 1));
+    let promoted = runtime
+        .pump(PumpBudget::new(0, 0, 0, 1))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(promoted.promoted_timers(), 1);
     assert!(promoted.exhausted_budgets().processed_envelopes());
-    runtime.pump(PumpBudget::new(2, 0, 0, 0));
+    let _ = runtime
+        .pump(PumpBudget::new(2, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(*runtime.state(), 1);
 }
 
@@ -106,7 +134,11 @@ impl UiApp for SleepingApp {
 #[test]
 fn sleeping_local_task_does_not_prevent_quiescence() {
     let mut runtime = AppRuntime::<SleepingApp>::mount(Rc::new(Cell::new(0)));
-    let report = runtime.pump(PumpBudget::new(2, 0, 1, 0));
+    let report = runtime
+        .pump(PumpBudget::new(2, 0, 1, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(report.polled_local_work(), 1);
     assert!(report.is_quiescent());
 }

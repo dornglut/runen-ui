@@ -10,6 +10,9 @@ use runenui_runtime::{
     AppRuntime, LayoutConstraints, PaintSceneItem, PumpBudget, SurfaceBuildContext, SurfacePhase,
 };
 
+const UNBOUNDED_PUMP_BUDGET: PumpBudget =
+    PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX);
+
 fn rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
     LogicalRect::try_new(x, y, width, height)
         .unwrap_or_else(|_| unreachable!("test rectangle is valid"))
@@ -31,6 +34,9 @@ fn process_one(runtime: &mut AppRuntime<SceneDiagnosticApp>, action: SceneDiagno
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -186,12 +192,9 @@ fn singular_scene_diagnostics_are_public_fail_closed_and_cleared_by_their_owning
         paint_singular: true,
         hit_singular: true,
     });
-    let _ = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(UNBOUNDED_PUMP_BUDGET)
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let style_environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &style_environment);

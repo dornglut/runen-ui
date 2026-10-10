@@ -37,12 +37,16 @@ fn context(environment: &StyleEnvironment, width: u16, height: u16) -> SurfaceBu
 }
 
 fn settle<App: UiApp>(runtime: &mut AppRuntime<App>) {
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(report.is_quiescent());
 }
 

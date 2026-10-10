@@ -63,12 +63,16 @@ impl UiApp for TestApp {
 }
 
 fn settle(runtime: &mut AppRuntime<TestApp>) {
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(report.is_quiescent(), "fixture did not settle: {report:?}");
 }
 
@@ -334,7 +338,11 @@ fn trace_export_06_closed_sink_is_diagnosed_once_then_retired_before_shutdown() 
     assert_eq!(record_for_work(&runtime, second_work).sink_delivery(), None);
 
     let before_shutdown = runtime.trace().len();
-    let _ = runtime.shutdown();
+    let _ = runtime
+        .shutdown()
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
+        .report()
+        .to_owned();
     assert!(runtime.trace().len() > before_shutdown);
     let shutdown = runtime
         .trace()
@@ -432,7 +440,11 @@ fn open_sink_delivers_shutdown_then_closes_after_buffer_drains() {
         .unwrap_or_else(|| unreachable!("configured sink exposes one receiver"));
     while receiver.try_recv().is_ok() {}
 
-    let _ = runtime.shutdown();
+    let _ = runtime
+        .shutdown()
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
+        .report()
+        .to_owned();
     let mut saw_shutdown = false;
     loop {
         match receiver.try_recv() {

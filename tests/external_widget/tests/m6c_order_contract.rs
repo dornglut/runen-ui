@@ -246,12 +246,16 @@ fn assert_hit_order(
 #[test]
 fn layer_preorder_and_local_order_follow_logical_reorder_not_retained_storage_order() {
     let mut runtime = AppRuntime::<OrderApp>::mount(OrderState { order: ["a", "b"] });
-    let _ = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let style_environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &style_environment);
@@ -276,6 +280,9 @@ fn layer_preorder_and_local_order_follow_logical_reorder_not_retained_storage_or
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );

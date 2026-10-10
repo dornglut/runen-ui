@@ -22,12 +22,16 @@ fn device(value: u64) -> InputDeviceId {
 
 fn translated_point(position: LogicalPoint, modifiers: KeyModifiers) -> TranslatedPointerPoint {
     let mut runtime = AppRuntime::<DemoApp>::mount(());
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let style_environment = StyleEnvironment::default();
     let logical_size = LogicalSize::try_new(200.0, 120.0)
         .unwrap_or_else(|_| unreachable!("fixture logical size is valid"));

@@ -87,16 +87,24 @@ fn publish(runtime: &mut AppRuntime<RetirementApp>) -> SurfacePublication {
 }
 
 fn settle(runtime: &mut AppRuntime<RetirementApp>) -> runenui_runtime::PumpReport {
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ))
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned()
 }
 
 fn observe(runtime: &mut AppRuntime<RetirementApp>) -> runenui_runtime::PumpReport {
-    runtime.pump(PumpBudget::new(0, 0, 0, 0))
+    runtime
+        .pump(PumpBudget::new(0, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned()
 }
 
 #[test]

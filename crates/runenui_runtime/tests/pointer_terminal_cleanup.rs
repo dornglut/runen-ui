@@ -223,7 +223,14 @@ const fn full_budget() -> PumpBudget {
 }
 
 fn pump_all(runtime: &mut AppRuntime<App>) {
-    assert!(runtime.pump(full_budget()).is_quiescent());
+    assert!(
+        runtime
+            .pump(full_budget())
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
 }
 
 fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) {

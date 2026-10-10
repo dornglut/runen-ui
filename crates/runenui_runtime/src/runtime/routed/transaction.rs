@@ -110,6 +110,7 @@ pub(crate) enum PointerSelectionTransition {
     Cancelled,
 }
 
+#[allow(clippy::struct_excessive_bools)] // Independent routed default, propagation and host-claim facts.
 pub(crate) struct RoutedTransaction<Action> {
     pub(crate) sequence: WorkSequence,
     pub(crate) target: MountedNodeId,
@@ -123,7 +124,8 @@ pub(crate) struct RoutedTransaction<Action> {
     pub(crate) parent: Option<TraceSequence>,
     pub(in crate::runtime) remaining_outputs: usize,
     pub(crate) remaining_default_outputs: usize,
-    pub(in crate::runtime) propagation_stopped: bool,
+    pub(crate) propagation_stopped: bool,
+    pub(crate) host_input_claimed: bool,
     pub(crate) application_command_resolution:
         Option<(MountedNodeId, ApplicationCommandDisposition)>,
     pub(crate) default_prevented: bool,

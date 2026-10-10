@@ -161,7 +161,11 @@ fn explicit_capture_then_release_prevents_selection_default_from_recapturing() {
     runtime
         .submit_pointer(pointer)
         .unwrap_or_else(|error| panic!("pointer down is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     assert!(!runtime.trace().records().any(|record| matches!(
         record.kind(),

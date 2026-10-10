@@ -120,6 +120,17 @@ fn app_with_source(mode: SemanticEditableMode, source: &str) -> AppRuntime<FormA
     })
 }
 
+fn pump_form_boundary(runtime: &mut AppRuntime<FormApp>, max_envelopes: usize) {
+    let _ = runtime
+        .pump(PumpBudget::new(
+            max_envelopes,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("canonical pump observation"));
+}
+
 fn focus(runtime: &mut AppRuntime<FormApp>) {
     let owner = runtime.index().nodes()[0].id().clone();
     runtime
@@ -129,7 +140,11 @@ fn focus(runtime: &mut AppRuntime<FormApp>) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("field is focusable"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 }
 
 fn commit(runtime: &mut AppRuntime<FormApp>, text: &str) {
@@ -139,7 +154,11 @@ fn commit(runtime: &mut AppRuntime<FormApp>, text: &str) {
                 .unwrap_or_else(|_| unreachable!("fixture committed text is nonempty")),
         )
         .unwrap_or_else(|_| unreachable!("active field admits text"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 }
 
 #[test]
@@ -163,7 +182,11 @@ fn public_single_line_edit_normalizes_m10_text_and_enter_submits_without_mutatio
             None,
         ))
         .unwrap_or_else(|_| unreachable!("Enter is routed"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(runtime.state().submits, 1);
     assert_eq!(runtime.state().revision, 1);
     assert_eq!(runtime.state().text, "abX Y Z Q");
@@ -269,7 +292,11 @@ fn controlled_font_publication_keeps_single_line_unwrapped_and_multiline_wrappin
     single
         .submit_action(Action::SetValue("changed by application".to_owned()))
         .unwrap_or_else(|_| unreachable!("ordinary application rebuild is accepted"));
-    single.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = single
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let rebuilt = publication(&mut single);
     assert_eq!(
         rebuilt.semantic_publication().snapshot().nodes()[0]
@@ -308,7 +335,11 @@ fn controlled_font_pointer_hit_and_selection_share_m10_caret_geometry() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("field is focusable"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let focused = publication(&mut runtime);
     assert_eq!(runtime.focus().focused_node(), Some(&owner));
     assert!(
@@ -339,7 +370,11 @@ fn controlled_font_pointer_hit_and_selection_share_m10_caret_geometry() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|_| unreachable!("pointer press is routed"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -352,7 +387,11 @@ fn controlled_font_pointer_hit_and_selection_share_m10_caret_geometry() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|_| unreachable!("pointer release is routed"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let clicked = publication(&mut runtime);
     assert_eq!(clicked.hit_test_scene().target_at(point), Some(&owner));
     let selection = clicked.semantic_publication().snapshot().nodes()[0]
@@ -408,7 +447,7 @@ fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authorit
             "A much longer visual hint".to_owned(),
         ))
         .unwrap_or_else(|_| unreachable!("placeholder is application-authored"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    pump_form_boundary(&mut runtime, 16);
     let relabeled = publication(&mut runtime);
     assert_eq!(runtime.index().nodes()[0].id(), &owner);
     assert_eq!(
@@ -462,7 +501,7 @@ fn placeholder_is_passive_m8_paint_not_editable_source_intrinsic_or_hit_authorit
     runtime
         .submit_action(Action::SetValue(String::new()))
         .unwrap_or_else(|_| unreachable!("application can clear durable text"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    pump_form_boundary(&mut runtime, 16);
     let cleared = publication(&mut runtime);
     assert_eq!(runtime.state().text, "");
     assert!(cleared.paint_scene().items().iter().any(|item| {
@@ -488,11 +527,19 @@ fn active_ime_preedit_suppresses_placeholder_without_substituting_document_sourc
     let generation = runtime
         .start_composition(None)
         .unwrap_or_else(|_| unreachable!("composition begins"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     runtime
         .submit_composition_update(generation.generation().clone(), "é".to_owned(), None)
         .unwrap_or_else(|_| unreachable!("preedit is admitted"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let composing = publication(&mut runtime);
     assert!(
         composing.paint_scene().items().iter().all(|item| {
@@ -512,7 +559,11 @@ fn active_ime_preedit_suppresses_placeholder_without_substituting_document_sourc
     runtime
         .cancel_composition(generation.generation().clone())
         .unwrap_or_else(|_| unreachable!("composition cancels"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let restored = publication(&mut runtime);
     assert_eq!(
         restored.semantic_publication().snapshot().nodes()[0]

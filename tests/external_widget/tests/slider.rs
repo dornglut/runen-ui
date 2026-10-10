@@ -158,7 +158,11 @@ fn fresh() -> AppRuntime<App> {
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    runtime.pump(PumpBudget::new(256, 256, 256, 256));
+    let _ = runtime
+        .pump(PumpBudget::new(256, 256, 256, 256))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 }
 
 fn publish(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {

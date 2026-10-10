@@ -341,7 +341,7 @@ impl CounterHost {
 
     fn fail(&mut self, event_loop: &ActiveEventLoop, detail: &str) {
         eprintln!("counter native host fatal: {detail}");
-        let _ = self.runtime.shutdown();
+        self.shutdown_runtime_checked();
         event_loop.exit();
     }
 
@@ -443,7 +443,29 @@ impl CounterHost {
     }
 
     fn pump_runtime_once(&mut self) {
-        let _ = self.runtime.pump(HOST_PUMP_BUDGET);
+        let batch = self.runtime.pump(HOST_PUMP_BUDGET).unwrap_or_else(|error| {
+            unreachable!("native Counter lost input arbitration: {error:?}")
+        });
+        if !batch.ordered_records().is_empty() {
+            eprintln!(
+                "counter native input batch: {} ordered records, revision {}",
+                batch.ordered_records().len(),
+                batch.final_ownership().revision().get()
+            );
+        }
+    }
+
+    fn shutdown_runtime_checked(&mut self) {
+        let batch = self.runtime.shutdown().unwrap_or_else(|error| {
+            unreachable!("native Counter lost input retirement: {error:?}")
+        });
+        if !batch.ordered_records().is_empty() {
+            eprintln!(
+                "counter native close: {} ordered records, revision {}",
+                batch.ordered_records().len(),
+                batch.final_ownership().revision().get()
+            );
+        }
     }
 
     fn collect_redraw_request(&mut self) {
@@ -1016,7 +1038,7 @@ impl ApplicationHandler<HostEvent> for CounterHost {
         }
         match event {
             WindowEvent::CloseRequested | WindowEvent::Destroyed => {
-                let _ = self.runtime.shutdown();
+                self.shutdown_runtime_checked();
                 event_loop.exit();
             }
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
@@ -1077,7 +1099,7 @@ impl ApplicationHandler<HostEvent> for CounterHost {
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
-        let _ = self.runtime.shutdown();
+        self.shutdown_runtime_checked();
     }
 }
 

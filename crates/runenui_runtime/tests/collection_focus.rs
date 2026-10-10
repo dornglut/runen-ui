@@ -81,12 +81,16 @@ impl UiApp for App {
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 }
 
 fn id(runtime: &mut AppRuntime<App>, authored: &str) -> MountedNodeId {
@@ -108,6 +112,9 @@ fn command(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: Semant
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -196,12 +203,16 @@ fn group_policy_id(runtime: &mut AppRuntime<GroupPolicyApp>, authored: &str) -> 
 fn disabled_discoverable_policy_participates_in_focus_group_membership() {
     for (discoverable, expected) in [(true, "group.b"), (false, "group.c")] {
         let mut runtime = AppRuntime::<GroupPolicyApp>::mount(discoverable);
-        runtime.pump(PumpBudget::new(
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-        ));
+        let _ = runtime
+            .pump(PumpBudget::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned();
         let a = group_policy_id(&mut runtime, "group.a");
         let expected = group_policy_id(&mut runtime, expected);
         runtime
@@ -211,7 +222,11 @@ fn disabled_discoverable_policy_participates_in_focus_group_membership() {
                 CommandOrigin::programmatic(),
             )
             .unwrap_or_else(|_| unreachable!("group policy focus request is accepted"));
-        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+        let _ = runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned();
         runtime
             .submit_command(
                 a,
@@ -219,7 +234,11 @@ fn disabled_discoverable_policy_participates_in_focus_group_membership() {
                 CommandOrigin::programmatic(),
             )
             .unwrap_or_else(|_| unreachable!("group policy navigation is accepted"));
-        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+        let _ = runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned();
         assert_eq!(runtime.focus().focused_node(), Some(&expected));
     }
 }
@@ -294,12 +313,16 @@ fn group_navigation_reveals_the_exact_new_focus_target() {
         (),
         RuntimeConfig::default().with_trace_config(TraceConfig::new(256)),
     );
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,
@@ -320,7 +343,11 @@ fn group_navigation_reveals_the_exact_new_focus_target() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("first group item accepts focus"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     runtime
         .submit_command(
             a,
@@ -328,7 +355,11 @@ fn group_navigation_reveals_the_exact_new_focus_target() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("absolute group navigation is accepted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     assert_eq!(runtime.focus().focused_node(), Some(&c));
     let applied = runtime
@@ -378,12 +409,16 @@ fn type_ahead_navigation_reveals_the_exact_new_focus_target() {
         (),
         RuntimeConfig::default().with_trace_config(TraceConfig::new(256)),
     );
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,
@@ -404,7 +439,11 @@ fn type_ahead_navigation_reveals_the_exact_new_focus_target() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("first group item accepts focus"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     runtime
         .submit_keyboard(KeyboardEvent::new(
@@ -418,7 +457,11 @@ fn type_ahead_navigation_reveals_the_exact_new_focus_target() {
             None,
         ))
         .unwrap_or_else(|_| unreachable!("type-ahead keyboard input is admitted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     assert_eq!(runtime.focus().focused_node(), Some(&c));
     assert_eq!(

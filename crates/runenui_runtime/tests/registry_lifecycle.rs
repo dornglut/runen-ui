@@ -43,7 +43,11 @@ fn next_tick() -> Effects<Tick, runenui_core::NoHostProtocol> {
 #[test]
 fn ten_thousand_completed_anonymous_tasks_leave_no_registry_records() {
     let mut runtime = AppRuntime::<App>::mount(0);
-    let report = runtime.pump(PumpBudget::new(40_000, usize::MAX, TASK_COUNT, usize::MAX));
+    let report = runtime
+        .pump(PumpBudget::new(40_000, usize::MAX, TASK_COUNT, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(report.is_quiescent());
     assert_eq!(*runtime.state(), TASK_COUNT);
     assert_eq!(runtime.__live_work_record_count_for_test(), 0);

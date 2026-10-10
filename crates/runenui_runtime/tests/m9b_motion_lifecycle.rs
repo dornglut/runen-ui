@@ -102,7 +102,11 @@ fn dispatch(runtime: &mut AppRuntime<LifecycleApp>, action: LifecycleAction) {
     runtime
         .submit_action(action)
         .unwrap_or_else(|_| unreachable!("bounded lifecycle action is admitted"));
-    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 }
 
 fn advance(runtime: &AppRuntime<LifecycleApp>, millis: u64) {

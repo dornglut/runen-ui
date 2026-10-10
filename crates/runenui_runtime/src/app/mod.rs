@@ -1,6 +1,8 @@
 //! Application-bound runtime operations.
 
 mod focus;
+#[cfg(test)]
+mod input_arbitration_tests;
 mod surface;
 #[cfg(feature = "internal-test-seams")]
 mod testing;
@@ -12,10 +14,10 @@ use runenui_core::{CommandOrigin, ElementId, SemanticCommand, UiApp, View};
 
 use crate::{
     FocusState, FontFamilyName, FontRegistrationError, FontSourcePolicy, FontSourceSnapshot,
-    GenericFamilyMappingError, GenericFontFamily, MountedNodeId, MountedTreeIndex, PumpBudget,
-    PumpReport, ReconciliationReport, RuntimeConfig, RuntimeStatus, ShutdownReport,
-    SubmitActionResult, SurfaceBuildContext, SurfacePublication, Trace, TraceActionCategory,
-    WorkSequence, pump, runtime::Runtime,
+    GenericFamilyMappingError, GenericFontFamily, InputObservationError, InputPumpBatch,
+    InputShutdownBatch, MountedNodeId, MountedTreeIndex, PumpBudget, ReconciliationReport,
+    RuntimeConfig, RuntimeStatus, SubmitActionResult, SurfaceBuildContext, SurfacePublication,
+    Trace, TraceActionCategory, WorkSequence, pump, runtime::Runtime,
 };
 
 pub struct AppRuntime<App: UiApp> {
@@ -214,16 +216,40 @@ impl<App: UiApp> AppRuntime<App> {
             .submit_public_automation_command(authored_id, command)
     }
 
-    /// Processes at most the requested number of canonical work envelopes.
-    pub fn pump(&mut self, budget: PumpBudget) -> PumpReport {
+    /// Observes exact immutable current UI input ownership; never host gameplay policy.
+    ///
+    /// This method also observes accepted synchronous focus/composition/publication
+    /// changes that can occur without a canonical pump envelope.
+    ///
+    /// # Errors
+    /// Returns a structured error if a bounded snapshot cannot be allocated or
+    /// its non-wrapping revision cannot advance.
+    pub fn input_ownership(
+        &mut self,
+    ) -> Result<crate::InputOwnershipSnapshot, crate::InputObservationError> {
+        self.runtime.input_ownership()
+    }
+
+    /// Processes the canonical FIFO and returns ordered public input observations.
+    ///
+    /// # Errors
+    /// Returns an observation-admission error if the required bounded capacity
+    /// cannot be reserved before processing.
+    pub fn pump(&mut self, budget: PumpBudget) -> Result<InputPumpBatch, InputObservationError> {
         self.runtime.acknowledge_wake();
         let generation_before = self.runtime.report().generation();
-        let report = pump::pump::<App>(&mut self.runtime, budget);
+        let batch = pump::pump_recorded::<App>(&mut self.runtime, budget);
         if self.runtime.report().generation() != generation_before {
             self.runtime.note_surface_focus_validation();
         }
+        // Wake acknowledgement precedes the first fallible snapshot. Even
+        // when the FIFO is empty, a failed observation must remain retriable
+        // through the normal host wake path rather than silently disarming it.
+        if batch.is_err() {
+            self.runtime.request_input_observation_retry_wake();
+        }
         self.runtime.rearm_wake_if_needed();
-        report
+        batch
     }
 
     /// Advances the deterministic headless monotonic clock.
@@ -412,8 +438,12 @@ impl<App: UiApp> AppRuntime<App> {
         self.runtime.status()
     }
 
-    /// Explicitly and idempotently closes the runtime.
-    pub fn shutdown(&mut self) -> ShutdownReport {
-        self.runtime.shutdown()
+    /// Closes the runtime with the final revisioned ownership and retirement.
+    ///
+    /// # Errors
+    /// No closure occurs if mandatory capacity or final revision headroom
+    /// cannot be reserved before the irreversible shutdown transition.
+    pub fn shutdown(&mut self) -> Result<InputShutdownBatch, InputObservationError> {
+        self.runtime.shutdown_observed()
     }
 }

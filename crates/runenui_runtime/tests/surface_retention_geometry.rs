@@ -77,12 +77,16 @@ fn rejected(
 }
 
 fn pump_all(runtime: &mut AppRuntime<RetentionApp>) {
-    let _ = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 }
 
 fn publish(runtime: &mut AppRuntime<RetentionApp>) -> runenui_runtime::SurfacePublication {

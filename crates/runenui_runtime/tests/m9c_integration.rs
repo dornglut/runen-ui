@@ -251,12 +251,16 @@ fn focus_command(
     runtime
         .submit_command(target, command, CommandOrigin::programmatic())
         .unwrap_or_else(|_| unreachable!("focus command is admitted"));
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(report.is_quiescent());
 }
 
@@ -480,12 +484,16 @@ fn interaction_opacity(publication: &SurfacePublication) -> f32 {
 }
 
 fn pump_all<App: UiApp>(runtime: &mut AppRuntime<App>) {
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(report.is_quiescent());
 }
 

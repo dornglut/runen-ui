@@ -8,6 +8,7 @@ mod automation;
 mod focus;
 mod helpers;
 mod ingress;
+mod input_arbitration;
 mod lifecycle;
 mod mount;
 mod pointer;
@@ -73,6 +74,7 @@ pub(in crate::runtime) use helpers::{
     CommitError, mounted_effect_into_effect, public_trace_work_identity, trace_work_family,
     trace_work_owner, with_routed_parent,
 };
+pub(crate) use input_arbitration::InputSnapshotReservation;
 pub(in crate::runtime) use lifecycle::revoke_generation_authority;
 pub(crate) use model::CollectedRoutedOutput;
 pub(in crate::runtime) use model::{ActionCommitError, MutationPhase};
@@ -97,6 +99,7 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     pub(crate) trace_action_labeler: Option<fn(&Action) -> Option<&'static str>>,
     text_system: TextSystem,
     pub(crate) focus: FocusState,
+    input_observation: input_arbitration::InputObservationState,
     pub(crate) focus_group_type_ahead: FocusGroupTypeAheadState,
     pub(crate) presentation_lifecycle: PresentationLifecycleState,
     pointer_registry: PointerRegistry,

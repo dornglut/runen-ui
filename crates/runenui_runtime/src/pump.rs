@@ -179,46 +179,293 @@ impl PumpReport {
     }
 }
 
-pub(crate) fn pump<App: UiApp>(
+struct ReachedInput {
+    sequence: runenui_core::WorkSequence,
+    family: crate::UiInputFamily,
+    surface_id: Option<runenui_core::SurfaceId>,
+    device_id: Option<runenui_core::InputDeviceId>,
+    pointer_id: Option<runenui_core::PointerId>,
+    finality: crate::UiInputFinality,
+}
+
+struct RecordedPump {
+    records: Vec<crate::InputArbitrationRecord>,
+    latest: crate::InputOwnershipSnapshot,
+    processed_through: Option<runenui_core::WorkSequence>,
+    progress: bool,
+    prepared: Option<crate::runtime::InputSnapshotReservation>,
+    revision_retired: bool,
+    cancelled_for_revision: usize,
+}
+
+impl RecordedPump {
+    fn new<State, Action, Protocol: runenui_core::HostProtocol>(
+        runtime: &mut Runtime<State, Action, Protocol>,
+    ) -> Result<Self, crate::InputObservationError> {
+        Ok(Self {
+            records: Vec::new(),
+            latest: runtime.input_ownership()?,
+            processed_through: None,
+            // The initial projection may publish pending outside-pump revision
+            // changes before the first readiness reservation. It is therefore
+            // already observable progress: subsequent capacity failures MUST
+            // return its snapshot instead of discarding it via a bare Err.
+            progress: true,
+            prepared: None,
+            revision_retired: false,
+            cancelled_for_revision: 0,
+        })
+    }
+
+    /// Reserve three ordered records and all nested ownership snapshot storage
+    /// before reaching the next canonical mutation/checkpoint.
+    fn admit<State, Action, Protocol: runenui_core::HostProtocol>(
+        &mut self,
+        runtime: &mut Runtime<State, Action, Protocol>,
+    ) -> Result<bool, crate::InputObservationError> {
+        if self.records.try_reserve(3).is_err() {
+            if self.progress {
+                return Ok(false);
+            }
+            return Err(crate::InputObservationError::Capacity);
+        }
+        let reserved = match runtime.reserve_input_observation() {
+            Ok(reserved) => reserved,
+            Err(crate::InputObservationError::Capacity) if self.progress => return Ok(false),
+            Err(crate::InputObservationError::RevisionExhausted) if self.progress => {
+                // Reserve even the final terminal snapshot before changing
+                // any runtime authority; a temporary capacity refusal pauses
+                // without discarding earlier settled input.
+                let terminal_reservation = match runtime.reserve_input_terminal_projection() {
+                    Ok(reservation) => reservation,
+                    Err(crate::InputObservationError::Capacity) => return Ok(false),
+                    Err(error) => return Err(error),
+                };
+                self.cancelled_for_revision =
+                    runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                let (latest, transition) = runtime.input_ownership_reserved(terminal_reservation);
+                if latest.revision() != self.latest.revision() {
+                    self.records
+                        .push(crate::InputArbitrationRecord::OwnershipChanged(
+                            crate::InputOwnershipTransition {
+                                before_revision: self.latest.revision(),
+                                after: transition,
+                            },
+                        ));
+                }
+                self.latest = latest;
+                if let Some(retirement) = runtime.input_retirement_record() {
+                    self.records
+                        .push(crate::InputArbitrationRecord::ScopeRetired(retirement));
+                }
+                self.revision_retired = true;
+                return Ok(false);
+            }
+            Err(error) => return Err(error),
+        };
+        self.prepared = Some(reserved);
+        Ok(true)
+    }
+
+    fn observe<State, Action, Protocol: runenui_core::HostProtocol>(
+        &mut self,
+        runtime: &mut Runtime<State, Action, Protocol>,
+        input: Option<ReachedInput>,
+    ) {
+        let prepared = self
+            .prepared
+            .take()
+            .unwrap_or_else(|| unreachable!("canonical boundary was pre-reserved"));
+        let (latest, transition) = runtime.input_ownership_reserved(prepared);
+        if latest.revision() != self.latest.revision() {
+            self.records
+                .push(crate::InputArbitrationRecord::OwnershipChanged(
+                    crate::InputOwnershipTransition {
+                        before_revision: self.latest.revision(),
+                        after: transition,
+                    },
+                ));
+        }
+        if let Some(ReachedInput {
+            sequence,
+            family,
+            surface_id,
+            device_id,
+            pointer_id,
+            finality,
+        }) = input
+        {
+            self.records
+                .push(crate::InputArbitrationRecord::InputSettled(
+                    crate::UiInputSettlement {
+                        scope: latest.scope().clone(),
+                        sequence,
+                        family,
+                        surface_id,
+                        device_id,
+                        pointer_id,
+                        finality,
+                        ownership_revision: latest.revision(),
+                    },
+                ));
+        }
+        self.latest = latest;
+        if let Some(retirement) = runtime.input_retirement_record() {
+            self.records
+                .push(crate::InputArbitrationRecord::ScopeRetired(retirement));
+        }
+        self.progress = true;
+    }
+
+    fn finish<State, Action, Protocol: runenui_core::HostProtocol>(
+        self,
+        runtime: &mut Runtime<State, Action, Protocol>,
+        budget: PumpBudget,
+        processed: usize,
+        cancelled: usize,
+        totals: ReadinessTotals,
+        paused: bool,
+    ) -> crate::InputPumpBatch {
+        let paused = paused && !self.revision_retired;
+        if paused {
+            runtime.request_input_observation_retry_wake();
+        }
+        let mut report = finish_report(
+            runtime,
+            budget,
+            processed,
+            cancelled.saturating_add(self.cancelled_for_revision),
+            totals,
+        );
+        if paused && matches!(report.outcome, PumpOutcome::Quiescent) {
+            report.outcome = PumpOutcome::BudgetExhausted;
+        }
+        crate::InputPumpBatch {
+            report,
+            ordered_records: self.records,
+            processed_through: self.processed_through,
+            final_ownership: self.latest,
+            pause_reason: paused.then_some(crate::InputPumpPauseReason::ObservationCapacity),
+        }
+    }
+}
+
+/// Canonical in-order pump including exact native receipts, non-input owner
+/// transitions, retirement and reached-work fence. This is the *only* executor.
+#[allow(clippy::too_many_lines)]
+pub(crate) fn pump_recorded<App: UiApp>(
     runtime: &mut Runtime<App::State, App::Action, App::HostProtocol>,
     budget: PumpBudget,
-) -> PumpReport {
+) -> Result<crate::InputPumpBatch, crate::InputObservationError> {
+    let mut observed = RecordedPump::new(runtime)?;
     let mut processed = 0usize;
     let mut cancelled = 0usize;
     let mut totals = ReadinessTotals::default();
 
+    if !observed.admit(runtime)? {
+        // Even with zero reached FIFO work, the initial immutable ownership
+        // snapshot may have advanced a synchronous revision. Retain that fact
+        // and preserve all queued receipts for a later exact retry.
+        return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
+    }
     readiness_checkpoint(runtime, budget, &mut totals);
+    observed.observe(runtime, None);
     while processed < budget.max_processed_envelopes() {
         if runtime.queue_is_empty() {
+            if !observed.admit(runtime)? {
+                return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
+            }
             readiness_checkpoint(runtime, budget, &mut totals);
+            observed.observe(runtime, None);
             if runtime.queue_is_empty() {
-                return finish_report(runtime, budget, processed, cancelled, totals);
+                return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
             }
         }
+        if !observed.admit(runtime)? {
+            return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
+        }
         let Some(envelope) = runtime.pop_work() else {
+            // A canonical pop can be empty after its preflight; no envelope
+            // was consumed. The previously reserved boundary is sufficient.
             readiness_checkpoint(runtime, budget, &mut totals);
-            return finish_report(runtime, budget, processed, cancelled, totals);
+            observed.observe(runtime, None);
+            return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
         };
-        let result = match envelope {
+        let sequence = envelope.sequence();
+        let (result, settled) = match envelope {
             WorkEnvelope::ApplicationAction(envelope) => {
-                process_application_action::<App>(runtime, envelope)
+                (process_application_action::<App>(runtime, envelope), None)
             }
             WorkEnvelope::SemanticCommand(envelope) => {
                 runtime.process_semantic_command(envelope);
-                ProcessApplicationActionOutcome::Completed
+                (ProcessApplicationActionOutcome::Completed, None)
             }
             WorkEnvelope::ApplicationCommand(envelope) => {
                 runtime.process_application_command(envelope);
-                ProcessApplicationActionOutcome::Completed
+                (ProcessApplicationActionOutcome::Completed, None)
             }
-            WorkEnvelope::Pointer(envelope) => runtime.process_pointer_envelope(envelope),
+            WorkEnvelope::Pointer(envelope) => {
+                let identity = match &envelope.payload {
+                    crate::queue::PointerEnvelopePayload::Event(event) => Some((
+                        crate::UiInputFamily::Pointer,
+                        Some(event.surface_context().surface_id().clone()),
+                        event.device_id(),
+                        Some(event.pointer_id()),
+                    )),
+                    crate::queue::PointerEnvelopePayload::StationaryRehit(_) => None,
+                };
+                let (outcome, finality) = runtime.process_pointer_envelope(envelope);
+                (
+                    outcome,
+                    identity
+                        .zip(finality)
+                        .map(
+                            |((family, surface, device, pointer), finality)| ReachedInput {
+                                sequence,
+                                family,
+                                surface_id: surface,
+                                device_id: device,
+                                pointer_id: pointer,
+                                finality,
+                            },
+                        ),
+                )
+            }
             WorkEnvelope::Input(envelope) => {
-                runtime.process_input_envelope(envelope);
-                ProcessApplicationActionOutcome::Completed
+                let (family, device) = match &envelope.payload {
+                    crate::queue::InputEnvelopePayload::Keyboard(event) => {
+                        (crate::UiInputFamily::Keyboard, event.device_id())
+                    }
+                    crate::queue::InputEnvelopePayload::CommittedText(event) => {
+                        (crate::UiInputFamily::CommittedText, event.device_id())
+                    }
+                    crate::queue::InputEnvelopePayload::Composition(event) => (
+                        crate::UiInputFamily::Composition,
+                        match event {
+                            runenui_core::CompositionEvent::Start(start) => start.device_id(),
+                            _ if runtime.composition.generation() == Some(event.generation()) => {
+                                runtime.composition.device_id()
+                            }
+                            _ => None,
+                        },
+                    ),
+                };
+                let finality = runtime.process_input_envelope(envelope);
+                (
+                    ProcessApplicationActionOutcome::Completed,
+                    Some(ReachedInput {
+                        sequence,
+                        family,
+                        surface_id: None,
+                        device_id: device,
+                        pointer_id: None,
+                        finality,
+                    }),
+                )
             }
             WorkEnvelope::EffectStart(work) => {
                 runtime.process_effect_start(work.sequence, work.generation);
-                ProcessApplicationActionOutcome::Completed
+                (ProcessApplicationActionOutcome::Completed, None)
             }
             WorkEnvelope::WorkCancellation(work) => {
                 runtime.process_work_cancellation(
@@ -227,16 +474,19 @@ pub(crate) fn pump<App: UiApp>(
                     work.identity,
                     work.causal_parent,
                 );
-                ProcessApplicationActionOutcome::Completed
+                (ProcessApplicationActionOutcome::Completed, None)
             }
-            WorkEnvelope::FrameworkServiceResponse(envelope) => runtime
-                .process_framework_service_response(envelope)
-                .map_or(ProcessApplicationActionOutcome::Completed, |action| {
-                    process_application_action::<App>(runtime, action)
-                }),
+            WorkEnvelope::FrameworkServiceResponse(envelope) => (
+                runtime
+                    .process_framework_service_response(envelope)
+                    .map_or(ProcessApplicationActionOutcome::Completed, |action| {
+                        process_application_action::<App>(runtime, action)
+                    }),
+                None,
+            ),
             WorkEnvelope::TimerFiring(work) => {
                 runtime.process_timer_firing(work.sequence, work.generation);
-                ProcessApplicationActionOutcome::Completed
+                (ProcessApplicationActionOutcome::Completed, None)
             }
             WorkEnvelope::MountedSubscriptionReconcile {
                 sequence,
@@ -244,25 +494,40 @@ pub(crate) fn pump<App: UiApp>(
                 causal_parent,
             } => {
                 runtime.process_mounted_subscription_reconcile(sequence, &owner, causal_parent);
-                ProcessApplicationActionOutcome::Completed
+                (ProcessApplicationActionOutcome::Completed, None)
             }
         };
         processed += 1;
+        observed.processed_through = Some(sequence);
+        observed.observe(runtime, settled);
         if let ProcessApplicationActionOutcome::Terminal {
-            reason: _reason,
+            reason,
             cancelled: terminal_cancelled,
         } = result
         {
+            debug_assert_eq!(runtime.status(), RuntimeStatus::Terminal(reason));
             cancelled = terminal_cancelled;
+            if !observed.admit(runtime)? {
+                return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
+            }
             readiness_checkpoint(runtime, budget, &mut totals);
-            return finish_report(runtime, budget, processed, cancelled, totals);
+            observed.observe(runtime, None);
+            return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
         }
         if processed < budget.max_processed_envelopes() {
+            if !observed.admit(runtime)? {
+                return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
+            }
             readiness_checkpoint(runtime, budget, &mut totals);
+            observed.observe(runtime, None);
         }
     }
+    if !observed.admit(runtime)? {
+        return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
+    }
     readiness_checkpoint(runtime, budget, &mut totals);
-    finish_report(runtime, budget, processed, cancelled, totals)
+    observed.observe(runtime, None);
+    Ok(observed.finish(runtime, budget, processed, cancelled, totals, false))
 }
 
 #[derive(Clone, Copy, Default)]
@@ -347,7 +612,7 @@ mod tests {
 
     use runenui_core::{Element, NoHostProtocol, UiApp, View, text};
 
-    use super::{PumpBudget, pump};
+    use super::{PumpBudget, pump_recorded};
     use crate::{RuntimeConfig, TraceActionCategory, runtime::Runtime};
 
     struct App;
@@ -367,23 +632,50 @@ mod tests {
     }
 
     #[test]
+    fn processed_fence_and_shutdown_retirement_are_exact_and_nonrepeating() {
+        let mut runtime = Runtime::mount(0, App::root, RuntimeConfig::default());
+        let receipt = runtime
+            .submit_action((), TraceActionCategory::DirectSubmission, None, None)
+            .unwrap_or_else(|_| unreachable!("bounded action ingress succeeds"));
+        let work = super::pump_recorded::<App>(&mut runtime, PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("bounded processing observation succeeds"));
+        assert_eq!(work.processed_through(), Some(receipt));
+        assert_eq!(work.report().processed_envelopes(), 1);
+        assert_eq!(work.ordered_records(), []);
+
+        let _ = runtime.shutdown();
+        let retired = super::pump_recorded::<App>(&mut runtime, PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("shutdown requires no individual cancelled receipt"));
+        assert_eq!(retired.processed_through(), None);
+        assert!(matches!(
+            retired.ordered_records(),
+            [crate::InputArbitrationRecord::ScopeRetired(_)]
+        ));
+        let again = super::pump_recorded::<App>(&mut runtime, PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("observed retirement stays retired"));
+        assert_eq!(again.ordered_records(), []);
+    }
+
+    #[test]
     fn one_checkpoint_authority_runs_before_and_at_the_final_boundary() {
         let mut runtime = Runtime::mount(0, App::root, RuntimeConfig::default());
         runtime
             .submit_action((), TraceActionCategory::DirectSubmission, None, None)
             .unwrap_or_else(|_| unreachable!());
         assert_eq!(runtime.readiness_checkpoint_count_for_test(), 0);
-        let report = pump::<App>(
+        let report = pump_recorded::<App>(
             &mut runtime,
             PumpBudget::new(0, usize::MAX, usize::MAX, usize::MAX),
-        );
-        assert_eq!(report.processed_envelopes(), 0);
+        )
+        .unwrap_or_else(|_| unreachable!("bounded pump snapshot"));
+        assert_eq!(report.report().processed_envelopes(), 0);
         assert_eq!(runtime.readiness_checkpoint_count_for_test(), 2);
-        let report = pump::<App>(
+        let report = pump_recorded::<App>(
             &mut runtime,
             PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX),
-        );
-        assert_eq!(report.processed_envelopes(), 1);
+        )
+        .unwrap_or_else(|_| unreachable!("bounded pump snapshot"));
+        assert_eq!(report.report().processed_envelopes(), 1);
         assert_eq!(runtime.readiness_checkpoint_count_for_test(), 4);
     }
 }
