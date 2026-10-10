@@ -25,11 +25,11 @@ use runenui_core::{
     WidgetMeasure, WidgetMeasureInput, WidgetTextInput,
 };
 use runenui_runtime::{
-    AppRuntime, FontFamilyName, GenericFontFamily, InputArbitrationRecord, LogicalSize,
-    PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason,
+    AppRuntime, FontFamilyName, GenericFontFamily, InputArbitrationRecord, LogicalSize, PumpBudget,
+    RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason,
     SubmitSemanticActionErrorKind, SubmitTextErrorKind, SurfaceBuildContext, TraceConfig,
-    TraceFrameworkServiceKind, TraceFrameworkServiceOutcome, TracePayloadCapture,
-    TraceRecordKind, TraceReplay, UiInputClaimReason, UiInputConflict, UiInputFinality,
+    TraceFrameworkServiceKind, TraceFrameworkServiceOutcome, TracePayloadCapture, TraceRecordKind,
+    TraceReplay, UiInputClaimReason, UiInputConflict, UiInputFinality,
 };
 
 const CANTARELL: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/Cantarell-Regular.ttf");
