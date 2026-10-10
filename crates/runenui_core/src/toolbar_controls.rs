@@ -15,13 +15,15 @@ use crate::{
     widget_protocol::ChildBearingWidget,
 };
 
+fn toolbar_container(orientation: Axis) -> LayoutContainer {
+    LayoutContainer::Flex(FlexContainerStyle::default().with_direction(match orientation {
+        Axis::Horizontal => FlexDirection::Row,
+        Axis::Vertical => FlexDirection::Column,
+    }))
+}
+
 fn toolbar_layout(orientation: Axis) -> LayoutStyle {
-    LayoutStyle::default().with_container(LayoutContainer::Flex(
-        FlexContainerStyle::default().with_direction(match orientation {
-            Axis::Horizontal => FlexDirection::Row,
-            Axis::Vertical => FlexDirection::Column,
-        }),
-    ))
+    LayoutStyle::default().with_container(toolbar_container(orientation))
 }
 
 /// A logical toolbar composed from ordinary public child controls.
@@ -76,7 +78,7 @@ impl<Action> Toolbar<Action> {
     #[must_use]
     pub fn orientation(mut self, orientation: Axis) -> Self {
         self.orientation = orientation;
-        self.common.layout = toolbar_layout(orientation);
+        self.common.layout = self.common.layout.with_container(toolbar_container(orientation));
         self
     }
 

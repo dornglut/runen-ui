@@ -3,7 +3,8 @@ use core::num::NonZeroUsize;
 use runenui_core::{
     Axis, ElementId, FocusGroupBoundaryPolicy, Focusability, KeyLocation, KeyModifiers,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
-    PhysicalKey, SemanticCommand, SemanticOrientation, SemanticRole, UiApp, View, button, column,
+    FlexDirection, LayoutContainer, LogicalLength, PhysicalKey, SemanticCommand,
+    SemanticOrientation, SemanticRole, UiApp, View, button, column,
     radio_button, radio_group, toolbar,
 };
 use runenui_runtime::PumpBudget;
@@ -227,4 +228,27 @@ fn explicit_activation_does_not_transfer_selection_or_activate_on_navigation() {
     assert!(h.state().activations.is_empty());
     command(&mut h, "toolbar.save", SemanticCommand::Activate);
     assert_eq!(h.state().activations, vec!["Save"]);
+}
+
+#[test]
+fn toolbar_gap_is_retained_across_orientation_builder_order() {
+    let first: runenui_core::Element<()> = toolbar([
+        button("One").into_element(),
+        button("Two").into_element(),
+    ])
+    .gap(LogicalLength::from(12_u16))
+    .orientation(Axis::Vertical)
+    .into_element();
+    let second: runenui_core::Element<()> = toolbar([
+        button("One").into_element(),
+        button("Two").into_element(),
+    ])
+    .orientation(Axis::Vertical)
+    .gap(LogicalLength::from(12_u16))
+    .into_element();
+    assert_eq!(first.layout(), second.layout());
+    assert!(matches!(
+        first.layout().container(),
+        LayoutContainer::Flex(style) if style.direction() == FlexDirection::Column
+    ));
 }
