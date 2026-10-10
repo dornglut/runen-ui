@@ -56,7 +56,7 @@ fn settle(runtime: &mut AppRuntime<App>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn exact_target_activate_routes_then_appends_its_action() {
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
 
-    runtime.pump(PumpBudget::new(1, 0, 0, 0));
+    runtime.pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned();
     assert_eq!(calls.get(), 1);
     assert_eq!(runtime.state().updates, 0);
     assert!(runtime.trace().records().any(|record| {
@@ -81,7 +81,7 @@ fn exact_target_activate_routes_then_appends_its_action() {
             && record.work_sequence() == Some(submission.sequence())
     }));
 
-    runtime.pump(PumpBudget::new(1, 0, 0, 0));
+    runtime.pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned();
     assert_eq!(runtime.state().updates, 1);
 }
 
@@ -110,7 +110,7 @@ fn full_and_closed_submission_recover_without_invoking_the_factory() {
     let closed_calls = Rc::new(Cell::new(0));
     let mut closed = AppRuntime::<App>::mount(state(&closed_calls));
     let target = closed.index().nodes()[0].id().clone();
-    closed.shutdown();
+    closed.shutdown().expect("shutdown observation").report().to_owned();
     let Err(error) = closed.submit_command(
         target,
         SemanticCommand::Activate,
@@ -150,7 +150,7 @@ fn disabled_and_non_actionable_targets_route_without_activation_factory_output()
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     let targets: Vec<_> = runtime
         .index()
         .nodes()
@@ -167,10 +167,10 @@ fn disabled_and_non_actionable_targets_route_without_activation_factory_output()
             )
             .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
     }
-    runtime.pump(PumpBudget::new(2, 0, 0, 0));
+    runtime.pump(PumpBudget::new(2, 0, 0, 0)).expect("pump observation").report().to_owned();
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, 0, 0, 0))
+            .pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         0
     );
@@ -220,7 +220,7 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     let owner = enabled.index().nodes()[0].id().clone();
     let accepted = enabled
         .submit_command(
@@ -229,14 +229,14 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
             CommandOrigin::accessibility(),
         )
         .unwrap_or_else(|_| unreachable!("live link accepts semantic activation"));
-    enabled.pump(PumpBudget::new(1, 0, 0, 0));
+    enabled.pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned();
     assert_eq!(calls.get(), 1);
     assert_eq!(enabled.state().updates, 0);
     assert!(enabled.trace().records().any(|record| {
         matches!(record.kind(), TraceRecordKind::RoutedEventCommitted)
             && record.work_sequence() == Some(accepted.sequence())
     }));
-    enabled.pump(PumpBudget::new(1, 0, 0, 0));
+    enabled.pump(PumpBudget::new(1, 0, 0, 0)).expect("pump observation").report().to_owned();
     assert_eq!(enabled.state().updates, 1);
 
     let disabled_calls = Rc::new(Cell::new(0));
@@ -250,7 +250,7 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     let owner = disabled.index().nodes()[0].id().clone();
     disabled
         .submit_command(
@@ -264,7 +264,7 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert_eq!(disabled_calls.get(), 0);
     assert_eq!(disabled.state().updates, 0);
 }

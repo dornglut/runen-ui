@@ -373,7 +373,7 @@ fn render_initial_and_start_transition(
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
     assert!(report.is_quiescent());
     let transition_start = publish(runtime);
     assert!((sampled_opacity(&transition_start) - 1.0).abs() <= f32::EPSILON);

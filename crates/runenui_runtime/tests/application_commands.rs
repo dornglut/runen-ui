@@ -332,11 +332,11 @@ fn settle(runtime: &mut AppRuntime<App>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
 }
 
 fn pump_one(runtime: &mut AppRuntime<App>) {
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
 }
 
 fn authored_target(
@@ -625,7 +625,7 @@ fn application_command_waiting_queue_saturation_rejects_before_emitter_callback(
 
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );
@@ -845,7 +845,7 @@ fn activation_command_waiting_queue_saturation_rejects_before_callback_or_partia
 
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
             .processed_envelopes(),
         1
     );

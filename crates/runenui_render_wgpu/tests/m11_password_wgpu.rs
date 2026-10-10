@@ -148,7 +148,7 @@ fn masked_standard_password_renders_with_real_wgpu_and_reclassifies_without_sour
     runtime
         .submit_action(Action::Toggle)
         .unwrap_or_else(|_| unreachable!("toggle is accepted"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let public = publish(&mut runtime);
     let visible = renderer.render_offscreen_publication(public.paint_publication(), &provider)?;
     assert_ne!(pixels, visible.readback().rgba8_srgb());
@@ -165,7 +165,7 @@ fn masked_standard_password_renders_with_real_wgpu_and_reclassifies_without_sour
     runtime
         .submit_action(Action::Toggle)
         .unwrap_or_else(|_| unreachable!("toggle is accepted"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let masked_again = publish(&mut runtime);
     assert!(!format!("{:?}", masked_again.paint_scene()).contains(SECRET));
     let repeated =

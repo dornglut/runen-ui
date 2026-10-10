@@ -424,7 +424,7 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|error| panic!("public runtime focus request is admitted: {error:?}"));
-    runtime.pump(full_pump());
+    runtime.pump(full_pump()).expect("pump observation").report().to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&owner));
     let focused = publish(&mut runtime);
     let editable_node = focused
@@ -462,7 +462,7 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
         filled_rects.len() > initial_rect_fill_count,
         "focused publication adds a caret to the retained non-collapsed selection: initial={initial_rect_fill_count}, focused={filled_rects:?}"
     );
-    runtime.pump(full_pump());
+    runtime.pump(full_pump()).expect("pump observation").report().to_owned();
     let services = runtime.pending_framework_services();
     let candidate = services
         .iter()
@@ -523,7 +523,7 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
         editable_node.id().clone(),
         TextSelection::new(selection_anchor, selection_active)?,
     ))?;
-    runtime.pump(full_pump());
+    runtime.pump(full_pump()).expect("pump observation").report().to_owned();
 
     let composition = runtime
         .start_composition(None)
@@ -538,7 +538,7 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
             Some(CompositionRange::new(preedit, 2, 5)?),
         )
         .unwrap_or_else(|error| panic!("composition update is admitted: {error:?}"));
-    runtime.pump(full_pump());
+    runtime.pump(full_pump()).expect("pump observation").report().to_owned();
     let preedit_surface = publish(&mut runtime);
     let preedit_fills = preedit_surface
         .paint_scene()
@@ -574,7 +574,7 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
             ),
         )
         .unwrap_or_else(|error| panic!("wheel input is admitted: {error:?}"));
-    runtime.pump(full_pump());
+    runtime.pump(full_pump()).expect("pump observation").report().to_owned();
     let scrolled = publish(&mut runtime);
     assert_eq!(scrolled.hit_test_scene().target_at(point), Some(&owner));
     let scrolled_text_item = scrolled
@@ -732,7 +732,7 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
         .unwrap_or_else(|error| {
             panic!("the visual composition fixture cancels cleanly: {error:?}")
         });
-    runtime.pump(full_pump());
+    runtime.pump(full_pump()).expect("pump observation").report().to_owned();
 
     let pointer_id = PointerId::new(24).unwrap_or_else(|| unreachable!("pointer ID is nonzero"));
     let click_context = scrolled.input_context().clone();
@@ -751,7 +751,7 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
             .with_changed_button(runenui_core::PointerButton::Primary),
         )
         .unwrap_or_else(|error| panic!("scrolled text click is admitted: {error:?}"));
-    runtime.pump(full_pump());
+    runtime.pump(full_pump()).expect("pump observation").report().to_owned();
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -764,7 +764,7 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
             .with_changed_button(runenui_core::PointerButton::Primary),
         )
         .unwrap_or_else(|error| panic!("scrolled text release is admitted: {error:?}"));
-    runtime.pump(full_pump());
+    runtime.pump(full_pump()).expect("pump observation").report().to_owned();
     let clicked = publish(&mut runtime);
     let clicked_selection = clicked
         .semantic_publication()
