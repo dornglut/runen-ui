@@ -118,12 +118,16 @@ fn member(state: &State, name: &'static str) -> Element<Action> {
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 }
 
 fn id(runtime: &mut AppRuntime<App>, name: &str) -> MountedNodeId {
@@ -144,7 +148,10 @@ fn command(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: Semant
         .unwrap_or_else(|_| unreachable!("live focus-group command is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -333,7 +340,10 @@ fn absolute_group_navigation_is_idempotent_at_the_requested_boundary() {
     assert!(runtime.state().activations.is_empty());
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         0
     );
@@ -559,7 +569,10 @@ fn nested_command(
         .unwrap_or_else(|_| unreachable!("live nested focus-group command is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -568,12 +581,16 @@ fn nested_command(
 #[test]
 fn nested_groups_use_nearest_ownership_and_outer_group_treats_inner_as_one_member() {
     let mut runtime = AppRuntime::<NestedApp>::mount(State::default());
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 
     let before = nested_id(&mut runtime, "before");
     let a = nested_id(&mut runtime, "a");
@@ -715,12 +732,16 @@ fn scope_boundary_id(runtime: &mut AppRuntime<ScopeBoundaryApp>, name: &str) -> 
 #[test]
 fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() {
     let mut runtime = AppRuntime::<ScopeBoundaryApp>::mount(State::default());
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 
     let a = scope_boundary_id(&mut runtime, "scope.a");
     let outer = scope_boundary_id(&mut runtime, "scope.outer");
@@ -734,7 +755,11 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("outer member focus request is accepted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     runtime
         .submit_command(
             a.clone(),
@@ -742,7 +767,11 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("outer group navigation is accepted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&c));
     assert!(
         !runtime
@@ -762,7 +791,11 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("inner-scope focus request is accepted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&x));
 
     runtime
@@ -772,7 +805,11 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("outer-scope restoration is accepted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(
         runtime.focus().focused_node(),
         Some(&a),
@@ -786,7 +823,11 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("inner-scope refocus request is accepted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&x));
 
     runtime
@@ -796,7 +837,11 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("inner-scope group command routes normally"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.focus().focused_node(), Some(&x));
 
@@ -807,7 +852,11 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("ancestor-group command routes normally"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.focus().focused_node(), Some(&x));
 
@@ -818,7 +867,11 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("unrelated outer member command routes normally"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.focus().focused_node(), Some(&x));
 }
@@ -826,12 +879,16 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
 #[test]
 fn absolute_group_navigation_does_not_escape_a_nested_focus_scope() {
     let mut runtime = AppRuntime::<ScopeBoundaryApp>::mount(State::default());
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 
     let outer = scope_boundary_id(&mut runtime, "scope.outer");
     let x = scope_boundary_id(&mut runtime, "scope.x");
@@ -842,7 +899,11 @@ fn absolute_group_navigation_does_not_escape_a_nested_focus_scope() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("inner-scope focus request is accepted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&x));
 
     for command in [
@@ -852,7 +913,11 @@ fn absolute_group_navigation_does_not_escape_a_nested_focus_scope() {
         runtime
             .submit_command(outer.clone(), command, CommandOrigin::programmatic())
             .unwrap_or_else(|_| unreachable!("absolute ancestor-group command routes normally"));
-        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned();
         assert_eq!(runtime.status(), RuntimeStatus::Running);
         assert_eq!(
             runtime.focus().focused_node(),
@@ -896,7 +961,10 @@ fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
     }
     assert_eq!(
         manual
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -925,7 +993,10 @@ fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
     }
     assert_eq!(
         activate
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -1030,12 +1101,16 @@ fn absolute_group_navigation_reserves_activation_capacity_before_focus_commit() 
     let config =
         RuntimeConfig::default().with_limits(RuntimeLimits::default().with_transaction_outputs(1));
     let mut runtime = AppRuntime::<OutputPressureApp>::mount_with_config(State::default(), config);
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 
     let a = pressure_id(&mut runtime, "pressure.a");
     let b = pressure_id(&mut runtime, "pressure.b");
@@ -1049,7 +1124,10 @@ fn absolute_group_navigation_reserves_activation_capacity_before_focus_commit() 
         .unwrap_or_else(|_| unreachable!("pressure focus request is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -1063,7 +1141,10 @@ fn absolute_group_navigation_reserves_activation_capacity_before_focus_commit() 
         .unwrap_or_else(|_| unreachable!("absolute pressure navigation is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -1072,12 +1153,16 @@ fn absolute_group_navigation_reserves_activation_capacity_before_focus_commit() 
     assert_eq!(runtime.focus().focused_node(), Some(&b));
     assert!(runtime.state().activations.is_empty());
 
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.state().activations, vec!["routed", "b"]);
 }
@@ -1088,12 +1173,16 @@ fn activate_target_reserves_default_command_capacity_beyond_routed_callback_outp
     let config =
         RuntimeConfig::default().with_limits(RuntimeLimits::default().with_transaction_outputs(1));
     let mut runtime = AppRuntime::<OutputPressureApp>::mount_with_config(State::default(), config);
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
 
     let a = pressure_id(&mut runtime, "pressure.a");
     let b = pressure_id(&mut runtime, "pressure.b");
@@ -1107,7 +1196,10 @@ fn activate_target_reserves_default_command_capacity_beyond_routed_callback_outp
         .unwrap_or_else(|_| unreachable!("pressure focus request is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -1121,7 +1213,10 @@ fn activate_target_reserves_default_command_capacity_beyond_routed_callback_outp
         .unwrap_or_else(|_| unreachable!("pressure group navigation is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -1130,12 +1225,16 @@ fn activate_target_reserves_default_command_capacity_beyond_routed_callback_outp
     assert_eq!(runtime.focus().focused_node(), Some(&b));
     assert!(runtime.state().activations.is_empty());
 
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.state().activations, vec!["routed", "b"]);
 }

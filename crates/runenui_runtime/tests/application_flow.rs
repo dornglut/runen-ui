@@ -49,7 +49,10 @@ fn queued_action_reconciles_without_replacing_compatible_nodes() {
     assert_eq!(runtime.state(), &0);
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         4
     );
@@ -100,7 +103,10 @@ fn routed_activation_queues_fresh_non_clone_actions() {
     assert_eq!(runtime.state(), &0);
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(7, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(7, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         7
     );
@@ -162,7 +168,10 @@ fn non_clone_actions_remain_supported() {
     assert!(runtime.state().is_empty());
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(3, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
+            .pump(PumpBudget::new(3, usize::MAX, usize::MAX, usize::MAX))
+            .expect("pump observation")
+            .report()
+            .to_owned()
             .processed_envelopes(),
         3
     );
