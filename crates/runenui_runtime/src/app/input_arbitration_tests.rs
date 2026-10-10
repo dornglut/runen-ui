@@ -617,8 +617,7 @@ fn accepted_composition_start_publishes_pending_ownership_without_pumping() {
         .nodes()
         .iter()
         .find(|node| {
-            node.authored_id()
-                == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
+            node.authored_id() == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
         })
         .unwrap_or_else(|| unreachable!("editor mounted"))
         .id()
@@ -651,11 +650,9 @@ fn accepted_composition_start_publishes_pending_ownership_without_pumping() {
         .input_ownership()
         .unwrap_or_else(|_| unreachable!("no-op query remains stable"));
     assert_eq!(unchanged.revision(), pending.revision());
-    let settled = pump::pump_recorded::<TextOwnershipApp>(
-        &mut app.runtime,
-        PumpBudget::new(1, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("accepted start processes exactly once"));
+    let settled =
+        pump::pump_recorded::<TextOwnershipApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("accepted start processes exactly once"));
     assert_eq!(settled.processed_through(), Some(receipt.sequence()));
     assert!(settled.ordered_records().iter().any(|record| matches!(
         record,
