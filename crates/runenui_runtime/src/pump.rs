@@ -179,90 +179,256 @@ impl PumpReport {
     }
 }
 
+/// One canonical execution path; the outer legacy report adapter is temporary
+/// draft-only until #429/M11 shared-file serialization permits the public cutover.
+/// It must be removed before #428 acceptance.
 pub(crate) fn pump<App: UiApp>(
     runtime: &mut Runtime<App::State, App::Action, App::HostProtocol>,
     budget: PumpBudget,
 ) -> PumpReport {
+    *pump_recorded::<App>(runtime, budget)
+        .expect("draft-only report adapter cannot express input observation failure")
+        .report()
+}
+
+struct RecordedPump {
+    records: Vec<crate::InputArbitrationRecord>,
+    latest: crate::InputOwnershipSnapshot,
+    processed_through: Option<runenui_core::WorkSequence>,
+    progress: bool,
+}
+
+impl RecordedPump {
+    fn new<State, Action, Protocol: runenui_core::HostProtocol>(
+        runtime: &mut Runtime<State, Action, Protocol>,
+    ) -> Result<Self, crate::InputObservationError> {
+        Ok(Self {
+            records: Vec::new(),
+            latest: runtime.input_ownership()?,
+            processed_through: None,
+            progress: false,
+        })
+    }
+
+    /// Reserve a strict upper bound of three ordered records *before* the boundary.
+    /// A pending storage failure never consumes another canonical envelope.
+    fn admit(&mut self) -> Result<bool, crate::InputObservationError> {
+        if self.records.try_reserve(3).is_err() {
+            if self.progress {
+                return Ok(false);
+            }
+            return Err(crate::InputObservationError::Capacity);
+        }
+        Ok(true)
+    }
+
+    fn observe<State, Action, Protocol: runenui_core::HostProtocol>(
+        &mut self,
+        runtime: &mut Runtime<State, Action, Protocol>,
+        input: Option<(runenui_core::WorkSequence, crate::UiInputFamily,
+                       Option<runenui_core::SurfaceId>, Option<runenui_core::InputDeviceId>,
+                       Option<runenui_core::PointerId>, crate::UiInputFinality)>,
+    ) -> Result<(), crate::InputObservationError> {
+        let latest = runtime.input_ownership()?;
+        if latest.revision() != self.latest.revision() {
+            self.records.push(crate::InputArbitrationRecord::OwnershipChanged(
+                crate::InputOwnershipTransition {
+                    before_revision: self.latest.revision(),
+                    after: latest.clone(),
+                },
+            ));
+        }
+        if let Some((sequence, family, surface_id, device_id, pointer_id, finality)) = input {
+            self.records.push(crate::InputArbitrationRecord::InputSettled(
+                crate::UiInputSettlement {
+                    scope: latest.scope().clone(),
+                    sequence,
+                    family,
+                    surface_id,
+                    device_id,
+                    pointer_id,
+                    finality,
+                    ownership_revision: latest.revision(),
+                },
+            ));
+        }
+        self.latest = latest;
+        if let Some(retirement) = runtime.input_retirement_record() {
+            self.records.push(crate::InputArbitrationRecord::ScopeRetired(retirement));
+        }
+        self.progress = true;
+        Ok(())
+    }
+
+    fn finish<State, Action, Protocol: runenui_core::HostProtocol>(
+        self,
+        runtime: &mut Runtime<State, Action, Protocol>,
+        budget: PumpBudget,
+        processed: usize,
+        cancelled: usize,
+        totals: ReadinessTotals,
+        paused: bool,
+    ) -> crate::InputPumpBatch {
+        let mut report = finish_report(runtime, budget, processed, cancelled, totals);
+        if paused && matches!(report.outcome, PumpOutcome::Quiescent) {
+            report.outcome = PumpOutcome::BudgetExhausted;
+        }
+        crate::InputPumpBatch {
+            report,
+            ordered_records: self.records,
+            processed_through: self.processed_through,
+            final_ownership: self.latest,
+            pause_reason: paused.then_some(crate::InputPumpPauseReason::ObservationCapacity),
+        }
+    }
+}
+
+/// Canonical in-order pump including exact native receipts, non-input owner
+/// transitions, retirement and reached-work fence. This is the *only* executor.
+#[allow(clippy::too_many_lines)]
+pub(crate) fn pump_recorded<App: UiApp>(
+    runtime: &mut Runtime<App::State, App::Action, App::HostProtocol>,
+    budget: PumpBudget,
+) -> Result<crate::InputPumpBatch, crate::InputObservationError> {
+    let mut observed = RecordedPump::new(runtime)?;
     let mut processed = 0usize;
     let mut cancelled = 0usize;
     let mut totals = ReadinessTotals::default();
 
+    if !observed.admit()? {
+        unreachable!("initial admission has no prior progress");
+    }
     readiness_checkpoint(runtime, budget, &mut totals);
+    observed.observe(runtime, None)?;
     while processed < budget.max_processed_envelopes() {
         if runtime.queue_is_empty() {
+            if !observed.admit()? {
+                return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
+            }
             readiness_checkpoint(runtime, budget, &mut totals);
+            observed.observe(runtime, None)?;
             if runtime.queue_is_empty() {
-                return finish_report(runtime, budget, processed, cancelled, totals);
+                return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
             }
         }
+        if !observed.admit()? {
+            return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
+        }
         let Some(envelope) = runtime.pop_work() else {
-            readiness_checkpoint(runtime, budget, &mut totals);
-            return finish_report(runtime, budget, processed, cancelled, totals);
-        };
-        let result = match envelope {
-            WorkEnvelope::ApplicationAction(envelope) => {
-                process_application_action::<App>(runtime, envelope)
+            // A popped envelope is never silently lost. An empty pop only
+            // happens after an ordinary checkpoint; preserve its work fence.
+            if !observed.admit()? {
+                return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
             }
+            readiness_checkpoint(runtime, budget, &mut totals);
+            observed.observe(runtime, None)?;
+            return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
+        };
+        let sequence = envelope.sequence();
+        let (result, settled) = match envelope {
+            WorkEnvelope::ApplicationAction(envelope) => (
+                process_application_action::<App>(runtime, envelope), None
+            ),
             WorkEnvelope::SemanticCommand(envelope) => {
                 runtime.process_semantic_command(envelope);
-                ProcessApplicationActionOutcome::Completed
+                (ProcessApplicationActionOutcome::Completed, None)
             }
             WorkEnvelope::ApplicationCommand(envelope) => {
                 runtime.process_application_command(envelope);
-                ProcessApplicationActionOutcome::Completed
+                (ProcessApplicationActionOutcome::Completed, None)
             }
-            WorkEnvelope::Pointer(envelope) => runtime.process_pointer_envelope(envelope).0,
+            WorkEnvelope::Pointer(envelope) => {
+                let identity = match &envelope.payload {
+                    crate::queue::PointerEnvelopePayload::Event(event) => Some((
+                        crate::UiInputFamily::Pointer,
+                        Some(event.surface_context().surface_id().clone()),
+                        event.device_id(),
+                        Some(event.pointer_id()),
+                    )),
+                    crate::queue::PointerEnvelopePayload::StationaryRehit(_) => None,
+                };
+                let (outcome, finality) = runtime.process_pointer_envelope(envelope);
+                (outcome, identity.zip(finality).map(|((family,surface,device,pointer),finality)| {
+                    (sequence, family, surface, device, pointer, finality)
+                }))
+            }
             WorkEnvelope::Input(envelope) => {
-                runtime.process_input_envelope(envelope);
-                ProcessApplicationActionOutcome::Completed
+                let (family, device) = match &envelope.payload {
+                    crate::queue::InputEnvelopePayload::Keyboard(event) => (
+                        crate::UiInputFamily::Keyboard, event.device_id(),
+                    ),
+                    crate::queue::InputEnvelopePayload::CommittedText(event) => (
+                        crate::UiInputFamily::CommittedText, event.device_id(),
+                    ),
+                    crate::queue::InputEnvelopePayload::Composition(event) => (
+                        crate::UiInputFamily::Composition,
+                        match event {
+                            runenui_core::CompositionEvent::Start(start) => start.device_id(),
+                            _ => None,
+                        },
+                    ),
+                };
+                let finality = runtime.process_input_envelope(envelope);
+                (
+                    ProcessApplicationActionOutcome::Completed,
+                    Some((sequence, family, None, device, None, finality)),
+                )
             }
             WorkEnvelope::EffectStart(work) => {
                 runtime.process_effect_start(work.sequence, work.generation);
-                ProcessApplicationActionOutcome::Completed
+                (ProcessApplicationActionOutcome::Completed, None)
             }
             WorkEnvelope::WorkCancellation(work) => {
                 runtime.process_work_cancellation(
-                    work.sequence,
-                    work.generation,
-                    work.identity,
-                    work.causal_parent,
+                    work.sequence, work.generation, work.identity, work.causal_parent,
                 );
-                ProcessApplicationActionOutcome::Completed
+                (ProcessApplicationActionOutcome::Completed, None)
             }
-            WorkEnvelope::FrameworkServiceResponse(envelope) => runtime
-                .process_framework_service_response(envelope)
-                .map_or(ProcessApplicationActionOutcome::Completed, |action| {
-                    process_application_action::<App>(runtime, action)
-                }),
+            WorkEnvelope::FrameworkServiceResponse(envelope) => (
+                runtime.process_framework_service_response(envelope)
+                    .map_or(ProcessApplicationActionOutcome::Completed, |action| {
+                        process_application_action::<App>(runtime, action)
+                    }), None
+            ),
             WorkEnvelope::TimerFiring(work) => {
                 runtime.process_timer_firing(work.sequence, work.generation);
-                ProcessApplicationActionOutcome::Completed
+                (ProcessApplicationActionOutcome::Completed, None)
             }
             WorkEnvelope::MountedSubscriptionReconcile {
-                sequence,
-                owner,
-                causal_parent,
+                sequence, owner, causal_parent,
             } => {
                 runtime.process_mounted_subscription_reconcile(sequence, &owner, causal_parent);
-                ProcessApplicationActionOutcome::Completed
+                (ProcessApplicationActionOutcome::Completed, None)
             }
         };
         processed += 1;
+        observed.processed_through = Some(sequence);
+        observed.observe(runtime, settled)?;
         if let ProcessApplicationActionOutcome::Terminal {
-            reason: _reason,
-            cancelled: terminal_cancelled,
-        } = result
-        {
+            reason: _, cancelled: terminal_cancelled,
+        } = result {
             cancelled = terminal_cancelled;
+            if !observed.admit()? {
+                return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
+            }
             readiness_checkpoint(runtime, budget, &mut totals);
-            return finish_report(runtime, budget, processed, cancelled, totals);
+            observed.observe(runtime, None)?;
+            return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
         }
         if processed < budget.max_processed_envelopes() {
+            if !observed.admit()? {
+                return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
+            }
             readiness_checkpoint(runtime, budget, &mut totals);
+            observed.observe(runtime, None)?;
         }
     }
+    if !observed.admit()? {
+        return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
+    }
     readiness_checkpoint(runtime, budget, &mut totals);
-    finish_report(runtime, budget, processed, cancelled, totals)
+    observed.observe(runtime, None)?;
+    Ok(observed.finish(runtime, budget, processed, cancelled, totals, false))
 }
 
 #[derive(Clone, Copy, Default)]

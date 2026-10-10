@@ -17,6 +17,7 @@ pub(super) struct InputObservationState {
     /// Transaction-local external pointer result, never retained across pump boundaries.
     pointer_finality: Option<crate::UiInputFinality>,
     external_pointer_active: bool,
+    retired_recorded: bool,
 }
 
 impl InputObservationState {
@@ -27,6 +28,7 @@ impl InputObservationState {
             last: None,
             pointer_finality: None,
             external_pointer_active: false,
+            retired_recorded: false,
         }
     }
 }
@@ -68,6 +70,24 @@ pub(crate) const fn integrity_only_pointer_finality() -> crate::UiInputFinality 
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    pub(crate) fn input_retirement_record(&mut self) -> Option<crate::InputScopeRetirement> {
+        if self.input_observation.retired_recorded {
+            return None;
+        }
+        let reason = match self.status {
+            crate::RuntimeStatus::Closed => crate::InputScopeRetirementReason::Shutdown,
+            crate::RuntimeStatus::Terminal(reason) => {
+                crate::InputScopeRetirementReason::Terminal(reason)
+            }
+            crate::RuntimeStatus::Running => return None,
+        };
+        self.input_observation.retired_recorded = true;
+        Some(crate::InputScopeRetirement {
+            scope: self.input_observation.scope.clone(),
+            reason,
+        })
+    }
+
     pub(crate) fn begin_external_pointer_input(&mut self) {
         debug_assert!(!self.input_observation.external_pointer_active);
         self.input_observation.pointer_finality = None;

@@ -206,6 +206,24 @@ pub(crate) enum WorkEnvelope<Action> {
     },
 }
 
+impl<Action> WorkEnvelope<Action> {
+    /// Correlates the work already sequenced by the only canonical FIFO.
+    #[must_use]
+    pub(crate) const fn sequence(&self) -> WorkSequence {
+        match self {
+            Self::ApplicationAction(work) => work.sequence,
+            Self::SemanticCommand(work) => work.sequence,
+            Self::ApplicationCommand(work) => work.sequence,
+            Self::Pointer(work) => work.sequence,
+            Self::Input(work) => work.sequence,
+            Self::EffectStart(work) | Self::TimerFiring(work) => work.sequence,
+            Self::WorkCancellation(work) => work.sequence,
+            Self::FrameworkServiceResponse(work) => work.sequence,
+            Self::MountedSubscriptionReconcile { sequence, .. } => *sequence,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct SequencedWork {
     pub(crate) sequence: WorkSequence,
