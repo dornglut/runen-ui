@@ -198,7 +198,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     /// *before* a canonical mutation boundary.
     #[cfg(test)]
     pub(crate) fn inject_input_reservation_failure_after(&mut self, successful: usize) {
-        self.input_observation.fail_reservation_after.set(Some(successful));
+        self.input_observation
+            .fail_reservation_after
+            .set(Some(successful));
     }
 
     pub(crate) fn reserve_input_observation(
