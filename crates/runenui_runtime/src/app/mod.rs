@@ -1,6 +1,8 @@
 //! Application-bound runtime operations.
 
 mod focus;
+#[cfg(test)]
+mod input_arbitration_tests;
 mod surface;
 #[cfg(feature = "internal-test-seams")]
 mod testing;
