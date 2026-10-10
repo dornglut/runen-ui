@@ -192,9 +192,7 @@ pub(crate) fn pump<App: UiApp>(
             // A legacy report-only caller cannot receive a typed capacity
             // error. Fail closed instead of claiming successful game admission.
             let cancelled = runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
-            finish_report(
-                runtime, budget, 0, cancelled, ReadinessTotals::default(),
-            )
+            finish_report(runtime, budget, 0, cancelled, ReadinessTotals::default())
         }
     }
 }
@@ -255,8 +253,14 @@ impl RecordedPump {
                 ));
         }
         if let Some(ReachedInput {
-            sequence, family, surface_id, device_id, pointer_id, finality,
-        }) = input {
+            sequence,
+            family,
+            surface_id,
+            device_id,
+            pointer_id,
+            finality,
+        }) = input
+        {
             self.records
                 .push(crate::InputArbitrationRecord::InputSettled(
                     crate::UiInputSettlement {
@@ -372,14 +376,16 @@ pub(crate) fn pump_recorded<App: UiApp>(
                     outcome,
                     identity
                         .zip(finality)
-                        .map(|((family, surface, device, pointer), finality)| ReachedInput {
-                            sequence,
-                            family,
-                            surface_id: surface,
-                            device_id: device,
-                            pointer_id: pointer,
-                            finality,
-                        }),
+                        .map(
+                            |((family, surface, device, pointer), finality)| ReachedInput {
+                                sequence,
+                                family,
+                                surface_id: surface,
+                                device_id: device,
+                                pointer_id: pointer,
+                                finality,
+                            },
+                        ),
                 )
             }
             WorkEnvelope::Input(envelope) => {
@@ -405,8 +411,12 @@ pub(crate) fn pump_recorded<App: UiApp>(
                 (
                     ProcessApplicationActionOutcome::Completed,
                     Some(ReachedInput {
-                        sequence, family, surface_id: None, device_id: device,
-                        pointer_id: None, finality,
+                        sequence,
+                        family,
+                        surface_id: None,
+                        device_id: device,
+                        pointer_id: None,
+                        finality,
                     }),
                 )
             }
