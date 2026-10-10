@@ -316,6 +316,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .stream(pointer_id)
             .cloned()
             .unwrap_or_else(|| unreachable!("terminal cleanup follows active-stream validation"));
+        let finality = crate::runtime::input_arbitration::integrity_only_pointer_finality(
+            Some(&stream), None,
+        );
         let rejected = self.trace.record_reserved(
             work.trace_reservation,
             TraceRecordKind::PointerIngressRejected {
@@ -332,7 +335,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .cloned()
         {
             return self.close_unavailable_terminal_pointer_with_live_capture(
-                work, rejected, &stream, &owner,
+                work, rejected, &stream, &owner, finality,
             );
         }
         let cleanup_trace = RejectedPointerCleanupTrace::terminal_from_stream(pointer_id, &stream);
@@ -372,7 +375,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.request_redraw(closed, work.instant);
         }
         self.note_external_pointer_finality(
-            crate::runtime::input_arbitration::integrity_only_pointer_finality(Some(&stream), None),
+            finality,
         );
         ProcessApplicationActionOutcome::Completed
     }
@@ -383,6 +386,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         rejected: Option<TraceSequence>,
         stream: &PointerStreamState,
         owner: &MountedNodeId,
+        finality: crate::UiInputFinality,
     ) -> ProcessApplicationActionOutcome {
         let pointer_id = work.event.pointer_id();
         let facts = Self::rejected_capture_ingress_facts(work, owner, rejected);
@@ -461,10 +465,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             });
         if result.is_ok() {
             self.note_external_pointer_finality(
-                crate::runtime::input_arbitration::integrity_only_pointer_finality(
-                    Some(stream),
-                    None,
-                ),
+                finality,
             );
         }
         if result.is_err() {
