@@ -88,6 +88,41 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         })
     }
 
+    /// One atomic shutdown-observation adapter over the *existing* cleanup law.
+    /// This is not a second runtime lifecycle; the public clean cutover remains gated
+    /// by #429's native host writer and complete capacity/exhaustion conformance.
+    ///
+    /// The records are reserved before the canonical shutdown begins. Snapshot
+    /// allocation and checked-revision exhaustion still require a full reserved
+    /// projection before this may become the accepted public return path.
+    pub(crate) fn shutdown_observed(
+        &mut self,
+    ) -> Result<crate::InputShutdownBatch, InputObservationError> {
+        let mut records = Vec::new();
+        records
+            .try_reserve_exact(2)
+            .map_err(|_| InputObservationError::Capacity)?;
+        let before = self.input_ownership()?;
+        let report = self.shutdown();
+        let after = self.input_ownership()?;
+        if after.revision() != before.revision() {
+            records.push(crate::InputArbitrationRecord::OwnershipChanged(
+                crate::InputOwnershipTransition {
+                    before_revision: before.revision(),
+                    after: after.clone(),
+                },
+            ));
+        }
+        if let Some(retirement) = self.input_retirement_record() {
+            records.push(crate::InputArbitrationRecord::ScopeRetired(retirement));
+        }
+        Ok(crate::InputShutdownBatch {
+            report,
+            ordered_records: records,
+            final_ownership: after,
+        })
+    }
+
     pub(crate) fn begin_external_pointer_input(&mut self) {
         debug_assert!(!self.input_observation.external_pointer_active);
         self.input_observation.pointer_finality = None;
