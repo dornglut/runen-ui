@@ -99,16 +99,18 @@ impl UiApp for NumericApp {
         .id("form.amount")
         .into_element();
         if state.show_step_controls {
-            runenui_core::row(runenui_core::children![
-                input,
-                runenui_core::button("Increase").on_activate(|| {
-                    Action::Adjust(SpinButtonRequest::AdjustBy(number(0.5)))
-                }),
-                runenui_core::button("Decrease").on_activate(|| {
-                    Action::Adjust(SpinButtonRequest::AdjustBy(number(-0.5)))
-                }),
-            ])
-            .into_element()
+            let mut increase = runenui_core::button("Increase").on_activate(|| {
+                Action::Adjust(SpinButtonRequest::AdjustBy(number(0.5)))
+            });
+            let mut decrease = runenui_core::button("Decrease").on_activate(|| {
+                Action::Adjust(SpinButtonRequest::AdjustBy(number(-0.5)))
+            });
+            if state.disabled || state.read_only {
+                increase = increase.disabled();
+                decrease = decrease.disabled();
+            }
+            runenui_core::row(runenui_core::children![input, increase, decrease])
+                .into_element()
         } else {
             input
         }
@@ -405,6 +407,53 @@ fn optional_ordinary_step_buttons_share_app_actions_and_fifo_without_another_edi
     settle(&mut runtime);
     assert_eq!(runtime.state().text, "4");
     assert_eq!(runtime.state().requests, [
+        SpinButtonRequest::AdjustBy(number(0.5)),
+        SpinButtonRequest::AdjustBy(number(-0.5)),
+    ]);
+}
+
+#[test]
+fn read_only_and_disabled_sibling_buttons_reject_ordinary_activation() {
+    for (read_only, disabled) in [(true, false), (false, true)] {
+        let mut runtime = runtime("4");
+        runtime.submit_action(Action::ShowStepControls(true))
+            .unwrap_or_else(|_| unreachable!("app authors normal button controls"));
+        runtime.submit_action(Action::ReadOnly(read_only))
+            .unwrap_or_else(|_| unreachable!("app authors read-only"));
+        runtime.submit_action(Action::Disabled(disabled))
+            .unwrap_or_else(|_| unreachable!("app authors disabled"));
+        settle(&mut runtime);
+        let publication = publish(&mut runtime);
+        let snapshot = publication.semantic_publication().snapshot();
+        for label in ["Increase", "Decrease"] {
+            let button = snapshot.nodes().iter().find(|node| {
+                node.role() == SemanticRole::Button && node.name() == Some(label)
+            }).unwrap_or_else(|| unreachable!("ordinary button remains semantic"));
+            assert!(button.state().disabled());
+            assert!(runtime.submit_semantic_action(SemanticActionRequest::new(
+                snapshot.surface_id().clone(), button.id().clone(), SemanticAction::Activate,
+            )).is_err());
+        }
+        settle(&mut runtime);
+        assert_eq!(runtime.state().text, "4");
+        assert!(runtime.state().requests.is_empty());
+    }
+}
+
+#[test]
+fn generic_controller_equivalent_commands_use_existing_application_fifo() {
+    let mut runtime = runtime("4");
+    let owner = runtime.index().nodes()[0].id().clone();
+    for command in [SemanticCommand::Increment, SemanticCommand::Increment,
+                    SemanticCommand::Decrement] {
+        runtime.submit_command(owner.clone(), command, CommandOrigin::programmatic())
+            .unwrap_or_else(|_| unreachable!("generic routed numeric command"));
+    }
+    assert_eq!(runtime.state().text, "4");
+    settle(&mut runtime);
+    assert_eq!(runtime.state().text, "4.5");
+    assert_eq!(runtime.state().requests, [
+        SpinButtonRequest::AdjustBy(number(0.5)),
         SpinButtonRequest::AdjustBy(number(0.5)),
         SpinButtonRequest::AdjustBy(number(-0.5)),
     ]);
