@@ -25,10 +25,11 @@ use runenui_core::{
     WidgetMeasure, WidgetMeasureInput, WidgetTextInput,
 };
 use runenui_runtime::{
-    AppRuntime, FontFamilyName, GenericFontFamily, LogicalSize, PumpBudget, RuntimeConfig,
-    RuntimeLimits, RuntimeStatus, RuntimeTerminalReason, SubmitSemanticActionErrorKind,
-    SubmitTextErrorKind, SurfaceBuildContext, TraceConfig, TraceFrameworkServiceKind,
-    TraceFrameworkServiceOutcome, TracePayloadCapture, TraceRecordKind, TraceReplay,
+    AppRuntime, FontFamilyName, GenericFontFamily, InputArbitrationRecord, LogicalSize,
+    PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason,
+    SubmitSemanticActionErrorKind, SubmitTextErrorKind, SurfaceBuildContext, TraceConfig,
+    TraceFrameworkServiceKind, TraceFrameworkServiceOutcome, TracePayloadCapture,
+    TraceRecordKind, TraceReplay, UiInputClaimReason, UiInputConflict, UiInputFinality,
 };
 
 const CANTARELL: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/Cantarell-Regular.ttf");
@@ -1442,6 +1443,25 @@ fn same_node_scroll_moves_committed_ime_candidate_area_with_content_not_viewport
     );
 }
 
+fn assert_pointer_selection_conflict(batch: &runenui_runtime::InputPumpBatch) {
+    let settled = batch
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::InputSettled(value) => Some(value),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(settled.len(), 1);
+    assert_eq!(settled[0].scope(), batch.final_ownership().scope());
+    assert!(matches!(
+        settled[0].finality(),
+        UiInputFinality::Committed(facts)
+            if facts.conflict() == UiInputConflict::ExclusiveUi
+                && facts.reasons().contains(&UiInputClaimReason::PointerSelection)
+    ));
+}
+
 #[test]
 fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
@@ -1462,14 +1482,15 @@ fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal()
     )
     .with_buttons(PointerButtons::new([PointerButton::Primary]))
     .with_changed_button(PointerButton::Primary);
-    runtime
+    let receipt = runtime
         .submit_pointer(pointer)
-        .unwrap_or_else(|error| panic!("displayed editable hit is submitted: {error:?}"));
-    let _ = runtime
+        .unwrap_or_else(|error| panic!("displayed editable hit is submitted: {error:?}"))
+        .sequence();
+    let input = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pointer selection settles"));
+    assert_eq!(input.processed_through(), Some(receipt));
+    assert_pointer_selection_conflict(&input);
 
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
