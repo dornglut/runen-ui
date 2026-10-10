@@ -339,10 +339,11 @@ fn routed_steps_accumulate_before_rebuild_and_page_step_is_not_duplicated() {
         .nodes()
         .iter()
         .find(|node| {
-            node.authored_id() == Some(
-                &runenui_core::ElementId::new("controlled.splitter")
-                    .unwrap_or_else(|_| unreachable!()),
-            )
+            node.authored_id()
+                == Some(
+                    &runenui_core::ElementId::new("controlled.splitter")
+                        .unwrap_or_else(|_| unreachable!()),
+                )
         })
         .unwrap_or_else(|| unreachable!("mounted splitter"))
         .id()
@@ -419,37 +420,53 @@ fn disabled_mid_drag_discards_captured_motion_without_mutating_app_size() {
 #[test]
 fn horizontal_divider_uses_vertical_pointer_motion_not_horizontal_motion() {
     let mut runtime = fresh();
-    runtime.submit_action(Action::Horizontal(true)).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_action(Action::Horizontal(true))
+        .unwrap_or_else(|_| unreachable!());
     settle(&mut runtime);
     let publication = publish(&mut runtime);
     let input = publication.input_context().clone();
     let pointer = PointerId::new(85).unwrap_or_else(|| unreachable!());
-    runtime.submit_pointer(
-        PointerEvent::new(
-            pointer, PointerDeviceKind::Touch, PointerPhase::Down,
-            LogicalPoint::new(40.0, 6.0).unwrap_or_else(|_| unreachable!()),
-            input.clone(),
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Touch,
+                PointerPhase::Down,
+                LogicalPoint::new(40.0, 6.0).unwrap_or_else(|_| unreachable!()),
+                input.clone(),
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
         )
-        .with_buttons(PointerButtons::new([PointerButton::Primary]))
-        .with_changed_button(PointerButton::Primary),
-    ).unwrap_or_else(|_| unreachable!());
+        .unwrap_or_else(|_| unreachable!());
     settle(&mut runtime);
-    runtime.submit_pointer(
-        PointerEvent::new(
-            pointer, PointerDeviceKind::Touch, PointerPhase::Move,
-            LogicalPoint::new(60.0, 6.0).unwrap_or_else(|_| unreachable!()),
-            input.clone(),
-        ).with_movement_delta(LogicalDelta::new(20.0, 0.0).unwrap_or_else(|_| unreachable!()))
-        .with_buttons(PointerButtons::new([PointerButton::Primary])),
-    ).unwrap_or_else(|_| unreachable!());
-    runtime.submit_pointer(
-        PointerEvent::new(
-            pointer, PointerDeviceKind::Touch, PointerPhase::Move,
-            LogicalPoint::new(60.0, 21.0).unwrap_or_else(|_| unreachable!()),
-            input,
-        ).with_movement_delta(LogicalDelta::new(0.0, 15.0).unwrap_or_else(|_| unreachable!()))
-        .with_buttons(PointerButtons::new([PointerButton::Primary])),
-    ).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Touch,
+                PointerPhase::Move,
+                LogicalPoint::new(60.0, 6.0).unwrap_or_else(|_| unreachable!()),
+                input.clone(),
+            )
+            .with_movement_delta(LogicalDelta::new(20.0, 0.0).unwrap_or_else(|_| unreachable!()))
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Touch,
+                PointerPhase::Move,
+                LogicalPoint::new(60.0, 21.0).unwrap_or_else(|_| unreachable!()),
+                input,
+            )
+            .with_movement_delta(LogicalDelta::new(0.0, 15.0).unwrap_or_else(|_| unreachable!()))
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|_| unreachable!());
     settle(&mut runtime);
     assert_eq!(runtime.state().size, 65.0);
     assert_eq!(runtime.state().proposals, 1);
@@ -505,10 +522,7 @@ impl UiApp for TwoPaneApp {
     }
 }
 
-fn pane_width(
-    publication: &runenui_runtime::SurfacePublication,
-    id: &str,
-) -> f32 {
+fn pane_width(publication: &runenui_runtime::SurfacePublication, id: &str) -> f32 {
     publication
         .layout_report()
         .nodes()
