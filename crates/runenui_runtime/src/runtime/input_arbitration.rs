@@ -336,24 +336,30 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // Account for every already-committed direct public boundary, even
         // if intermediate ownership facts were later coalesced. Keep one
         // additional checked revision for a terminal invalidation.
-        if self.input_observation.last.is_some()
-            && self
+        if let Some(previous) = &self.input_observation.last {
+            let needed = if matches!(self.status, crate::RuntimeStatus::Running)
+                || previous.status != self.status
+            {
+                self.input_observation.pending_direct_boundaries.max(1)
+            } else {
+                // A terminal/closed scope with an already observed status is
+                // immutable. Re-reading that final snapshot uses no revision.
+                self.input_observation.pending_direct_boundaries
+            };
+            let remaining_for_terminal = u64::from(matches!(
+                self.status,
+                crate::RuntimeStatus::Running
+            ));
+            if self
                 .input_observation
                 .revision
                 .get()
-                .checked_add(self.input_observation.pending_direct_boundaries.max(1))
-                .and_then(|revision| {
-                    if matches!(self.status, crate::RuntimeStatus::Running) {
-                        revision.checked_add(1)
-                    } else {
-                        // An already retired scope does not need another
-                        // reserved future revision to expose terminal state.
-                        Some(revision)
-                    }
-                })
+                .checked_add(needed)
+                .and_then(|revision| revision.checked_add(remaining_for_terminal))
                 .is_none()
-        {
-            return Err(InputObservationError::RevisionExhausted);
+            {
+                return Err(InputObservationError::RevisionExhausted);
+            }
         }
         InputSnapshotReservation::new(bound)
     }
