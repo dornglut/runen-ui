@@ -406,7 +406,7 @@ fn queue_closed_work_and_trace_capacity_failures_remain_structured() {
     let closed_publication = publication(&mut closed, &style_environment);
     let closed_context = closed_publication.input_context().clone();
     let closed_point = authored_center(&closed_publication, "surface.primary");
-    let _ = closed.shutdown();
+    let _ = closed.shutdown().expect("shutdown observation").report().to_owned();
     let closed_error = rejected(
         closed.submit_surface_command(
             closed_context,

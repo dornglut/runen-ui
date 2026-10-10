@@ -144,7 +144,7 @@ pub fn pump_all(runtime: &mut AppRuntime<SurfaceApp>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
 }
 
 pub fn mounted_with(config: RuntimeConfig) -> AppRuntime<SurfaceApp> {

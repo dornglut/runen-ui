@@ -32,7 +32,7 @@ fn pump_all(runtime: &mut AppRuntime<TraceDisabledApp>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
 }
 
 #[test]

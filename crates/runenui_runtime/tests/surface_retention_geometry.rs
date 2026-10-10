@@ -82,7 +82,7 @@ fn pump_all(runtime: &mut AppRuntime<RetentionApp>) {
         usize::MAX,
         usize::MAX,
         usize::MAX,
-    ));
+    )).expect("pump observation").report().to_owned();
 }
 
 fn publish(runtime: &mut AppRuntime<RetentionApp>) -> runenui_runtime::SurfacePublication {

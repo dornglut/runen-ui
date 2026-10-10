@@ -253,7 +253,7 @@ fn retained_paint_publication_keeps_old_shaped_binding_after_text_changes() {
         .unwrap_or_else(|_| unreachable!("test action queue has capacity"));
     assert!(
         runtime
-            .pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned()
             .processed_envelopes()
             >= 2
     );
@@ -609,7 +609,7 @@ fn final_text_request_selects_the_matching_artifact_resource() {
     runtime
         .submit_action(CorrelationPhase::Candidates)
         .unwrap_or_else(|_| unreachable!("correlation phase action is admitted"));
-    runtime.pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
     let second = publish(
         &mut runtime,
         &SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(40.0, 80.0))),
