@@ -98,7 +98,11 @@ fn selectable_text_uses_m10_for_read_only_selection_and_blocks_mutation() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("read-only text can focus"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(
         runtime
             .submit_text(
@@ -114,7 +118,11 @@ fn selectable_text_uses_m10_for_read_only_selection_and_blocks_mutation() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("read-only selection is routed"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     let selected = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("selected surface publishes"));
@@ -134,7 +142,11 @@ fn selectable_text_uses_m10_for_read_only_selection_and_blocks_mutation() {
     runtime
         .submit_command(owner, SemanticCommand::Copy, CommandOrigin::programmatic())
         .unwrap_or_else(|_| unreachable!("read-only copy command routes"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).expect("pump observation").report().to_owned();
+    runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .expect("pump observation")
+        .report()
+        .to_owned();
     assert!(runtime.pending_framework_services().iter().any(|service| {
         matches!(
             service.request(),
