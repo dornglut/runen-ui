@@ -826,6 +826,63 @@ mod tests {
     }
 
     #[test]
+    fn public_logical_publication_changes_retained_context_without_native_input() {
+        let mut runtime = AppRuntime::<ExternalHostApp>::mount(HostState {
+            image: ResourceRef::new(ResourceKind::Image),
+            active: false,
+        });
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("mount settles before publication"));
+        let before = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("initial owner snapshot"));
+        assert_eq!(before.surfaces().len(), 1);
+        assert!(before.surfaces()[0].latest_retained_context().is_none());
+
+        let environment = StyleEnvironment::default();
+        let size = LogicalSize::try_new(64.0, 64.0)
+            .unwrap_or_else(|_| unreachable!("finite logical surface"));
+        let build = SurfaceBuildContext::tight(&environment, size);
+        let first = runtime
+            .publish_surface(&build)
+            .unwrap_or_else(|_| unreachable!("first logical publication accepted"));
+        let after_first = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("first publication is synchronously queryable"));
+        assert_eq!(after_first.revision().get(), before.revision().get() + 1);
+        assert_eq!(
+            after_first.surfaces()[0].latest_retained_context(),
+            Some(first.input_context())
+        );
+
+        let second = runtime
+            .publish_surface(&build)
+            .unwrap_or_else(|_| unreachable!("second logical publication accepted"));
+        let after_second = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("second publication is synchronously queryable"));
+        assert_ne!(first.input_context(), second.input_context());
+        assert_eq!(
+            after_second.revision().get(),
+            after_first.revision().get() + 1
+        );
+        assert_eq!(
+            after_second.surfaces()[0].latest_retained_context(),
+            Some(second.input_context())
+        );
+        assert_eq!(
+            runtime
+                .input_ownership()
+                .unwrap_or_else(|_| unreachable!("unchanged read is stable"))
+                .revision(),
+            after_second.revision()
+        );
+        // No native render/Present was attempted. These are strictly retained
+        // RunenUI snapshots; deciding what pixels were displayed is host-owned.
+    }
+
+    #[test]
     fn independent_public_host_slots_have_disjoint_runtime_scopes() {
         let mut first = AppRuntime::<ExternalHostApp>::mount(HostState {
             image: ResourceRef::new(ResourceKind::Image),
