@@ -23,8 +23,9 @@ mod tests {
         Brush, Color, CommandOrigin, Element, ElementId, EventContext, EventPhase, ImageDescriptor,
         ImageIntrinsicSize, ImageMapping, ImagePaintDescriptor, KeyLocation, KeyModifiers,
         KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, LogicalLength,
-        LogicalRect, LogicalSize, NoHostProtocol, PaintContribution, PaintContributionContext,
-        PaintContributionItem, PhysicalKey, ResourceKind, ResourceRef, SceneShape, SemanticAction,
+        LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol, PaintContribution,
+        PaintContributionContext, PaintContributionItem, PhysicalKey, PointerDeviceKind,
+        PointerEvent, PointerId, PointerPhase, ResourceKind, ResourceRef, SceneShape, SemanticAction,
         SemanticActionRequest, SemanticCommand, SemanticContribution, SemanticContributionContext,
         SemanticNodeContribution, SemanticRole, StyleEnvironment, UiApp, UiEvent, View, Widget,
         WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput,
@@ -39,7 +40,7 @@ mod tests {
     use runenui_runtime::{
         AppRuntime, InputArbitrationRecord, InputScopeRetirementReason, PumpBudget,
         SurfaceBuildContext, SurfacePublication, UiInputClaimReason, UiInputConflict,
-        UiInputFamily, UiInputFinality,
+        UiInputFamily, UiInputFinality, UiInputRoute,
     };
 
     const SURFACE_EXTENT: u16 = 8;
@@ -1149,6 +1150,69 @@ mod tests {
         );
         // No native render/Present was attempted. These are strictly retained
         // RunenUI snapshots; deciding what pixels were displayed is host-owned.
+    }
+
+    #[test]
+    fn public_hover_is_nonexclusive_even_when_routed_to_actionable_widget() {
+        let mut runtime = AppRuntime::<ExternalHostApp>::mount(HostState {
+            image: ResourceRef::new(ResourceKind::Image),
+            active: false,
+        });
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("initial mount settles"));
+        let environment = StyleEnvironment::default();
+        let size = LogicalSize::try_new(64.0, 64.0)
+            .unwrap_or_else(|_| unreachable!("finite hover surface"));
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+            .unwrap_or_else(|_| unreachable!("logical hit context published"));
+        let bounds = publication
+            .frame()
+            .nodes()
+            .first()
+            .unwrap_or_else(|| unreachable!("public actionable root"))
+            .bounds();
+        let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
+            .unwrap_or_else(|_| unreachable!("finite point inside authored root"));
+        let pointer = PointerId::new(17).unwrap_or_else(|| unreachable!("positive pointer id"));
+        let receipt = runtime
+            .submit_pointer(PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Move,
+                point,
+                publication.input_context().clone(),
+            ))
+            .unwrap_or_else(|_| unreachable!("native hover admitted"))
+            .sequence();
+        let batch = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("public hover settles"));
+        let settled = batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settled.len(), 1);
+        assert_eq!(settled[0].sequence(), receipt);
+        assert_eq!(settled[0].family(), UiInputFamily::Pointer);
+        assert_eq!(settled[0].pointer_id(), Some(pointer));
+        assert_eq!(
+            settled[0].surface_id(),
+            Some(publication.input_context().surface_id())
+        );
+        assert!(matches!(
+            settled[0].finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ObservedNonexclusive
+                    && facts.reasons().is_empty()
+                    && matches!(facts.route(), UiInputRoute::Routed { .. })
+        ));
+        assert!(!runtime.state().active);
     }
 
     #[test]
