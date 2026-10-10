@@ -793,13 +793,19 @@ fn failed_second_shutdown_reservation_preserves_pending_composition_revision() {
         .runtime
         .shutdown_observed()
         .unwrap_or_else(|_| unreachable!("retry preflights both snapshots"));
-    assert_eq!(completed.final_ownership().status(), crate::RuntimeStatus::Closed);
+    assert_eq!(
+        completed.final_ownership().status(),
+        crate::RuntimeStatus::Closed
+    );
     assert_eq!(completed.ordered_records().len(), 2);
     let transition = match &completed.ordered_records()[0] {
         InputArbitrationRecord::OwnershipChanged(transition) => transition,
         _ => unreachable!("close publishes its ownership transition"),
     };
-    assert_eq!(transition.before_revision().get(), before.revision().get() + 1);
+    assert_eq!(
+        transition.before_revision().get(),
+        before.revision().get() + 1
+    );
     assert_eq!(transition.after().revision().get(), u64::MAX);
     assert!(matches!(
         completed.ordered_records()[1],
