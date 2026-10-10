@@ -257,15 +257,15 @@ impl RecordedPump {
                 };
                 self.cancelled_for_revision =
                     runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
-                let (latest, transition) =
-                    runtime.input_ownership_reserved(terminal_reservation);
+                let (latest, transition) = runtime.input_ownership_reserved(terminal_reservation);
                 if latest.revision() != self.latest.revision() {
-                    self.records.push(crate::InputArbitrationRecord::OwnershipChanged(
-                        crate::InputOwnershipTransition {
-                            before_revision: self.latest.revision(),
-                            after: transition,
-                        },
-                    ));
+                    self.records
+                        .push(crate::InputArbitrationRecord::OwnershipChanged(
+                            crate::InputOwnershipTransition {
+                                before_revision: self.latest.revision(),
+                                after: transition,
+                            },
+                        ));
                 }
                 self.latest = latest;
                 if let Some(retirement) = runtime.input_retirement_record() {

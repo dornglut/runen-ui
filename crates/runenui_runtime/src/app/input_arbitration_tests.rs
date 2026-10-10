@@ -433,8 +433,7 @@ fn revision_exhaustion_retains_committed_receipt_and_terminalizes_with_exact_fin
         .nodes()
         .iter()
         .find(|node| {
-            node.authored_id()
-                == Some(&ElementId::new("space").unwrap_or_else(|_| unreachable!()))
+            node.authored_id() == Some(&ElementId::new("space").unwrap_or_else(|_| unreachable!()))
         })
         .unwrap_or_else(|| unreachable!("space widget mounted"))
         .id()
@@ -451,11 +450,8 @@ fn revision_exhaustion_retains_committed_receipt_and_terminalizes_with_exact_fin
         .submit_keyboard(space_key(KeyboardPhase::Down, device(21)))
         .unwrap_or_else(|_| unreachable!("Space admitted"))
         .sequence();
-    let batch = pump::pump_recorded::<SpaceApp>(
-        &mut app.runtime,
-        PumpBudget::new(2, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("overflow must preserve earlier successful records"));
+    let batch = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(2, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("overflow must preserve earlier successful records"));
     assert_eq!(batch.processed_through(), Some(receipt));
     assert_eq!(batch.pause_reason(), None);
     assert_eq!(
@@ -463,7 +459,13 @@ fn revision_exhaustion_retains_committed_receipt_and_terminalizes_with_exact_fin
         crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned),
     );
     assert_eq!(batch.final_ownership().revision().get(), u64::MAX);
-    assert!(batch.final_ownership().keyboard().space_activation_owner().is_none());
+    assert!(
+        batch
+            .final_ownership()
+            .keyboard()
+            .space_activation_owner()
+            .is_none()
+    );
     assert!(matches!(
         batch.ordered_records(),
         [
