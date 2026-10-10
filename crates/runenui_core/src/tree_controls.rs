@@ -37,43 +37,68 @@ pub struct TreeItem<Action> {
 }
 impl<Action> fmt::Debug for TreeItem<Action> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TreeItem").field("domain_id", &self.domain_id)
-            .field("label", &self.label).field("selected", &self.selected)
-            .field("expanded", &self.expanded).field("children", &self.children.len())
+        f.debug_struct("TreeItem")
+            .field("domain_id", &self.domain_id)
+            .field("label", &self.label)
+            .field("selected", &self.selected)
+            .field("expanded", &self.expanded)
+            .field("children", &self.children.len())
             .finish_non_exhaustive()
     }
 }
 impl<Action> TreeItem<Action> {
     #[must_use]
-    pub fn new(domain_id: impl Into<String>, label: impl Into<String>,
-        children: impl IntoIterator<Item = Self>) -> Self {
+    pub fn new(
+        domain_id: impl Into<String>,
+        label: impl Into<String>,
+        children: impl IntoIterator<Item = Self>,
+    ) -> Self {
         Self {
-            domain_id: domain_id.into(), label: label.into(), selected: false,
-            expanded: false, enabled: true, discoverable: false,
-            children: children.into_iter().collect(), on_request: None,
+            domain_id: domain_id.into(),
+            label: label.into(),
+            selected: false,
+            expanded: false,
+            enabled: true,
+            discoverable: false,
+            children: children.into_iter().collect(),
+            on_request: None,
             common: CommonNodeAuthoring {
                 layout: LayoutStyle::default().with_container(LayoutContainer::Flex(
                     FlexContainerStyle::default().with_direction(FlexDirection::Column),
-                )), ..CommonNodeAuthoring::default()
+                )),
+                ..CommonNodeAuthoring::default()
             },
         }
     }
     common_node_builder_methods!();
     #[must_use]
-    pub const fn selected(mut self, value: bool) -> Self { self.selected = value; self }
+    pub const fn selected(mut self, value: bool) -> Self {
+        self.selected = value;
+        self
+    }
     #[must_use]
-    pub const fn expanded(mut self, value: bool) -> Self { self.expanded = value; self }
+    pub const fn expanded(mut self, value: bool) -> Self {
+        self.expanded = value;
+        self
+    }
     #[must_use]
-    pub const fn enabled(mut self, value: bool) -> Self { self.enabled = value; self }
+    pub const fn enabled(mut self, value: bool) -> Self {
+        self.enabled = value;
+        self
+    }
     #[must_use]
     pub const fn discoverable_when_disabled(mut self, value: bool) -> Self {
-        self.discoverable = value; self
+        self.discoverable = value;
+        self
     }
     #[must_use]
     pub fn on_request(mut self, callback: impl FnMut(TreeItemRequest) -> Action + 'static) -> Self {
-        self.on_request = Some(Box::new(callback)); self
+        self.on_request = Some(Box::new(callback));
+        self
     }
-    fn eligible(&self) -> bool { self.enabled || self.discoverable }
+    fn eligible(&self) -> bool {
+        self.enabled || self.discoverable
+    }
     fn visible_eligible(&self) -> bool {
         self.eligible() || (self.expanded && self.children.iter().any(Self::visible_eligible))
     }
@@ -90,23 +115,36 @@ impl<Action> TreeItem<Action> {
         if !seen.insert(self.domain_id.clone()) {
             return Some(TreeAuthoringError::DuplicateDomainId);
         }
-        self.children.iter().find_map(|child| child.validate_ids(seen))
+        self.children
+            .iter()
+            .find_map(|child| child.validate_ids(seen))
     }
 
     fn selected_count(&self) -> usize {
-        usize::from(self.selected) +
-            self.children.iter().map(Self::selected_count).sum::<usize>()
+        usize::from(self.selected)
+            + self
+                .children
+                .iter()
+                .map(Self::selected_count)
+                .sum::<usize>()
     }
 
-    fn build(self, level: u32, position: SemanticCollectionPosition,
-        prefer_selected: bool, preferred_used: &mut bool) -> Element<Action>
-    where Action: 'static {
-        let preferred = !*preferred_used && self.eligible()
-            && (!prefer_selected || self.selected);
-        if preferred { *preferred_used = true; }
+    fn build(
+        self,
+        level: u32,
+        position: SemanticCollectionPosition,
+        prefer_selected: bool,
+        preferred_used: &mut bool,
+    ) -> Element<Action>
+    where
+        Action: 'static,
+    {
+        let preferred = !*preferred_used && self.eligible() && (!prefer_selected || self.selected);
+        if preferred {
+            *preferred_used = true;
+        }
         let has_children = !self.children.is_empty();
-        let has_visible_child = self.expanded
-            && self.children.iter().any(Self::visible_eligible);
+        let has_visible_child = self.expanded && self.children.iter().any(Self::visible_eligible);
         let size = u64::try_from(self.children.len())
             .unwrap_or_else(|_| unreachable!("bounded mounted tree child count"));
         // Keep the ordinary M8 label as a measured child so it reserves its
