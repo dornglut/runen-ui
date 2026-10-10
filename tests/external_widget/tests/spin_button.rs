@@ -28,6 +28,7 @@ enum Action {
     Text(String),
     ReadOnly(bool),
     Disabled(bool),
+    ShowStepControls(bool),
     Remove,
 }
 
@@ -39,6 +40,7 @@ struct State {
     present: bool,
     minimum: Option<f64>,
     maximum: Option<f64>,
+    show_step_controls: bool,
     requests: Vec<SpinButtonRequest>,
 }
 
@@ -86,7 +88,7 @@ impl UiApp for NumericApp {
         ).unwrap_or_else(|_| unreachable!("app-owned UTF-8 caret"));
         let range = SpinButtonRange::new(state.minimum, state.maximum, state.value(), 0.5)
             .unwrap_or_else(|_| unreachable!("app-owned finite validated range"));
-        spin_button(
+        let input = spin_button(
             "Amount", doc, state.text.clone(), TextSelection::collapsed(position),
             range, |intent| Action::Edit(Box::new(intent)),
         )
@@ -95,7 +97,21 @@ impl UiApp for NumericApp {
         .read_only(state.read_only)
         .disabled(state.disabled)
         .id("form.amount")
-        .into_element()
+        .into_element();
+        if state.show_step_controls {
+            runenui_core::row(runenui_core::children![
+                input,
+                runenui_core::button("Increase").on_activate(|| {
+                    Action::Adjust(SpinButtonRequest::AdjustBy(number(0.5)))
+                }),
+                runenui_core::button("Decrease").on_activate(|| {
+                    Action::Adjust(SpinButtonRequest::AdjustBy(number(-0.5)))
+                }),
+            ])
+            .into_element()
+        } else {
+            input
+        }
     }
 
     fn update(state: &mut Self::State, action: Self::Action) -> impl IntoUpdateOutput<Self::Action, Self::HostProtocol> {
@@ -123,6 +139,10 @@ impl UiApp for NumericApp {
                 state.disabled = value;
                 UpdateOutput::effects(Effects::none())
             }
+            Action::ShowStepControls(value) => {
+                state.show_step_controls = value;
+                UpdateOutput::effects(Effects::none())
+            }
             Action::Remove => {
                 state.present = false;
                 UpdateOutput::effects(Effects::none())
@@ -140,7 +160,7 @@ fn runtime(text: &str) -> AppRuntime<NumericApp> {
 fn runtime_with_bounds(text: &str, minimum: Option<f64>, maximum: Option<f64>) -> AppRuntime<NumericApp> {
     let mut runtime = AppRuntime::<NumericApp>::mount(State {
         text: text.into(), revision: 1, read_only: false, disabled: false,
-        present: true, minimum, maximum, requests: Vec::new(),
+        present: true, minimum, maximum, show_step_controls: false, requests: Vec::new(),
     });
     assert!(runtime.register_text_font_bytes(FONT.to_vec())
         .unwrap_or_else(|_| unreachable!("fixture font registers")) > 0);
@@ -358,6 +378,36 @@ fn open_ended_ranges_admit_exact_recovery_and_reject_only_present_bounds() {
     )).unwrap_or_else(|_| unreachable!("unbounded absolute numeric recovery"));
     settle(&mut runtime);
     assert_eq!(runtime.state().text, "-600");
+}
+
+#[test]
+fn optional_ordinary_step_buttons_share_app_actions_and_fifo_without_another_editor() {
+    let mut runtime = runtime("4");
+    runtime.submit_action(Action::ShowStepControls(true))
+        .unwrap_or_else(|_| unreachable!("app authors ordinary sibling buttons"));
+    settle(&mut runtime);
+    let publication = publish(&mut runtime);
+    let snapshot = publication.semantic_publication().snapshot();
+    assert_eq!(snapshot.nodes().iter().filter(|node| node.role() == SemanticRole::SpinButton).count(), 1);
+    let targets = ["Increase", "Decrease"].map(|label| {
+        snapshot.nodes().iter().find(|node| {
+            node.role() == SemanticRole::Button && node.name() == Some(label)
+        })
+        .unwrap_or_else(|| unreachable!("ordinary named button projects"))
+        .id().clone()
+    });
+    for target in targets {
+        runtime.submit_semantic_action(SemanticActionRequest::new(
+            snapshot.surface_id().clone(), target, SemanticAction::Activate,
+        )).unwrap_or_else(|_| unreachable!("ordinary button accepts action"));
+    }
+    assert_eq!(runtime.state().text, "4", "button admission does not mutate application state");
+    settle(&mut runtime);
+    assert_eq!(runtime.state().text, "4");
+    assert_eq!(runtime.state().requests, [
+        SpinButtonRequest::AdjustBy(number(0.5)),
+        SpinButtonRequest::AdjustBy(number(-0.5)),
+    ]);
 }
 
 #[test]
