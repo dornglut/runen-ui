@@ -198,6 +198,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         .then(|| PointerIntegrityCleanupPlan::from_primary_release(&pending.stream))
         .flatten();
         let presentation_blocked = pending.presentation_block_root.is_some();
+        // Capture the pre-event held owners: Up/Cancel may legitimately clear
+        // them before final routing facts are assembled.
+        let pressed_before = pending.stream.pressed_owner().is_some();
+        let selection_before = pending.stream.text_selection().is_some();
+        let touch_winner_before = pending
+            .stream
+            .touch_gesture()
+            .and_then(TouchGestureState::winner)
+            .is_some();
         let explicit_capture_request_applied = self.apply_pointer_capture_requests(
             &pending.work,
             &pending.geometry,
@@ -359,18 +368,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         // An existing pressed UI owner claims subsequent move/wheel input as
         // well, even if that event creates no new Down/default action.
-        if pending.stream.pressed_owner().is_some() {
+        if pressed_before || pending.stream.pressed_owner().is_some() {
             reasons.push(crate::UiInputClaimReason::PointerPress);
         }
-        if pending.stream.text_selection().is_some() {
+        if selection_before || pending.stream.text_selection().is_some() {
             reasons.push(crate::UiInputClaimReason::PointerSelection);
         }
         if pending.work.event.device_kind() == PointerDeviceKind::Touch
-            && pending
-                .stream
-                .touch_gesture()
-                .and_then(TouchGestureState::winner)
-                .is_some()
+            && (touch_winner_before
+                || pending
+                    .stream
+                    .touch_gesture()
+                    .and_then(TouchGestureState::winner)
+                    .is_some())
         {
             reasons.push(crate::UiInputClaimReason::TouchGesture);
         }

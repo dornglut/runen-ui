@@ -1071,6 +1071,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             causal_parent,
             trace_reservation,
         );
+        let space_owner_before = matches!(
+            &payload,
+            InputEnvelopePayload::Keyboard(event)
+                if matches!(event.physical_key(), PhysicalKey::Space)
+                    && self.space_ownership.as_ref().is_some_and(|owner| {
+                        owner.target == target && owner.device_id == event.device_id()
+                    })
+        );
         let shortcut_candidate = match &payload {
             InputEnvelopePayload::Keyboard(event) => {
                 self.keyboard_shortcut_candidate(event, &target)
@@ -1244,12 +1252,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         // A committed text-edit default is already owned by the editor.
         // Ordinary outputs and callback invocation alone cannot claim gameplay.
-        let space_active = matches!(&payload, InputEnvelopePayload::Keyboard(event)
-            if matches!(event.physical_key(), PhysicalKey::Space))
-            && self
-                .space_ownership
-                .as_ref()
-                .is_some_and(|ownership| ownership.target == target);
+        let space_active = space_owner_before
+            || matches!(
+                &payload,
+                InputEnvelopePayload::Keyboard(event)
+                    if matches!(event.physical_key(), PhysicalKey::Space)
+                        && self.space_ownership.as_ref().is_some_and(|owner| {
+                            owner.target == target && owner.device_id == event.device_id()
+                        })
+            );
         if space_active {
             reasons.push(crate::UiInputClaimReason::ActivationDefault);
         }
