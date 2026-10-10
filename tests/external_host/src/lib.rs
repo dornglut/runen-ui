@@ -341,9 +341,7 @@ mod tests {
         assert!(returned.load(Ordering::Relaxed));
     }
 
-    fn focused_public_claim_host(
-        reached: Arc<AtomicBool>,
-    ) -> AppRuntime<ExternalHostClaimApp> {
+    fn focused_public_claim_host(reached: Arc<AtomicBool>) -> AppRuntime<ExternalHostClaimApp> {
         let mut runtime = AppRuntime::<ExternalHostClaimApp>::mount(reached);
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
