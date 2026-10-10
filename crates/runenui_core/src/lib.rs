@@ -257,6 +257,7 @@ mod semantic;
 mod semantic_action;
 mod shortcut;
 mod slider;
+mod spin_button;
 mod splitter;
 mod standard_content;
 mod style;
@@ -342,6 +343,9 @@ pub use paint::{
 pub use paint_group::{PaintContributionEntry, PaintContributionGroup};
 pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
 pub use presentation_controls::{Dialog, Popover, Tooltip, TooltipTrigger};
+pub use spin_button::{
+    SpinButton, SpinButtonError, SpinButtonRange, SpinButtonRequest, spin_button,
+};
 pub use standard_content::{Image, Progress, Separator, image, progress, separator};
 pub use surface_presentation::{
     PresentationDismissReason, PresentationFocusEntry, PresentationFocusPolicy,
