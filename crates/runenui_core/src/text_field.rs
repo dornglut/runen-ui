@@ -6,9 +6,9 @@ use crate::{
     EventContext, EventPhase, Focusability, HitContribution, HitContributionContext, IntoElementId,
     KeyboardCompositionState, KeyboardPhase, LogicalKey, SemanticAction, SemanticContribution,
     SemanticContributionContext, SemanticEditable, SemanticEditableMode, SemanticInvalidState,
-    SemanticNodeContribution, SemanticReference, SemanticRelationship, SemanticRelationshipKind,
-    SemanticRole, SemanticState, TextDocumentSnapshot, TextNewlinePolicy, TextSelection,
-    TextSensitivity, UiEvent, WidgetInvalidation, WidgetMeasure, WidgetMeasureInput,
+    SemanticNodeContribution, SemanticRange, SemanticReference, SemanticRelationship,
+    SemanticRelationshipKind, SemanticRole, SemanticState, TextDocumentSnapshot, TextNewlinePolicy,
+    TextSelection, TextSensitivity, UiEvent, WidgetInvalidation, WidgetMeasure, WidgetMeasureInput,
     WidgetTextInput, WidgetUpdateContext,
     element::{
         AuthoringDiagnostic, CommonNodeAuthoring, Element, View, common_node_builder_methods,
@@ -62,6 +62,7 @@ pub struct TextField<Action> {
     disabled: bool,
     mapper: Rc<dyn Fn(EditIntent) -> Action>,
     on_submit: Option<Box<dyn FnMut() -> Action>>,
+    spin: Option<SpinEditing<Action>>,
     common: CommonNodeAuthoring,
 }
 
@@ -129,11 +130,31 @@ impl<Action> TextField<Action> {
             disabled: false,
             mapper: Rc::new(on_edit),
             on_submit: None,
+            spin: None,
             common: CommonNodeAuthoring::default(),
         })
     }
 
     common_node_builder_methods!();
+
+    pub(crate) fn with_spin_button(
+        mut self,
+        label: String,
+        range: SemanticRange,
+        on_adjust: Option<Box<dyn FnMut(crate::SpinButtonRequest) -> Action>>,
+    ) -> Self {
+        self.spin = Some(SpinEditing {
+            label,
+            range,
+            on_adjust,
+        });
+        self
+    }
+
+    pub(crate) fn with_common_node(mut self, common: CommonNodeAuthoring) -> Self {
+        self.common = common;
+        self
+    }
 
     /// Marks a checked single-line field as a secret/password presentation.
     /// The M10 sensitivity authority disables ordinary clipboard disclosure,
@@ -238,6 +259,20 @@ struct TextFieldState {
     required: bool,
     read_only: bool,
     disabled: bool,
+    spin: Option<SpinFacts>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SpinFacts {
+    label: String,
+    range: SemanticRange,
+    actionable: bool,
+}
+
+struct SpinEditing<Action> {
+    label: String,
+    range: SemanticRange,
+    on_adjust: Option<Box<dyn FnMut(crate::SpinButtonRequest) -> Action>>,
 }
 
 impl fmt::Debug for TextFieldState {
@@ -262,6 +297,7 @@ struct TextFieldWidget<Action> {
     state: TextFieldState,
     mapper: Rc<dyn Fn(EditIntent) -> Action>,
     on_submit: Option<Box<dyn FnMut() -> Action>>,
+    on_adjust: Option<Box<dyn FnMut(crate::SpinButtonRequest) -> Action>>,
 }
 
 impl<Action> fmt::Debug for TextFieldWidget<Action> {
@@ -307,6 +343,9 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
                 context.invalidate(WidgetInvalidation::SEMANTICS);
             }
         }
+        if state.spin != self.state.spin {
+            context.invalidate(WidgetInvalidation::SEMANTICS | WidgetInvalidation::INTERACTION);
+        }
         if state.read_only != self.state.read_only || state.disabled != self.state.disabled {
             context.invalidate(
                 WidgetInvalidation::INTERACTION
@@ -351,6 +390,28 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
                 && let Some(submit) = self.on_submit.as_mut()
             {
                 context.emit(submit());
+            }
+        }
+        if context.phase() == EventPhase::Target
+            && !context.default_is_prevented()
+            && !self.state.disabled
+            && !self.state.read_only
+            && let Some(spin) = self.state.spin.as_ref()
+            && spin.actionable
+            && let Some(callback) = self.on_adjust.as_mut()
+        {
+            let request = event.as_semantic_command().map_or_else(
+                || {
+                    event
+                        .as_keyboard()
+                        .and_then(|key| crate::spin_button::keyboard_request(&spin.range, key))
+                },
+                |command| crate::spin_button::semantic_request(&spin.range, command.command()),
+            );
+            if let Some(request) = request {
+                context.emit(callback(request));
+                context.prevent_default();
+                context.stop_propagation();
             }
         }
         crate::WidgetEventOutput::none()
@@ -423,7 +484,12 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         if let Some(invalid) = self.state.invalid {
             state = state.with_invalid(invalid);
         }
-        let mut node = SemanticNodeContribution::primary(SemanticRole::EditableText)
+        let role = if self.state.spin.is_some() {
+            SemanticRole::SpinButton
+        } else {
+            SemanticRole::EditableText
+        };
+        let mut node = SemanticNodeContribution::primary(role)
             .with_state(state)
             .with_editable(editable)
             .with_editable_mode(self.state.mode)
@@ -443,6 +509,19 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         }
         if let Some(placeholder) = &self.state.placeholder {
             node = node.with_placeholder(placeholder.clone());
+        }
+        if let Some(spin) = &self.state.spin {
+            node = node
+                .with_name(spin.label.clone())
+                .with_range(spin.range.clone());
+            if spin.actionable && !self.state.disabled && !self.state.read_only {
+                if crate::spin_button::step_actions_available(&spin.range) {
+                    node = node
+                        .with_action(SemanticAction::Increment)
+                        .with_action(SemanticAction::Decrement);
+                }
+                node = node.with_action(SemanticAction::SetValue);
+            }
         }
         for (target, kind) in [
             (
@@ -482,6 +561,12 @@ impl<Action: 'static> View<Action> for TextField<Action> {
             },
             None,
         );
+        let spin_state = self.spin.as_ref().map(|spin| SpinFacts {
+            label: spin.label.clone(),
+            range: spin.range.clone(),
+            actionable: spin.on_adjust.is_some(),
+        });
+        let on_adjust = self.spin.and_then(|spin| spin.on_adjust);
         Element::from_authored_parts(
             fields,
             Box::new(WidgetAdapter(TextFieldWidget {
@@ -499,9 +584,11 @@ impl<Action: 'static> View<Action> for TextField<Action> {
                     required: self.required,
                     read_only: self.read_only,
                     disabled: self.disabled,
+                    spin: spin_state,
                 },
                 mapper: self.mapper,
                 on_submit: self.on_submit,
+                on_adjust,
             })),
             Vec::new(),
             diagnostics,
@@ -551,9 +638,11 @@ mod tests {
                 required: false,
                 read_only: false,
                 disabled: false,
+                spin: None,
             },
             mapper: Rc::new(|_| ()),
             on_submit: None,
+            on_adjust: None,
         }
     }
 
