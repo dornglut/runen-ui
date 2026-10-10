@@ -148,9 +148,9 @@ fn masked_standard_password_renders_with_real_wgpu_and_reclassifies_without_sour
     runtime
         .submit_action(Action::Toggle)
         .unwrap_or_else(|_| unreachable!("toggle is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let public = publish(&mut runtime);
@@ -169,9 +169,9 @@ fn masked_standard_password_renders_with_real_wgpu_and_reclassifies_without_sour
     runtime
         .submit_action(Action::Toggle)
         .unwrap_or_else(|_| unreachable!("toggle is accepted"));
-    runtime
+    let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .expect("pump observation")
+        .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     let masked_again = publish(&mut runtime);

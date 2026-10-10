@@ -82,9 +82,9 @@ mod tests {
 
     fn project_after_focus(capability: WidgetTextInput) -> WidgetTextInput {
         let mut runtime = AppRuntime::<App>::mount(capability);
-        runtime
+        let _ = runtime
             .pump(full_pump())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         assert_eq!(
@@ -101,9 +101,9 @@ mod tests {
                 CommandOrigin::programmatic(),
             )
             .unwrap_or_else(|_| unreachable!("the live text probe accepts focus"));
-        runtime
+        let _ = runtime
             .pump(full_pump())
-            .expect("pump observation")
+            .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
         runtime.focused_text_input_capability()
