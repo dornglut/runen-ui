@@ -285,3 +285,44 @@ fn mid_pump_snapshot_capacity_failure_returns_lossless_partial_batch() {
         .collect::<Vec<_>>();
     assert_eq!(second_settled, vec![second]);
 }
+
+#[test]
+fn terminal_reason_is_not_rewritten_as_shutdown_when_retirement_is_observed_late() {
+    let mut app = focused_runtime(false);
+    let pending = app
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("pending keyboard receipt"))
+        .sequence();
+    let _ = app
+        .runtime
+        .enter_terminal(crate::RuntimeTerminalReason::Poisoned, 0);
+    let batch = app
+        .runtime
+        .shutdown_observed()
+        .unwrap_or_else(|_| unreachable!("terminal and shutdown observations remain available"));
+    assert_eq!(batch.final_ownership().status(), crate::RuntimeStatus::Closed);
+    let reasons = batch
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::ScopeRetired(retired) => Some(retired.reason()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        reasons,
+        vec![crate::InputScopeRetirementReason::Terminal(
+            crate::RuntimeTerminalReason::Poisoned,
+        )]
+    );
+    assert!(!batch.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(settled) if settled.sequence() == pending
+    )));
+    assert!(app
+        .runtime
+        .shutdown_observed()
+        .unwrap_or_else(|_| unreachable!("shutdown is idempotent"))
+        .ordered_records()
+        .is_empty());
+}
