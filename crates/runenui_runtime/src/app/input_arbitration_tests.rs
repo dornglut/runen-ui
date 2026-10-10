@@ -1155,6 +1155,137 @@ fn revision_exhaustion_retains_committed_receipt_and_terminalizes_with_exact_fin
 }
 
 #[test]
+fn overflowing_widget_callback_aborts_reached_input_and_retires_pending_receipts() {
+    #[derive(Debug)]
+    struct OverflowProbe;
+
+    impl Widget<u8> for OverflowProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, u8>,
+        ) -> WidgetEventOutput {
+            if matches!(event, UiEvent::Keyboard(_)) && context.phase() == EventPhase::Target {
+                context.claim_host_input();
+                context.emit(1);
+                // A second output exceeds the admitted one-output transaction.
+                // Even the explicit UI claim must not turn an aborted route
+                // into a successful exclusive settlement.
+                context.emit(2);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    struct OverflowApp;
+
+    impl UiApp for OverflowApp {
+        type State = usize;
+        type Action = u8;
+        type HostProtocol = NoHostProtocol;
+
+        fn root(_: &Self::State) -> impl View<Self::Action> {
+            Element::new(OverflowProbe)
+                .id("overflow")
+                .key("overflow")
+                .focusable(true)
+        }
+
+        fn update(state: &mut Self::State, action: Self::Action) {
+            *state += usize::from(action);
+        }
+    }
+
+    let config = crate::RuntimeConfig::default()
+        .with_limits(crate::RuntimeLimits::default().with_transaction_outputs(1));
+    let mut app = AppRuntime::<OverflowApp>::mount_with_config(0, config);
+    let budget = PumpBudget::new(16, 16, 16, 16);
+    app.pump(budget)
+        .unwrap_or_else(|_| unreachable!("initial readiness must be observable"));
+    let id = ElementId::new("overflow").unwrap_or_else(|_| unreachable!("static fixture ID"));
+    let target = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&id))
+        .unwrap_or_else(|| unreachable!("the overflowing widget must be mounted"))
+        .id()
+        .clone();
+    app.submit_command(
+        target.clone(),
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("focus request is admitted"));
+    app.pump(budget)
+        .unwrap_or_else(|_| unreachable!("focus request must be observed"));
+    assert_eq!(app.focus().focused_node(), Some(&target));
+
+    let first = app
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("first keyboard receipt is admitted"))
+        .sequence();
+    let pending = app
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("second keyboard receipt is admitted"))
+        .sequence();
+    let scope = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("mounted scope is observable"))
+        .scope()
+        .clone();
+
+    let batch = app
+        .pump(PumpBudget::new(2, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("poison must not discard reached finality"));
+    assert_eq!(batch.processed_through(), Some(first));
+    assert_eq!(
+        batch.final_ownership().status(),
+        crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned),
+    );
+    assert_eq!(batch.final_ownership().scope(), &scope);
+    assert_eq!(*app.state(), 0, "overflow must not commit any staged action");
+
+    let settled: Vec<_> = batch
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::InputSettled(settled) => Some(settled),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(settled.len(), 1, "pending input must not gain fake finality");
+    assert_eq!(settled[0].sequence(), first);
+    assert_eq!(settled[0].scope(), &scope);
+    assert!(matches!(
+        settled[0].finality(),
+        UiInputFinality::Aborted(crate::UiInputAbortReason::RuntimeIntegrity)
+    ));
+    assert!(
+        batch.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::ScopeRetired(retired)
+                if retired.scope() == &scope
+                    && retired.reason()
+                        == crate::InputScopeRetirementReason::Terminal(
+                            crate::RuntimeTerminalReason::Poisoned
+                        )
+        )),
+        "one scope retirement invalidates the second still-pending receipt",
+    );
+    assert_ne!(pending, first);
+    let repeated = app
+        .pump(budget)
+        .unwrap_or_else(|_| unreachable!("terminal observations remain available"));
+    assert!(repeated.ordered_records().is_empty());
+}
+
+#[test]
 fn pointer_release_remains_ui_owned_after_press_state_is_cleared() {
     use crate::{LogicalSize, SurfaceBuildContext};
     use runenui_core::{
