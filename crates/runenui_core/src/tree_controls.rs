@@ -25,13 +25,31 @@ pub enum TreeItemRequest {
     Collapse(String),
 }
 
+/// Compact immutable authored facts. The values remain app-owned; bits only
+/// transport the current authoring snapshot to the generic Widget protocol.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TreeItemStatus(u8);
+impl TreeItemStatus {
+    const SELECTED: u8 = 1;
+    const EXPANDED: u8 = 1 << 1;
+    const ENABLED: u8 = 1 << 2;
+    const DISCOVERABLE: u8 = 1 << 3;
+    const HAS_CHILDREN: u8 = 1 << 4;
+    const HAS_VISIBLE_CHILD: u8 = 1 << 5;
+    const ACTIONABLE: u8 = 1 << 6;
+    const DEFAULT: Self = Self(Self::ENABLED);
+    const fn has(self, flag: u8) -> bool {
+        self.0 & flag != 0
+    }
+    const fn with(self, flag: u8, value: bool) -> Self {
+        Self(if value { self.0 | flag } else { self.0 & !flag })
+    }
+}
+
 pub struct TreeItem<Action> {
     domain_id: String,
     label: String,
-    selected: bool,
-    expanded: bool,
-    enabled: bool,
-    discoverable: bool,
+    status: TreeItemStatus,
     children: Vec<Self>,
     on_request: Option<Box<dyn FnMut(TreeItemRequest) -> Action>>,
     common: CommonNodeAuthoring,
@@ -41,8 +59,8 @@ impl<Action> fmt::Debug for TreeItem<Action> {
         f.debug_struct("TreeItem")
             .field("domain_id", &self.domain_id)
             .field("label", &self.label)
-            .field("selected", &self.selected)
-            .field("expanded", &self.expanded)
+            .field("selected", &self.status.has(TreeItemStatus::SELECTED))
+            .field("expanded", &self.status.has(TreeItemStatus::EXPANDED))
             .field("children", &self.children.len())
             .finish_non_exhaustive()
     }
@@ -57,10 +75,7 @@ impl<Action> TreeItem<Action> {
         Self {
             domain_id: domain_id.into(),
             label: label.into(),
-            selected: false,
-            expanded: false,
-            enabled: true,
-            discoverable: false,
+            status: TreeItemStatus::DEFAULT,
             children: children.into_iter().collect(),
             on_request: None,
             common: CommonNodeAuthoring {
@@ -74,22 +89,22 @@ impl<Action> TreeItem<Action> {
     common_node_builder_methods!();
     #[must_use]
     pub const fn selected(mut self, value: bool) -> Self {
-        self.selected = value;
+        self.status = self.status.with(TreeItemStatus::SELECTED, value);
         self
     }
     #[must_use]
     pub const fn expanded(mut self, value: bool) -> Self {
-        self.expanded = value;
+        self.status = self.status.with(TreeItemStatus::EXPANDED, value);
         self
     }
     #[must_use]
     pub const fn enabled(mut self, value: bool) -> Self {
-        self.enabled = value;
+        self.status = self.status.with(TreeItemStatus::ENABLED, value);
         self
     }
     #[must_use]
     pub const fn discoverable_when_disabled(mut self, value: bool) -> Self {
-        self.discoverable = value;
+        self.status = self.status.with(TreeItemStatus::DISCOVERABLE, value);
         self
     }
     #[must_use]
@@ -97,15 +112,15 @@ impl<Action> TreeItem<Action> {
         self.on_request = Some(Box::new(callback));
         self
     }
-    fn eligible(&self) -> bool {
-        self.enabled || self.discoverable
+    const fn eligible(&self) -> bool {
+        self.status.has(TreeItemStatus::ENABLED) || self.status.has(TreeItemStatus::DISCOVERABLE)
     }
     fn visible_eligible(&self) -> bool {
-        self.eligible() || (self.expanded && self.children.iter().any(Self::visible_eligible))
+        self.eligible() || (self.status.has(TreeItemStatus::EXPANDED) && self.children.iter().any(Self::visible_eligible))
     }
     fn visible_selected(&self) -> bool {
-        (self.eligible() && self.selected)
-            || (self.expanded && self.children.iter().any(Self::visible_selected))
+        (self.eligible() && self.status.has(TreeItemStatus::SELECTED))
+            || (self.status.has(TreeItemStatus::EXPANDED) && self.children.iter().any(Self::visible_selected))
     }
     /// Check all logical IDs, including collapsed descendants whose realization
     /// is absent. Mounted keys and semantic IDs are never domain identity.
@@ -122,7 +137,7 @@ impl<Action> TreeItem<Action> {
     }
 
     fn selected_count(&self) -> usize {
-        usize::from(self.selected)
+        usize::from(self.status.has(TreeItemStatus::SELECTED))
             + self
                 .children
                 .iter()
@@ -140,12 +155,12 @@ impl<Action> TreeItem<Action> {
     where
         Action: 'static,
     {
-        let preferred = !*preferred_used && self.eligible() && (!prefer_selected || self.selected);
+        let preferred = !*preferred_used && self.eligible() && (!prefer_selected || self.status.has(TreeItemStatus::SELECTED));
         if preferred {
             *preferred_used = true;
         }
         let has_children = !self.children.is_empty();
-        let has_visible_child = self.expanded && self.children.iter().any(Self::visible_eligible);
+        let has_visible_child = self.status.has(TreeItemStatus::EXPANDED) && self.children.iter().any(Self::visible_eligible);
         let size = u64::try_from(self.children.len())
             .unwrap_or_else(|_| unreachable!("bounded mounted tree child count"));
         // Keep the ordinary M8 label as a measured child so it reserves its
@@ -157,7 +172,7 @@ impl<Action> TreeItem<Action> {
             })
             .with_focusability(Focusability::NotFocusable),
         ];
-        if self.expanded {
+        if self.status.has(TreeItemStatus::EXPANDED) {
             children.extend(self.children.into_iter().enumerate().map(|(index, child)| {
                 let index = u64::try_from(index).unwrap_or_else(|_| unreachable!());
                 let position = SemanticCollectionPosition::new(index, Some(size))
@@ -171,7 +186,7 @@ impl<Action> TreeItem<Action> {
             }));
         }
         let (fields, diagnostics) = self.common.into_authored_fields(
-            if self.discoverable {
+            if self.status.has(TreeItemStatus::DISCOVERABLE) {
                 Focusability::FocusableWhenDisabled
             } else {
                 Focusability::Focusable
@@ -183,12 +198,10 @@ impl<Action> TreeItem<Action> {
             Box::new(WidgetAdapter(TreeItemWidget {
                 domain_id: self.domain_id,
                 label: self.label.clone(),
-                selected: self.selected,
-                expanded: self.expanded,
-                enabled: self.enabled,
-                discoverable: self.discoverable,
-                has_children,
-                has_visible_child,
+                status: self.status
+                    .with(TreeItemStatus::HAS_CHILDREN, has_children)
+                    .with(TreeItemStatus::HAS_VISIBLE_CHILD, has_visible_child)
+                    .with(TreeItemStatus::ACTIONABLE, self.on_request.is_some()),
                 level: SemanticHierarchyLevel::new(level).unwrap_or_else(|_| unreachable!()),
                 position,
                 on_request: self.on_request,
@@ -228,25 +241,14 @@ impl<Action> Widget<Action> for TreeLabelWidget {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct TreeItemFacts {
     label: String,
-    selected: bool,
-    expanded: bool,
-    enabled: bool,
-    discoverable: bool,
-    has_children: bool,
-    has_visible_child: bool,
+    status: TreeItemStatus,
     level: SemanticHierarchyLevel,
     position: SemanticCollectionPosition,
-    actionable: bool,
 }
 struct TreeItemWidget<Action> {
     domain_id: String,
     label: String,
-    selected: bool,
-    expanded: bool,
-    enabled: bool,
-    discoverable: bool,
-    has_children: bool,
-    has_visible_child: bool,
+    status: TreeItemStatus,
     level: SemanticHierarchyLevel,
     position: SemanticCollectionPosition,
     on_request: Option<Box<dyn FnMut(TreeItemRequest) -> Action>>,
@@ -255,15 +257,9 @@ impl<Action> TreeItemWidget<Action> {
     fn facts(&self) -> TreeItemFacts {
         TreeItemFacts {
             label: self.label.clone(),
-            selected: self.selected,
-            expanded: self.expanded,
-            enabled: self.enabled,
-            discoverable: self.discoverable,
-            has_children: self.has_children,
-            has_visible_child: self.has_visible_child,
+            status: self.status,
             level: self.level,
             position: self.position,
-            actionable: self.on_request.is_some(),
         }
     }
 }
@@ -292,8 +288,8 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
     }
     fn activation(&self, _: &Self::State) -> WidgetActivation {
         if self.on_request.is_some() {
-            WidgetActivation::actionable(self.enabled)
-        } else if self.enabled {
+            WidgetActivation::actionable(self.status.has(TreeItemStatus::ENABLED))
+        } else if self.status.has(TreeItemStatus::ENABLED) {
             WidgetActivation::NONE
         } else {
             WidgetActivation::disabled()
@@ -304,7 +300,7 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
         _: &mut Self::State,
         _: &mut WidgetActivationContext<Action>,
     ) -> WidgetActivationOutput<Action> {
-        if !self.enabled {
+        if !self.status.has(TreeItemStatus::ENABLED) {
             return WidgetActivationOutput::none();
         }
         self.on_request
@@ -333,7 +329,7 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
         if context.phase() == EventPhase::Bubble
             && command == SemanticCommand::FocusLeft
             && context.original_target() != context.current_target()
-            && (self.enabled || self.discoverable)
+            && (self.status.has(TreeItemStatus::ENABLED) || self.status.has(TreeItemStatus::DISCOVERABLE))
         {
             // The bubbling ancestor is the exact parent focus target, not a guessed identity.
             context.prevent_default();
@@ -341,17 +337,17 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
             context.emit_command(SemanticCommand::RequestFocus);
             return WidgetEventOutput::none();
         }
-        if context.phase() != EventPhase::Target || !self.enabled {
+        if context.phase() != EventPhase::Target || !self.status.has(TreeItemStatus::ENABLED) {
             return WidgetEventOutput::none();
         }
         let request = match command {
             SemanticCommand::Expand | SemanticCommand::FocusRight
-                if self.has_children && !self.expanded =>
+                if self.status.has(TreeItemStatus::HAS_CHILDREN) && !self.status.has(TreeItemStatus::EXPANDED) =>
             {
                 Some(TreeItemRequest::Expand(self.domain_id.clone()))
             }
             SemanticCommand::Collapse | SemanticCommand::FocusLeft
-                if self.has_children && self.expanded =>
+                if self.status.has(TreeItemStatus::HAS_CHILDREN) && self.status.has(TreeItemStatus::EXPANDED) =>
             {
                 Some(TreeItemRequest::Collapse(self.domain_id.clone()))
             }
@@ -368,7 +364,7 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
             // into a sibling merely because generic focus-group movement exists.
             context.prevent_default();
             context.stop_propagation();
-            if self.expanded && self.has_visible_child {
+            if self.status.has(TreeItemStatus::EXPANDED) && self.status.has(TreeItemStatus::HAS_VISIBLE_CHILD) {
                 context.emit_command(SemanticCommand::FocusGroupNext);
             }
         }
@@ -386,10 +382,10 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
         context: SemanticContributionContext,
     ) -> SemanticContribution {
         let mut flags = SemanticState::ENABLED
-            .with_selected(state.selected)
-            .with_disabled(!state.enabled);
-        if state.has_children {
-            flags = flags.with_expanded(state.expanded);
+            .with_selected(state.status.has(TreeItemStatus::SELECTED))
+            .with_disabled(!state.status.has(TreeItemStatus::ENABLED));
+        if state.status.has(TreeItemStatus::HAS_CHILDREN) {
+            flags = flags.with_expanded(state.status.has(TreeItemStatus::EXPANDED));
         }
         let mut node = SemanticNodeContribution::primary(SemanticRole::TreeItem)
             .with_name(state.label.clone())
@@ -397,10 +393,10 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
             .with_hierarchy_level(state.level)
             .with_collection_position(state.position)
             .with_action(SemanticAction::RequestFocus);
-        if state.actionable && state.enabled {
+        if state.status.has(TreeItemStatus::ACTIONABLE) && state.status.has(TreeItemStatus::ENABLED) {
             node = node.with_action(SemanticAction::Activate);
-            if state.has_children {
-                node = node.with_action(if state.expanded {
+            if state.status.has(TreeItemStatus::HAS_CHILDREN) {
+                node = node.with_action(if state.status.has(TreeItemStatus::EXPANDED) {
                     SemanticAction::Collapse
                 } else {
                     SemanticAction::Expand
@@ -498,31 +494,28 @@ impl<Action> Widget<Action> for TreeViewWidget {
         {
             return WidgetEventOutput::none();
         }
-        let delegated = if let Some(command) = event
+        let delegated = event
             .as_semantic_command()
             .map(SemanticCommandEvent::command)
-        {
-            match command {
+            .and_then(|command| match command {
                 SemanticCommand::FocusUp => Some(SemanticCommand::FocusGroupPrevious),
                 SemanticCommand::FocusDown => Some(SemanticCommand::FocusGroupNext),
                 _ => None,
-            }
-        } else if let Some(key) = event.as_keyboard() {
-            if key.phase() == KeyboardPhase::Down
-                && key.modifiers() == crate::KeyModifiers::NONE
-                && key.composition_state() == KeyboardCompositionState::Inactive
-            {
+            })
+            .or_else(|| {
+                let key = event.as_keyboard()?;
+                if key.phase() != KeyboardPhase::Down
+                    || key.modifiers() != crate::KeyModifiers::NONE
+                    || key.composition_state() != KeyboardCompositionState::Inactive
+                {
+                    return None;
+                }
                 match key.logical_key() {
                     LogicalKey::Home => Some(SemanticCommand::FocusGroupFirst),
                     LogicalKey::End => Some(SemanticCommand::FocusGroupLast),
                     _ => None,
                 }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+            });
         if let Some(command) = delegated {
             context.prevent_default();
             context.stop_propagation();
