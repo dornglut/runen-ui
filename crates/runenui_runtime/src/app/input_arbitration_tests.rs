@@ -615,15 +615,14 @@ fn observed_shutdown_rejects_before_mutation_if_final_revision_is_exhausted() {
         app.runtime.status(),
         crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned)
     );
-    let batch = pump::pump_recorded::<SpaceApp>(
-        &mut app.runtime,
-        PumpBudget::new(0, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("one scope retirement remains observable"));
-    assert!(batch.ordered_records().iter().any(|record| matches!(
-        record,
-        InputArbitrationRecord::ScopeRetired(_)
-    )));
+    let batch = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("one scope retirement remains observable"));
+    assert!(
+        batch
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::ScopeRetired(_)))
+    );
 }
 
 #[test]
