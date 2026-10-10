@@ -257,12 +257,12 @@ mod tests {
             image: ResourceRef::new(ResourceKind::Image),
             active: false,
         });
-        let first_snapshot = first
-            .input_ownership()
-            .unwrap_or_else(|_| unreachable!("first runtime can project its initial input ownership"));
-        let second_snapshot = second
-            .input_ownership()
-            .unwrap_or_else(|_| unreachable!("second runtime can project its initial input ownership"));
+        let first_snapshot = first.input_ownership().unwrap_or_else(|_| {
+            unreachable!("first runtime can project its initial input ownership")
+        });
+        let second_snapshot = second.input_ownership().unwrap_or_else(|_| {
+            unreachable!("second runtime can project its initial input ownership")
+        });
         assert_ne!(first_snapshot.scope(), second_snapshot.scope());
         assert_eq!(first_snapshot.revision().get(), 1);
         assert_eq!(second_snapshot.revision().get(), 1);
