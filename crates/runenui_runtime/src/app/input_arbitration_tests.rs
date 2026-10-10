@@ -577,3 +577,89 @@ fn pointer_release_remains_ui_owned_after_press_state_is_cleared() {
     assert_eq!(up.conflict(), UiInputConflict::ExclusiveUi);
     assert!(up.reasons().contains(&UiInputClaimReason::PointerPress));
 }
+
+#[derive(Debug)]
+struct TextOwnershipProbe;
+
+impl Widget<()> for TextOwnershipProbe {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn text_input(&self, (): &Self::State) -> runenui_core::WidgetTextInput {
+        runenui_core::WidgetTextInput::new(true, true)
+    }
+}
+
+struct TextOwnershipApp;
+
+impl UiApp for TextOwnershipApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &Self::State) -> impl View<Self::Action> {
+        Element::new(TextOwnershipProbe)
+            .id("editor")
+            .key("editor")
+            .focusable(true)
+    }
+
+    fn update((): &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn accepted_composition_start_publishes_pending_ownership_without_pumping() {
+    let mut app = AppRuntime::<TextOwnershipApp>::mount(());
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let target = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
+        })
+        .unwrap_or_else(|| unreachable!("editor mounted"))
+        .id()
+        .clone();
+    app.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("focus ingress accepted"));
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let before = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("focused owner observable"));
+    assert_eq!(before.keyboard().composition_generation(), None);
+    let receipt = app
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("composition start admitted"));
+    // Admission installs a pending generation synchronously, even though
+    // the accepted native receipt has not reached the canonical FIFO head.
+    let pending = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("pending owner observed without pump"));
+    assert_eq!(
+        pending.keyboard().composition_generation(),
+        Some(receipt.generation())
+    );
+    assert!(pending.revision().get() > before.revision().get());
+    let unchanged = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("no-op query remains stable"));
+    assert_eq!(unchanged.revision(), pending.revision());
+    let settled = pump::pump_recorded::<TextOwnershipApp>(
+        &mut app.runtime,
+        PumpBudget::new(1, 0, 0, 0),
+    )
+    .unwrap_or_else(|_| unreachable!("accepted start processes exactly once"));
+    assert_eq!(settled.processed_through(), Some(receipt.sequence()));
+    assert!(settled.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(entry)
+            if entry.sequence() == receipt.sequence()
+    )));
+}
