@@ -258,6 +258,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let publication = self
             .surface_publication
             .commit_publication(&mut self.tree, commit);
+        self.note_direct_input_ownership_boundary();
         self.cancel_stale_framework_services();
         self.record_motion_trace_facts(motion_trace_facts, instant);
         let redraw = self.take_redraw_request_at(instant);

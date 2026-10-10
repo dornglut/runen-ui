@@ -21,6 +21,8 @@ pub(super) struct InputObservationState {
     pointer_finality: Option<crate::UiInputFinality>,
     external_pointer_active: bool,
     retired_recorded: bool,
+    /// Each committed outside-pump ownership boundary is a separate witness.
+    pending_direct_boundaries: u64,
     retirement_cause: Option<crate::InputScopeRetirementReason>,
     #[cfg(test)]
     fail_reservation_after: std::cell::Cell<Option<usize>>,
@@ -35,6 +37,7 @@ impl InputObservationState {
             pointer_finality: None,
             external_pointer_active: false,
             retired_recorded: false,
+            pending_direct_boundaries: 0,
             retirement_cause: None,
             #[cfg(test)]
             fail_reservation_after: std::cell::Cell::new(None),
@@ -161,6 +164,16 @@ pub(crate) fn integrity_only_pointer_finality(
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    /// Records *existing* synchronous public mutations that occur without a
+    /// canonical FIFO envelope. This is only a revision witness: the existing
+    /// focus/composition/surface authorities still own all actual state.
+    pub(crate) fn note_direct_input_ownership_boundary(&mut self) {
+        self.input_observation.pending_direct_boundaries = self
+            .input_observation
+            .pending_direct_boundaries
+            .saturating_add(1);
+    }
+
     pub(crate) const fn note_input_terminal_retirement(
         &mut self,
         reason: crate::RuntimeTerminalReason,
@@ -305,10 +318,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .len()
             .saturating_add(1)
             .min(self.limits.pointer_streams());
-        // Keep the final nonwrapping revision available to certify a
-        // terminal ownership transition after already reported progress.
+        // Account for every already-committed direct public boundary, even
+        // if intermediate ownership facts were later coalesced. Keep one
+        // additional checked revision for a terminal invalidation.
         if self.input_observation.last.is_some()
-            && self.input_observation.revision.get() >= u64::MAX - 1
+            && self
+                .input_observation
+                .revision
+                .get()
+                .checked_add(self.input_observation.pending_direct_boundaries.max(1))
+                .and_then(|revision| revision.checked_add(1))
+                .is_none()
         {
             return Err(InputObservationError::RevisionExhausted);
         }
@@ -385,16 +405,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surfaces,
             pointers,
         };
-        if let Some(previous) = &self.input_observation.last
-            && !previous.same_ownership_facts(&current)
+        let changed = self.input_observation.last.as_ref().is_some_and(|previous| {
+            !previous.same_ownership_facts(&current)
+        });
+        if self.input_observation.last.is_some()
+            && (changed || self.input_observation.pending_direct_boundaries != 0)
         {
-            // Reserve rejected an exhausted revision *before* entering the
-            // mutation boundary. There is no post-commit error path here.
+            // Each committed direct boundary must remain detectable as a
+            // revision gap after the host's later synchronous query.
+            let steps = self.input_observation.pending_direct_boundaries.max(1);
             let next = self
                 .input_observation
                 .revision
                 .get()
-                .checked_add(1)
+                .checked_add(steps)
                 .unwrap_or_else(|| unreachable!("revision was preflighted"));
             current.revision = InputOwnershipRevision::new(next);
         }
@@ -404,6 +428,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let transition = transition.clone_facts(&current);
         self.input_observation.revision = current.revision;
         self.input_observation.last = Some(retained);
+        self.input_observation.pending_direct_boundaries = 0;
         (result, transition)
     }
 

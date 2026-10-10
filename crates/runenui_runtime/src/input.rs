@@ -659,6 +659,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             device_id: request.device_id(),
             start_sequence: sequence,
         };
+        self.note_direct_input_ownership_boundary();
         let pending_bound = self.trace.record_draft(
             TraceRecordDraft::input_marker(TraceRecordKind::CompositionPendingBound, instant)
                 .with_work_sequence(Some(sequence))
