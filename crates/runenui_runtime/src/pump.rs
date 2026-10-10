@@ -225,9 +225,14 @@ impl RecordedPump {
     fn observe<State, Action, Protocol: runenui_core::HostProtocol>(
         &mut self,
         runtime: &mut Runtime<State, Action, Protocol>,
-        input: Option<(runenui_core::WorkSequence, crate::UiInputFamily,
-                       Option<runenui_core::SurfaceId>, Option<runenui_core::InputDeviceId>,
-                       Option<runenui_core::PointerId>, crate::UiInputFinality)>,
+        input: Option<(
+            runenui_core::WorkSequence,
+            crate::UiInputFamily,
+            Option<runenui_core::SurfaceId>,
+            Option<runenui_core::InputDeviceId>,
+            Option<runenui_core::PointerId>,
+            crate::UiInputFinality,
+        )>,
     ) -> Result<(), crate::InputObservationError> {
         let latest = runtime.input_ownership()?;
         if latest.revision() != self.latest.revision() {
@@ -555,32 +560,25 @@ mod tests {
         let receipt = runtime
             .submit_action((), TraceActionCategory::DirectSubmission, None, None)
             .unwrap_or_else(|_| unreachable!("bounded action ingress succeeds"));
-        let work = super::pump_recorded::<App>(
-            &mut runtime,
-            PumpBudget::new(1, 0, 0, 0),
-        )
-        .expect("bounded processing observation succeeds");
+        let work = super::pump_recorded::<App>(&mut runtime, PumpBudget::new(1, 0, 0, 0))
+            .expect("bounded processing observation succeeds");
         assert_eq!(work.processed_through(), Some(receipt));
         assert_eq!(work.report().processed_envelopes(), 1);
         assert!(work.ordered_records().is_empty());
 
         let _ = runtime.shutdown();
-        let retired = super::pump_recorded::<App>(
-            &mut runtime,
-            PumpBudget::new(0, 0, 0, 0),
-        )
-        .expect("shutdown requires no individual cancelled receipt");
+        let retired = super::pump_recorded::<App>(&mut runtime, PumpBudget::new(0, 0, 0, 0))
+            .expect("shutdown requires no individual cancelled receipt");
         assert_eq!(retired.processed_through(), None);
         assert!(matches!(
             retired.ordered_records(),
-            [crate::InputArbitrationRecord::OwnershipChanged(_),
-             crate::InputArbitrationRecord::ScopeRetired(_)]
+            [
+                crate::InputArbitrationRecord::OwnershipChanged(_),
+                crate::InputArbitrationRecord::ScopeRetired(_)
+            ]
         ));
-        let again = super::pump_recorded::<App>(
-            &mut runtime,
-            PumpBudget::new(0, 0, 0, 0),
-        )
-        .expect("observed retirement stays retired");
+        let again = super::pump_recorded::<App>(&mut runtime, PumpBudget::new(0, 0, 0, 0))
+            .expect("observed retirement stays retired");
         assert!(again.ordered_records().is_empty());
     }
 

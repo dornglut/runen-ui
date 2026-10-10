@@ -1209,9 +1209,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     matches!(candidate, KeyboardShortcutCandidate::Unique { .. })
                 }) {
                     Some(crate::UiInputClaimReason::ApplicationShortcut)
-                } else if Self::generic_keyboard_default(event).is_some_and(|command| {
-                    matches!(command, SemanticCommand::Activate)
-                }) {
+                } else if Self::generic_keyboard_default(event)
+                    .is_some_and(|command| matches!(command, SemanticCommand::Activate))
+                {
                     Some(crate::UiInputClaimReason::ActivationDefault)
                 } else {
                     Some(crate::UiInputClaimReason::FocusNavigation)
@@ -1244,9 +1244,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // Ordinary outputs and callback invocation alone cannot claim gameplay.
         let space_active = matches!(&payload, InputEnvelopePayload::Keyboard(event)
             if matches!(event.physical_key(), PhysicalKey::Space))
-            && self.space_ownership.as_ref().is_some_and(|ownership| {
-                ownership.target == target
-            });
+            && self
+                .space_ownership
+                .as_ref()
+                .is_some_and(|ownership| ownership.target == target);
         if space_active {
             reasons.push(crate::UiInputClaimReason::ActivationDefault);
         }
