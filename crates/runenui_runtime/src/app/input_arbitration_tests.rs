@@ -747,14 +747,16 @@ fn unavailable_context_pointer_up_preserves_exclusive_press_without_activation()
         .submit_pointer(up)
         .unwrap_or_else(|_| unreachable!("stale-context Up admitted"))
         .sequence();
-    let up_batch = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
+    // Republication may insert stationary rehit/focus work ahead of the native
+    // Up. Correlate by the exact receipt rather than assuming the next pop.
+    let up_batch = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(16, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("integrity cleanup settled"));
-    assert_eq!(up_batch.processed_through(), Some(up_receipt));
+    assert!(up_batch.processed_through().is_some());
     let observed = up_batch
         .ordered_records()
         .iter()
         .find_map(|r| match r {
-            InputArbitrationRecord::InputSettled(s) => Some(s),
+            InputArbitrationRecord::InputSettled(s) if s.sequence() == up_receipt => Some(s),
             _ => None,
         })
         .unwrap_or_else(|| unreachable!("exact reached Up settlement"));
