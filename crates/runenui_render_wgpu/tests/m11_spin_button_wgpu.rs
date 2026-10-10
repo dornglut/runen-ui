@@ -66,7 +66,7 @@ impl UiApp for SpinGpuApp {
         .id("gpu.numeric")
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update(_: &mut Self::State, (): Self::Action) {}
 }
 
 fn block_on<F: Future>(future: F) -> F::Output {
@@ -125,7 +125,7 @@ fn spin_button_valid_and_intermediate_text_share_real_wgpu_and_semantic_authorit
         valid_node
             .range()
             .and_then(SemanticRange::current)
-            .map(|v| v.get()),
+            .map(SemanticNumber::get),
         Some(4.5)
     );
     assert_eq!(invalid_node.range().and_then(SemanticRange::current), None);
