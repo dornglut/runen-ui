@@ -773,14 +773,16 @@ fn one_remaining_sequence_is_consumed_only_by_each_final_scheduler_action() {
     let jobs = Rc::new(RefCell::new(Vec::new()));
     let mut send = AppRuntime::<SendTaskApp>::mount(0);
     send.set_send_task_executor(HoldingExecutor(Rc::clone(&jobs)));
-    let _ = send.pump(PumpBudget::new(2, 0, 0, 0))
+    let _ = send
+        .pump(PumpBudget::new(2, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     run_ready(jobs.borrow_mut().pop().unwrap_or_else(|| unreachable!()))
         .unwrap_or_else(|_| unreachable!());
     send.__seed_next_work_sequence_for_test(u64::MAX);
-    let _ = send.pump(PumpBudget::new(0, 1, 0, 0))
+    let _ = send
+        .pump(PumpBudget::new(0, 1, 0, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();

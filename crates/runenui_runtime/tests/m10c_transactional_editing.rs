@@ -751,7 +751,8 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
     let owner = copy.index().nodes()[0].id().clone();
     copy.submit_command(owner, SemanticCommand::Copy, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("copy default is admitted: {error:?}"));
-    let _ = copy.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+    let _ = copy
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
@@ -776,7 +777,8 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
     copy.complete_framework_service(&token, FrameworkServiceResponse::ClipboardWriteText(Ok(())))
         .unwrap_or_else(|error| panic!("copy result queues: {error:?}"));
     assert_eq!(copy.state().text, "ab");
-    let _ = copy.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+    let _ = copy
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
@@ -843,7 +845,8 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
     let owner = cut.index().nodes()[0].id().clone();
     cut.submit_command(owner, SemanticCommand::Cut, CommandOrigin::programmatic())
         .unwrap_or_else(|error| panic!("cut default is admitted: {error:?}"));
-    let _ = cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+    let _ = cut
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
@@ -860,7 +863,8 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
     cut.complete_framework_service(&token, FrameworkServiceResponse::ClipboardWriteText(Ok(())))
         .unwrap_or_else(|error| panic!("cut success is queued before editing: {error:?}"));
     assert_eq!(cut.state().text, "ab");
-    let _ = cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+    let _ = cut
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();

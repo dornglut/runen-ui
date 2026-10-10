@@ -880,7 +880,8 @@ fn one_remaining_sequence_is_the_final_local_or_send_subscription_action() {
     assert_eq!(local.status(), runenui_runtime::RuntimeStatus::Running);
 
     let (mut send, control) = start_runtime(SendSubscriptionStartOutcome::Started);
-    let _ = send.pump(PumpBudget::new(2, 0, 0, 0))
+    let _ = send
+        .pump(PumpBudget::new(2, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
@@ -892,7 +893,8 @@ fn one_remaining_sequence_is_the_final_local_or_send_subscription_action() {
     sink.try_send(Arc::new(SendItem(14)))
         .unwrap_or_else(|_| unreachable!("post-start item is accepted"));
     send.__seed_next_work_sequence_for_test(u64::MAX);
-    let _ = send.pump(PumpBudget::new(0, 1, 0, 0))
+    let _ = send
+        .pump(PumpBudget::new(0, 1, 0, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
