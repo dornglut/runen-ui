@@ -438,8 +438,7 @@ fn initial_snapshot_revision_after_direct_composition_admission_survives_capacit
         .nodes()
         .iter()
         .find(|node| {
-            node.authored_id()
-                == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
+            node.authored_id() == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
         })
         .unwrap_or_else(|| unreachable!("editable owner mounted"))
         .id()
@@ -461,11 +460,9 @@ fn initial_snapshot_revision_after_direct_composition_admission_survives_capacit
     // revision. The following initial checkpoint reservation fails. Returning
     // Err here would lose the ownership observation, even at zero FIFO work.
     app.runtime.inject_input_reservation_failure_after(1);
-    let partial = pump::pump_recorded::<TextOwnershipApp>(
-        &mut app.runtime,
-        PumpBudget::new(1, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("revision is preserved as partial success"));
+    let partial =
+        pump::pump_recorded::<TextOwnershipApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("revision is preserved as partial success"));
     assert_eq!(
         partial.pause_reason(),
         Some(crate::InputPumpPauseReason::ObservationCapacity)
@@ -474,18 +471,19 @@ fn initial_snapshot_revision_after_direct_composition_admission_survives_capacit
     assert!(partial.ordered_records().is_empty());
     assert!(partial.final_ownership().revision() > before.revision());
     assert_eq!(
-        partial.final_ownership().keyboard().composition_generation(),
+        partial
+            .final_ownership()
+            .keyboard()
+            .composition_generation(),
         Some(receipt.generation())
     );
     assert_eq!(
         partial.final_ownership().keyboard().composition_device_id(),
         Some(device(43))
     );
-    let resumed = pump::pump_recorded::<TextOwnershipApp>(
-        &mut app.runtime,
-        PumpBudget::new(1, 0, 0, 0),
-    )
-    .unwrap_or_else(|_| unreachable!("pending input resumes"));
+    let resumed =
+        pump::pump_recorded::<TextOwnershipApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("pending input resumes"));
     assert_eq!(resumed.processed_through(), Some(receipt.sequence()));
     assert_eq!(
         resumed
