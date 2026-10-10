@@ -390,8 +390,18 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
         if state.label != self.label {
             context.invalidate(WidgetInvalidation::SEMANTICS);
         }
-        if state.range != self.range || state.orientation != self.orientation {
+        if state.range != self.range {
             context.invalidate(WidgetInvalidation::SEMANTICS | WidgetInvalidation::PAINT);
+        }
+        if state.orientation != self.orientation {
+            // The authored axis changes intrinsic measurement and the physical
+            // hit target, not just the semantic orientation and narrow grip.
+            context.invalidate(
+                WidgetInvalidation::LAYOUT
+                    | WidgetInvalidation::HIT_TEST
+                    | WidgetInvalidation::PAINT
+                    | WidgetInvalidation::SEMANTICS,
+            );
         }
         if state.enabled != self.enabled || state.actionable != self.actionable() {
             context.invalidate(

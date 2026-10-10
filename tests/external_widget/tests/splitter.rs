@@ -796,3 +796,39 @@ fn changing_divider_orientation_mid_drag_releases_old_axis_capture() {
     settle(&mut runtime);
     assert_eq!(runtime.state().size, 60.0);
 }
+
+#[test]
+fn mounted_splitter_reorientation_remeasures_layout_and_hit_extent() {
+    let mut runtime = fresh();
+    let geometry = |publication: &runenui_runtime::SurfacePublication| {
+        let node = publication
+            .layout_report()
+            .nodes()
+            .iter()
+            .find(|node| {
+                node.authored_id()
+                    .is_some_and(|id| id.as_str() == "controlled.splitter")
+            })
+            .unwrap_or_else(|| unreachable!("Splitter has authored intrinsic layout"));
+        let outer = node.constrained_outer_size();
+        (outer.width(), outer.height())
+    };
+    let vertical = publish(&mut runtime);
+    assert_eq!(geometry(&vertical), (12.0, 160.0));
+    runtime
+        .submit_action(Action::Horizontal(true))
+        .unwrap_or_else(|_| unreachable!("orientation update admitted"));
+    settle(&mut runtime);
+    let horizontal = publish(&mut runtime);
+    assert_eq!(
+        geometry(&horizontal),
+        (160.0, 12.0),
+        "orientation rebuild must remeasure the same mounted splitter"
+    );
+    runtime
+        .submit_action(Action::Horizontal(false))
+        .unwrap_or_else(|_| unreachable!("reverse orientation update admitted"));
+    settle(&mut runtime);
+    let restored = publish(&mut runtime);
+    assert_eq!(geometry(&restored), (12.0, 160.0));
+}
