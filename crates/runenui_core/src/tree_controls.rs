@@ -1,20 +1,21 @@
 //! Hierarchical collection authoring over the existing M4 real-focus group.
 //! Expansion, selection and domain identity are exclusively application-owned.
-use core::{fmt, time::Duration};
-use std::collections::BTreeSet;
 use crate::{
     EventContext, EventPhase, FlexContainerStyle, FlexDirection, FocusGroup,
-    HitContribution, HitContributionContext,
     FocusGroupActivationPolicy, FocusGroupBoundaryPolicy, FocusGroupTypeAhead, Focusability,
-    KeyboardCompositionState, KeyboardPhase, LayoutContainer, LayoutStyle, LogicalKey,
-    SemanticAction, SemanticCollectionPosition, SemanticCommand, SemanticCommandEvent,
-    SemanticContribution, SemanticContributionContext, SemanticHierarchyLevel,
-    SemanticNodeContribution, SemanticRole, SemanticSelectionMode, SemanticState, UiEvent,
-    WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput,
-    WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetMeasureInput, WidgetUpdateContext,
+    HitContribution, HitContributionContext, KeyboardCompositionState, KeyboardPhase,
+    LayoutContainer, LayoutStyle, LogicalKey, SemanticAction, SemanticCollectionPosition,
+    SemanticCommand, SemanticCommandEvent, SemanticContribution, SemanticContributionContext,
+    SemanticHierarchyLevel, SemanticNodeContribution, SemanticRole, SemanticSelectionMode,
+    SemanticState, UiEvent, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
+    WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetMeasure, WidgetMeasureInput,
+    WidgetUpdateContext,
     element::{CommonNodeAuthoring, Element, View, common_node_builder_methods},
-    widget_erasure::WidgetAdapter, widget_protocol::{ChildBearingWidget, Widget},
+    widget_erasure::WidgetAdapter,
+    widget_protocol::{ChildBearingWidget, Widget},
 };
+use core::{fmt, time::Duration};
+use std::collections::BTreeSet;
 
 /// Ordinary application requests retain domain identity, never runtime IDs.
 #[derive(Clone, Debug, Eq, PartialEq)]
