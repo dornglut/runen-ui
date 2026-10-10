@@ -25,11 +25,11 @@ mod tests {
         KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, LogicalLength,
         LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol, PaintContribution,
         PaintContributionContext, PaintContributionItem, PhysicalKey, PointerDeviceKind,
-        PointerEvent, PointerId, PointerPhase, ResourceKind, ResourceRef, SceneShape, SemanticAction,
-        SemanticActionRequest, SemanticCommand, SemanticContribution, SemanticContributionContext,
-        SemanticNodeContribution, SemanticRole, StyleEnvironment, UiApp, UiEvent, View, Widget,
-        WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput,
-        WidgetMeasure, column,
+        PointerEvent, PointerId, PointerPhase, ResourceKind, ResourceRef, SceneShape,
+        SemanticAction, SemanticActionRequest, SemanticCommand, SemanticContribution,
+        SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment,
+        UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
+        WidgetActivationOutput, WidgetEventOutput, WidgetMeasure, column,
     };
     use runenui_render_wgpu::{
         BackendSelection, ImagePayload, OffscreenPublicationReadback, OffscreenReadback,
@@ -1205,13 +1205,17 @@ mod tests {
             settled[0].surface_id(),
             Some(publication.input_context().surface_id())
         );
-        assert!(matches!(
-            settled[0].finality(),
-            UiInputFinality::Committed(facts)
-                if facts.conflict() == UiInputConflict::ObservedNonexclusive
-                    && facts.reasons().is_empty()
-                    && matches!(facts.route(), UiInputRoute::Routed { .. })
-        ));
+        assert!(
+            matches!(
+                settled[0].finality(),
+                UiInputFinality::Committed(facts)
+                    if facts.conflict() == UiInputConflict::ObservedNonexclusive
+                        && facts.reasons().is_empty()
+                        && matches!(facts.route(), UiInputRoute::Routed { .. })
+            ),
+            "actual public hover settlement: {:?}",
+            settled[0].finality()
+        );
         assert!(!runtime.state().active);
     }
 
