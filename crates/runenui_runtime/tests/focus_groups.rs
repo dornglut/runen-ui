@@ -738,12 +738,8 @@ fn pump_scope_boundary(runtime: &mut AppRuntime<ScopeBoundaryApp>, budget: PumpB
 #[test]
 fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() {
     let mut runtime = AppRuntime::<ScopeBoundaryApp>::mount(State::default());
-    pump_scope_boundary(&mut runtime, PumpBudget::new(
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-        ));
+    let full_budget = PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX);
+    pump_scope_boundary(&mut runtime, full_budget);
 
     let a = scope_boundary_id(&mut runtime, "scope.a");
     let outer = scope_boundary_id(&mut runtime, "scope.outer");
