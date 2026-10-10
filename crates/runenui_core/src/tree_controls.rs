@@ -116,11 +116,14 @@ impl<Action> TreeItem<Action> {
         self.status.has(TreeItemStatus::ENABLED) || self.status.has(TreeItemStatus::DISCOVERABLE)
     }
     fn visible_eligible(&self) -> bool {
-        self.eligible() || (self.status.has(TreeItemStatus::EXPANDED) && self.children.iter().any(Self::visible_eligible))
+        self.eligible()
+            || (self.status.has(TreeItemStatus::EXPANDED)
+                && self.children.iter().any(Self::visible_eligible))
     }
     fn visible_selected(&self) -> bool {
         (self.eligible() && self.status.has(TreeItemStatus::SELECTED))
-            || (self.status.has(TreeItemStatus::EXPANDED) && self.children.iter().any(Self::visible_selected))
+            || (self.status.has(TreeItemStatus::EXPANDED)
+                && self.children.iter().any(Self::visible_selected))
     }
     /// Check all logical IDs, including collapsed descendants whose realization
     /// is absent. Mounted keys and semantic IDs are never domain identity.
@@ -155,12 +158,15 @@ impl<Action> TreeItem<Action> {
     where
         Action: 'static,
     {
-        let preferred = !*preferred_used && self.eligible() && (!prefer_selected || self.status.has(TreeItemStatus::SELECTED));
+        let preferred = !*preferred_used
+            && self.eligible()
+            && (!prefer_selected || self.status.has(TreeItemStatus::SELECTED));
         if preferred {
             *preferred_used = true;
         }
         let has_children = !self.children.is_empty();
-        let has_visible_child = self.status.has(TreeItemStatus::EXPANDED) && self.children.iter().any(Self::visible_eligible);
+        let has_visible_child = self.status.has(TreeItemStatus::EXPANDED)
+            && self.children.iter().any(Self::visible_eligible);
         let size = u64::try_from(self.children.len())
             .unwrap_or_else(|_| unreachable!("bounded mounted tree child count"));
         // Keep the ordinary M8 label as a measured child so it reserves its
@@ -198,7 +204,8 @@ impl<Action> TreeItem<Action> {
             Box::new(WidgetAdapter(TreeItemWidget {
                 domain_id: self.domain_id,
                 label: self.label.clone(),
-                status: self.status
+                status: self
+                    .status
                     .with(TreeItemStatus::HAS_CHILDREN, has_children)
                     .with(TreeItemStatus::HAS_VISIBLE_CHILD, has_visible_child)
                     .with(TreeItemStatus::ACTIONABLE, self.on_request.is_some()),
@@ -329,7 +336,8 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
         if context.phase() == EventPhase::Bubble
             && command == SemanticCommand::FocusLeft
             && context.original_target() != context.current_target()
-            && (self.status.has(TreeItemStatus::ENABLED) || self.status.has(TreeItemStatus::DISCOVERABLE))
+            && (self.status.has(TreeItemStatus::ENABLED)
+                || self.status.has(TreeItemStatus::DISCOVERABLE))
         {
             // The bubbling ancestor is the exact parent focus target, not a guessed identity.
             context.prevent_default();
@@ -342,12 +350,14 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
         }
         let request = match command {
             SemanticCommand::Expand | SemanticCommand::FocusRight
-                if self.status.has(TreeItemStatus::HAS_CHILDREN) && !self.status.has(TreeItemStatus::EXPANDED) =>
+                if self.status.has(TreeItemStatus::HAS_CHILDREN)
+                    && !self.status.has(TreeItemStatus::EXPANDED) =>
             {
                 Some(TreeItemRequest::Expand(self.domain_id.clone()))
             }
             SemanticCommand::Collapse | SemanticCommand::FocusLeft
-                if self.status.has(TreeItemStatus::HAS_CHILDREN) && self.status.has(TreeItemStatus::EXPANDED) =>
+                if self.status.has(TreeItemStatus::HAS_CHILDREN)
+                    && self.status.has(TreeItemStatus::EXPANDED) =>
             {
                 Some(TreeItemRequest::Collapse(self.domain_id.clone()))
             }
@@ -364,7 +374,9 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
             // into a sibling merely because generic focus-group movement exists.
             context.prevent_default();
             context.stop_propagation();
-            if self.status.has(TreeItemStatus::EXPANDED) && self.status.has(TreeItemStatus::HAS_VISIBLE_CHILD) {
+            if self.status.has(TreeItemStatus::EXPANDED)
+                && self.status.has(TreeItemStatus::HAS_VISIBLE_CHILD)
+            {
                 context.emit_command(SemanticCommand::FocusGroupNext);
             }
         }
@@ -393,7 +405,8 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
             .with_hierarchy_level(state.level)
             .with_collection_position(state.position)
             .with_action(SemanticAction::RequestFocus);
-        if state.status.has(TreeItemStatus::ACTIONABLE) && state.status.has(TreeItemStatus::ENABLED) {
+        if state.status.has(TreeItemStatus::ACTIONABLE) && state.status.has(TreeItemStatus::ENABLED)
+        {
             node = node.with_action(SemanticAction::Activate);
             if state.status.has(TreeItemStatus::HAS_CHILDREN) {
                 node = node.with_action(if state.status.has(TreeItemStatus::EXPANDED) {
