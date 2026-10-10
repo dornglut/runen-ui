@@ -263,8 +263,10 @@ impl PointerModes {
         }
     }
 
-    /// A genuine finite host raw-device observation certifies motion availability,
-    /// without claiming a window association from a device ID.
+    /// A genuine finite, nonzero host raw-device observation demonstrates a
+    /// usable relative displacement stream; an empty device notification does not.
+    /// This still cannot certify native grab realization or associate a device
+    /// with a window. Those remain independent host/native proof obligations.
     pub fn observe_motion(
         &mut self,
         scope: &Scope,
@@ -275,6 +277,7 @@ impl PointerModes {
             || self.scope.as_ref() != Some(scope)
             || !delta.0.is_finite()
             || !delta.1.is_finite()
+            || (delta.0 == 0.0 && delta.1 == 0.0)
         {
             return false;
         }
@@ -334,12 +337,17 @@ mod tests {
         mode: Mode,
         visible: bool,
         failures: Vec<(Mode, Failure)>,
+        mutate_before_failure: bool,
         calls: Vec<(Mode, Option<bool>)>,
     }
     impl Platform for Fake {
         fn grab(&mut self, mode: Mode) -> Result<(), Failure> {
             self.calls.push((mode, None));
             if let Some(at) = self.failures.iter().position(|(when, _)| *when == mode) {
+                if self.mutate_before_failure {
+                    // Some native failures may follow partial OS state changes.
+                    self.mode = mode;
+                }
                 return Err(self.failures.remove(at).1);
             }
             self.mode = mode;
@@ -434,6 +442,7 @@ mod tests {
     #[test]
     fn failure_after_partial_acquire_requires_rollback() {
         let (mut modes, mut host) = focused();
+        host.mutate_before_failure = true;
         host.failures
             .push((Mode::ConfinedAbsolute, Failure::Ignored));
         host.failures.push((Mode::Absolute, Failure::Native));
@@ -443,9 +452,53 @@ mod tests {
         );
         assert!(matches!(modes.state(), State::ReleaseFailed));
         assert!(!modes.ui_pointer_allowed());
+        assert_eq!(host.mode, Mode::ConfinedAbsolute);
+        assert!(host.visible);
         modes
             .release(&mut host)
             .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
+        assert_eq!(host.mode, Mode::Absolute);
+        assert!(host.visible);
+    }
+
+    #[test]
+    fn successful_rollback_after_partial_native_failure_restores_absolute_mode() {
+        let (mut modes, mut host) = focused();
+        host.mutate_before_failure = true;
+        host.failures
+            .push((Mode::LockedRelative, Failure::Native));
+        assert_eq!(
+            modes.request(scope(1), Mode::LockedRelative, &mut host),
+            Err(Failure::Native)
+        );
+        assert_eq!(host.mode, Mode::Absolute);
+        assert!(host.visible);
+        assert!(modes.ui_pointer_allowed());
+        assert!(!modes.gameplay_motion_allowed());
+    }
+
+    #[test]
+    fn zero_or_nonfinite_raw_motion_cannot_realize_a_pending_lock() {
+        let (mut modes, mut host) = focused();
+        let pending = modes
+            .request(scope(1), Mode::LockedRelative, &mut host)
+            .unwrap_or_else(|_| unreachable!("deterministic fake native success"));
+        for delta in [
+            (0.0, 0.0),
+            (-0.0, 0.0),
+            (f64::NAN, 1.0),
+            (f64::INFINITY, 1.0),
+            (1.0, f64::NEG_INFINITY),
+        ] {
+            assert!(!modes.observe_motion(&scope(1), delta, &mut host));
+            assert!(!modes.gameplay_motion_allowed());
+            assert!(host.visible);
+            assert_eq!(modes.request(scope(1), Mode::LockedRelative, &mut host), Ok(pending.clone()));
+        }
+        assert!(modes.observe_motion(&scope(1), (0.0, -3.0), &mut host));
+        assert!(modes.gameplay_motion_allowed());
+        assert!(!host.visible);
+        assert!(!modes.observe_motion(&scope(1), (0.0, 0.0), &mut host));
     }
 
     #[test]
