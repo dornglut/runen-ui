@@ -423,3 +423,66 @@ fn space_press_ownership_is_source_qualified_through_other_device_and_own_releas
         assert_eq!(facts.conflict(), expected);
     }
 }
+
+#[test]
+fn revision_exhaustion_retains_committed_receipt_and_terminalizes_with_exact_final_snapshot() {
+    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let target = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                == Some(&ElementId::new("space").unwrap_or_else(|_| unreachable!()))
+        })
+        .unwrap_or_else(|| unreachable!("space widget mounted"))
+        .id()
+        .clone();
+    app.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("focus accepted"));
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    app.runtime.seed_input_revision_for_test(u64::MAX - 2);
+    let receipt = app
+        .submit_keyboard(space_key(KeyboardPhase::Down, device(21)))
+        .unwrap_or_else(|_| unreachable!("Space admitted"))
+        .sequence();
+    let batch = pump::pump_recorded::<SpaceApp>(
+        &mut app.runtime,
+        PumpBudget::new(2, 0, 0, 0),
+    )
+    .unwrap_or_else(|_| unreachable!("overflow must preserve earlier successful records"));
+    assert_eq!(batch.processed_through(), Some(receipt));
+    assert_eq!(batch.pause_reason(), None);
+    assert_eq!(
+        batch.final_ownership().status(),
+        crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned),
+    );
+    assert_eq!(batch.final_ownership().revision().get(), u64::MAX);
+    assert!(batch.final_ownership().keyboard().space_activation_owner().is_none());
+    assert!(matches!(
+        batch.ordered_records(),
+        [
+            InputArbitrationRecord::OwnershipChanged(_),
+            InputArbitrationRecord::InputSettled(_),
+            InputArbitrationRecord::OwnershipChanged(_),
+            InputArbitrationRecord::ScopeRetired(_)
+        ]
+    ));
+    let InputArbitrationRecord::InputSettled(settled) = &batch.ordered_records()[1] else {
+        unreachable!("second record is reached keyboard finality");
+    };
+    assert_eq!(settled.sequence(), receipt);
+    assert_eq!(settled.ownership_revision().get(), u64::MAX - 1);
+    let InputArbitrationRecord::ScopeRetired(retired) = &batch.ordered_records()[3] else {
+        unreachable!("terminal scope retirement concludes records");
+    };
+    assert_eq!(
+        retired.reason(),
+        crate::InputScopeRetirementReason::Terminal(crate::RuntimeTerminalReason::Poisoned),
+    );
+}

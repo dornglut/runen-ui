@@ -214,6 +214,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     /// Fallibly reserves every vector needed for the next ownership projection
     /// *before* a canonical mutation boundary.
     #[cfg(test)]
+    pub(crate) fn seed_input_revision_for_test(&mut self, revision: u64) {
+        let revision = InputOwnershipRevision::new(revision);
+        self.input_observation.revision = revision;
+        let retained = self
+            .input_observation
+            .last
+            .as_mut()
+            .unwrap_or_else(|| unreachable!("seed only after an observed snapshot"));
+        retained.revision = revision;
+    }
+
+    #[cfg(test)]
     pub(crate) fn inject_input_reservation_failure_after(&mut self, successful: usize) {
         self.input_observation
             .fail_reservation_after
