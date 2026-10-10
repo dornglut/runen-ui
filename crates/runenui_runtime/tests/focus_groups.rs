@@ -729,19 +729,21 @@ fn scope_boundary_id(runtime: &mut AppRuntime<ScopeBoundaryApp>, name: &str) -> 
         .clone()
 }
 
+fn pump_scope_boundary(runtime: &mut AppRuntime<ScopeBoundaryApp>, budget: PumpBudget) {
+    let _ = runtime
+        .pump(budget)
+        .unwrap_or_else(|_| unreachable!("scope-boundary pump observation"));
+}
+
 #[test]
 fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() {
     let mut runtime = AppRuntime::<ScopeBoundaryApp>::mount(State::default());
-    let _ = runtime
-        .pump(PumpBudget::new(
+    pump_scope_boundary(&mut runtime, PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
             usize::MAX,
-        ))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        ));
 
     let a = scope_boundary_id(&mut runtime, "scope.a");
     let outer = scope_boundary_id(&mut runtime, "scope.outer");
@@ -755,11 +757,7 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("outer member focus request is accepted"));
-    let _ = runtime
-        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    pump_scope_boundary(&mut runtime, PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     runtime
         .submit_command(
             a.clone(),
@@ -767,11 +765,7 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("outer group navigation is accepted"));
-    let _ = runtime
-        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    pump_scope_boundary(&mut runtime, PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.focus().focused_node(), Some(&c));
     assert!(
         !runtime
@@ -791,11 +785,7 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("inner-scope focus request is accepted"));
-    let _ = runtime
-        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    pump_scope_boundary(&mut runtime, PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.focus().focused_node(), Some(&x));
 
     runtime
@@ -805,11 +795,7 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("outer-scope restoration is accepted"));
-    let _ = runtime
-        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    pump_scope_boundary(&mut runtime, PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(
         runtime.focus().focused_node(),
         Some(&a),
@@ -823,11 +809,7 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("inner-scope refocus request is accepted"));
-    let _ = runtime
-        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    pump_scope_boundary(&mut runtime, PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.focus().focused_node(), Some(&x));
 
     runtime
@@ -837,11 +819,7 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("inner-scope group command routes normally"));
-    let _ = runtime
-        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    pump_scope_boundary(&mut runtime, PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.focus().focused_node(), Some(&x));
 
@@ -852,11 +830,7 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("ancestor-group command routes normally"));
-    let _ = runtime
-        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    pump_scope_boundary(&mut runtime, PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.focus().focused_node(), Some(&x));
 
@@ -867,11 +841,7 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("unrelated outer member command routes normally"));
-    let _ = runtime
-        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    pump_scope_boundary(&mut runtime, PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.focus().focused_node(), Some(&x));
 }
