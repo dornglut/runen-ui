@@ -134,28 +134,31 @@ fn only_explicit_widget_claim_is_exclusive_not_propagation_or_default_control() 
 #[test]
 fn terminal_scope_invalidates_unprocessed_native_receipts_without_fake_settlement() {
     let mut app = focused_runtime(false);
-    let pending = app.submit_keyboard(key()).expect("receipt is admitted").sequence();
+    let pending = app
+        .submit_keyboard(key())
+        .expect("receipt is admitted")
+        .sequence();
     let _ = app.shutdown();
-    let batch = pump::pump_recorded::<ProbeApp>(
-        &mut app.runtime,
-        PumpBudget::new(0, 0, 0, 0),
-    )
-    .expect("closed runtime still reports its retirement");
+    let batch = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
+        .expect("closed runtime still reports its retirement");
     assert_eq!(batch.processed_through(), None);
-    assert!(batch.ordered_records().iter().any(|record| matches!(
-        record, InputArbitrationRecord::ScopeRetired(_)
-    )));
+    assert!(
+        batch
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::ScopeRetired(_)))
+    );
     assert!(!batch.ordered_records().iter().any(|record| matches!(
         record, InputArbitrationRecord::InputSettled(settled) if settled.sequence() == pending
     )));
-    let second = pump::pump_recorded::<ProbeApp>(
-        &mut app.runtime,
-        PumpBudget::new(0, 0, 0, 0),
-    )
-    .expect("repeated observation is allowed");
-    assert!(!second.ordered_records().iter().any(|record| matches!(
-        record, InputArbitrationRecord::ScopeRetired(_)
-    )));
+    let second = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
+        .expect("repeated observation is allowed");
+    assert!(
+        !second
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::ScopeRetired(_)))
+    );
 }
 
 #[test]

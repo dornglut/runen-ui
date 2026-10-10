@@ -1162,7 +1162,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                                 crate::UiInputProcessingRejection::ForeignTarget
                             }
                             TargetStatus::Stale => crate::UiInputProcessingRejection::StaleTarget,
-                            TargetStatus::Missing => crate::UiInputProcessingRejection::MissingTarget,
+                            TargetStatus::Missing => {
+                                crate::UiInputProcessingRejection::MissingTarget
+                            }
                             TargetStatus::Live => {
                                 crate::UiInputProcessingRejection::InsufficientTransactionCapacity
                             }
