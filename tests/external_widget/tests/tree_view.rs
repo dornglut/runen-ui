@@ -16,7 +16,6 @@ struct State {
 #[derive(Clone, Debug)]
 enum Action {
     Request(TreeItemRequest),
-    Expanded(bool),
 }
 struct App;
 impl UiApp for App {
@@ -41,7 +40,6 @@ impl UiApp for App {
     }
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
-            Action::Expanded(expanded) => state.expanded = expanded,
             Action::Request(intent) => {
                 match &intent {
                     TreeItemRequest::Expand(id) if id == "parent" => state.expanded = true,
@@ -90,7 +88,8 @@ fn exact_parent_focus_uses_bubbling_not_preceding_sibling() {
     assert_eq!(runtime.focus().focused_node(), Some(&parent));
     assert!(runtime.state().actions.is_empty(), "focus never commits selection");
     command(&mut runtime, parent.clone(), SemanticCommand::FocusRight);
-    assert_eq!(runtime.focus().focused_node(), Some(&item(&mut runtime, "tree.a")));
+    let first_child = item(&mut runtime, "tree.a");
+    assert_eq!(runtime.focus().focused_node(), Some(&first_child));
     command(&mut runtime, parent, SemanticCommand::FocusDown);
     assert_eq!(runtime.state().selected, "parent");
 }
