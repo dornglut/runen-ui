@@ -343,7 +343,10 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
                 });
             }
         }
-        if state.has_children && state.expanded && context.has_mounted_children() {
+        // The passive M8 label is a mounted child even for a logical leaf.
+        // Project its empty semantics through the mandatory marker; otherwise
+        // a leaf's TreeItem contribution is rejected and vanishes.
+        if context.has_mounted_children() {
             node = node.with_mounted_children();
         }
         SemanticContribution::single(node)
