@@ -1443,7 +1443,10 @@ fn same_node_scroll_moves_committed_ime_candidate_area_with_content_not_viewport
     );
 }
 
-fn assert_pointer_selection_conflict(batch: &runenui_runtime::InputPumpBatch) {
+fn assert_pointer_selection_conflict(
+    batch: &runenui_runtime::InputPumpBatch,
+    receipt: runenui_core::WorkSequence,
+) {
     let settled = batch
         .ordered_records()
         .iter()
@@ -1453,6 +1456,7 @@ fn assert_pointer_selection_conflict(batch: &runenui_runtime::InputPumpBatch) {
         })
         .collect::<Vec<_>>();
     assert_eq!(settled.len(), 1);
+    assert_eq!(settled[0].sequence(), receipt);
     assert_eq!(settled[0].scope(), batch.final_ownership().scope());
     assert!(matches!(
         settled[0].finality(),
@@ -1489,8 +1493,11 @@ fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal()
     let input = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pointer selection settles"));
-    assert_eq!(input.processed_through(), Some(receipt));
-    assert_pointer_selection_conflict(&input);
+    assert!(
+        input.processed_through().is_some_and(|fence| fence >= receipt),
+        "the canonical pump also may process derived editor work after the native press"
+    );
+    assert_pointer_selection_conflict(&input, receipt);
 
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
