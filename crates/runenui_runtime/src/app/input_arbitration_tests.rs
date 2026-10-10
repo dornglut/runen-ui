@@ -302,9 +302,9 @@ fn terminal_scope_invalidates_unprocessed_native_receipts_without_fake_settlemen
         .submit_keyboard(key())
         .unwrap_or_else(|_| unreachable!("receipt is admitted"))
         .sequence();
-    let _ = app.shutdown();
-    let batch = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
-        .unwrap_or_else(|_| unreachable!("closed runtime still reports its retirement"));
+    let batch = app
+        .shutdown()
+        .unwrap_or_else(|_| unreachable!("public shutdown returns the final retirement"));
     assert_eq!(batch.processed_through(), None);
     assert!(
         batch
