@@ -278,7 +278,7 @@ const fn map_clipboard_error(error: &arboard::Error) -> FrameworkServiceFailure 
     }
 }
 
-fn cursor_presentation_response(modes: &PointerModes) -> FrameworkServiceResponse {
+const fn cursor_presentation_response(modes: &PointerModes) -> FrameworkServiceResponse {
     if modes.ui_cursor_presentation_applied() {
         FrameworkServiceResponse::Cursor(Ok(()))
     } else {
@@ -408,19 +408,13 @@ mod tests {
     fn m10_cursor_service_cannot_claim_success_during_visible_recovery() {
         let mut services = NativeFrameworkServices::new();
         let pointer = services.pointer_modes_mut();
-        pointer
-            .focus_changed(true, &mut FakePointer)
-            .expect("focus granted");
+        assert!(pointer.focus_changed(true, &mut FakePointer).is_ok());
         assert_eq!(
             super::cursor_presentation_response(pointer),
             FrameworkServiceResponse::Cursor(Ok(()))
         );
-        pointer
-            .focus_changed(false, &mut FakePointer)
-            .expect("focus revoked");
-        pointer
-            .focus_changed(true, &mut FakePointer)
-            .expect("focus restored");
+        assert!(pointer.focus_changed(false, &mut FakePointer).is_ok());
+        assert!(pointer.focus_changed(true, &mut FakePointer).is_ok());
         assert!(pointer.ui_pointer_allowed());
         assert_eq!(
             super::cursor_presentation_response(pointer),

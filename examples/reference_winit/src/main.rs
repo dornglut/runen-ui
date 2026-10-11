@@ -88,7 +88,7 @@ fn raw_motion_probe_expired(start: Instant, now: Instant) -> bool {
         .is_some_and(|elapsed| elapsed >= RAW_MOTION_PROBE_TIMEOUT)
 }
 
-fn absolute_ui_ingress_allowed(
+const fn absolute_ui_ingress_allowed(
     presentation_suppressed: bool,
     modes: &pointer_mode::PointerModes,
 ) -> bool {
@@ -2799,18 +2799,12 @@ mod tests {
             fn cursor(&mut self, _shape: runenui_core::CursorShape, _visible: bool) {}
         }
         let mut modes = pointer_mode::PointerModes::default();
-        modes
-            .focus_changed(true, &mut FakePointer)
-            .expect("focus granted");
+        assert!(modes.focus_changed(true, &mut FakePointer).is_ok());
         assert!(super::absolute_ui_ingress_allowed(false, &modes));
         assert!(!super::absolute_ui_ingress_allowed(true, &modes));
-        modes
-            .focus_changed(false, &mut FakePointer)
-            .expect("focus revoked");
+        assert!(modes.focus_changed(false, &mut FakePointer).is_ok());
         assert!(!super::absolute_ui_ingress_allowed(false, &modes));
-        modes
-            .focus_changed(true, &mut FakePointer)
-            .expect("focus restored");
+        assert!(modes.focus_changed(true, &mut FakePointer).is_ok());
         assert!(!super::absolute_ui_ingress_allowed(true, &modes));
         assert!(!modes.ui_cursor_presentation_applied());
         modes.confirm_fresh_absolute_point(&mut FakePointer);
