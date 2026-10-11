@@ -1,7 +1,7 @@
 //! Select-only `ComboBox` over M4 real focus and M5 active-descendant semantics.
 //! All committed values and popup visibility are authored by the application.
 use crate::{
-    ChildBearingWidget, Element, ElementId, EventContext, EventPhase, Focusability,
+    ChildBearingWidget, Element, ElementId, EventContext, EventPhase, FocusEventKind, Focusability,
     HitContribution, HitContributionContext, KeyboardCompositionState, KeyboardPhase,
     LayoutContainer, LayoutStyle, LogicalKey, OptionItem, Popover, PresentationFocusPolicy,
     PresentationOutsidePointerPolicy, SemanticAction, SemanticCommand, SemanticContribution,
@@ -241,6 +241,16 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
             || context.phase() != EventPhase::Target
             || context.default_is_prevented()
         {
+            return WidgetEventOutput::none();
+        }
+        // Losing the sole real focus owner dismisses an app-opened popup through
+        // the same ordinary request queue. This is not a second focus registry.
+        if state.open
+            && event
+                .as_focus()
+                .is_some_and(|focus| focus.kind() == FocusEventKind::Out)
+        {
+            context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
             return WidgetEventOutput::none();
         }
         let directive = if let Some(cmd) = event.as_semantic_command() {
