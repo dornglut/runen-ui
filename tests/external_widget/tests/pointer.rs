@@ -203,6 +203,15 @@ fn settle(runtime: &mut AppRuntime<App>) {
 
 #[test]
 fn downstream_pointer_capture_outside_hit_has_exact_exclusive_finality() {
+    assert_captured_close_outside_hit(PointerPhase::Up);
+}
+
+#[test]
+fn downstream_pointer_cancel_outside_hit_is_exclusive_without_activation_or_replay() {
+    assert_captured_close_outside_hit(PointerPhase::Cancel);
+}
+
+fn assert_captured_close_outside_hit(close_phase: PointerPhase) {
     let observations = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<App>::mount(State {
         observations,
@@ -231,7 +240,7 @@ fn downstream_pointer_capture_outside_hit_has_exact_exclusive_finality() {
     for (phase, position) in [
         (PointerPhase::Down, inside),
         (PointerPhase::Move, outside),
-        (PointerPhase::Up, outside),
+        (close_phase, outside),
     ] {
         let receipt = runtime
             .submit_pointer(pointer_event(19, phase, position, context.clone()))
@@ -258,11 +267,13 @@ fn downstream_pointer_capture_outside_hit_has_exact_exclusive_finality() {
                     && facts.reasons().contains(&UiInputClaimReason::PointerCapture)
                     && matches!(facts.route(), UiInputRoute::Captured { target: owner }
                         if owner == &target)
+                    && (phase != PointerPhase::Cancel
+                        || facts.default_disposition() == runenui_runtime::UiDefaultDisposition::None)
         ));
-        if phase == PointerPhase::Up {
+        if phase == close_phase {
             assert!(
                 batch.final_ownership().pointers().is_empty(),
-                "captured Up outside hit retires the pointer stream after settling"
+                "captured terminal phase outside hit retires the pointer stream after settling"
             );
         } else {
             assert!(
@@ -274,6 +285,13 @@ fn downstream_pointer_capture_outside_hit_has_exact_exclusive_finality() {
             );
         }
     }
+    let repeated = runtime
+        .pump(PumpBudget::new(128, 128, 128, 128))
+        .unwrap_or_else(|_| unreachable!("closed pointer stream cannot replay native input"));
+    assert!(!repeated
+        .ordered_records()
+        .iter()
+        .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))));
 }
 
 #[test]
