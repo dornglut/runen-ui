@@ -30,17 +30,24 @@ impl UiApp for ComboGpuApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
     fn root(open: &Self::State) -> impl View<Self::Action> {
-        combo_box("Choose",
+        combo_box(
+            "Choose",
             ElementId::new("gpu.combo.popup").unwrap_or_else(|_| unreachable!()),
             [
                 option_item("Alpha", true)
-                    .id("gpu.combo.alpha").foreground(Color::WHITE).on_activate(|| ()),
+                    .id("gpu.combo.alpha")
+                    .foreground(Color::WHITE)
+                    .on_activate(|| ()),
                 option_item("Bravo", false)
-                    .id("gpu.combo.bravo").foreground(Color::WHITE).on_activate(|| ()),
+                    .id("gpu.combo.bravo")
+                    .foreground(Color::WHITE)
+                    .on_activate(|| ()),
             ],
             |_| (),
         )
-        .id("gpu.combo.owner").foreground(Color::WHITE).open(*open)
+        .id("gpu.combo.owner")
+        .foreground(Color::WHITE)
+        .open(*open)
     }
     fn update(_: &mut Self::State, (): Self::Action) {}
 }
@@ -59,16 +66,19 @@ fn publication(open: bool) -> Result<runenui_runtime::SurfacePublication, Box<dy
     let mut app = AppRuntime::<ComboGpuApp>::mount(open);
     app.register_text_font_bytes(FONT.to_vec())?;
     app.set_text_generic_family_mapping(
-        GenericFontFamily::SansSerif, &[FontFamilyName::new("Cantarell")?],
+        GenericFontFamily::SansSerif,
+        &[FontFamilyName::new("Cantarell")?],
     )?;
     app.publish_surface(&SurfaceBuildContext::tight(
-        &StyleEnvironment::default(), LogicalSize::try_new(400.0, 200.0)?,
-    )).map_err(|e| std::io::Error::other(format!("ComboBox surface: {e:?}")))
-        .map_err(Into::into)
+        &StyleEnvironment::default(),
+        LogicalSize::try_new(400.0, 200.0)?,
+    ))
+    .map_err(|e| std::io::Error::other(format!("ComboBox surface: {e:?}")))
+    .map_err(Into::into)
 }
 #[test]
 fn select_only_combo_popup_projects_real_m8_options_and_real_wgpu_pixels()
-    -> Result<(), Box<dyn Error>> {
+-> Result<(), Box<dyn Error>> {
     let required = std::env::var_os("RUNENUI_M11SLIDER_EVIDENCE_DIR").is_some()
         || std::env::var_os("RUNENUI_M11COMBO_EVIDENCE_DIR").is_some();
     let mut renderer = match block_on(Renderer::request(RendererOptions::new())) {
@@ -80,22 +90,43 @@ fn select_only_combo_popup_projects_real_m8_options_and_real_wgpu_pixels()
     let closed = publication(false)?;
     for (source, expected_options, expected_runs) in [(&open, 2, 3), (&closed, 0, 1)] {
         let snapshot = source.semantic_publication().snapshot();
-        let combo = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::ComboBox)
+        let combo = snapshot
+            .nodes()
+            .iter()
+            .find(|node| node.role() == SemanticRole::ComboBox)
             .ok_or_else(|| std::io::Error::other("ComboBox primary semantic role absent"))?;
-        let count = snapshot.nodes().iter()
-            .filter(|node| node.role() == SemanticRole::Option).count();
+        let count = snapshot
+            .nodes()
+            .iter()
+            .filter(|node| node.role() == SemanticRole::Option)
+            .count();
         assert_eq!(count, expected_options);
-        assert_eq!(combo.relationships().iter()
-            .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant).count(),
-            usize::from(expected_options != 0));
-        let runs = source.paint_scene().items().iter()
-            .filter(|item| item.primitive().as_shaped_text_run().is_some()).count();
-        assert_eq!(runs, expected_runs, "ordinary ComboBox Option text uses retained M8");
+        assert_eq!(
+            combo
+                .relationships()
+                .iter()
+                .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
+                .count(),
+            usize::from(expected_options != 0)
+        );
+        let runs = source
+            .paint_scene()
+            .items()
+            .iter()
+            .filter(|item| item.primitive().as_shaped_text_run().is_some())
+            .count();
+        assert_eq!(
+            runs, expected_runs,
+            "ordinary ComboBox Option text uses retained M8"
+        );
     }
     let a = renderer.render_offscreen_publication(open.paint_publication(), &NoResources)?;
     let b = renderer.render_offscreen_publication(closed.paint_publication(), &NoResources)?;
-    assert_ne!(a.readback().rgba8_srgb(), b.readback().rgba8_srgb(),
-        "opening ComboBox adds actual native-wgpu Option pixels");
+    assert_ne!(
+        a.readback().rgba8_srgb(),
+        b.readback().rgba8_srgb(),
+        "opening ComboBox adds actual native-wgpu Option pixels"
+    );
     let dir = std::env::var_os("RUNENUI_M11COMBO_EVIDENCE_DIR")
         .or_else(|| std::env::var_os("RUNENUI_M11SLIDER_EVIDENCE_DIR"));
     if let Some(path) = dir.map(PathBuf::from) {
@@ -103,8 +134,11 @@ fn select_only_combo_popup_projects_real_m8_options_and_real_wgpu_pixels()
         for (name, result) in [("m11-combo-open.png", &a), ("m11-combo-closed.png", &b)] {
             let extent = result.readback().extent();
             image::save_buffer(
-                path.join(name), result.readback().rgba8_srgb(),
-                extent.width(), extent.height(), image::ColorType::Rgba8,
+                path.join(name),
+                result.readback().rgba8_srgb(),
+                extent.width(),
+                extent.height(),
+                image::ColorType::Rgba8,
             )?;
         }
     }
