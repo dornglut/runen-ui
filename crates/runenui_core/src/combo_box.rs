@@ -185,7 +185,12 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         let previous = state.clone();
         let mut next = self.create_state();
-        if self.open && self.enabled && previous.open && self.invalid.is_none() {
+        if self.open
+            && self.enabled
+            && previous.open
+            && previous.popup_id == self.popup_id
+            && self.invalid.is_none()
+        {
             next.active = previous.active.clone().filter(|id| {
                 self.options
                     .iter()
