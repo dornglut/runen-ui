@@ -254,7 +254,7 @@ impl<'a, Action> EventContext<'a, Action> {
         }
     }
 
-    /// Requests a standard #344 ScrollIntoView for one uniquely mounted, enabled
+    /// Requests standard #344 `ScrollIntoView` for one uniquely mounted, enabled
     /// descendant of the routed owner. Runtime resolves its exact generation
     /// *within this event transaction*; absent, ambiguous or disabled children
     /// produce no command. This never grants focus, stores scroll offsets, or
