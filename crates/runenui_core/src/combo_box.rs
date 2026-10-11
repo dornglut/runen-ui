@@ -451,66 +451,74 @@ fn assemble_combo<Action: 'static>(
     owner_id: Option<&ElementId>,
     on_request: RequestHandler<Action>,
 ) -> (ComboWidget<Action>, Option<Element<Action>>) {
-        let mut seen = BTreeSet::new();
-        let mut options = Vec::new();
-        let mut option_activations = Vec::new();
-        let mut popup_options = Vec::new();
-        let mut invalid = (owner_id == Some(&popup_id))
-            .then_some(InvalidComboBox::OwnerIdCollision);
-        for mut item in options_source {
-            let Some((id, selected, option_enabled)) = item.combo_proxy_facts() else {
-                invalid.get_or_insert(InvalidComboBox::MissingOptionId);
-                continue;
-            };
-            if owner_id == Some(&id) {
-                invalid.get_or_insert(InvalidComboBox::OwnerIdCollision);
-            } else if id == popup_id {
-                invalid.get_or_insert(InvalidComboBox::PopupIdCollision);
-            } else if !seen.insert(id.as_str().to_owned()) {
-                invalid.get_or_insert(InvalidComboBox::DuplicateOptionId);
-            }
-            if let Some(callback) = item.share_combo_activation() {
-                option_activations.push((id.clone(), callback));
-            }
-            options.push(Candidate {
-                id,
-                selected,
-                enabled: option_enabled,
-            });
-            popup_options.push(if owner_enabled {
-                item.combo_box_proxy()
-            } else {
-                item.combo_box_proxy().disabled()
-            });
-        }
-        if options.iter().filter(|item| item.selected).count() > 1 {
-            invalid.get_or_insert(InvalidComboBox::MultipleSelected);
-        }
-        let popup = if open && invalid.is_none() {
-            // M5 ActiveDescendant requires Controls to identify the ListBox,
-            // not the surrounding Popover's semantic Group.
-            let popup = list_box(popup_options)
-                .id(popup_id.clone())
-                .into_element();
-            let handler = Rc::clone(&on_request);
-            let presentation = SurfacePresentation::new(SurfacePresentationPlacement::new(
-                SurfacePresentationSide::Bottom,
-            ))
-            .with_anchor(SurfacePresentationAnchor::OwnerBounds)
-            .with_outside_pointer(PresentationOutsidePointerPolicy::DismissAndBlock)
-            .with_focus_policy(PresentationFocusPolicy::Preserve)
-            .dismiss_on_cancel_or_back(true);
-            Some(Popover::new(vec![popup], presentation)
-                .on_dismiss(move |_| (*handler.borrow_mut())(ComboBoxRequest::Close))
-                .into_element())
-        } else {
-            None
+    let mut seen = BTreeSet::new();
+    let mut options = Vec::new();
+    let mut option_activations = Vec::new();
+    let mut popup_options = Vec::new();
+    let mut invalid = (owner_id == Some(&popup_id)).then_some(InvalidComboBox::OwnerIdCollision);
+    for mut item in options_source {
+        let Some((id, selected, option_enabled)) = item.combo_proxy_facts() else {
+            invalid.get_or_insert(InvalidComboBox::MissingOptionId);
+            continue;
         };
+        if owner_id == Some(&id) {
+            invalid.get_or_insert(InvalidComboBox::OwnerIdCollision);
+        } else if id == popup_id {
+            invalid.get_or_insert(InvalidComboBox::PopupIdCollision);
+        } else if !seen.insert(id.as_str().to_owned()) {
+            invalid.get_or_insert(InvalidComboBox::DuplicateOptionId);
+        }
+        if let Some(callback) = item.share_combo_activation() {
+            option_activations.push((id.clone(), callback));
+        }
+        options.push(Candidate {
+            id,
+            selected,
+            enabled: option_enabled,
+        });
+        popup_options.push(if owner_enabled {
+            item.combo_box_proxy()
+        } else {
+            item.combo_box_proxy().disabled()
+        });
+    }
+    if options.iter().filter(|item| item.selected).count() > 1 {
+        invalid.get_or_insert(InvalidComboBox::MultipleSelected);
+    }
+    let popup = if open && invalid.is_none() {
+        // M5 ActiveDescendant requires Controls to identify the ListBox,
+        // not the surrounding Popover's semantic Group.
+        let popup = list_box(popup_options).id(popup_id.clone()).into_element();
+        let handler = Rc::clone(&on_request);
+        let presentation = SurfacePresentation::new(SurfacePresentationPlacement::new(
+            SurfacePresentationSide::Bottom,
+        ))
+        .with_anchor(SurfacePresentationAnchor::OwnerBounds)
+        .with_outside_pointer(PresentationOutsidePointerPolicy::DismissAndBlock)
+        .with_focus_policy(PresentationFocusPolicy::Preserve)
+        .dismiss_on_cancel_or_back(true);
+        Some(
+            Popover::new(vec![popup], presentation)
+                .on_dismiss(move |_| (*handler.borrow_mut())(ComboBoxRequest::Close))
+                .into_element(),
+        )
+    } else {
+        None
+    };
 
-    (ComboWidget {
-        label, popup_id, options, open, enabled: owner_enabled, invalid,
-        on_request, option_activations,
-    }, popup)
+    (
+        ComboWidget {
+            label,
+            popup_id,
+            options,
+            open,
+            enabled: owner_enabled,
+            invalid,
+            on_request,
+            option_activations,
+        },
+        popup,
+    )
 }
 
 impl<Action: 'static> View<Action> for ComboBox<Action> {
