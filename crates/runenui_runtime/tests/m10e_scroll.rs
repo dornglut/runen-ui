@@ -486,14 +486,31 @@ fn assert_touch_scroll_claim(batch: &InputPumpBatch, receipt: runenui_core::Work
     ));
 }
 
-#[test]
-fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
+fn assert_touch_scroll_trace_recorded(runtime: &AppRuntime<TouchScrollApp>, pointer_id: PointerId) {
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::TouchGestureWon {
+            pointer_id: id,
+            gesture: runenui_runtime::TraceTouchGestureKind::Scroll,
+        } if *id == pointer_id
+    )));
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::LogicalScrollOwnerApplied { .. }
+    )));
+    let jsonl = runtime.trace().export_jsonl();
+    assert!(jsonl.contains("\"name\":\"touch_gesture_provisional\""));
+    assert!(jsonl.contains("\"name\":\"touch_gesture_won\""));
+    assert!(jsonl.contains("\"gesture\":\"scroll\""));
+}
+
+fn assert_touch_scroll_and_host_claim(trace_capacity: usize) {
     let state = TouchScrollState {
         events: TouchEventLog::default(),
         content_visible: true,
         capture_on_down: false,
     };
-    let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
+    let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
     let mut runtime = AppRuntime::<TouchScrollApp>::mount_with_config(state.clone(), config);
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
@@ -573,22 +590,22 @@ fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
             .as_slice(),
         [PointerPhase::Down, PointerPhase::Move]
     );
-    assert!(runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::TouchGestureWon {
-            pointer_id: id,
-            gesture: runenui_runtime::TraceTouchGestureKind::Scroll,
-        } if *id == pointer_id
-    )));
-    assert!(runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::LogicalScrollOwnerApplied { .. }
-    )));
-    let jsonl = runtime.trace().export_jsonl();
-    assert!(jsonl.contains("\"name\":\"touch_gesture_provisional\""));
-    assert!(jsonl.contains("\"name\":\"touch_gesture_won\""));
-    assert!(jsonl.contains("\"gesture\":\"scroll\""));
+    if trace_capacity == 0 {
+        assert!(runtime.trace().records().next().is_none());
+    } else {
+        assert_touch_scroll_trace_recorded(&runtime, pointer_id);
+    }
     assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
+}
+
+#[test]
+fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
+    assert_touch_scroll_and_host_claim(512);
+}
+
+#[test]
+fn touch_scroll_claim_and_threshold_order_survive_disabled_diagnostic_trace() {
+    assert_touch_scroll_and_host_claim(0);
 }
 
 #[test]
