@@ -213,6 +213,18 @@ fn downstream_pointer_cancel_outside_hit_is_exclusive_without_activation_or_repl
     }
 }
 
+fn occurrence_route(phase: PointerPhase, target: &runenui_runtime::MountedNodeId) -> UiInputRoute {
+    if phase == PointerPhase::Down {
+        UiInputRoute::Routed {
+            target: target.clone(),
+        }
+    } else {
+        UiInputRoute::Captured {
+            target: target.clone(),
+        }
+    }
+}
+
 fn assert_captured_close_outside_hit(close_phase: PointerPhase, trace_disabled: bool) {
     let observations = Rc::new(RefCell::new(Vec::new()));
     let state = State {
@@ -271,13 +283,13 @@ fn assert_captured_close_outside_hit(close_phase: PointerPhase, trace_disabled: 
         assert_eq!(settlements.len(), 1);
         assert_eq!(settlements[0].sequence(), receipt);
         assert_eq!(settlements[0].scope(), batch.final_ownership().scope());
+        let expected_route = occurrence_route(phase, &target);
         assert!(matches!(
             settlements[0].finality(),
             UiInputFinality::Committed(facts)
                 if facts.conflict() == UiInputConflict::ExclusiveUi
                     && facts.reasons().contains(&UiInputClaimReason::PointerCapture)
-                    && matches!(facts.route(), UiInputRoute::Captured { target: owner }
-                        if owner == &target)
+                    && facts.route() == &expected_route
                     && (phase != PointerPhase::Cancel
                         || facts.default_disposition() == runenui_runtime::UiDefaultDisposition::None)
         ));

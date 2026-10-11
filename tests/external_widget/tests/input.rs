@@ -9,6 +9,18 @@ mod arbitration_finality;
 #[path = "input_arbitration_menu.rs"]
 mod arbitration_menu;
 
+#[path = "input_arbitration_pointer_route.rs"]
+mod arbitration_pointer_route;
+
+#[path = "input_arbitration_controls.rs"]
+mod arbitration_controls;
+
+#[path = "input_arbitration_slot_families.rs"]
+mod arbitration_slot_families;
+
+#[path = "input_arbitration_text_boundary.rs"]
+mod arbitration_text_boundary;
+
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{

@@ -1,9 +1,10 @@
-//! Public Menu/MenuBar keyboard claims preserve the separate focus-command boundary.
+//! Standard focus-group controls claim keys before the separate focus-command boundary.
 
 use runenui_core::{
     CommandOrigin, ElementId, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
-    KeyboardPhase, LogicalKey, Menu, MenuBar, MenuButton, MenuItem, NoHostProtocol, PhysicalKey,
-    SemanticCommand, StyleEnvironment, UiApp, View, WorkSequence,
+    KeyboardPhase, ListBox, LogicalKey, Menu, MenuBar, MenuButton, MenuItem, NoHostProtocol,
+    OptionItem, PhysicalKey, SemanticCommand, StyleEnvironment, Tab, TabList, Toolbar, TreeItem,
+    TreeView, UiApp, View, WorkSequence, button,
 };
 use runenui_runtime::{
     AppRuntime, InputArbitrationRecord, InputPumpBatch, LogicalSize, MountedNodeId, PumpBudget,
@@ -14,8 +15,26 @@ use runenui_runtime::{
 const FULL: PumpBudget = PumpBudget::new(64, 64, 64, 64);
 const ONE: PumpBudget = PumpBudget::new(1, 0, 0, 0);
 
+#[derive(Clone, Copy, Debug)]
+enum Control {
+    Menu,
+    MenuBar,
+    ListBox,
+    TabList,
+    Toolbar,
+    TreeView,
+}
+const CONTROLS: [Control; 6] = [
+    Control::Menu,
+    Control::MenuBar,
+    Control::ListBox,
+    Control::TabList,
+    Control::Toolbar,
+    Control::TreeView,
+];
+
 struct State {
-    inline_bar: bool,
+    control: Control,
     activations: usize,
 }
 
@@ -26,6 +45,46 @@ impl UiApp for App {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &State) -> impl View<()> {
+        match state.control {
+            Control::ListBox => {
+                return ListBox::new([
+                    OptionItem::new("Alpha", false)
+                        .id("first")
+                        .on_activate(|| ()),
+                    OptionItem::new("Beta", false).id("last").on_activate(|| ()),
+                ])
+                .into_element();
+            }
+            Control::TabList => {
+                return TabList::new([
+                    Tab::new("Alpha", false).id("first").on_activate(|| ()),
+                    Tab::new("Beta", false).id("last").on_activate(|| ()),
+                ])
+                .into_element();
+            }
+            Control::Toolbar => {
+                return Toolbar::new(vec![
+                    button("Alpha")
+                        .id("first")
+                        .on_activate(|| ())
+                        .into_element(),
+                    button("Beta").id("last").on_activate(|| ()).into_element(),
+                ])
+                .into_element();
+            }
+            Control::TreeView => {
+                return TreeView::new([
+                    TreeItem::new("alpha", "Alpha", [])
+                        .id("first")
+                        .on_request(|_| ()),
+                    TreeItem::new("beta", "Beta", [])
+                        .id("last")
+                        .on_request(|_| ()),
+                ])
+                .into_element();
+            }
+            Control::Menu | Control::MenuBar => {}
+        }
         let items = vec![
             MenuItem::new("Alpha")
                 .id("first")
@@ -36,7 +95,7 @@ impl UiApp for App {
                 .on_activate(|| ())
                 .into_element(),
         ];
-        if state.inline_bar {
+        if matches!(state.control, Control::MenuBar) {
             MenuBar::new(items).id("menu").into_element()
         } else {
             MenuButton::new("File", true)
@@ -63,10 +122,10 @@ fn target(runtime: &mut AppRuntime<App>, name: &str) -> MountedNodeId {
         .clone()
 }
 
-fn runtime(inline_bar: bool, trace_capacity: usize, focused: &str) -> AppRuntime<App> {
+fn runtime(control: Control, trace_capacity: usize, focused: &str) -> AppRuntime<App> {
     let mut runtime = AppRuntime::<App>::mount_with_config(
         State {
-            inline_bar,
+            control,
             activations: 0,
         },
         RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
@@ -154,14 +213,14 @@ fn settlement(batch: &InputPumpBatch) -> &UiInputSettlement {
 }
 
 #[test]
-fn real_menu_home_end_claim_the_native_key_before_queued_focus_changes() {
+fn standard_controls_home_end_claim_the_native_key_before_queued_focus_changes() {
     for trace_capacity in [0, 1, 512] {
-        for inline_bar in [false, true] {
+        for control in CONTROLS {
             for (logical, from, to) in [
                 (LogicalKey::Home, "last", "first"),
                 (LogicalKey::End, "first", "last"),
             ] {
-                let mut runtime = runtime(inline_bar, trace_capacity, from);
+                let mut runtime = runtime(control, trace_capacity, from);
                 let command = if logical == LogicalKey::Home {
                     SemanticCommand::FocusGroupFirst
                 } else {
@@ -186,7 +245,11 @@ fn real_menu_home_end_claim_the_native_key_before_queued_focus_changes() {
                 let UiInputFinality::Committed(facts) = settled.finality() else {
                     unreachable!("ordinary menu input commits");
                 };
-                assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
+                assert_eq!(
+                    facts.conflict(),
+                    UiInputConflict::ExclusiveUi,
+                    "{control:?}"
+                );
                 assert_eq!(facts.reasons(), [UiInputClaimReason::ExplicitWidgetClaim]);
                 assert!(facts.propagation_stopped() && facts.default_prevented());
                 assert_eq!(facts.default_disposition(), UiDefaultDisposition::Prevented);
@@ -232,9 +295,9 @@ fn real_menu_home_end_claim_the_native_key_before_queued_focus_changes() {
 }
 
 #[test]
-fn modified_and_key_up_home_end_do_not_inherit_the_menu_navigation_claim() {
+fn modified_and_key_up_home_end_do_not_inherit_standard_navigation_claims() {
     for trace_capacity in [0, 1, 512] {
-        for inline_bar in [false, true] {
+        for control in CONTROLS {
             for logical in [LogicalKey::Home, LogicalKey::End] {
                 for (modifiers, phase) in [
                     (KeyModifiers::CONTROL, KeyboardPhase::Down),
@@ -243,7 +306,7 @@ fn modified_and_key_up_home_end_do_not_inherit_the_menu_navigation_claim() {
                     (KeyModifiers::META, KeyboardPhase::Down),
                     (KeyModifiers::NONE, KeyboardPhase::Up),
                 ] {
-                    let mut runtime = runtime(inline_bar, trace_capacity, "last");
+                    let mut runtime = runtime(control, trace_capacity, "last");
                     let before = runtime
                         .input_ownership()
                         .unwrap_or_else(|_| unreachable!("before"));

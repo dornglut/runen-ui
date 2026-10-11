@@ -1196,6 +1196,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
         };
         self.record_input_processing_validation(&mut transaction, &payload);
+        // Conflict belongs to the reached occurrence. A callback can withdraw
+        // text capability for subsequent input; effective ownership is sampled
+        // after commit, independently of this pre-delivery text-domain fact.
+        let focused = self.focus.focused_node() == Some(&target);
+        let text_capability = self.tree.text_input_probe(&target).ok();
+        let owns_text_keyboard = focused
+            && matches!(&payload, InputEnvelopePayload::Keyboard(_))
+            && text_capability.is_some_and(|capability| {
+                capability.accepts_committed_text() || capability.accepts_composition()
+            });
         let event = match &payload {
             InputEnvelopePayload::Keyboard(event) => UiEvent::Keyboard(event.clone()),
             InputEnvelopePayload::CommittedText(event) => UiEvent::CommittedText(event.clone()),
@@ -1217,13 +1227,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // A candidate shortcut alone does not prove an accepted shortcut default.
         let explicit = transaction.host_input_claimed;
         let has_default_output = !transaction.default_outputs.is_empty();
-        let focused = self.focus.focused_node() == Some(&target);
-        let text_capability = self.tree.text_input_probe(&target).ok();
-        let owns_text_keyboard = focused
-            && matches!(&payload, InputEnvelopePayload::Keyboard(_))
-            && text_capability.is_some_and(|capability| {
-                capability.accepts_committed_text() || capability.accepts_composition()
-            });
         // The selected default owns its reason. A shortcut candidate can be
         // suppressed before a different default runs, and type-ahead can
         // commit navigation synchronously without any queued default output.

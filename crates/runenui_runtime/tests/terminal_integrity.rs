@@ -14,9 +14,10 @@ use runenui_core::{
     SemanticCommand, StyleEnvironment, UiApp, View, Widget, WidgetMountContext, button, text,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, MountedNodeId, PublishSurfaceError, PumpBudget, PumpOutcome,
-    RuntimeStatus, RuntimeTerminalReason, SubmitActionErrorKind, SubmitCommandErrorKind,
-    SurfaceBuildContext, TraceRecordKind,
+    AppRuntime, InputArbitrationRecord, InputOwnershipSnapshot, InputPumpBatch,
+    InputScopeRetirementReason, LayoutConstraints, MountedNodeId, PublishSurfaceError, PumpBudget,
+    PumpOutcome, RuntimeConfig, RuntimeStatus, RuntimeTerminalReason, SubmitActionErrorKind,
+    SubmitCommandErrorKind, SurfaceBuildContext, TraceConfig, TraceRecordKind,
 };
 
 fn focus<App: UiApp>(runtime: &mut AppRuntime<App>, target: MountedNodeId) {
@@ -181,26 +182,46 @@ impl UiApp for PollApp {
 
 #[test]
 fn work_sequence_exhaustion_prevents_local_future_poll() {
-    let calls = Rc::new(Cell::new(0));
-    let mut runtime = AppRuntime::<PollApp>::mount(Rc::clone(&calls));
-    let _ = runtime
-        .pump(PumpBudget::new(2, 0, 0, 0))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
-    runtime.__seed_next_work_sequence_for_test(0);
+    for trace_capacity in [0, 1, 512] {
+        let calls = Rc::new(Cell::new(0));
+        let mut runtime = AppRuntime::<PollApp>::mount_with_config(
+            Rc::clone(&calls),
+            RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
+        );
+        let _ = runtime
+            .pump(PumpBudget::new(2, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned();
+        let before = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("before readiness"));
+        runtime.__seed_next_work_sequence_for_test(0);
 
-    let _ = runtime
-        .pump(PumpBudget::new(0, 0, 1, 0))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        let batch = runtime
+            .pump(PumpBudget::new(0, 0, 1, 0))
+            .unwrap_or_else(|_| unreachable!("readiness terminal is observable"));
 
-    assert_eq!(calls.get(), 0);
-    assert_eq!(
-        runtime.status(),
-        RuntimeStatus::Terminal(RuntimeTerminalReason::WorkSequenceExhausted)
-    );
+        assert_eq!(calls.get(), 0);
+        assert_eq!(
+            runtime.status(),
+            RuntimeStatus::Terminal(RuntimeTerminalReason::WorkSequenceExhausted)
+        );
+        assert_readiness_retirement(
+            &mut runtime,
+            &before,
+            &batch,
+            RuntimeTerminalReason::WorkSequenceExhausted,
+        );
+        if trace_capacity == 512 {
+            assert!(runtime.trace().kinds().any(|kind| matches!(
+                kind,
+                TraceRecordKind::RuntimeTerminal {
+                    reason: RuntimeTerminalReason::WorkSequenceExhausted
+                }
+            )));
+        }
+    }
 }
 
 #[test]
@@ -212,19 +233,58 @@ fn trace_sequence_exhaustion_prevents_local_future_poll() {
         .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
+    let before = runtime
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("before readiness"));
     runtime.__seed_next_trace_sequence_for_test(0);
 
-    let _ = runtime
+    let batch = runtime
         .pump(PumpBudget::new(0, 0, 1, 0))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("readiness terminal is observable"));
 
     assert_eq!(calls.get(), 0);
     assert_eq!(
         runtime.status(),
         RuntimeStatus::Terminal(RuntimeTerminalReason::TraceSequenceExhausted)
     );
+    assert_readiness_retirement(
+        &mut runtime,
+        &before,
+        &batch,
+        RuntimeTerminalReason::TraceSequenceExhausted,
+    );
+}
+
+fn assert_readiness_retirement(
+    runtime: &mut AppRuntime<PollApp>,
+    before: &InputOwnershipSnapshot,
+    batch: &InputPumpBatch,
+    reason: RuntimeTerminalReason,
+) {
+    assert_eq!(batch.processed_through(), None);
+    assert_eq!(batch.report().processed_envelopes(), 0);
+    assert_eq!(batch.report().polled_local_work(), 0);
+    assert_eq!(batch.pause_reason(), None);
+    assert_eq!(batch.report().outcome(), PumpOutcome::Terminal(reason));
+    assert_eq!(
+        batch.final_ownership().status(),
+        RuntimeStatus::Terminal(reason)
+    );
+    assert!(batch.final_ownership().revision() > before.revision());
+    assert_eq!(batch.final_ownership().scope(), before.scope());
+    assert!(matches!(batch.ordered_records(),
+        [InputArbitrationRecord::OwnershipChanged(change), InputArbitrationRecord::ScopeRetired(retired)]
+        if change.before_revision() == before.revision()
+            && change.after() == batch.final_ownership()
+            && retired.scope() == before.scope()
+            && retired.reason() == InputScopeRetirementReason::Terminal(reason)));
+    let repeated = runtime
+        .pump(PumpBudget::new(0, 0, 1, 0))
+        .unwrap_or_else(|_| unreachable!("repeat terminal observation"));
+    assert_eq!(repeated.ordered_records(), []);
+    assert_eq!(repeated.processed_through(), None);
+    assert_eq!(repeated.final_ownership(), batch.final_ownership());
+    assert_eq!(repeated.report().cancelled_by_terminal_transition(), 0);
 }
 
 #[test]

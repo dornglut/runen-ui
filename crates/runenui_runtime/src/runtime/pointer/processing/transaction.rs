@@ -432,31 +432,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             reasons.push(crate::UiInputClaimReason::ActivationDefault);
         }
-        // Capture may be acquired by this event (Down/widget request) or
-        // have routed this event and then been released (Up/widget request).
-        // Preserve both accepted capture semantics, but never resurrect a
-        // removed pre-event owner after pointer preparation cleared it.
-        // Drag/drop deliberately targets the physical hit, not an unrelated
-        // captured pointer owner. Capture can still be an exclusive UI *reason*,
-        // but must not replace the actual destination in the route facts.
-        let captured_route_target = if pending.work.event.drag_drop().is_some() {
-            None
-        } else {
-            pending.stream.capture_owner().cloned().or_else(|| {
-                if routed_via_capture {
-                    pending.routed_target.clone()
-                } else {
-                    None
-                }
-            })
-        };
+        // The occurrence's route was selected before callbacks. Capture
+        // acquisition/transfer commits for subsequent occurrences and belongs
+        // in ownership and claim facts, never in this event's destination.
         let route = if let Some(root) = pending.presentation_block_root.as_ref() {
             crate::UiInputRoute::PresentationBlocked { root: root.clone() }
-        } else if let Some(target) = captured_route_target {
-            crate::UiInputRoute::Captured { target }
         } else if let Some(target) = pending.routed_target.as_ref() {
-            crate::UiInputRoute::Routed {
-                target: target.clone(),
+            if routed_via_capture {
+                crate::UiInputRoute::Captured {
+                    target: target.clone(),
+                }
+            } else {
+                crate::UiInputRoute::Routed {
+                    target: target.clone(),
+                }
             }
         } else {
             crate::UiInputRoute::Unrouted
