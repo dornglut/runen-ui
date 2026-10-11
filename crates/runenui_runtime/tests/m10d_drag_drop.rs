@@ -395,9 +395,13 @@ fn physical_drop_under_different_capture_retains_exact_route_without_trace() {
     assert_eq!(observations[0].target, "right");
     assert_eq!(observations[0].sequence, dropped.get());
     assert_eq!(observations[0].physical_target, Some(harness.right.clone()));
-    assert!(batch.final_ownership().pointers().iter().any(|pointer| {
-        pointer.capture_owner() == Some(&left)
-    }));
+    assert!(
+        batch
+            .final_ownership()
+            .pointers()
+            .iter()
+            .any(|pointer| { pointer.capture_owner() == Some(&left) })
+    );
     assert!(harness.runtime.trace().records().next().is_none());
 }
 
