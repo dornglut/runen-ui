@@ -11,9 +11,9 @@ use core::{
 use runenui_core::{
     Color, CommandOrigin, ElementId, FontFamilyName, GenericFontFamily, LayoutBound,
     LayoutDimension, LayoutStyle, LogicalLength, NoHostProtocol, OverflowPolicy, SemanticCommand,
-    SemanticEditableMode, SemanticRelationshipKind, SemanticRole, StyleEnvironment, TextAffinity, TextDocumentId,
-    TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, UiApp, View,
-    combo_box, editable_combo_box, option_item, text_field,
+    SemanticEditableMode, SemanticRelationshipKind, SemanticRole, StyleEnvironment, TextAffinity,
+    TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, UiApp,
+    View, combo_box, editable_combo_box, option_item, text_field,
 };
 use runenui_render_wgpu::{
     Renderer, RendererInitError, RendererOptions, ResourcePayload, ResourceProvider,
@@ -398,9 +398,15 @@ fn long_combo_native_gpu_scroll_clips_paint_to_the_existing_bounded_viewport()
         Err(error) => return Err(error.into()),
     };
     let mut app = AppRuntime::<LongComboGpuApp>::mount(());
-    assert!(app.pump(PumpBudget::new(
-        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).is_quiescent());
+    assert!(
+        app.pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .is_quiescent()
+    );
     app.register_text_font_bytes(FONT.to_vec())?;
     app.set_text_generic_family_mapping(
         GenericFontFamily::SansSerif,
@@ -409,29 +415,47 @@ fn long_combo_native_gpu_scroll_clips_paint_to_the_existing_bounded_viewport()
     let owner = long_combo_id(&mut app, "gpu.scroll.owner");
     let list = long_combo_id(&mut app, "gpu.scroll.list");
     let last = long_combo_id(&mut app, "gpu.scroll.option.11");
-    let viewport = app.index().node(&list)
+    let viewport = app
+        .index()
+        .node(&list)
         .and_then(|node| node.parent())
         .ok_or_else(|| std::io::Error::other("missing standard scroll parent"))?
         .clone();
-    let scroll = app.index().node(&viewport)
+    let scroll = app
+        .index()
+        .node(&viewport)
         .ok_or_else(|| std::io::Error::other("missing standard scroll viewport"))?
-        .layout().clone();
-    assert_eq!(scroll.max_height(), LayoutBound::Length(LogicalLength::from(72_u8)));
+        .layout()
+        .clone();
+    assert_eq!(
+        scroll.max_height(),
+        LayoutBound::Length(LogicalLength::from(72_u8))
+    );
     assert_eq!(scroll.overflow().vertical(), OverflowPolicy::Scroll);
-    assert!(!app.index().node(&viewport)
-        .ok_or_else(|| std::io::Error::other("missing scroll focus node"))?.is_focusable());
+    assert!(
+        !app.index()
+            .node(&viewport)
+            .ok_or_else(|| std::io::Error::other("missing scroll focus node"))?
+            .is_focusable()
+    );
     app.submit_command(
-        owner.clone(), SemanticCommand::RequestFocus, CommandOrigin::programmatic(),
-    ).unwrap_or_else(|_| unreachable!("ComboBox owner is focusable"));
-    assert!(app.pump(PumpBudget::new(
-        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).is_quiescent());
+        owner.clone(),
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("ComboBox owner is focusable"));
+    assert!(
+        app.pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .is_quiescent()
+    );
 
     let environment = StyleEnvironment::default();
-    let build = SurfaceBuildContext::tight(
-        &environment,
-        LogicalSize::try_new(320.0, 260.0)?,
-    );
+    let build = SurfaceBuildContext::tight(&environment, LogicalSize::try_new(320.0, 260.0)?);
     let before = app
         .publish_surface(&build)
         .map_err(|e| std::io::Error::other(format!("before scroll: {e:?}")))?;
