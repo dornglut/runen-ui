@@ -64,6 +64,11 @@ fn block_on<F: Future>(future: F) -> F::Output {
 }
 fn publication(open: bool) -> Result<runenui_runtime::SurfacePublication, Box<dyn Error>> {
     let mut app = AppRuntime::<ComboGpuApp>::mount(open);
+    // Reconcile initial authored popup content and current option identity
+    // before publishing; there is no fake semantic target or test-only hook.
+    assert!(app.pump(runenui_runtime::PumpBudget::new(
+        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
+    )).is_quiescent());
     app.register_text_font_bytes(FONT.to_vec())?;
     app.set_text_generic_family_mapping(
         GenericFontFamily::SansSerif,
