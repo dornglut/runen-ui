@@ -12,8 +12,9 @@ use runenui_core::{
     WidgetMeasure, children, row,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext,
-    TraceFrameworkServiceKind, TraceFrameworkServiceOutcome, TraceRecordKind,
+    AppRuntime, InputArbitrationRecord, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext,
+    TraceFrameworkServiceKind, TraceFrameworkServiceOutcome, TraceRecordKind, UiInputClaimReason,
+    UiInputConflict, UiInputFinality, UiInputRoute,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -229,10 +230,29 @@ fn accepted_drop_uses_the_physical_hit_target_not_the_captured_pointer_owner() {
         ))
         .unwrap_or_else(|error| panic!("drop event is admitted: {error}"));
     let drop_sequence = submission.sequence();
-    harness
+    let batch = harness
         .runtime
         .pump(budget())
         .unwrap_or_else(|_| unreachable!("pump observation"));
+    let settled = batch
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(settled.len(), 1);
+    assert_eq!(settled[0].sequence(), drop_sequence);
+    assert_eq!(settled[0].scope(), batch.final_ownership().scope());
+    assert!(matches!(
+        settled[0].finality(),
+        UiInputFinality::Committed(facts)
+            if facts.conflict() == UiInputConflict::ExclusiveUi
+                && facts.reasons().contains(&UiInputClaimReason::PointerCapture)
+                && matches!(facts.route(), UiInputRoute::Routed { target }
+                    if target == &harness.right)
+    ));
 
     let observations = harness.observations.borrow();
     assert_eq!(observations.len(), 1);

@@ -436,13 +436,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // have routed this event and then been released (Up/widget request).
         // Preserve both accepted capture semantics, but never resurrect a
         // removed pre-event owner after pointer preparation cleared it.
-        let captured_route_target = pending.stream.capture_owner().cloned().or_else(|| {
-            if routed_via_capture {
-                pending.routed_target.clone()
-            } else {
-                None
-            }
-        });
+        // Drag/drop deliberately targets the physical hit, not an unrelated
+        // captured pointer owner. Capture can still be an exclusive UI *reason*,
+        // but must not replace the actual destination in the route facts.
+        let captured_route_target = if pending.work.event.drag_drop().is_some() {
+            None
+        } else {
+            pending.stream.capture_owner().cloned().or_else(|| {
+                if routed_via_capture {
+                    pending.routed_target.clone()
+                } else {
+                    None
+                }
+            })
+        };
         let route = if let Some(root) = pending.presentation_block_root.as_ref() {
             crate::UiInputRoute::PresentationBlocked { root: root.clone() }
         } else if let Some(target) = captured_route_target {
