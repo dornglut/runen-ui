@@ -9,8 +9,9 @@ use core::{
     task::{Context, Poll},
 };
 use runenui_core::{
-    Color, ElementId, FontFamilyName, GenericFontFamily, NoHostProtocol, SemanticEditableMode,
-    SemanticRelationshipKind, SemanticRole, StyleEnvironment, TextAffinity, TextDocumentId,
+    Color, CommandOrigin, ElementId, FontFamilyName, GenericFontFamily, LayoutBound,
+    LayoutDimension, LayoutStyle, LogicalLength, NoHostProtocol, OverflowPolicy, SemanticCommand,
+    SemanticEditableMode, SemanticRelationshipKind, SemanticRole, StyleEnvironment, TextAffinity, TextDocumentId,
     TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, UiApp, View,
     combo_box, editable_combo_box, option_item, text_field,
 };
@@ -18,7 +19,7 @@ use runenui_render_wgpu::{
     Renderer, RendererInitError, RendererOptions, ResourcePayload, ResourceProvider,
     ResourceProviderError, ResourceProviderErrorKind, ResourceRequest,
 };
-use runenui_runtime::{AppRuntime, LogicalSize, SurfaceBuildContext};
+use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext};
 use std::{fs, path::PathBuf};
 
 const FONT: &[u8] = include_bytes!("fixtures/Cantarell-Regular.ttf");
@@ -332,6 +333,156 @@ fn editable_combo_shares_m10_text_pixels_and_projects_current_m5_popup()
             let extent = result.readback().extent();
             image::save_buffer(
                 path.join(name),
+                result.readback().rgba8_srgb(),
+                extent.width(),
+                extent.height(),
+                image::ColorType::Rgba8,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+struct LongComboGpuApp;
+impl UiApp for LongComboGpuApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &Self::State) -> impl View<Self::Action> {
+        let options = (0..12_u8).map(|index| {
+            option_item(format!("Entry {index:02}"), index == 0)
+                .id(format!("gpu.scroll.option.{index}"))
+                .foreground(Color::WHITE)
+                .with_layout(
+                    LayoutStyle::default()
+                        .with_width(LayoutDimension::Length(LogicalLength::from(160_u16)))
+                        .with_height(LayoutDimension::Length(LogicalLength::from(24_u8))),
+                )
+                .on_activate(|| ())
+        });
+        combo_box(
+            "Scroll",
+            ElementId::new("gpu.scroll.list").unwrap_or_else(|_| unreachable!()),
+            options,
+            |_| (),
+        )
+        .id("gpu.scroll.owner")
+        .foreground(Color::WHITE)
+        .open(true)
+        .popup_max_height(LogicalLength::from(72_u8))
+    }
+
+    fn update(_: &mut Self::State, _: Self::Action) {}
+}
+
+fn long_combo_id(app: &AppRuntime<LongComboGpuApp>, authored: &str) -> MountedNodeId {
+    let id = ElementId::new(authored).unwrap_or_else(|_| unreachable!());
+    app.index().nodes().iter()
+        .find(|node| node.authored_id() == Some(&id))
+        .unwrap_or_else(|| unreachable!("long popup node is mounted"))
+        .id().clone()
+}
+
+#[test]
+fn long_combo_native_gpu_scroll_clips_paint_to_the_existing_bounded_viewport()
+-> Result<(), Box<dyn Error>> {
+    let required = std::env::var_os("RUNENUI_M11COMBO_EVIDENCE_DIR").is_some()
+        || std::env::var_os("RUNENUI_M11SLIDER_EVIDENCE_DIR").is_some();
+    let mut renderer = match block_on(Renderer::request(RendererOptions::new())) {
+        Ok(renderer) => renderer,
+        Err(RendererInitError::AdapterUnavailable { .. }) if !required => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    let mut app = AppRuntime::<LongComboGpuApp>::mount(());
+    assert!(app.pump(PumpBudget::new(
+        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
+    )).is_quiescent());
+    app.register_text_font_bytes(FONT.to_vec())?;
+    app.set_text_generic_family_mapping(
+        GenericFontFamily::SansSerif,
+        &[FontFamilyName::new("Cantarell")?],
+    )?;
+    let owner = long_combo_id(&app, "gpu.scroll.owner");
+    let list = long_combo_id(&app, "gpu.scroll.list");
+    let last = long_combo_id(&app, "gpu.scroll.option.11");
+    let viewport = app.index().node(&list)
+        .and_then(|node| node.parent())
+        .ok_or_else(|| std::io::Error::other("missing standard scroll parent"))?
+        .clone();
+    let scroll = app.index().node(&viewport)
+        .ok_or_else(|| std::io::Error::other("missing standard scroll viewport"))?
+        .layout().clone();
+    assert_eq!(scroll.max_height(), LayoutBound::Length(LogicalLength::from(72_u8)));
+    assert_eq!(scroll.overflow().vertical(), OverflowPolicy::Scroll);
+    assert!(!app.index().node(&viewport)
+        .ok_or_else(|| std::io::Error::other("missing scroll focus node"))?.is_focusable());
+    app.submit_command(
+        owner.clone(), SemanticCommand::RequestFocus, CommandOrigin::programmatic(),
+    ).unwrap_or_else(|_| unreachable!("ComboBox owner is focusable"));
+    assert!(app.pump(PumpBudget::new(
+        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
+    )).is_quiescent());
+
+    let build = SurfaceBuildContext::tight(
+        &StyleEnvironment::default(),
+        LogicalSize::try_new(320.0, 260.0)?,
+    );
+    let before = app.publish_surface(&build)
+        .map_err(|e| std::io::Error::other(format!("before scroll: {e:?}")))?;
+    let bounds = before.frame().node(&viewport)
+        .ok_or_else(|| std::io::Error::other("missing viewport layout"))?.bounds();
+    let last_bounds = before.frame().node(&last)
+        .ok_or_else(|| std::io::Error::other("missing last Option layout"))?.bounds();
+    assert!(bounds.height() > 0.0 && bounds.height() <= 72.0);
+    assert!(last_bounds.y() > bounds.y() + bounds.height());
+    let image_before = renderer.render_offscreen_publication(before.paint_publication(), &NoResources)?;
+
+    // The public #344 exact-target command proves ordinary scroll/render correlation
+    // without fabricating a ComboBox-internal targetable EventContext seam.
+    app.submit_command(
+        last, SemanticCommand::ScrollIntoView, CommandOrigin::programmatic(),
+    ).unwrap_or_else(|_| unreachable!("current exact Option target"));
+    assert!(app.pump(PumpBudget::new(
+        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
+    )).is_quiescent());
+    assert!(app.index().node(&viewport)
+        .ok_or_else(|| std::io::Error::other("missing scroll offset"))?
+        .interaction().scroll_offset().1 > 0.0);
+    let after = app.publish_surface(&build)
+        .map_err(|e| std::io::Error::other(format!("after scroll: {e:?}")))?;
+    let image_after = renderer.render_offscreen_publication(after.paint_publication(), &NoResources)?;
+    assert_eq!(app.focus().focused_node(), Some(&owner));
+    let a = image_before.readback().rgba8_srgb();
+    let b = image_after.readback().rgba8_srgb();
+    assert_eq!(image_before.readback().extent(), image_after.readback().extent());
+    let extent = image_before.readback().extent();
+    let mut inside_changed = false;
+    for y in 0..extent.height() {
+        for x in 0..extent.width() {
+            let index = (y as usize * extent.width() as usize + x as usize) * 4;
+            if a[index..index + 4] == b[index..index + 4] {
+                continue;
+            }
+            let px = x as f32 + 0.5;
+            let py = y as f32 + 0.5;
+            assert!(px >= bounds.x() - 1.0
+                && px <= bounds.x() + bounds.width() + 1.0
+                && py >= bounds.y() - 1.0
+                && py <= bounds.y() + bounds.height() + 1.0,
+                "native GPU scroll must not leak changing Option pixels outside the viewport");
+            inside_changed = true;
+        }
+    }
+    assert!(inside_changed, "current exact Option reveal must change clipped GPU pixels");
+    if let Some(dir) = std::env::var_os("RUNENUI_M11COMBO_EVIDENCE_DIR").map(PathBuf::from) {
+        fs::create_dir_all(&dir)?;
+        for (name, result) in [
+            ("m11-combo-scroll-before.png", &image_before),
+            ("m11-combo-scroll-after.png", &image_after),
+        ] {
+            image::save_buffer(
+                dir.join(name),
                 result.readback().rgba8_srgb(),
                 extent.width(),
                 extent.height(),
