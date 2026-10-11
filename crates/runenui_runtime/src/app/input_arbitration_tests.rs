@@ -1168,7 +1168,11 @@ impl Widget<u8> for OverflowProbe {
         event: &UiEvent,
         context: &mut EventContext<'_, u8>,
     ) -> WidgetEventOutput {
-        if matches!(event, UiEvent::Keyboard(_)) && context.phase() == EventPhase::Target {
+        if (matches!(event, UiEvent::Keyboard(_))
+            || matches!(event, UiEvent::SemanticCommand(command)
+                if command.command() == SemanticCommand::CancelOrBack))
+            && context.phase() == EventPhase::Target
+        {
             context.claim_host_input();
             context.emit(1);
             // A second output exceeds the admitted one-output transaction.
@@ -1326,6 +1330,83 @@ fn overflowing_widget_callback_aborts_reached_input_and_retires_pending_receipts
     // for completely disabled trace. Neither is a gameplay input authority.
     for trace_config in [crate::TraceConfig::default(), crate::TraceConfig::new(0)] {
         assert_overflow_aborts_with_trace(trace_config);
+    }
+}
+
+#[test]
+fn semantic_callback_poison_reports_cancelled_native_input_without_phantom_settlement() {
+    for trace_config in [crate::TraceConfig::default(), crate::TraceConfig::new(0)] {
+        let config = crate::RuntimeConfig::default()
+            .with_limits(crate::RuntimeLimits::default().with_transaction_outputs(1))
+            .with_trace_config(trace_config);
+        let mut app = AppRuntime::<OverflowApp>::mount_with_config(0, config);
+        let budget = PumpBudget::new(32, 32, 32, 32);
+        app.pump(budget)
+            .unwrap_or_else(|_| unreachable!("initial mount is observable"));
+        let authored =
+            ElementId::new("overflow").unwrap_or_else(|_| unreachable!("static probe identity"));
+        let target = app
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored))
+            .unwrap_or_else(|| unreachable!("mounted overflow probe"))
+            .id()
+            .clone();
+        app.submit_command(
+            target.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus admission succeeds"));
+        app.pump(budget)
+            .unwrap_or_else(|_| unreachable!("focus commits before negative oracle"));
+
+        let failing_command = app
+            .submit_command(
+                target,
+                SemanticCommand::CancelOrBack,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("semantic command enters FIFO"))
+            .sequence();
+        let pending = app
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("later native receipt is admitted"))
+            .sequence();
+        assert!(failing_command < pending);
+
+        let batch = app
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("poisoned semantic transaction is observed"));
+        assert_eq!(batch.processed_through(), Some(failing_command));
+        assert_eq!(
+            batch.report().cancelled_by_terminal_transition(),
+            1,
+            "the native receipt was erased by the semantic poison transition",
+        );
+        assert_eq!(
+            batch.final_ownership().status(),
+            crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned)
+        );
+        assert_eq!(
+            batch
+                .ordered_records()
+                .iter()
+                .filter(|record| matches!(record, InputArbitrationRecord::ScopeRetired(_)))
+                .count(),
+            1
+        );
+        assert!(!batch.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(settled) if settled.sequence() == pending
+        )));
+        assert_eq!(*app.state(), 0);
+        let repeated = app
+            .pump(budget)
+            .unwrap_or_else(|_| unreachable!("terminal observation remains readable"));
+        assert_eq!(repeated.report().cancelled_by_terminal_transition(), 0);
+        assert_eq!(repeated.ordered_records(), []);
     }
 }
 
