@@ -1647,19 +1647,28 @@ fn accepted_composition_start_publishes_pending_ownership_without_pumping() {
     )));
 }
 
-#[test]
-fn unavailable_context_pointer_up_preserves_exclusive_press_without_activation() {
-    use crate::{LogicalSize, RuntimeConfig, SurfaceBuildContext, UiInputRoute};
+// The same externally accepted release integrity must survive an evicted
+// displayed context for both Up and Cancel, without a fresh hit or activation.
+fn prepare_unavailable_context_pressed_pointer(
+    phase: runenui_core::PointerPhase,
+) -> (
+    AppRuntime<SpaceApp>,
+    runenui_core::PointerId,
+    runenui_core::LogicalPoint,
+    runenui_core::SurfaceInputContext,
+) {
+    use crate::{LogicalSize, RuntimeConfig, SurfaceBuildContext};
     use core::num::NonZeroUsize;
     use runenui_core::{
         LogicalPoint, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
         PointerPhase, StyleEnvironment,
     };
     let retention = NonZeroUsize::new(1).unwrap_or_else(|| unreachable!("positive retention"));
-    let mut app = AppRuntime::<SpaceApp>::mount_with_config(
-        0,
-        RuntimeConfig::default().with_surface_snapshot_retention(retention),
-    );
+    let mut config = RuntimeConfig::default().with_surface_snapshot_retention(retention);
+    if phase == PointerPhase::Cancel {
+        config = config.with_trace_config(crate::TraceConfig::new(0));
+    }
+    let mut app = AppRuntime::<SpaceApp>::mount_with_config(0, config);
     let environment = StyleEnvironment::default();
     let first_size =
         LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("finite first size"));
@@ -1708,43 +1717,76 @@ fn unavailable_context_pointer_up_preserves_exclusive_press_without_activation()
         newer.input_context().hit_test_generation(),
         "republication must create a new generation to evict the old context"
     );
-    let up = PointerEvent::new(
+    (app, pointer_id, point, old_context)
+}
+
+fn assert_unavailable_context_pointer_release(phase: runenui_core::PointerPhase) {
+    use crate::UiInputRoute;
+    use runenui_core::{PointerButton, PointerDeviceKind, PointerEvent, PointerPhase};
+
+    let (mut app, pointer_id, point, old_context) =
+        prepare_unavailable_context_pressed_pointer(phase);
+    let mut release = PointerEvent::new(
         pointer_id,
         PointerDeviceKind::Mouse,
-        PointerPhase::Up,
+        phase,
         point,
         old_context,
-    )
-    .with_changed_button(PointerButton::Primary);
-    let up_receipt = app
-        .submit_pointer(up)
-        .unwrap_or_else(|_| unreachable!("stale-context Up admitted"))
+    );
+    if phase == PointerPhase::Up {
+        release = release.with_changed_button(PointerButton::Primary);
+    }
+    let release_receipt = app
+        .submit_pointer(release)
+        .unwrap_or_else(|_| unreachable!("stale-context release admitted"))
         .sequence();
-    // Republication may insert stationary rehit/focus work ahead of the native
-    // Up. Correlate by the exact receipt rather than assuming the next pop.
-    let up_batch = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(16, 0, 0, 0))
-        .unwrap_or_else(|_| unreachable!("integrity cleanup settled"));
-    assert!(up_batch.processed_through().is_some());
-    let observed = up_batch
+    // Republication may insert stationary rehit/focus work ahead of the
+    // native release. Match its exact FIFO receipt, never the next pop.
+    let release_batch =
+        pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(16, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("integrity cleanup settled"));
+    assert!(release_batch.processed_through().is_some());
+    let observed = release_batch
         .ordered_records()
         .iter()
         .find_map(|r| match r {
-            InputArbitrationRecord::InputSettled(s) if s.sequence() == up_receipt => Some(s),
+            InputArbitrationRecord::InputSettled(s) if s.sequence() == release_receipt => Some(s),
             _ => None,
         })
-        .unwrap_or_else(|| unreachable!("exact reached Up settlement"));
+        .unwrap_or_else(|| unreachable!("exact reached release settlement"));
     let UiInputFinality::Committed(facts) = observed.finality() else {
-        unreachable!("unavailable-context Up is committed integrity cleanup");
+        unreachable!("unavailable-context release is committed integrity cleanup");
     };
     assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
     assert!(facts.reasons().contains(&UiInputClaimReason::PointerPress));
-    assert!(matches!(facts.route(), UiInputRoute::Unrouted));
+    if phase == PointerPhase::Up {
+        assert!(matches!(facts.route(), UiInputRoute::Unrouted));
+    }
+    assert_eq!(observed.scope(), release_batch.final_ownership().scope());
+    assert!(release_batch
+        .final_ownership()
+        .pointers()
+        .iter()
+        .all(|pointer| pointer.pointer_id() != pointer_id));
+    if phase == PointerPhase::Cancel {
+        assert!(app.runtime.trace().records().next().is_none());
+    }
     let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
     assert_eq!(
         *app.state(),
         0,
         "integrity-only release may not activate the widget"
     );
+}
+
+#[test]
+fn unavailable_context_pointer_up_preserves_exclusive_press_without_activation() {
+    assert_unavailable_context_pointer_release(runenui_core::PointerPhase::Up);
+}
+
+#[test]
+fn unavailable_context_pointer_cancel_preserves_exclusive_press_without_activation() {
+    assert_unavailable_context_pointer_release(runenui_core::PointerPhase::Cancel);
 }
 
 #[test]
