@@ -28,6 +28,8 @@ enum Action {
     Choose(u8),
     ReplaceOption,
     Submit,
+    Disable,
+    Enable,
 }
 
 struct State {
@@ -38,6 +40,7 @@ struct State {
     popup_log: Vec<ComboBoxRequest>,
     replace_option: bool,
     submitted: usize,
+    disabled: bool,
 }
 
 struct App;
@@ -62,7 +65,8 @@ impl UiApp for App {
             |intent| Action::Edit(Box::new(intent)),
         ).unwrap_or_else(|_| unreachable!("one checked M10 source"))
             .id("editable.owner")
-            .on_submit(|| Action::Submit);
+            .on_submit(|| Action::Submit)
+            .disabled(state.disabled);
         let combo = editable_combo_box(
             editor,
             "Search suggestions",
@@ -119,6 +123,14 @@ impl UiApp for App {
                 state.submitted += 1;
                 UpdateOutput::effects(Effects::none())
             }
+            Action::Disable => {
+                state.disabled = true;
+                UpdateOutput::effects(Effects::none())
+            }
+            Action::Enable => {
+                state.disabled = false;
+                UpdateOutput::effects(Effects::none())
+            }
         }
     }
 }
@@ -127,6 +139,7 @@ fn runtime() -> AppRuntime<App> {
     let mut runtime = AppRuntime::<App>::mount(State {
         source: "q".into(), revision: 1, open: true,
         chosen: 0, popup_log: Vec::new(), replace_option: false, submitted: 0,
+        disabled: false,
     });
     assert!(runtime.register_text_font_bytes(FONT.to_vec()).is_ok());
     assert!(runtime.set_text_generic_family_mapping(
@@ -369,4 +382,61 @@ fn closed_editable_enter_reuses_existing_textfield_submit_once_without_option_co
     assert_eq!(runtime.state().chosen, 1);
     assert_eq!(runtime.state().source, "q");
     assert_eq!(runtime.focus().focused_node(), Some(&owner));
+}
+
+#[test]
+fn disabling_open_editable_combo_withdraws_popup_but_preserves_application_text_and_open_intent() {
+    let mut runtime = runtime();
+    let owner = id(&runtime, "editable.owner");
+    let old_option = id(&runtime, "editable.alpha");
+    let old_popup = id(&runtime, "editable.list");
+    cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+    runtime.submit_action(Action::Disable)
+        .unwrap_or_else(|_| unreachable!("application may disable its editor"));
+    settle(&mut runtime);
+
+    assert!(runtime.state().open, "framework must not mutate app-owned popup intent");
+    assert_eq!(runtime.state().source, "q");
+    assert_eq!(runtime.state().revision, 1);
+    assert_eq!(runtime.state().chosen, 0);
+    assert!(runtime.state().popup_log.is_empty());
+    assert!(runtime.index().nodes().iter().all(|node|
+        node.id() != &old_option && node.id() != &old_popup
+    ), "disabled editor cannot retain an undismissable modal popup");
+
+    let publication = publish(&mut runtime);
+    let semantics = publication.semantic_publication().snapshot();
+    let combo = semantics.nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("one disabled M10 ComboBox semantic owner"));
+    assert_eq!(combo.state().disabled(), Some(true));
+    assert_eq!(combo.state().expanded(), Some(false));
+    assert!(combo.relationships().iter().all(|rel|
+        rel.kind() != SemanticRelationshipKind::Controls
+            && rel.kind() != SemanticRelationshipKind::ActiveDescendant));
+    assert!(semantics.nodes().iter().all(|node|
+        node.role() != SemanticRole::ListBox && node.role() != SemanticRole::Option));
+    assert!(!runtime.index().node(&owner)
+        .is_some_and(|node| node.is_focusable()));
+    assert_eq!(runtime.state().submitted, 0);
+
+    runtime.submit_action(Action::Enable)
+        .unwrap_or_else(|_| unreachable!("application may re-enable its editor"));
+    settle(&mut runtime);
+    assert_ne!(id(&runtime, "editable.alpha"), old_option);
+    assert_ne!(id(&runtime, "editable.list"), old_popup);
+    let publication = publish(&mut runtime);
+    let semantics = publication.semantic_publication().snapshot();
+    let combo = semantics.nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("one reenabled M10 ComboBox semantic owner"));
+    assert_eq!(combo.state().disabled(), Some(false));
+    assert_eq!(combo.state().expanded(), Some(true));
+    assert!(combo.relationships().iter()
+        .any(|rel| rel.kind() == SemanticRelationshipKind::Controls));
+    assert_eq!(runtime.state().source, "q");
+    assert_eq!(runtime.state().revision, 1);
+    assert_eq!(runtime.state().chosen, 0);
+    assert!(runtime.state().popup_log.is_empty());
+    assert_eq!(runtime.state().submitted, 0);
 }
