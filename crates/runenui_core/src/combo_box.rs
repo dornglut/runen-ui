@@ -181,7 +181,7 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
         let previous = state.clone();
         let mut next = self.create_state();
         if self.open && previous.open && self.invalid.is_none() {
-            next.active = previous.active
+            next.active = previous.active.clone()
                 .filter(|id| self.options.iter().any(|item| &item.id == id && item.enabled));
         }
         if previous != next {
@@ -238,7 +238,8 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
         } else if let Some(key) = event.as_keyboard() {
             if key.phase() != KeyboardPhase::Down
                 || key.modifiers() != crate::KeyModifiers::NONE
-                || key.composition_state() != KeyboardCompositionState::Inactive {
+                || key.composition_state() != KeyboardCompositionState::Inactive
+            {
                 return WidgetEventOutput::none();
             }
             match key.logical_key() {
@@ -278,17 +279,22 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
             .unwrap_or_else(|_| unreachable!("finite ComboBox geometry"));
         HitContribution::single_rect(rect)
     }
-    fn semantics(&self, state: &Self::State, context: SemanticContributionContext)
-        -> SemanticContribution {
+    fn semantics(
+        &self,
+        state: &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
         if state.invalid.is_some() {
             return SemanticContribution::empty();
         }
         let mut node = SemanticNodeContribution::primary(SemanticRole::ComboBox)
             .with_name(state.label.clone())
             .with_popup(SemanticPopupKind::ListBox)
-            .with_state(SemanticState::ENABLED
-                .with_disabled(!state.enabled)
-                .with_expanded(state.open))
+            .with_state(
+                SemanticState::ENABLED
+                    .with_disabled(!state.enabled)
+                    .with_expanded(state.open),
+            )
             .with_action(SemanticAction::RequestFocus);
         if state.enabled {
             node = node.with_action(SemanticAction::Activate);
@@ -317,7 +323,9 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
         SemanticContribution::single(node)
     }
     fn diagnostics(&self, state: &Self::State) -> Vec<WidgetDiagnostic> {
-        let Some(reason) = state.invalid else { return Vec::new() };
+        let Some(reason) = state.invalid else {
+            return Vec::new();
+        };
         let (code, text) = match reason {
             InvalidComboBox::MissingOptionId => (
                 "runenui.control.combo.missing-option-id",
@@ -342,10 +350,14 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
 impl<Action> ChildBearingWidget<Action> for ComboWidget<Action> {}
 
 #[derive(Debug)]
-struct ComboLabel { label: String }
+struct ComboLabel {
+    label: String,
+}
 impl<Action> Widget<Action> for ComboLabel {
     type State = String;
-    fn create_state(&self) -> Self::State { self.label.clone() }
+    fn create_state(&self) -> Self::State {
+        self.label.clone()
+    }
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         if *state != self.label {
             context.invalidate(WidgetInvalidation::LAYOUT | WidgetInvalidation::PAINT);
@@ -355,8 +367,7 @@ impl<Action> Widget<Action> for ComboLabel {
     fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::Text(crate::TextLeafMeasure::new(self.label.clone()))
     }
-    fn semantics(&self, _: &Self::State, _: SemanticContributionContext)
-        -> SemanticContribution {
+    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         SemanticContribution::empty()
     }
 }
@@ -375,22 +386,28 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
             } else if !seen.insert(id.as_str().to_owned()) {
                 invalid.get_or_insert(InvalidComboBox::DuplicateOptionId);
             }
-            options.push(Candidate { id, selected, enabled });
+            options.push(Candidate {
+                id,
+                selected,
+                enabled,
+            });
         }
         if options.iter().filter(|item| item.selected).count() > 1 {
             invalid.get_or_insert(InvalidComboBox::MultipleSelected);
         }
-        let mut children = vec![Element::new(ComboLabel {
-            label: self.label.clone(),
-        }).with_focusability(Focusability::NotFocusable)];
+        let mut children = vec![
+            Element::new(ComboLabel {
+                label: self.label.clone(),
+            })
+            .with_focusability(Focusability::NotFocusable),
+        ];
         if self.open && invalid.is_none() {
-            let popup = list_box(self.options.into_iter()
-                .map(OptionItem::combo_box_proxy))
-                .into_element();
+            let popup =
+                list_box(self.options.into_iter().map(OptionItem::combo_box_proxy)).into_element();
             let handler = Rc::clone(&self.on_request);
-            let presentation = SurfacePresentation::new(
-                SurfacePresentationPlacement::new(SurfacePresentationSide::Bottom),
-            )
+            let presentation = SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Bottom,
+            ))
             .with_anchor(SurfacePresentationAnchor::OwnerBounds)
             .with_outside_pointer(PresentationOutsidePointerPolicy::DismissAndBlock)
             .with_focus_policy(PresentationFocusPolicy::Preserve)

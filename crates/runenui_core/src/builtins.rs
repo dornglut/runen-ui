@@ -1585,7 +1585,7 @@ impl<Action> OptionItem<Action> {
         self.selected
     }
 
-    const fn focus_eligible_for_list_box_entry(&self) -> bool {
+    fn focus_eligible_for_list_box_entry(&self) -> bool {
         self.focus_policy != OptionFocusPolicy::ComboBoxProxy
             && (self.enabled || self.focus_policy == OptionFocusPolicy::DiscoverableWhenDisabled)
     }
