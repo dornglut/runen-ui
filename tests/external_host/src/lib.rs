@@ -1385,6 +1385,99 @@ mod tests {
         );
     }
 
+    #[test]
+    fn public_no_hit_mouse_press_and_release_are_unclaimed_without_trace() {
+        // A fresh native pointer outside the retained hit scene has no
+        // callback, press owner or capture. Neither Down nor Up may invent
+        // an exclusive UI claim or action merely because the stream is valid.
+        let mut runtime = AppRuntime::<ExternalHostApp>::mount_with_config(
+            HostState {
+                image: ResourceRef::new(ResourceKind::Image),
+                active: false,
+            },
+            RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0)),
+        );
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("mount work settles without optional trace"));
+        let environment = StyleEnvironment::default();
+        let size = LogicalSize::try_new(64.0, 64.0)
+            .unwrap_or_else(|_| unreachable!("finite surface size"));
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+            .unwrap_or_else(|_| unreachable!("retained hit context is published"));
+        let outside = LogicalPoint::new(65.0, 65.0)
+            .unwrap_or_else(|_| unreachable!("finite outside point"));
+        assert_eq!(publication.hit_test_scene().target_at(outside), None);
+        let pointer = PointerId::new(53).unwrap_or_else(|| unreachable!("positive pointer id"));
+
+        let down = settled_public_pointer(
+            &mut runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                outside,
+                publication.input_context().clone(),
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        );
+        assert_eq!(down.pointer_id(), Some(pointer));
+        assert_eq!(
+            down.surface_id(),
+            Some(publication.input_context().surface_id())
+        );
+        assert!(matches!(
+            down.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::Unclaimed
+                    && facts.reasons().is_empty()
+                    && matches!(facts.route(), UiInputRoute::Unrouted)
+        ));
+        let after_down = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("valid unowned pointer is observable"));
+        assert!(after_down.pointers().iter().any(|stream| {
+            stream.pointer_id() == pointer
+                && stream.pressed_owner().is_none()
+                && stream.capture_owner().is_none()
+        }));
+
+        let up = settled_public_pointer(
+            &mut runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                outside,
+                publication.input_context().clone(),
+            )
+            .with_changed_button(PointerButton::Primary),
+        );
+        assert!(down.sequence() < up.sequence());
+        assert_eq!(up.scope(), down.scope());
+        assert!(matches!(
+            up.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::Unclaimed
+                    && facts.reasons().is_empty()
+                    && matches!(facts.route(), UiInputRoute::Unrouted)
+        ));
+        let after_up = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("unowned stream cleanup is observable"));
+        assert!(after_up.pointers().iter().all(|stream| stream.pointer_id() != pointer));
+        assert!(!runtime.state().active);
+        let repeated = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("already settled outside input does not replay"));
+        assert!(!repeated
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))));
+    }
+
     fn assert_public_no_hit_hover(
         runtime: &mut AppRuntime<ExternalHostApp>,
         publication: &SurfacePublication,
