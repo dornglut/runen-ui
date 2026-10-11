@@ -488,16 +488,24 @@ impl<Action> Widget<Action> for ComboLabel {
         SemanticContribution::empty()
     }
 }
+struct PopupAuthoring {
+    id: ElementId,
+    max_height: LogicalLength,
+}
+
 fn assemble_combo<Action: 'static>(
     label: String,
-    popup_id: ElementId,
+    popup: PopupAuthoring,
     options_source: Vec<OptionItem<Action>>,
     open: bool,
     owner_enabled: bool,
     owner_id: Option<&ElementId>,
-    popup_max_height: LogicalLength,
     on_request: RequestHandler<Action>,
 ) -> (ComboWidget<Action>, Option<Element<Action>>) {
+    let PopupAuthoring {
+        id: popup_id,
+        max_height: popup_max_height,
+    } = popup;
     let mut seen = BTreeSet::new();
     let mut seen_keys = BTreeSet::new();
     let mut options = Vec::new();
@@ -595,12 +603,14 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
     fn into_element(self) -> Element<Action> {
         let (widget, popup) = assemble_combo(
             self.label.clone(),
-            self.popup_id,
+            PopupAuthoring {
+                id: self.popup_id,
+                max_height: self.popup_max_height,
+            },
             self.options,
             self.open,
             self.enabled,
             self.common.id.as_ref(),
-            self.popup_max_height,
             self.on_request,
         );
         let invalid = widget.invalid.is_some();
@@ -699,12 +709,14 @@ impl<Action: 'static> View<Action> for EditableComboBox<Action> {
         let enabled = self.editor.combo_editor_enabled();
         let (widget, popup) = assemble_combo(
             self.label,
-            self.popup_id,
+            PopupAuthoring {
+                id: self.popup_id,
+                max_height: self.popup_max_height,
+            },
             self.options,
             self.open,
             enabled,
             owner.as_ref(),
-            self.popup_max_height,
             self.on_request,
         );
         self.editor
