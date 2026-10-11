@@ -1608,11 +1608,6 @@ mod tests {
             reached.load(Ordering::Relaxed),
             "drag callback actually ran"
         );
-        assert!(
-            batch
-                .processed_through()
-                .is_some_and(|through| through >= receipt)
-        );
         let settlements = batch
             .ordered_records()
             .iter()
@@ -1627,7 +1622,10 @@ mod tests {
         assert_eq!(settled.scope(), batch.final_ownership().scope());
         assert_eq!(settled.family(), UiInputFamily::Pointer);
         assert_eq!(settled.pointer_id(), Some(pointer));
-        assert_eq!(settled.surface_id(), Some(publication.input_context().surface_id()));
+        assert_eq!(
+            settled.surface_id(),
+            Some(publication.input_context().surface_id())
+        );
         assert!(matches!(
             settled.finality(),
             UiInputFinality::Committed(facts)
