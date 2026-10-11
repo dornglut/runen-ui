@@ -311,6 +311,50 @@ impl UiApp for CausalApp {
     }
 }
 
+fn causal_action_trace(
+    runtime: &AppRuntime<CausalApp>,
+    native: WorkSequence,
+    action: WorkSequence,
+) {
+    let records = runtime.trace().records().collect::<Vec<_>>();
+    let native_commit = records
+        .iter()
+        .find(|record| {
+            record.work_sequence() == Some(native)
+                && matches!(record.kind(), TraceRecordKind::RoutedEventCommitted)
+        })
+        .unwrap_or_else(|| unreachable!("native routing diagnostic"));
+    let action_start = records
+        .iter()
+        .find(|record| {
+            record.work_sequence() == Some(action)
+                && matches!(
+                    record.kind(),
+                    TraceRecordKind::ApplicationActionTransactionStarted
+                )
+        })
+        .unwrap_or_else(|| unreachable!("derived action diagnostic"));
+    assert!(native_commit.sequence() < action_start.sequence());
+    let accepted = records
+        .iter()
+        .find(|record| Some(record.sequence()) == action_start.causal_parent())
+        .unwrap_or_else(|| unreachable!("exact action-admission causal parent"));
+    assert!(matches!(
+        accepted.kind(),
+        TraceRecordKind::ActionSubmissionAccepted
+    ));
+    assert_eq!(accepted.work_sequence(), Some(action));
+    let collected = records
+        .iter()
+        .find(|record| Some(record.sequence()) == accepted.causal_parent())
+        .unwrap_or_else(|| unreachable!("exact native action-collection causal parent"));
+    assert!(matches!(
+        collected.kind(),
+        TraceRecordKind::RoutedActionCollected
+    ));
+    assert_eq!(collected.work_sequence(), Some(native));
+}
+
 #[test]
 fn native_settlement_precedes_application_action_and_focus_revocation_across_bounded_pumps() {
     for trace_capacity in [0, 1, 512] {
@@ -373,26 +417,13 @@ fn native_settlement_precedes_application_action_and_focus_revocation_across_bou
             "earlier snapshots remain immutable"
         );
         if trace_capacity == 512 {
-            let records = runtime.trace().records().collect::<Vec<_>>();
-            let native_commit = records
-                .iter()
-                .find(|record| {
-                    record.work_sequence() == Some(receipt.sequence())
-                        && matches!(record.kind(), TraceRecordKind::RoutedEventCommitted)
-                })
-                .unwrap_or_else(|| unreachable!("native routing diagnostic"));
-            let action_start = records
-                .iter()
-                .find(|record| {
-                    record.work_sequence() == action.processed_through()
-                        && matches!(
-                            record.kind(),
-                            TraceRecordKind::ApplicationActionTransactionStarted
-                        )
-                })
-                .unwrap_or_else(|| unreachable!("derived action diagnostic"));
-            assert!(native_commit.sequence() < action_start.sequence());
-            assert!(action_start.causal_parent().is_some());
+            causal_action_trace(
+                &runtime,
+                receipt.sequence(),
+                action
+                    .processed_through()
+                    .unwrap_or_else(|| unreachable!("action was processed")),
+            );
         }
         assert_eq!(
             runtime
