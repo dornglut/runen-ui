@@ -118,3 +118,35 @@ fn select_only_keeps_real_focus_on_owner_while_selection_remains_application_own
         "keyboard and pointer activation use the same ordinary Option callback");
     assert_eq!(app.focus().focused_node(), Some(&owner));
 }
+
+#[test]
+fn controls_identifies_actual_listbox_and_active_option_without_focus_repair() {
+    let mut app = AppRuntime::<App>::mount(State {
+        open: true,
+        chosen: 1,
+        log: Vec::new(),
+    });
+    settle(&mut app);
+    assert!(app.focus().focused_node().is_none());
+    let published = app.publish_surface(&SurfaceBuildContext::tight(
+        &runenui_core::StyleEnvironment::default(),
+        LogicalSize::try_new(500.0, 260.0).unwrap_or_else(|_| unreachable!()),
+    )).unwrap_or_else(|error| unreachable!("current popup semantics: {error:?}"));
+    let snapshot = published.semantic_publication().snapshot();
+    let combo = snapshot.nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("focused-or-not ComboBox semantics"));
+    let controlled = combo.relationships().iter()
+        .find(|link| link.kind() == runenui_core::SemanticRelationshipKind::Controls)
+        .unwrap_or_else(|| unreachable!("ComboBox Controls relation"));
+    assert_eq!(snapshot.nodes().iter()
+        .find(|node| node.id() == controlled.target()).map(|node| node.role()),
+        Some(SemanticRole::ListBox),
+        "M5 requires the actual ListBox, not a surrounding Popover Group");
+    let active = combo.relationships().iter()
+        .find(|link| link.kind() == runenui_core::SemanticRelationshipKind::ActiveDescendant)
+        .unwrap_or_else(|| unreachable!("active proxy resolves without synthetic focus"));
+    assert_eq!(snapshot.nodes().iter()
+        .find(|node| node.id() == active.target()).and_then(|node| node.name()),
+        Some("One"));
+}
