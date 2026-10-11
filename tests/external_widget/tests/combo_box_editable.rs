@@ -442,3 +442,49 @@ fn disabling_open_editable_combo_withdraws_popup_but_preserves_application_text_
     assert!(runtime.state().popup_log.is_empty());
     assert_eq!(runtime.state().submitted, 0);
 }
+
+#[test]
+fn editable_combo_native_enter_escape_claims_are_event_local_and_ime_safe() {
+    use runenui_runtime::{
+        InputArbitrationRecord, UiInputClaimReason, UiInputConflict, UiInputFinality,
+    };
+
+    for (logical, physical, composition, claim, chosen, open) in [
+        (LogicalKey::Enter, PhysicalKey::Enter, KeyboardCompositionState::Inactive, true, 1, false),
+        (LogicalKey::Escape, PhysicalKey::Escape, KeyboardCompositionState::Inactive, true, 0, false),
+        (LogicalKey::Enter, PhysicalKey::Enter, KeyboardCompositionState::Active, false, 0, true),
+    ] {
+        let mut runtime = runtime();
+        let owner = id(&runtime, "editable.owner");
+        cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+        let before = runtime.input_ownership()
+            .unwrap_or_else(|_| unreachable!("editable text owner snapshot"));
+        let receipt = runtime.submit_keyboard(key(logical, physical, composition))
+            .unwrap_or_else(|_| unreachable!("native editable key admitted"));
+        let batch = runtime.pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|error| unreachable!("editable native settlement: {error:?}"));
+        let [InputArbitrationRecord::InputSettled(settled)] = batch.ordered_records() else {
+            unreachable!("one reached keyboard input")
+        };
+        assert_eq!(settled.sequence(), receipt.sequence());
+        assert_eq!(settled.scope(), before.scope());
+        let UiInputFinality::Committed(facts) = settled.finality() else {
+            unreachable!("nonterminal editable key")
+        };
+        assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
+        assert!(facts.reasons().contains(&UiInputClaimReason::TextOwner));
+        assert_eq!(
+            facts.reasons().contains(&UiInputClaimReason::ExplicitWidgetClaim),
+            claim,
+            "IME must not silently become an explicit ComboBox acceptance"
+        );
+        assert_eq!(batch.processed_through(), Some(receipt.sequence()));
+        assert_eq!(runtime.state().chosen, 0, "native input is not an application update");
+        assert_eq!(runtime.focus().focused_node(), Some(&owner));
+        settle(&mut runtime);
+        assert_eq!(runtime.state().chosen, chosen);
+        assert_eq!(runtime.state().open, open);
+        assert_eq!(runtime.state().source, "q");
+        assert_eq!(runtime.state().submitted, 0);
+    }
+}
