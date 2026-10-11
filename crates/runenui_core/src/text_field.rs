@@ -168,7 +168,7 @@ impl<Action> TextField<Action> {
         self.common.id.as_ref()
     }
     pub(crate) const fn combo_editor_enabled(&self) -> bool {
-        !self.disabled
+        !self.disabled && !self.read_only
     }
     pub(crate) fn with_combo_box(
         mut self,

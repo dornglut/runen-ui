@@ -228,3 +228,30 @@ fn composition_and_editor_caret_navigation_do_not_commit_or_move_popup_proxy() {
     assert_eq!(active(&mut runtime).as_deref(), Some("Alpha"));
     assert_eq!(runtime.focus().focused_node(), Some(&owner));
 }
+
+#[test]
+fn editable_constructor_rejects_multiline_and_secret_m10_sources() {
+    let snapshot = doc(1);
+    let caret = TextPosition::new(
+        snapshot, "", 0, TextAffinity::Upstream,
+    ).unwrap_or_else(|_| unreachable!("empty source boundary"));
+    let make = |mode| text_field(
+        snapshot, "", TextSelection::collapsed(caret), mode, |_| (),
+    ).unwrap_or_else(|_| unreachable!("valid source/mode"));
+
+    assert!(editable_combo_box(
+        make(SemanticEditableMode::Multiline),
+        "No multiline",
+        ElementId::new("editable.invalid.multiline").unwrap_or_else(|_| unreachable!()),
+        Vec::<runenui_core::OptionItem<()>>::new(),
+        |_| (),
+    ).is_err());
+    assert!(editable_combo_box(
+        make(SemanticEditableMode::SingleLine)
+            .password().unwrap_or_else(|_| unreachable!("single-line secret")),
+        "No secret",
+        ElementId::new("editable.invalid.secret").unwrap_or_else(|_| unreachable!()),
+        Vec::<runenui_core::OptionItem<()>>::new(),
+        |_| (),
+    ).is_err());
+}

@@ -224,10 +224,10 @@ impl<Action> ComboWidget<Action> {
                 LogicalKey::Home if !editable => Some(Navigation::First),
                 LogicalKey::End if !editable => Some(Navigation::Last),
                 LogicalKey::Enter if editable && state.open => {
-                    if !key.is_repeat() {
-                        if let Some(action) = self.accept_active(state) {
-                            context.emit(action);
-                        }
+                    if !key.is_repeat()
+                        && let Some(action) = self.accept_active(state)
+                    {
+                        context.emit(action);
                     }
                     context.prevent_default();
                     context.stop_propagation();
@@ -455,10 +455,8 @@ fn assemble_combo<Action: 'static>(
         let mut options = Vec::new();
         let mut option_activations = Vec::new();
         let mut popup_options = Vec::new();
-        let mut invalid = None;
-        if owner_id == Some(&popup_id) {
-            invalid = Some(InvalidComboBox::OwnerIdCollision);
-        }
+        let mut invalid = (owner_id == Some(&popup_id))
+            .then_some(InvalidComboBox::OwnerIdCollision);
         for mut item in options_source {
             let Some((id, selected, option_enabled)) = item.combo_proxy_facts() else {
                 invalid.get_or_insert(InvalidComboBox::MissingOptionId);
