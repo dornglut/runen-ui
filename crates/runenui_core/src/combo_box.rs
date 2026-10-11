@@ -154,22 +154,35 @@ impl<Action> ComboWidget<Action> {
             .map(|option| option.id.clone())
     }
     fn choose(&self, state: &mut ComboState, step: Navigation) {
-        let eligible: Vec<_> = self.options.iter().filter(|o| o.enabled).collect();
-        if eligible.is_empty() {
-            state.active = None;
-            return;
+        // A ComboBox can contain a long list. Navigate the authored, enabled
+        // Option order without allocating another per-keypress candidate list.
+        // A stale or newly unmounted active ID is never used as a sibling index.
+        let mut first = None;
+        let mut last = None;
+        let mut before = None;
+        let mut after = None;
+        let mut found_active = false;
+        for option in self.options.iter().filter(|option| option.enabled) {
+            if first.is_none() {
+                first = Some(&option.id);
+            }
+            if state.active.as_ref() == Some(&option.id) {
+                before = last;
+                found_active = true;
+            } else if found_active && after.is_none() {
+                after = Some(&option.id);
+            }
+            last = Some(&option.id);
         }
-        let current = state
-            .active
-            .as_ref()
-            .and_then(|id| eligible.iter().position(|option| &option.id == id));
         let next = match step {
-            Navigation::First => 0,
-            Navigation::Last => eligible.len() - 1,
-            Navigation::Next => current.map_or(0, |i| (i + 1).min(eligible.len() - 1)),
-            Navigation::Previous => current.map_or(eligible.len() - 1, |i| i.saturating_sub(1)),
+            Navigation::First => first,
+            Navigation::Last => last,
+            Navigation::Next if found_active => after.or(state.active.as_ref()),
+            Navigation::Previous if found_active => before.or(state.active.as_ref()),
+            Navigation::Next => first,
+            Navigation::Previous => last,
         };
-        state.active = Some(eligible[next].id.clone());
+        state.active = next.cloned();
     }
     pub(crate) fn accept_active(&self, state: &ComboState) -> Option<Action> {
         if !self.enabled || self.invalid.is_some() || !state.open {

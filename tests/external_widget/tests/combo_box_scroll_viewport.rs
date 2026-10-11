@@ -19,6 +19,8 @@ enum Action {
 struct State {
     open: bool,
     chosen: u8,
+    navigation_with_disabled_holes: bool,
+    all_disabled: bool,
 }
 struct App;
 impl UiApp for App {
@@ -30,6 +32,12 @@ impl UiApp for App {
         let options = (0..18_u8).map(|index| {
             option_item(format!("Option {index:02}"), state.chosen == index)
                 .id(format!("viewport.option.{index}"))
+                .enabled(
+                    !state.all_disabled
+                        && (!state.navigation_with_disabled_holes
+                            || index == 2
+                            || index == 14),
+                )
                 .with_layout(
                     LayoutStyle::default()
                         .with_width(LayoutDimension::Length(LogicalLength::from(160_u16)))
@@ -311,4 +319,74 @@ fn full_public_command_queue_rejects_exact_option_reveal_without_alternate_scrol
     );
     assert_eq!(app.focus().focused_node(), Some(&owner));
     assert_eq!(app.state().chosen, 0);
+}
+
+fn active_option_name(app: &mut AppRuntime<App>) -> Option<String> {
+    let published = publish(app);
+    let semantics = published.semantic_publication().snapshot();
+    let combo = semantics.nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)?;
+    let target = combo.relationships().iter()
+        .find(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)?
+        .target();
+    semantics.nodes().iter().find(|node| node.id() == target)
+        .and_then(|node| node.name()).map(str::to_owned)
+}
+
+#[test]
+fn sparse_enabled_candidates_navigate_without_disabled_or_out_of_range_active_targets() {
+    let mut app = AppRuntime::<App>::mount(State {
+        open: true,
+        navigation_with_disabled_holes: true,
+        ..State::default()
+    });
+    settle(&mut app);
+    let owner = id(&app, "viewport.owner");
+    command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
+    // Option 00 is application-selected but disabled. Active eligibility is
+    // independent of committed value, even across many disabled Options.
+    assert_eq!(active_option_name(&mut app).as_deref(), Some("Option 02"));
+    command(&mut app, owner.clone(), SemanticCommand::FocusUp);
+    assert_eq!(active_option_name(&mut app).as_deref(), Some("Option 02"),
+        "Previous clamps at the first enabled Option");
+    command(&mut app, owner.clone(), SemanticCommand::FocusDown);
+    assert_eq!(active_option_name(&mut app).as_deref(), Some("Option 14"));
+    command(&mut app, owner.clone(), SemanticCommand::FocusDown);
+    assert_eq!(active_option_name(&mut app).as_deref(), Some("Option 14"),
+        "Next clamps at the last enabled Option");
+    command(&mut app, owner.clone(), SemanticCommand::FocusGroupFirst);
+    assert_eq!(active_option_name(&mut app).as_deref(), Some("Option 02"));
+    command(&mut app, owner.clone(), SemanticCommand::FocusGroupLast);
+    assert_eq!(active_option_name(&mut app).as_deref(), Some("Option 14"));
+    command(&mut app, owner.clone(), SemanticCommand::FocusUp);
+    assert_eq!(active_option_name(&mut app).as_deref(), Some("Option 02"));
+    assert_eq!(app.focus().focused_node(), Some(&owner));
+    assert_eq!(app.state().chosen, 0);
+}
+
+#[test]
+fn all_disabled_options_have_no_active_descendant_or_keyboard_selection_action() {
+    let mut app = AppRuntime::<App>::mount(State {
+        open: true,
+        all_disabled: true,
+        ..State::default()
+    });
+    settle(&mut app);
+    let owner = id(&app, "viewport.owner");
+    command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
+    assert_eq!(active_option_name(&mut app), None);
+    for direction in [
+        SemanticCommand::FocusDown,
+        SemanticCommand::FocusUp,
+        SemanticCommand::FocusGroupFirst,
+        SemanticCommand::FocusGroupLast,
+    ] {
+        command(&mut app, owner.clone(), direction);
+        assert_eq!(active_option_name(&mut app), None,
+            "no enabled Option may be used as a synthetic active descendant");
+    }
+    command(&mut app, owner.clone(), SemanticCommand::Activate);
+    assert_eq!(app.state().chosen, 0);
+    assert_eq!(app.focus().focused_node(), Some(&owner));
+    assert!(app.state().open, "activation of no eligible Option is inert");
 }
