@@ -469,6 +469,21 @@ fn long_combo_native_gpu_scroll_clips_paint_to_the_existing_bounded_viewport()
         .node(&last)
         .ok_or_else(|| std::io::Error::other("missing last Option layout"))?
         .bounds();
+    // Layout/debug coordinates are not renderer-visible coordinates for
+    // a #341 anchored Popover. Reuse the accepted presentation placement.
+    let presentation_root = before
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.surface_presentation().is_some())
+        .ok_or_else(|| std::io::Error::other("missing projected Popover root"))?;
+    let placed = presentation_root
+        .surface_presentation()
+        .ok_or_else(|| std::io::Error::other("missing placed Popover bounds"))?
+        .placed_bounds();
+    let source = presentation_root.bounds();
+    let projected_x = bounds.x() + placed.x() - source.x();
+    let projected_y = bounds.y() + placed.y() - source.y();
     assert!(bounds.height() > 0.0 && bounds.height() <= 72.0);
     assert!(last_bounds.y() > bounds.y() + bounds.height());
     let image_before =
@@ -523,11 +538,13 @@ fn long_combo_native_gpu_scroll_clips_paint_to_the_existing_bounded_viewport()
             let px = x as f32 + 0.5;
             let py = y as f32 + 0.5;
             assert!(
-                px >= bounds.x() - 1.0
-                    && px <= bounds.x() + bounds.width() + 1.0
-                    && py >= bounds.y() - 1.0
-                    && py <= bounds.y() + bounds.height() + 1.0,
-                "native GPU scroll must not leak changing Option pixels outside the viewport"
+                px >= projected_x - 1.0
+                    && px <= projected_x + bounds.width() + 1.0
+                    && py >= projected_y - 1.0
+                    && py <= projected_y + bounds.height() + 1.0,
+                "native GPU scroll diff at ({x}, {y}) outside projected viewport ({projected_x}, {projected_y}) with size ({}, {})",
+                bounds.width(),
+                bounds.height()
             );
             inside_changed = true;
         }
