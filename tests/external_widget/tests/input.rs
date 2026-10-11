@@ -296,7 +296,6 @@ fn downstream_text_and_composition_receipts_have_exact_exclusive_ui_finality() {
     }
 }
 
-
 struct SourceQualifiedSpaceApp;
 
 impl UiApp for SourceQualifiedSpaceApp {
@@ -358,8 +357,17 @@ fn source_space_settlement(
     assert_eq!(value.scope(), batch.final_ownership().scope());
     assert_eq!(value.family(), UiInputFamily::Keyboard);
     assert_eq!(value.device_id(), Some(device_id));
-    assert_eq!(value.ownership_revision(), batch.final_ownership().revision());
-    assert_eq!(batch.final_ownership().keyboard().space_activation_device_id(), owner);
+    assert_eq!(
+        value.ownership_revision(),
+        batch.final_ownership().revision()
+    );
+    assert_eq!(
+        batch
+            .final_ownership()
+            .keyboard()
+            .space_activation_device_id(),
+        owner
+    );
     assert!(matches!(
         value.finality(),
         UiInputFinality::Committed(facts)
@@ -391,7 +399,11 @@ fn public_space_lifetime_ignores_foreign_device_down_and_up_without_ghost_claim(
         .id()
         .clone();
     runtime
-        .submit_command(target, SemanticCommand::RequestFocus, CommandOrigin::programmatic())
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
         .unwrap_or_else(|_| unreachable!("host-space focus admitted"));
     let _ = runtime
         .pump(budget)
@@ -399,7 +411,11 @@ fn public_space_lifetime_ignores_foreign_device_down_and_up_without_ghost_claim(
     let a = InputDeviceId::new(21).unwrap_or_else(|| unreachable!("valid source A"));
     let b = InputDeviceId::new(22).unwrap_or_else(|| unreachable!("valid source B"));
     let down_a = source_space_settlement(
-        &mut runtime, KeyboardPhase::Down, a, UiInputConflict::ExclusiveUi, Some(a),
+        &mut runtime,
+        KeyboardPhase::Down,
+        a,
+        UiInputConflict::ExclusiveUi,
+        Some(a),
     );
     assert!(matches!(
         down_a.finality(),
@@ -407,31 +423,53 @@ fn public_space_lifetime_ignores_foreign_device_down_and_up_without_ghost_claim(
             if facts.default_disposition() == UiDefaultDisposition::Applied
     ));
     let down_b = source_space_settlement(
-        &mut runtime, KeyboardPhase::Down, b, UiInputConflict::ObservedNonexclusive, Some(a),
+        &mut runtime,
+        KeyboardPhase::Down,
+        b,
+        UiInputConflict::ObservedNonexclusive,
+        Some(a),
     );
     let up_b = source_space_settlement(
-        &mut runtime, KeyboardPhase::Up, b, UiInputConflict::ObservedNonexclusive, Some(a),
+        &mut runtime,
+        KeyboardPhase::Up,
+        b,
+        UiInputConflict::ObservedNonexclusive,
+        Some(a),
     );
     let up_a = source_space_settlement(
-        &mut runtime, KeyboardPhase::Up, a, UiInputConflict::ExclusiveUi, None,
+        &mut runtime,
+        KeyboardPhase::Up,
+        a,
+        UiInputConflict::ExclusiveUi,
+        None,
     );
     assert!(down_a.sequence() < down_b.sequence());
     assert!(down_b.sequence() < up_b.sequence());
     assert!(up_b.sequence() < up_a.sequence());
-    assert_eq!(runtime.state(), &0, "queued activation is not yet committed");
+    assert_eq!(
+        runtime.state(),
+        &0,
+        "queued activation is not yet committed"
+    );
     let finality = up_a.finality();
     assert!(matches!(
         finality,
         UiInputFinality::Committed(facts)
             if facts.default_disposition() == UiDefaultDisposition::Queued
     ));
-    assert!(runtime
-        .pump(budget)
-        .unwrap_or_else(|_| unreachable!("later activation work commits"))
-        .ordered_records()
-        .iter()
-        .all(|record| !matches!(record, InputArbitrationRecord::InputSettled(_))));
-    assert_eq!(runtime.state(), &1, "exact owning Space release activates once");
+    assert!(
+        runtime
+            .pump(budget)
+            .unwrap_or_else(|_| unreachable!("later activation work commits"))
+            .ordered_records()
+            .iter()
+            .all(|record| !matches!(record, InputArbitrationRecord::InputSettled(_)))
+    );
+    assert_eq!(
+        runtime.state(),
+        &1,
+        "exact owning Space release activates once"
+    );
 }
 
 #[derive(Debug)]
