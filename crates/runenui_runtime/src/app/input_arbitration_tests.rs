@@ -1207,6 +1207,11 @@ fn assert_overflow_settlement_and_retirement(
 ) {
     assert_ne!(first, pending);
     assert_eq!(batch.processed_through(), Some(first));
+    assert_eq!(
+        batch.report().cancelled_by_terminal_transition(),
+        1,
+        "the queued second native receipt is cancelled by input-callback poison",
+    );
     assert_eq!(batch.final_ownership().scope(), scope);
     assert_eq!(
         batch.final_ownership().status(),
@@ -1308,6 +1313,11 @@ fn assert_overflow_aborts_with_trace(trace_config: crate::TraceConfig) {
         .pump(budget)
         .unwrap_or_else(|_| unreachable!("terminal observations remain available"));
     assert_eq!(repeated.ordered_records(), []);
+    assert_eq!(
+        repeated.report().cancelled_by_terminal_transition(),
+        0,
+        "no terminal cancellation may be reported twice",
+    );
 }
 
 #[test]

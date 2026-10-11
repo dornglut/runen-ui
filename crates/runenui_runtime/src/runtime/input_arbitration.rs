@@ -24,6 +24,9 @@ pub(super) struct InputObservationState {
     /// Each committed outside-pump ownership boundary is a separate witness.
     pending_direct_boundaries: u64,
     retirement_cause: Option<crate::InputScopeRetirementReason>,
+    /// Exact result of canonical terminal cleanup, only for host reports.
+    /// Never consulted to cancel, schedule, or authorize input.
+    terminal_cancelled_work: Option<usize>,
     #[cfg(test)]
     fail_reservation_after: std::cell::Cell<Option<usize>>,
 }
@@ -39,6 +42,7 @@ impl InputObservationState {
             retired_recorded: false,
             pending_direct_boundaries: 0,
             retirement_cause: None,
+            terminal_cancelled_work: None,
             #[cfg(test)]
             fail_reservation_after: std::cell::Cell::new(None),
         }
@@ -195,6 +199,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) {
         self.input_observation.retirement_cause =
             Some(crate::InputScopeRetirementReason::Terminal(reason));
+    }
+
+    pub(crate) fn note_terminal_cancelled_work(&mut self, cancelled: usize) {
+        debug_assert!(self.input_observation.terminal_cancelled_work.is_none());
+        self.input_observation.terminal_cancelled_work = Some(cancelled);
+    }
+
+    pub(crate) const fn terminal_cancelled_work(&self) -> Option<usize> {
+        self.input_observation.terminal_cancelled_work
     }
 
     pub(crate) const fn note_input_shutdown_retirement(&mut self) {

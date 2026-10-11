@@ -86,6 +86,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let cancelled = cancelled_queued
             .saturating_add(cancelled_live.total())
             .saturating_add(additional_cancelled);
+        // Callback/readiness paths may terminalize without returning a
+        // Terminal envelope outcome. Retain the already-computed count only
+        // for the public pump report; the scheduling authority was closed.
+        self.note_terminal_cancelled_work(cancelled);
         let terminal = self.trace.record_draft(
             TraceRecordDraft::lifecycle_fact(
                 TraceRecordKind::RuntimeTerminal { reason },

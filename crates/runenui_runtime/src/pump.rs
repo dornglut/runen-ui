@@ -196,15 +196,18 @@ struct RecordedPump {
     prepared: Option<crate::runtime::InputSnapshotReservation>,
     revision_retired: bool,
     cancelled_for_revision: usize,
+    began_running: bool,
 }
 
 impl RecordedPump {
     fn new<State, Action, Protocol: runenui_core::HostProtocol>(
         runtime: &mut Runtime<State, Action, Protocol>,
     ) -> Result<Self, crate::InputObservationError> {
+        let began_running = matches!(runtime.status(), RuntimeStatus::Running);
+        let latest = runtime.input_ownership()?;
         Ok(Self {
             records: Vec::new(),
-            latest: runtime.input_ownership()?,
+            latest,
             processed_through: None,
             // The initial projection may publish pending outside-pump revision
             // changes before the first readiness reservation. It is therefore
@@ -214,6 +217,7 @@ impl RecordedPump {
             prepared: None,
             revision_retired: false,
             cancelled_for_revision: 0,
+            began_running,
         })
     }
 
@@ -330,13 +334,19 @@ impl RecordedPump {
         if paused {
             runtime.request_input_observation_retry_wake();
         }
-        let mut report = finish_report(
-            runtime,
-            budget,
-            processed,
-            cancelled.saturating_add(self.cancelled_for_revision),
-            totals,
-        );
+        // A routed input/semantic callback can terminalize indirectly while
+        // its envelope handler reports Completed. Use the exact one-time count
+        // already computed by canonical cleanup, with no second cancellation
+        // or credit on a later pump over this retired lifetime.
+        let cancelled =
+            if self.began_running && matches!(runtime.status(), RuntimeStatus::Terminal(_)) {
+                runtime
+                    .terminal_cancelled_work()
+                    .unwrap_or_else(|| unreachable!("terminal cleanup recorded its work losses"))
+            } else {
+                cancelled.saturating_add(self.cancelled_for_revision)
+            };
+        let mut report = finish_report(runtime, budget, processed, cancelled, totals);
         if paused && matches!(report.outcome, PumpOutcome::Quiescent) {
             report.outcome = PumpOutcome::BudgetExhausted;
         }
