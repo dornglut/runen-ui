@@ -100,6 +100,7 @@ struct Candidate {
 pub enum InvalidComboBox {
     MissingOptionId,
     DuplicateOptionId,
+    DuplicateOptionKey,
     MultipleSelected,
     PopupIdCollision,
     OwnerIdCollision,
@@ -434,6 +435,10 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
                 "runenui.control.combo.duplicate-option-id",
                 "ComboBox popup Option IDs must be unique",
             ),
+            InvalidComboBox::DuplicateOptionKey => (
+                "runenui.control.combo.duplicate-option-key",
+                "ComboBox popup Option reconciliation keys must be unique",
+            ),
             InvalidComboBox::MultipleSelected => (
                 "runenui.control.combo.multiple-selected",
                 "select-only ComboBox permits at most one selected Option",
@@ -484,6 +489,7 @@ fn assemble_combo<Action: 'static>(
     on_request: RequestHandler<Action>,
 ) -> (ComboWidget<Action>, Option<Element<Action>>) {
     let mut seen = BTreeSet::new();
+    let mut seen_keys = BTreeSet::new();
     let mut options = Vec::new();
     let mut option_activations = Vec::new();
     let mut popup_options = Vec::new();
@@ -503,6 +509,11 @@ fn assemble_combo<Action: 'static>(
             invalid.get_or_insert(InvalidComboBox::PopupIdCollision);
         } else if !seen.insert(id.as_str().to_owned()) {
             invalid.get_or_insert(InvalidComboBox::DuplicateOptionId);
+        }
+        if let Some(key) = item.combo_proxy_key()
+            && !seen_keys.insert(key.clone())
+        {
+            invalid.get_or_insert(InvalidComboBox::DuplicateOptionKey);
         }
         if let Some(callback) = item.share_combo_activation() {
             option_activations.push((id.clone(), callback));

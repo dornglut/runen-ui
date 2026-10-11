@@ -7,7 +7,7 @@ use runenui_core::{
 use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext};
 
 #[derive(Clone, Copy)]
-enum Mode { Disabled, MissingId, Churn, OwnerCollision, PopupOwnerCollision }
+enum Mode { Disabled, MissingId, DuplicateKey, Churn, OwnerCollision, PopupOwnerCollision }
 struct State { mode: Mode, replacement: bool, popup_replaced: bool, option_rekeyed: bool, reordered: bool, chosen: u8, actions: Vec<u8> }
 enum Action { Request(ComboBoxRequest), Choose(u8), Replace, ReplacePopup, RekeyOption, Reorder }
 struct App;
@@ -16,18 +16,24 @@ impl UiApp for App {
     type Action = Action;
     type HostProtocol = NoHostProtocol;
     fn root(state: &Self::State) -> impl View<Self::Action> {
+        let first = if matches!(state.mode, Mode::MissingId) {
+            option_item("First", false).on_activate(|| Action::Choose(1))
+        } else {
+            option_item("First", false)
+                .id(if matches!(state.mode, Mode::OwnerCollision) {
+                    "boundary.owner"
+                } else {
+                    "boundary.first"
+                })
+                .on_activate(|| Action::Choose(1))
+        };
+        let first = if matches!(state.mode, Mode::DuplicateKey) {
+            first.key("boundary.option.initial")
+        } else {
+            first
+        };
         let mut options = vec![
-            if matches!(state.mode, Mode::MissingId) {
-                option_item("First", false).on_activate(|| Action::Choose(1))
-            } else {
-                option_item("First", false)
-                    .id(if matches!(state.mode, Mode::OwnerCollision) {
-                        "boundary.owner"
-                    } else {
-                        "boundary.first"
-                    })
-                    .on_activate(|| Action::Choose(1))
-            },
+            first,
             option_item("Second", false)
                 .id(if state.replacement { "boundary.replacement" } else { "boundary.second" })
                 .key(if state.replacement {
@@ -300,4 +306,21 @@ fn same_key_option_move_keeps_active_candidate_and_m4_focus_without_reselection(
     assert_eq!(app.state().chosen, 2);
     assert_eq!(app.state().actions, [2]);
     assert_eq!(app.focus().focused_node(), Some(&owner));
+}
+
+#[test]
+fn duplicate_option_reconciliation_keys_fail_closed_before_mounting_popup_proxy() {
+    let mut app = new(Mode::DuplicateKey);
+    let owner = id(&app, "boundary.owner");
+    assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
+    assert!(app.index().nodes().iter().all(|node|
+        node.authored_id().is_none_or(|id| id.as_str() != "boundary.first")
+    ), "invalid popup Options are not mounted");
+    let published = publish(&mut app);
+    assert!(published.semantic_publication().snapshot().nodes().iter()
+        .all(|node| node.role() != SemanticRole::ComboBox
+            && node.role() != SemanticRole::Option
+            && node.role() != SemanticRole::ListBox));
+    assert!(app.state().actions.is_empty(),
+        "ambiguous sibling reconciliation keys cannot activate an Option");
 }
