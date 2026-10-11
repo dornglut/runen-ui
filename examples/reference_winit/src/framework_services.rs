@@ -1,3 +1,4 @@
+use crate::pointer_mode::{PointerModes, WinitPointer};
 use arboard::Clipboard;
 use runenui_core::{
     ClipboardClassification, ClipboardText, CursorShape, DragDropPhase, FrameworkServiceFailure,
@@ -16,6 +17,7 @@ pub struct NativeFrameworkServices {
     admitted_drop_paths: HashMap<WorkSequence, Vec<PathBuf>>,
     native_window_focused: bool,
     requested_ime_allowed: bool,
+    pointer_modes: PointerModes,
 }
 
 impl NativeFrameworkServices {
@@ -26,7 +28,16 @@ impl NativeFrameworkServices {
             admitted_drop_paths: HashMap::new(),
             native_window_focused: false,
             requested_ime_allowed: false,
+            pointer_modes: PointerModes::default(),
         }
+    }
+
+    pub const fn pointer_modes(&self) -> &PointerModes {
+        &self.pointer_modes
+    }
+
+    pub const fn pointer_modes_mut(&mut self) -> &mut PointerModes {
+        &mut self.pointer_modes
     }
 
     pub fn shutdown(&mut self) {
@@ -54,7 +65,13 @@ impl NativeFrameworkServices {
     }
 
     const fn effective_ime_allowed(&self) -> bool {
-        self.native_window_focused && self.requested_ime_allowed
+        self.native_window_focused
+            && self.requested_ime_allowed
+            && self.pointer_modes.ui_pointer_allowed()
+    }
+
+    pub fn refresh_native_input_method(&self, window: &Window) {
+        window.set_ime_allowed(self.effective_ime_allowed());
     }
 
     /// Stages native file custody under a runtime-assigned source sequence.
@@ -169,9 +186,9 @@ impl NativeFrameworkServices {
                         FrameworkServiceFailure::Unavailable,
                     ));
                 };
-                window.set_cursor_visible(*visible);
-                window.set_cursor(cursor_icon(*shape));
-                FrameworkServiceResponse::Cursor(Ok(()))
+                self.pointer_modes
+                    .set_ui_cursor(&mut WinitPointer(window), *shape, *visible);
+                cursor_presentation_response(&self.pointer_modes)
             }
             FrameworkServiceRequest::DragDrop {
                 source,
@@ -261,7 +278,15 @@ const fn map_clipboard_error(error: &arboard::Error) -> FrameworkServiceFailure 
     }
 }
 
-const fn cursor_icon(shape: CursorShape) -> CursorIcon {
+fn cursor_presentation_response(modes: &PointerModes) -> FrameworkServiceResponse {
+    if modes.ui_cursor_presentation_applied() {
+        FrameworkServiceResponse::Cursor(Ok(()))
+    } else {
+        FrameworkServiceResponse::Cursor(Err(FrameworkServiceFailure::Unavailable))
+    }
+}
+
+pub const fn cursor_icon(shape: CursorShape) -> CursorIcon {
     match shape {
         CursorShape::Text => CursorIcon::Text,
         CursorShape::Pointer => CursorIcon::Pointer,
@@ -294,6 +319,20 @@ mod tests {
         WorkSequence,
     };
     use winit::window::CursorIcon;
+
+    /// Explicit deterministic host stand-in for UI cursor and IME arbitration.
+    struct FakePointer;
+
+    impl crate::pointer_mode::Platform for FakePointer {
+        fn grab(
+            &mut self,
+            _mode: crate::pointer_mode::Mode,
+        ) -> Result<(), crate::pointer_mode::Failure> {
+            Ok(())
+        }
+
+        fn cursor(&mut self, _shape: CursorShape, _visible: bool) {}
+    }
 
     #[test]
     fn native_clipboard_error_mapping_is_typed_and_does_not_collapse_to_empty_text() {
@@ -366,11 +405,58 @@ mod tests {
     }
 
     #[test]
+    fn m10_cursor_service_cannot_claim_success_during_visible_recovery() {
+        let mut services = NativeFrameworkServices::new();
+        let pointer = services.pointer_modes_mut();
+        pointer.focus_changed(true, &mut FakePointer).expect("focus granted");
+        assert_eq!(
+            super::cursor_presentation_response(pointer),
+            FrameworkServiceResponse::Cursor(Ok(()))
+        );
+        pointer.focus_changed(false, &mut FakePointer).expect("focus revoked");
+        pointer.focus_changed(true, &mut FakePointer).expect("focus restored");
+        assert!(pointer.ui_pointer_allowed());
+        assert_eq!(
+            super::cursor_presentation_response(pointer),
+            FrameworkServiceResponse::Cursor(Err(FrameworkServiceFailure::Unavailable))
+        );
+        pointer.confirm_fresh_absolute_point(&mut FakePointer);
+        assert_eq!(
+            super::cursor_presentation_response(pointer),
+            FrameworkServiceResponse::Cursor(Ok(()))
+        );
+    }
+
+    #[test]
     fn native_ime_focus_is_only_a_gate_over_committed_runtime_request() {
         let mut services = NativeFrameworkServices::new();
         services.requested_ime_allowed = true;
         assert!(!services.effective_ime_allowed());
         services.native_window_focused = true;
+        assert!(!services.effective_ime_allowed());
+        assert!(
+            services
+                .pointer_modes
+                .focus_changed(true, &mut FakePointer)
+                .is_ok()
+        );
+        assert!(services.effective_ime_allowed());
+        let scope = crate::pointer_mode::Scope {
+            window_epoch: 1,
+            surface: None,
+        };
+        assert!(
+            services
+                .pointer_modes
+                .request(
+                    scope,
+                    crate::pointer_mode::Mode::LockedRelative,
+                    &mut FakePointer,
+                )
+                .is_ok()
+        );
+        assert!(!services.effective_ime_allowed());
+        assert!(services.pointer_modes.release(&mut FakePointer).is_ok());
         assert!(services.effective_ime_allowed());
         services.reset_native_window_ime(None);
         assert!(!services.effective_ime_allowed());
