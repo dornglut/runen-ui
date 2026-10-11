@@ -124,7 +124,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let facts = RoutedIngressFacts::new(
             work.sequence,
-            anchor,
+            anchor.clone(),
             CommandOrigin::__runtime_pointer(),
             work.instant,
             pointer_event_context(
@@ -144,6 +144,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             pointer_commit_trace,
             matches!(work.event.phase(), PointerPhase::Down),
         ) else {
+            // A nonterminal routed-preflight refusal has not committed pointer
+            // callbacks, defaults or stream state. It is a typed processing
+            // rejection, not unknown integrity or an exclusive UI claim.
+            // Integrity faults already terminalize in the routing authority.
+            if matches!(self.status(), crate::RuntimeStatus::Running) {
+                let rejection = match self.tree.target_status(&anchor) {
+                    TargetStatus::Foreign => crate::UiInputProcessingRejection::ForeignTarget,
+                    TargetStatus::Stale => crate::UiInputProcessingRejection::StaleTarget,
+                    TargetStatus::Missing => crate::UiInputProcessingRejection::MissingTarget,
+                    TargetStatus::Live => {
+                        crate::UiInputProcessingRejection::InsufficientTransactionCapacity
+                    }
+                };
+                self.note_external_pointer_finality(
+                    crate::UiInputFinality::ProcessingRejected(rejection),
+                );
+            }
             return self.pointer_runtime_outcome();
         };
         transaction

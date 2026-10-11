@@ -1320,6 +1320,97 @@ fn overflowing_widget_callback_aborts_reached_input_and_retires_pending_receipts
 }
 
 #[test]
+fn nonterminal_pointer_routed_capacity_refusal_is_processing_rejected_not_aborted() {
+    use crate::{LogicalSize, RuntimeConfig, SurfaceBuildContext, TraceConfig};
+    use runenui_core::{
+        LogicalPoint, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
+        PointerPhase, StyleEnvironment,
+    };
+
+    // Routed callback preflight reserves the accepted transaction's maximum
+    // possible follow-up envelopes. Ingress still fits this smaller FIFO.
+    // With trace disabled, arbitration cannot borrow an optional trace result.
+    let mut app = AppRuntime::<SpaceApp>::mount_with_config(
+        0,
+        RuntimeConfig::default()
+            .with_queue_capacity(64)
+            .with_trace_config(TraceConfig::new(0)),
+    );
+    app.pump(PumpBudget::new(64, 64, 64, 64))
+        .unwrap_or_else(|_| unreachable!("initial public mount settles"));
+    let environment = StyleEnvironment::default();
+    let extent = LogicalSize::try_new(64.0, 64.0)
+        .unwrap_or_else(|_| unreachable!("valid logical extent"));
+    let publication = app
+        .publish_surface(&SurfaceBuildContext::tight(&environment, extent))
+        .unwrap_or_else(|_| unreachable!("retained surface accepted"));
+    let bounds = publication
+        .frame()
+        .nodes()
+        .first()
+        .unwrap_or_else(|| unreachable!("mounted button has paint bounds"))
+        .bounds();
+    let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
+        .unwrap_or_else(|_| unreachable!("button hit point valid"));
+    app.pump(PumpBudget::new(64, 64, 64, 64))
+        .unwrap_or_else(|_| unreachable!("publication work settles"));
+
+    let pointer_id = PointerId::new(207)
+        .unwrap_or_else(|| unreachable!("positive pointer identity"));
+    let down = PointerEvent::new(
+        pointer_id,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        point,
+        publication.input_context().clone(),
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Primary]))
+    .with_changed_button(PointerButton::Primary);
+    let receipt = app
+        .submit_pointer(down)
+        .unwrap_or_else(|_| unreachable!("host-native Down is queue-admitted"))
+        .sequence();
+    let batch = app
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pointer preflight refusal is observable"));
+    assert_eq!(batch.processed_through(), Some(receipt));
+    assert_eq!(batch.final_ownership().status(), crate::RuntimeStatus::Running);
+    assert!(batch.final_ownership().pointers().is_empty());
+    assert_eq!(*app.state(), 0);
+    let settlements: Vec<_> = batch
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::InputSettled(settled) => Some(settled),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(settlements.len(), 1);
+    let settled = settlements[0];
+    assert_eq!(settled.sequence(), receipt);
+    assert_eq!(settled.scope(), batch.final_ownership().scope());
+    assert_eq!(settled.family(), crate::UiInputFamily::Pointer);
+    assert_eq!(settled.pointer_id(), Some(pointer_id));
+    assert!(matches!(
+        settled.finality(),
+        UiInputFinality::ProcessingRejected(
+            crate::UiInputProcessingRejection::InsufficientTransactionCapacity
+        )
+    ));
+    assert!(!batch.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::ScopeRetired(_)
+    )));
+    let repeated = app
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("rejected receipt never replays"));
+    assert!(!repeated.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(_)
+    )));
+}
+
+#[test]
 fn pointer_release_remains_ui_owned_after_press_state_is_cleared() {
     use crate::{LogicalSize, SurfaceBuildContext};
     use runenui_core::{
