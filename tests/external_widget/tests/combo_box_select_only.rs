@@ -150,3 +150,67 @@ fn controls_identifies_actual_listbox_and_active_option_without_focus_repair() {
         .find(|node| node.id() == active.target()).and_then(|node| node.name()),
         Some("One"));
 }
+
+fn key(physical: runenui_core::PhysicalKey, logical: runenui_core::LogicalKey,
+    composition: runenui_core::KeyboardCompositionState) -> runenui_core::KeyboardEvent {
+    runenui_core::KeyboardEvent::new(
+        runenui_core::KeyboardPhase::Down, physical, logical,
+        runenui_core::KeyModifiers::NONE, false,
+        runenui_core::KeyLocation::Standard, composition, None,
+    )
+}
+fn active_label(app: &mut AppRuntime<App>) -> Option<String> {
+    let publication = app.publish_surface(&SurfaceBuildContext::tight(
+        &runenui_core::StyleEnvironment::default(),
+        LogicalSize::try_new(500.0, 260.0).unwrap_or_else(|_| unreachable!()),
+    )).unwrap_or_else(|error| unreachable!("current ComboBox semantics: {error:?}"));
+    let snapshot = publication.semantic_publication().snapshot();
+    let owner = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::ComboBox)?;
+    let target = owner.relationships().iter()
+        .find(|link| link.kind() == runenui_core::SemanticRelationshipKind::ActiveDescendant)?
+        .target();
+    snapshot.nodes().iter().find(|node| node.id() == target)
+        .and_then(|node| node.name()).map(str::to_owned)
+}
+#[test]
+fn keyboard_ime_escape_and_enter_keep_focus_and_committed_value_separate() {
+    use runenui_core::{KeyboardCompositionState as Composition, LogicalKey, PhysicalKey};
+    let mut app = AppRuntime::<App>::mount(State::default());
+    settle(&mut app);
+    let owner = id(&app, "choice.owner");
+    command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
+    app.submit_keyboard(key(PhysicalKey::ArrowDown, LogicalKey::ArrowDown,
+        Composition::Inactive)).unwrap_or_else(|_| unreachable!("arrow ingress"));
+    settle(&mut app);
+    assert!(app.state().open);
+    assert_eq!(active_label(&mut app).as_deref(), Some("One"));
+    app.submit_keyboard(key(PhysicalKey::ArrowDown, LogicalKey::ArrowDown,
+        Composition::Active)).unwrap_or_else(|_| unreachable!("composition ingress"));
+    settle(&mut app);
+    assert_eq!(active_label(&mut app).as_deref(), Some("One"));
+    app.submit_keyboard(key(PhysicalKey::ArrowDown, LogicalKey::ArrowDown,
+        Composition::Inactive)).unwrap_or_else(|_| unreachable!("navigation ingress"));
+    settle(&mut app);
+    assert_eq!(active_label(&mut app).as_deref(), Some("Two"));
+    assert_eq!(app.state().chosen, 0, "navigation is not committed selection");
+    app.submit_keyboard(key(PhysicalKey::Escape, LogicalKey::Escape,
+        Composition::Inactive)).unwrap_or_else(|_| unreachable!("Escape ingress"));
+    settle(&mut app);
+    assert!(!app.state().open);
+    assert_eq!(app.state().chosen, 0, "Escape never commits the active option");
+    assert_eq!(app.focus().focused_node(), Some(&owner));
+
+    app.submit_keyboard(key(PhysicalKey::ArrowDown, LogicalKey::ArrowDown,
+        Composition::Inactive)).unwrap_or_else(|_| unreachable!("reopen ingress"));
+    settle(&mut app);
+    app.submit_keyboard(key(PhysicalKey::ArrowDown, LogicalKey::ArrowDown,
+        Composition::Inactive)).unwrap_or_else(|_| unreachable!("second selection ingress"));
+    settle(&mut app);
+    app.submit_keyboard(key(PhysicalKey::Enter, LogicalKey::Enter,
+        Composition::Inactive)).unwrap_or_else(|_| unreachable!("accept ingress"));
+    settle(&mut app);
+    assert_eq!(app.state().chosen, 2,
+        "Enter must activate the existing Option callback, never copy the active authored ID");
+    assert!(!app.state().open);
+    assert_eq!(app.focus().focused_node(), Some(&owner));
+}
