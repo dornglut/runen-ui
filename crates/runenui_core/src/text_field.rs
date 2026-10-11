@@ -347,50 +347,50 @@ fn project_combo_semantics(
     field_state: &TextFieldState,
     context: SemanticContributionContext,
 ) -> Option<SemanticNodeContribution> {
-        if let Some(combo) = field_state.combo.as_ref() {
-            if combo.invalid.is_some() {
-                return None;
-            }
+    if let Some(combo) = field_state.combo.as_ref() {
+        if combo.invalid.is_some() {
+            return None;
+        }
+        node = node
+            .with_name(combo.label.clone())
+            .with_popup(SemanticPopupKind::ListBox)
+            .with_autocomplete(
+                field_state
+                    .combo_autocomplete
+                    .unwrap_or(SemanticAutocomplete::List),
+            )
+            .with_action(SemanticAction::RequestFocus);
+        if combo.enabled {
             node = node
-                .with_name(combo.label.clone())
-                .with_popup(SemanticPopupKind::ListBox)
-                .with_autocomplete(
-                    field_state
-                        .combo_autocomplete
-                        .unwrap_or(SemanticAutocomplete::List),
-                )
-                .with_action(SemanticAction::RequestFocus);
-            if combo.enabled {
-                node = node
-                    .with_action(SemanticAction::Activate)
-                    .with_action(if combo.open {
-                        SemanticAction::Collapse
-                    } else {
-                        SemanticAction::Expand
-                    });
-            }
-            if combo.open {
+                .with_action(SemanticAction::Activate)
+                .with_action(if combo.open {
+                    SemanticAction::Collapse
+                } else {
+                    SemanticAction::Expand
+                });
+        }
+        if combo.open {
+            node = node.with_relationship(SemanticRelationship::new(
+                SemanticRelationshipKind::Controls,
+                SemanticReference::Authored {
+                    element_id: combo.popup_id.clone(),
+                    semantic_key: None,
+                },
+            ));
+            if let Some(id) = combo.active.as_ref() {
                 node = node.with_relationship(SemanticRelationship::new(
-                    SemanticRelationshipKind::Controls,
+                    SemanticRelationshipKind::ActiveDescendant,
                     SemanticReference::Authored {
-                        element_id: combo.popup_id.clone(),
+                        element_id: id.clone(),
                         semantic_key: None,
                     },
                 ));
-                if let Some(id) = combo.active.as_ref() {
-                    node = node.with_relationship(SemanticRelationship::new(
-                        SemanticRelationshipKind::ActiveDescendant,
-                        SemanticReference::Authored {
-                            element_id: id.clone(),
-                            semantic_key: None,
-                        },
-                    ));
-                }
-            }
-            if context.has_mounted_children() {
-                node = node.with_mounted_children();
             }
         }
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
+    }
     Some(node)
 }
 

@@ -1024,7 +1024,13 @@ mod tests {
         ),
         (
             "M11COMBO",
-            &["M11CTRL-85", "M11CTRL-86", "M11CTRL-87", "M11CTRL-88", "M11CTRL-89"],
+            &[
+                "M11CTRL-85",
+                "M11CTRL-86",
+                "M11CTRL-87",
+                "M11CTRL-88",
+                "M11CTRL-89",
+            ],
             "blocked",
         ),
         (
