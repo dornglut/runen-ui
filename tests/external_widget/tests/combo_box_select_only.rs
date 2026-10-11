@@ -3,7 +3,7 @@
 use runenui_core::{
     ComboBoxRequest, CommandOrigin, ElementId, LogicalPoint, NoHostProtocol, PointerButton,
     PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
-    SemanticCommand, SemanticRole, UiApp, View, combo_box, option_item,
+    SemanticCommand, SemanticRole, SemanticValue, UiApp, View, combo_box, option_item,
 };
 use runenui_runtime::{
     AppRuntime, FontFamilyName, GenericFontFamily, LogicalSize, MountedNodeId, PumpBudget,
@@ -370,4 +370,30 @@ fn physical_option_click_uses_standard_option_activation_without_moving_owner_fo
     assert!(!app.state().open, "application closes popup after choosing");
     assert_eq!(app.focus().focused_node(), Some(&owner),
         "nonfocusable proxy never moves the M4 real focus owner");
+}
+
+#[test]
+fn closed_combo_exposes_app_selected_option_as_neutral_semantic_text_value() {
+    for (selected, expected) in [(0, None), (1, Some("One")), (2, Some("Two"))] {
+        let mut app = AppRuntime::<App>::mount(State {
+            chosen: selected,
+            ..State::default()
+        });
+        settle(&mut app);
+        let publication = app.publish_surface(&SurfaceBuildContext::tight(
+            &runenui_core::StyleEnvironment::default(),
+            LogicalSize::try_new(500.0, 240.0).unwrap_or_else(|_| unreachable!()),
+        )).unwrap_or_else(|error| unreachable!("closed semantic projection: {error:?}"));
+        let snapshot = publication.semantic_publication().snapshot();
+        let combo = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::ComboBox)
+            .unwrap_or_else(|| unreachable!("one ComboBox semantic owner"));
+        assert!(snapshot.nodes().iter().all(|node| node.role() != SemanticRole::Option),
+            "closed popup never retains semantic Option descendants");
+        let observed = match combo.value() {
+            Some(SemanticValue::Text(value)) => Some(value.as_str()),
+            None => None,
+            Some(_) => unreachable!("ComboBox selected value is textual"),
+        };
+        assert_eq!(observed, expected, "M5 projection follows the application-selected Option");
+    }
 }

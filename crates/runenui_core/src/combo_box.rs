@@ -7,6 +7,7 @@ use crate::{
     PresentationOutsidePointerPolicy, SemanticAction, SemanticAutocomplete, SemanticCommand,
     SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticPopupKind,
     SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
+    SemanticValue,
     SurfacePresentation, SurfacePresentationAnchor, SurfacePresentationPlacement,
     SurfacePresentationSide, TextField, UiEvent, View, Widget, WidgetActivation,
     WidgetActivationContext, WidgetActivationOutput, WidgetDiagnostic, WidgetEventOutput,
@@ -108,6 +109,7 @@ pub struct ComboState {
     pub(crate) label: String,
     pub(crate) popup_id: ElementId,
     options: Vec<Candidate>,
+    selected_display: Option<String>,
     pub(crate) active: Option<ElementId>,
     pub(crate) open: bool,
     pub(crate) enabled: bool,
@@ -117,6 +119,7 @@ pub struct ComboWidget<Action> {
     label: String,
     popup_id: ElementId,
     options: Vec<Candidate>,
+    selected_display: Option<String>,
     open: bool,
     enabled: bool,
     pub(crate) invalid: Option<InvalidComboBox>,
@@ -276,6 +279,7 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
             label: self.label.clone(),
             popup_id: self.popup_id.clone(),
             options: self.options.clone(),
+            selected_display: self.selected_display.clone(),
             active: if self.open && self.enabled && self.invalid.is_none() {
                 self.initial_active()
             } else {
@@ -359,6 +363,9 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
                     .with_expanded(state.open),
             )
             .with_action(SemanticAction::RequestFocus);
+        if let Some(display) = state.selected_display.as_ref() {
+            node = node.with_value(SemanticValue::Text(display.clone()));
+        }
         if state.enabled {
             node = node
                 .with_action(SemanticAction::Activate)
@@ -458,6 +465,10 @@ fn assemble_combo<Action: 'static>(
     let mut option_activations = Vec::new();
     let mut popup_options = Vec::new();
     let mut invalid = (owner_id == Some(&popup_id)).then_some(InvalidComboBox::OwnerIdCollision);
+    let selected_display = options_source
+        .iter()
+        .find_map(OptionItem::combo_selected_display)
+        .map(str::to_owned);
     for mut item in options_source {
         let Some((id, selected, option_enabled)) = item.combo_proxy_facts() else {
             invalid.get_or_insert(InvalidComboBox::MissingOptionId);
@@ -513,6 +524,7 @@ fn assemble_combo<Action: 'static>(
             label,
             popup_id,
             options,
+            selected_display,
             open,
             enabled: owner_enabled,
             invalid,
@@ -525,11 +537,6 @@ fn assemble_combo<Action: 'static>(
 
 impl<Action: 'static> View<Action> for ComboBox<Action> {
     fn into_element(self) -> Element<Action> {
-        let selected_display = self
-            .options
-            .iter()
-            .find_map(OptionItem::combo_selected_display)
-            .map(str::to_owned);
         let (widget, popup) = assemble_combo(
             self.label.clone(),
             self.popup_id,
@@ -543,7 +550,7 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
         let display = if invalid {
             self.label
         } else {
-            selected_display.unwrap_or(self.label)
+            widget.selected_display.clone().unwrap_or(self.label)
         };
         let mut children = vec![
             Element::new(ComboLabel { label: display })
