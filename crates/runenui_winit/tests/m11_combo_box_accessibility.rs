@@ -2,15 +2,16 @@
 
 //! Real public M11 control trees projected through the ordinary native AccessKit adapter.
 //! These are not synthetic semantic-node fixtures or a host-specific ComboBox implementation.
-use accesskit::{HasPopup, Role};
+use accesskit::{AutoComplete, HasPopup, Role};
 use runenui_core::{
-    ElementId, FontFamilyName, GenericFontFamily, NoHostProtocol, SemanticEditableMode,
+    ElementId, FontFamilyName, GenericFontFamily, NoHostProtocol, SemanticAction,
+    SemanticEditableMode,
     SemanticRole, StyleEnvironment, TextAffinity, TextDocumentId, TextDocumentRevision,
     TextDocumentSnapshot, TextPosition, TextSelection, UiApp, View, combo_box,
     editable_combo_box, option_item, text_field,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
-use runenui_winit::accessibility::{SemanticAdapter, UpdateMode};
+use runenui_winit::accessibility::{AdapterDiagnostic, SemanticAdapter, UpdateMode};
 
 const FONT: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/Cantarell-Regular.ttf");
 
@@ -95,17 +96,30 @@ fn publish<App: UiApp<State = (), Action = (), HostProtocol = NoHostProtocol>>(
 fn actual_collapsed_select_only_combo_maps_current_selected_value_to_accesskit() {
     let mut runtime = AppRuntime::<SelectApp>::mount(());
     let publication = publish(&mut runtime);
-    assert!(publication.semantic_publication().snapshot().nodes().iter()
-        .any(|node| node.role() == SemanticRole::ComboBox && node.value().is_some()));
+    assert!(
+        publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .any(|node| node.role() == SemanticRole::ComboBox && node.value().is_some())
+    );
 
     let mut adapter = SemanticAdapter::new();
     let update = adapter.update(publication.semantic_publication());
     assert_eq!(update.mode, UpdateMode::InitialFull);
-    assert!(update.diagnostics.is_empty(), "normal ComboBox needs no native fallback");
-    let native = update.tree_update.nodes.iter()
+    assert!(
+        update.diagnostics.is_empty(),
+        "normal ComboBox needs no native fallback"
+    );
+    let native = update
+        .tree_update
+        .nodes
+        .iter()
         .find(|(_, node)| node.label() == Some("Select choice"))
         .unwrap_or_else(|| unreachable!("one native select-only ComboBox"))
-        .1.clone();
+        .1
+        .clone();
     assert_eq!(native.role(), Role::ComboBox);
     assert_eq!(native.value(), Some("One"));
     assert_eq!(native.is_expanded(), Some(false));
@@ -118,31 +132,81 @@ fn actual_editable_combo_maps_one_m10_owner_and_exact_active_option_to_accesskit
     let mut runtime = AppRuntime::<EditableApp>::mount(());
     let publication = publish(&mut runtime);
     let snapshot = publication.semantic_publication().snapshot();
-    assert_eq!(snapshot.nodes().iter()
-        .filter(|node| node.role() == SemanticRole::ComboBox).count(), 1);
-    assert_eq!(snapshot.nodes().iter()
-        .filter(|node| node.role() == SemanticRole::EditableText).count(), 0);
+    assert_eq!(
+        snapshot
+            .nodes()
+            .iter()
+            .filter(|node| node.role() == SemanticRole::ComboBox)
+            .count(),
+        1
+    );
+    assert_eq!(
+        snapshot
+            .nodes()
+            .iter()
+            .filter(|node| node.role() == SemanticRole::EditableText)
+            .count(),
+        0
+    );
 
     let mut adapter = SemanticAdapter::new();
     let update = adapter.update(publication.semantic_publication());
     assert_eq!(update.mode, UpdateMode::InitialFull);
-    assert!(update.diagnostics.is_empty(), "one checked editor and M5 proxy are native-projectable");
-    let (owner_id, combo) = update.tree_update.nodes.iter()
+    for diagnostic in &update.diagnostics {
+        assert!(
+            matches!(
+                diagnostic,
+                AdapterDiagnostic::UnsupportedSemanticAction {
+                    action: SemanticAction::MoveBackward
+                        | SemanticAction::MoveForward
+                        | SemanticAction::ExtendBackward
+                        | SemanticAction::ExtendForward
+                        | SemanticAction::SelectAll
+                        | SemanticAction::DeleteBackward
+                        | SemanticAction::DeleteForward
+                        | SemanticAction::Undo
+                        | SemanticAction::Redo,
+                    ..
+                }
+            ),
+            "native ComboBox must not introduce structural or relationship diagnostics: {diagnostic:?}"
+        );
+    }
+    let (owner_id, combo) = update
+        .tree_update
+        .nodes
+        .iter()
         .find(|(_, node)| node.label() == Some("Search choices"))
         .unwrap_or_else(|| unreachable!("one native editable ComboBox"));
     assert_eq!(combo.role(), Role::EditableComboBox);
     assert_eq!(combo.value(), Some("search"));
     assert_eq!(combo.has_popup(), Some(HasPopup::Listbox));
+    assert_eq!(combo.auto_complete(), Some(AutoComplete::List));
     assert_eq!(combo.is_expanded(), Some(true));
-    let popup = combo.controls().first()
+    let popup = combo
+        .controls()
+        .first()
         .unwrap_or_else(|| unreachable!("actual popup ListBox target"));
-    assert_eq!(update.tree_update.nodes.iter()
-        .find(|(id, _)| id == popup)
-        .map(|(_, node)| node.role()), Some(Role::ListBox));
-    let active = combo.active_descendant()
+    assert_eq!(
+        update
+            .tree_update
+            .nodes
+            .iter()
+            .find(|(id, _)| id == popup)
+            .map(|(_, node)| node.role()),
+        Some(Role::ListBox)
+    );
+    let active = combo
+        .active_descendant()
         .unwrap_or_else(|| unreachable!("current actual active Option"));
-    assert_ne!(active, *owner_id, "real focus owner is not the active proxy Option");
-    let active_node = update.tree_update.nodes.iter()
+    assert_ne!(
+        active, *owner_id,
+        "real focus owner is not the active proxy Option"
+    );
+    let active_node = update
+        .tree_update
+        .nodes
+        .iter()
         .find(|(id, _)| *id == active)
         .unwrap_or_else(|| unreachable!("native active Option projected"));
     assert_eq!(active_node.1.role(), Role::ListBoxOption);
