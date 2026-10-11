@@ -2,7 +2,12 @@
 
 //! A select-only ComboBox must render its ordinary Option text while M5
 //! projects a singular current active descendant without focus movement.
-use core::{error::Error, future::Future, pin::pin, task::{Context, Poll}};
+use core::{
+    error::Error,
+    future::Future,
+    pin::pin,
+    task::{Context, Poll},
+};
 use runenui_core::{
     Color, ElementId, FontFamilyName, GenericFontFamily, NoHostProtocol, SemanticRelationshipKind,
     SemanticRole, StyleEnvironment, UiApp, View, combo_box, option_item,
@@ -18,10 +23,14 @@ const FONT: &[u8] = include_bytes!("fixtures/Cantarell-Regular.ttf");
 struct NoResources;
 impl ResourceProvider for NoResources {
     fn load(
-        &self, _: &runenui_core::ResourceRef, _: ResourceRequest,
+        &self,
+        _: &runenui_core::ResourceRef,
+        _: ResourceRequest,
     ) -> Result<ResourcePayload, ResourceProviderError> {
-        Err(ResourceProviderError::new(ResourceProviderErrorKind::Malformed,
-            "ComboBox needs no external image resources"))
+        Err(ResourceProviderError::new(
+            ResourceProviderErrorKind::Malformed,
+            "ComboBox needs no external image resources",
+        ))
     }
 }
 struct ComboGpuApp;
@@ -66,9 +75,15 @@ fn publication(open: bool) -> Result<runenui_runtime::SurfacePublication, Box<dy
     let mut app = AppRuntime::<ComboGpuApp>::mount(open);
     // Reconcile initial authored popup content and current option identity
     // before publishing; there is no fake semantic target or test-only hook.
-    assert!(app.pump(runenui_runtime::PumpBudget::new(
-        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).is_quiescent());
+    assert!(
+        app.pump(runenui_runtime::PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .is_quiescent()
+    );
     app.register_text_font_bytes(FONT.to_vec())?;
     app.set_text_generic_family_mapping(
         GenericFontFamily::SansSerif,
@@ -106,6 +121,15 @@ fn select_only_combo_popup_projects_real_m8_options_and_real_wgpu_pixels()
             .filter(|node| node.role() == SemanticRole::Option)
             .count();
         assert_eq!(count, expected_options);
+        let controls = combo.relationships().iter()
+            .find(|link| link.kind() == SemanticRelationshipKind::Controls);
+        assert_eq!(controls.is_some(), expected_options != 0);
+        if let Some(controls) = controls {
+            assert_eq!(snapshot.nodes().iter()
+                .find(|node| node.id() == controls.target())
+                .map(|node| node.role()), Some(SemanticRole::ListBox),
+                "M5 Controls must identify the actual popup ListBox, not the Popover Group");
+        }
         assert_eq!(
             combo
                 .relationships()

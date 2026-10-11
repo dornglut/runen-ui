@@ -435,7 +435,11 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
             .with_focusability(Focusability::NotFocusable),
         ];
         if self.open && invalid.is_none() {
-            let popup = list_box(popup_options).into_element();
+            // M5 ActiveDescendant requires Controls to identify the ListBox,
+            // not the surrounding Popover's semantic Group.
+            let popup = list_box(popup_options)
+                .id(self.popup_id.clone())
+                .into_element();
             let handler = Rc::clone(&self.on_request);
             let presentation = SurfacePresentation::new(SurfacePresentationPlacement::new(
                 SurfacePresentationSide::Bottom,
@@ -446,7 +450,6 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
             .dismiss_on_cancel_or_back(true);
             children.push(
                 Popover::new(vec![popup], presentation)
-                    .id(self.popup_id.clone())
                     .on_dismiss(move |_| (*handler.borrow_mut())(ComboBoxRequest::Close))
                     .into_element(),
             );
