@@ -212,15 +212,15 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
             return WidgetActivationOutput::none();
         }
         if !state.open {
-            return WidgetActivationOutput::action(
-                (*self.on_request.borrow_mut())(ComboBoxRequest::Open),
-            );
+            return WidgetActivationOutput::action((*self.on_request.borrow_mut())(
+                ComboBoxRequest::Open,
+            ));
         }
         let Some(active) = &state.active else {
             return WidgetActivationOutput::none();
         };
-        let Some((_, callback)) = self.option_activations.iter()
-            .find(|(id, _)| id == active) else {
+        let Some((_, callback)) = self.option_activations.iter().find(|(id, _)| id == active)
+        else {
             return WidgetActivationOutput::none();
         };
         WidgetActivationOutput::action((*callback.borrow_mut())())
@@ -414,7 +414,11 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
             if let Some(callback) = item.share_combo_activation() {
                 option_activations.push((id.clone(), callback));
             }
-            options.push(Candidate { id, selected, enabled });
+            options.push(Candidate {
+                id,
+                selected,
+                enabled,
+            });
             popup_options.push(if self.enabled {
                 item.combo_box_proxy()
             } else {

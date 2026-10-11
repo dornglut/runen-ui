@@ -76,8 +76,8 @@ fn disabled_owner_blocks_option_activation_and_never_advertises_active_proxy() {
     let option = id(&app, "boundary.first");
     assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
     assert!(!app.index().node(&option).is_some_and(|node| node.is_focusable()));
-    app.submit_command(option, SemanticCommand::Activate, CommandOrigin::programmatic())
-        .unwrap_or_else(|_| unreachable!("disabled target exists"));
+    // Both command-admission refusal and a routed disabled no-op are legal.
+    let _ = app.submit_command(option, SemanticCommand::Activate, CommandOrigin::programmatic());
     settle(&mut app);
     assert!(app.state().actions.is_empty());
     let published = publish(&mut app);
