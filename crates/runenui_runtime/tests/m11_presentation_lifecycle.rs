@@ -380,6 +380,15 @@ fn assert_modal_outside_claims_with_trace_capacity(trace_capacity: usize) {
         let publication = runtime
             .publish_surface(&context(&environment, 100, 60))
             .unwrap_or_else(|_| unreachable!("presentation hit context published"));
+        let ownership = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("retained modal snapshot is observable"));
+        assert_eq!(ownership.surfaces().len(), 1);
+        assert_eq!(
+            ownership.surfaces()[0].latest_retained_context(),
+            Some(publication.input_context())
+        );
+        assert_eq!(ownership.surfaces()[0].modal_blocker().is_some(), modal);
         let outside = node_center(&publication, "outside");
         let receipt = runtime
             .submit_pointer(pointer(
