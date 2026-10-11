@@ -8,8 +8,8 @@ use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, Surfac
 
 #[derive(Clone, Copy)]
 enum Mode { Disabled, MissingId, Churn }
-struct State { mode: Mode, replacement: bool, chosen: u8, actions: Vec<u8> }
-enum Action { Request(ComboBoxRequest), Choose(u8), Replace }
+struct State { mode: Mode, replacement: bool, popup_replaced: bool, chosen: u8, actions: Vec<u8> }
+enum Action { Request(ComboBoxRequest), Choose(u8), Replace, ReplacePopup }
 struct App;
 impl UiApp for App {
     type State = State;
@@ -29,7 +29,8 @@ impl UiApp for App {
         ];
         combo_box(
             "Boundary",
-            ElementId::new("boundary.popup").unwrap_or_else(|_| unreachable!()),
+            ElementId::new(if state.popup_replaced { "boundary.new-popup" } else { "boundary.popup" })
+                .unwrap_or_else(|_| unreachable!()),
             options, Action::Request,
         )
         .id("boundary.owner")
@@ -41,12 +42,13 @@ impl UiApp for App {
             Action::Choose(value) => { state.chosen = value; state.actions.push(value); }
             Action::Request(_) => state.actions.push(9),
             Action::Replace => state.replacement = true,
+            Action::ReplacePopup => state.popup_replaced = true,
         }
     }
 }
 fn new(mode: Mode) -> AppRuntime<App> {
     let mut app = AppRuntime::<App>::mount(State {
-        mode, replacement: false, chosen: 0, actions: Vec::new(),
+        mode, replacement: false, popup_replaced: false, chosen: 0, actions: Vec::new(),
     });
     settle(&mut app);
     app
@@ -123,4 +125,38 @@ fn active_option_replacement_clears_proxy_without_committing_another_value() {
     settle(&mut app);
     assert_eq!(app.state().chosen, 0);
     assert!(app.state().actions.is_empty());
+}
+
+#[test]
+fn replacing_controlled_listbox_retires_old_transient_active_candidate() {
+    let mut app = new(Mode::Churn);
+    let owner = id(&app, "boundary.owner");
+    app.submit_command(owner.clone(), SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!());
+    settle(&mut app);
+    app.submit_command(owner.clone(), SemanticCommand::FocusDown,
+        CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!());
+    settle(&mut app);
+    app.submit_action(Action::ReplacePopup).unwrap_or_else(|_| unreachable!());
+    settle(&mut app);
+    let current = publish(&mut app);
+    let snapshot = current.semantic_publication().snapshot();
+    let combo = snapshot.nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("new popup ComboBox"));
+    let controlled = combo.relationships().iter()
+        .find(|link| link.kind() == SemanticRelationshipKind::Controls)
+        .unwrap_or_else(|| unreachable!("current controls target"));
+    assert_eq!(snapshot.nodes().iter()
+        .find(|node| node.id() == controlled.target())
+        .map(runenui_runtime::SemanticNode::role), Some(SemanticRole::ListBox));
+    let active = combo.relationships().iter()
+        .find(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
+        .unwrap_or_else(|| unreachable!("current active candidate"));
+    assert_eq!(snapshot.nodes().iter()
+        .find(|node| node.id() == active.target()).and_then(|node| node.name()),
+        Some("First"), "replacement must not carry old transient second-item navigation");
+    assert_eq!(app.state().chosen, 0);
+    assert!(app.state().actions.is_empty());
+    assert_eq!(app.focus().focused_node(), Some(&owner));
 }
