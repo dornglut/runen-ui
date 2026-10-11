@@ -1,7 +1,7 @@
 #![allow(refining_impl_trait)]
 
 //! Real public M11 control trees projected through the ordinary native AccessKit adapter.
-//! These are not synthetic semantic-node fixtures or a host-specific ComboBox implementation.
+//! These are not synthetic semantic-node fixtures or a host-specific `ComboBox` implementation.
 use accesskit::{AutoComplete, HasPopup, Role};
 use runenui_core::{
     ElementId, FontFamilyName, GenericFontFamily, NoHostProtocol, SemanticAction,
@@ -20,7 +20,7 @@ impl UiApp for SelectApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root((): &Self::State) -> impl View<Self::Action> {
         combo_box(
             "Select choice",
             ElementId::new("access.select.popup").unwrap_or_else(|_| unreachable!()),
@@ -37,7 +37,7 @@ impl UiApp for SelectApp {
         .id("access.select.owner")
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update((): &mut Self::State, (): Self::Action) {}
 }
 
 struct EditableApp;
@@ -46,10 +46,10 @@ impl UiApp for EditableApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root((): &Self::State) -> impl View<Self::Action> {
         let value = "search";
         let snapshot =
-            TextDocumentSnapshot::new(TextDocumentId::new(331001), TextDocumentRevision::new(1));
+            TextDocumentSnapshot::new(TextDocumentId::new(331_001), TextDocumentRevision::new(1));
         let caret = TextPosition::new(snapshot, value, value.len(), TextAffinity::Upstream)
             .unwrap_or_else(|_| unreachable!("current UTF-8 caret"));
         let editor = text_field(
@@ -79,7 +79,7 @@ impl UiApp for EditableApp {
         .open(true)
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update((): &mut Self::State, (): Self::Action) {}
 }
 
 fn publish<App: UiApp<State = (), Action = (), HostProtocol = NoHostProtocol>>(
