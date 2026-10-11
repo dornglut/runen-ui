@@ -1652,6 +1652,91 @@ mod tests {
         );
     }
 
+    #[test]
+    fn public_explicit_drag_claim_does_not_leak_to_later_nonclaiming_drag_cancel() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = AppRuntime::<ExternalHostDragClaimApp>::mount_with_config(
+            Arc::clone(&reached),
+            RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0)),
+        );
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("drag fixture mounted"));
+        let environment = StyleEnvironment::default();
+        let size = LogicalSize::try_new(64.0, 64.0)
+            .unwrap_or_else(|_| unreachable!("finite surface extent"));
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+            .unwrap_or_else(|_| unreachable!("drag hit context published"));
+        let bounds = publication
+            .frame()
+            .nodes()
+            .first()
+            .unwrap_or_else(|| unreachable!("drag widget published"))
+            .bounds();
+        let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
+            .unwrap_or_else(|_| unreachable!("finite drag point"));
+        assert!(publication.hit_test_scene().target_at(point).is_some());
+        let pointer = PointerId::new(72).unwrap_or_else(|| unreachable!("positive pointer id"));
+        let mut previous_sequence = None;
+        for (phase, expected) in [
+            (DragDropPhase::Hover, UiInputConflict::ExclusiveUi),
+            (DragDropPhase::Cancel, UiInputConflict::ObservedNonexclusive),
+        ] {
+            let receipt = runtime
+                .submit_pointer(
+                    PointerEvent::new(
+                        pointer,
+                        PointerDeviceKind::Mouse,
+                        PointerPhase::Move,
+                        point,
+                        publication.input_context().clone(),
+                    )
+                    .with_drag_drop(DragDropEvent::new(
+                        phase,
+                        DragDropPayloadMetadata::new(
+                            DragDropPayloadKind::Files,
+                            core::num::NonZeroU32::MIN,
+                            None,
+                        ),
+                    )),
+                )
+                .unwrap_or_else(|_| unreachable!("native drag occurrence admitted"))
+                .sequence();
+            if let Some(previous) = previous_sequence {
+                assert!(receipt > previous);
+            }
+            let batch = runtime
+                .pump(HOST_PUMP_BUDGET)
+                .unwrap_or_else(|_| unreachable!("native drag occurrence settles"));
+            let settled = batch
+                .ordered_records()
+                .iter()
+                .filter_map(|record| match record {
+                    InputArbitrationRecord::InputSettled(value) => Some(value),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(settled.len(), 1);
+            assert_eq!(settled[0].sequence(), receipt);
+            assert_eq!(settled[0].scope(), batch.final_ownership().scope());
+            assert_eq!(settled[0].family(), UiInputFamily::Pointer);
+            assert_eq!(settled[0].pointer_id(), Some(pointer));
+            assert!(matches!(
+                settled[0].finality(),
+                UiInputFinality::Committed(facts)
+                    if facts.conflict() == expected
+                        && matches!(facts.route(), UiInputRoute::Routed { .. })
+                        && (expected == UiInputConflict::ExclusiveUi
+                            && facts.reasons() == [UiInputClaimReason::ExplicitWidgetClaim]
+                            || expected == UiInputConflict::ObservedNonexclusive
+                                && facts.reasons().is_empty())
+            ));
+            previous_sequence = Some(receipt);
+        }
+        assert!(reached.load(Ordering::Relaxed), "hover callback claimed only its own receipt");
+    }
+
     fn assert_public_no_hit_hover(
         runtime: &mut AppRuntime<ExternalHostApp>,
         publication: &SurfacePublication,
