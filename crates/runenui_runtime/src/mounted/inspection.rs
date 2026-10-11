@@ -54,6 +54,30 @@ impl<Action> MountedTree<Action> {
         false
     }
 
+    /// Returns a unique *live* mounted descendant, never a deferred authored
+    /// handle. Duplicate IDs in the owner's subtree fail closed instead of
+    /// inheriting an arbitrary traversal order or a replaced sibling.
+    pub(crate) fn unique_descendant_by_authored_id(
+        &self,
+        owner: &MountedNodeId,
+        authored_id: &ElementId,
+    ) -> Option<MountedNodeId> {
+        let initial = self.node(owner)?;
+        let mut pending = initial.children.clone();
+        let mut found = None;
+        while let Some(current) = pending.pop() {
+            let node = self.node(&current)?;
+            if node.authored_id.as_ref() == Some(authored_id) {
+                if found.is_some() {
+                    return None;
+                }
+                found = Some(current.clone());
+            }
+            pending.extend(node.children.iter().cloned());
+        }
+        found
+    }
+
     /// Tests the logical interaction family defined by one presentation root.
     ///
     /// The family includes the projected root subtree, the exact logical owner

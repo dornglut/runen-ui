@@ -392,3 +392,46 @@ fn all_disabled_options_have_no_active_descendant_or_keyboard_selection_action()
     assert_eq!(app.focus().focused_node(), Some(&owner));
     assert!(app.state().open, "activation of no eligible Option is inert");
 }
+
+#[test]
+fn mounted_popup_navigation_routes_exact_active_option_reveal_through_standard_scroll() {
+    let mut app = AppRuntime::<App>::mount(State {
+        open: true,
+        ..State::default()
+    });
+    settle(&mut app);
+    let owner = id(&app, "viewport.owner");
+    command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
+    let list = id(&app, "viewport.list");
+    let viewport = app.index()
+        .node(&list)
+        .and_then(|node| node.parent())
+        .unwrap_or_else(|| unreachable!("scroll viewport"))
+        .clone();
+    let target = id(&app, "viewport.option.17");
+    let _ = publish(&mut app);
+    assert_eq!(
+        app.index().node(&viewport).unwrap_or_else(|| unreachable!())
+            .interaction().scroll_offset().1,
+        0.0
+    );
+    command(&mut app, owner.clone(), SemanticCommand::FocusGroupLast);
+    assert!(
+        app.index().node(&viewport).unwrap_or_else(|| unreachable!())
+            .interaction().scroll_offset().1 > 0.0,
+        "navigation must queue exact active Option reveal, not just update semantics"
+    );
+    let publication = publish(&mut app);
+    let semantic = publication.semantic_publication().snapshot();
+    let combo = semantic.nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("one ComboBox owner"));
+    let active = combo.relationships().iter()
+        .find(|relationship| relationship.kind() == SemanticRelationshipKind::ActiveDescendant)
+        .unwrap_or_else(|| unreachable!("last navigated proxy"));
+    assert_eq!(semantic.node(active.target()).and_then(|node| node.name()), Some("Option 17"));
+    assert_eq!(app.focus().focused_node(), Some(&owner));
+    assert_eq!(app.state().chosen, 0);
+    assert_eq!(app.state().open, true);
+    assert_eq!(app.index().node(&target).unwrap_or_else(|| unreachable!()).is_focusable(), false);
+}

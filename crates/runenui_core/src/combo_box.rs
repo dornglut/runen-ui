@@ -281,6 +281,9 @@ impl<Action> ComboWidget<Action> {
                 self.choose(state, directive);
                 if state.active != old {
                     context.invalidate(WidgetInvalidation::SEMANTICS);
+                    if let Some(active) = &state.active {
+                        context.emit_scroll_into_view_descendant(active);
+                    }
                 }
             } else {
                 context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Open));
