@@ -75,6 +75,31 @@ fn native_release_retry_due(deadline: Option<Instant>, now: Instant) -> bool {
     deadline.is_some_and(|deadline| now >= deadline)
 }
 
+fn native_release_retry_deadline(
+    state: &HostPointerState,
+    deadline: Option<Instant>,
+    now: Instant,
+) -> Option<Instant> {
+    if matches!(state, HostPointerState::ReleaseFailed) {
+        deadline.or_else(|| now.checked_add(NATIVE_RELEASE_RETRY_INTERVAL))
+    } else {
+        None
+    }
+}
+
+fn revoke_pointer_for_runtime_stop(
+    status: runenui_runtime::RuntimeStatus,
+    modes: &mut pointer_mode::PointerModes,
+    platform: &mut impl pointer_mode::Platform,
+) -> Result<(), pointer_mode::Failure> {
+    if status != runenui_runtime::RuntimeStatus::Running
+        && !matches!(modes.state(), HostPointerState::ReleaseFailed)
+    {
+        modes.focus_changed(false, platform)?;
+    }
+    Ok(())
+}
+
 fn earliest_host_deadline(a: Option<Instant>, b: Option<Instant>) -> Option<Instant> {
     match (a, b) {
         (Some(a), Some(b)) => Some(a.min(b)),
@@ -1015,9 +1040,14 @@ impl ReferenceHost {
             Ok(batch) => batch,
             Err(error) => {
                 eprintln!("reference_winit input observation deferred: {error}");
+                self.revoke_stopped_runtime_pointer();
                 return false;
             }
         };
+        self.revoke_stopped_runtime_pointer();
+        if self.runtime.status() != runenui_runtime::RuntimeStatus::Running {
+            return false;
+        }
         if !batch.ordered_records().is_empty() {
             proof!(
                 "stage=host_input_batch ordered_records={} final_revision={}",
@@ -1030,6 +1060,25 @@ impl ReferenceHost {
             return false;
         }
         true
+    }
+
+    fn revoke_stopped_runtime_pointer(&mut self) {
+        if self.runtime.status() == runenui_runtime::RuntimeStatus::Running {
+            return;
+        }
+        self.pending_raw_motion_since = None;
+        if let Some(window) = self.window.as_ref() {
+            let result = revoke_pointer_for_runtime_stop(
+                self.runtime.status(),
+                self.framework_services.pointer_modes_mut(),
+                &mut WinitPointer(window),
+            );
+            self.framework_services
+                .set_native_window_focused(window, false);
+            if let Err(error) = result {
+                eprintln!("reference_winit stopped-runtime pointer release failed: {error:?}");
+            }
+        }
     }
 
     fn shutdown_runtime_checked(&mut self) {
@@ -1474,7 +1523,9 @@ impl ReferenceHost {
     fn handle_window_focus(&mut self, event_loop: &ActiveEventLoop, focused: bool) {
         proof!("stage=window_focus focused={focused}");
         if focused {
-            if self.presentation_suppressed {
+            if self.presentation_suppressed
+                || self.runtime.status() != runenui_runtime::RuntimeStatus::Running
+            {
                 return;
             }
             if let Some(window) = self.window.as_ref() {
@@ -1755,6 +1806,9 @@ impl ReferenceHost {
     }
 
     fn current_host_pointer_scope(&self) -> Option<HostPointerScope> {
+        if self.runtime.status() != runenui_runtime::RuntimeStatus::Running {
+            return None;
+        }
         let surface = self
             .displayed_frame
             .as_ref()?
@@ -1793,7 +1847,7 @@ impl ReferenceHost {
         };
         let previous_mode_state = self.framework_services.pointer_modes().state().clone();
         let returning_from_relative = matches!(
-            self.framework_services.pointer_modes().state(),
+            previous_mode_state,
             HostPointerState::AwaitingMotion(_)
                 | HostPointerState::Active(pointer_mode::Lease {
                     mode: HostPointerMode::LockedRelative,
@@ -1815,7 +1869,8 @@ impl ReferenceHost {
         if let Err(error) = result {
             eprintln!("reference_winit native pointer release failed ({reason}): {error:?}");
         }
-        // Old absolute coordinates must not leak back from camera mode.
+        // Relative acquisition already cancelled all UI pointer streams.
+        // Never reuse its old coordinates on return to absolute input.
         if returning_from_relative && self.framework_services.pointer_modes().ui_pointer_allowed() {
             let _ = self.mouse.invalidate_point_authority(self.modifiers);
         }
@@ -1853,6 +1908,10 @@ impl ReferenceHost {
             return;
         }
         self.pump_runtime_once();
+        if self.current_host_pointer_scope().as_ref() != Some(&scope) {
+            proof!("stage=host_pointer_acquire_rejected reason=retired_runtime_or_surface");
+            return;
+        }
         let Some(window) = self.window.as_ref() else {
             return;
         };
@@ -2212,6 +2271,12 @@ impl ReferenceHost {
                 )
             {
                 self.release_host_pointer("escape/menu");
+                // Confined absolute mode can still own a pressed/captured UI
+                // stream. Route its cancellation rather than retaining stale
+                // coordinates or a pressed owner across the return to UI.
+                if !self.invalidate_mouse_point_authority(event_loop, "escape/menu") {
+                    return;
+                }
                 return;
             }
         }
@@ -2561,14 +2626,24 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
 
     fn device_event(
         &mut self,
-        _event_loop: &ActiveEventLoop,
-        _device_id: DeviceId,
+        event_loop: &ActiveEventLoop,
+        device_id: DeviceId,
         event: DeviceEvent,
     ) {
+        if matches!(event, DeviceEvent::Removed) {
+            // This single-window probe does not own a seat/device manager.
+            // Conservatively revoke on native source loss instead of guessing
+            // whether the removed source can still drive this lease.
+            self.release_host_pointer("native device removed");
+            let _ = self.invalidate_mouse_point_authority(event_loop, "native device removed");
+            return;
+        }
         let DeviceEvent::MouseMotion { delta } = event else {
             return;
         };
-        if self.presentation_suppressed {
+        if self.presentation_suppressed
+            || self.runtime.status() != runenui_runtime::RuntimeStatus::Running
+        {
             return;
         }
         let current_scope = self.current_host_pointer_scope();
@@ -2605,7 +2680,22 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
         self.raw_motion_samples = self.raw_motion_samples.saturating_add(1);
         if self.raw_motion_samples == 1 {
             self.pending_raw_motion_since = None;
-            proof!("stage=host_gameplay_raw_motion_started");
+            proof!("stage=host_gameplay_raw_motion_started device={device_id:?} scope={scope:?}");
+            #[cfg(target_os = "windows")]
+            {
+                use winit::platform::windows::DeviceIdExtWindows;
+                // Query only availability, never log a persistent device path.
+                proof!(
+                    "stage=host_raw_windows_device available={}",
+                    device_id.persistent_identifier().is_some()
+                );
+            }
+        }
+        if self.raw_motion_samples <= 8 {
+            proof!(
+                "stage=host_gameplay_raw_motion_sample sample={} device={device_id:?} delta={delta:?}",
+                self.raw_motion_samples
+            );
         }
     }
 
@@ -2705,6 +2795,15 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
+        self.revoke_stopped_runtime_pointer();
+        // Derive retry admission from controller state, including acquisition
+        // rollback failure and focus/occlusion cleanup. An operation result
+        // alone misses those paths; preserve deadlines to avoid starvation.
+        self.native_release_retry_at = native_release_retry_deadline(
+            self.framework_services.pointer_modes().state(),
+            self.native_release_retry_at,
+            now,
+        );
         if self
             .pending_raw_motion_since
             .is_some_and(|start| raw_motion_probe_expired(start, now))
@@ -2788,6 +2887,132 @@ mod tests {
         event::{ElementState, MouseButton},
         keyboard::ModifiersState,
     };
+
+    #[derive(Default)]
+    struct PointerProbe {
+        fail_acquire: bool,
+        failed_releases: u8,
+        native_mode: pointer_mode::Mode,
+        visible: bool,
+        grabs: usize,
+    }
+
+    impl pointer_mode::Platform for PointerProbe {
+        fn grab(&mut self, mode: pointer_mode::Mode) -> Result<(), pointer_mode::Failure> {
+            self.grabs += 1;
+            if mode == pointer_mode::Mode::Absolute && self.failed_releases > 0 {
+                self.failed_releases -= 1;
+                return Err(pointer_mode::Failure::Native);
+            }
+            self.native_mode = mode;
+            if mode != pointer_mode::Mode::Absolute && self.fail_acquire {
+                return Err(pointer_mode::Failure::Native);
+            }
+            Ok(())
+        }
+
+        fn cursor(&mut self, _shape: runenui_core::CursorShape, visible: bool) {
+            self.visible = visible;
+        }
+    }
+
+    #[test]
+    fn acquisition_rollback_failure_arms_retry_without_postponing_it() {
+        let mut modes = pointer_mode::PointerModes::default();
+        let mut native = PointerProbe {
+            fail_acquire: true,
+            failed_releases: 1,
+            ..PointerProbe::default()
+        };
+        assert!(modes.focus_changed(true, &mut native).is_ok());
+        let scope = pointer_mode::Scope {
+            window_epoch: 1,
+            surface: None,
+        };
+        assert_eq!(
+            modes.request(scope, pointer_mode::Mode::LockedRelative, &mut native),
+            Err(pointer_mode::Failure::ReleaseFailed)
+        );
+        assert_eq!(native.native_mode, pointer_mode::Mode::LockedRelative);
+        assert!(native.visible);
+        assert!(!modes.ui_pointer_allowed());
+        let now = Instant::now();
+        let deadline = super::native_release_retry_deadline(modes.state(), None, now);
+        assert_eq!(deadline, Some(now + NATIVE_RELEASE_RETRY_INTERVAL));
+        assert_eq!(
+            super::native_release_retry_deadline(
+                modes.state(),
+                deadline,
+                now + std::time::Duration::from_millis(500)
+            ),
+            deadline
+        );
+        assert!(modes.release(&mut native).is_ok());
+        assert_eq!(native.native_mode, pointer_mode::Mode::Absolute);
+        assert!(native.visible);
+        assert_eq!(
+            super::native_release_retry_deadline(modes.state(), deadline, now),
+            None
+        );
+    }
+
+    #[test]
+    fn stopped_runtime_revokes_lock_without_requiring_native_focus_loss() {
+        for status in [
+            runenui_runtime::RuntimeStatus::Closed,
+            runenui_runtime::RuntimeStatus::Terminal(
+                runenui_runtime::RuntimeTerminalReason::Poisoned,
+            ),
+        ] {
+            let mut modes = pointer_mode::PointerModes::default();
+            let mut native = PointerProbe::default();
+            assert!(modes.focus_changed(true, &mut native).is_ok());
+            let scope = pointer_mode::Scope {
+                window_epoch: 1,
+                surface: None,
+            };
+            assert!(
+                modes
+                    .request(
+                        scope.clone(),
+                        pointer_mode::Mode::LockedRelative,
+                        &mut native
+                    )
+                    .is_ok()
+            );
+            assert!(modes.observe_motion(&scope, (1.0, 2.0), &mut native));
+            assert!(!native.visible);
+            assert!(
+                super::revoke_pointer_for_runtime_stop(
+                    runenui_runtime::RuntimeStatus::Running,
+                    &mut modes,
+                    &mut native
+                )
+                .is_ok()
+            );
+            assert!(modes.gameplay_motion_allowed());
+            native.failed_releases = 1;
+            assert_eq!(
+                super::revoke_pointer_for_runtime_stop(status, &mut modes, &mut native),
+                Err(pointer_mode::Failure::ReleaseFailed)
+            );
+            assert!(native.visible);
+            assert!(!modes.gameplay_motion_allowed());
+            assert!(!modes.ui_pointer_allowed());
+            let grabs = native.grabs;
+            assert!(
+                super::revoke_pointer_for_runtime_stop(status, &mut modes, &mut native).is_ok()
+            );
+            assert_eq!(
+                native.grabs, grabs,
+                "stopped-runtime observation must not busy-retry native release"
+            );
+            assert!(modes.release(&mut native).is_ok());
+            assert!(!modes.ui_pointer_allowed());
+            assert!(!modes.observe_motion(&scope, (2.0, 1.0), &mut native));
+            assert_eq!(native.native_mode, pointer_mode::Mode::Absolute);
+        }
+    }
 
     #[test]
     fn occlusion_blocks_absolute_input_even_with_native_focus() {
