@@ -1763,11 +1763,13 @@ fn assert_unavailable_context_pointer_release(phase: runenui_core::PointerPhase)
         assert!(matches!(facts.route(), UiInputRoute::Unrouted));
     }
     assert_eq!(observed.scope(), release_batch.final_ownership().scope());
-    assert!(release_batch
-        .final_ownership()
-        .pointers()
-        .iter()
-        .all(|pointer| pointer.pointer_id() != pointer_id));
+    assert!(
+        release_batch
+            .final_ownership()
+            .pointers()
+            .iter()
+            .all(|pointer| pointer.pointer_id() != pointer_id)
+    );
     if phase == PointerPhase::Cancel {
         assert!(app.runtime.trace().records().next().is_none());
     }
