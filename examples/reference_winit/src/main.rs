@@ -1444,9 +1444,12 @@ impl ReferenceHost {
         if occluded {
             self.release_host_pointer("window occluded");
             if let Some(window) = self.window.as_ref() {
-                let result = self.framework_services.pointer_modes_mut()
+                let result = self
+                    .framework_services
+                    .pointer_modes_mut()
                     .focus_changed(false, &mut WinitPointer(window));
-                self.framework_services.set_native_window_focused(window, false);
+                self.framework_services
+                    .set_native_window_focused(window, false);
                 proof!("stage=host_pointer_occluded_focus_revoked result={result:?}");
             }
             if !self.cancel_native_touch_contacts(event_loop, "window occluded")
@@ -1457,7 +1460,11 @@ impl ReferenceHost {
             self.text_input.set_window_focused(false);
             self.handle_native_point_authority_loss(event_loop, "window occluded");
         } else {
-            if self.window.as_ref().is_some_and(|window| window.has_focus()) {
+            if self
+                .window
+                .as_ref()
+                .is_some_and(|window| window.has_focus())
+            {
                 self.handle_window_focus(event_loop, true);
             }
             self.request_pending_redraw();
@@ -2792,12 +2799,18 @@ mod tests {
             fn cursor(&mut self, _shape: runenui_core::CursorShape, _visible: bool) {}
         }
         let mut modes = pointer_mode::PointerModes::default();
-        modes.focus_changed(true, &mut FakePointer).expect("focus granted");
+        modes
+            .focus_changed(true, &mut FakePointer)
+            .expect("focus granted");
         assert!(super::absolute_ui_ingress_allowed(false, &modes));
         assert!(!super::absolute_ui_ingress_allowed(true, &modes));
-        modes.focus_changed(false, &mut FakePointer).expect("focus revoked");
+        modes
+            .focus_changed(false, &mut FakePointer)
+            .expect("focus revoked");
         assert!(!super::absolute_ui_ingress_allowed(false, &modes));
-        modes.focus_changed(true, &mut FakePointer).expect("focus restored");
+        modes
+            .focus_changed(true, &mut FakePointer)
+            .expect("focus restored");
         assert!(!super::absolute_ui_ingress_allowed(true, &modes));
         assert!(!modes.ui_cursor_presentation_applied());
         modes.confirm_fresh_absolute_point(&mut FakePointer);

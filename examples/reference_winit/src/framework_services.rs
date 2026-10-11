@@ -408,13 +408,19 @@ mod tests {
     fn m10_cursor_service_cannot_claim_success_during_visible_recovery() {
         let mut services = NativeFrameworkServices::new();
         let pointer = services.pointer_modes_mut();
-        pointer.focus_changed(true, &mut FakePointer).expect("focus granted");
+        pointer
+            .focus_changed(true, &mut FakePointer)
+            .expect("focus granted");
         assert_eq!(
             super::cursor_presentation_response(pointer),
             FrameworkServiceResponse::Cursor(Ok(()))
         );
-        pointer.focus_changed(false, &mut FakePointer).expect("focus revoked");
-        pointer.focus_changed(true, &mut FakePointer).expect("focus restored");
+        pointer
+            .focus_changed(false, &mut FakePointer)
+            .expect("focus revoked");
+        pointer
+            .focus_changed(true, &mut FakePointer)
+            .expect("focus restored");
         assert!(pointer.ui_pointer_allowed());
         assert_eq!(
             super::cursor_presentation_response(pointer),
