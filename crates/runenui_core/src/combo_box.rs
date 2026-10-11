@@ -255,12 +255,14 @@ impl<Action> ComboWidget<Action> {
                     {
                         context.emit(action);
                     }
+                    context.claim_host_input();
                     context.prevent_default();
                     context.stop_propagation();
                     return WidgetEventOutput::none();
                 }
                 LogicalKey::Escape if state.open => {
                     context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
+                    context.claim_host_input();
                     context.prevent_default();
                     context.stop_propagation();
                     return WidgetEventOutput::none();
@@ -271,6 +273,9 @@ impl<Action> ComboWidget<Action> {
             None
         };
         if let Some(directive) = directive {
+            if event.as_keyboard().is_some() {
+                context.claim_host_input();
+            }
             if state.open {
                 let old = state.active.clone();
                 self.choose(state, directive);

@@ -86,8 +86,8 @@ fn publication(open: bool) -> Result<runenui_runtime::SurfacePublication, Box<dy
             usize::MAX,
         ))
         .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
-            .report()
-            .is_quiescent()
+        .report()
+        .is_quiescent()
     );
     app.register_text_font_bytes(FONT.to_vec())?;
     app.set_text_generic_family_mapping(
@@ -241,8 +241,8 @@ fn editable_publication(open: bool) -> Result<runenui_runtime::SurfacePublicatio
             usize::MAX,
         ))
         .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
-            .report()
-            .is_quiescent()
+        .report()
+        .is_quiescent()
     );
     app.register_text_font_bytes(FONT.to_vec())?;
     app.set_text_generic_family_mapping(
@@ -408,8 +408,8 @@ fn prepare_long_combo() -> Result<LongComboFixture, Box<dyn Error>> {
             usize::MAX,
         ))
         .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
-            .report()
-            .is_quiescent()
+        .report()
+        .is_quiescent()
     );
     app.register_text_font_bytes(FONT.to_vec())?;
     app.set_text_generic_family_mapping(
@@ -456,8 +456,8 @@ fn prepare_long_combo() -> Result<LongComboFixture, Box<dyn Error>> {
             usize::MAX,
         ))
         .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
-            .report()
-            .is_quiescent()
+        .report()
+        .is_quiescent()
     );
     Ok(LongComboFixture {
         app,
@@ -580,8 +580,8 @@ fn long_combo_native_gpu_scroll_clips_paint_to_the_existing_bounded_viewport()
             usize::MAX,
         ))
         .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
-            .report()
-            .is_quiescent()
+        .report()
+        .is_quiescent()
     );
     assert!(
         app.index()

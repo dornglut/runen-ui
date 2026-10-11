@@ -399,3 +399,84 @@ fn closed_combo_exposes_app_selected_option_as_neutral_semantic_text_value() {
         assert_eq!(observed, expected, "M5 projection follows the application-selected Option");
     }
 }
+
+fn native_combo_arrow(
+    phase: runenui_core::KeyboardPhase,
+    modifiers: runenui_core::KeyModifiers,
+    composition: runenui_core::KeyboardCompositionState,
+) -> runenui_core::KeyboardEvent {
+    use runenui_core::{KeyLocation, KeyboardEvent, LogicalKey, PhysicalKey};
+    KeyboardEvent::new(
+        phase,
+        PhysicalKey::ArrowDown,
+        LogicalKey::ArrowDown,
+        modifiers,
+        false,
+        KeyLocation::Standard,
+        composition,
+        None,
+    )
+}
+
+#[test]
+fn select_only_combo_claims_only_its_recognized_native_arrow_key() {
+    use runenui_core::{KeyModifiers, KeyboardCompositionState, KeyboardPhase};
+    use runenui_runtime::{
+        InputArbitrationRecord, RuntimeConfig, TraceConfig, UiDefaultDisposition,
+        UiInputClaimReason, UiInputConflict, UiInputFinality,
+    };
+
+    for trace_capacity in [0, 1, 512] {
+        for (phase, modifiers, composition, recognized) in [
+            (KeyboardPhase::Down, KeyModifiers::NONE, KeyboardCompositionState::Inactive, true),
+            (KeyboardPhase::Down, KeyModifiers::CONTROL, KeyboardCompositionState::Inactive, false),
+            (KeyboardPhase::Up, KeyModifiers::NONE, KeyboardCompositionState::Inactive, false),
+            (KeyboardPhase::Down, KeyModifiers::NONE, KeyboardCompositionState::Active, false),
+        ] {
+            let mut app = AppRuntime::<App>::mount_with_config(
+                State { open: true, chosen: 0, log: Vec::new() },
+                RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
+            );
+            settle(&mut app);
+            let owner = id(&app, "choice.owner");
+            command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
+            let scope = app.input_ownership()
+                .unwrap_or_else(|_| unreachable!("live input scope"))
+                .scope()
+                .clone();
+            let receipt = app.submit_keyboard(native_combo_arrow(phase, modifiers, composition))
+                .unwrap_or_else(|_| unreachable!("native ComboBox arrow admitted"));
+            let batch = app.pump(PumpBudget::new(1, 0, 0, 0))
+                .unwrap_or_else(|error| unreachable!("observed input: {error:?}"));
+            let [InputArbitrationRecord::InputSettled(settled)] = batch.ordered_records() else {
+                unreachable!("exactly one reached native keyboard event")
+            };
+            assert_eq!(settled.sequence(), receipt.sequence());
+            assert_eq!(settled.scope(), &scope);
+            let UiInputFinality::Committed(facts) = settled.finality() else {
+                unreachable!("nonterminal native event commits")
+            };
+            assert_eq!(facts.conflict(), if recognized {
+                UiInputConflict::ExclusiveUi
+            } else {
+                UiInputConflict::ObservedNonexclusive
+            });
+            assert_eq!(facts.reasons(), if recognized {
+                &[UiInputClaimReason::ExplicitWidgetClaim][..]
+            } else {
+                &[]
+            });
+            assert_eq!(facts.default_disposition(), if recognized {
+                UiDefaultDisposition::Prevented
+            } else {
+                UiDefaultDisposition::None
+            });
+            assert_eq!(app.state().chosen, 0);
+            assert_eq!(app.focus().focused_node(), Some(&owner));
+            assert_eq!(app.state().log, []);
+            if trace_capacity == 0 {
+                assert_eq!(app.trace().len(), 0);
+            }
+        }
+    }
+}
