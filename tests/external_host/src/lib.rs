@@ -1160,6 +1160,9 @@ mod tests {
         let reached = Arc::new(AtomicBool::new(false));
         let mut runtime =
             focused_public_claim_host::<ExternalHostNonclaimApp>(Arc::clone(&reached));
+        let prior_ownership = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("initial focused ownership is readable"));
         let receipt = runtime
             .submit_keyboard(KeyboardEvent::new(
                 KeyboardPhase::Down,
@@ -1177,6 +1180,14 @@ mod tests {
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("public keyboard settlement observed"));
         assert_eq!(batch.processed_through(), Some(receipt.sequence()));
+        assert_eq!(
+            batch.final_ownership().revision(),
+            prior_ownership.revision(),
+            "nonclaiming keyboard routing must not invent an ownership transition"
+        );
+        assert!(batch.ordered_records().iter().all(|record| {
+            !matches!(record, InputArbitrationRecord::OwnershipChanged(_))
+        }));
         let settlements = batch
             .ordered_records()
             .iter()
