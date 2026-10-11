@@ -564,11 +564,12 @@ fn long_combo_native_gpu_scroll_clips_paint_to_the_existing_bounded_viewport()
     let image_before =
         renderer.render_offscreen_publication(before.paint_publication(), &NoResources)?;
 
-    // Use only #344's exact live Option target, never the focused owner or a
-    // fabricated widget-local command queue.
+    // Navigation originates at the sole focused ComboBox owner. The widget
+    // must resolve its exact Option generation through the canonical routed
+    // command FIFO; the GPU only consumes the resulting retained scroll.
     app.submit_command(
-        last_option,
-        SemanticCommand::ScrollIntoView,
+        owner.clone(),
+        SemanticCommand::FocusGroupLast,
         CommandOrigin::programmatic(),
     )
     .unwrap_or_else(|_| unreachable!("current exact Option target"));
