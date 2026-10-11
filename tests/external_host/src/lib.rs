@@ -1495,6 +1495,50 @@ mod tests {
         refused
     }
 
+    fn assert_matching_pointer_device_release(
+        runtime: &mut AppRuntime<ExternalHostApp>,
+        refused: &UiInputSettlement,
+        pointer: PointerId,
+        first_device: InputDeviceId,
+        outside: LogicalPoint,
+        context: runenui_core::SurfaceInputContext,
+        target: &runenui_core::MountedNodeId,
+    ) {
+        let up = settled_public_pointer(
+            runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                outside,
+                context,
+            )
+            .with_device_id(first_device)
+            .with_changed_button(PointerButton::Primary),
+        );
+        assert!(refused.sequence() < up.sequence());
+        assert_eq!(up.device_id(), Some(first_device));
+        assert!(matches!(
+            up.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::PointerCapture)
+                    && matches!(facts.route(), UiInputRoute::Captured { target: owner }
+                        if owner == target)
+        ));
+        let released = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("matching release commits cleanup"));
+        assert!(released.pointers().iter().all(|stream| stream.pointer_id() != pointer));
+        assert!(!runtime.state().active);
+        assert!(!runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("settled device occurrences never replay"))
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))));
+    }
+
     #[test]
     fn public_foreign_pointer_device_cannot_steal_owned_stream_or_create_claim() {
         let mut runtime = AppRuntime::<ExternalHostApp>::mount_with_config(
@@ -1569,39 +1613,15 @@ mod tests {
             publication.input_context().clone(),
         );
 
-        let up = settled_public_pointer(
+        assert_matching_pointer_device_release(
             &mut runtime,
-            PointerEvent::new(
-                pointer,
-                PointerDeviceKind::Mouse,
-                PointerPhase::Up,
-                outside,
-                publication.input_context().clone(),
-            )
-            .with_device_id(first_device)
-            .with_changed_button(PointerButton::Primary),
+            &refused,
+            pointer,
+            first_device,
+            outside,
+            publication.input_context().clone(),
+            target,
         );
-        assert!(refused.sequence() < up.sequence());
-        assert_eq!(up.device_id(), Some(first_device));
-        assert!(matches!(
-            up.finality(),
-            UiInputFinality::Committed(facts)
-                if facts.conflict() == UiInputConflict::ExclusiveUi
-                    && facts.reasons().contains(&UiInputClaimReason::PointerCapture)
-                    && matches!(facts.route(), UiInputRoute::Captured { target: owner }
-                        if owner == target)
-        ));
-        let released = runtime
-            .input_ownership()
-            .unwrap_or_else(|_| unreachable!("matching release commits cleanup"));
-        assert!(released.pointers().iter().all(|stream| stream.pointer_id() != pointer));
-        assert!(!runtime.state().active);
-        assert!(!runtime
-            .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|_| unreachable!("settled device occurrences never replay"))
-            .ordered_records()
-            .iter()
-            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))));
     }
 
     #[test]
