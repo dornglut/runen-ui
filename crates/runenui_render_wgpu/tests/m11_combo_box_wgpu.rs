@@ -345,8 +345,8 @@ fn editable_combo_shares_m10_text_pixels_and_projects_current_m5_popup()
 
 struct LongComboGpuApp;
 impl UiApp for LongComboGpuApp {
-    type State = ();
-    type Action = ();
+    type State = bool;
+    type Action = bool;
     type HostProtocol = NoHostProtocol;
 
     fn root(_: &Self::State) -> impl View<Self::Action> {
@@ -359,13 +359,13 @@ impl UiApp for LongComboGpuApp {
                         .with_width(LayoutDimension::Length(LogicalLength::from(160_u16)))
                         .with_height(LayoutDimension::Length(LogicalLength::from(24_u8))),
                 )
-                .on_activate(|| ())
+                .on_activate(|| false)
         });
         combo_box(
             "Scroll",
             ElementId::new("gpu.scroll.list").unwrap_or_else(|_| unreachable!()),
             options,
-            |_| (),
+            |_| false,
         )
         .id("gpu.scroll.owner")
         .foreground(Color::WHITE)
@@ -387,17 +387,15 @@ fn long_combo_id(app: &mut AppRuntime<LongComboGpuApp>, authored: &str) -> Mount
         .clone()
 }
 
-#[test]
-fn long_combo_native_gpu_scroll_clips_paint_to_the_existing_bounded_viewport()
--> Result<(), Box<dyn Error>> {
-    let required = std::env::var_os("RUNENUI_M11COMBO_EVIDENCE_DIR").is_some()
-        || std::env::var_os("RUNENUI_M11SLIDER_EVIDENCE_DIR").is_some();
-    let mut renderer = match block_on(Renderer::request(RendererOptions::new())) {
-        Ok(renderer) => renderer,
-        Err(RendererInitError::AdapterUnavailable { .. }) if !required => return Ok(()),
-        Err(error) => return Err(error.into()),
-    };
-    let mut app = AppRuntime::<LongComboGpuApp>::mount(());
+struct LongComboFixture {
+    app: AppRuntime<LongComboGpuApp>,
+    owner: MountedNodeId,
+    viewport: MountedNodeId,
+    last_option: MountedNodeId,
+}
+
+fn prepare_long_combo() -> Result<LongComboFixture, Box<dyn Error>> {
+    let mut app = AppRuntime::<LongComboGpuApp>::mount(false);
     assert!(
         app.pump(PumpBudget::new(
             usize::MAX,
@@ -413,12 +411,12 @@ fn long_combo_native_gpu_scroll_clips_paint_to_the_existing_bounded_viewport()
         &[FontFamilyName::new("Cantarell")?],
     )?;
     let owner = long_combo_id(&mut app, "gpu.scroll.owner");
-    let list = long_combo_id(&mut app, "gpu.scroll.list");
-    let last = long_combo_id(&mut app, "gpu.scroll.option.11");
+    let list_box_node = long_combo_id(&mut app, "gpu.scroll.list");
+    let last_option = long_combo_id(&mut app, "gpu.scroll.option.11");
     let viewport = app
         .index()
-        .node(&list)
-        .and_then(|node| node.parent())
+        .node(&list_box_node)
+        .and_then(runenui_runtime::MountedNodeRef::parent)
         .ok_or_else(|| std::io::Error::other("missing standard scroll parent"))?
         .clone();
     let scroll = app
@@ -453,46 +451,115 @@ fn long_combo_native_gpu_scroll_clips_paint_to_the_existing_bounded_viewport()
         ))
         .is_quiescent()
     );
+    Ok(LongComboFixture {
+        app,
+        owner,
+        viewport,
+        last_option,
+    })
+}
+
+fn projected_combo_viewport(
+    frame: &runenui_runtime::SurfacePublication,
+    viewport: &MountedNodeId,
+    last_option: &MountedNodeId,
+) -> Result<(f64, f64, f64, f64), Box<dyn Error>> {
+    let bounds = frame
+        .frame()
+        .node(viewport)
+        .ok_or_else(|| std::io::Error::other("missing viewport layout"))?
+        .bounds();
+    let last_bounds = frame
+        .frame()
+        .node(last_option)
+        .ok_or_else(|| std::io::Error::other("missing last Option layout"))?
+        .bounds();
+    assert!(bounds.height() > 0.0 && bounds.height() <= 72.0);
+    assert!(last_bounds.y() > bounds.y() + bounds.height());
+    // #341 presentation placement, not unprojected layout, owns GPU coordinates.
+    let root = frame
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.surface_presentation().is_some())
+        .ok_or_else(|| std::io::Error::other("missing Popover presentation"))?;
+    let placed = root
+        .surface_presentation()
+        .ok_or_else(|| std::io::Error::other("missing placed Popover"))?
+        .placed_bounds();
+    let source = root.bounds();
+    Ok((
+        f64::from(bounds.x() + placed.x() - source.x()),
+        f64::from(bounds.y() + placed.y() - source.y()),
+        f64::from(bounds.width()),
+        f64::from(bounds.height()),
+    ))
+}
+
+fn assert_native_scroll_clip(
+    before: &[u8],
+    after: &[u8],
+    extent: (u32, u32),
+    clip: (f64, f64, f64, f64),
+) {
+    assert_eq!(before.len(), after.len());
+    let (width, height) = extent;
+    let (clip_x, clip_y, clip_width, clip_height) = clip;
+    let mut inside_changed = false;
+    for y in 0..height {
+        for x in 0..width {
+            let index = (y as usize * width as usize + x as usize) * 4;
+            if before[index..index + 4] == after[index..index + 4] {
+                continue;
+            }
+            let px = f64::from(x) + 0.5;
+            let py = f64::from(y) + 0.5;
+            assert!(
+                px >= clip_x - 1.0
+                    && px <= clip_x + clip_width + 1.0
+                    && py >= clip_y - 1.0
+                    && py <= clip_y + clip_height + 1.0,
+                "native GPU scroll diff at ({x}, {y}) outside projected viewport ({clip_x}, {clip_y}) with size ({clip_width}, {clip_height})"
+            );
+            inside_changed = true;
+        }
+    }
+    assert!(
+        inside_changed,
+        "current exact Option reveal must change clipped GPU pixels"
+    );
+}
+
+#[test]
+fn long_combo_native_gpu_scroll_clips_paint_to_the_existing_bounded_viewport()
+-> Result<(), Box<dyn Error>> {
+    let required = std::env::var_os("RUNENUI_M11COMBO_EVIDENCE_DIR").is_some()
+        || std::env::var_os("RUNENUI_M11SLIDER_EVIDENCE_DIR").is_some();
+    let mut renderer = match block_on(Renderer::request(RendererOptions::new())) {
+        Ok(renderer) => renderer,
+        Err(RendererInitError::AdapterUnavailable { .. }) if !required => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    let LongComboFixture {
+        mut app,
+        owner,
+        viewport,
+        last_option,
+    } = prepare_long_combo()?;
 
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(&environment, LogicalSize::try_new(320.0, 260.0)?);
     let before = app
         .publish_surface(&build)
         .map_err(|e| std::io::Error::other(format!("before scroll: {e:?}")))?;
-    let bounds = before
-        .frame()
-        .node(&viewport)
-        .ok_or_else(|| std::io::Error::other("missing viewport layout"))?
-        .bounds();
-    let last_bounds = before
-        .frame()
-        .node(&last)
-        .ok_or_else(|| std::io::Error::other("missing last Option layout"))?
-        .bounds();
-    // Layout/debug coordinates are not renderer-visible coordinates for
-    // a #341 anchored Popover. Reuse the accepted presentation placement.
-    let presentation_root = before
-        .frame()
-        .nodes()
-        .iter()
-        .find(|node| node.surface_presentation().is_some())
-        .ok_or_else(|| std::io::Error::other("missing projected Popover root"))?;
-    let placed = presentation_root
-        .surface_presentation()
-        .ok_or_else(|| std::io::Error::other("missing placed Popover bounds"))?
-        .placed_bounds();
-    let source = presentation_root.bounds();
-    let projected_x = bounds.x() + placed.x() - source.x();
-    let projected_y = bounds.y() + placed.y() - source.y();
-    assert!(bounds.height() > 0.0 && bounds.height() <= 72.0);
-    assert!(last_bounds.y() > bounds.y() + bounds.height());
+    let clip = projected_combo_viewport(&before, &viewport, &last_option)?;
     let image_before =
         renderer.render_offscreen_publication(before.paint_publication(), &NoResources)?;
 
-    // The public #344 exact-target command proves ordinary scroll/render correlation
-    // without fabricating a ComboBox-internal targetable EventContext seam.
+    // Use only #344's exact live Option target, never the focused owner or a
+    // fabricated widget-local command queue.
     app.submit_command(
-        last,
+        last_option,
         SemanticCommand::ScrollIntoView,
         CommandOrigin::programmatic(),
     )
@@ -521,37 +588,13 @@ fn long_combo_native_gpu_scroll_clips_paint_to_the_existing_bounded_viewport()
     let image_after =
         renderer.render_offscreen_publication(after.paint_publication(), &NoResources)?;
     assert_eq!(app.focus().focused_node(), Some(&owner));
-    let a = image_before.readback().rgba8_srgb();
-    let b = image_after.readback().rgba8_srgb();
-    assert_eq!(
-        image_before.readback().extent(),
-        image_after.readback().extent()
-    );
     let extent = image_before.readback().extent();
-    let mut inside_changed = false;
-    for y in 0..extent.height() {
-        for x in 0..extent.width() {
-            let index = (y as usize * extent.width() as usize + x as usize) * 4;
-            if a[index..index + 4] == b[index..index + 4] {
-                continue;
-            }
-            let px = x as f32 + 0.5;
-            let py = y as f32 + 0.5;
-            assert!(
-                px >= projected_x - 1.0
-                    && px <= projected_x + bounds.width() + 1.0
-                    && py >= projected_y - 1.0
-                    && py <= projected_y + bounds.height() + 1.0,
-                "native GPU scroll diff at ({x}, {y}) outside projected viewport ({projected_x}, {projected_y}) with size ({}, {})",
-                bounds.width(),
-                bounds.height()
-            );
-            inside_changed = true;
-        }
-    }
-    assert!(
-        inside_changed,
-        "current exact Option reveal must change clipped GPU pixels"
+    assert_eq!(extent, image_after.readback().extent());
+    assert_native_scroll_clip(
+        image_before.readback().rgba8_srgb(),
+        image_after.readback().rgba8_srgb(),
+        (extent.width(), extent.height()),
+        clip,
     );
     if let Some(dir) = std::env::var_os("RUNENUI_M11COMBO_EVIDENCE_DIR").map(PathBuf::from) {
         fs::create_dir_all(&dir)?;
