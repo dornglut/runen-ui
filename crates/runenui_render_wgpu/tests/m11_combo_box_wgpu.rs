@@ -191,22 +191,20 @@ impl UiApp for EditableComboGpuApp {
 
     fn root(open: &Self::State) -> impl View<Self::Action> {
         let value = "search";
-        let snapshot = TextDocumentSnapshot::new(
-            TextDocumentId::new(1331),
-            TextDocumentRevision::new(1),
-        );
-        let caret = TextPosition::new(
-            snapshot, value, value.len(), TextAffinity::Upstream,
-        ).unwrap_or_else(|_| unreachable!("valid input text"));
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(1331), TextDocumentRevision::new(1));
+        let caret = TextPosition::new(snapshot, value, value.len(), TextAffinity::Upstream)
+            .unwrap_or_else(|_| unreachable!("valid input text"));
         let editor = text_field(
             snapshot,
             value,
             TextSelection::collapsed(caret),
             SemanticEditableMode::SingleLine,
             |_| (),
-        ).unwrap_or_else(|_| unreachable!("single-line editor"))
-            .id("gpu.editable.owner")
-            .foreground(Color::WHITE);
+        )
+        .unwrap_or_else(|_| unreachable!("single-line editor"))
+        .id("gpu.editable.owner")
+        .foreground(Color::WHITE);
         editable_combo_box(
             editor,
             "Search",
@@ -222,20 +220,25 @@ impl UiApp for EditableComboGpuApp {
                     .on_activate(|| ()),
             ],
             |_| (),
-        ).unwrap_or_else(|_| unreachable!("compatible M10 editor"))
-            .open(*open)
+        )
+        .unwrap_or_else(|_| unreachable!("compatible M10 editor"))
+        .open(*open)
     }
 
     fn update(_: &mut Self::State, (): Self::Action) {}
 }
 
-fn editable_publication(
-    open: bool,
-) -> Result<runenui_runtime::SurfacePublication, Box<dyn Error>> {
+fn editable_publication(open: bool) -> Result<runenui_runtime::SurfacePublication, Box<dyn Error>> {
     let mut app = AppRuntime::<EditableComboGpuApp>::mount(open);
-    assert!(app.pump(runenui_runtime::PumpBudget::new(
-        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).is_quiescent());
+    assert!(
+        app.pump(runenui_runtime::PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .is_quiescent()
+    );
     app.register_text_font_bytes(FONT.to_vec())?;
     app.set_text_generic_family_mapping(
         GenericFontFamily::SansSerif,
@@ -263,30 +266,61 @@ fn editable_combo_shares_m10_text_pixels_and_projects_current_m5_popup()
     let closed = editable_publication(false)?;
     for (publication, count) in [(&open, 2), (&closed, 0)] {
         let snapshot = publication.semantic_publication().snapshot();
-        let editable_combo = snapshot.nodes().iter()
+        let editable_combo = snapshot
+            .nodes()
+            .iter()
             .find(|node| node.role() == SemanticRole::ComboBox)
             .ok_or_else(|| std::io::Error::other("editable ComboBox primary semantics missing"))?;
-        assert!(editable_combo.editable().is_some(),
-            "the single M10 editor is the ComboBox semantic primary");
-        assert_eq!(editable_combo.editable_mode(), Some(SemanticEditableMode::SingleLine));
-        assert!(!snapshot.nodes().iter()
-            .any(|node| node.role() == SemanticRole::EditableText),
-            "must never mount another primary text editor");
-        assert_eq!(snapshot.nodes().iter()
-            .filter(|node| node.role() == SemanticRole::Option).count(), count);
-        assert_eq!(editable_combo.relationships().iter()
-            .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
-            .count(), usize::from(count > 0));
+        assert!(
+            editable_combo.editable().is_some(),
+            "the single M10 editor is the ComboBox semantic primary"
+        );
+        assert_eq!(
+            editable_combo.editable_mode(),
+            Some(SemanticEditableMode::SingleLine)
+        );
+        assert!(
+            !snapshot
+                .nodes()
+                .iter()
+                .any(|node| node.role() == SemanticRole::EditableText),
+            "must never mount another primary text editor"
+        );
+        assert_eq!(
+            snapshot
+                .nodes()
+                .iter()
+                .filter(|node| node.role() == SemanticRole::Option)
+                .count(),
+            count
+        );
+        assert_eq!(
+            editable_combo
+                .relationships()
+                .iter()
+                .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
+                .count(),
+            usize::from(count > 0)
+        );
         let expected_text_runs = if count == 0 { 1 } else { 3 };
-        assert_eq!(publication.paint_scene().items().iter()
-            .filter(|item| item.primitive().as_shaped_text_run().is_some()).count(),
+        assert_eq!(
+            publication
+                .paint_scene()
+                .items()
+                .iter()
+                .filter(|item| item.primitive().as_shaped_text_run().is_some())
+                .count(),
             expected_text_runs,
-            "same M8 source shapes editor text and ordinary popup Option labels");
+            "same M8 source shapes editor text and ordinary popup Option labels"
+        );
     }
     let a = renderer.render_offscreen_publication(open.paint_publication(), &NoResources)?;
     let b = renderer.render_offscreen_publication(closed.paint_publication(), &NoResources)?;
-    assert_ne!(a.readback().rgba8_srgb(), b.readback().rgba8_srgb(),
-        "editable popup changes real native-wgpu pixels without a second editor");
+    assert_ne!(
+        a.readback().rgba8_srgb(),
+        b.readback().rgba8_srgb(),
+        "editable popup changes real native-wgpu pixels without a second editor"
+    );
     let dir = std::env::var_os("RUNENUI_M11COMBO_EVIDENCE_DIR")
         .or_else(|| std::env::var_os("RUNENUI_M11SLIDER_EVIDENCE_DIR"));
     if let Some(path) = dir.map(PathBuf::from) {
