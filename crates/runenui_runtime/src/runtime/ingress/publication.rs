@@ -363,8 +363,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .nodes()
             .iter()
             .filter(|node| {
-                node.role() == SemanticRole::ComboBox
-                    && node.state().expanded() == Some(true)
+                node.role() == SemanticRole::ComboBox && node.state().expanded() == Some(true)
             })
             .filter_map(|combo| {
                 // The semantic compositor already validated ActiveDescendant
