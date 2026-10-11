@@ -1595,6 +1595,22 @@ impl<Action> OptionItem<Action> {
             .map(|id| (id, self.selected, self.enabled))
     }
 
+    /// Share one Option callback for both ordinary pointer activation and
+    /// the owning ComboBox's keyboard acceptance. Durable values never come
+    /// from a widget-local active ElementId.
+    pub(crate) fn share_combo_activation(
+        &mut self,
+    ) -> Option<std::rc::Rc<std::cell::RefCell<Box<dyn FnMut() -> Action>>>>
+    where
+        Action: 'static,
+    {
+        let callback = self.activation_factory.take()?;
+        let shared = std::rc::Rc::new(std::cell::RefCell::new(callback));
+        let option_callback = std::rc::Rc::clone(&shared);
+        self.activation_factory = Some(Box::new(move || (*option_callback.borrow_mut())()));
+        Some(shared)
+    }
+
     fn search_text(&self) -> &str {
         &self.label
     }

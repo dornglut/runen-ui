@@ -19,15 +19,13 @@ use core::fmt;
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 type RequestHandler<Action> = Rc<RefCell<Box<dyn FnMut(ComboBoxRequest) -> Action>>>;
+type OptionActivation<Action> = Rc<RefCell<Box<dyn FnMut() -> Action>>>;
 
 /// An application request, not an automatic durable selection or popup mutation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ComboBoxRequest {
     Open,
     Close,
-    /// An exact currently authored `Option`, resolved by the application to its
-    /// own durable domain value. The authored ID must not be stored as value.
-    Accept(ElementId),
 }
 
 /// A select-only `ComboBox` using standard `OptionItem` children.
@@ -122,6 +120,7 @@ struct ComboWidget<Action> {
     enabled: bool,
     invalid: Option<InvalidComboBox>,
     on_request: RequestHandler<Action>,
+    option_activations: Vec<(ElementId, OptionActivation<Action>)>,
 }
 impl<Action> fmt::Debug for ComboWidget<Action> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -173,7 +172,7 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
             label: self.label.clone(),
             popup_id: self.popup_id.clone(),
             options: self.options.clone(),
-            active: if self.open && self.invalid.is_none() {
+            active: if self.open && self.enabled && self.invalid.is_none() {
                 self.initial_active()
             } else {
                 None
@@ -186,7 +185,7 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         let previous = state.clone();
         let mut next = self.create_state();
-        if self.open && previous.open && self.invalid.is_none() {
+        if self.open && self.enabled && previous.open && self.invalid.is_none() {
             next.active = previous.active.clone().filter(|id| {
                 self.options
                     .iter()
@@ -212,14 +211,19 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
         if !self.enabled || self.invalid.is_some() {
             return WidgetActivationOutput::none();
         }
-        let request = if !state.open {
-            ComboBoxRequest::Open
-        } else if let Some(active) = &state.active {
-            ComboBoxRequest::Accept(active.clone())
-        } else {
+        if !state.open {
+            return WidgetActivationOutput::action(
+                (*self.on_request.borrow_mut())(ComboBoxRequest::Open),
+            );
+        }
+        let Some(active) = &state.active else {
             return WidgetActivationOutput::none();
         };
-        WidgetActivationOutput::action((*self.on_request.borrow_mut())(request))
+        let Some((_, callback)) = self.option_activations.iter()
+            .find(|(id, _)| id == active) else {
+            return WidgetActivationOutput::none();
+        };
+        WidgetActivationOutput::action((*callback.borrow_mut())())
     }
     fn event(
         &mut self,
@@ -394,8 +398,10 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
     fn into_element(self) -> Element<Action> {
         let mut seen = BTreeSet::new();
         let mut options = Vec::new();
+        let mut option_activations = Vec::new();
+        let mut popup_options = Vec::new();
         let mut invalid = None;
-        for item in &self.options {
+        for mut item in self.options {
             let Some((id, selected, enabled)) = item.combo_proxy_facts() else {
                 invalid.get_or_insert(InvalidComboBox::MissingOptionId);
                 continue;
@@ -405,10 +411,14 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
             } else if !seen.insert(id.as_str().to_owned()) {
                 invalid.get_or_insert(InvalidComboBox::DuplicateOptionId);
             }
-            options.push(Candidate {
-                id,
-                selected,
-                enabled,
+            if let Some(callback) = item.share_combo_activation() {
+                option_activations.push((id.clone(), callback));
+            }
+            options.push(Candidate { id, selected, enabled });
+            popup_options.push(if self.enabled {
+                item.combo_box_proxy()
+            } else {
+                item.combo_box_proxy().disabled()
             });
         }
         if options.iter().filter(|item| item.selected).count() > 1 {
@@ -421,8 +431,7 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
             .with_focusability(Focusability::NotFocusable),
         ];
         if self.open && invalid.is_none() {
-            let popup =
-                list_box(self.options.into_iter().map(OptionItem::combo_box_proxy)).into_element();
+            let popup = list_box(popup_options).into_element();
             let handler = Rc::clone(&self.on_request);
             let presentation = SurfacePresentation::new(SurfacePresentationPlacement::new(
                 SurfacePresentationSide::Bottom,
@@ -456,6 +465,7 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
                 enabled: self.enabled,
                 invalid,
                 on_request: self.on_request,
+                option_activations,
             })),
             children,
             diagnostics,

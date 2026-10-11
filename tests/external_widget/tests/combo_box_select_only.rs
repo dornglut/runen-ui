@@ -35,14 +35,6 @@ impl UiApp for App {
                 match &request {
                     ComboBoxRequest::Open => state.open = true,
                     ComboBoxRequest::Close => state.open = false,
-                    ComboBoxRequest::Accept(id) => {
-                        state.chosen = match id.as_str() {
-                            "choice.one" => 1,
-                            "choice.two" => 2,
-                            _ => unreachable!("only current authored Options accepted"),
-                        };
-                        state.open = false;
-                    }
                 }
                 state.log.push(request);
             }
@@ -100,8 +92,7 @@ fn select_only_keeps_real_focus_on_owner_while_selection_remains_application_own
     command(&mut app, owner.clone(), SemanticCommand::Activate);
     assert_eq!(app.state().chosen, 2);
     assert!(!app.state().open);
-    assert_eq!(app.state().log.last(), Some(&ComboBoxRequest::Accept(
-        ElementId::new("choice.two").unwrap_or_else(|_| unreachable!()),
-    )));
+    assert_eq!(app.state().log, [ComboBoxRequest::Open],
+        "keyboard and pointer activation use the same ordinary Option callback");
     assert_eq!(app.focus().focused_node(), Some(&owner));
 }
