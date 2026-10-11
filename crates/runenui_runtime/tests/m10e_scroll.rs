@@ -15,8 +15,9 @@ use runenui_core::{
     WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, children, row,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, PumpBudget, RuntimeConfig, SurfaceBuildContext, TraceConfig,
-    TraceRecordKind,
+    AppRuntime, InputArbitrationRecord, InputPumpBatch, LogicalSize, PumpBudget, RuntimeConfig,
+    SurfaceBuildContext, TraceConfig, TraceRecordKind, UiInputClaimReason, UiInputConflict,
+    UiInputFamily, UiInputFinality,
 };
 
 fn length(value: f32) -> LogicalLength {
@@ -311,7 +312,11 @@ fn nested_wheel_consumes_exact_remainder_and_republishes_clipped_geometry() {
     runtime
         .submit_pointer(wheel)
         .unwrap_or_else(|error| panic!("wheel is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     let applied = runtime
         .trace()
@@ -424,7 +429,11 @@ fn nested_wheel_consumes_exact_remainder_and_republishes_clipped_geometry() {
             ),
         )
         .unwrap_or_else(|error| panic!("bounded overscroll input is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let no_visual_overscroll = runtime
         .trace()
         .records()
@@ -456,14 +465,52 @@ fn nested_wheel_consumes_exact_remainder_and_republishes_clipped_geometry() {
     assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
 }
 
-#[test]
-fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
+fn assert_touch_scroll_claim(batch: &InputPumpBatch, receipt: runenui_core::WorkSequence) {
+    let settled = batch
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::InputSettled(value) => Some(value),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(settled.len(), 1);
+    assert_eq!(settled[0].sequence(), receipt);
+    assert_eq!(settled[0].scope(), batch.final_ownership().scope());
+    assert_eq!(settled[0].family(), UiInputFamily::Pointer);
+    assert!(matches!(
+        settled[0].finality(),
+        UiInputFinality::Committed(facts)
+            if facts.conflict() == UiInputConflict::ExclusiveUi
+                && facts.reasons().contains(&UiInputClaimReason::TouchGesture)
+    ));
+}
+
+fn assert_touch_scroll_trace_recorded(runtime: &AppRuntime<TouchScrollApp>, pointer_id: PointerId) {
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::TouchGestureWon {
+            pointer_id: id,
+            gesture: runenui_runtime::TraceTouchGestureKind::Scroll,
+        } if *id == pointer_id
+    )));
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::LogicalScrollOwnerApplied { .. }
+    )));
+    let jsonl = runtime.trace().export_jsonl();
+    assert!(jsonl.contains("\"name\":\"touch_gesture_provisional\""));
+    assert!(jsonl.contains("\"name\":\"touch_gesture_won\""));
+    assert!(jsonl.contains("\"gesture\":\"scroll\""));
+}
+
+fn assert_touch_scroll_and_host_claim(trace_capacity: usize) {
     let state = TouchScrollState {
         events: TouchEventLog::default(),
         content_visible: true,
         capture_on_down: false,
     };
-    let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
+    let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
     let mut runtime = AppRuntime::<TouchScrollApp>::mount_with_config(state.clone(), config);
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
@@ -488,7 +535,11 @@ fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
     runtime
         .submit_pointer(down)
         .unwrap_or_else(|error| panic!("touch down is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     let crossing_move = PointerEvent::new(
         pointer_id,
@@ -501,7 +552,11 @@ fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
     runtime
         .submit_pointer(crossing_move)
         .unwrap_or_else(|error| panic!("touch threshold move is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     let later_move = PointerEvent::new(
         pointer_id,
@@ -511,10 +566,20 @@ fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
         publication.input_context().clone(),
     )
     .with_buttons(PointerButtons::new([PointerButton::Primary]));
-    runtime
+    let winner_receipt = runtime
         .submit_pointer(later_move)
-        .unwrap_or_else(|error| panic!("touch winner move is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+        .unwrap_or_else(|error| panic!("touch winner move is admitted: {error:?}"))
+        .sequence();
+    let winner_batch = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("touch winner pump observation"));
+    assert!(
+        winner_batch
+            .processed_through()
+            .is_some_and(|fence| fence >= winner_receipt),
+        "a pump fence includes an input and may also include its later derived work"
+    );
+    assert_touch_scroll_claim(&winner_batch, winner_receipt);
 
     assert_eq!(
         state
@@ -525,22 +590,22 @@ fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
             .as_slice(),
         [PointerPhase::Down, PointerPhase::Move]
     );
-    assert!(runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::TouchGestureWon {
-            pointer_id: id,
-            gesture: runenui_runtime::TraceTouchGestureKind::Scroll,
-        } if *id == pointer_id
-    )));
-    assert!(runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::LogicalScrollOwnerApplied { .. }
-    )));
-    let jsonl = runtime.trace().export_jsonl();
-    assert!(jsonl.contains("\"name\":\"touch_gesture_provisional\""));
-    assert!(jsonl.contains("\"name\":\"touch_gesture_won\""));
-    assert!(jsonl.contains("\"gesture\":\"scroll\""));
+    if trace_capacity == 0 {
+        assert!(runtime.trace().records().next().is_none());
+    } else {
+        assert_touch_scroll_trace_recorded(&runtime, pointer_id);
+    }
     assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
+}
+
+#[test]
+fn touch_scroll_commits_once_without_retargeting_the_threshold_crossing_move() {
+    assert_touch_scroll_and_host_claim(512);
+}
+
+#[test]
+fn touch_scroll_claim_and_threshold_order_survive_disabled_diagnostic_trace() {
+    assert_touch_scroll_and_host_claim(0);
 }
 
 #[test]
@@ -575,12 +640,20 @@ fn touch_gesture_is_cancelled_once_when_its_origin_is_unmounted() {
     runtime
         .submit_pointer(down)
         .unwrap_or_else(|error| panic!("touch down is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     runtime
         .submit_action(TouchScrollAction::RemoveContent)
         .unwrap_or_else(|error| panic!("content removal action is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     let cancellations = runtime
         .trace()
@@ -638,7 +711,11 @@ fn independent_touch_streams_resolve_scroll_and_tap_without_cross_ownership() {
                 .with_changed_button(PointerButton::Primary),
             )
             .unwrap_or_else(|error| panic!("independent touch down is admitted: {error:?}"));
-        runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+        let _ = runtime
+            .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned();
     }
     runtime
         .submit_pointer(
@@ -653,7 +730,11 @@ fn independent_touch_streams_resolve_scroll_and_tap_without_cross_ownership() {
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
         )
         .unwrap_or_else(|error| panic!("scrolling touch move is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -667,7 +748,11 @@ fn independent_touch_streams_resolve_scroll_and_tap_without_cross_ownership() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|error| panic!("scrolling touch release is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -680,7 +765,11 @@ fn independent_touch_streams_resolve_scroll_and_tap_without_cross_ownership() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|error| panic!("tap release is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     let trace = runtime.trace();
     let scroll_completed = trace.records().any(|record| {
@@ -773,7 +862,11 @@ fn committed_touch_capture_beats_scroll_and_retains_its_original_owner() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|error| panic!("capturing touch down is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -787,7 +880,11 @@ fn committed_touch_capture_beats_scroll_and_retains_its_original_owner() {
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
         )
         .unwrap_or_else(|error| panic!("captured touch move is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
@@ -841,7 +938,11 @@ fn touch_wheel_is_diagnosed_instead_of_creating_a_parallel_stream_profile() {
         .unwrap_or_else(|error| {
             panic!("unsupported touch event is admitted for diagnosis: {error:?}")
         });
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
@@ -889,7 +990,11 @@ fn prevented_nested_wheel_does_not_partially_commit_scroll() {
             ),
         )
         .unwrap_or_else(|error| panic!("wheel is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     assert!(!runtime.trace().records().any(|record| matches!(
         record.kind(),
@@ -937,7 +1042,11 @@ fn logical_focus_scroll_moves_nearest_scroll_owner_and_commits_a_new_publication
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|error| panic!("focus target accepts focus request: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     runtime
         .submit_command(
             target.clone(),
@@ -945,7 +1054,11 @@ fn logical_focus_scroll_moves_nearest_scroll_owner_and_commits_a_new_publication
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|error| panic!("focus boundary request is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     let applied = runtime
         .trace()
@@ -1012,7 +1125,11 @@ fn scroll_into_view_uses_the_exact_target_and_clamps_to_the_nearest_scroll_owner
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|error| panic!("scroll-to-target command is admitted: {error:?}"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     let applied = runtime
         .trace()

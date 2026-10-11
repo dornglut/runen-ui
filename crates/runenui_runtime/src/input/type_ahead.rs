@@ -337,6 +337,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         ));
         if let Some(destination) = destination {
             self.apply_focus_group_destination(transaction, destination, context.activation)?;
+            transaction.keyboard_default_claim = Some(crate::UiInputClaimReason::FocusNavigation);
         }
         Ok(true)
     }

@@ -184,7 +184,9 @@ fn fresh() -> AppRuntime<App> {
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    runtime.pump(PumpBudget::new(256, 256, 256, 256));
+    let _ = runtime
+        .pump(PumpBudget::new(256, 256, 256, 256))
+        .unwrap_or_else(|_| unreachable!("bounded splitter pump observation"));
 }
 
 fn publish(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
@@ -656,7 +658,9 @@ fn splitter_requests_rebuild_both_application_owned_pane_geometries() {
 }
 
 fn settle_two_pane(runtime: &mut AppRuntime<TwoPaneApp>) {
-    runtime.pump(PumpBudget::new(256, 256, 256, 256));
+    let _ = runtime
+        .pump(PumpBudget::new(256, 256, 256, 256))
+        .unwrap_or_else(|_| unreachable!("bounded splitter pump observation"));
 }
 
 fn publish_two_pane(runtime: &mut AppRuntime<TwoPaneApp>) -> runenui_runtime::SurfacePublication {

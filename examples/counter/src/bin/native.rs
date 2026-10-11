@@ -341,7 +341,7 @@ impl CounterHost {
 
     fn fail(&mut self, event_loop: &ActiveEventLoop, detail: &str) {
         eprintln!("counter native host fatal: {detail}");
-        let _ = self.runtime.shutdown();
+        self.shutdown_runtime_checked();
         event_loop.exit();
     }
 
@@ -443,7 +443,43 @@ impl CounterHost {
     }
 
     fn pump_runtime_once(&mut self) {
-        let _ = self.runtime.pump(HOST_PUMP_BUDGET);
+        let batch = match self.runtime.pump(HOST_PUMP_BUDGET) {
+            Ok(batch) => batch,
+            Err(error) => {
+                // The canonical runtime re-requests a wake after a failed
+                // initial observation; never treat a pending receipt as settled.
+                eprintln!("counter native input observation deferred: {error}");
+                return;
+            }
+        };
+        if !batch.ordered_records().is_empty() {
+            eprintln!(
+                "counter native input batch: {} ordered records, revision {}",
+                batch.ordered_records().len(),
+                batch.final_ownership().revision().get()
+            );
+        }
+        if let Some(reason) = batch.pause_reason() {
+            eprintln!("counter native input observation paused: {reason:?}");
+        }
+    }
+
+    fn shutdown_runtime_checked(&mut self) {
+        let batch = match self.runtime.shutdown() {
+            Ok(batch) => batch,
+            Err(error) => {
+                // Closing the host also retires its native receipt associations.
+                eprintln!("counter native shutdown observation unavailable: {error}");
+                return;
+            }
+        };
+        if !batch.ordered_records().is_empty() {
+            eprintln!(
+                "counter native close: {} ordered records, revision {}",
+                batch.ordered_records().len(),
+                batch.final_ownership().revision().get()
+            );
+        }
     }
 
     fn collect_redraw_request(&mut self) {
@@ -1016,7 +1052,7 @@ impl ApplicationHandler<HostEvent> for CounterHost {
         }
         match event {
             WindowEvent::CloseRequested | WindowEvent::Destroyed => {
-                let _ = self.runtime.shutdown();
+                self.shutdown_runtime_checked();
                 event_loop.exit();
             }
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
@@ -1077,7 +1113,7 @@ impl ApplicationHandler<HostEvent> for CounterHost {
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
-        let _ = self.runtime.shutdown();
+        self.shutdown_runtime_checked();
     }
 }
 

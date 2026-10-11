@@ -138,11 +138,22 @@ impl UiApp for CustomTree {
     }
 }
 
+fn settle(runtime: &mut AppRuntime<CustomTree>) {
+    let batch = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("TreeView pump observation"));
+    assert!(batch.report().is_quiescent());
+}
+
 #[test]
 fn custom_tree_uses_exact_public_hierarchy_focus_and_domain_selection() {
     let mut runtime = AppRuntime::<CustomTree>::mount("domain-alpha".into());
-    let pump = || PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX);
-    assert!(runtime.pump(pump()).is_quiescent());
+    settle(&mut runtime);
     let branch_id = runenui_core::ElementId::new("custom.branch")
         .unwrap_or_else(|_| unreachable!("valid authoring ID"));
     let leaf_id = runenui_core::ElementId::new("custom.domain-alpha")
@@ -155,15 +166,15 @@ fn custom_tree_uses_exact_public_hierarchy_focus_and_domain_selection() {
         .unwrap_or_else(|| unreachable!("custom leaf mounted")).id().clone();
     runtime.submit_command(branch.clone(), SemanticCommand::RequestFocus,
         CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!("focus admitted"));
-    assert!(runtime.pump(pump()).is_quiescent());
+    settle(&mut runtime);
     runtime.submit_command(branch, SemanticCommand::FocusGroupNext,
         CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!("group navigation admitted"));
-    assert!(runtime.pump(pump()).is_quiescent());
+    settle(&mut runtime);
     assert_eq!(runtime.focus().focused_node(), Some(&leaf));
     assert_eq!(runtime.state(), "domain-alpha", "focus does not commit selection");
     runtime.submit_command(leaf, SemanticCommand::Activate,
         CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!("activation admitted"));
-    assert!(runtime.pump(pump()).is_quiescent());
+    settle(&mut runtime);
 
     let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
         &runenui_core::StyleEnvironment::default(),

@@ -101,7 +101,11 @@ fn standard_slider_uses_generic_wgpu_shape_pipeline_and_rebuilds_pixels()
             SemanticNumber::new(100.0).unwrap_or_else(|_| unreachable!("full scale finite")),
         )
         .unwrap_or_else(|_| unreachable!("application update accepted"));
-    runtime.pump(runenui_runtime::PumpBudget::new(32, 32, 32, 32));
+    let _ = runtime
+        .pump(runenui_runtime::PumpBudget::new(32, 32, 32, 32))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let full = publish(&mut runtime);
     let ending = renderer.render_offscreen_publication(full.paint_publication(), &provider)?;
     let end_pixels = ending.readback().rgba8_srgb().to_vec();

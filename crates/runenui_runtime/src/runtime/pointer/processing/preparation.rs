@@ -164,7 +164,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                                 work.event.pointer_id(),
                                 work.event.phase(),
                                 crate::trace::TracePointerRejection::NoTarget,
-                            ),
+                            )
+                            .with_stale_target(),
                         ));
                     }
                     (None, Vec::new())

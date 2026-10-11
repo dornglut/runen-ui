@@ -196,6 +196,7 @@ mod debug;
 mod editing;
 mod focus;
 mod input;
+mod input_arbitration;
 mod mounted;
 mod paint_bounds;
 mod pointer;
@@ -240,6 +241,14 @@ pub use input::{
     SubmitCompositionError, SubmitCompositionErrorKind, SubmitCompositionStartError,
     SubmitKeyboardError, SubmitKeyboardErrorKind, SubmitTextError, SubmitTextErrorKind,
     TextSubmission,
+};
+pub use input_arbitration::{
+    InputArbitrationRecord, InputArbitrationScope, InputObservationError, InputOwnershipRevision,
+    InputOwnershipSnapshot, InputOwnershipTransition, InputPumpBatch, InputPumpPauseReason,
+    InputScopeRetirement, InputScopeRetirementReason, InputShutdownBatch, KeyboardInputOwnership,
+    PointerInputOwnership, SurfaceInputOwnership, UiDefaultDisposition, UiInputAbortReason,
+    UiInputClaimReason, UiInputConflict, UiInputFamily, UiInputFinality,
+    UiInputProcessingRejection, UiInputRoute, UiInputRoutingFacts, UiInputSettlement,
 };
 pub use mounted::{
     AutomationMatchDiagnostic, DuplicateIdentityKind, IdentityDiagnostic, InteractionStateRef,

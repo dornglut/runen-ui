@@ -106,6 +106,9 @@ fn pump_all(runtime: &mut AppRuntime<App>) {
                 usize::MAX,
                 usize::MAX,
             ))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
             .is_quiescent()
     );
 }

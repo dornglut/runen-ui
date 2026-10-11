@@ -273,6 +273,12 @@ impl<Action> Widget<Action> for MenuContainerWidget<Action> {
             None
         };
         if let Some(delegated) = delegated {
+            if event.as_keyboard().is_some() {
+                // Home/End belong to this menu's navigation policy. Declare
+                // that claim explicitly; prevention and a queued command alone
+                // do not certify host-input ownership.
+                context.claim_host_input();
+            }
             context.prevent_default();
             context.stop_propagation();
             context.emit_command(delegated);

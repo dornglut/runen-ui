@@ -906,6 +906,13 @@ impl SurfacePublicationState {
         &self.phase_report
     }
 
+    /// Returns the topmost modal blocker from the current retained publication.
+    pub(crate) fn current_modal_presentation_root(&self) -> Option<MountedNodeId> {
+        self.cache
+            .as_ref()
+            .and_then(SurfaceCache::topmost_modal_presentation_root)
+    }
+
     /// Returns the exact published presentation roots in visual topmost order.
     pub(crate) fn current_presentation_interaction_roots(
         &self,

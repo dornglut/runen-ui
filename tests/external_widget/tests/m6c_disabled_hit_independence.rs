@@ -75,12 +75,16 @@ fn publish(
 #[test]
 fn disabled_semantic_state_does_not_implicitly_remove_physical_hit_targetability() {
     let mut runtime = AppRuntime::<App>::mount(State { enabled: true });
-    let _ = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let style_environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &style_environment);
@@ -115,6 +119,9 @@ fn disabled_semantic_state_does_not_implicitly_remove_physical_hit_targetability
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );

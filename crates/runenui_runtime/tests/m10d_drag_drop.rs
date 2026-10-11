@@ -12,8 +12,9 @@ use runenui_core::{
     WidgetMeasure, children, row,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext,
-    TraceFrameworkServiceKind, TraceFrameworkServiceOutcome, TraceRecordKind,
+    AppRuntime, InputArbitrationRecord, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig,
+    SurfaceBuildContext, TraceConfig, TraceFrameworkServiceKind, TraceFrameworkServiceOutcome,
+    TraceRecordKind, UiInputClaimReason, UiInputConflict, UiInputFinality, UiInputRoute,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -135,11 +136,19 @@ struct Harness {
 }
 
 fn harness(accept_drop: bool) -> Harness {
+    harness_with_config(accept_drop, None)
+}
+
+fn harness_with_config(accept_drop: bool, config: Option<RuntimeConfig>) -> Harness {
     let observations = Rc::new(RefCell::new(Vec::new()));
-    let mut runtime = AppRuntime::<App>::mount(State {
+    let state = State {
         observations: Rc::clone(&observations),
         accept_drop,
-    });
+    };
+    let mut runtime = match config {
+        Some(config) => AppRuntime::<App>::mount_with_config(state, config),
+        None => AppRuntime::<App>::mount(state),
+    };
     let style = StyleEnvironment::default();
     let size = LogicalSize::try_new(96.0, 48.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
@@ -167,7 +176,9 @@ fn harness(accept_drop: bool) -> Harness {
         )
         .unwrap_or_else(|_| unreachable!("published bounds are finite"))
     };
-    runtime.pump(budget());
+    let _ = runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     Harness {
         runtime,
         surface: publication.input_context().clone(),
@@ -213,7 +224,10 @@ fn accepted_drop_uses_the_physical_hit_target_not_the_captured_pointer_owner() {
         .runtime
         .submit_pointer(pointer(&harness, PointerPhase::Down, harness.left_point))
         .unwrap_or_else(|error| panic!("pointer down is admitted: {error}"));
-    harness.runtime.pump(budget());
+    harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
 
     let submission = harness
         .runtime
@@ -224,7 +238,29 @@ fn accepted_drop_uses_the_physical_hit_target_not_the_captured_pointer_owner() {
         ))
         .unwrap_or_else(|error| panic!("drop event is admitted: {error}"));
     let drop_sequence = submission.sequence();
-    harness.runtime.pump(budget());
+    let batch = harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
+    let settled = batch
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(settled.len(), 1);
+    assert_eq!(settled[0].sequence(), drop_sequence);
+    assert_eq!(settled[0].scope(), batch.final_ownership().scope());
+    assert!(matches!(
+        settled[0].finality(),
+        UiInputFinality::Committed(facts)
+            if facts.conflict() == UiInputConflict::ExclusiveUi
+                && facts.reasons().contains(&UiInputClaimReason::PointerCapture)
+                && matches!(facts.route(), UiInputRoute::Routed { target }
+                    if target == &harness.right)
+    ));
 
     let observations = harness.observations.borrow();
     assert_eq!(observations.len(), 1);
@@ -261,7 +297,10 @@ fn accepted_drop_uses_the_physical_hit_target_not_the_captured_pointer_owner() {
         .runtime
         .complete_framework_service(&token, FrameworkServiceResponse::DragDrop(Ok(())))
         .unwrap_or_else(|error| panic!("fake host completes accepted drop: {error:?}"));
-    harness.runtime.pump(budget());
+    harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert!(
         harness
             .runtime
@@ -290,6 +329,83 @@ fn accepted_drop_uses_the_physical_hit_target_not_the_captured_pointer_owner() {
 }
 
 #[test]
+fn physical_drop_under_different_capture_retains_exact_route_without_trace() {
+    let mut harness = harness_with_config(
+        true,
+        Some(RuntimeConfig::default().with_trace_config(TraceConfig::new(0))),
+    );
+    let down = harness
+        .runtime
+        .submit_pointer(pointer(&harness, PointerPhase::Down, harness.left_point))
+        .unwrap_or_else(|_| unreachable!("capturing pointer Down admitted"))
+        .sequence();
+    let down_batch = harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("capturing Down commits"));
+    assert!(down_batch.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(receipt) if receipt.sequence() == down
+    )));
+    let captured = harness
+        .runtime
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("captured pointer state observable"));
+    let left = captured
+        .pointers()
+        .iter()
+        .find_map(|pointer| pointer.capture_owner())
+        .unwrap_or_else(|| unreachable!("left widget acquired capture"))
+        .clone();
+    assert_ne!(left, harness.right);
+    let dropped = harness
+        .runtime
+        .submit_pointer(drop_event(
+            &harness,
+            DragDropPhase::Drop,
+            harness.right_point,
+        ))
+        .unwrap_or_else(|_| unreachable!("physical drop admitted"))
+        .sequence();
+    let batch = harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("physical drop commits"));
+    let settlements = batch
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::InputSettled(receipt) => Some(receipt),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(settlements.len(), 1);
+    assert_eq!(settlements[0].sequence(), dropped);
+    assert_eq!(settlements[0].scope(), batch.final_ownership().scope());
+    assert!(matches!(
+        settlements[0].finality(),
+        UiInputFinality::Committed(facts)
+            if facts.conflict() == UiInputConflict::ExclusiveUi
+                && facts.reasons().contains(&UiInputClaimReason::PointerCapture)
+                && matches!(facts.route(), UiInputRoute::Routed { target }
+                    if target == &harness.right)
+    ));
+    let observations = harness.observations.borrow();
+    assert_eq!(observations.len(), 1);
+    assert_eq!(observations[0].target, "right");
+    assert_eq!(observations[0].sequence, dropped.get());
+    assert_eq!(observations[0].physical_target, Some(harness.right.clone()));
+    assert!(
+        batch
+            .final_ownership()
+            .pointers()
+            .iter()
+            .any(|pointer| { pointer.capture_owner() == Some(&left) })
+    );
+    assert!(harness.runtime.trace().records().next().is_none());
+}
+
+#[test]
 fn hover_is_provisional_until_a_separate_drop_admission() {
     let mut harness = harness(false);
     let submission = harness
@@ -300,7 +416,10 @@ fn hover_is_provisional_until_a_separate_drop_admission() {
             harness.right_point,
         ))
         .unwrap_or_else(|error| panic!("hover is admitted: {error}"));
-    harness.runtime.pump(budget());
+    harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let token = harness
         .runtime
         .pending_framework_services()
@@ -322,7 +441,10 @@ fn hover_is_provisional_until_a_separate_drop_admission() {
         .runtime
         .complete_framework_service(&token, FrameworkServiceResponse::DragDrop(Ok(())))
         .unwrap_or_else(|error| panic!("fake host completes hover: {error:?}"));
-    harness.runtime.pump(budget());
+    harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert!(harness.runtime.trace().kinds().any(|kind| matches!(
         kind,
         TraceRecordKind::FrameworkServiceResponseOutcome {
@@ -353,7 +475,10 @@ fn later_drop_does_not_supersede_a_pending_hover_service() {
             harness.right_point,
         ))
         .unwrap_or_else(|error| panic!("hover is admitted: {error}"));
-    harness.runtime.pump(budget());
+    harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let drop = harness
         .runtime
         .submit_pointer(drop_event(
@@ -362,7 +487,10 @@ fn later_drop_does_not_supersede_a_pending_hover_service() {
             harness.right_point,
         ))
         .unwrap_or_else(|error| panic!("drop is admitted: {error}"));
-    harness.runtime.pump(budget());
+    harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
 
     let (hover_token, drop_token) = {
         let services = harness.runtime.pending_framework_services();
@@ -395,7 +523,10 @@ fn later_drop_does_not_supersede_a_pending_hover_service() {
         .runtime
         .complete_framework_service(&drop_token, FrameworkServiceResponse::DragDrop(Ok(())))
         .unwrap_or_else(|error| panic!("drop completion remains live: {error:?}"));
-    harness.runtime.pump(budget());
+    harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
 
     assert!(harness.runtime.trace().kinds().any(|kind| matches!(
         kind,
@@ -431,7 +562,10 @@ fn accepted_drop_failure_is_typed_and_does_not_change_runtime_lifetime() {
             harness.right_point,
         ))
         .unwrap_or_else(|error| panic!("drop event is admitted: {error}"));
-    harness.runtime.pump(budget());
+    harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let token = harness
         .runtime
         .pending_framework_services()
@@ -454,7 +588,10 @@ fn accepted_drop_failure_is_typed_and_does_not_change_runtime_lifetime() {
             )),
         )
         .unwrap_or_else(|error| panic!("typed drop failure is admitted: {error:?}"));
-    harness.runtime.pump(budget());
+    harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert_eq!(
         harness.runtime.status(),
         runenui_runtime::RuntimeStatus::Running
@@ -481,7 +618,10 @@ fn rejected_drop_does_not_stage_admission_but_cancel_is_delivered_without_accept
             harness.right_point,
         ))
         .unwrap_or_else(|error| panic!("drop event is admitted: {error}"));
-    harness.runtime.pump(budget());
+    harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert!(harness.runtime.pending_framework_services().iter().all(|service| {
         !matches!(
             service.request(),
@@ -497,7 +637,10 @@ fn rejected_drop_does_not_stage_admission_but_cancel_is_delivered_without_accept
             harness.right_point,
         ))
         .unwrap_or_else(|error| panic!("cancel event is admitted: {error}"));
-    harness.runtime.pump(budget());
+    harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let cancel_token = harness
         .runtime
         .pending_framework_services()
@@ -519,7 +662,10 @@ fn rejected_drop_does_not_stage_admission_but_cancel_is_delivered_without_accept
         .runtime
         .complete_framework_service(&cancel_token, FrameworkServiceResponse::DragDrop(Ok(())))
         .unwrap_or_else(|error| panic!("fake host completes cancellation: {error:?}"));
-    harness.runtime.pump(budget());
+    harness
+        .runtime
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert!(harness.runtime.trace().kinds().any(|kind| matches!(
         kind,
         TraceRecordKind::FrameworkServiceResponseOutcome {

@@ -83,9 +83,15 @@ fn fresh(expanded: bool) -> AppRuntime<App> {
     runtime
 }
 fn settle(runtime: &mut AppRuntime<App>) {
-    assert!(runtime.pump(PumpBudget::new(
-        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).is_quiescent());
+    let batch = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("TreeView pump observation"));
+    assert!(batch.report().is_quiescent());
 }
 fn item(runtime: &mut AppRuntime<App>, name: &str) -> MountedNodeId {
     let authored = runenui_core::ElementId::new(name).unwrap_or_else(|_| unreachable!());
@@ -236,9 +242,7 @@ fn invalid_domain_id_and_single_selection_fail_closed_even_under_collapsed_ances
     let mut runtime = AppRuntime::<InvalidTreeApp>::mount(0);
     for mode in [1_u8, 2, 3] {
         runtime.submit_action(mode).unwrap_or_else(|_| unreachable!("authoring transition"));
-        assert!(runtime.pump(PumpBudget::new(
-            usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-        )).is_quiescent());
+        settle(&mut runtime);
         let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
             &runenui_core::StyleEnvironment::default(),
             LogicalSize::try_new(600.0, 300.0)
@@ -253,9 +257,7 @@ fn invalid_domain_id_and_single_selection_fail_closed_even_under_collapsed_ances
         ));
     }
     runtime.submit_action(0).unwrap_or_else(|_| unreachable!("valid authoring transition"));
-    assert!(runtime.pump(PumpBudget::new(
-        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).is_quiescent());
+    settle(&mut runtime);
     let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
         &runenui_core::StyleEnvironment::default(),
         LogicalSize::try_new(600.0, 300.0).unwrap_or_else(|_| unreachable!()),

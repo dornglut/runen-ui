@@ -463,6 +463,7 @@ impl<Action> Widget<Action> for SplitterWidget<Action> {
         if let Some(key) = event.as_keyboard() {
             if let Some(request) = keyboard_request(state, key) {
                 self.emit(state, request, context);
+                context.claim_host_input();
                 context.prevent_default();
                 context.stop_propagation();
             }

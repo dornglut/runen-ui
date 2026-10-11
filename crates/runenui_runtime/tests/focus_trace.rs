@@ -73,7 +73,14 @@ const fn full_budget() -> PumpBudget {
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    assert!(runtime.pump(full_budget()).is_quiescent());
+    assert!(
+        runtime
+            .pump(full_budget())
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
 }
 
 fn id(runtime: &mut AppRuntime<App>, authored: &str) -> MountedNodeId {
@@ -97,7 +104,11 @@ fn request_focus(
         .submit_command(target, SemanticCommand::RequestFocus, origin)
         .unwrap_or_else(|_| unreachable!("live focus command is accepted"));
     let sequence = submission.sequence();
-    let _ = runtime.pump(full_budget());
+    let _ = runtime
+        .pump(full_budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     sequence
 }
 

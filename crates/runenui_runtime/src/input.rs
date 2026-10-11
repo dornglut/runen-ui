@@ -635,6 +635,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 request,
             ));
         };
+        // Preserve the existing more-specific composition/trace/queue rejection
+        // precedence. Check the direct ownership revision only after all those
+        // admission gates pass, but before trace or composition is committed.
+        if !self.can_admit_direct_input_ownership_boundary() {
+            self.trace.release_reservation(reservation);
+            let reason = RuntimeTerminalReason::Poisoned;
+            self.enter_terminal(reason, 0);
+            return Err(Self::composition_start_error(
+                SubmitCompositionErrorKind::Terminal(reason),
+                request,
+            ));
+        }
         let generation = self.tree.composition_generation(next.get());
         let event = CompositionEvent::Start(CompositionStart::__runtime_new(
             generation.clone(),
@@ -659,6 +671,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             device_id: request.device_id(),
             start_sequence: sequence,
         };
+        self.note_direct_input_ownership_boundary();
         let pending_bound = self.trace.record_draft(
             TraceRecordDraft::input_marker(TraceRecordKind::CompositionPendingBound, instant)
                 .with_work_sequence(Some(sequence))
@@ -1048,7 +1061,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub(crate) fn process_input_envelope(&mut self, envelope: InputEnvelope) {
+    pub(crate) fn process_input_envelope(
+        &mut self,
+        envelope: InputEnvelope,
+    ) -> crate::UiInputFinality {
         let InputEnvelope {
             sequence,
             target,
@@ -1067,6 +1083,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             event_context,
             causal_parent,
             trace_reservation,
+        );
+        let space_owner_before = matches!(
+            &payload,
+            InputEnvelopePayload::Keyboard(event)
+                if matches!(event.physical_key(), PhysicalKey::Space)
+                    && self.space_ownership.as_ref().is_some_and(|owner| {
+                        owner.target == target && owner.device_id == event.device_id()
+                    })
         );
         let shortcut_candidate = match &payload {
             InputEnvelopePayload::Keyboard(event) => {
@@ -1122,7 +1146,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 None,
                 CommandOrigin::__runtime_keyboard(),
             );
-            return;
+            return crate::UiInputFinality::ProcessingRejected(
+                crate::UiInputProcessingRejection::StaleCompositionGeneration,
+            );
         }
         let transaction_result = if type_ahead_context.is_some() {
             self.try_begin_focus_input_transaction(
@@ -1147,10 +1173,39 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     failure.causal_parent().or(causal_parent),
                     instant,
                 );
-                return;
+                return match self.status() {
+                    RuntimeStatus::Terminal(reason) => {
+                        crate::UiInputFinality::Aborted(crate::UiInputAbortReason::Terminal(reason))
+                    }
+                    RuntimeStatus::Running | RuntimeStatus::Closed => {
+                        let reason = match self.tree.target_status(&target) {
+                            TargetStatus::Foreign => {
+                                crate::UiInputProcessingRejection::ForeignTarget
+                            }
+                            TargetStatus::Stale => crate::UiInputProcessingRejection::StaleTarget,
+                            TargetStatus::Missing => {
+                                crate::UiInputProcessingRejection::MissingTarget
+                            }
+                            TargetStatus::Live => {
+                                crate::UiInputProcessingRejection::InsufficientTransactionCapacity
+                            }
+                        };
+                        crate::UiInputFinality::ProcessingRejected(reason)
+                    }
+                };
             }
         };
         self.record_input_processing_validation(&mut transaction, &payload);
+        // Conflict belongs to the reached occurrence. A callback can withdraw
+        // text capability for subsequent input; effective ownership is sampled
+        // after commit, independently of this pre-delivery text-domain fact.
+        let focused = self.focus.focused_node() == Some(&target);
+        let text_capability = self.tree.text_input_probe(&target).ok();
+        let owns_text_keyboard = focused
+            && matches!(&payload, InputEnvelopePayload::Keyboard(_))
+            && text_capability.is_some_and(|capability| {
+                capability.accepts_committed_text() || capability.accepts_composition()
+            });
         let event = match &payload {
             InputEnvelopePayload::Keyboard(event) => UiEvent::Keyboard(event.clone()),
             InputEnvelopePayload::CommittedText(event) => UiEvent::CommittedText(event.clone()),
@@ -1159,15 +1214,93 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if let Err(failure) = self.invoke_routed_callbacks(&mut transaction, &event, None) {
             let current = transaction.failure_current_target.clone();
             self.poison_transaction(&transaction, failure, current.as_ref());
-            return;
+            return crate::UiInputFinality::Aborted(crate::UiInputAbortReason::RuntimeIntegrity);
         }
         if let Err(failure) =
             self.collect_input_default(&mut transaction, &payload, shortcut_candidate.as_ref())
         {
             let current = transaction.failure_current_target.clone();
             self.poison_transaction(&transaction, failure, current.as_ref());
-            return;
+            return crate::UiInputFinality::Aborted(crate::UiInputAbortReason::RuntimeIntegrity);
         }
+        // Capture committed routing/claim facts before the transaction is consumed.
+        // A candidate shortcut alone does not prove an accepted shortcut default.
+        let explicit = transaction.host_input_claimed;
+        let has_default_output = !transaction.default_outputs.is_empty();
+        // The selected default owns its reason. A shortcut candidate can be
+        // suppressed before a different default runs, and type-ahead can
+        // commit navigation synchronously without any queued default output.
+        let keyboard_default = transaction.keyboard_default_claim;
+        let mut reasons = crate::input_arbitration::InputClaimReasons::new();
+        if explicit {
+            reasons.push(crate::UiInputClaimReason::ExplicitWidgetClaim);
+        }
+        match &payload {
+            InputEnvelopePayload::Composition(_) => {
+                reasons.push(crate::UiInputClaimReason::CompositionOwner);
+            }
+            InputEnvelopePayload::CommittedText(_) => {
+                reasons.push(crate::UiInputClaimReason::TextOwner);
+            }
+            InputEnvelopePayload::Keyboard(_) if owns_text_keyboard => {
+                reasons.push(crate::UiInputClaimReason::TextOwner);
+            }
+            InputEnvelopePayload::Keyboard(_) => {}
+        }
+        if let Some(reason) = keyboard_default
+            && !reasons.contains(reason)
+        {
+            reasons.push(reason);
+        }
+        // A committed text-edit default is already owned by the editor.
+        // Ordinary outputs and callback invocation alone cannot claim gameplay.
+        let space_active = space_owner_before
+            || matches!(
+                &payload,
+                InputEnvelopePayload::Keyboard(event)
+                    if matches!(event.physical_key(), PhysicalKey::Space)
+                        && self.space_ownership.as_ref().is_some_and(|owner| {
+                            owner.target == target && owner.device_id == event.device_id()
+                        })
+            );
+        if space_active {
+            reasons.push(crate::UiInputClaimReason::ActivationDefault);
+        }
+        let claims_ui = !reasons.is_empty();
+        // A newly established Space Down owner is a synchronously committed
+        // keyboard default. A repeated/foreign Down is not a new default, and
+        // the eventual Up activation command remains only queued here.
+        let applied_space_down = !space_owner_before
+            && space_active
+            && matches!(
+                &payload,
+                InputEnvelopePayload::Keyboard(event)
+                    if matches!(event.physical_key(), PhysicalKey::Space)
+                        && matches!(event.phase(), KeyboardPhase::Down)
+                        && !event.is_repeat()
+            );
+        let routing = crate::UiInputRoutingFacts {
+            conflict: if claims_ui {
+                crate::UiInputConflict::ExclusiveUi
+            } else {
+                crate::UiInputConflict::ObservedNonexclusive
+            },
+            reasons,
+            route: crate::UiInputRoute::Routed {
+                target: target.clone(),
+            },
+            propagation_stopped: transaction.propagation_stopped,
+            default_prevented: transaction.default_prevented,
+            default_disposition: if transaction.default_prevented {
+                crate::UiDefaultDisposition::Prevented
+            } else if has_default_output {
+                crate::UiDefaultDisposition::Queued
+            } else if applied_space_down || keyboard_default.is_some() {
+                crate::UiDefaultDisposition::Applied
+            } else {
+                crate::UiDefaultDisposition::None
+            },
+        };
         let completion_parent = transaction.parent;
         let completion_instant = transaction.instant;
         let completion_origin = transaction.origin;
@@ -1178,7 +1311,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 crate::TraceRoutedIntegrityFailure::CommitInvariantFailure,
                 Some(&target),
             );
-            return;
+            return crate::UiInputFinality::Aborted(crate::UiInputAbortReason::RuntimeIntegrity);
         }
         match payload {
             InputEnvelopePayload::Composition(event) => {
@@ -1193,6 +1326,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             InputEnvelopePayload::Keyboard(_) | InputEnvelopePayload::CommittedText(_) => {}
         }
+        crate::UiInputFinality::Committed(routing)
     }
 
     const fn routed_input_event_context(payload: &InputEnvelopePayload) -> TraceEventContext {
@@ -1729,6 +1863,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         if let Some(command) = self.editor_owned_keyboard_default(event, &target) {
             Self::collect_keyboard_default_command(transaction, target, command)?;
+            transaction.keyboard_default_claim = Some(crate::UiInputClaimReason::TextOwner);
             return Ok(());
         }
         if self.collect_keyboard_shortcut_default(transaction, event, shortcut_candidate)? {
@@ -1762,6 +1897,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         if let Some(command) = command {
             Self::collect_keyboard_default_command(transaction, target, command)?;
+            transaction.keyboard_default_claim = match command {
+                SemanticCommand::Activate => Some(crate::UiInputClaimReason::ActivationDefault),
+                SemanticCommand::FocusNext
+                | SemanticCommand::FocusPrevious
+                | SemanticCommand::FocusLeft
+                | SemanticCommand::FocusRight
+                | SemanticCommand::FocusUp
+                | SemanticCommand::FocusDown => Some(crate::UiInputClaimReason::FocusNavigation),
+                // A route-only follow-up is not itself a committed UI claim.
+                _ => None,
+            };
         }
         Ok(())
     }
@@ -1831,6 +1977,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 causal_parent: transaction.parent,
             },
         );
+        transaction.keyboard_default_claim = Some(crate::UiInputClaimReason::ApplicationShortcut);
         Ok(true)
     }
 

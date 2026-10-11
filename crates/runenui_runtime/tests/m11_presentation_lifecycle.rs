@@ -16,8 +16,9 @@ use runenui_core::{
     WidgetTextInput, button, column,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, ReconciliationDiagnostic,
-    RuntimeConfig, SurfaceBuildContext, SurfaceInputContext, TraceConfig,
+    AppRuntime, InputArbitrationRecord, LayoutConstraints, MountedNodeId, PumpBudget,
+    ReconciliationDiagnostic, RuntimeConfig, SurfaceBuildContext, SurfaceInputContext, TraceConfig,
+    UiInputClaimReason, UiInputConflict, UiInputFinality, UiInputRoute,
 };
 
 fn fixed(width: u16, height: u16) -> LayoutStyle {
@@ -37,12 +38,16 @@ fn context(environment: &StyleEnvironment, width: u16, height: u16) -> SurfaceBu
 }
 
 fn settle<App: UiApp>(runtime: &mut AppRuntime<App>) {
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(report.is_quiescent());
 }
 
@@ -350,6 +355,84 @@ fn modal_ignore_still_blocks_ordinary_outside_pointer_without_dismissal() {
     assert_eq!(runtime.state().outside_presses, 0);
     assert_eq!(runtime.state().dismissals.len(), 0);
     assert!(runtime.state().a.open);
+}
+
+fn assert_modal_outside_claims_with_trace_capacity(trace_capacity: usize) {
+    for (policy, modal, reason) in [
+        (
+            PresentationOutsidePointerPolicy::Ignore,
+            true,
+            UiInputClaimReason::ModalBarrier,
+        ),
+        (
+            PresentationOutsidePointerPolicy::DismissAndBlock,
+            false,
+            UiInputClaimReason::PresentationDismissal,
+        ),
+    ] {
+        let mut state = interaction_state(policy);
+        state.a.modal = modal;
+        let mut runtime = AppRuntime::<InteractionApp>::mount_with_config(
+            state,
+            RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
+        );
+        let environment = StyleEnvironment::default();
+        let publication = runtime
+            .publish_surface(&context(&environment, 100, 60))
+            .unwrap_or_else(|_| unreachable!("presentation hit context published"));
+        let ownership = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("retained modal snapshot is observable"));
+        assert_eq!(ownership.surfaces().len(), 1);
+        assert_eq!(
+            ownership.surfaces()[0].latest_retained_context(),
+            Some(publication.input_context())
+        );
+        assert_eq!(ownership.surfaces()[0].modal_blocker().is_some(), modal);
+        let outside = node_center(&publication, "outside");
+        let receipt = runtime
+            .submit_pointer(pointer(
+                publication.input_context(),
+                outside,
+                PointerPhase::Down,
+            ))
+            .unwrap_or_else(|_| unreachable!("outside pointer admitted"))
+            .sequence();
+        let batch = runtime
+            .pump(PumpBudget::new(128, 128, 128, 128))
+            .unwrap_or_else(|_| unreachable!("outside input and downstream work commit"));
+        let settled = batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(value) => Some(value),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settled.len(), 1);
+        assert_eq!(settled[0].sequence(), receipt);
+        assert_eq!(settled[0].scope(), batch.final_ownership().scope());
+        assert!(matches!(
+            settled[0].finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&reason)
+                    && matches!(facts.route(), UiInputRoute::PresentationBlocked { .. })
+        ));
+        assert_eq!(runtime.state().outside_presses, 0);
+        if trace_capacity == 0 {
+            assert_eq!(runtime.trace().kinds().count(), 0);
+        }
+    }
+}
+
+#[test]
+fn public_modal_barrier_and_outside_dismissal_have_explicit_conflict_reasons() {
+    // Both a modal barrier and an outside dismissal must certify the same
+    // exact reached input when optional diagnostics are completely disabled.
+    for trace_capacity in [512, 0] {
+        assert_modal_outside_claims_with_trace_capacity(trace_capacity);
+    }
 }
 
 #[test]

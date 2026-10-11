@@ -124,7 +124,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let facts = RoutedIngressFacts::new(
             work.sequence,
-            anchor,
+            anchor.clone(),
             CommandOrigin::__runtime_pointer(),
             work.instant,
             pointer_event_context(
@@ -144,6 +144,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             pointer_commit_trace,
             matches!(work.event.phase(), PointerPhase::Down),
         ) else {
+            // A nonterminal routed-preflight refusal has not committed pointer
+            // callbacks, defaults or stream state. It is a typed processing
+            // rejection, not unknown integrity or an exclusive UI claim.
+            // Integrity faults already terminalize in the routing authority.
+            if matches!(self.status(), crate::RuntimeStatus::Running) {
+                let rejection = match self.tree.target_status(&anchor) {
+                    TargetStatus::Foreign => crate::UiInputProcessingRejection::ForeignTarget,
+                    TargetStatus::Stale => crate::UiInputProcessingRejection::StaleTarget,
+                    TargetStatus::Missing => crate::UiInputProcessingRejection::MissingTarget,
+                    TargetStatus::Live => {
+                        crate::UiInputProcessingRejection::InsufficientTransactionCapacity
+                    }
+                };
+                self.note_external_pointer_finality(crate::UiInputFinality::ProcessingRejected(
+                    rejection,
+                ));
+            }
             return self.pointer_runtime_outcome();
         };
         transaction
@@ -198,6 +215,29 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         .then(|| PointerIntegrityCleanupPlan::from_primary_release(&pending.stream))
         .flatten();
         let presentation_blocked = pending.presentation_block_root.is_some();
+        // Capture the pre-event held owners: Up/Cancel may legitimately clear
+        // them before final routing facts are assembled.
+        let pressed_before = pending.stream.pressed_owner().is_some();
+        let selection_before = pending.stream.text_selection().is_some();
+        // Classify the route that actually delivered this occurrence. Pointer
+        // defaults or widget requests may acquire/release capture *after*
+        // routing, and removed owners are not valid routing authorities.
+        let live_capture_before = pending
+            .previous_capture_owner
+            .as_ref()
+            .is_some_and(|owner| self.tree.target_status(owner) == TargetStatus::Live);
+        let routed_via_capture = live_capture_before
+            && pending.work.event.drag_drop().is_none()
+            && matches!(
+                pending.work.event.phase(),
+                PointerPhase::Move | PointerPhase::Wheel | PointerPhase::Up | PointerPhase::Cancel
+            )
+            && pending.previous_capture_owner.as_ref() == pending.routed_target.as_ref();
+        let touch_winner_before = pending
+            .stream
+            .touch_gesture()
+            .and_then(TouchGestureState::winner)
+            .is_some();
         let explicit_capture_request_applied = self.apply_pointer_capture_requests(
             &pending.work,
             &pending.geometry,
@@ -344,8 +384,109 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface_context: pending.work.event.surface_context().clone(),
             surface_snapshot: pending.geometry.snapshot,
         };
+        let mut reasons = crate::input_arbitration::InputClaimReasons::new();
+        if transaction.host_input_claimed {
+            reasons.push(crate::UiInputClaimReason::ExplicitWidgetClaim);
+        }
+        if pending.presentation_block_root.is_some() {
+            reasons.push(crate::UiInputClaimReason::ModalBarrier);
+        }
+        if pending.presentation_dismiss.is_some() {
+            reasons.push(crate::UiInputClaimReason::PresentationDismissal);
+        }
+        if pending.stream.capture_owner().is_some() || live_capture_before {
+            reasons.push(crate::UiInputClaimReason::PointerCapture);
+        }
+        // An existing pressed UI owner claims subsequent move/wheel input as
+        // well, even if that event creates no new Down/default action.
+        if pressed_before || pending.stream.pressed_owner().is_some() {
+            reasons.push(crate::UiInputClaimReason::PointerPress);
+        }
+        if selection_before || pending.stream.text_selection().is_some() {
+            reasons.push(crate::UiInputClaimReason::PointerSelection);
+        }
+        if pending.work.event.device_kind() == PointerDeviceKind::Touch
+            && (touch_winner_before
+                || pending
+                    .stream
+                    .touch_gesture()
+                    .and_then(TouchGestureState::winner)
+                    .is_some())
+        {
+            reasons.push(crate::UiInputClaimReason::TouchGesture);
+        }
+        // A staged logical scroll or presentation dismissal is not an
+        // activation default. A merely queued follow-up cannot falsely
+        // certify that gameplay input was exclusively consumed by UI.
+        if transaction.default_outputs[default_outputs_before..]
+            .iter()
+            .any(|output| {
+                matches!(
+                    output,
+                    CollectedRoutedOutput::Command {
+                        command: SemanticCommand::Activate,
+                        ..
+                    }
+                )
+            })
+        {
+            reasons.push(crate::UiInputClaimReason::ActivationDefault);
+        }
+        // The occurrence's route was selected before callbacks. Capture
+        // acquisition/transfer commits for subsequent occurrences and belongs
+        // in ownership and claim facts, never in this event's destination.
+        let route = if let Some(root) = pending.presentation_block_root.as_ref() {
+            crate::UiInputRoute::PresentationBlocked { root: root.clone() }
+        } else if let Some(target) = pending.routed_target.as_ref() {
+            if routed_via_capture {
+                crate::UiInputRoute::Captured {
+                    target: target.clone(),
+                }
+            } else {
+                crate::UiInputRoute::Routed {
+                    target: target.clone(),
+                }
+            }
+        } else {
+            crate::UiInputRoute::Unrouted
+        };
+        let has_default_outputs = transaction.default_outputs.len() > default_outputs_before;
+        // Only a real synchronous Down press/modal/selection default qualifies
+        // as Applied. Trace PointerDefaultApplied for no-op Move/Cancel is
+        // diagnostic and is explicitly not an authoritative default claim.
+        let applied_pointer_default = matches!(pending.work.event.phase(), PointerPhase::Down)
+            && (default_applied
+                || matches!(
+                    transaction.pointer_selection_transition.as_ref(),
+                    Some(crate::runtime::routed::PointerSelectionTransition::Started)
+                ));
+        let routing = crate::UiInputRoutingFacts {
+            conflict: if reasons.is_empty() {
+                if matches!(&route, crate::UiInputRoute::Unrouted) {
+                    crate::UiInputConflict::Unclaimed
+                } else {
+                    crate::UiInputConflict::ObservedNonexclusive
+                }
+            } else {
+                crate::UiInputConflict::ExclusiveUi
+            },
+            reasons,
+            route,
+            propagation_stopped: transaction.propagation_stopped,
+            default_prevented: transaction.default_prevented,
+            default_disposition: if transaction.default_prevented {
+                crate::UiDefaultDisposition::Prevented
+            } else if has_default_outputs {
+                crate::UiDefaultDisposition::Queued
+            } else if applied_pointer_default {
+                crate::UiDefaultDisposition::Applied
+            } else {
+                crate::UiDefaultDisposition::None
+            },
+        };
         self.commit_prepared_pointer_transaction(
             transaction,
+            routing,
             PointerCommitPlan {
                 pointer_id: pending.work.event.pointer_id(),
                 stream: pending.stream,
@@ -498,6 +639,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     fn commit_prepared_pointer_transaction(
         &mut self,
         transaction: RoutedTransaction<Action>,
+        routing: crate::UiInputRoutingFacts,
         plan: PointerCommitPlan,
     ) -> ProcessApplicationActionOutcome {
         let failure_facts = transaction.failure_facts();
@@ -512,6 +654,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 TraceRoutedIntegrityFailure::CommitInvariantFailure,
                 None,
             );
+        } else {
+            self.note_external_pointer_finality(crate::UiInputFinality::Committed(routing));
         }
         self.pointer_runtime_outcome()
     }
@@ -1628,6 +1772,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface_context: work.event.surface_context().clone(),
             surface_snapshot: geometry.snapshot,
         };
+        let finality = crate::runtime::input_arbitration::integrity_only_pointer_finality(
+            self.pointer_registry.stream(pointer_id),
+            Some(&stream),
+        );
         let pointer_interaction_before = self.pointer_registry.surface_interaction_projection(None);
         if self
             .commit_unrouted_pointer_stream(pointer_id, stream, kind, work.sequence, &mut parent)
@@ -1687,6 +1835,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             self.request_redraw(parent, work.instant);
         }
+        self.note_external_pointer_finality(finality);
         ProcessApplicationActionOutcome::Completed
     }
 
