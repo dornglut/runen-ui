@@ -1,7 +1,8 @@
 //! Select-only and editable `ComboBox` over one M4 focus proxy and M10 editing authority.
 //! All committed values and popup visibility are authored by the application.
 use crate::{
-    ChildBearingWidget, Element, ElementId, EventContext, EventPhase, FocusEventKind, Focusability,
+    ChildBearingWidget, Element, ElementId, ElementKey, EventContext, EventPhase, FocusEventKind,
+    Focusability,
     HitContribution, HitContributionContext, KeyboardCompositionState, KeyboardPhase,
     LayoutContainer, LayoutStyle, LogicalKey, OptionItem, Popover, PresentationFocusPolicy,
     PresentationOutsidePointerPolicy, SemanticAction, SemanticAutocomplete, SemanticCommand,
@@ -92,6 +93,7 @@ impl<Action> ComboBox<Action> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Candidate {
     id: ElementId,
+    key: Option<ElementKey>,
     selected: bool,
     enabled: bool,
 }
@@ -298,10 +300,20 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
             && previous.popup_id == self.popup_id
             && self.invalid.is_none()
         {
-            next.active = previous.active.clone().filter(|id| {
-                self.options
-                    .iter()
-                    .any(|item| &item.id == id && item.enabled)
+            // An authored ID is not a mounted-generation identity. In particular,
+            // a keyed Option may be replaced while reusing the same authored ID.
+            // Preserve an active proxy only for the same authored reconciliation
+            // slot and key; movement/replacement retires rather than retargets.
+            next.active = previous.active.as_ref().and_then(|active| {
+                previous.options.iter().enumerate().find_map(|(index, old)| {
+                    (old.id == *active)
+                        .then(|| self.options.get(index))
+                        .flatten()
+                        .filter(|current| {
+                            current.id == old.id && current.key == old.key && current.enabled
+                        })
+                        .map(|_| active.clone())
+                })
             });
         }
         if previous != next {
@@ -485,6 +497,7 @@ fn assemble_combo<Action: 'static>(
         }
         options.push(Candidate {
             id,
+            key: item.combo_proxy_key().cloned(),
             selected,
             enabled: option_enabled,
         });

@@ -1597,6 +1597,12 @@ impl<Action> OptionItem<Action> {
             .map(|id| (id, self.selected, self.enabled))
     }
 
+    /// Existing reconciliation key, not a second Option identity authority.
+    /// An active proxy must not survive authoring that replaces its mounted node.
+    pub(crate) const fn combo_proxy_key(&self) -> Option<&crate::ElementKey> {
+        self.common.key.as_ref()
+    }
+
     /// Derive only transient collapsed-display text from the currently
     /// application-selected Option; no selection value is retained.
     pub(crate) fn combo_selected_display(&self) -> Option<&str> {

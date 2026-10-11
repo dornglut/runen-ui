@@ -8,8 +8,8 @@ use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, Surfac
 
 #[derive(Clone, Copy)]
 enum Mode { Disabled, MissingId, Churn, OwnerCollision, PopupOwnerCollision }
-struct State { mode: Mode, replacement: bool, popup_replaced: bool, chosen: u8, actions: Vec<u8> }
-enum Action { Request(ComboBoxRequest), Choose(u8), Replace, ReplacePopup }
+struct State { mode: Mode, replacement: bool, popup_replaced: bool, option_rekeyed: bool, chosen: u8, actions: Vec<u8> }
+enum Action { Request(ComboBoxRequest), Choose(u8), Replace, ReplacePopup, RekeyOption }
 struct App;
 impl UiApp for App {
     type State = State;
@@ -30,6 +30,7 @@ impl UiApp for App {
             },
             option_item("Second", false)
                 .id(if state.replacement { "boundary.replacement" } else { "boundary.second" })
+                .key(if state.option_rekeyed { "boundary.option.new" } else { "boundary.option.old" })
                 .on_activate(|| Action::Choose(2)),
         ];
         combo_box(
@@ -54,12 +55,14 @@ impl UiApp for App {
             Action::Request(_) => state.actions.push(9),
             Action::Replace => state.replacement = true,
             Action::ReplacePopup => state.popup_replaced = true,
+            Action::RekeyOption => state.option_rekeyed = true,
         }
     }
 }
 fn new(mode: Mode) -> AppRuntime<App> {
     let mut app = AppRuntime::<App>::mount(State {
-        mode, replacement: false, popup_replaced: false, chosen: 0, actions: Vec::new(),
+        mode, replacement: false, popup_replaced: false, option_rekeyed: false,
+        chosen: 0, actions: Vec::new(),
     });
     settle(&mut app);
     app
@@ -201,4 +204,48 @@ fn popup_id_equal_to_owner_id_fails_closed_before_semantic_target_resolution() {
         node.role() != SemanticRole::ComboBox && node.role() != SemanticRole::ListBox
     ));
     assert!(app.state().actions.is_empty());
+}
+
+#[test]
+fn same_authored_id_with_new_reconciliation_key_must_retire_active_option_generation() {
+    let mut app = new(Mode::Churn);
+    let owner = id(&app, "boundary.owner");
+    app.submit_command(
+        owner.clone(), SemanticCommand::RequestFocus, CommandOrigin::programmatic(),
+    ).unwrap_or_else(|_| unreachable!("focus current owner"));
+    settle(&mut app);
+    app.submit_command(
+        owner.clone(), SemanticCommand::FocusDown, CommandOrigin::programmatic(),
+    ).unwrap_or_else(|_| unreachable!("navigate to second"));
+    settle(&mut app);
+
+    let previous = id(&app, "boundary.second");
+    let before = publish(&mut app);
+    let combo = before.semantic_publication().snapshot().nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("ComboBox publishes"));
+    assert_eq!(combo.relationships().iter()
+        .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant).count(), 1);
+
+    app.submit_action(Action::RekeyOption)
+        .unwrap_or_else(|_| unreachable!("app changes standard Option reconciliation key"));
+    settle(&mut app);
+    let replacement = id(&app, "boundary.second");
+    assert_ne!(previous, replacement,
+        "accepted M3 keyed reconciliation retires the old Option mounted generation");
+
+    let after = publish(&mut app);
+    let combo = after.semantic_publication().snapshot().nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("ComboBox remains published"));
+    assert!(!combo.relationships().iter()
+        .any(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant),
+        "same authored ID must never retarget a replaced mounted Option generation");
+    app.submit_command(owner.clone(), SemanticCommand::Activate, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("activation routed to current owner"));
+    settle(&mut app);
+    assert_eq!(app.state().chosen, 0);
+    assert!(app.state().actions.is_empty(),
+        "old active Option cannot commit through a replacement's new callback");
+    assert_eq!(app.focus().focused_node(), Some(&owner));
 }
