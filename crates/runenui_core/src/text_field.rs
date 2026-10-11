@@ -9,7 +9,8 @@ use crate::{
     SemanticNodeContribution, SemanticRange, SemanticReference, SemanticRelationship,
     SemanticRelationshipKind, SemanticRole, SemanticState, TextDocumentSnapshot, TextNewlinePolicy,
     TextSelection, TextSensitivity, UiEvent, WidgetInvalidation, WidgetMeasure, WidgetMeasureInput,
-    WidgetTextInput, WidgetUpdateContext,
+    WidgetTextInput, WidgetUpdateContext, ChildBearingWidget,
+    SemanticAutocomplete, SemanticPopupKind,
     element::{
         AuthoringDiagnostic, CommonNodeAuthoring, Element, View, common_node_builder_methods,
     },
@@ -63,6 +64,9 @@ pub struct TextField<Action> {
     mapper: Rc<dyn Fn(EditIntent) -> Action>,
     on_submit: Option<Box<dyn FnMut() -> Action>>,
     spin: Option<SpinEditing<Action>>,
+    combo: Option<crate::combo_box::ComboWidget<Action>>,
+    combo_popup: Option<Element<Action>>,
+    combo_autocomplete: Option<SemanticAutocomplete>,
     common: CommonNodeAuthoring,
 }
 
@@ -131,6 +135,9 @@ impl<Action> TextField<Action> {
             mapper: Rc::new(on_edit),
             on_submit: None,
             spin: None,
+            combo: None,
+            combo_popup: None,
+            combo_autocomplete: None,
             common: CommonNodeAuthoring::default(),
         })
     }
@@ -148,6 +155,30 @@ impl<Action> TextField<Action> {
             range,
             on_adjust,
         });
+        self
+    }
+
+    pub(crate) fn permits_combo_box(&self) -> bool {
+        self.mode == SemanticEditableMode::SingleLine
+            && self.sensitivity == TextSensitivity::Public
+            && self.spin.is_none()
+            && self.combo.is_none()
+    }
+    pub(crate) fn combo_owner_id(&self) -> Option<&ElementId> {
+        self.common.id.as_ref()
+    }
+    pub(crate) const fn combo_editor_enabled(&self) -> bool {
+        !self.disabled
+    }
+    pub(crate) fn with_combo_box(
+        mut self,
+        widget: crate::combo_box::ComboWidget<Action>,
+        popup: Option<Element<Action>>,
+        autocomplete: SemanticAutocomplete,
+    ) -> Self {
+        self.combo = Some(widget);
+        self.combo_popup = popup;
+        self.combo_autocomplete = Some(autocomplete);
         self
     }
 
@@ -260,6 +291,8 @@ struct TextFieldState {
     read_only: bool,
     disabled: bool,
     spin: Option<SpinFacts>,
+    combo: Option<crate::combo_box::ComboState>,
+    combo_autocomplete: Option<SemanticAutocomplete>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -298,6 +331,7 @@ struct TextFieldWidget<Action> {
     mapper: Rc<dyn Fn(EditIntent) -> Action>,
     on_submit: Option<Box<dyn FnMut() -> Action>>,
     on_adjust: Option<Box<dyn FnMut(crate::SpinButtonRequest) -> Action>>,
+    combo: Option<crate::combo_box::ComboWidget<Action>>,
 }
 
 impl<Action> fmt::Debug for TextFieldWidget<Action> {
@@ -346,6 +380,12 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         if state.spin != self.state.spin {
             context.invalidate(WidgetInvalidation::SEMANTICS | WidgetInvalidation::INTERACTION);
         }
+        if state.combo_autocomplete != self.state.combo_autocomplete {
+            context.invalidate(WidgetInvalidation::SEMANTICS);
+        }
+        if state.combo.is_some() != self.state.combo.is_some() {
+            context.invalidate(WidgetInvalidation::SEMANTICS | WidgetInvalidation::INTERACTION);
+        }
         if state.read_only != self.state.read_only || state.disabled != self.state.disabled {
             context.invalidate(
                 WidgetInvalidation::INTERACTION
@@ -353,28 +393,51 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
                     | WidgetInvalidation::SEMANTICS,
             );
         }
-        state.clone_from(&self.state);
+        let mut next = self.state.clone();
+        if let (Some(combo), Some(current)) = (self.combo.as_ref(), state.combo.as_mut()) {
+            combo.update(current, context);
+            next.combo = Some(current.clone());
+        }
+        state.clone_from(&next);
     }
 
-    fn activation(&self, _: &Self::State) -> WidgetActivation {
+    fn activation(&self, state: &Self::State) -> WidgetActivation {
         if self.state.disabled {
             WidgetActivation::disabled()
+        } else if let (Some(combo), Some(current)) = (self.combo.as_ref(), state.combo.as_ref()) {
+            combo.activation(current)
         } else {
             WidgetActivation::NONE
         }
     }
 
+    fn activate(
+        &mut self,
+        state: &mut Self::State,
+        context: &mut crate::WidgetActivationContext<Action>,
+    ) -> crate::WidgetActivationOutput<Action> {
+        if let (Some(combo), Some(current)) = (self.combo.as_mut(), state.combo.as_mut()) {
+            combo.activate(current, context)
+        } else {
+            crate::WidgetActivationOutput::none()
+        }
+    }
+
     fn text_input(&self, _: &Self::State) -> WidgetTextInput {
-        let enabled = !self.state.disabled && !self.state.read_only;
+        let enabled = !self.state.disabled && !self.state.read_only
+            && self.combo.as_ref().is_none_or(|combo| combo.invalid.is_none());
         WidgetTextInput::new(enabled, enabled)
     }
 
     fn event(
         &mut self,
-        _: &mut Self::State,
+        state: &mut Self::State,
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> crate::WidgetEventOutput {
+        if let (Some(combo), Some(current)) = (self.combo.as_mut(), state.combo.as_mut()) {
+            combo.proxy_event(current, event, context, true);
+        }
         if context.phase() == EventPhase::Target
             && !context.default_is_prevented()
             && self.state.mode == SemanticEditableMode::SingleLine
@@ -418,6 +481,9 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
     }
 
     fn editable(&self, _: &Self::State) -> Option<EditableContribution<Action>> {
+        if self.combo.as_ref().is_some_and(|combo| combo.invalid.is_some()) {
+            return None;
+        }
         let mapper = Rc::clone(&self.mapper);
         let newline = if self.state.mode == SemanticEditableMode::SingleLine {
             TextNewlinePolicy::ReplaceWithSpace
@@ -467,7 +533,7 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         HitContribution::single_rect(rect)
     }
 
-    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+    fn semantics(&self, state: &Self::State, context: SemanticContributionContext) -> SemanticContribution {
         let Some(editable) = SemanticEditable::new(
             self.state.snapshot,
             &self.state.content,
@@ -484,7 +550,9 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         if let Some(invalid) = self.state.invalid {
             state = state.with_invalid(invalid);
         }
-        let role = if self.state.spin.is_some() {
+        let role = if state.combo.is_some() {
+            SemanticRole::ComboBox
+        } else if self.state.spin.is_some() {
             SemanticRole::SpinButton
         } else {
             SemanticRole::EditableText
@@ -509,6 +577,50 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         }
         if let Some(placeholder) = &self.state.placeholder {
             node = node.with_placeholder(placeholder.clone());
+        }
+        if let Some(combo) = state.combo.as_ref() {
+            if combo.invalid.is_some() {
+                return SemanticContribution::empty();
+            }
+            node = node
+                .with_name(combo.label.clone())
+                .with_popup(SemanticPopupKind::ListBox)
+                .with_autocomplete(state.combo_autocomplete.unwrap_or(SemanticAutocomplete::List))
+                .with_state(SemanticState::ENABLED
+                    .with_disabled(state.disabled)
+                    .with_read_only(state.read_only)
+                    .with_required(state.required)
+                    .with_expanded(combo.open))
+                .with_action(SemanticAction::RequestFocus);
+            if combo.enabled {
+                node = node.with_action(SemanticAction::Activate)
+                    .with_action(if combo.open {
+                        SemanticAction::Collapse
+                    } else {
+                        SemanticAction::Expand
+                    });
+            }
+            if combo.open {
+                node = node.with_relationship(SemanticRelationship::new(
+                    SemanticRelationshipKind::Controls,
+                    SemanticReference::Authored {
+                        element_id: combo.popup_id.clone(),
+                        semantic_key: None,
+                    },
+                ));
+                if let Some(id) = combo.active.as_ref() {
+                    node = node.with_relationship(SemanticRelationship::new(
+                        SemanticRelationshipKind::ActiveDescendant,
+                        SemanticReference::Authored {
+                            element_id: id.clone(),
+                            semantic_key: None,
+                        },
+                    ));
+                }
+            }
+            if context.has_mounted_children() {
+                node = node.with_mounted_children();
+            }
         }
         if let Some(spin) = &self.state.spin {
             node = node
@@ -551,10 +663,14 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
     }
 }
 
+impl<Action> ChildBearingWidget<Action> for TextFieldWidget<Action> {}
+
 impl<Action: 'static> View<Action> for TextField<Action> {
     fn into_element(self) -> Element<Action> {
+        let invalid_combo = self.combo.as_ref().is_some_and(|combo| combo.invalid.is_some());
+        let combo_state = self.combo.as_ref().map(Widget::create_state);
         let (fields, diagnostics) = self.common.into_authored_fields(
-            if self.disabled {
+            if self.disabled || invalid_combo {
                 Focusability::NotFocusable
             } else {
                 Focusability::Focusable
@@ -585,12 +701,15 @@ impl<Action: 'static> View<Action> for TextField<Action> {
                     read_only: self.read_only,
                     disabled: self.disabled,
                     spin: spin_state,
+                    combo: combo_state,
+                    combo_autocomplete: self.combo_autocomplete,
                 },
                 mapper: self.mapper,
                 on_submit: self.on_submit,
                 on_adjust,
+                combo: self.combo,
             })),
-            Vec::new(),
+            self.combo_popup.into_iter().collect(),
             diagnostics,
         )
     }
@@ -639,10 +758,13 @@ mod tests {
                 read_only: false,
                 disabled: false,
                 spin: None,
+                combo: None,
+                combo_autocomplete: None,
             },
             mapper: Rc::new(|_| ()),
             on_submit: None,
             on_adjust: None,
+            combo: None,
         }
     }
 

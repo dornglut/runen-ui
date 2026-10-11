@@ -298,7 +298,7 @@ pub use builtins::{
     radio_button, radio_group, row, scroll_bar, scroll_container, scroll_viewport, selectable_text,
     shortcut_scope, switch, tab, tab_list, tab_panel, text,
 };
-pub use combo_box::{ComboBox, ComboBoxRequest, combo_box};
+pub use combo_box::{ComboBox, ComboBoxRequest, EditableComboBox, EditableComboBoxError, combo_box, editable_combo_box};
 pub use computed_style::ComputedStyle;
 pub use editing::{
     EditChangeMap, EditGroupHint, EditIntent, EditInverse, EditKind, EditRequestId, EditResolution,

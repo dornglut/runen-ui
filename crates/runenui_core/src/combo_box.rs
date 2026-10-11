@@ -1,4 +1,4 @@
-//! Select-only `ComboBox` over M4 real focus and M5 active-descendant semantics.
+//! Select-only and editable `ComboBox` over one M4 focus proxy and M10 editing authority.
 //! All committed values and popup visibility are authored by the application.
 use crate::{
     ChildBearingWidget, Element, ElementId, EventContext, EventPhase, FocusEventKind, Focusability,
@@ -7,6 +7,7 @@ use crate::{
     PresentationOutsidePointerPolicy, SemanticAction, SemanticCommand, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticPopupKind, SemanticReference,
     SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
+    SemanticAutocomplete, TextField,
     SurfacePresentation, SurfacePresentationAnchor, SurfacePresentationPlacement,
     SurfacePresentationSide, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
     WidgetActivationOutput, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetMeasure,
@@ -90,13 +91,13 @@ impl<Action> ComboBox<Action> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct Candidate {
+pub(crate) struct Candidate {
     id: ElementId,
     selected: bool,
     enabled: bool,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum InvalidComboBox {
+pub(crate) enum InvalidComboBox {
     MissingOptionId,
     DuplicateOptionId,
     MultipleSelected,
@@ -104,22 +105,22 @@ enum InvalidComboBox {
     OwnerIdCollision,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct ComboState {
-    label: String,
-    popup_id: ElementId,
-    options: Vec<Candidate>,
-    active: Option<ElementId>,
-    open: bool,
-    enabled: bool,
-    invalid: Option<InvalidComboBox>,
+pub(crate) struct ComboState {
+    pub(crate) label: String,
+    pub(crate) popup_id: ElementId,
+    pub(crate) options: Vec<Candidate>,
+    pub(crate) active: Option<ElementId>,
+    pub(crate) open: bool,
+    pub(crate) enabled: bool,
+    pub(crate) invalid: Option<InvalidComboBox>,
 }
-struct ComboWidget<Action> {
+pub(crate) struct ComboWidget<Action> {
     label: String,
     popup_id: ElementId,
     options: Vec<Candidate>,
     open: bool,
     enabled: bool,
-    invalid: Option<InvalidComboBox>,
+    pub(crate) invalid: Option<InvalidComboBox>,
     on_request: RequestHandler<Action>,
     option_activations: Vec<(ElementId, OptionActivation<Action>)>,
 }
@@ -158,6 +159,107 @@ impl<Action> ComboWidget<Action> {
         };
         state.active = Some(eligible[next].id.clone());
     }
+    pub(crate) fn accept_active(&self, state: &ComboState) -> Option<Action> {
+        if !self.enabled || self.invalid.is_some() || !state.open {
+            return None;
+        }
+        let id = state.active.as_ref()?;
+        let (_, action) = self.option_activations.iter().find(|(candidate, _)| candidate == id)?;
+        Some((*action.borrow_mut())())
+    }
+    pub(crate) fn proxy_event(
+        &mut self,
+        state: &mut ComboState,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+        editable: bool,
+    ) -> WidgetEventOutput {
+        if !self.enabled
+            || self.invalid.is_some()
+            || context.phase() != EventPhase::Target
+            || context.default_is_prevented()
+        {
+            return WidgetEventOutput::none();
+        }
+        // Losing the sole real focus owner dismisses an app-opened popup through
+        // the same ordinary request queue. This is not a second focus registry.
+        if state.open
+            && event
+                .as_focus()
+                .is_some_and(|focus| focus.kind() == FocusEventKind::Out)
+        {
+            context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
+            return WidgetEventOutput::none();
+        }
+        let directive = if let Some(cmd) = event.as_semantic_command() {
+            match cmd.command() {
+                SemanticCommand::FocusUp => Some(Navigation::Previous),
+                SemanticCommand::FocusDown => Some(Navigation::Next),
+                SemanticCommand::FocusGroupFirst => Some(Navigation::First),
+                SemanticCommand::FocusGroupLast => Some(Navigation::Last),
+                SemanticCommand::Expand if !state.open => {
+                    context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Open));
+                    context.prevent_default();
+                    context.stop_propagation();
+                    return WidgetEventOutput::none();
+                }
+                SemanticCommand::Collapse if state.open => {
+                    context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
+                    context.prevent_default();
+                    context.stop_propagation();
+                    return WidgetEventOutput::none();
+                }
+                _ => None,
+            }
+        } else if let Some(key) = event.as_keyboard() {
+            if key.phase() != KeyboardPhase::Down
+                || key.modifiers() != crate::KeyModifiers::NONE
+                || key.composition_state() != KeyboardCompositionState::Inactive
+            {
+                return WidgetEventOutput::none();
+            }
+            match key.logical_key() {
+                LogicalKey::ArrowUp => Some(Navigation::Previous),
+                LogicalKey::ArrowDown => Some(Navigation::Next),
+                LogicalKey::Home if !editable => Some(Navigation::First),
+                LogicalKey::End if !editable => Some(Navigation::Last),
+                LogicalKey::Enter if editable && state.open => {
+                    if !key.is_repeat() {
+                        if let Some(action) = self.accept_active(state) {
+                            context.emit(action);
+                        }
+                    }
+                    context.prevent_default();
+                    context.stop_propagation();
+                    return WidgetEventOutput::none();
+                }
+                LogicalKey::Escape if state.open => {
+                    context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
+                    context.prevent_default();
+                    context.stop_propagation();
+                    return WidgetEventOutput::none();
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        if let Some(directive) = directive {
+            if state.open {
+                let old = state.active.clone();
+                self.choose(state, directive);
+                if state.active != old {
+                    context.invalidate(WidgetInvalidation::SEMANTICS);
+                }
+            } else {
+                context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Open));
+            }
+            context.prevent_default();
+            context.stop_propagation();
+        }
+        WidgetEventOutput::none()
+    }
+
 }
 #[derive(Clone, Copy)]
 enum Navigation {
@@ -222,14 +324,7 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
                 ComboBoxRequest::Open,
             ));
         }
-        let Some(active) = &state.active else {
-            return WidgetActivationOutput::none();
-        };
-        let Some((_, callback)) = self.option_activations.iter().find(|(id, _)| id == active)
-        else {
-            return WidgetActivationOutput::none();
-        };
-        WidgetActivationOutput::action((*callback.borrow_mut())())
+        self.accept_active(state).map_or_else(WidgetActivationOutput::none, WidgetActivationOutput::action)
     }
     fn event(
         &mut self,
@@ -237,80 +332,7 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
-        if !self.enabled
-            || self.invalid.is_some()
-            || context.phase() != EventPhase::Target
-            || context.default_is_prevented()
-        {
-            return WidgetEventOutput::none();
-        }
-        // Losing the sole real focus owner dismisses an app-opened popup through
-        // the same ordinary request queue. This is not a second focus registry.
-        if state.open
-            && event
-                .as_focus()
-                .is_some_and(|focus| focus.kind() == FocusEventKind::Out)
-        {
-            context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
-            return WidgetEventOutput::none();
-        }
-        let directive = if let Some(cmd) = event.as_semantic_command() {
-            match cmd.command() {
-                SemanticCommand::FocusUp => Some(Navigation::Previous),
-                SemanticCommand::FocusDown => Some(Navigation::Next),
-                SemanticCommand::FocusGroupFirst => Some(Navigation::First),
-                SemanticCommand::FocusGroupLast => Some(Navigation::Last),
-                SemanticCommand::Expand if !state.open => {
-                    context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Open));
-                    context.prevent_default();
-                    context.stop_propagation();
-                    return WidgetEventOutput::none();
-                }
-                SemanticCommand::Collapse if state.open => {
-                    context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
-                    context.prevent_default();
-                    context.stop_propagation();
-                    return WidgetEventOutput::none();
-                }
-                _ => None,
-            }
-        } else if let Some(key) = event.as_keyboard() {
-            if key.phase() != KeyboardPhase::Down
-                || key.modifiers() != crate::KeyModifiers::NONE
-                || key.composition_state() != KeyboardCompositionState::Inactive
-            {
-                return WidgetEventOutput::none();
-            }
-            match key.logical_key() {
-                LogicalKey::ArrowUp => Some(Navigation::Previous),
-                LogicalKey::ArrowDown => Some(Navigation::Next),
-                LogicalKey::Home => Some(Navigation::First),
-                LogicalKey::End => Some(Navigation::Last),
-                LogicalKey::Escape if state.open => {
-                    context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
-                    context.prevent_default();
-                    context.stop_propagation();
-                    return WidgetEventOutput::none();
-                }
-                _ => None,
-            }
-        } else {
-            None
-        };
-        if let Some(directive) = directive {
-            if state.open {
-                let old = state.active.clone();
-                self.choose(state, directive);
-                if state.active != old {
-                    context.invalidate(WidgetInvalidation::SEMANTICS);
-                }
-            } else {
-                context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Open));
-            }
-            context.prevent_default();
-            context.stop_propagation();
-        }
-        WidgetEventOutput::none()
+        self.proxy_event(state, event, context, false)
     }
     fn hit_test(&self, _: &Self::State, context: HitContributionContext) -> HitContribution {
         let size = context.local_size();
@@ -420,24 +442,31 @@ impl<Action> Widget<Action> for ComboLabel {
         SemanticContribution::empty()
     }
 }
-impl<Action: 'static> View<Action> for ComboBox<Action> {
-    fn into_element(self) -> Element<Action> {
+fn assemble_combo<Action: 'static>(
+    label: String,
+    popup_id: ElementId,
+    options_source: Vec<OptionItem<Action>>,
+    open: bool,
+    owner_enabled: bool,
+    owner_id: Option<&ElementId>,
+    on_request: RequestHandler<Action>,
+) -> (ComboWidget<Action>, Option<Element<Action>>) {
         let mut seen = BTreeSet::new();
         let mut options = Vec::new();
         let mut option_activations = Vec::new();
         let mut popup_options = Vec::new();
         let mut invalid = None;
-        if self.common.id.as_ref() == Some(&self.popup_id) {
+        if owner_id == Some(&popup_id) {
             invalid = Some(InvalidComboBox::OwnerIdCollision);
         }
-        for mut item in self.options {
-            let Some((id, selected, enabled)) = item.combo_proxy_facts() else {
+        for mut item in options_source {
+            let Some((id, selected, option_enabled)) = item.combo_proxy_facts() else {
                 invalid.get_or_insert(InvalidComboBox::MissingOptionId);
                 continue;
             };
-            if self.common.id.as_ref() == Some(&id) {
+            if owner_id == Some(&id) {
                 invalid.get_or_insert(InvalidComboBox::OwnerIdCollision);
-            } else if id == self.popup_id {
+            } else if id == popup_id {
                 invalid.get_or_insert(InvalidComboBox::PopupIdCollision);
             } else if !seen.insert(id.as_str().to_owned()) {
                 invalid.get_or_insert(InvalidComboBox::DuplicateOptionId);
@@ -448,9 +477,9 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
             options.push(Candidate {
                 id,
                 selected,
-                enabled,
+                enabled: option_enabled,
             });
-            popup_options.push(if self.enabled {
+            popup_options.push(if owner_enabled {
                 item.combo_box_proxy()
             } else {
                 item.combo_box_proxy().disabled()
@@ -459,19 +488,13 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
         if options.iter().filter(|item| item.selected).count() > 1 {
             invalid.get_or_insert(InvalidComboBox::MultipleSelected);
         }
-        let mut children = vec![
-            Element::new(ComboLabel {
-                label: self.label.clone(),
-            })
-            .with_focusability(Focusability::NotFocusable),
-        ];
-        if self.open && invalid.is_none() {
+        let popup = if open && invalid.is_none() {
             // M5 ActiveDescendant requires Controls to identify the ListBox,
             // not the surrounding Popover's semantic Group.
             let popup = list_box(popup_options)
-                .id(self.popup_id.clone())
+                .id(popup_id.clone())
                 .into_element();
-            let handler = Rc::clone(&self.on_request);
+            let handler = Rc::clone(&on_request);
             let presentation = SurfacePresentation::new(SurfacePresentationPlacement::new(
                 SurfacePresentationSide::Bottom,
             ))
@@ -479,35 +502,34 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
             .with_outside_pointer(PresentationOutsidePointerPolicy::DismissAndBlock)
             .with_focus_policy(PresentationFocusPolicy::Preserve)
             .dismiss_on_cancel_or_back(true);
-            children.push(
-                Popover::new(vec![popup], presentation)
-                    .on_dismiss(move |_| (*handler.borrow_mut())(ComboBoxRequest::Close))
-                    .into_element(),
-            );
-        }
+            Some(Popover::new(vec![popup], presentation)
+                .on_dismiss(move |_| (*handler.borrow_mut())(ComboBoxRequest::Close))
+                .into_element())
+        } else {
+            None
+        };
+
+    (ComboWidget {
+        label, popup_id, options, open, enabled: owner_enabled, invalid,
+        on_request, option_activations,
+    }, popup)
+}
+
+impl<Action: 'static> View<Action> for ComboBox<Action> {
+    fn into_element(self) -> Element<Action> {
+        let (widget, popup) = assemble_combo(
+            self.label.clone(), self.popup_id, self.options, self.open,
+            self.enabled, self.common.id.as_ref(), self.on_request,
+        );
+        let invalid = widget.invalid.is_some();
+        let mut children = vec![Element::new(ComboLabel { label: self.label })
+            .with_focusability(Focusability::NotFocusable)];
+        children.extend(popup);
         let (fields, diagnostics) = self.common.into_authored_fields(
-            if self.enabled && invalid.is_none() {
-                Focusability::Focusable
-            } else {
-                Focusability::NotFocusable
-            },
+            if self.enabled && !invalid { Focusability::Focusable } else { Focusability::NotFocusable },
             None,
         );
-        Element::from_authored_parts(
-            fields,
-            Box::new(WidgetAdapter(ComboWidget {
-                label: self.label,
-                popup_id: self.popup_id,
-                options,
-                open: self.open,
-                enabled: self.enabled,
-                invalid,
-                on_request: self.on_request,
-                option_activations,
-            })),
-            children,
-            diagnostics,
-        )
+        Element::from_authored_parts(fields, Box::new(WidgetAdapter(widget)), children, diagnostics)
     }
 }
 
@@ -520,4 +542,81 @@ pub fn combo_box<Action>(
     on_request: impl FnMut(ComboBoxRequest) -> Action + 'static,
 ) -> ComboBox<Action> {
     ComboBox::new(label, popup_id, options, on_request)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EditableComboBoxError {
+    /// A Composite editor must be public single-line M10 TextField.
+    IncompatibleEditor,
+}
+impl fmt::Display for EditableComboBoxError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("editable ComboBox requires a public single-line non-composite TextField")
+    }
+}
+impl std::error::Error for EditableComboBoxError {}
+
+/// One focused TextField/M10 editor with ComboBox semantics and a proxy Option popup.
+pub struct EditableComboBox<Action> {
+    editor: TextField<Action>,
+    label: String,
+    popup_id: ElementId,
+    options: Vec<OptionItem<Action>>,
+    on_request: RequestHandler<Action>,
+    open: bool,
+    autocomplete: SemanticAutocomplete,
+}
+impl<Action> fmt::Debug for EditableComboBox<Action> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EditableComboBox")
+            .field("popup_id", &self.popup_id)
+            .field("option_count", &self.options.len())
+            .field("open", &self.open)
+            .field("autocomplete", &self.autocomplete)
+            .finish_non_exhaustive()
+    }
+}
+impl<Action> EditableComboBox<Action> {
+    #[must_use]
+    pub const fn open(mut self, open: bool) -> Self {
+        self.open = open;
+        self
+    }
+    #[must_use]
+    pub const fn autocomplete(mut self, policy: SemanticAutocomplete) -> Self {
+        self.autocomplete = policy;
+        self
+    }
+}
+impl<Action: 'static> View<Action> for EditableComboBox<Action> {
+    fn into_element(self) -> Element<Action> {
+        let owner = self.editor.combo_owner_id().cloned();
+        let enabled = self.editor.combo_editor_enabled();
+        let (widget, popup) = assemble_combo(
+            self.label, self.popup_id, self.options, self.open,
+            enabled, owner.as_ref(), self.on_request,
+        );
+        self.editor.with_combo_box(widget, popup, self.autocomplete).into_element()
+    }
+}
+
+/// Composes an existing public single-line M10 TextField with standard OptionItems.
+///
+/// # Errors
+/// Rejects multiline, secret or already-composite editor configurations.
+pub fn editable_combo_box<Action>(
+    editor: TextField<Action>,
+    label: impl Into<String>,
+    popup_id: ElementId,
+    options: impl IntoIterator<Item = OptionItem<Action>>,
+    on_request: impl FnMut(ComboBoxRequest) -> Action + 'static,
+) -> Result<EditableComboBox<Action>, EditableComboBoxError> {
+    if !editor.permits_combo_box() {
+        return Err(EditableComboBoxError::IncompatibleEditor);
+    }
+    Ok(EditableComboBox {
+        editor, label: label.into(), popup_id, options: options.into_iter().collect(),
+        on_request: Rc::new(RefCell::new(Box::new(on_request))),
+        open: false, autocomplete: SemanticAutocomplete::List,
+    })
 }
