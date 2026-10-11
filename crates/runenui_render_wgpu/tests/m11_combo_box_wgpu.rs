@@ -121,14 +121,21 @@ fn select_only_combo_popup_projects_real_m8_options_and_real_wgpu_pixels()
             .filter(|node| node.role() == SemanticRole::Option)
             .count();
         assert_eq!(count, expected_options);
-        let controls = combo.relationships().iter()
+        let controls = combo
+            .relationships()
+            .iter()
             .find(|link| link.kind() == SemanticRelationshipKind::Controls);
         assert_eq!(controls.is_some(), expected_options != 0);
         if let Some(controls) = controls {
-            assert_eq!(snapshot.nodes().iter()
-                .find(|node| node.id() == controls.target())
-                .map(|node| node.role()), Some(SemanticRole::ListBox),
-                "M5 Controls must identify the actual popup ListBox, not the Popover Group");
+            assert_eq!(
+                snapshot
+                    .nodes()
+                    .iter()
+                    .find(|node| node.id() == controls.target())
+                    .map(|node| node.role()),
+                Some(SemanticRole::ListBox),
+                "M5 Controls must identify the actual popup ListBox, not the Popover Group"
+            );
         }
         assert_eq!(
             combo
