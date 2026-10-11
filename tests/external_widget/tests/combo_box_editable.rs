@@ -27,6 +27,7 @@ enum Action {
     Popup(ComboBoxRequest),
     Choose(u8),
     ReplaceOption,
+    Submit,
 }
 
 struct State {
@@ -36,6 +37,7 @@ struct State {
     chosen: u8,
     popup_log: Vec<ComboBoxRequest>,
     replace_option: bool,
+    submitted: usize,
 }
 
 struct App;
@@ -59,7 +61,8 @@ impl UiApp for App {
             SemanticEditableMode::SingleLine,
             |intent| Action::Edit(Box::new(intent)),
         ).unwrap_or_else(|_| unreachable!("one checked M10 source"))
-            .id("editable.owner");
+            .id("editable.owner")
+            .on_submit(|| Action::Submit);
         let combo = editable_combo_box(
             editor,
             "Search suggestions",
@@ -112,6 +115,10 @@ impl UiApp for App {
                 state.replace_option = true;
                 UpdateOutput::effects(Effects::none())
             }
+            Action::Submit => {
+                state.submitted += 1;
+                UpdateOutput::effects(Effects::none())
+            }
         }
     }
 }
@@ -119,7 +126,7 @@ impl UiApp for App {
 fn runtime() -> AppRuntime<App> {
     let mut runtime = AppRuntime::<App>::mount(State {
         source: "q".into(), revision: 1, open: true,
-        chosen: 0, popup_log: Vec::new(), replace_option: false,
+        chosen: 0, popup_log: Vec::new(), replace_option: false, submitted: 0,
     });
     assert!(runtime.register_text_font_bytes(FONT.to_vec()).is_ok());
     assert!(runtime.set_text_generic_family_mapping(
@@ -322,5 +329,44 @@ fn replacing_exact_active_option_retires_proxy_without_sibling_retargeting() {
         "new Option at the same list position cannot impersonate removed identity");
     cmd(&mut runtime, owner.clone(), SemanticCommand::Activate);
     assert_eq!(runtime.state().chosen, 0);
+    assert_eq!(runtime.focus().focused_node(), Some(&owner));
+}
+
+#[test]
+fn open_editable_enter_accepts_only_option_action_and_does_not_submit_textfield() {
+    let mut runtime = runtime();
+    let owner = id(&runtime, "editable.owner");
+    cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+    cmd(&mut runtime, owner.clone(), SemanticCommand::FocusDown);
+    assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
+    runtime.submit_keyboard(key(
+        LogicalKey::Enter, PhysicalKey::Enter, KeyboardCompositionState::Inactive,
+    )).unwrap_or_else(|_| unreachable!("open ComboBox Enter is admitted"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().chosen, 2);
+    assert!(!runtime.state().open);
+    assert_eq!(runtime.state().submitted, 0,
+        "the ComboBox Option acceptance must suppress the M10 TextField submit callback");
+    assert_eq!(runtime.state().source, "q");
+    assert_eq!(runtime.focus().focused_node(), Some(&owner));
+}
+
+#[test]
+fn closed_editable_enter_reuses_existing_textfield_submit_once_without_option_commit() {
+    let mut runtime = runtime();
+    let owner = id(&runtime, "editable.owner");
+    cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+    runtime.submit_action(Action::Choose(1))
+        .unwrap_or_else(|_| unreachable!("app closes popup with one chosen Option"));
+    settle(&mut runtime);
+    assert!(!runtime.state().open);
+    runtime.submit_keyboard(key(
+        LogicalKey::Enter, PhysicalKey::Enter, KeyboardCompositionState::Inactive,
+    )).unwrap_or_else(|_| unreachable!("closed TextField Enter admitted"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().submitted, 1,
+        "closed ComboBox leaves ordinary M10 TextField submit semantics intact");
+    assert_eq!(runtime.state().chosen, 1);
+    assert_eq!(runtime.state().source, "q");
     assert_eq!(runtime.focus().focused_node(), Some(&owner));
 }
