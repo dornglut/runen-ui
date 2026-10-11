@@ -432,16 +432,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             reasons.push(crate::UiInputClaimReason::ActivationDefault);
         }
+        // Capture may be acquired by this event (Down/widget request) or
+        // have routed this event and then been released (Up/widget request).
+        // Preserve both accepted capture semantics, but never resurrect a
+        // removed pre-event owner after pointer preparation cleared it.
+        let captured_route_target = pending.stream.capture_owner().cloned().or_else(|| {
+            if routed_via_capture {
+                pending.routed_target.clone()
+            } else {
+                None
+            }
+        });
         let route = if let Some(root) = pending.presentation_block_root.as_ref() {
             crate::UiInputRoute::PresentationBlocked { root: root.clone() }
-        } else if routed_via_capture {
-            crate::UiInputRoute::Captured {
-                target: pending
-                    .routed_target
-                    .as_ref()
-                    .cloned()
-                    .unwrap_or_else(|| unreachable!("captured routing has an exact target")),
-            }
+        } else if let Some(target) = captured_route_target {
+            crate::UiInputRoute::Captured { target }
         } else if let Some(target) = pending.routed_target.as_ref() {
             crate::UiInputRoute::Routed {
                 target: target.clone(),

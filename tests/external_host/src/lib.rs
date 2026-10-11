@@ -1413,8 +1413,8 @@ mod tests {
             UiInputFinality::Committed(facts)
                 if facts.conflict() == UiInputConflict::ExclusiveUi
                     && facts.reasons().contains(&UiInputClaimReason::PointerPress)
-                    && matches!(facts.route(), UiInputRoute::Routed { target: routed }
-                        if routed == &target)
+                    && matches!(facts.route(), UiInputRoute::Captured { target: captured }
+                        if captured == &target)
                     && facts.default_disposition()
                         == runenui_runtime::UiDefaultDisposition::Applied
         ));
