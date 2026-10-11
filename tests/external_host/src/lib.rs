@@ -1406,8 +1406,8 @@ mod tests {
         let publication = runtime
             .publish_surface(&SurfaceBuildContext::tight(&environment, size))
             .unwrap_or_else(|_| unreachable!("retained hit context is published"));
-        let outside = LogicalPoint::new(65.0, 65.0)
-            .unwrap_or_else(|_| unreachable!("finite outside point"));
+        let outside =
+            LogicalPoint::new(65.0, 65.0).unwrap_or_else(|_| unreachable!("finite outside point"));
         assert_eq!(publication.hit_test_scene().target_at(outside), None);
         let pointer = PointerId::new(53).unwrap_or_else(|| unreachable!("positive pointer id"));
 
@@ -1467,15 +1467,22 @@ mod tests {
         let after_up = runtime
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("unowned stream cleanup is observable"));
-        assert!(after_up.pointers().iter().all(|stream| stream.pointer_id() != pointer));
+        assert!(
+            after_up
+                .pointers()
+                .iter()
+                .all(|stream| stream.pointer_id() != pointer)
+        );
         assert!(!runtime.state().active);
         let repeated = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("already settled outside input does not replay"));
-        assert!(!repeated
-            .ordered_records()
-            .iter()
-            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))));
+        assert!(
+            !repeated
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
     }
 
     fn assert_public_no_hit_hover(
