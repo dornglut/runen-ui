@@ -3,7 +3,8 @@
 use crate::{
     ChildBearingWidget, Element, ElementId, ElementKey, EventContext, EventPhase, FocusEventKind,
     Focusability, HitContribution, HitContributionContext, KeyboardCompositionState, KeyboardPhase,
-    LayoutContainer, LayoutStyle, LogicalKey, OptionItem, Popover, PresentationFocusPolicy,
+    LayoutBound, LayoutContainer, LayoutStyle, LogicalKey, LogicalLength, OptionItem, OverflowPolicy,
+    OverflowStyle, Popover, PresentationFocusPolicy,
     PresentationOutsidePointerPolicy, SemanticAction, SemanticAutocomplete, SemanticCommand,
     SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticPopupKind,
     SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
@@ -12,7 +13,7 @@ use crate::{
     WidgetActivationContext, WidgetActivationOutput, WidgetDiagnostic, WidgetEventOutput,
     WidgetInvalidation, WidgetMeasure, WidgetMeasureInput, WidgetUpdateContext,
     element::{CommonNodeAuthoring, common_node_builder_methods},
-    list_box,
+    list_box, scroll_container,
     widget_erasure::WidgetAdapter,
 };
 use core::fmt;
@@ -37,6 +38,7 @@ pub struct ComboBox<Action> {
     label: String,
     popup_id: ElementId,
     options: Vec<OptionItem<Action>>,
+    popup_max_height: LogicalLength,
     open: bool,
     enabled: bool,
     on_request: RequestHandler<Action>,
@@ -67,6 +69,7 @@ impl<Action> ComboBox<Action> {
             label: label.into(),
             popup_id,
             options: options.into_iter().collect(),
+            popup_max_height: LogicalLength::from(192_u16),
             open: false,
             enabled: true,
             on_request: Rc::new(RefCell::new(Box::new(on_request))),
@@ -85,6 +88,12 @@ impl<Action> ComboBox<Action> {
     #[must_use]
     pub const fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
+        self
+    }
+    /// Limits the ordinary scroll viewport of an opened popup without changing Option layout.
+    #[must_use]
+    pub const fn popup_max_height(mut self, height: LogicalLength) -> Self {
+        self.popup_max_height = height;
         self
     }
 }
@@ -486,6 +495,7 @@ fn assemble_combo<Action: 'static>(
     open: bool,
     owner_enabled: bool,
     owner_id: Option<&ElementId>,
+    popup_max_height: LogicalLength,
     on_request: RequestHandler<Action>,
 ) -> (ComboWidget<Action>, Option<Element<Action>>) {
     let mut seen = BTreeSet::new();
@@ -537,6 +547,17 @@ fn assemble_combo<Action: 'static>(
         // M5 ActiveDescendant requires Controls to identify the ListBox,
         // not the surrounding Popover's semantic Group.
         let popup = list_box(popup_options).id(popup_id.clone()).into_element();
+        let overflow = OverflowStyle::new(OverflowPolicy::Clip, OverflowPolicy::Scroll);
+        let viewport = scroll_container(popup, overflow)
+            .with_layout(
+                LayoutStyle::default()
+                    .with_container(LayoutContainer::Block)
+                    .with_max_height(LayoutBound::Length(popup_max_height))
+                    .with_overflow(overflow),
+            )
+            .into_element()
+            // Overflow alone must not add another real M4 focus target.
+            .with_focusability(Focusability::NotFocusable);
         let handler = Rc::clone(&on_request);
         let presentation = SurfacePresentation::new(SurfacePresentationPlacement::new(
             SurfacePresentationSide::Bottom,
@@ -546,7 +567,7 @@ fn assemble_combo<Action: 'static>(
         .with_focus_policy(PresentationFocusPolicy::Preserve)
         .dismiss_on_cancel_or_back(true);
         Some(
-            Popover::new(vec![popup], presentation)
+            Popover::new(vec![viewport], presentation)
                 .on_dismiss(move |_| (*handler.borrow_mut())(ComboBoxRequest::Close))
                 .into_element(),
         )
@@ -579,6 +600,7 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
             self.open,
             self.enabled,
             self.common.id.as_ref(),
+            self.popup_max_height,
             self.on_request,
         );
         let invalid = widget.invalid.is_some();
@@ -639,6 +661,7 @@ pub struct EditableComboBox<Action> {
     popup_id: ElementId,
     options: Vec<OptionItem<Action>>,
     on_request: RequestHandler<Action>,
+    popup_max_height: LogicalLength,
     open: bool,
     autocomplete: SemanticAutocomplete,
 }
@@ -658,6 +681,12 @@ impl<Action> EditableComboBox<Action> {
         self.open = open;
         self
     }
+    /// Limits the existing shared popup's standard scroll viewport.
+    #[must_use]
+    pub const fn popup_max_height(mut self, height: LogicalLength) -> Self {
+        self.popup_max_height = height;
+        self
+    }
     #[must_use]
     pub const fn autocomplete(mut self, policy: SemanticAutocomplete) -> Self {
         self.autocomplete = policy;
@@ -675,6 +704,7 @@ impl<Action: 'static> View<Action> for EditableComboBox<Action> {
             self.open,
             enabled,
             owner.as_ref(),
+            self.popup_max_height,
             self.on_request,
         );
         self.editor
@@ -703,6 +733,7 @@ pub fn editable_combo_box<Action>(
         popup_id,
         options: options.into_iter().collect(),
         on_request: Rc::new(RefCell::new(Box::new(on_request))),
+        popup_max_height: LogicalLength::from(192_u16),
         open: false,
         autocomplete: SemanticAutocomplete::List,
     })
