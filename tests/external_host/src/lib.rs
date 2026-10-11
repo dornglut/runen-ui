@@ -24,15 +24,14 @@ mod tests {
         DragDropPhase, Element, ElementId, EventContext, EventPhase, HitContribution,
         HitContributionContext, ImageDescriptor, ImageIntrinsicSize, ImageMapping,
         ImagePaintDescriptor, InputDeviceId, KeyLocation, KeyModifiers, KeyboardCompositionState,
-        KeyboardEvent,
-        KeyboardPhase, LogicalKey, LogicalLength, LogicalPoint, LogicalRect, LogicalSize,
-        NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionItem,
-        PhysicalKey, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
-        PointerPhase, ResourceKind, ResourceRef, SceneShape, SemanticAction, SemanticActionRequest,
-        SemanticCommand, SemanticContribution, SemanticContributionContext,
-        SemanticNodeContribution, SemanticRole, StyleEnvironment, UiApp, UiEvent, View, Widget,
-        WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput,
-        WidgetMeasure, column,
+        KeyboardEvent, KeyboardPhase, LogicalKey, LogicalLength, LogicalPoint, LogicalRect,
+        LogicalSize, NoHostProtocol, PaintContribution, PaintContributionContext,
+        PaintContributionItem, PhysicalKey, PointerButton, PointerButtons, PointerDeviceKind,
+        PointerEvent, PointerId, PointerPhase, ResourceKind, ResourceRef, SceneShape,
+        SemanticAction, SemanticActionRequest, SemanticCommand, SemanticContribution,
+        SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment,
+        UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
+        WidgetActivationOutput, WidgetEventOutput, WidgetMeasure, column,
     };
     use runenui_render_wgpu::{
         BackendSelection, ImagePayload, OffscreenPublicationReadback, OffscreenReadback,
@@ -1529,14 +1528,21 @@ mod tests {
         let released = runtime
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("matching release commits cleanup"));
-        assert!(released.pointers().iter().all(|stream| stream.pointer_id() != pointer));
+        assert!(
+            released
+                .pointers()
+                .iter()
+                .all(|stream| stream.pointer_id() != pointer)
+        );
         assert!(!runtime.state().active);
-        assert!(!runtime
-            .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|_| unreachable!("settled device occurrences never replay"))
-            .ordered_records()
-            .iter()
-            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))));
+        assert!(
+            !runtime
+                .pump(HOST_PUMP_BUDGET)
+                .unwrap_or_else(|_| unreachable!("settled device occurrences never replay"))
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
     }
 
     #[test]
@@ -1560,8 +1566,8 @@ mod tests {
         let bounds = publication.frame().nodes()[0].bounds();
         let inside = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
             .unwrap_or_else(|_| unreachable!("finite inside point"));
-        let outside = LogicalPoint::new(65.0, 65.0)
-            .unwrap_or_else(|_| unreachable!("finite outside point"));
+        let outside =
+            LogicalPoint::new(65.0, 65.0).unwrap_or_else(|_| unreachable!("finite outside point"));
         assert_eq!(publication.hit_test_scene().target_at(outside), None);
         let target = publication
             .hit_test_scene()
