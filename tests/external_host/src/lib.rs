@@ -205,11 +205,7 @@ mod tests {
             WidgetEventOutput::none()
         }
 
-        fn measure(
-            &self,
-            (): &Self::State,
-            _: runenui_core::WidgetMeasureInput,
-        ) -> WidgetMeasure {
+        fn measure(&self, (): &Self::State, _: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
             WidgetMeasure::measured(
                 LogicalLength::from(SURFACE_EXTENT),
                 LogicalLength::from(SURFACE_EXTENT),
@@ -1601,12 +1597,22 @@ mod tests {
             )
             .unwrap_or_else(|_| unreachable!("external drag hover admitted"))
             .sequence();
-        assert!(!reached.load(Ordering::Relaxed), "admission cannot invoke widget");
+        assert!(
+            !reached.load(Ordering::Relaxed),
+            "admission cannot invoke widget"
+        );
         let batch = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("external drag claim commits"));
-        assert!(reached.load(Ordering::Relaxed), "drag callback actually ran");
-        assert!(batch.processed_through().is_some_and(|through| through >= receipt));
+        assert!(
+            reached.load(Ordering::Relaxed),
+            "drag callback actually ran"
+        );
+        assert!(
+            batch
+                .processed_through()
+                .is_some_and(|through| through >= receipt)
+        );
         let settlements = batch
             .ordered_records()
             .iter()
