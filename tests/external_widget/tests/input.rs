@@ -6,6 +6,9 @@ mod arbitration_classification;
 #[path = "input_arbitration_finality.rs"]
 mod arbitration_finality;
 
+#[path = "input_arbitration_menu.rs"]
+mod arbitration_menu;
+
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
