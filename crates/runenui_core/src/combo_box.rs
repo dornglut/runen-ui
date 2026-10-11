@@ -516,18 +516,34 @@ fn assemble_combo<Action: 'static>(
 impl<Action: 'static> View<Action> for ComboBox<Action> {
     fn into_element(self) -> Element<Action> {
         let (widget, popup) = assemble_combo(
-            self.label.clone(), self.popup_id, self.options, self.open,
-            self.enabled, self.common.id.as_ref(), self.on_request,
+            self.label.clone(),
+            self.popup_id,
+            self.options,
+            self.open,
+            self.enabled,
+            self.common.id.as_ref(),
+            self.on_request,
         );
         let invalid = widget.invalid.is_some();
-        let mut children = vec![Element::new(ComboLabel { label: self.label })
-            .with_focusability(Focusability::NotFocusable)];
+        let mut children = vec![
+            Element::new(ComboLabel { label: self.label })
+                .with_focusability(Focusability::NotFocusable),
+        ];
         children.extend(popup);
         let (fields, diagnostics) = self.common.into_authored_fields(
-            if self.enabled && !invalid { Focusability::Focusable } else { Focusability::NotFocusable },
+            if self.enabled && !invalid {
+                Focusability::Focusable
+            } else {
+                Focusability::NotFocusable
+            },
             None,
         );
-        Element::from_authored_parts(fields, Box::new(WidgetAdapter(widget)), children, diagnostics)
+        Element::from_authored_parts(
+            fields,
+            Box::new(WidgetAdapter(widget)),
+            children,
+            diagnostics,
+        )
     }
 }
 
@@ -591,10 +607,17 @@ impl<Action: 'static> View<Action> for EditableComboBox<Action> {
         let owner = self.editor.combo_owner_id().cloned();
         let enabled = self.editor.combo_editor_enabled();
         let (widget, popup) = assemble_combo(
-            self.label, self.popup_id, self.options, self.open,
-            enabled, owner.as_ref(), self.on_request,
+            self.label,
+            self.popup_id,
+            self.options,
+            self.open,
+            enabled,
+            owner.as_ref(),
+            self.on_request,
         );
-        self.editor.with_combo_box(widget, popup, self.autocomplete).into_element()
+        self.editor
+            .with_combo_box(widget, popup, self.autocomplete)
+            .into_element()
     }
 }
 
@@ -613,8 +636,12 @@ pub fn editable_combo_box<Action>(
         return Err(EditableComboBoxError::IncompatibleEditor);
     }
     Ok(EditableComboBox {
-        editor, label: label.into(), popup_id, options: options.into_iter().collect(),
+        editor,
+        label: label.into(),
+        popup_id,
+        options: options.into_iter().collect(),
         on_request: Rc::new(RefCell::new(Box::new(on_request))),
-        open: false, autocomplete: SemanticAutocomplete::List,
+        open: false,
+        autocomplete: SemanticAutocomplete::List,
     })
 }
