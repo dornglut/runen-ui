@@ -214,6 +214,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if matches!(
             event,
             UiEvent::Pointer(_)
+                | UiEvent::DragDrop(_)
                 | UiEvent::Keyboard(_)
                 | UiEvent::CommittedText(_)
                 | UiEvent::Composition(_)

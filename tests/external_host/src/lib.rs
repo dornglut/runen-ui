@@ -20,7 +20,8 @@ mod tests {
     };
 
     use runenui_core::{
-        Brush, Color, CommandOrigin, Element, ElementId, EventContext, EventPhase, HitContribution,
+        Brush, Color, CommandOrigin, DragDropEvent, DragDropPayloadKind, DragDropPayloadMetadata,
+        DragDropPhase, Element, ElementId, EventContext, EventPhase, HitContribution,
         HitContributionContext, ImageDescriptor, ImageIntrinsicSize, ImageMapping,
         ImagePaintDescriptor, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
         KeyboardPhase, LogicalKey, LogicalLength, LogicalPoint, LogicalRect, LogicalSize,
@@ -174,6 +175,75 @@ mod tests {
                 HostAction::SetActive(active) => state.active = active,
                 HostAction::Toggle => state.active = !state.active,
             }
+        }
+    }
+
+    /// Claims only the external drag/drop callback, not Pointer Move or
+    /// derived pointer-boundary/focus notifications.
+    #[derive(Debug)]
+    struct ExternalHostDragClaimProbe {
+        reached: Arc<AtomicBool>,
+    }
+
+    impl Widget<()> for ExternalHostDragClaimProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, ()>,
+        ) -> WidgetEventOutput {
+            if matches!(event, UiEvent::DragDrop(offer) if offer.phase() == DragDropPhase::Hover)
+                && context.phase() == EventPhase::Target
+            {
+                self.reached.store(true, Ordering::Relaxed);
+                context.claim_host_input();
+            }
+            WidgetEventOutput::none()
+        }
+
+        fn measure(
+            &self,
+            (): &Self::State,
+            _: runenui_core::WidgetMeasureInput,
+        ) -> WidgetMeasure {
+            WidgetMeasure::measured(
+                LogicalLength::from(SURFACE_EXTENT),
+                LogicalLength::from(SURFACE_EXTENT),
+            )
+        }
+
+        fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
+            let size = context.local_size();
+            HitContribution::single_rect(
+                LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+                    .unwrap_or_else(|_| unreachable!("finite authored drag target")),
+            )
+        }
+    }
+
+    struct ExternalHostDragClaimApp;
+
+    impl UiApp for ExternalHostDragClaimApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            Element::new(ExternalHostDragClaimProbe {
+                reached: Arc::clone(reached),
+            })
+            .id("external-drag-claim")
+            .key("external-drag-claim")
+        }
+
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         }
     }
 
@@ -1479,6 +1549,102 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("already settled outside input does not replay"));
         assert!(
             !repeated
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
+    }
+
+    #[test]
+    fn public_drag_drop_callback_claims_its_exact_external_pointer_occurrence() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = AppRuntime::<ExternalHostDragClaimApp>::mount_with_config(
+            Arc::clone(&reached),
+            RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0)),
+        );
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("drag fixture mount commits"));
+        let environment = StyleEnvironment::default();
+        let size = LogicalSize::try_new(64.0, 64.0)
+            .unwrap_or_else(|_| unreachable!("finite drag host surface"));
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+            .unwrap_or_else(|_| unreachable!("drag target has retained hit context"));
+        let bounds = publication
+            .frame()
+            .nodes()
+            .first()
+            .unwrap_or_else(|| unreachable!("authored drag target exists"))
+            .bounds();
+        let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
+            .unwrap_or_else(|_| unreachable!("finite drag hover point"));
+        assert!(publication.hit_test_scene().target_at(point).is_some());
+        let pointer = PointerId::new(71).unwrap_or_else(|| unreachable!("positive pointer id"));
+        let receipt = runtime
+            .submit_pointer(
+                PointerEvent::new(
+                    pointer,
+                    PointerDeviceKind::Mouse,
+                    PointerPhase::Move,
+                    point,
+                    publication.input_context().clone(),
+                )
+                .with_drag_drop(DragDropEvent::new(
+                    DragDropPhase::Hover,
+                    DragDropPayloadMetadata::new(
+                        DragDropPayloadKind::Files,
+                        core::num::NonZeroU32::MIN,
+                        None,
+                    ),
+                )),
+            )
+            .unwrap_or_else(|_| unreachable!("external drag hover admitted"))
+            .sequence();
+        assert!(!reached.load(Ordering::Relaxed), "admission cannot invoke widget");
+        let batch = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("external drag claim commits"));
+        assert!(reached.load(Ordering::Relaxed), "drag callback actually ran");
+        assert!(batch.processed_through().is_some_and(|through| through >= receipt));
+        let settlements = batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(value) => Some(value),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settlements.len(), 1);
+        let settled = settlements[0];
+        assert_eq!(settled.sequence(), receipt);
+        assert_eq!(settled.scope(), batch.final_ownership().scope());
+        assert_eq!(settled.family(), UiInputFamily::Pointer);
+        assert_eq!(settled.pointer_id(), Some(pointer));
+        assert_eq!(
+            settled.surface_id(),
+            Some(publication.input_context().surface_id())
+        );
+        assert!(matches!(
+            settled.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons() == [UiInputClaimReason::ExplicitWidgetClaim]
+                    && matches!(facts.route(), UiInputRoute::Routed { .. })
+                    && !facts.propagation_stopped()
+                    && !facts.default_prevented()
+        ));
+        let snapshot = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("hover ownership is observable"));
+        assert!(snapshot.pointers().iter().all(|stream| {
+            stream.pressed_owner().is_none() && stream.capture_owner().is_none()
+        }));
+        let repeat = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("settled drag does not replay"));
+        assert!(
+            !repeat
                 .ordered_records()
                 .iter()
                 .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
