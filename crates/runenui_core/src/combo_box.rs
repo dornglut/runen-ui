@@ -320,7 +320,13 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
             )
             .with_action(SemanticAction::RequestFocus);
         if state.enabled {
-            node = node.with_action(SemanticAction::Activate);
+            node = node
+                .with_action(SemanticAction::Activate)
+                .with_action(if state.open {
+                    SemanticAction::Collapse
+                } else {
+                    SemanticAction::Expand
+                });
         }
         if state.open {
             node = node.with_relationship(SemanticRelationship::new(
