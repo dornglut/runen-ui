@@ -314,11 +314,14 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
                             Some(key) => self.options.iter().find(|current| {
                                 current.id == old.id && current.key.as_ref() == Some(key)
                             }),
-                            None => self.options.get(index).filter(|current| {
-                                current.id == old.id && current.key.is_none()
-                            }),
+                            None => self
+                                .options
+                                .get(index)
+                                .filter(|current| current.id == old.id && current.key.is_none()),
                         };
-                        candidate.filter(|current| current.enabled).map(|_| active.clone())
+                        candidate
+                            .filter(|current| current.enabled)
+                            .map(|_| active.clone())
                     })
             });
         }
