@@ -13,9 +13,10 @@ use runenui_core::{
     command_binding, command_scope, container, shortcut_scope,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus,
-    SurfaceBuildContext, TraceApplicationCommandOutcome, TraceRecordKind,
-    TraceRoutedAdmissionRejection, TraceTargetRejection,
+    AppRuntime, InputArbitrationRecord, LayoutConstraints, PumpBudget, RuntimeConfig,
+    RuntimeLimits, RuntimeStatus, SurfaceBuildContext, TraceApplicationCommandOutcome,
+    TraceRecordKind, TraceRoutedAdmissionRejection, TraceTargetRejection, UiDefaultDisposition,
+    UiInputClaimReason, UiInputConflict, UiInputFinality,
 };
 
 const SHORTCUT_DIAGNOSTIC: &str = "runenui.shortcut-scope.duplicate-chord";
@@ -62,12 +63,16 @@ fn key(
 }
 
 fn settle<App: UiApp>(runtime: &mut AppRuntime<App>) {
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -320,7 +325,11 @@ fn focus(runtime: &mut AppRuntime<App>, authored: &'static str) {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("fixture focus request is accepted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 }
 
 fn submit_shortcut(
@@ -609,6 +618,82 @@ fn routed_prevent_default_suppresses_accelerator_after_callbacks() {
 }
 
 #[test]
+fn public_shortcut_claim_requires_committed_default_not_candidate_or_prevention() {
+    let control = KeyModifiers::NONE.with_control();
+    for (mode, expected_claim, expected_default, prevented) in [
+        (Mode::Unique, true, UiDefaultDisposition::Queued, false),
+        (
+            Mode::PreventDefault,
+            false,
+            UiDefaultDisposition::Prevented,
+            true,
+        ),
+        (Mode::Ambiguous, false, UiDefaultDisposition::None, false),
+        (Mode::Disabled, false, UiDefaultDisposition::None, false),
+    ] {
+        let mut runtime = AppRuntime::<App>::mount(State::new(mode));
+        settle(&mut runtime);
+        focus(&mut runtime, "target.a");
+        let receipt = submit_shortcut(
+            &mut runtime,
+            key(
+                "s",
+                "KeyS",
+                control,
+                false,
+                KeyboardCompositionState::Inactive,
+            ),
+        );
+        let batch = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("one canonical keyboard boundary settles"));
+        assert_eq!(batch.processed_through(), Some(receipt));
+        let settlements = batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settled) => Some(settled),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settlements.len(), 1);
+        assert_eq!(settlements[0].sequence(), receipt);
+        assert_eq!(settlements[0].scope(), batch.final_ownership().scope());
+        let UiInputFinality::Committed(facts) = settlements[0].finality() else {
+            unreachable!("valid shortcut routing commits");
+        };
+        assert_eq!(
+            facts.conflict(),
+            if expected_claim {
+                UiInputConflict::ExclusiveUi
+            } else {
+                UiInputConflict::ObservedNonexclusive
+            }
+        );
+        assert_eq!(
+            facts.reasons(),
+            if expected_claim {
+                &[UiInputClaimReason::ApplicationShortcut][..]
+            } else {
+                &[][..]
+            }
+        );
+        assert_eq!(facts.default_disposition(), expected_default);
+        assert_eq!(facts.default_prevented(), prevented);
+        assert_eq!(runtime.state().fired, [] as [&str; 0]);
+        settle(&mut runtime);
+        assert_eq!(
+            runtime.state().fired.as_slice(),
+            if expected_claim {
+                &["inner"][..]
+            } else {
+                &[][..]
+            }
+        );
+    }
+}
+
+#[test]
 fn accelerator_emits_existing_application_command_non_reentrantly() {
     let control = KeyModifiers::NONE.with_control();
     let mut runtime = AppRuntime::<App>::mount(State::new(Mode::Unique));
@@ -625,7 +710,11 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
             KeyboardCompositionState::Inactive,
         ),
     );
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(
         runtime.state().fired,
         [] as [&str; 0],
@@ -648,7 +737,11 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
         .unwrap_or_else(|| unreachable!("shortcut application command is accepted"));
     assert_eq!(accepted.causal_parent(), Some(matched.sequence()));
 
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(
         runtime.state().fired,
         [] as [&str; 0],
@@ -661,7 +754,11 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
         }
     )));
 
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(runtime.state().fired, ["inner"]);
 }
 
@@ -801,7 +898,11 @@ fn shortcut_waiting_queue_admission_rejects_before_callbacks_or_partial_output()
             .submit_action(Action::Filler)
             .unwrap_or_else(|_| unreachable!("filler action is admitted"));
     }
-    queue_limited.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = queue_limited
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(queue_limited.state().callback_calls.get(), 0);
     assert_eq!(queue_limited.state().fired, [] as [&str; 0]);
     assert_eq!(queue_limited.status(), RuntimeStatus::Running);
@@ -838,7 +939,11 @@ fn shortcut_trace_exhaustion_rejects_before_keyboard_callback() {
             KeyboardCompositionState::Inactive,
         ),
     );
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     assert_eq!(runtime.state().callback_calls.get(), 0);
     assert_eq!(runtime.state().fired, [] as [&str; 0]);
@@ -984,7 +1089,11 @@ fn accelerator_precedes_type_ahead_when_editor_does_not_own_key() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("type-ahead focus request is admitted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&alpha));
 
     runtime
@@ -1110,7 +1219,11 @@ fn editor_owned_m10_default_precedes_accelerator_matching() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("editable focus request is admitted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     runtime
         .submit_keyboard(KeyboardEvent::new(

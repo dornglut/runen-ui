@@ -79,7 +79,9 @@ fn popup_options_keep_standard_semantics_and_activation_without_stealing_real_fo
     let mut runtime = AppRuntime::<App>::mount(State { committed: 1 });
     assert!(runtime.pump(PumpBudget::new(
         usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).is_quiescent());
+    )).unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+            .report()
+            .is_quiescent());
     let lookup = |s: &str| {
         ElementId::new(s).unwrap_or_else(|_| unreachable!("valid authored ID"))
     };
@@ -98,7 +100,9 @@ fn popup_options_keep_standard_semantics_and_activation_without_stealing_real_fo
         .unwrap_or_else(|_| unreachable!("owner focus"));
     assert!(runtime.pump(PumpBudget::new(
         usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).is_quiescent());
+    )).unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+            .report()
+            .is_quiescent());
     assert_eq!(runtime.focus().focused_node(), Some(&owner));
 
     let publication = runtime.publish_surface(&SurfaceBuildContext::tight(

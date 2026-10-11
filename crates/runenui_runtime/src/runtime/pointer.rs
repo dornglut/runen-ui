@@ -576,23 +576,20 @@ impl PointerRegistry {
         count
     }
 
-    #[cfg(test)]
-    pub(in crate::runtime) fn ordered_pointer_ids(&self) -> Vec<PointerId> {
-        let mut registered = self
-            .streams
-            .iter()
-            .map(|(pointer_id, stream)| (*pointer_id, stream.registration_sequence()))
-            .collect::<Vec<_>>();
-        registered.sort_unstable_by_key(|(_, sequence)| *sequence);
-        registered
-            .into_iter()
-            .map(|(pointer_id, _)| pointer_id)
-            .collect()
-    }
-
-    #[cfg(test)]
     pub(in crate::runtime) fn len(&self) -> usize {
         self.streams.len()
+    }
+
+    pub(in crate::runtime) fn ordered_pointer_ids_into(&self, ids: &mut Vec<PointerId>) {
+        debug_assert!(ids.capacity() >= self.streams.len());
+        ids.clear();
+        ids.extend(self.streams.keys().copied());
+        ids.sort_unstable_by_key(|id| {
+            self.streams
+                .get(id)
+                .unwrap_or_else(|| unreachable!("listed stream is live"))
+                .registration_sequence()
+        });
     }
 }
 
@@ -735,10 +732,9 @@ mod tests {
                 )
                 .unwrap_or_else(|_| unreachable!("stream fits"));
         }
-        assert_eq!(
-            registry.ordered_pointer_ids(),
-            [pointer(9), pointer(2), pointer(5)]
-        );
+        let mut ordered = Vec::with_capacity(registry.len());
+        registry.ordered_pointer_ids_into(&mut ordered);
+        assert_eq!(ordered, [pointer(9), pointer(2), pointer(5)]);
     }
 
     #[test]

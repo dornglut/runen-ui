@@ -2,13 +2,13 @@
 
 > **Category:** ADR
 >
-> **Status:** Accepted target architecture upon owner-reviewed squash merge; **not implemented**
+> **Status:** Accepted target architecture
 >
 > **Milestone:** M13
 >
 > **Decision authority:** RunenUI input arbitration investigation #425; durable acceptance #427
 >
-> **Implementation:** separate blocked successor #428
+> **Implementation maturity:** [Current status](../status.md); permanent proof acceptance is owned by the [M13 matrix](../conformance/m13-conformance-matrix.md).
 >
 > **Inherits:** [ADR 0005](0005-canonical-event-routing-and-commands.md), [ADR 0006](0006-effects-scheduling-and-trace-v2.md), [ADR 0018](0018-editable-text-and-interaction-services.md)
 

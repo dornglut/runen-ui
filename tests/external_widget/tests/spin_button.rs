@@ -175,7 +175,9 @@ fn runtime_with_bounds(text: &str, minimum: Option<f64>, maximum: Option<f64>) -
 }
 
 fn settle(runtime: &mut AppRuntime<NumericApp>) {
-    runtime.pump(PumpBudget::new(256, 256, 256, 256));
+    let _ = runtime
+        .pump(PumpBudget::new(256, 256, 256, 256))
+        .unwrap_or_else(|_| unreachable!("bounded numeric app pump observation"));
 }
 
 fn publish(runtime: &mut AppRuntime<NumericApp>) -> runenui_runtime::SurfacePublication {

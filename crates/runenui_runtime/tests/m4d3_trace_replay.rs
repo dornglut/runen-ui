@@ -29,12 +29,16 @@ impl UiApp for ReplayApp {
 }
 
 fn settle(runtime: &mut AppRuntime<ReplayApp>) {
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(
         report.is_quiescent(),
         "replay fixture did not settle: {report:?}"

@@ -168,7 +168,14 @@ fn harness() -> Harness {
         .unwrap_or_else(|| unreachable!("the right node is published"));
     let left_point = center(left_node.bounds());
     let right_point = center(right_node.bounds());
-    assert!(runtime.pump(full_budget()).is_quiescent());
+    assert!(
+        runtime
+            .pump(full_budget())
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
     Harness {
         runtime,
         context: publication.input_context().clone(),
@@ -214,7 +221,11 @@ const fn full_budget() -> PumpBudget {
 }
 
 fn pump(runtime: &mut AppRuntime<App>) -> PumpReport {
-    runtime.pump(full_budget())
+    runtime
+        .pump(full_budget())
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned()
 }
 
 fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) {
@@ -340,7 +351,10 @@ fn publication_does_not_rebind_an_older_accepted_pointer_event() {
 
     let partial = harness
         .runtime
-        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(partial.processed_envelopes(), 1);
     let older_work = partial.remaining_queued_envelopes();
     assert!(older_work >= 1);

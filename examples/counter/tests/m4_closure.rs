@@ -27,12 +27,16 @@ fn authored_id(value: &str) -> ElementId {
 }
 
 fn settle(runtime: &mut AppRuntime<CounterApp>) {
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(report.is_quiescent(), "counter did not settle: {report:?}");
 }
 

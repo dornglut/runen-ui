@@ -52,7 +52,9 @@ impl UiApp for App {
 fn settle(app: &mut AppRuntime<App>) {
     assert!(app.pump(PumpBudget::new(
         usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).is_quiescent());
+    )).unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+            .report()
+            .is_quiescent());
 }
 fn id(app: &AppRuntime<App>, id: &str) -> MountedNodeId {
     let id = ElementId::new(id).unwrap_or_else(|_| unreachable!("valid test ID"));

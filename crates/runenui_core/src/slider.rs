@@ -447,6 +447,7 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
             let value = keyboard_value(&state.range, state.orientation, key);
             if value.is_some() {
                 self.emit_value(state, value, context);
+                context.claim_host_input();
                 context.prevent_default();
                 context.stop_propagation();
             }

@@ -49,16 +49,28 @@ impl UiApp for OrderedWorkApp {
 #[allow(clippy::assert_is_empty)]
 fn initial_and_update_effects_append_in_transaction_order() {
     let mut runtime = AppRuntime::<OrderedWorkApp>::mount(Vec::new());
-    let first = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let first = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(runtime.state().is_empty());
     assert_eq!(first.remaining_queued_envelopes(), 1);
     assert_eq!(first.outcome(), PumpOutcome::BudgetExhausted);
 
-    let second = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let second = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(runtime.state(), &[Action::Initial]);
     assert_eq!(second.remaining_queued_envelopes(), 1);
 
-    let third = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let third = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(runtime.state(), &[Action::Initial, Action::FollowUp]);
     assert!(third.is_quiescent());
 }
@@ -91,14 +103,22 @@ fn post_mutation_transaction_overflow_poisoning_is_explicit() {
     let limits = RuntimeLimits::default().with_transaction_outputs(0);
     let config = RuntimeConfig::default().with_limits(limits);
     let mut runtime = AppRuntime::<OverflowApp>::mount_with_config(0, config);
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    let report = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let report = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     assert_eq!(*runtime.state(), 1);
     assert_eq!(
@@ -152,23 +172,38 @@ fn mounted_declaration_runs_after_mount_and_explicit_update_invalidation() {
     let calls = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<MountedSubscriptionApp>::mount(Rc::clone(&calls));
     assert_eq!(calls.get(), 0);
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(calls.get(), 1);
 
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    let update = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let update = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(calls.get(), 1);
     assert_eq!(update.remaining_queued_envelopes(), 1);
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(calls.get(), 2);
     assert!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
             .is_quiescent()
     );
 }
@@ -268,7 +303,11 @@ fn initial_transaction_assigns_every_group_atomically_in_canonical_order() {
     assert_eq!(accepted_sequences, [4, 5, 7, 8]);
 
     for expected_sequence in 1..=3 {
-        runtime.pump(PumpBudget::new(1, 0, 0, 0));
+        let _ = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned();
         let sequence = runtime
             .trace()
             .records()
@@ -289,7 +328,11 @@ fn initial_transaction_assigns_every_group_atomically_in_canonical_order() {
     assert_eq!(&*declarations.borrow(), &[1, 2]);
     assert!(runtime.state().1.is_empty());
 
-    runtime.pump(PumpBudget::new(3, 0, 0, 0));
+    let _ = runtime
+        .pump(PumpBudget::new(3, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     let application_subscription_start = runtime
         .trace()
         .records()
@@ -305,7 +348,11 @@ fn initial_transaction_assigns_every_group_atomically_in_canonical_order() {
         .and_then(runenui_runtime::TraceRecord::work_sequence)
         .map(runenui_runtime::WorkSequence::get);
     assert_eq!(application_subscription_start, Some(6));
-    runtime.pump(PumpBudget::new(2, 0, 0, 0));
+    let _ = runtime
+        .pump(PumpBudget::new(2, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(
         runtime.state().1,
         [
@@ -358,12 +405,16 @@ fn assert_initial_plan_rejected(config: RuntimeConfig, reason: RuntimeTerminalRe
     let mut runtime = AppRuntime::<AtomicFailureApp>::mount_with_config(0, config);
     assert_eq!(runtime.status(), RuntimeStatus::Terminal(reason));
     assert_eq!(runtime.__live_work_record_count_for_test(), 0);
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(report.remaining_queued_envelopes(), 0);
     assert_eq!(*runtime.state(), 0);
 }

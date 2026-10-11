@@ -49,7 +49,9 @@ impl UiApp for App {
 fn settle(runtime: &mut AppRuntime<App>) {
     assert!(runtime.pump(PumpBudget::new(
         usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).is_quiescent());
+    )).unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+            .report()
+            .is_quiescent());
 }
 fn id(runtime: &AppRuntime<App>, text: &str) -> MountedNodeId {
     let authored = ElementId::new(text).unwrap_or_else(|_| unreachable!());

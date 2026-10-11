@@ -174,6 +174,9 @@ impl<Action> Widget<Action> for ToolbarWidget {
             None
         };
         if let Some(command) = delegated {
+            if event.as_keyboard().is_some() {
+                context.claim_host_input();
+            }
             context.prevent_default();
             context.stop_propagation();
             context.emit_command(command);

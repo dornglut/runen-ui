@@ -150,7 +150,9 @@ fn runtime() -> AppRuntime<App> {
     runtime
 }
 fn settle(runtime: &mut AppRuntime<App>) {
-    assert!(runtime.pump(PumpBudget::new(256, 256, 256, 256)).is_quiescent());
+    assert!(runtime.pump(PumpBudget::new(256, 256, 256, 256)).unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+            .report()
+            .is_quiescent());
 }
 fn id(runtime: &AppRuntime<App>, id: &str) -> MountedNodeId {
     let authored = ElementId::new(id).unwrap_or_else(|_| unreachable!());

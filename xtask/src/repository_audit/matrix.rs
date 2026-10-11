@@ -1103,7 +1103,8 @@ mod tests {
     }
 
     #[test]
-    fn m13_host_input_arbitration_is_registered_and_proof_blocked() -> Result<(), String> {
+    fn m13_host_input_arbitration_accepts_framework_and_keeps_external_proof_blocked()
+    -> Result<(), String> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .ok_or_else(|| "xtask has no repository root".to_owned())?;
@@ -1119,14 +1120,23 @@ mod tests {
             &mut findings,
         );
         assert_eq!(analysis.metrics.total_rows, 10);
-        assert_eq!(analysis.metrics.blocked, 10);
-        assert_eq!(analysis.metrics.owner_accepted, 0);
+        assert_eq!(analysis.metrics.blocked, 3);
+        assert_eq!(analysis.metrics.owner_accepted, 7);
         assert_eq!(
             seen,
             (1..=10)
                 .map(|index| format!("M13ARB-{index:02}"))
                 .collect::<BTreeSet<_>>()
         );
+        let (rows, parse_schema_errors) = parse_rows(&matrix, M13_SPEC.path, &mut findings);
+        assert_eq!(parse_schema_errors, 0);
+        for row in &rows {
+            let expected = match row.cells[0].as_str() {
+                "M13ARB-08" | "M13ARB-09" | "M13ARB-10" => "blocked",
+                _ => "owner-accepted",
+            };
+            assert_eq!(row.cells[6], expected, "{}", row.cells[0]);
+        }
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }

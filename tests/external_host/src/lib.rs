@@ -11,19 +11,27 @@ mod tests {
     use std::{
         cell::Cell,
         io,
-        sync::Arc,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
         task::{Context, Wake, Waker},
         thread,
     };
 
     use runenui_core::{
-        Brush, Color, Element, ImageDescriptor, ImageIntrinsicSize, ImageMapping,
-        ImagePaintDescriptor, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol,
-        PaintContribution, PaintContributionContext, PaintContributionItem, ResourceKind,
-        ResourceRef, SceneShape, SemanticAction, SemanticActionRequest, SemanticContribution,
+        Brush, Color, CommandOrigin, DragDropEvent, DragDropPayloadKind, DragDropPayloadMetadata,
+        DragDropPhase, Element, ElementId, EventContext, EventPhase, HitContribution,
+        HitContributionContext, ImageDescriptor, ImageIntrinsicSize, ImageMapping,
+        ImagePaintDescriptor, InputDeviceId, KeyLocation, KeyModifiers, KeyboardCompositionState,
+        KeyboardEvent, KeyboardPhase, LogicalKey, LogicalLength, LogicalPoint, LogicalRect,
+        LogicalSize, NoHostProtocol, PaintContribution, PaintContributionContext,
+        PaintContributionItem, PhysicalKey, PointerButton, PointerButtons, PointerDeviceKind,
+        PointerEvent, PointerId, PointerPhase, ResourceKind, ResourceRef, SceneShape,
+        SemanticAction, SemanticActionRequest, SemanticCommand, SemanticContribution,
         SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment,
-        UiApp, View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
-        WidgetMeasure,
+        UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
+        WidgetActivationOutput, WidgetEventOutput, WidgetMeasure, column,
     };
     use runenui_render_wgpu::{
         BackendSelection, ImagePayload, OffscreenPublicationReadback, OffscreenReadback,
@@ -31,7 +39,11 @@ mod tests {
         RendererOptions, ResourcePayload, ResourceProvider, ResourceProviderError,
         ResourceProviderErrorKind, ResourceRequest, ResourceResolveError,
     };
-    use runenui_runtime::{AppRuntime, PumpBudget, SurfaceBuildContext, SurfacePublication};
+    use runenui_runtime::{
+        AppRuntime, InputArbitrationRecord, InputScopeRetirementReason, PumpBudget, RuntimeConfig,
+        SurfaceBuildContext, SurfacePublication, UiInputClaimReason, UiInputConflict,
+        UiInputFamily, UiInputFinality, UiInputRoute, UiInputSettlement,
+    };
 
     const SURFACE_EXTENT: u16 = 8;
     const IMAGE_EXTENT: f32 = 4.0;
@@ -83,6 +95,14 @@ mod tests {
             WidgetMeasure::measured(
                 LogicalLength::from(SURFACE_EXTENT),
                 LogicalLength::from(SURFACE_EXTENT),
+            )
+        }
+
+        fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
+            let size = context.local_size();
+            HitContribution::single_rect(
+                LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+                    .unwrap_or_else(|_| unreachable!("finite published widget size")),
             )
         }
 
@@ -155,6 +175,71 @@ mod tests {
                 HostAction::SetActive(active) => state.active = active,
                 HostAction::Toggle => state.active = !state.active,
             }
+        }
+    }
+
+    /// Claims only the external drag/drop callback, not Pointer Move or
+    /// derived pointer-boundary/focus notifications.
+    #[derive(Debug)]
+    struct ExternalHostDragClaimProbe {
+        reached: Arc<AtomicBool>,
+    }
+
+    impl Widget<()> for ExternalHostDragClaimProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, ()>,
+        ) -> WidgetEventOutput {
+            if matches!(event, UiEvent::DragDrop(offer) if offer.phase() == DragDropPhase::Hover)
+                && context.phase() == EventPhase::Target
+            {
+                self.reached.store(true, Ordering::Relaxed);
+                context.claim_host_input();
+            }
+            WidgetEventOutput::none()
+        }
+
+        fn measure(&self, (): &Self::State, _: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+            WidgetMeasure::measured(
+                LogicalLength::from(SURFACE_EXTENT),
+                LogicalLength::from(SURFACE_EXTENT),
+            )
+        }
+
+        fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
+            let size = context.local_size();
+            HitContribution::single_rect(
+                LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+                    .unwrap_or_else(|_| unreachable!("finite authored drag target")),
+            )
+        }
+    }
+
+    struct ExternalHostDragClaimApp;
+
+    impl UiApp for ExternalHostDragClaimApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            Element::new(ExternalHostDragClaimProbe {
+                reached: Arc::clone(reached),
+            })
+            .id("external-drag-claim")
+            .key("external-drag-claim")
+        }
+
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         }
     }
 
@@ -247,6 +332,1938 @@ mod tests {
         }
     }
 
+    // Downstream public-only authoring proof: no runtime-internal types,
+    // event outcome inspectors, extra input FIFO, or gameplay manager.
+    #[derive(Debug)]
+    struct ExternalHostClaimProbe {
+        reached: Arc<AtomicBool>,
+    }
+
+    impl Widget<()> for ExternalHostClaimProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, ()>,
+        ) -> WidgetEventOutput {
+            if matches!(event, UiEvent::Keyboard(_)) && context.phase() == EventPhase::Target {
+                context.claim_host_input();
+                assert!(context.host_input_is_claimed());
+                self.reached.store(true, Ordering::Relaxed);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    struct ExternalHostClaimApp;
+
+    impl UiApp for ExternalHostClaimApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            Element::new(ExternalHostClaimProbe {
+                reached: Arc::clone(reached),
+            })
+            .id("external-claim-probe")
+            .key("external-claim-probe")
+            .focusable(true)
+        }
+
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        }
+    }
+
+    // An independently typed UiApp exercises the same ordinary public input
+    // contract, without erasing State/Action/HostProtocol into a host facade.
+    // This widget deliberately manipulates ordinary event routing without
+    // claiming the native occurrence. Neither control is host-input ownership.
+    #[derive(Debug)]
+    struct ExternalHostNonclaimProbe {
+        reached: Arc<AtomicBool>,
+    }
+
+    impl Widget<()> for ExternalHostNonclaimProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, ()>,
+        ) -> WidgetEventOutput {
+            if matches!(event, UiEvent::Keyboard(_)) && context.phase() == EventPhase::Target {
+                context.prevent_default();
+                context.stop_propagation();
+                assert!(!context.host_input_is_claimed());
+                self.reached.store(true, Ordering::Relaxed);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    struct ExternalHostNonclaimApp;
+
+    impl UiApp for ExternalHostNonclaimApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            Element::new(ExternalHostNonclaimProbe {
+                reached: Arc::clone(reached),
+            })
+            .id("external-claim-probe")
+            .key("external-claim-probe")
+            .focusable(true)
+        }
+
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        }
+    }
+
+    // Two independently focusable, downstream-authored widgets permit a real
+    // public FIFO ownership transition without private mounted-state mutation.
+    struct ExternalHostTwoFocusApp;
+
+    impl UiApp for ExternalHostTwoFocusApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            column([
+                Element::new(ExternalHostNonclaimProbe {
+                    reached: Arc::clone(reached),
+                })
+                .id("first-host-focus")
+                .key("first-host-focus")
+                .focusable(true)
+                .into_element(),
+                Element::new(ExternalHostNonclaimProbe {
+                    reached: Arc::clone(reached),
+                })
+                .id("second-host-focus")
+                .key("second-host-focus")
+                .focusable(true)
+                .into_element(),
+            ])
+            .key("two-focus-host")
+        }
+
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        }
+    }
+
+    // A real external callback queues a causal descendant behind its own
+    // native receipt; the host does not fabricate or reorder that command.
+    #[derive(Debug)]
+    struct ExternalHostDerivedFocusProbe {
+        reached: Arc<AtomicBool>,
+    }
+
+    impl Widget<()> for ExternalHostDerivedFocusProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, ()>,
+        ) -> WidgetEventOutput {
+            if matches!(event, UiEvent::Keyboard(_)) && context.phase() == EventPhase::Target {
+                context.emit_command(SemanticCommand::FocusNext);
+                self.reached.store(true, Ordering::Relaxed);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    struct ExternalHostDerivedFocusApp;
+
+    impl UiApp for ExternalHostDerivedFocusApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            column([
+                Element::new(ExternalHostDerivedFocusProbe {
+                    reached: Arc::clone(reached),
+                })
+                .id("first-host-focus")
+                .key("first-host-focus")
+                .focusable(true)
+                .into_element(),
+                Element::new(ExternalHostNonclaimProbe {
+                    reached: Arc::clone(reached),
+                })
+                .id("second-host-focus")
+                .key("second-host-focus")
+                .focusable(true)
+                .into_element(),
+            ])
+            .key("derived-focus-host")
+        }
+
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        }
+    }
+
+    #[derive(Debug)]
+    struct ReplaceHostState {
+        replaced: bool,
+        reached: Arc<AtomicBool>,
+    }
+
+    #[derive(Debug)]
+    enum ReplaceHostAction {
+        Replace,
+    }
+
+    #[derive(Debug)]
+    struct ReplaceHostProbe {
+        reached: Arc<AtomicBool>,
+    }
+
+    impl Widget<ReplaceHostAction> for ReplaceHostProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            _: &mut EventContext<'_, ReplaceHostAction>,
+        ) -> WidgetEventOutput {
+            if matches!(event, UiEvent::Keyboard(_)) {
+                self.reached.store(true, Ordering::Relaxed);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    struct ExternalHostReplaceApp;
+
+    impl UiApp for ExternalHostReplaceApp {
+        type State = ReplaceHostState;
+        type Action = ReplaceHostAction;
+        type HostProtocol = NoHostProtocol;
+
+        fn root(state: &Self::State) -> impl View<Self::Action> {
+            let identity = if state.replaced {
+                "host-replacement"
+            } else {
+                "host-original"
+            };
+            Element::new(ReplaceHostProbe {
+                reached: Arc::clone(&state.reached),
+            })
+            .id(identity)
+            .key(identity)
+            .focusable(true)
+        }
+
+        fn update(
+            state: &mut Self::State,
+            action: Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+            match action {
+                ReplaceHostAction::Replace => state.replaced = true,
+            }
+        }
+    }
+
+    struct ExternalHostSiblingClaimApp;
+
+    impl UiApp for ExternalHostSiblingClaimApp {
+        type State = Arc<AtomicBool>;
+        type Action = ();
+        type HostProtocol = NoHostProtocol;
+
+        fn root(reached: &Self::State) -> impl View<Self::Action> {
+            Element::new(ExternalHostClaimProbe {
+                reached: Arc::clone(reached),
+            })
+            .id("external-claim-probe")
+            .key("external-claim-probe")
+            .focusable(true)
+        }
+
+        fn update(
+            _: &mut Self::State,
+            (): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        }
+    }
+
+    fn assert_public_shutdown_retires_claimed_scope(mut runtime: AppRuntime<ExternalHostClaimApp>) {
+        let closed = runtime
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("observed final shutdown"));
+        assert_eq!(
+            closed.final_ownership().status(),
+            runenui_runtime::RuntimeStatus::Closed
+        );
+        assert_eq!(
+            closed
+                .ordered_records()
+                .iter()
+                .filter(|record| {
+                    matches!(record, InputArbitrationRecord::ScopeRetired(retirement)
+                if retirement.reason() == InputScopeRetirementReason::Shutdown)
+                })
+                .count(),
+            1
+        );
+        let again = runtime
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("idempotent final observation"));
+        assert!(
+            !again
+                .ordered_records()
+                .iter()
+                .any(|record| { matches!(record, InputArbitrationRecord::ScopeRetired(_)) })
+        );
+        // A host that retains native receipt associations must settle the
+        // scope before consuming the runtime; no second implicit retirement
+        // is synthesized by into_state.
+        let returned = runtime.into_state();
+        assert!(returned.load(Ordering::Relaxed));
+    }
+
+    fn focused_public_claim_host<App>(reached: Arc<AtomicBool>) -> AppRuntime<App>
+    where
+        App: UiApp<State = Arc<AtomicBool>, Action = (), HostProtocol = NoHostProtocol>,
+    {
+        focused_public_claim_host_with_config::<App>(reached, RuntimeConfig::default())
+    }
+
+    fn focused_public_claim_host_with_config<App>(
+        reached: Arc<AtomicBool>,
+        config: RuntimeConfig,
+    ) -> AppRuntime<App>
+    where
+        App: UiApp<State = Arc<AtomicBool>, Action = (), HostProtocol = NoHostProtocol>,
+    {
+        let mut runtime = AppRuntime::<App>::mount_with_config(reached, config);
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("fixture mount pump"));
+        let authored = ElementId::new("external-claim-probe")
+            .unwrap_or_else(|_| unreachable!("static authored id"));
+        let target = runtime
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored))
+            .unwrap_or_else(|| unreachable!("mounted focusable probe"))
+            .id()
+            .clone();
+        runtime
+            .submit_command(
+                target,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("public focus request accepted"));
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("focus commits in canonical pump"));
+        runtime
+    }
+
+    #[test]
+    fn downstream_widget_can_claim_keyboard_input_using_only_public_framework_api() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = focused_public_claim_host::<ExternalHostClaimApp>(Arc::clone(&reached));
+        let receipt = runtime
+            .submit_keyboard(KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyW")),
+                LogicalKey::Character(String::from("w")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            ))
+            .unwrap_or_else(|_| unreachable!("native keyboard input accepted"));
+
+        // The queue receipt is Pending until this exact FIFO boundary commits.
+        let pending = runtime
+            .pump(PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("bounded empty checkpoint"));
+        assert_eq!(pending.processed_through(), None);
+        assert!(
+            !pending
+                .ordered_records()
+                .iter()
+                .any(|record| { matches!(record, InputArbitrationRecord::InputSettled(_)) })
+        );
+        assert!(!reached.load(Ordering::Relaxed));
+
+        let committed = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("host input settlement returned"));
+        let settlement = committed
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            settlement.len(),
+            1,
+            "exactly one reached host input settles"
+        );
+        let settled = settlement[0];
+        assert_eq!(settled.sequence(), receipt.sequence());
+        assert_eq!(settled.scope(), committed.final_ownership().scope());
+        assert_eq!(settled.family(), UiInputFamily::Keyboard);
+        assert!(matches!(
+            settled.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::ExplicitWidgetClaim)
+        ));
+        assert!(reached.load(Ordering::Relaxed));
+
+        assert_public_shutdown_retires_claimed_scope(runtime);
+    }
+
+    fn committed_queue_pressure_claim(settled: &UiInputSettlement) -> bool {
+        match settled.finality() {
+            UiInputFinality::Committed(facts) => {
+                assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
+                assert!(
+                    facts
+                        .reasons()
+                        .contains(&UiInputClaimReason::ExplicitWidgetClaim)
+                );
+                true
+            }
+            UiInputFinality::ProcessingRejected(
+                runenui_runtime::UiInputProcessingRejection::InsufficientTransactionCapacity,
+            ) => false,
+            other => unreachable!("unexpected queue-pressure finality: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn public_queue_full_keyboard_rejection_has_no_phantom_settlement() {
+        // A tiny queue can prevent the fixture's own focus transaction.
+        // Use the actual configured queue bound, with optional trace disabled,
+        // and reach saturation by observed public admission results.
+        let config =
+            RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0));
+        let queue_capacity = config.queue_capacity();
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = focused_public_claim_host_with_config::<ExternalHostClaimApp>(
+            Arc::clone(&reached),
+            config,
+        );
+        assert!(runtime.focus().focused_node().is_some());
+        let scope = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("focused public scope"))
+            .scope()
+            .clone();
+
+        // Admission does not imply settlement; do not guess how many slots a
+        // mounted host has after its canonical focus/readiness commitments.
+        let mut admitted = Vec::new();
+        let mut rejection = None;
+        for _ in 0..=queue_capacity {
+            match runtime.submit_keyboard(native_w_input()) {
+                Ok(receipt) => admitted.push(receipt.sequence()),
+                Err(error) => {
+                    rejection = Some(error.kind());
+                    break;
+                }
+            }
+        }
+        assert_ne!(admitted.len(), 0);
+        assert_eq!(
+            rejection,
+            Some(runenui_runtime::SubmitKeyboardErrorKind::Full)
+        );
+        assert!(!reached.load(Ordering::Relaxed));
+
+        let pending = runtime
+            .pump(PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("zero-budget checkpoint remains observable"));
+        assert_eq!(pending.processed_through(), None);
+        assert!(
+            !pending
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
+        assert!(!reached.load(Ordering::Relaxed));
+
+        let completed = runtime
+            .pump(PumpBudget::new(queue_capacity, 64, 64, 64))
+            .unwrap_or_else(|_| unreachable!("all admitted receipts must settle"));
+        let settlements: Vec<_> = completed
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settled) => Some(settled),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(settlements.len(), admitted.len());
+        let mut committed = 0;
+        for (settled, sequence) in settlements.iter().zip(admitted) {
+            assert_eq!(settled.sequence(), sequence);
+            assert_eq!(settled.scope(), &scope);
+            assert_eq!(settled.family(), UiInputFamily::Keyboard);
+            if committed_queue_pressure_claim(settled) {
+                committed += 1;
+            }
+        }
+        // A full waiting FIFO can deny routed transaction preflight even for
+        // a receipt already admitted to the queue. Once sufficient space has
+        // drained, later reached inputs can commit their actual UI claim.
+        assert_ne!(committed, 0);
+        assert_ne!(committed, settlements.len());
+        assert!(reached.load(Ordering::Relaxed));
+
+        let replay = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("ordinary later host pump"));
+        assert!(
+            !replay
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
+    }
+
+    #[test]
+    fn public_rejected_keyboard_ingress_never_fabricates_settlement_or_game_permission() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = AppRuntime::<ExternalHostNonclaimApp>::mount(Arc::clone(&reached));
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("public mount settles before native input"));
+        assert!(runtime.focus().focused_node().is_none());
+        let key = || {
+            KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyW")),
+                LogicalKey::Character(String::from("w")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            )
+        };
+        let refused = runtime.submit_keyboard(key());
+        assert!(matches!(
+            refused,
+            Err(error) if error.kind() == runenui_runtime::SubmitKeyboardErrorKind::NoFocusedTarget
+        ));
+        let unadmitted = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("rejected ingress did not mutate FIFO"));
+        assert_eq!(unadmitted.processed_through(), None);
+        assert_eq!(unadmitted.ordered_records(), []);
+        assert_eq!(
+            unadmitted.final_ownership().status(),
+            runenui_runtime::RuntimeStatus::Running
+        );
+
+        let id = ElementId::new("external-claim-probe")
+            .unwrap_or_else(|_| unreachable!("public fixture id"));
+        let target = runtime
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&id))
+            .unwrap_or_else(|| unreachable!("public mounted target"))
+            .id()
+            .clone();
+        runtime
+            .submit_command(
+                target,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("focus change admitted after rejection"));
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("focus command committed"));
+
+        let accepted = runtime
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("later native input can be admitted"));
+        let completed = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("later native input has exact settlement"));
+        assert_eq!(completed.processed_through(), Some(accepted.sequence()));
+        let settled = completed
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settled.len(), 1);
+        assert_eq!(settled[0].sequence(), accepted.sequence());
+        assert_eq!(settled[0].scope(), completed.final_ownership().scope());
+        assert!(reached.load(Ordering::Relaxed));
+    }
+
+    fn native_w_input() -> KeyboardEvent {
+        KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("KeyW")),
+            LogicalKey::Character(String::from("w")),
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        )
+    }
+
+    fn focused_public_pair<App>(
+        reached: Arc<AtomicBool>,
+    ) -> (
+        AppRuntime<App>,
+        runenui_core::MountedNodeId,
+        runenui_core::MountedNodeId,
+    )
+    where
+        App: UiApp<State = Arc<AtomicBool>, Action = (), HostProtocol = NoHostProtocol>,
+    {
+        let mut runtime = AppRuntime::<App>::mount(reached);
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("mount completes canonical work"));
+        let mut lookup = |name| {
+            let authored = ElementId::new(name)
+                .unwrap_or_else(|_| unreachable!("static public focus identity"));
+            runtime
+                .index()
+                .nodes()
+                .iter()
+                .find(|node| node.authored_id() == Some(&authored))
+                .unwrap_or_else(|| unreachable!("two mounted focusable public widgets"))
+                .id()
+                .clone()
+        };
+        let first = lookup("first-host-focus");
+        let second = lookup("second-host-focus");
+        assert_ne!(first, second);
+        runtime
+            .submit_command(
+                first.clone(),
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("initial focus command accepted"));
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("initial focus command commits"));
+        (runtime, first, second)
+    }
+
+    #[test]
+    fn public_callback_derived_focus_command_is_not_closed_by_input_settlement() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let (mut runtime, first, second) =
+            focused_public_pair::<ExternalHostDerivedFocusApp>(Arc::clone(&reached));
+        let before = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("focused public owner"));
+        assert_eq!(before.keyboard().focused_node(), Some(&first));
+        let sequence = runtime
+            .submit_keyboard(native_w_input())
+            .unwrap_or_else(|_| unreachable!("public keyboard admitted"))
+            .sequence();
+
+        let input = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("native keyboard processed"));
+        assert_eq!(input.processed_through(), Some(sequence));
+        assert!(reached.load(Ordering::Relaxed));
+        assert!(input.report().remaining_queued_envelopes() > 0);
+        assert_eq!(
+            input.final_ownership().keyboard().focused_node(),
+            Some(&first)
+        );
+        assert!(input.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(settled)
+                if settled.sequence() == sequence
+                    && settled.ownership_revision() == input.final_ownership().revision()
+                    && matches!(settled.finality(), UiInputFinality::Committed(facts)
+                        if facts.conflict() == UiInputConflict::ObservedNonexclusive)
+        )));
+
+        let descendant = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("callback-emitted command processed later"));
+        assert!(
+            descendant
+                .processed_through()
+                .is_some_and(|next| next > sequence)
+        );
+        assert_eq!(
+            descendant.final_ownership().keyboard().focused_node(),
+            Some(&second)
+        );
+        assert!(descendant.final_ownership().revision() > input.final_ownership().revision());
+        assert!(descendant.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::OwnershipChanged(transition)
+                if transition.before_revision() == input.final_ownership().revision()
+                    && transition.after().revision() == descendant.final_ownership().revision()
+        )));
+        assert!(
+            !descendant
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
+    }
+
+    #[test]
+    fn public_input_settlement_precedes_later_focus_command_across_bounded_pumps() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let (mut runtime, first, second) =
+            focused_public_pair::<ExternalHostTwoFocusApp>(Arc::clone(&reached));
+        let before = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("initial public owner"));
+        assert_eq!(before.keyboard().focused_node(), Some(&first));
+
+        let native = runtime
+            .submit_keyboard(native_w_input())
+            .unwrap_or_else(|_| unreachable!("focused native occurrence admitted"))
+            .sequence();
+        let command = runtime
+            .submit_command(
+                second.clone(),
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("subsequent focus change queued"))
+            .sequence();
+        assert!(native < command);
+
+        let input = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("first bounded public pump"));
+        assert_eq!(input.processed_through(), Some(native));
+        assert_eq!(input.report().processed_envelopes(), 1);
+        assert!(input.report().remaining_queued_envelopes() >= 1);
+        assert_eq!(
+            input.final_ownership().keyboard().focused_node(),
+            Some(&first)
+        );
+        let settled = input
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settled.len(), 1);
+        assert_eq!(settled[0].sequence(), native);
+        assert_eq!(settled[0].scope(), before.scope());
+        assert_eq!(
+            settled[0].ownership_revision(),
+            input.final_ownership().revision()
+        );
+        assert!(matches!(
+            settled[0].finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ObservedNonexclusive
+        ));
+
+        let focus = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("second bounded public pump"));
+        assert_eq!(focus.processed_through(), Some(command));
+        assert_eq!(focus.report().processed_envelopes(), 1);
+        assert_eq!(
+            focus.final_ownership().keyboard().focused_node(),
+            Some(&second)
+        );
+        assert!(focus.final_ownership().revision() > input.final_ownership().revision());
+        assert!(focus.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::OwnershipChanged(transition)
+                if transition.before_revision() == input.final_ownership().revision()
+                    && transition.after().revision() == focus.final_ownership().revision()
+        )));
+        assert!(
+            !focus
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
+
+        let later = runtime
+            .submit_keyboard(native_w_input())
+            .unwrap_or_else(|_| unreachable!("new focus binds a later native occurrence"))
+            .sequence();
+        let after = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("third bounded public pump"));
+        assert_eq!(after.processed_through(), Some(later));
+        assert!(after.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(settlement)
+                if settlement.sequence() == later
+                    && settlement.scope() == before.scope()
+                    && matches!(settlement.finality(), UiInputFinality::Committed(facts)
+                        if matches!(facts.route(), runenui_runtime::UiInputRoute::Routed { target }
+                            if target == &second))
+        )));
+        assert!(reached.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn public_nonclaiming_routing_controls_never_certify_exclusive_ui() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime =
+            focused_public_claim_host::<ExternalHostNonclaimApp>(Arc::clone(&reached));
+        let prior_ownership = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("initial focused ownership is readable"));
+        let receipt = runtime
+            .submit_keyboard(KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyW")),
+                LogicalKey::Character(String::from("w")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            ))
+            .unwrap_or_else(|_| unreachable!("ordinary native key admitted"));
+
+        let batch = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("public keyboard settlement observed"));
+        assert_eq!(batch.processed_through(), Some(receipt.sequence()));
+        assert_eq!(
+            batch.final_ownership().revision(),
+            prior_ownership.revision(),
+            "nonclaiming keyboard routing must not invent an ownership transition"
+        );
+        assert!(
+            batch
+                .ordered_records()
+                .iter()
+                .all(|record| { !matches!(record, InputArbitrationRecord::OwnershipChanged(_)) })
+        );
+        let settlements = batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settled) => Some(settled),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settlements.len(), 1);
+        let settled = settlements[0];
+        assert_eq!(settled.sequence(), receipt.sequence());
+        assert_eq!(settled.scope(), batch.final_ownership().scope());
+        assert!(matches!(
+            settled.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ObservedNonexclusive
+                    && facts.reasons().is_empty()
+                    && facts.propagation_stopped()
+                    && facts.default_prevented()
+        ));
+        assert!(reached.load(Ordering::Relaxed));
+        let repeated = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("already settled input does not replay"));
+        assert!(
+            !repeated
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
+    }
+
+    #[test]
+    fn public_removed_target_settles_as_typed_rejection_without_retarget_or_claim() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = AppRuntime::<ExternalHostReplaceApp>::mount(ReplaceHostState {
+            replaced: false,
+            reached: Arc::clone(&reached),
+        });
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("mount work commits"));
+        let authored =
+            ElementId::new("host-original").unwrap_or_else(|_| unreachable!("fixture authored id"));
+        let original = runtime
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored))
+            .unwrap_or_else(|| unreachable!("original target mounted"))
+            .id()
+            .clone();
+        runtime
+            .submit_command(
+                original,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("original focus admitted"));
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("original focus committed"));
+
+        // Ingress captures the original mounted lifetime. A preceding action
+        // removes it before this native receipt can reach the FIFO head.
+        let replacement_action = runtime
+            .submit_action(ReplaceHostAction::Replace)
+            .unwrap_or_else(|_| unreachable!("replacement action admitted"));
+        let receipt = runtime
+            .submit_keyboard(native_w_input())
+            .unwrap_or_else(|_| unreachable!("original-focused keyboard admitted"))
+            .sequence();
+        assert!(replacement_action < receipt);
+
+        let replaced = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("replacement action processed first"));
+        assert_eq!(replaced.processed_through(), Some(replacement_action));
+        assert!(runtime.state().replaced);
+        assert!(!reached.load(Ordering::Relaxed));
+
+        let input = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("stale native receipt is processed"));
+        let settlements = input
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settled) => Some(settled),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settlements.len(), 1);
+        assert_eq!(settlements[0].sequence(), receipt);
+        assert_eq!(settlements[0].scope(), input.final_ownership().scope());
+        assert!(matches!(
+            settlements[0].finality(),
+            UiInputFinality::ProcessingRejected(
+                runenui_runtime::UiInputProcessingRejection::StaleTarget
+                    | runenui_runtime::UiInputProcessingRejection::MissingTarget
+            )
+        ));
+        assert!(
+            !reached.load(Ordering::Relaxed),
+            "removed native target must not be silently retargeted"
+        );
+        assert_eq!(
+            input.final_ownership().status(),
+            runenui_runtime::RuntimeStatus::Running
+        );
+    }
+
+    #[test]
+    fn public_logical_publication_changes_retained_context_without_native_input() {
+        let mut runtime = AppRuntime::<ExternalHostApp>::mount(HostState {
+            image: ResourceRef::new(ResourceKind::Image),
+            active: false,
+        });
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("mount settles before publication"));
+        let before = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("initial owner snapshot"));
+        assert_eq!(before.surfaces().len(), 1);
+        assert!(before.surfaces()[0].latest_retained_context().is_none());
+
+        let environment = StyleEnvironment::default();
+        let size = LogicalSize::try_new(64.0, 64.0)
+            .unwrap_or_else(|_| unreachable!("finite logical surface"));
+        let build = SurfaceBuildContext::tight(&environment, size);
+        let first = runtime
+            .publish_surface(&build)
+            .unwrap_or_else(|_| unreachable!("first logical publication accepted"));
+        let after_first = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("first publication is synchronously queryable"));
+        assert_eq!(after_first.revision().get(), before.revision().get() + 1);
+        assert_eq!(
+            after_first.surfaces()[0].latest_retained_context(),
+            Some(first.input_context())
+        );
+
+        let second = runtime
+            .publish_surface(&build)
+            .unwrap_or_else(|_| unreachable!("second logical publication accepted"));
+        let after_second = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("second publication is synchronously queryable"));
+        assert_ne!(first.input_context(), second.input_context());
+        assert_eq!(
+            after_second.revision().get(),
+            after_first.revision().get() + 1
+        );
+        assert_eq!(
+            after_second.surfaces()[0].latest_retained_context(),
+            Some(second.input_context())
+        );
+        assert_eq!(
+            runtime
+                .input_ownership()
+                .unwrap_or_else(|_| unreachable!("unchanged read is stable"))
+                .revision(),
+            after_second.revision()
+        );
+        // No native render/Present was attempted. These are strictly retained
+        // RunenUI snapshots; deciding what pixels were displayed is host-owned.
+    }
+
+    fn settled_public_pointer(
+        runtime: &mut AppRuntime<ExternalHostApp>,
+        event: PointerEvent,
+    ) -> UiInputSettlement {
+        let receipt = runtime
+            .submit_pointer(event)
+            .unwrap_or_else(|_| unreachable!("public pointer event admitted"))
+            .sequence();
+        let batch = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("public pointer event settled"));
+        let settled = batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(value) => Some(value),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settled.len(), 1);
+        assert_eq!(settled[0].sequence(), receipt);
+        assert_eq!(settled[0].scope(), batch.final_ownership().scope());
+        assert_eq!(settled[0].family(), UiInputFamily::Pointer);
+        settled[0].clone()
+    }
+
+    #[test]
+    fn public_mouse_press_and_release_remain_exclusive_through_cleanup() {
+        let mut runtime = AppRuntime::<ExternalHostApp>::mount(HostState {
+            image: ResourceRef::new(ResourceKind::Image),
+            active: false,
+        });
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("mount settled"));
+        let env = StyleEnvironment::default();
+        let size =
+            LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("finite surface"));
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(&env, size))
+            .unwrap_or_else(|_| unreachable!("published hit context"));
+        let rect = publication.frame().nodes()[0].bounds();
+        let point = LogicalPoint::new(rect.x() + 1.0, rect.y() + 1.0)
+            .unwrap_or_else(|_| unreachable!("finite hit point"));
+        let target = publication
+            .hit_test_scene()
+            .target_at(point)
+            .unwrap_or_else(|| unreachable!("authored target hit region"))
+            .clone();
+        let pointer = PointerId::new(41).unwrap_or_else(|| unreachable!("positive pointer id"));
+        let down = settled_public_pointer(
+            &mut runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                point,
+                publication.input_context().clone(),
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        );
+        assert!(matches!(
+            down.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::PointerPress)
+                    && matches!(facts.route(), UiInputRoute::Routed { target: routed }
+                        if routed == &target)
+                    && facts.default_disposition()
+                        == runenui_runtime::UiDefaultDisposition::Applied
+        ));
+        let pressed = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("pressed owner is queryable"));
+        assert!(pressed.pointers().iter().any(|stream| {
+            stream.pointer_id() == pointer && stream.pressed_owner() == Some(&target)
+        }));
+
+        let up = settled_public_pointer(
+            &mut runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                point,
+                publication.input_context().clone(),
+            )
+            .with_changed_button(PointerButton::Primary),
+        );
+        assert!(matches!(
+            up.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::PointerPress)
+                    && facts.reasons().contains(&UiInputClaimReason::PointerCapture)
+                    && matches!(facts.route(), UiInputRoute::Captured { target: captured }
+                        if captured == &target)
+        ));
+        let released = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("released owner is queryable"));
+        assert!(
+            released
+                .pointers()
+                .iter()
+                .all(|stream| stream.pointer_id() != pointer)
+        );
+    }
+
+    fn assert_foreign_pointer_device_refusal(
+        runtime: &mut AppRuntime<ExternalHostApp>,
+        before: &runenui_runtime::InputOwnershipSnapshot,
+        down: &UiInputSettlement,
+        pointer: PointerId,
+        foreign_device: InputDeviceId,
+        outside: LogicalPoint,
+        context: runenui_core::SurfaceInputContext,
+    ) -> UiInputSettlement {
+        let refused = settled_public_pointer(
+            runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Move,
+                outside,
+                context,
+            )
+            .with_device_id(foreign_device)
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        );
+        assert_eq!(refused.device_id(), Some(foreign_device));
+        assert!(down.sequence() < refused.sequence());
+        assert_eq!(down.scope(), refused.scope());
+        assert!(matches!(
+            refused.finality(),
+            UiInputFinality::ProcessingRejected(
+                runenui_runtime::UiInputProcessingRejection::InvalidPointerStream
+            )
+        ));
+        let after_refusal = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("rejected input cannot steal ownership"));
+        assert_eq!(&after_refusal, before);
+        assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
+        refused
+    }
+
+    fn assert_matching_pointer_device_release(
+        runtime: &mut AppRuntime<ExternalHostApp>,
+        refused: &UiInputSettlement,
+        pointer: PointerId,
+        first_device: InputDeviceId,
+        outside: LogicalPoint,
+        context: runenui_core::SurfaceInputContext,
+        target: &runenui_core::MountedNodeId,
+    ) {
+        let up = settled_public_pointer(
+            runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                outside,
+                context,
+            )
+            .with_device_id(first_device)
+            .with_changed_button(PointerButton::Primary),
+        );
+        assert!(refused.sequence() < up.sequence());
+        assert_eq!(up.device_id(), Some(first_device));
+        assert!(matches!(
+            up.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::PointerCapture)
+                    && matches!(facts.route(), UiInputRoute::Captured { target: owner }
+                        if owner == target)
+        ));
+        let released = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("matching release commits cleanup"));
+        assert!(
+            released
+                .pointers()
+                .iter()
+                .all(|stream| stream.pointer_id() != pointer)
+        );
+        assert!(!runtime.state().active);
+        assert!(
+            !runtime
+                .pump(HOST_PUMP_BUDGET)
+                .unwrap_or_else(|_| unreachable!("settled device occurrences never replay"))
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
+    }
+
+    #[test]
+    fn public_foreign_pointer_device_cannot_steal_owned_stream_or_create_claim() {
+        let mut runtime = AppRuntime::<ExternalHostApp>::mount_with_config(
+            HostState {
+                image: ResourceRef::new(ResourceKind::Image),
+                active: false,
+            },
+            RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0)),
+        );
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("native host mount settles"));
+        let env = StyleEnvironment::default();
+        let size = LogicalSize::try_new(64.0, 64.0)
+            .unwrap_or_else(|_| unreachable!("finite surface size"));
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(&env, size))
+            .unwrap_or_else(|_| unreachable!("retained native hit context"));
+        let bounds = publication.frame().nodes()[0].bounds();
+        let inside = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
+            .unwrap_or_else(|_| unreachable!("finite inside point"));
+        let outside =
+            LogicalPoint::new(65.0, 65.0).unwrap_or_else(|_| unreachable!("finite outside point"));
+        assert_eq!(publication.hit_test_scene().target_at(outside), None);
+        let target = publication
+            .hit_test_scene()
+            .target_at(inside)
+            .unwrap_or_else(|| unreachable!("native press hits authored widget"));
+        let pointer = PointerId::new(83).unwrap_or_else(|| unreachable!("positive pointer id"));
+        let first_device =
+            InputDeviceId::new(15).unwrap_or_else(|| unreachable!("positive device id"));
+        let foreign_device =
+            InputDeviceId::new(16).unwrap_or_else(|| unreachable!("positive device id"));
+
+        let down = settled_public_pointer(
+            &mut runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                inside,
+                publication.input_context().clone(),
+            )
+            .with_device_id(first_device)
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        );
+        assert_eq!(down.device_id(), Some(first_device));
+        assert!(matches!(
+            down.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::PointerPress)
+        ));
+        let before = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("native owner is observable"));
+        assert!(before.pointers().iter().any(|stream| {
+            stream.pointer_id() == pointer
+                && stream.device_id() == Some(first_device)
+                && stream.pressed_owner() == Some(target)
+                && stream.capture_owner() == Some(target)
+        }));
+
+        let refused = assert_foreign_pointer_device_refusal(
+            &mut runtime,
+            &before,
+            &down,
+            pointer,
+            foreign_device,
+            outside,
+            publication.input_context().clone(),
+        );
+
+        assert_matching_pointer_device_release(
+            &mut runtime,
+            &refused,
+            pointer,
+            first_device,
+            outside,
+            publication.input_context().clone(),
+            target,
+        );
+    }
+
+    #[test]
+    fn public_no_hit_mouse_press_and_release_are_unclaimed_without_trace() {
+        // A fresh native pointer outside the retained hit scene has no
+        // callback, press owner or capture. Neither Down nor Up may invent
+        // an exclusive UI claim or action merely because the stream is valid.
+        let mut runtime = AppRuntime::<ExternalHostApp>::mount_with_config(
+            HostState {
+                image: ResourceRef::new(ResourceKind::Image),
+                active: false,
+            },
+            RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0)),
+        );
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("mount work settles without optional trace"));
+        let environment = StyleEnvironment::default();
+        let size = LogicalSize::try_new(64.0, 64.0)
+            .unwrap_or_else(|_| unreachable!("finite surface size"));
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+            .unwrap_or_else(|_| unreachable!("retained hit context is published"));
+        let outside =
+            LogicalPoint::new(65.0, 65.0).unwrap_or_else(|_| unreachable!("finite outside point"));
+        assert_eq!(publication.hit_test_scene().target_at(outside), None);
+        let pointer = PointerId::new(53).unwrap_or_else(|| unreachable!("positive pointer id"));
+
+        let down = settled_public_pointer(
+            &mut runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                outside,
+                publication.input_context().clone(),
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        );
+        assert_eq!(down.pointer_id(), Some(pointer));
+        assert_eq!(
+            down.surface_id(),
+            Some(publication.input_context().surface_id())
+        );
+        assert!(matches!(
+            down.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::Unclaimed
+                    && facts.reasons().is_empty()
+                    && matches!(facts.route(), UiInputRoute::Unrouted)
+        ));
+        let after_down = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("valid unowned pointer is observable"));
+        assert!(after_down.pointers().iter().any(|stream| {
+            stream.pointer_id() == pointer
+                && stream.pressed_owner().is_none()
+                && stream.capture_owner().is_none()
+        }));
+
+        let up = settled_public_pointer(
+            &mut runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                outside,
+                publication.input_context().clone(),
+            )
+            .with_changed_button(PointerButton::Primary),
+        );
+        assert!(down.sequence() < up.sequence());
+        assert_eq!(up.scope(), down.scope());
+        assert!(matches!(
+            up.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::Unclaimed
+                    && facts.reasons().is_empty()
+                    && matches!(facts.route(), UiInputRoute::Unrouted)
+        ));
+        let after_up = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("unowned stream cleanup is observable"));
+        assert!(
+            after_up
+                .pointers()
+                .iter()
+                .all(|stream| stream.pointer_id() != pointer)
+        );
+        assert!(!runtime.state().active);
+        let repeated = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("already settled outside input does not replay"));
+        assert!(
+            !repeated
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
+    }
+
+    #[test]
+    fn public_drag_drop_callback_claims_its_exact_external_pointer_occurrence() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = AppRuntime::<ExternalHostDragClaimApp>::mount_with_config(
+            Arc::clone(&reached),
+            RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0)),
+        );
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("drag fixture mount commits"));
+        let environment = StyleEnvironment::default();
+        let size = LogicalSize::try_new(64.0, 64.0)
+            .unwrap_or_else(|_| unreachable!("finite drag host surface"));
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+            .unwrap_or_else(|_| unreachable!("drag target has retained hit context"));
+        let bounds = publication
+            .frame()
+            .nodes()
+            .first()
+            .unwrap_or_else(|| unreachable!("authored drag target exists"))
+            .bounds();
+        let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
+            .unwrap_or_else(|_| unreachable!("finite drag hover point"));
+        assert!(publication.hit_test_scene().target_at(point).is_some());
+        let pointer = PointerId::new(71).unwrap_or_else(|| unreachable!("positive pointer id"));
+        let receipt = runtime
+            .submit_pointer(
+                PointerEvent::new(
+                    pointer,
+                    PointerDeviceKind::Mouse,
+                    PointerPhase::Move,
+                    point,
+                    publication.input_context().clone(),
+                )
+                .with_drag_drop(DragDropEvent::new(
+                    DragDropPhase::Hover,
+                    DragDropPayloadMetadata::new(
+                        DragDropPayloadKind::Files,
+                        core::num::NonZeroU32::MIN,
+                        None,
+                    ),
+                )),
+            )
+            .unwrap_or_else(|_| unreachable!("external drag hover admitted"))
+            .sequence();
+        assert!(
+            !reached.load(Ordering::Relaxed),
+            "admission cannot invoke widget"
+        );
+        let batch = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("external drag claim commits"));
+        assert!(
+            reached.load(Ordering::Relaxed),
+            "drag callback actually ran"
+        );
+        let settlements = batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(value) => Some(value),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settlements.len(), 1);
+        let settled = settlements[0];
+        assert_eq!(settled.sequence(), receipt);
+        assert_eq!(settled.scope(), batch.final_ownership().scope());
+        assert_eq!(settled.family(), UiInputFamily::Pointer);
+        assert_eq!(settled.pointer_id(), Some(pointer));
+        assert_eq!(
+            settled.surface_id(),
+            Some(publication.input_context().surface_id())
+        );
+        assert!(matches!(
+            settled.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons() == [UiInputClaimReason::ExplicitWidgetClaim]
+                    && matches!(facts.route(), UiInputRoute::Routed { .. })
+                    && !facts.propagation_stopped()
+                    && !facts.default_prevented()
+        ));
+        let snapshot = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("hover ownership is observable"));
+        assert!(snapshot.pointers().iter().all(|stream| {
+            stream.pressed_owner().is_none() && stream.capture_owner().is_none()
+        }));
+        let repeat = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("settled drag does not replay"));
+        assert!(
+            !repeat
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
+    }
+
+    #[test]
+    fn public_explicit_drag_claim_does_not_leak_to_later_nonclaiming_drag_cancel() {
+        let reached = Arc::new(AtomicBool::new(false));
+        let mut runtime = AppRuntime::<ExternalHostDragClaimApp>::mount_with_config(
+            Arc::clone(&reached),
+            RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0)),
+        );
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("drag fixture mounted"));
+        let environment = StyleEnvironment::default();
+        let size = LogicalSize::try_new(64.0, 64.0)
+            .unwrap_or_else(|_| unreachable!("finite surface extent"));
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+            .unwrap_or_else(|_| unreachable!("drag hit context published"));
+        let bounds = publication
+            .frame()
+            .nodes()
+            .first()
+            .unwrap_or_else(|| unreachable!("drag widget published"))
+            .bounds();
+        let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
+            .unwrap_or_else(|_| unreachable!("finite drag point"));
+        assert!(publication.hit_test_scene().target_at(point).is_some());
+        let pointer = PointerId::new(72).unwrap_or_else(|| unreachable!("positive pointer id"));
+        let mut previous_sequence = None;
+        for (phase, expected) in [
+            (DragDropPhase::Hover, UiInputConflict::ExclusiveUi),
+            (DragDropPhase::Cancel, UiInputConflict::ObservedNonexclusive),
+        ] {
+            let receipt = runtime
+                .submit_pointer(
+                    PointerEvent::new(
+                        pointer,
+                        PointerDeviceKind::Mouse,
+                        PointerPhase::Move,
+                        point,
+                        publication.input_context().clone(),
+                    )
+                    .with_drag_drop(DragDropEvent::new(
+                        phase,
+                        DragDropPayloadMetadata::new(
+                            DragDropPayloadKind::Files,
+                            core::num::NonZeroU32::MIN,
+                            None,
+                        ),
+                    )),
+                )
+                .unwrap_or_else(|_| unreachable!("native drag occurrence admitted"))
+                .sequence();
+            if let Some(previous) = previous_sequence {
+                assert!(receipt > previous);
+            }
+            let batch = runtime
+                .pump(HOST_PUMP_BUDGET)
+                .unwrap_or_else(|_| unreachable!("native drag occurrence settles"));
+            let settled = batch
+                .ordered_records()
+                .iter()
+                .filter_map(|record| match record {
+                    InputArbitrationRecord::InputSettled(value) => Some(value),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(settled.len(), 1);
+            assert_eq!(settled[0].sequence(), receipt);
+            assert_eq!(settled[0].scope(), batch.final_ownership().scope());
+            assert_eq!(settled[0].family(), UiInputFamily::Pointer);
+            assert_eq!(settled[0].pointer_id(), Some(pointer));
+            assert!(matches!(
+                settled[0].finality(),
+                UiInputFinality::Committed(facts)
+                    if facts.conflict() == expected
+                        && matches!(facts.route(), UiInputRoute::Routed { .. })
+                        && (expected == UiInputConflict::ExclusiveUi
+                            && facts.reasons() == [UiInputClaimReason::ExplicitWidgetClaim]
+                            || expected == UiInputConflict::ObservedNonexclusive
+                                && facts.reasons().is_empty())
+            ));
+            previous_sequence = Some(receipt);
+        }
+        assert!(
+            reached.load(Ordering::Relaxed),
+            "hover callback claimed only its own receipt"
+        );
+    }
+
+    fn assert_public_no_hit_hover(
+        runtime: &mut AppRuntime<ExternalHostApp>,
+        publication: &SurfacePublication,
+        pointer: PointerId,
+    ) {
+        // An explicit same-surface-context, same-stream hover beyond the
+        // published 64x64 surface is the negative oracle: no implicit capture,
+        // invented hit or exclusive claim from Move/default diagnostics.
+        let outside = LogicalPoint::new(65.0, 65.0)
+            .unwrap_or_else(|_| unreachable!("finite point beyond published surface bounds"));
+        assert_eq!(publication.hit_test_scene().target_at(outside), None);
+        let no_hit = runtime
+            .submit_pointer(PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Move,
+                outside,
+                publication.input_context().clone(),
+            ))
+            .unwrap_or_else(|_| unreachable!("same-stream outside hover admitted"))
+            .sequence();
+        let outside_batch = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("outside hover settles"));
+        assert_eq!(outside_batch.processed_through(), Some(no_hit));
+        let outside_settlements = outside_batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(outside_settlements.len(), 1);
+        assert_eq!(outside_settlements[0].sequence(), no_hit);
+        assert!(matches!(
+            outside_settlements[0].finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::Unclaimed
+                    && facts.reasons().is_empty()
+                    && matches!(facts.route(), UiInputRoute::Unrouted)
+        ));
+        assert!(!runtime.state().active);
+    }
+
+    #[test]
+    fn public_hover_is_nonexclusive_even_when_routed_to_actionable_widget() {
+        let mut runtime = AppRuntime::<ExternalHostApp>::mount(HostState {
+            image: ResourceRef::new(ResourceKind::Image),
+            active: false,
+        });
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("initial mount settles"));
+        let environment = StyleEnvironment::default();
+        let size = LogicalSize::try_new(64.0, 64.0)
+            .unwrap_or_else(|_| unreachable!("finite hover surface"));
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+            .unwrap_or_else(|_| unreachable!("logical hit context published"));
+        let bounds = publication
+            .frame()
+            .nodes()
+            .first()
+            .unwrap_or_else(|| unreachable!("public actionable root"))
+            .bounds();
+        let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
+            .unwrap_or_else(|_| unreachable!("finite point inside authored root"));
+        assert!(
+            publication.hit_test_scene().target_at(point).is_some(),
+            "the hovered public widget must contribute an explicit target hit region"
+        );
+        let pointer = PointerId::new(17).unwrap_or_else(|| unreachable!("positive pointer id"));
+        let receipt = runtime
+            .submit_pointer(PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Move,
+                point,
+                publication.input_context().clone(),
+            ))
+            .unwrap_or_else(|_| unreachable!("native hover admitted"))
+            .sequence();
+        let batch = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("public hover settles"));
+        let settled = batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settled.len(), 1);
+        assert_eq!(settled[0].sequence(), receipt);
+        assert_eq!(settled[0].family(), UiInputFamily::Pointer);
+        assert_eq!(settled[0].pointer_id(), Some(pointer));
+        assert_eq!(
+            settled[0].surface_id(),
+            Some(publication.input_context().surface_id())
+        );
+        assert!(
+            matches!(
+                settled[0].finality(),
+                UiInputFinality::Committed(facts)
+                    if facts.conflict() == UiInputConflict::ObservedNonexclusive
+                        && facts.reasons().is_empty()
+                        && matches!(facts.route(), UiInputRoute::Routed { .. })
+            ),
+            "actual public hover settlement: {:?}",
+            settled[0].finality()
+        );
+        assert!(!runtime.state().active);
+
+        assert_public_no_hit_hover(&mut runtime, &publication, pointer);
+    }
+
+    #[test]
+    fn independent_public_host_slots_have_disjoint_runtime_scopes() {
+        let mut first = AppRuntime::<ExternalHostApp>::mount(HostState {
+            image: ResourceRef::new(ResourceKind::Image),
+            active: false,
+        });
+        let mut second = AppRuntime::<ExternalHostApp>::mount(HostState {
+            image: ResourceRef::new(ResourceKind::Image),
+            active: false,
+        });
+        let first_snapshot = first.input_ownership().unwrap_or_else(|_| {
+            unreachable!("first runtime can project its initial input ownership")
+        });
+        let second_snapshot = second.input_ownership().unwrap_or_else(|_| {
+            unreachable!("second runtime can project its initial input ownership")
+        });
+        assert_ne!(first_snapshot.scope(), second_snapshot.scope());
+        assert_eq!(first_snapshot.revision().get(), 1);
+        assert_eq!(second_snapshot.revision().get(), 1);
+        assert_eq!(
+            first_snapshot.revision(),
+            first
+                .input_ownership()
+                .unwrap_or_else(|_| unreachable!("unchanged state projects"))
+                .revision()
+        );
+        let _ = first
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("shutdown observation"));
+        let closed = first
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("terminal ownership is observable without a pump"));
+        assert_ne!(closed.revision(), first_snapshot.revision());
+        assert_eq!(closed.status(), runenui_runtime::RuntimeStatus::Closed);
+        assert_eq!(
+            second
+                .input_ownership()
+                .unwrap_or_else(|_| unreachable!("other runtime remains valid"))
+                .status(),
+            runenui_runtime::RuntimeStatus::Running
+        );
+    }
+
+    #[test]
+    fn different_typed_public_hosts_settle_only_their_own_receipts_or_retire_their_scope() {
+        let mut first =
+            focused_public_claim_host::<ExternalHostClaimApp>(Arc::new(AtomicBool::new(false)));
+        let mut second = focused_public_claim_host::<ExternalHostSiblingClaimApp>(Arc::new(
+            AtomicBool::new(false),
+        ));
+        let first_scope = first
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("first host has a scope"))
+            .scope()
+            .clone();
+        let second_scope = second
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("second host has a scope"))
+            .scope()
+            .clone();
+        assert_ne!(first_scope, second_scope);
+
+        let key = || {
+            KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyW")),
+                LogicalKey::Character(String::from("w")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            )
+        };
+        let first_sequence = first
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("first native input admitted"))
+            .sequence();
+        let second_sequence = second
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("second native input admitted"))
+            .sequence();
+        assert_eq!(
+            first_sequence, second_sequence,
+            "work sequences alone cannot identify independent runtime lifetimes"
+        );
+
+        let pending = first
+            .pump(PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("zero-budget observation"));
+        assert_eq!(pending.processed_through(), None);
+        assert!(
+            !pending
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+        );
+
+        let retired = second
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("second host retires pending receipt"));
+        assert!(retired.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::ScopeRetired(scope) if scope.scope() == &second_scope
+        )));
+        assert!(!retired.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(receipt)
+                if receipt.sequence() == second_sequence
+        )));
+
+        let completed = first
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("first host independently settles"));
+        let own_settlements = completed
+            .ordered_records()
+            .iter()
+            .filter(|record| {
+                matches!(
+                    record,
+                    InputArbitrationRecord::InputSettled(receipt)
+                        if receipt.scope() == &first_scope && receipt.sequence() == first_sequence
+                )
+            })
+            .count();
+        assert_eq!(own_settlements, 1);
+        let repeated = first
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("settled native input cannot replay"));
+        assert!(!repeated.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(receipt)
+                if receipt.scope() == &first_scope && receipt.sequence() == first_sequence
+        )));
+        assert!(second.submit_keyboard(key()).is_err());
+        let after_close = second
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("closed host remains observable"));
+        assert!(!after_close.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(receipt)
+                if receipt.scope() == &second_scope && receipt.sequence() == second_sequence
+        )));
+    }
+
+    #[test]
+    fn public_host_slot_disposal_invalidates_only_its_pending_receipts() {
+        let first_reached = Arc::new(AtomicBool::new(false));
+        let second_reached = Arc::new(AtomicBool::new(false));
+        let mut first =
+            focused_public_claim_host::<ExternalHostClaimApp>(Arc::clone(&first_reached));
+        let mut second =
+            focused_public_claim_host::<ExternalHostSiblingClaimApp>(Arc::clone(&second_reached));
+        let first_scope = first
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("first scope is public"))
+            .scope()
+            .clone();
+        let second_scope = second
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("second scope is public"))
+            .scope()
+            .clone();
+        let key = || {
+            KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code(String::from("KeyW")),
+                LogicalKey::Character(String::from("w")),
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            )
+        };
+        let first_sequence = first
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("first receipt is pending"))
+            .sequence();
+        let second_sequence = second
+            .submit_keyboard(key())
+            .unwrap_or_else(|_| unreachable!("second receipt is pending"))
+            .sequence();
+        // This is the host's receipt-correlation map, not another RunenUI queue.
+        let mut host_pending = vec![
+            (first_scope.clone(), first_sequence),
+            (second_scope.clone(), second_sequence),
+        ];
+        let returned = first.into_state();
+        assert!(!returned.load(Ordering::Relaxed));
+        // Drop/into_state cannot return a Rust retirement record. The host
+        // removes the exact lifetime before reusing its slot or game source.
+        host_pending.retain(|(scope, _)| scope != &first_scope);
+        assert_eq!(host_pending, [(second_scope.clone(), second_sequence)]);
+        let surviving = second
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("unrelated host still processes"));
+        assert!(surviving.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::InputSettled(receipt)
+                if receipt.scope() == &second_scope && receipt.sequence() == second_sequence
+        )));
+        assert!(!first_reached.load(Ordering::Relaxed));
+        assert!(second_reached.load(Ordering::Relaxed));
+        host_pending.retain(|(scope, seq)| {
+            !surviving.ordered_records().iter().any(|record| {
+                matches!(record, InputArbitrationRecord::InputSettled(receipt)
+                    if receipt.scope() == scope && receipt.sequence() == *seq)
+            })
+        });
+        assert_eq!(host_pending, []);
+    }
+
     #[test]
     fn downstream_host_owns_publication_acknowledgement_renderer_retry_and_semantic_next_frame()
     -> Result<(), Box<dyn Error>> {
@@ -274,7 +2291,9 @@ mod tests {
             .map_err(|error| io::Error::other(error.to_string()))?;
 
         steps.push(FrameStep::Pump);
-        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         assert!(runtime.state().active);
 
         steps.push(FrameStep::TakeRedraw);
@@ -321,7 +2340,9 @@ mod tests {
             .map_err(|error| debug_error("semantic action submission failed", &error))?;
 
         steps.push(FrameStep::Pump);
-        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("pump observation"));
         assert!(!runtime.state().active);
 
         steps.push(FrameStep::TakeRedraw);
@@ -354,7 +2375,9 @@ mod tests {
         assert_eq!(publication_count, 2);
         assert_eq!(steps, expected_steps());
 
-        let _ = runtime.shutdown();
+        let _ = runtime
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("shutdown observation"));
         eprintln!(
             "M7D EXTERNAL HOST PROOF: retained-publication retry and two host-owned frames succeeded; adapter={:?} backend={}",
             renderer.diagnostics().adapter_info().name,

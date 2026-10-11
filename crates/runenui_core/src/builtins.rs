@@ -1985,6 +1985,9 @@ impl<Action> Widget<Action> for ListBoxWidget {
             None
         };
         if let Some(delegated) = delegated {
+            if event.as_keyboard().is_some() {
+                context.claim_host_input();
+            }
             context.prevent_default();
             context.stop_propagation();
             context.emit_command(delegated);
@@ -2510,6 +2513,9 @@ impl<Action> Widget<Action> for TabListWidget {
             None
         };
         if let Some(delegated) = delegated {
+            if event.as_keyboard().is_some() {
+                context.claim_host_input();
+            }
             context.prevent_default();
             context.stop_propagation();
             context.emit_command(delegated);
@@ -2934,6 +2940,7 @@ impl<Action> Widget<Action> for ScrollBarWidget {
             if context.scroll_control_snapshot().is_some_and(|snapshot| {
                 snapshot.axis() == self.layout.axis() && snapshot.maximum_offset().get() > 0.0
             }) {
+                context.claim_host_input();
                 emit_scroll_bar_request(context, request);
             }
             return WidgetEventOutput::none();

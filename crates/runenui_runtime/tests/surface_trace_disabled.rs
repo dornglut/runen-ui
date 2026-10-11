@@ -27,12 +27,16 @@ impl UiApp for TraceDisabledApp {
 }
 
 fn pump_all(runtime: &mut AppRuntime<TraceDisabledApp>) {
-    let _ = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 }
 
 #[test]

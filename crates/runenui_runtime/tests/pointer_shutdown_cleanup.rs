@@ -164,7 +164,14 @@ const fn full_budget() -> PumpBudget {
 }
 
 fn pump_all(runtime: &mut AppRuntime<App>) {
-    assert!(runtime.pump(full_budget()).is_quiescent());
+    assert!(
+        runtime
+            .pump(full_budget())
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
 }
 
 fn assert_focus_shutdown_chain(records: &[&TraceRecord], harness: &Harness) {
@@ -402,7 +409,12 @@ fn shutdown_drains_pointer_streams_in_registration_order_without_callbacks() {
     harness.callbacks.borrow_mut().clear();
     let trace_start = harness.runtime.trace().len();
 
-    let report = harness.runtime.shutdown();
+    let report = harness
+        .runtime
+        .shutdown()
+        .unwrap_or_else(|_| unreachable!("shutdown observation"))
+        .report()
+        .to_owned();
 
     assert!(!report.already_complete());
     assert!(harness.callbacks.borrow().is_empty());
@@ -449,6 +461,14 @@ fn shutdown_drains_pointer_streams_in_registration_order_without_callbacks() {
     }
 
     let trace_len = harness.runtime.trace().len();
-    assert!(harness.runtime.shutdown().already_complete());
+    assert!(
+        harness
+            .runtime
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("shutdown observation"))
+            .report()
+            .to_owned()
+            .already_complete()
+    );
     assert_eq!(harness.runtime.trace().len(), trace_len);
 }

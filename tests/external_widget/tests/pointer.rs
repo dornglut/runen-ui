@@ -10,7 +10,10 @@ use runenui_core::{
     PresentationTranslation, StyleEnvironment, UiApp, UiEvent, UnitInterval, View, Widget,
     WidgetActivation, WidgetEventOutput, WidgetMeasure,
 };
-use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
+use runenui_runtime::{
+    AppRuntime, InputArbitrationRecord, LogicalSize, PumpBudget, SurfaceBuildContext,
+    UiInputClaimReason, UiInputConflict, UiInputFinality, UiInputRoute,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Observation {
@@ -191,8 +194,132 @@ fn settle(runtime: &mut AppRuntime<App>) {
                 usize::MAX,
                 usize::MAX,
             ))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
             .is_quiescent()
     );
+}
+
+#[test]
+fn downstream_pointer_capture_outside_hit_has_exact_exclusive_finality() {
+    assert_captured_close_outside_hit(PointerPhase::Up, false);
+}
+
+#[test]
+fn downstream_pointer_cancel_outside_hit_is_exclusive_without_activation_or_replay() {
+    for trace_disabled in [false, true] {
+        assert_captured_close_outside_hit(PointerPhase::Cancel, trace_disabled);
+    }
+}
+
+fn occurrence_route(phase: PointerPhase, target: &runenui_runtime::MountedNodeId) -> UiInputRoute {
+    if phase == PointerPhase::Down {
+        UiInputRoute::Routed {
+            target: target.clone(),
+        }
+    } else {
+        UiInputRoute::Captured {
+            target: target.clone(),
+        }
+    }
+}
+
+fn assert_captured_close_outside_hit(close_phase: PointerPhase, trace_disabled: bool) {
+    let observations = Rc::new(RefCell::new(Vec::new()));
+    let state = State {
+        observations,
+        translation: 0.0,
+        singular: false,
+    };
+    let mut runtime = if trace_disabled {
+        AppRuntime::<App>::mount_with_config(
+            state,
+            runenui_runtime::RuntimeConfig::default()
+                .with_trace_config(runenui_runtime::TraceConfig::new(0)),
+        )
+    } else {
+        AppRuntime::<App>::mount(state)
+    };
+    settle(&mut runtime);
+    let env = StyleEnvironment::default();
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &env,
+            LogicalSize::try_new(64.0, 64.0)
+                .unwrap_or_else(|_| unreachable!("valid surface bounds")),
+        ))
+        .unwrap_or_else(|_| unreachable!("published pointer snapshot"));
+    let inside = LogicalPoint::new(1.0, 1.0).unwrap_or_else(|_| unreachable!("finite point"));
+    let outside =
+        LogicalPoint::new(65.0, 65.0).unwrap_or_else(|_| unreachable!("finite outside point"));
+    let target = publication
+        .hit_test_scene()
+        .target_at(inside)
+        .unwrap_or_else(|| unreachable!("explicit widget hit contribution"))
+        .clone();
+    assert_eq!(publication.hit_test_scene().target_at(outside), None);
+    let context = publication.input_context().clone();
+    for (phase, position) in [
+        (PointerPhase::Down, inside),
+        (PointerPhase::Move, outside),
+        (close_phase, outside),
+    ] {
+        let receipt = runtime
+            .submit_pointer(pointer_event(19, phase, position, context.clone()))
+            .unwrap_or_else(|_| unreachable!("native pointer receipt admitted"))
+            .sequence();
+        let batch = runtime
+            .pump(PumpBudget::new(128, 128, 128, 128))
+            .unwrap_or_else(|_| unreachable!("pointer event commits"));
+        let settlements = batch
+            .ordered_records()
+            .iter()
+            .filter_map(|record| match record {
+                InputArbitrationRecord::InputSettled(value) => Some(value),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(settlements.len(), 1);
+        assert_eq!(settlements[0].sequence(), receipt);
+        assert_eq!(settlements[0].scope(), batch.final_ownership().scope());
+        let expected_route = occurrence_route(phase, &target);
+        assert!(matches!(
+            settlements[0].finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::PointerCapture)
+                    && facts.route() == &expected_route
+                    && (phase != PointerPhase::Cancel
+                        || facts.default_disposition() == runenui_runtime::UiDefaultDisposition::None)
+        ));
+        if phase == close_phase {
+            assert!(
+                batch.final_ownership().pointers().is_empty(),
+                "captured terminal phase outside hit retires the pointer stream after settling"
+            );
+        } else {
+            assert!(
+                batch
+                    .final_ownership()
+                    .pointers()
+                    .iter()
+                    .any(|pointer| { pointer.capture_owner() == Some(&target) })
+            );
+        }
+    }
+    let repeated = runtime
+        .pump(PumpBudget::new(128, 128, 128, 128))
+        .unwrap_or_else(|_| unreachable!("closed pointer stream cannot replay native input"));
+    assert!(
+        !repeated
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+    );
+    if trace_disabled {
+        assert_eq!(runtime.trace().len(), 0);
+    }
 }
 
 #[test]

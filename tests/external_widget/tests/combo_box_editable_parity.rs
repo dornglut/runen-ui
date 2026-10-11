@@ -210,7 +210,9 @@ impl UiApp for App {
 }
 
 fn settle(app: &mut AppRuntime<App>) {
-    assert!(app.pump(PumpBudget::new(256, 256, 256, 256)).is_quiescent());
+    assert!(app.pump(PumpBudget::new(256, 256, 256, 256)).unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+            .report()
+            .is_quiescent());
 }
 
 #[test]

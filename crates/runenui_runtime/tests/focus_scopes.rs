@@ -130,12 +130,16 @@ fn leaf(state: &State, name: &'static str) -> Element<Action> {
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 }
 
 fn id(runtime: &mut AppRuntime<App>, name: &str) -> MountedNodeId {
@@ -170,6 +174,9 @@ fn command(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: Semant
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -658,7 +665,11 @@ fn logical_scroll_boundary_delegates_through_the_canonical_command_queue() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("directional request is accepted"));
-    let report = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let report = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&origin));
     assert_eq!(report.remaining_queued_envelopes(), 1);
     assert!(runtime.trace().records().any(|record| matches!(
@@ -670,6 +681,9 @@ fn logical_scroll_boundary_delegates_through_the_canonical_command_queue() {
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
             .processed_envelopes(),
         1
     );
@@ -772,13 +786,21 @@ fn focus_notification_outputs_precede_the_initiating_command_output() {
                 CommandOrigin::programmatic(),
             )
             .unwrap_or_else(|_| unreachable!("ordering target is live"));
-        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
-        runtime.pump(PumpBudget::new(
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-        ));
+        let _ = runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned();
+        let _ = runtime
+            .pump(PumpBudget::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned();
     }
     assert_eq!(
         &runtime.state()[4..],

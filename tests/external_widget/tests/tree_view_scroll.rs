@@ -45,9 +45,15 @@ impl UiApp for ScrollTreeApp {
     fn update(_: &mut Self::State, (): Self::Action) {}
 }
 fn settle(runtime: &mut AppRuntime<ScrollTreeApp>) {
-    assert!(runtime.pump(PumpBudget::new(
-        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).is_quiescent());
+    let batch = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("TreeView pump observation"));
+    assert!(batch.report().is_quiescent());
 }
 fn id(runtime: &AppRuntime<ScrollTreeApp>, value: &str) -> MountedNodeId {
     let authored = runenui_core::ElementId::new(value).unwrap_or_else(|_| unreachable!());

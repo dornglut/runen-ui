@@ -97,6 +97,8 @@ fn publish<App: UiApp<State = (), Action = (), HostProtocol = NoHostProtocol>>(
     assert!(
         runtime
             .pump(PumpBudget::new(512, 512, 512, 512))
+            .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+            .report()
             .is_quiescent()
     );
     runtime

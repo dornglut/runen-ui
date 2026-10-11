@@ -42,9 +42,15 @@ impl UiApp for App {
     }
 }
 fn pump(runtime: &mut AppRuntime<App>) {
-    assert!(runtime.pump(PumpBudget::new(
-        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).is_quiescent());
+    let batch = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("TreeView pump observation"));
+    assert!(batch.report().is_quiescent());
 }
 fn mounted(runtime: &AppRuntime<App>, generation: u8) -> MountedNodeId {
     let id = runenui_core::ElementId::new(format!("realized.{generation}"))

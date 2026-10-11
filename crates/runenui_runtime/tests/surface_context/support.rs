@@ -139,12 +139,16 @@ pub fn rejected(
 }
 
 pub fn pump_all(runtime: &mut AppRuntime<SurfaceApp>) {
-    let _ = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 }
 
 pub fn mounted_with(config: RuntimeConfig) -> AppRuntime<SurfaceApp> {

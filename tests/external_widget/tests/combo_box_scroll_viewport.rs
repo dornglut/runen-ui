@@ -70,6 +70,8 @@ impl UiApp for App {
 fn settle(app: &mut AppRuntime<App>) {
     assert!(
         app.pump(PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+            .report()
             .is_quiescent()
     );
 }
