@@ -175,12 +175,10 @@ impl<Action> ComboWidget<Action> {
             last = Some(&option.id);
         }
         let next = match step {
-            Navigation::First => first,
-            Navigation::Last => last,
             Navigation::Next if found_active => after.or(state.active.as_ref()),
             Navigation::Previous if found_active => before.or(state.active.as_ref()),
-            Navigation::Next => first,
-            Navigation::Previous => last,
+            Navigation::First | Navigation::Next => first,
+            Navigation::Last | Navigation::Previous => last,
         };
         state.active = next.cloned();
     }
