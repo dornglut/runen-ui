@@ -219,6 +219,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // them before final routing facts are assembled.
         let pressed_before = pending.stream.pressed_owner().is_some();
         let selection_before = pending.stream.text_selection().is_some();
+        // Classify the route that actually delivered this occurrence. Pointer
+        // defaults or widget requests may acquire/release capture *after*
+        // routing, and removed owners are not valid routing authorities.
+        let live_capture_before = pending
+            .previous_capture_owner
+            .as_ref()
+            .is_some_and(|owner| self.tree.target_status(owner) == TargetStatus::Live);
+        let routed_via_capture = live_capture_before
+            && pending.work.event.drag_drop().is_none()
+            && matches!(
+                pending.work.event.phase(),
+                PointerPhase::Move | PointerPhase::Wheel | PointerPhase::Up | PointerPhase::Cancel
+            )
+            && pending.previous_capture_owner.as_ref() == pending.routed_target.as_ref();
         let touch_winner_before = pending
             .stream
             .touch_gesture()
@@ -380,7 +394,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if pending.presentation_dismiss.is_some() {
             reasons.push(crate::UiInputClaimReason::PresentationDismissal);
         }
-        if pending.stream.capture_owner().is_some() || pending.previous_capture_owner.is_some() {
+        if pending.stream.capture_owner().is_some() || live_capture_before {
             reasons.push(crate::UiInputClaimReason::PointerCapture);
         }
         // An existing pressed UI owner claims subsequent move/wheel input as
@@ -420,9 +434,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         let route = if let Some(root) = pending.presentation_block_root.as_ref() {
             crate::UiInputRoute::PresentationBlocked { root: root.clone() }
-        } else if let Some(target) = pending.stream.capture_owner() {
+        } else if routed_via_capture {
             crate::UiInputRoute::Captured {
-                target: target.clone(),
+                target: pending
+                    .routed_target
+                    .as_ref()
+                    .cloned()
+                    .unwrap_or_else(|| unreachable!("captured routing has an exact target")),
             }
         } else if let Some(target) = pending.routed_target.as_ref() {
             crate::UiInputRoute::Routed {

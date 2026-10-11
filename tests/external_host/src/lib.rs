@@ -1413,6 +1413,8 @@ mod tests {
             UiInputFinality::Committed(facts)
                 if facts.conflict() == UiInputConflict::ExclusiveUi
                     && facts.reasons().contains(&UiInputClaimReason::PointerPress)
+                    && matches!(facts.route(), UiInputRoute::Routed { target: routed }
+                        if routed == &target)
                     && facts.default_disposition()
                         == runenui_runtime::UiDefaultDisposition::Applied
         ));
@@ -1439,6 +1441,9 @@ mod tests {
             UiInputFinality::Committed(facts)
                 if facts.conflict() == UiInputConflict::ExclusiveUi
                     && facts.reasons().contains(&UiInputClaimReason::PointerPress)
+                    && facts.reasons().contains(&UiInputClaimReason::PointerCapture)
+                    && matches!(facts.route(), UiInputRoute::Captured { target: captured }
+                        if captured == &target)
         ));
         let released = runtime
             .input_ownership()
