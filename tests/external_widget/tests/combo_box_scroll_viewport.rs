@@ -482,3 +482,38 @@ fn first_published_open_combo_reveals_deep_selected_option_after_mount_and_geome
     assert_eq!(app.index().node(&viewport).unwrap_or_else(|| unreachable!())
         .interaction().scroll_offset().1, offset);
 }
+
+#[test]
+fn close_and_reopen_before_an_intermediate_publication_reveals_new_option_generation() {
+    let mut app = AppRuntime::<App>::mount(State {
+        open: true,
+        chosen: 17,
+        ..State::default()
+    });
+    settle(&mut app);
+    let old_option = id(&app, "viewport.option.17");
+    let _ = publish(&mut app);
+    settle(&mut app);
+    app.submit_action(Action::Popup(ComboBoxRequest::Close))
+        .unwrap_or_else(|_| unreachable!("close application state"));
+    settle(&mut app);
+    assert!(app.index().nodes().iter().all(|node| node.id() != &old_option));
+    // No surface publication occurs in the closed state: the retained semantic
+    // snapshot still describes the earlier open popup.
+    app.submit_action(Action::Popup(ComboBoxRequest::Open))
+        .unwrap_or_else(|_| unreachable!("reopen application state"));
+    settle(&mut app);
+    let new_option = id(&app, "viewport.option.17");
+    assert_ne!(new_option, old_option);
+    let list = id(&app, "viewport.list");
+    let viewport = app.index()
+        .node(&list)
+        .and_then(|node| node.parent())
+        .unwrap_or_else(|| unreachable!("fresh standard viewport"))
+        .clone();
+    let _ = publish(&mut app);
+    settle(&mut app);
+    assert!(app.index().node(&viewport).unwrap_or_else(|| unreachable!())
+        .interaction().scroll_offset().1 > 0.0);
+    assert_eq!(app.state().chosen, 17);
+}

@@ -197,6 +197,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     .map(|node| node.id().clone())
                     .collect()
             });
+        // An open-close-reopen can reconcile fresh Option generations without
+        // publishing an intermediate closed snapshot. The previous exact
+        // semantic Option identities distinguish that mount from navigation
+        // among already-published live Options.
+        let previously_published_options = self
+            .surface_publication
+            .current_semantic_publication()
+            .map_or_else(Vec::new, |current| {
+                current
+                    .snapshot()
+                    .nodes()
+                    .iter()
+                    .filter(|node| node.role() == SemanticRole::Option)
+                    .map(|node| node.id().clone())
+                    .collect()
+            });
         let instant = self.now();
         let focused_owner = self.focus.focused_node().cloned();
         let interaction = self
@@ -308,7 +324,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // The geometry and semantic identities are now atomically retained.
         // Route one exact mounted-generation reveal through the existing M4/#344
         // command queue, never through a second scroll or focus controller.
-        self.reveal_newly_opened_combo_active_options(&publication, &previously_open, published);
+        self.reveal_newly_opened_combo_active_options(
+            &publication,
+            &previously_open,
+            &previously_published_options,
+            published,
+        );
         if let RuntimeStatus::Terminal(reason) = self.status {
             return Err(PublishSurfaceError::Terminal(reason));
         }
@@ -334,6 +355,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         publication: &crate::SurfacePublication,
         previously_open: &[runenui_core::SemanticNodeId],
+        previously_published_options: &[runenui_core::SemanticNodeId],
         causal_parent: Option<TraceSequence>,
     ) {
         let snapshot = publication.semantic_publication().snapshot();
@@ -343,7 +365,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .filter(|node| {
                 node.role() == SemanticRole::ComboBox
                     && node.state().expanded() == Some(true)
-                    && !previously_open.contains(node.id())
             })
             .filter_map(|combo| {
                 // The semantic compositor already validated ActiveDescendant
@@ -361,6 +382,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 let active_id = relation(SemanticRelationshipKind::ActiveDescendant)?;
                 let list = snapshot.node(list_id)?;
                 let option = snapshot.node(active_id)?;
+                // Only a newly opened popup or a newly mounted Option generation
+                // needs this post-publication command. Already-mounted keyboard
+                // navigation has its own exact event-time routed command.
+                if previously_open.contains(combo.id())
+                    && previously_published_options.contains(active_id)
+                {
+                    return None;
+                }
                 if list.role() != SemanticRole::ListBox
                     || option.role() != SemanticRole::Option
                     || option.state().disabled()
