@@ -1600,9 +1600,7 @@ impl<Action> OptionItem<Action> {
     /// Share one Option callback for both ordinary pointer activation and
     /// the owning `ComboBox`'s keyboard acceptance. Durable values never come
     /// from a widget-local active `ElementId`.
-    pub(crate) fn share_combo_activation(
-        &mut self,
-    ) -> Option<ComboSharedActivation<Action>>
+    pub(crate) fn share_combo_activation(&mut self) -> Option<ComboSharedActivation<Action>>
     where
         Action: 'static,
     {
