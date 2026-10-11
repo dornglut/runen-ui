@@ -363,7 +363,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .nodes()
             .iter()
             .filter(|node| {
-                node.role() == SemanticRole::ComboBox && node.state().expanded() == Some(true)
+                node.role() == SemanticRole::ComboBox
+                    && node.state().expanded() == Some(true)
+                    && !node.state().disabled()
+                    && !node.state().inert()
             })
             .filter_map(|combo| {
                 // The semantic compositor already validated ActiveDescendant
@@ -399,7 +402,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 let combo_owner = self.tree.semantic_action_authority(combo.id()).ok()?;
                 let list_owner = self.tree.semantic_action_authority(list_id).ok()?;
                 let option_owner = self.tree.semantic_action_authority(active_id).ok()?;
-                if !option_owner.activation().enabled()
+                if !combo_owner.activation().enabled()
+                    || !list_owner.activation().enabled()
+                    || !option_owner.activation().enabled()
                     || !self
                         .tree
                         .is_descendant_or_self(list_owner.owner(), combo_owner.owner())
