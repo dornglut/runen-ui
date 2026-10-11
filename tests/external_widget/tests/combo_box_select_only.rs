@@ -140,7 +140,7 @@ fn controls_identifies_actual_listbox_and_active_option_without_focus_repair() {
         .find(|link| link.kind() == runenui_core::SemanticRelationshipKind::Controls)
         .unwrap_or_else(|| unreachable!("ComboBox Controls relation"));
     assert_eq!(snapshot.nodes().iter()
-        .find(|node| node.id() == controlled.target()).map(|node| node.role()),
+        .find(|node| node.id() == controlled.target()).map(runenui_runtime::SemanticNode::role),
         Some(SemanticRole::ListBox),
         "M5 requires the actual ListBox, not a surrounding Popover Group");
     let active = combo.relationships().iter()
@@ -225,7 +225,8 @@ fn semantic_expand_and_collapse_actions_follow_application_open_state() {
         &runenui_core::StyleEnvironment::default(),
         LogicalSize::try_new(500.0, 260.0).unwrap_or_else(|_| unreachable!()),
     )).unwrap_or_else(|e| unreachable!("closed ComboBox semantics: {e:?}"));
-    let combo = published.semantic_publication().snapshot().nodes().iter()
+    let snapshot = published.semantic_publication().snapshot();
+    let combo = snapshot.nodes().iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("ComboBox role"));
     assert!(combo.supported_actions().contains(&SemanticAction::Expand));
@@ -237,7 +238,8 @@ fn semantic_expand_and_collapse_actions_follow_application_open_state() {
         &runenui_core::StyleEnvironment::default(),
         LogicalSize::try_new(500.0, 260.0).unwrap_or_else(|_| unreachable!()),
     )).unwrap_or_else(|e| unreachable!("expanded ComboBox semantics: {e:?}"));
-    let combo = published.semantic_publication().snapshot().nodes().iter()
+    let snapshot = published.semantic_publication().snapshot();
+    let combo = snapshot.nodes().iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("ComboBox role"));
     assert!(combo.supported_actions().contains(&SemanticAction::Collapse));

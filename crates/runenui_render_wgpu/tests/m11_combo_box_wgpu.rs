@@ -1,6 +1,6 @@
 #![allow(refining_impl_trait)]
 
-//! A select-only ComboBox must render its ordinary Option text while M5
+//! A select-only `ComboBox` must render its ordinary `Option` text while M5
 //! projects a singular current active descendant without focus movement.
 use core::{
     error::Error,
@@ -132,7 +132,7 @@ fn select_only_combo_popup_projects_real_m8_options_and_real_wgpu_pixels()
                     .nodes()
                     .iter()
                     .find(|node| node.id() == controls.target())
-                    .map(|node| node.role()),
+                    .map(runenui_runtime::SemanticNode::role),
                 Some(SemanticRole::ListBox),
                 "M5 Controls must identify the actual popup ListBox, not the Popover Group"
             );
