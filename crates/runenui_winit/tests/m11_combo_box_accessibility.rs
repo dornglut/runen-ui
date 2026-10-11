@@ -5,10 +5,9 @@
 use accesskit::{AutoComplete, HasPopup, Role};
 use runenui_core::{
     ElementId, FontFamilyName, GenericFontFamily, NoHostProtocol, SemanticAction,
-    SemanticEditableMode,
-    SemanticRole, StyleEnvironment, TextAffinity, TextDocumentId, TextDocumentRevision,
-    TextDocumentSnapshot, TextPosition, TextSelection, UiApp, View, combo_box,
-    editable_combo_box, option_item, text_field,
+    SemanticEditableMode, SemanticRole, StyleEnvironment, TextAffinity, TextDocumentId,
+    TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, UiApp, View,
+    combo_box, editable_combo_box, option_item, text_field,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
 use runenui_winit::accessibility::{AdapterDiagnostic, SemanticAdapter, UpdateMode};
@@ -26,8 +25,12 @@ impl UiApp for SelectApp {
             "Select choice",
             ElementId::new("access.select.popup").unwrap_or_else(|_| unreachable!()),
             [
-                option_item("One", true).id("access.select.one").on_activate(|| ()),
-                option_item("Two", false).id("access.select.two").on_activate(|| ()),
+                option_item("One", true)
+                    .id("access.select.one")
+                    .on_activate(|| ()),
+                option_item("Two", false)
+                    .id("access.select.two")
+                    .on_activate(|| ()),
             ],
             |_| (),
         )
@@ -45,32 +48,35 @@ impl UiApp for EditableApp {
 
     fn root(_: &Self::State) -> impl View<Self::Action> {
         let value = "search";
-        let snapshot = TextDocumentSnapshot::new(
-            TextDocumentId::new(331001),
-            TextDocumentRevision::new(1),
-        );
-        let caret = TextPosition::new(
-            snapshot, value, value.len(), TextAffinity::Upstream,
-        ).unwrap_or_else(|_| unreachable!("current UTF-8 caret"));
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(331001), TextDocumentRevision::new(1));
+        let caret = TextPosition::new(snapshot, value, value.len(), TextAffinity::Upstream)
+            .unwrap_or_else(|_| unreachable!("current UTF-8 caret"));
         let editor = text_field(
             snapshot,
             value,
             TextSelection::collapsed(caret),
             SemanticEditableMode::SingleLine,
             |_| (),
-        ).unwrap_or_else(|_| unreachable!("valid M10 source"))
-            .id("access.editable.owner");
+        )
+        .unwrap_or_else(|_| unreachable!("valid M10 source"))
+        .id("access.editable.owner");
         editable_combo_box(
             editor,
             "Search choices",
             ElementId::new("access.editable.popup").unwrap_or_else(|_| unreachable!()),
             [
-                option_item("Alpha", false).id("access.editable.alpha").on_activate(|| ()),
-                option_item("Beta", false).id("access.editable.beta").on_activate(|| ()),
+                option_item("Alpha", false)
+                    .id("access.editable.alpha")
+                    .on_activate(|| ()),
+                option_item("Beta", false)
+                    .id("access.editable.beta")
+                    .on_activate(|| ()),
             ],
             |_| (),
-        ).unwrap_or_else(|_| unreachable!("single public M10 editor"))
-            .open(true)
+        )
+        .unwrap_or_else(|_| unreachable!("single public M10 editor"))
+        .open(true)
     }
 
     fn update(_: &mut Self::State, _: Self::Action) {}
@@ -79,17 +85,26 @@ impl UiApp for EditableApp {
 fn publish<App: UiApp<State = (), Action = (), HostProtocol = NoHostProtocol>>(
     runtime: &mut AppRuntime<App>,
 ) -> runenui_runtime::SurfacePublication {
-    runtime.register_text_font_bytes(FONT.to_vec())
+    runtime
+        .register_text_font_bytes(FONT.to_vec())
         .unwrap_or_else(|_| unreachable!("known fixture font is admitted"));
-    runtime.set_text_generic_family_mapping(
-        GenericFontFamily::SansSerif,
-        &[FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!())],
-    ).unwrap_or_else(|_| unreachable!("known font family is configured"));
-    assert!(runtime.pump(PumpBudget::new(512, 512, 512, 512)).is_quiescent());
-    runtime.publish_surface(&SurfaceBuildContext::tight(
-        &StyleEnvironment::default(),
-        LogicalSize::try_new(520.0, 280.0).unwrap_or_else(|_| unreachable!()),
-    )).unwrap_or_else(|error| unreachable!("current M11 accessibility publication: {error:?}"))
+    runtime
+        .set_text_generic_family_mapping(
+            GenericFontFamily::SansSerif,
+            &[FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!())],
+        )
+        .unwrap_or_else(|_| unreachable!("known font family is configured"));
+    assert!(
+        runtime
+            .pump(PumpBudget::new(512, 512, 512, 512))
+            .is_quiescent()
+    );
+    runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &StyleEnvironment::default(),
+            LogicalSize::try_new(520.0, 280.0).unwrap_or_else(|_| unreachable!()),
+        ))
+        .unwrap_or_else(|error| unreachable!("current M11 accessibility publication: {error:?}"))
 }
 
 #[test]
