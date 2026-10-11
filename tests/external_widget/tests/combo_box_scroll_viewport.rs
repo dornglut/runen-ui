@@ -435,3 +435,50 @@ fn mounted_popup_navigation_routes_exact_active_option_reveal_through_standard_s
     assert_eq!(app.state().open, true);
     assert_eq!(app.index().node(&target).unwrap_or_else(|| unreachable!()).is_focusable(), false);
 }
+
+#[test]
+fn first_published_open_combo_reveals_deep_selected_option_after_mount_and_geometry() {
+    let mut app = AppRuntime::<App>::mount(State {
+        open: true,
+        chosen: 17,
+        ..State::default()
+    });
+    settle(&mut app);
+    let list = id(&app, "viewport.list");
+    let viewport = app.index()
+        .node(&list)
+        .and_then(|node| node.parent())
+        .unwrap_or_else(|| unreachable!("standard scroll owner"))
+        .clone();
+    let deepest = id(&app, "viewport.option.17");
+    let first = publish(&mut app);
+    let owner_bounds = first.frame().node(&viewport)
+        .unwrap_or_else(|| unreachable!("published viewport")).bounds();
+    let target_bounds = first.frame().node(&deepest)
+        .unwrap_or_else(|| unreachable!("published deep Option")).bounds();
+    assert!(target_bounds.max_y() > owner_bounds.max_y());
+    assert_eq!(
+        app.index().node(&viewport).unwrap_or_else(|| unreachable!())
+            .interaction().scroll_offset().1,
+        0.0,
+        "publication does not mutate scroll outside the canonical FIFO"
+    );
+    settle(&mut app);
+    assert!(app.index().node(&viewport).unwrap_or_else(|| unreachable!())
+        .interaction().scroll_offset().1 > 0.0);
+    let after = publish(&mut app);
+    assert_eq!(app.state().chosen, 17);
+    assert!(app.state().open);
+    assert_eq!(app.focus().focused_node(), None, "reveal cannot synthesize real focus");
+    let options = after.semantic_publication().snapshot().nodes().iter()
+        .filter(|node| node.role() == SemanticRole::Option)
+        .count();
+    assert_eq!(options, 18);
+    let offset = app.index().node(&viewport).unwrap_or_else(|| unreachable!())
+        .interaction().scroll_offset().1;
+    // A repeated unchanged publication cannot fabricate another reveal event.
+    let _ = publish(&mut app);
+    settle(&mut app);
+    assert_eq!(app.index().node(&viewport).unwrap_or_else(|| unreachable!())
+        .interaction().scroll_offset().1, offset);
+}

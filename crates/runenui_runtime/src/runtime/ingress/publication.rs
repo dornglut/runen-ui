@@ -1,6 +1,8 @@
 use core::mem;
 
-use runenui_core::MonotonicInstant;
+use runenui_core::{
+    CommandOrigin, MonotonicInstant, SemanticCommand, SemanticRelationshipKind, SemanticRole,
+};
 
 use super::{
     HostProtocol, MandatoryTracePlan, QueueCommitError, Runtime, RuntimeStatus,
@@ -177,6 +179,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.enter_terminal(reason, 0);
             return Err(PublishSurfaceError::Terminal(reason));
         }
+        // Only a newly expanded ComboBox needs a first-mount reveal. Its
+        // Options do not exist during the event that requested opening; the
+        // previous *published* semantic identity is the authoritative boundary.
+        let previously_open = self
+            .surface_publication
+            .current_semantic_publication()
+            .map_or_else(Vec::new, |current| {
+                current
+                    .snapshot()
+                    .nodes()
+                    .iter()
+                    .filter(|node| {
+                        node.role() == SemanticRole::ComboBox
+                            && node.state().expanded() == Some(true)
+                    })
+                    .map(|node| node.id().clone())
+                    .collect()
+            });
         let instant = self.now();
         let focused_owner = self.focus.focused_node().cloned();
         let interaction = self
@@ -285,6 +305,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if let RuntimeStatus::Terminal(reason) = self.status {
             return Err(PublishSurfaceError::Terminal(reason));
         }
+        // The geometry and semantic identities are now atomically retained.
+        // Route one exact mounted-generation reveal through the existing M4/#344
+        // command queue, never through a second scroll or focus controller.
+        self.reveal_newly_opened_combo_active_options(&publication, &previously_open, published);
+        if let RuntimeStatus::Terminal(reason) = self.status {
+            return Err(PublishSurfaceError::Terminal(reason));
+        }
         if admission.stationary_rehit {
             self.commit_stationary_pointer_rehit(&publication, instant, published);
         }
@@ -301,6 +328,79 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.commit_admitted_redraw_request(admission, published, instant);
         }
         Ok(publication)
+    }
+
+    fn reveal_newly_opened_combo_active_options(
+        &mut self,
+        publication: &crate::SurfacePublication,
+        previously_open: &[runenui_core::SemanticNodeId],
+        causal_parent: Option<TraceSequence>,
+    ) {
+        let snapshot = publication.semantic_publication().snapshot();
+        let targets = snapshot
+            .nodes()
+            .iter()
+            .filter(|node| {
+                node.role() == SemanticRole::ComboBox
+                    && node.state().expanded() == Some(true)
+                    && !previously_open.contains(node.id())
+            })
+            .filter_map(|combo| {
+                // The semantic compositor already validated ActiveDescendant
+                // under Controls, but recheck exactly one visible relationship
+                // of each kind and the current mounted ancestry before queuing.
+                let relation = |kind| {
+                    let mut matches = combo
+                        .relationships()
+                        .iter()
+                        .filter(|relationship| relationship.kind() == kind);
+                    let first = matches.next()?;
+                    matches.next().is_none().then_some(first.target())
+                };
+                let list_id = relation(SemanticRelationshipKind::Controls)?;
+                let active_id = relation(SemanticRelationshipKind::ActiveDescendant)?;
+                let list = snapshot.node(list_id)?;
+                let option = snapshot.node(active_id)?;
+                if list.role() != SemanticRole::ListBox
+                    || option.role() != SemanticRole::Option
+                    || option.state().disabled()
+                    || option.state().inert()
+                {
+                    return None;
+                }
+                let combo_owner = self.tree.semantic_action_authority(combo.id()).ok()?;
+                let list_owner = self.tree.semantic_action_authority(list_id).ok()?;
+                let option_owner = self.tree.semantic_action_authority(active_id).ok()?;
+                if !option_owner.activation().enabled()
+                    || !self
+                        .tree
+                        .is_descendant_or_self(list_owner.owner(), combo_owner.owner())
+                    || !self
+                        .tree
+                        .is_descendant_or_self(option_owner.owner(), list_owner.owner())
+                {
+                    return None;
+                }
+                Some(option_owner.owner().clone())
+            })
+            .collect::<Vec<_>>();
+        for target in targets {
+            // Capacity rejection leaves the retained publication intact and
+            // cannot redirect the reveal to another Option or move real focus.
+            // Counter/sequence exhaustion uses the normal terminal protocol.
+            if self
+                .submit_command_with_parent(
+                    target,
+                    SemanticCommand::ScrollIntoView,
+                    CommandOrigin::programmatic(),
+                    causal_parent,
+                )
+                .is_err()
+                && !matches!(self.status, RuntimeStatus::Running)
+            {
+                break;
+            }
+        }
     }
 
     fn record_motion_trace_facts(
