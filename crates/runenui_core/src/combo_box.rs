@@ -310,15 +310,18 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
                     .enumerate()
                     .find(|(_, item)| &item.id == active)
                     .and_then(|(index, old)| {
-                        let candidate = match old.key.as_ref() {
-                            Some(key) => self.options.iter().find(|current| {
-                                current.id == old.id && current.key.as_ref() == Some(key)
-                            }),
-                            None => self
-                                .options
-                                .get(index)
-                                .filter(|current| current.id == old.id && current.key.is_none()),
-                        };
+                        let candidate = old.key.as_ref().map_or_else(
+                            || {
+                                self.options
+                                    .get(index)
+                                    .filter(|current| current.id == old.id && current.key.is_none())
+                            },
+                            |key| {
+                                self.options.iter().find(|current| {
+                                    current.id == old.id && current.key.as_ref() == Some(key)
+                                })
+                            },
+                        );
                         candidate
                             .filter(|current| current.enabled)
                             .map(|_| active.clone())
