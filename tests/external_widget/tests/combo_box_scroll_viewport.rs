@@ -517,3 +517,40 @@ fn close_and_reopen_before_an_intermediate_publication_reveals_new_option_genera
         .interaction().scroll_offset().1 > 0.0);
     assert_eq!(app.state().chosen, 17);
 }
+
+#[test]
+fn queued_reveal_is_never_retargeted_after_original_option_is_retired() {
+    let mut app = AppRuntime::<App>::mount(State { open: true, ..State::default() });
+    settle(&mut app);
+    let owner = id(&app, "viewport.owner");
+    command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
+    let retired = id(&app, "viewport.option.17");
+    let _ = publish(&mut app);
+
+    app.submit_command(owner.clone(), SemanticCommand::FocusGroupLast, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("navigation admission"));
+    app.submit_action(Action::Popup(ComboBoxRequest::Close))
+        .unwrap_or_else(|_| unreachable!("close admission"));
+    let batch = app.pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|error| unreachable!("original navigation: {error:?}"));
+    assert!(batch.processed_through().is_some());
+    assert!(app.state().open);
+    settle(&mut app);
+    assert!(!app.state().open);
+    assert!(app.index().nodes().iter().all(|node| node.id() != &retired));
+
+    app.submit_action(Action::Popup(ComboBoxRequest::Open))
+        .unwrap_or_else(|_| unreachable!("reopen admission"));
+    settle(&mut app);
+    let current = id(&app, "viewport.option.17");
+    assert_ne!(current, retired);
+    let list = id(&app, "viewport.list");
+    let viewport = app.index().node(&list).and_then(|node| node.parent())
+        .unwrap_or_else(|| unreachable!("new scroll viewport")).clone();
+    let _ = publish(&mut app);
+    settle(&mut app);
+    assert_eq!(app.index().node(&viewport).unwrap_or_else(|| unreachable!())
+        .interaction().scroll_offset().1, 0.0);
+    assert_eq!(app.state().chosen, 0);
+    assert_eq!(app.focus().focused_node(), Some(&owner));
+}
