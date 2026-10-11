@@ -228,7 +228,11 @@ fn downstream_pointer_capture_outside_hit_has_exact_exclusive_finality() {
         .clone();
     assert_eq!(publication.hit_test_scene().target_at(outside), None);
     let context = publication.input_context().clone();
-    for (phase, position) in [(PointerPhase::Down, inside), (PointerPhase::Move, outside)] {
+    for (phase, position) in [
+        (PointerPhase::Down, inside),
+        (PointerPhase::Move, outside),
+        (PointerPhase::Up, outside),
+    ] {
         let receipt = runtime
             .submit_pointer(pointer_event(19, phase, position, context.clone()))
             .unwrap_or_else(|_| unreachable!("native pointer receipt admitted"))
@@ -255,13 +259,20 @@ fn downstream_pointer_capture_outside_hit_has_exact_exclusive_finality() {
                     && matches!(facts.route(), UiInputRoute::Captured { target: owner }
                         if owner == &target)
         ));
-        assert!(
-            batch
-                .final_ownership()
-                .pointers()
-                .iter()
-                .any(|pointer| { pointer.capture_owner() == Some(&target) })
-        );
+        if phase == PointerPhase::Up {
+            assert!(
+                batch.final_ownership().pointers().is_empty(),
+                "captured Up outside hit retires the pointer stream after settling"
+            );
+        } else {
+            assert!(
+                batch
+                    .final_ownership()
+                    .pointers()
+                    .iter()
+                    .any(|pointer| { pointer.capture_owner() == Some(&target) })
+            );
+        }
     }
 }
 
