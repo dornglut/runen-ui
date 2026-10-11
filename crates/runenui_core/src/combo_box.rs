@@ -1,25 +1,22 @@
 //! Select-only ComboBox over M4 real focus and M5 active-descendant semantics.
 //! All committed values and popup visibility are authored by the application.
 use crate::{
-    ChildBearingWidget, Element, ElementId, EventContext, EventPhase,
-    Focusability, HitContribution, HitContributionContext, KeyboardCompositionState, KeyboardPhase,
+    ChildBearingWidget, Element, ElementId, EventContext, EventPhase, Focusability,
+    HitContribution, HitContributionContext, KeyboardCompositionState, KeyboardPhase,
     LayoutContainer, LayoutStyle, LogicalKey, OptionItem, Popover, PresentationFocusPolicy,
-    PresentationOutsidePointerPolicy, SemanticAction, SemanticCommand,
-    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticPopupKind,
-    SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
+    PresentationOutsidePointerPolicy, SemanticAction, SemanticCommand, SemanticContribution,
+    SemanticContributionContext, SemanticNodeContribution, SemanticPopupKind, SemanticReference,
+    SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
     SurfacePresentation, SurfacePresentationAnchor, SurfacePresentationPlacement,
     SurfacePresentationSide, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
     WidgetActivationOutput, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetMeasure,
-    WidgetMeasureInput, WidgetUpdateContext, list_box,
+    WidgetMeasureInput, WidgetUpdateContext,
     element::{CommonNodeAuthoring, common_node_builder_methods},
+    list_box,
     widget_erasure::WidgetAdapter,
 };
 use core::fmt;
-use std::{
-    cell::RefCell,
-    collections::BTreeSet,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 type RequestHandler<Action> = Rc<RefCell<Box<dyn FnMut(ComboBoxRequest) -> Action>>>;
 
@@ -137,7 +134,9 @@ impl<Action> fmt::Debug for ComboWidget<Action> {
 }
 impl<Action> ComboWidget<Action> {
     fn initial_active(&self) -> Option<ElementId> {
-        self.options.iter().find(|option| option.selected && option.enabled)
+        self.options
+            .iter()
+            .find(|option| option.selected && option.enabled)
             .or_else(|| self.options.iter().find(|option| option.enabled))
             .map(|option| option.id.clone())
     }
@@ -147,7 +146,9 @@ impl<Action> ComboWidget<Action> {
             state.active = None;
             return;
         }
-        let current = state.active.as_ref()
+        let current = state
+            .active
+            .as_ref()
             .and_then(|id| eligible.iter().position(|option| &option.id == id));
         let next = match step {
             Navigation::First => 0,
@@ -159,7 +160,12 @@ impl<Action> ComboWidget<Action> {
     }
 }
 #[derive(Clone, Copy)]
-enum Navigation { Previous, Next, First, Last }
+enum Navigation {
+    Previous,
+    Next,
+    First,
+    Last,
+}
 impl<Action> Widget<Action> for ComboWidget<Action> {
     type State = ComboState;
     fn create_state(&self) -> Self::State {
@@ -181,8 +187,11 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
         let previous = state.clone();
         let mut next = self.create_state();
         if self.open && previous.open && self.invalid.is_none() {
-            next.active = previous.active.clone()
-                .filter(|id| self.options.iter().any(|item| &item.id == id && item.enabled));
+            next.active = previous.active.clone().filter(|id| {
+                self.options
+                    .iter()
+                    .any(|item| &item.id == id && item.enabled)
+            });
         }
         if previous != next {
             context.invalidate(WidgetInvalidation::SEMANTICS | WidgetInvalidation::INTERACTION);
@@ -195,8 +204,11 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
     fn activation(&self, _: &Self::State) -> WidgetActivation {
         WidgetActivation::actionable(self.enabled && self.invalid.is_none())
     }
-    fn activate(&mut self, state: &mut Self::State, _: &mut WidgetActivationContext<Action>)
-        -> WidgetActivationOutput<Action> {
+    fn activate(
+        &mut self,
+        state: &mut Self::State,
+        _: &mut WidgetActivationContext<Action>,
+    ) -> WidgetActivationOutput<Action> {
         if !self.enabled || self.invalid.is_some() {
             return WidgetActivationOutput::none();
         }
@@ -209,10 +221,17 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
         };
         WidgetActivationOutput::action((*self.on_request.borrow_mut())(request))
     }
-    fn event(&mut self, state: &mut Self::State, event: &UiEvent,
-        context: &mut EventContext<'_, Action>) -> WidgetEventOutput {
-        if !self.enabled || self.invalid.is_some()
-            || context.phase() != EventPhase::Target || context.default_is_prevented() {
+    fn event(
+        &mut self,
+        state: &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        if !self.enabled
+            || self.invalid.is_some()
+            || context.phase() != EventPhase::Target
+            || context.default_is_prevented()
+        {
             return WidgetEventOutput::none();
         }
         let directive = if let Some(cmd) = event.as_semantic_command() {

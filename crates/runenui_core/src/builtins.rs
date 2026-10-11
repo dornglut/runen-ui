@@ -1513,10 +1513,7 @@ impl<Action> fmt::Debug for OptionItem<Action> {
             .field("key", &self.common.key)
             .field("layout", &self.common.layout)
             .field("enabled", &self.enabled)
-            .field(
-                "focus_policy",
-                &self.focus_policy,
-            )
+            .field("focus_policy", &self.focus_policy)
             .field("actionable", &self.activation_factory.is_some())
             .field("has_callback", &self.activation_factory.is_some())
             .field("collection_position", &self.collection_position)
@@ -1592,7 +1589,10 @@ impl<Action> OptionItem<Action> {
 
     /// One current authored proxy reference; it is never application value identity.
     pub(crate) fn combo_proxy_facts(&self) -> Option<(crate::ElementId, bool, bool)> {
-        self.common.id.clone().map(|id| (id, self.selected, self.enabled))
+        self.common
+            .id
+            .clone()
+            .map(|id| (id, self.selected, self.enabled))
     }
 
     fn search_text(&self) -> &str {
