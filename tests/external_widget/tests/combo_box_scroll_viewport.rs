@@ -6,7 +6,8 @@ use runenui_core::{
     SemanticRole, UiApp, View, combo_box, option_item,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext,
+    AppRuntime, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig, SubmitCommandErrorKind,
+    SurfaceBuildContext,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -154,4 +155,160 @@ fn closed_popup_unmounts_both_listbox_and_its_scroll_viewport() {
     assert!(publication.semantic_publication().snapshot().nodes().iter().all(|node|
         node.role() != SemanticRole::ListBox && node.role() != SemanticRole::Option
     ));
+}
+
+#[test]
+fn closed_popup_rejects_retired_exact_option_scroll_without_retargeting_reopened_generation() {
+    let mut app = AppRuntime::<App>::mount(State {
+        open: true,
+        ..State::default()
+    });
+    settle(&mut app);
+    let owner = id(&app, "viewport.owner");
+    command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
+    let old = id(&app, "viewport.option.17");
+    let old_list = id(&app, "viewport.list");
+    let old_viewport = app
+        .index()
+        .node(&old_list)
+        .and_then(|node| node.parent())
+        .unwrap_or_else(|| unreachable!("original bounded scroll viewport"))
+        .clone();
+    let _ = publish(&mut app);
+    app.submit_action(Action::Popup(ComboBoxRequest::Close))
+        .unwrap_or_else(|_| unreachable!("application closes standard popup"));
+    settle(&mut app);
+    assert!(app.index().nodes().iter().all(|node| node.id() != &old));
+    assert!(app.index().nodes().iter().all(|node| node.id() != &old_viewport));
+    let Err(error) = app.submit_command(
+        old.clone(),
+        SemanticCommand::ScrollIntoView,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!("exact retired Option cannot be accepted by #344")
+    };
+    assert_eq!(error.kind(), SubmitCommandErrorKind::StaleTarget);
+    assert_eq!(error.unaccepted().target(), &old);
+    assert_eq!(error.unaccepted().command(), SemanticCommand::ScrollIntoView);
+
+    app.submit_action(Action::Popup(ComboBoxRequest::Open))
+        .unwrap_or_else(|_| unreachable!("application reopens standard popup"));
+    settle(&mut app);
+    let current = id(&app, "viewport.option.17");
+    assert_ne!(current, old, "reopened same authored Option gets a new generation");
+    let list = id(&app, "viewport.list");
+    let viewport = app
+        .index()
+        .node(&list)
+        .and_then(|node| node.parent())
+        .unwrap_or_else(|| unreachable!("new bounded scroll viewport"))
+        .clone();
+    let _ = publish(&mut app);
+    assert_eq!(
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!("new viewport"))
+            .interaction()
+            .scroll_offset(),
+        (0.0, 0.0),
+        "the old Option's rejected reveal cannot scroll a new generation"
+    );
+    assert_eq!(app.focus().focused_node(), Some(&owner));
+    assert_eq!(app.state().chosen, 0);
+}
+
+#[test]
+fn exact_option_scroll_from_another_runtime_fails_closed_without_stealing_focus() {
+    let state = || State {
+        open: true,
+        ..State::default()
+    };
+    let mut app = AppRuntime::<App>::mount(state());
+    let mut foreign = AppRuntime::<App>::mount(state());
+    settle(&mut app);
+    settle(&mut foreign);
+    let owner = id(&app, "viewport.owner");
+    command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
+    let foreign_option = id(&foreign, "viewport.option.17");
+    let list = id(&app, "viewport.list");
+    let viewport = app
+        .index()
+        .node(&list)
+        .and_then(|node| node.parent())
+        .unwrap_or_else(|| unreachable!("bounded local scroll viewport"))
+        .clone();
+    let _ = publish(&mut app);
+    let Err(error) = app.submit_command(
+        foreign_option.clone(),
+        SemanticCommand::ScrollIntoView,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!("foreign runtime target cannot pass exact-target admission")
+    };
+    assert_eq!(error.kind(), SubmitCommandErrorKind::ForeignTarget);
+    assert_eq!(error.unaccepted().target(), &foreign_option);
+    settle(&mut app);
+    assert_eq!(
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!("local viewport remains mounted"))
+            .interaction()
+            .scroll_offset(),
+        (0.0, 0.0)
+    );
+    assert_eq!(app.focus().focused_node(), Some(&owner));
+    assert_eq!(app.state().chosen, 0);
+}
+
+#[test]
+fn full_public_command_queue_rejects_exact_option_reveal_without_alternate_scroll_path() {
+    let mut app = AppRuntime::<App>::mount_with_config(
+        State {
+            open: true,
+            ..State::default()
+        },
+        RuntimeConfig::default().with_queue_capacity(4),
+    );
+    settle(&mut app);
+    let owner = id(&app, "viewport.owner");
+    command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
+    let last = id(&app, "viewport.option.17");
+    let list = id(&app, "viewport.list");
+    let viewport = app
+        .index()
+        .node(&list)
+        .and_then(|node| node.parent())
+        .unwrap_or_else(|| unreachable!("bounded popup viewport"))
+        .clone();
+    let _ = publish(&mut app);
+    for _ in 0..4 {
+        app.submit_command(
+            owner.clone(),
+            SemanticCommand::ScrollIntoView,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("four public FIFO slots available"));
+    }
+    let Err(error) = app.submit_command(
+        last.clone(),
+        SemanticCommand::ScrollIntoView,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!("full canonical FIFO rejects fifth exact Option command")
+    };
+    assert_eq!(error.kind(), SubmitCommandErrorKind::Full);
+    assert_eq!(error.unaccepted().target(), &last);
+    assert_eq!(error.unaccepted().command(), SemanticCommand::ScrollIntoView);
+    settle(&mut app);
+    assert_eq!(
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!("viewport is still mounted"))
+            .interaction()
+            .scroll_offset(),
+        (0.0, 0.0),
+        "a rejected exact Option reveal cannot bypass the canonical queue"
+    );
+    assert_eq!(app.focus().focused_node(), Some(&owner));
+    assert_eq!(app.state().chosen, 0);
 }
