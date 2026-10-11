@@ -1586,7 +1586,13 @@ impl<Action> OptionItem<Action> {
     }
 
     const fn focus_eligible_for_list_box_entry(&self) -> bool {
-        self.enabled || self.focus_policy == OptionFocusPolicy::DiscoverableWhenDisabled
+        self.focus_policy != OptionFocusPolicy::ComboBoxProxy
+            && (self.enabled || self.focus_policy == OptionFocusPolicy::DiscoverableWhenDisabled)
+    }
+
+    /// One current authored proxy reference; it is never application value identity.
+    pub(crate) fn combo_proxy_facts(&self) -> Option<(crate::ElementId, bool, bool)> {
+        self.common.id.clone().map(|id| (id, self.selected, self.enabled))
     }
 
     fn search_text(&self) -> &str {
