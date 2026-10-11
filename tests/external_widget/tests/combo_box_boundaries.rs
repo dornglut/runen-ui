@@ -9,7 +9,7 @@ use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, Surfac
 #[derive(Clone, Copy)]
 enum Mode { Disabled, MissingId, DuplicateKey, Churn, OwnerCollision, PopupOwnerCollision }
 struct State { mode: Mode, replacement: bool, popup_replaced: bool, option_rekeyed: bool, reordered: bool, chosen: u8, actions: Vec<u8> }
-enum Action { Request(ComboBoxRequest), Choose(u8), Replace, ReplacePopup, RekeyOption, Reorder }
+enum Action { Request(ComboBoxRequest), Choose(u8), Replace, ReplacePopup, RekeyOption, Reorder, Disable, Enable }
 struct App;
 impl UiApp for App {
     type State = State;
@@ -72,6 +72,8 @@ impl UiApp for App {
             Action::ReplacePopup => state.popup_replaced = true,
             Action::RekeyOption => state.option_rekeyed = true,
             Action::Reorder => state.reordered = true,
+            Action::Disable => state.mode = Mode::Disabled,
+            Action::Enable => state.mode = Mode::Churn,
         }
     }
 }
@@ -105,11 +107,12 @@ fn publish(app: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
 fn disabled_owner_blocks_option_activation_and_never_advertises_active_proxy() {
     let mut app = new(Mode::Disabled);
     let owner = id(&app, "boundary.owner");
-    let option = id(&app, "boundary.first");
     assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
-    assert!(!app.index().node(&option).is_some_and(|node| node.is_focusable()));
-    // Both command-admission refusal and a routed disabled no-op are legal.
-    let _ = app.submit_command(option, SemanticCommand::Activate, CommandOrigin::programmatic());
+    assert!(app.index().nodes().iter().all(|node| node.authored_id().is_none_or(
+        |id| id.as_str() != "boundary.first" && id.as_str() != "boundary.popup"
+    )), "disabled owner cannot retain an undismissable blocking popup");
+    // A disabled owner cannot activate or open the popup through the routed path.
+    let _ = app.submit_command(owner.clone(), SemanticCommand::Activate, CommandOrigin::programmatic());
     settle(&mut app);
     assert!(app.state().actions.is_empty());
     let published = publish(&mut app);
@@ -117,8 +120,13 @@ fn disabled_owner_blocks_option_activation_and_never_advertises_active_proxy() {
     let combo = snapshot.nodes().iter().find(|n| n.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("disabled ComboBox semantically queryable"));
     assert_eq!(combo.state().disabled(), Some(true));
+    assert_eq!(combo.state().expanded(), Some(false));
     assert!(!combo.relationships().iter()
-        .any(|rel| rel.kind() == SemanticRelationshipKind::ActiveDescendant));
+        .any(|rel| rel.kind() == SemanticRelationshipKind::ActiveDescendant
+            || rel.kind() == SemanticRelationshipKind::Controls));
+    assert!(snapshot.nodes().iter().all(|node|
+        node.role() != SemanticRole::Option && node.role() != SemanticRole::ListBox
+    ));
 }
 #[test]
 fn missing_authored_option_identity_fails_closed_before_mounted_popup_creation() {
@@ -323,4 +331,61 @@ fn duplicate_option_reconciliation_keys_fail_closed_before_mounting_popup_proxy(
             && node.role() != SemanticRole::ListBox));
     assert!(app.state().actions.is_empty(),
         "ambiguous sibling reconciliation keys cannot activate an Option");
+}
+
+// Even if the application retains its requested open state, disabling the
+// real M4 owner must withdraw the Popover and its pointer-blocking presentation.
+#[test]
+fn disabling_an_open_combo_unmounts_blocking_popup_and_reenabling_restores_app_authored_state() {
+    let mut app = new(Mode::Churn);
+    let owner = id(&app, "boundary.owner");
+    let old_popup = id(&app, "boundary.popup");
+    let old_option = id(&app, "boundary.first");
+    let before = publish(&mut app);
+    let node = before.semantic_publication().snapshot().nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("enabled open ComboBox"));
+    assert_eq!(node.state().expanded(), Some(true));
+    assert!(node.relationships().iter()
+        .any(|rel| rel.kind() == SemanticRelationshipKind::Controls));
+
+    app.submit_action(Action::Disable).unwrap_or_else(|_| unreachable!("disable action admitted"));
+    settle(&mut app);
+    assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
+    assert!(app.index().nodes().iter().all(|node|
+        node.id() != &old_option && node.id() != &old_popup));
+    let disabled = publish(&mut app);
+    let semantics = disabled.semantic_publication().snapshot();
+    let combo = semantics.nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("disabled owner remains semantic"));
+    assert_eq!(combo.state().disabled(), Some(true));
+    assert_eq!(combo.state().expanded(), Some(false));
+    assert!(combo.relationships().iter().all(|rel|
+        rel.kind() != SemanticRelationshipKind::Controls
+            && rel.kind() != SemanticRelationshipKind::ActiveDescendant));
+    assert!(semantics.nodes().iter().all(|node|
+        node.role() != SemanticRole::ListBox && node.role() != SemanticRole::Option));
+    assert!(app.state().actions.is_empty());
+    assert_eq!(app.state().chosen, 0);
+
+    // App-owned open(true) remains authored: re-enabling restores a *fresh*
+    // mounted popup and never resurrects a stale old-generation Option.
+    app.submit_action(Action::Enable).unwrap_or_else(|_| unreachable!("reenable action admitted"));
+    settle(&mut app);
+    let popup = id(&app, "boundary.popup");
+    let option = id(&app, "boundary.first");
+    assert_ne!(popup, old_popup);
+    assert_ne!(option, old_option);
+    let enabled = publish(&mut app);
+    let semantics = enabled.semantic_publication().snapshot();
+    let combo = semantics.nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("re-enabled ComboBox"));
+    assert_eq!(combo.state().disabled(), Some(false));
+    assert_eq!(combo.state().expanded(), Some(true));
+    assert!(combo.relationships().iter()
+        .any(|rel| rel.kind() == SemanticRelationshipKind::Controls));
+    assert!(app.state().actions.is_empty(), "re-authoring visibility is not a selection action");
+    assert_eq!(app.state().chosen, 0);
 }

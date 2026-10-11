@@ -551,7 +551,12 @@ fn assemble_combo<Action: 'static>(
     if options.iter().filter(|item| item.selected).count() > 1 {
         invalid.get_or_insert(InvalidComboBox::MultipleSelected);
     }
-    let popup = if open && invalid.is_none() {
+    // The application owns the requested open value, but a disabled ComboBox
+    // cannot expose a modal Popover that blocks pointer input while its owner
+    // cannot focus, navigate or dismiss it. Re-enabling may show the still-
+    // authored open popup through ordinary reconciliation.
+    let effective_open = open && owner_enabled && invalid.is_none();
+    let popup = if effective_open {
         // M5 ActiveDescendant requires Controls to identify the ListBox,
         // not the surrounding Popover's semantic Group.
         let popup = list_box(popup_options).id(popup_id.clone()).into_element();
@@ -589,7 +594,7 @@ fn assemble_combo<Action: 'static>(
             popup_id,
             options,
             selected_display,
-            open,
+            open: effective_open,
             enabled: owner_enabled,
             invalid,
             on_request,
