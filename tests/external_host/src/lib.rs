@@ -1734,7 +1734,10 @@ mod tests {
             ));
             previous_sequence = Some(receipt);
         }
-        assert!(reached.load(Ordering::Relaxed), "hover callback claimed only its own receipt");
+        assert!(
+            reached.load(Ordering::Relaxed),
+            "hover callback claimed only its own receipt"
+        );
     }
 
     fn assert_public_no_hit_hover(
