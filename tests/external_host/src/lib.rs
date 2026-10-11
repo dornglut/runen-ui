@@ -704,7 +704,7 @@ mod tests {
             UiInputFinality::ProcessingRejected(
                 runenui_runtime::UiInputProcessingRejection::InsufficientTransactionCapacity,
             ) => false,
-            other => panic!("unexpected queue-pressure finality: {other:?}"),
+            other => unreachable!("unexpected queue-pressure finality: {other:?}"),
         }
     }
 
