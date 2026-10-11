@@ -203,21 +203,32 @@ fn settle(runtime: &mut AppRuntime<App>) {
 
 #[test]
 fn downstream_pointer_capture_outside_hit_has_exact_exclusive_finality() {
-    assert_captured_close_outside_hit(PointerPhase::Up);
+    assert_captured_close_outside_hit(PointerPhase::Up, false);
 }
 
 #[test]
 fn downstream_pointer_cancel_outside_hit_is_exclusive_without_activation_or_replay() {
-    assert_captured_close_outside_hit(PointerPhase::Cancel);
+    for trace_disabled in [false, true] {
+        assert_captured_close_outside_hit(PointerPhase::Cancel, trace_disabled);
+    }
 }
 
-fn assert_captured_close_outside_hit(close_phase: PointerPhase) {
+fn assert_captured_close_outside_hit(close_phase: PointerPhase, trace_disabled: bool) {
     let observations = Rc::new(RefCell::new(Vec::new()));
-    let mut runtime = AppRuntime::<App>::mount(State {
+    let state = State {
         observations,
         translation: 0.0,
         singular: false,
-    });
+    };
+    let mut runtime = if trace_disabled {
+        AppRuntime::<App>::mount_with_config(
+            state,
+            runenui_runtime::RuntimeConfig::default()
+                .with_trace_config(runenui_runtime::TraceConfig::new(0)),
+        )
+    } else {
+        AppRuntime::<App>::mount(state)
+    };
     settle(&mut runtime);
     let env = StyleEnvironment::default();
     let publication = runtime
@@ -294,6 +305,9 @@ fn assert_captured_close_outside_hit(close_phase: PointerPhase) {
             .iter()
             .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
     );
+    if trace_disabled {
+        assert_eq!(runtime.trace().len(), 0, "arbitration must not require diagnostic trace");
+    }
 }
 
 #[test]
