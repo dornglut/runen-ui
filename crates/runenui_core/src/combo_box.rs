@@ -525,6 +525,11 @@ fn assemble_combo<Action: 'static>(
 
 impl<Action: 'static> View<Action> for ComboBox<Action> {
     fn into_element(self) -> Element<Action> {
+        let selected_display = self
+            .options
+            .iter()
+            .find_map(OptionItem::combo_selected_display)
+            .map(str::to_owned);
         let (widget, popup) = assemble_combo(
             self.label.clone(),
             self.popup_id,
@@ -535,8 +540,13 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
             self.on_request,
         );
         let invalid = widget.invalid.is_some();
+        let display = if invalid {
+            self.label
+        } else {
+            selected_display.unwrap_or(self.label)
+        };
         let mut children = vec![
-            Element::new(ComboLabel { label: self.label })
+            Element::new(ComboLabel { label: display })
                 .with_focusability(Focusability::NotFocusable),
         ];
         children.extend(popup);

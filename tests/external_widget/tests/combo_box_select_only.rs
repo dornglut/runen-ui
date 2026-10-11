@@ -4,7 +4,10 @@ use runenui_core::{
     ComboBoxRequest, CommandOrigin, ElementId, NoHostProtocol, SemanticAction, SemanticCommand,
     SemanticRole, UiApp, View, combo_box, option_item,
 };
-use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext};
+use runenui_runtime::{
+    AppRuntime, FontFamilyName, GenericFontFamily, LogicalSize, MountedNodeId, PumpBudget,
+    SurfaceBuildContext,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Action { Request(ComboBoxRequest), Choose(u8) }
@@ -247,4 +250,55 @@ fn semantic_expand_and_collapse_actions_follow_application_open_state() {
     assert!(!app.state().open);
     assert_eq!(app.state().log, [ComboBoxRequest::Open, ComboBoxRequest::Close]);
     assert_eq!(app.focus().focused_node(), Some(&owner));
+}
+
+const FONT: &[u8] =
+    include_bytes!("../../../crates/runenui_text/tests/fixtures/Cantarell-Regular.ttf");
+
+fn collapsed_display_glyphs(chosen: u8) -> Vec<u32> {
+    let mut app = AppRuntime::<App>::mount(State {
+        chosen,
+        ..State::default()
+    });
+    app.register_text_font_bytes(FONT.to_vec())
+        .unwrap_or_else(|_| unreachable!("checked font fixture"));
+    app.set_text_generic_family_mapping(
+        GenericFontFamily::SansSerif,
+        &[FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!())],
+    )
+    .unwrap_or_else(|_| unreachable!("checked font family"));
+    settle(&mut app);
+    let publication = app
+        .publish_surface(&SurfaceBuildContext::tight(
+            &runenui_core::StyleEnvironment::default(),
+            LogicalSize::try_new(500.0, 240.0).unwrap_or_else(|_| unreachable!()),
+        ))
+        .unwrap_or_else(|error| unreachable!("closed combo paint: {error:?}"));
+    publication
+        .paint_scene()
+        .items()
+        .iter()
+        .filter_map(|item| item.primitive().as_shaped_text_run())
+        .flat_map(|run| {
+            publication
+                .paint_scene()
+                .shaped_text_resource(run.resource_ref())
+                .into_iter()
+                .flat_map(|resource| resource.glyphs().iter().map(|glyph| glyph.id()))
+        })
+        .collect()
+}
+
+#[test]
+fn closed_select_only_displays_app_selected_option_using_retained_m8_text_not_static_name() {
+    let unselected = collapsed_display_glyphs(0);
+    let one = collapsed_display_glyphs(1);
+    let two = collapsed_display_glyphs(2);
+    assert!(!unselected.is_empty());
+    assert!(unselected.len() > one.len(),
+        "the unselected fallback prompt must not replace the chosen option");
+    assert_eq!(one.len(), two.len(),
+        "both selected options use their own ordinary three-letter label");
+    assert_ne!(one, two,
+        "changing only app-authored selected Option changes retained text glyphs");
 }

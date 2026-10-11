@@ -1597,6 +1597,12 @@ impl<Action> OptionItem<Action> {
             .map(|id| (id, self.selected, self.enabled))
     }
 
+    /// Derive only transient collapsed-display text from the currently
+    /// application-selected Option; no selection value is retained.
+    pub(crate) fn combo_selected_display(&self) -> Option<&str> {
+        self.selected.then_some(&self.label)
+    }
+
     /// Share one Option callback for both ordinary pointer activation and
     /// the owning `ComboBox`'s keyboard acceptance. Durable values never come
     /// from a widget-local active `ElementId`.
