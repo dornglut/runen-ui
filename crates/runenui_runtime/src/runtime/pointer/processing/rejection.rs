@@ -66,6 +66,7 @@ pub(super) struct RejectedPointerFacts {
     pointer_id: PointerId,
     phase: PointerPhase,
     outcome: TracePointerRejection,
+    stale_target: bool,
 }
 
 impl RejectedPointerFacts {
@@ -84,7 +85,15 @@ impl RejectedPointerFacts {
             pointer_id,
             phase,
             outcome,
+            stale_target: false,
         }
+    }
+
+    /// Preserve exact mounted rejection knowledge that the inherited M4
+    /// `NoTarget` diagnostic does not distinguish from missing geometry.
+    pub(super) const fn with_stale_target(mut self) -> Self {
+        self.stale_target = true;
+        self
     }
 }
 
@@ -601,6 +610,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             pointer_id,
             phase,
             outcome,
+            stale_target,
         } = facts;
         self.trace.record_reserved(
             trace_reservation,
@@ -621,6 +631,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             TracePointerRejection::RetiredGeneration | TracePointerRejection::MissingGeneration => {
                 crate::UiInputProcessingRejection::MissingDisplayedSnapshot
+            }
+            TracePointerRejection::NoTarget if stale_target => {
+                crate::UiInputProcessingRejection::StaleTarget
             }
             TracePointerRejection::NoTarget => crate::UiInputProcessingRejection::MissingTarget,
             _ => crate::UiInputProcessingRejection::InvalidPointerStream,

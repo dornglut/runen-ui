@@ -1224,24 +1224,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             && text_capability.is_some_and(|capability| {
                 capability.accepts_committed_text() || capability.accepts_composition()
             });
-        let keyboard_default = match &payload {
-            InputEnvelopePayload::Keyboard(event) if has_default_output => {
-                if self.editor_owned_keyboard_default(event, &target).is_some() {
-                    Some(crate::UiInputClaimReason::TextOwner)
-                } else if shortcut_candidate.as_ref().is_some_and(|candidate| {
-                    matches!(candidate, KeyboardShortcutCandidate::Unique { .. })
-                }) {
-                    Some(crate::UiInputClaimReason::ApplicationShortcut)
-                } else if Self::generic_keyboard_default(event)
-                    .is_some_and(|command| matches!(command, SemanticCommand::Activate))
-                {
-                    Some(crate::UiInputClaimReason::ActivationDefault)
-                } else {
-                    Some(crate::UiInputClaimReason::FocusNavigation)
-                }
-            }
-            _ => None,
-        };
+        // The selected default owns its reason. A shortcut candidate can be
+        // suppressed before a different default runs, and type-ahead can
+        // commit navigation synchronously without any queued default output.
+        let keyboard_default = transaction.keyboard_default_claim;
         let mut reasons = crate::input_arbitration::InputClaimReasons::new();
         if explicit {
             reasons.push(crate::UiInputClaimReason::ExplicitWidgetClaim);
@@ -1306,7 +1292,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 crate::UiDefaultDisposition::Prevented
             } else if has_default_output {
                 crate::UiDefaultDisposition::Queued
-            } else if applied_space_down {
+            } else if applied_space_down || keyboard_default.is_some() {
                 crate::UiDefaultDisposition::Applied
             } else {
                 crate::UiDefaultDisposition::None
@@ -1874,6 +1860,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         if let Some(command) = self.editor_owned_keyboard_default(event, &target) {
             Self::collect_keyboard_default_command(transaction, target, command)?;
+            transaction.keyboard_default_claim = Some(crate::UiInputClaimReason::TextOwner);
             return Ok(());
         }
         if self.collect_keyboard_shortcut_default(transaction, event, shortcut_candidate)? {
@@ -1907,6 +1894,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         if let Some(command) = command {
             Self::collect_keyboard_default_command(transaction, target, command)?;
+            transaction.keyboard_default_claim = match command {
+                SemanticCommand::Activate => Some(crate::UiInputClaimReason::ActivationDefault),
+                SemanticCommand::FocusNext
+                | SemanticCommand::FocusPrevious
+                | SemanticCommand::FocusLeft
+                | SemanticCommand::FocusRight
+                | SemanticCommand::FocusUp
+                | SemanticCommand::FocusDown => Some(crate::UiInputClaimReason::FocusNavigation),
+                // A route-only follow-up is not itself a committed UI claim.
+                _ => None,
+            };
         }
         Ok(())
     }
@@ -1976,6 +1974,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 causal_parent: transaction.parent,
             },
         );
+        transaction.keyboard_default_claim = Some(crate::UiInputClaimReason::ApplicationShortcut);
         Ok(true)
     }
 

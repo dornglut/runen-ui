@@ -362,6 +362,15 @@ impl RecordedPump {
 
 /// Canonical in-order pump including exact native receipts, non-input owner
 /// transitions, retirement and reached-work fence. This is the *only* executor.
+///
+/// For an envelope budget N, the loop reaches at most N envelopes and 2N+3
+/// readiness checkpoints (including initial, empty-FIFO and final checks).
+/// Each admitted boundary produces at most one ownership transition, each
+/// external input at most one settlement, and the lifetime at most one
+/// retirement: at most 4N+4 returned records. Every snapshot contains at most
+/// `pointer_streams` pointers and one current logical surface. Temporary
+/// snapshot buffers are reserved per boundary and released/replaced there;
+/// only the caller's batch and the latest derived projection remain retained.
 #[allow(clippy::too_many_lines)]
 pub(crate) fn pump_recorded<App: UiApp>(
     runtime: &mut Runtime<App::State, App::Action, App::HostProtocol>,

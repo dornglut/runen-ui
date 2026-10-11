@@ -126,6 +126,8 @@ pub(crate) struct RoutedTransaction<Action> {
     pub(crate) remaining_default_outputs: usize,
     pub(crate) propagation_stopped: bool,
     pub(crate) host_input_claimed: bool,
+    /// Selected keyboard default's fact, exposed only after the enclosing commit.
+    pub(crate) keyboard_default_claim: Option<crate::UiInputClaimReason>,
     pub(crate) application_command_resolution:
         Option<(MountedNodeId, ApplicationCommandDisposition)>,
     pub(crate) default_prevented: bool,

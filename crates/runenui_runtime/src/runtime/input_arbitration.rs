@@ -259,19 +259,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             let pending = self.input_observation.pending_direct_boundaries;
             let pending = if previous.status == self.status {
-                pending
+                Some(pending)
             } else {
-                pending.max(1)
+                pending.checked_add(1)
             };
             // Running -> Closed invalidates live input ownership. After
             // Terminal, the lifetime was already invalidated, so cleanup
             // cannot consume another arbitration revision.
             let closing_revision = u64::from(matches!(self.status, crate::RuntimeStatus::Running));
-            if self
-                .input_observation
-                .revision
-                .get()
-                .checked_add(pending)
+            if pending
+                .and_then(|pending| self.input_observation.revision.get().checked_add(pending))
                 .and_then(|revision| revision.checked_add(closing_revision))
                 .is_none()
             {
@@ -400,9 +397,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if let Some(previous) = &self.input_observation.last {
             let pending = self.input_observation.pending_direct_boundaries;
             let needed = if previous.status != self.status {
-                // An already-committed synchronous terminal status requires
-                // exactly one observed revision even for a read-only query.
-                pending.max(1)
+                // Terminal invalidation is a distinct boundary after each
+                // already-committed direct publication/composition change.
+                pending
+                    .checked_add(1)
+                    .ok_or(InputObservationError::RevisionExhausted)?
             } else if matches!(self.status, crate::RuntimeStatus::Running) {
                 // Only an *admitted* future canonical envelope/checkpoint
                 // needs a spare transition; an unchanged public read does not.
@@ -515,7 +514,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             // Each committed direct boundary must remain detectable as a
             // revision gap after the host's later synchronous query.
-            let steps = self.input_observation.pending_direct_boundaries.max(1);
+            let status_changed = self
+                .input_observation
+                .last
+                .as_ref()
+                .is_some_and(|previous| previous.status != current.status);
+            let steps = self
+                .input_observation
+                .pending_direct_boundaries
+                .checked_add(u64::from(status_changed))
+                .unwrap_or_else(|| unreachable!("revision steps were preflighted"))
+                .max(1);
             let next = self
                 .input_observation
                 .revision
@@ -539,5 +548,60 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) -> Result<InputOwnershipSnapshot, InputObservationError> {
         let reserved = self.reserve_input_ownership_read()?;
         Ok(self.input_ownership_reserved(reserved).0)
+    }
+}
+
+#[cfg(test)]
+mod revision_tests {
+    use runenui_core::{NoHostProtocol, StyleEnvironment, View};
+
+    use super::Runtime;
+    use crate::{
+        LogicalSize, RuntimeConfig, RuntimeStatus, RuntimeTerminalReason, SurfaceBuildContext,
+        TraceConfig,
+    };
+
+    #[test]
+    fn direct_terminal_is_a_distinct_revision_after_coalesced_publications() {
+        for initial_revision in [1, u64::MAX - 3] {
+            for trace_capacity in [0, 512] {
+                let mut runtime = Runtime::<(), (), NoHostProtocol>::mount(
+                    (),
+                    |()| runenui_core::text("revision fixture").into_element(),
+                    RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
+                );
+                runtime
+                    .input_ownership()
+                    .unwrap_or_else(|_| unreachable!("initial projection"));
+                runtime.seed_input_revision_for_test(initial_revision);
+                let environment = StyleEnvironment::default();
+                let size =
+                    LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("viewport"));
+                let context = SurfaceBuildContext::tight(&environment, size);
+                for _ in 0..2 {
+                    runtime
+                        .publish_surface(&context)
+                        .unwrap_or_else(|_| unreachable!("direct publication"));
+                }
+                runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                let terminal = runtime
+                    .input_ownership()
+                    .unwrap_or_else(|_| unreachable!("terminal projection"));
+                assert_eq!(terminal.revision().get(), initial_revision + 3);
+                assert_eq!(
+                    terminal.status(),
+                    RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+                );
+                let closed = runtime
+                    .shutdown_observed()
+                    .unwrap_or_else(|_| unreachable!("terminal cleanup"));
+                assert_eq!(closed.final_ownership().revision(), terminal.revision());
+                assert_eq!(closed.final_ownership().status(), RuntimeStatus::Closed);
+                assert!(matches!(
+                    closed.ordered_records(),
+                    [crate::InputArbitrationRecord::ScopeRetired(_)]
+                ));
+            }
+        }
     }
 }

@@ -1,5 +1,8 @@
 #![allow(refining_impl_trait)]
 
+#[path = "input_arbitration_classification.rs"]
+mod arbitration_classification;
+
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
