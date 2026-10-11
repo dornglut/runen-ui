@@ -3,6 +3,9 @@
 #[path = "input_arbitration_classification.rs"]
 mod arbitration_classification;
 
+#[path = "input_arbitration_finality.rs"]
+mod arbitration_finality;
+
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{

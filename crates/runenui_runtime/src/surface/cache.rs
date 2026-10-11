@@ -518,10 +518,6 @@ pub(crate) struct SurfaceCache {
 }
 
 impl SurfaceCache {
-    /// Returns published presentation roots from visual topmost to bottommost.
-    ///
-    /// Ordering is derived from the accepted #341 mounted-preorder presentation band;
-    /// this retains no separate "latest popup" state.
     /// Queries only the topmost published modal blocker, without assembling
     /// the presentation-root vector or allocating after an input commit.
     pub(crate) fn topmost_modal_presentation_root(&self) -> Option<MountedNodeId> {
@@ -539,6 +535,10 @@ impl SurfaceCache {
             })
     }
 
+    /// Returns published presentation roots from visual topmost to bottommost.
+    ///
+    /// Ordering is derived from the accepted #341 mounted-preorder presentation band;
+    /// this retains no separate "latest popup" state.
     pub(crate) fn presentation_interaction_roots(&self) -> Vec<PresentationInteractionRoot> {
         self.topology
             .nodes

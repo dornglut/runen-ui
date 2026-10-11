@@ -59,7 +59,11 @@ impl UiApp for ProbeApp {
 }
 
 fn focused_runtime(claim: bool) -> AppRuntime<ProbeApp> {
-    let mut app = AppRuntime::<ProbeApp>::mount(claim);
+    focused_runtime_with_config(claim, crate::RuntimeConfig::default())
+}
+
+fn focused_runtime_with_config(claim: bool, config: crate::RuntimeConfig) -> AppRuntime<ProbeApp> {
+    let mut app = AppRuntime::<ProbeApp>::mount_with_config(claim, config);
     let budget = PumpBudget::new(16, 16, 16, 16);
     let _ = app.pump(budget);
     let id = ElementId::new("probe").unwrap_or_else(|_| unreachable!("fixture id"));
@@ -540,6 +544,84 @@ fn mid_pump_snapshot_capacity_failure_returns_lossless_partial_batch() {
         })
         .collect::<Vec<_>>();
     assert_eq!(second_settled, vec![second]);
+}
+
+#[test]
+fn every_observation_reservation_boundary_preserves_fifo_finality_and_bounded_records() {
+    // A three-envelope pump has the initial read, at most nine readiness
+    // checkpoints, and three envelope reservations. Sweep that entire range,
+    // including reservations reached only by subsequent bounded pumps.
+    for trace_capacity in [0, 1, 512] {
+        for failed_reservation in 0..=13 {
+            let config = crate::RuntimeConfig::default()
+                .with_trace_config(crate::TraceConfig::new(trace_capacity));
+            let mut app = focused_runtime_with_config(false, config);
+            let before = app
+                .input_ownership()
+                .unwrap_or_else(|_| unreachable!("ownership"));
+            let receipts = (0..3)
+                .map(|_| {
+                    app.submit_keyboard(key())
+                        .unwrap_or_else(|_| unreachable!("admitted"))
+                        .sequence()
+                })
+                .collect::<Vec<_>>();
+            app.runtime
+                .inject_input_reservation_failure_after(failed_reservation);
+            let mut settled = Vec::new();
+            let mut last_fence = None;
+            for budget in [0, 3, 1, 1, 1, 1, 1] {
+                match app.pump(PumpBudget::new(budget, 0, 0, 0)) {
+                    Err(crate::InputObservationError::Capacity) => {
+                        assert_eq!(app.runtime.queue.len(), receipts.len() - settled.len());
+                    }
+                    Err(other) => unreachable!("unexpected observation failure: {other:?}"),
+                    Ok(batch) => {
+                        assert!(batch.ordered_records().len() <= 4 * budget + 4);
+                        assert_eq!(batch.final_ownership(), &before);
+                        assert_eq!(batch.final_ownership().pointers(), []);
+                        assert!(batch.final_ownership().surfaces().len() <= 1);
+                        assert!(batch.report().processed_envelopes() <= budget);
+                        if batch.pause_reason().is_some() {
+                            assert_eq!(
+                                batch.pause_reason(),
+                                Some(crate::InputPumpPauseReason::ObservationCapacity)
+                            );
+                            assert_ne!(batch.report().outcome(), crate::PumpOutcome::Quiescent);
+                        }
+                        let mut processed = 0;
+                        for record in batch.ordered_records() {
+                            let InputArbitrationRecord::InputSettled(input) = record else {
+                                unreachable!("fixture has no ownership transition or retirement");
+                            };
+                            assert_eq!(input.scope(), before.scope());
+                            assert_eq!(input.ownership_revision(), before.revision());
+                            assert!(matches!(input.finality(), UiInputFinality::Committed(facts)
+                                if facts.conflict() == UiInputConflict::ObservedNonexclusive));
+                            assert_eq!(input.sequence(), receipts[settled.len()]);
+                            settled.push(input.sequence());
+                            processed += 1;
+                        }
+                        assert_eq!(processed, batch.report().processed_envelopes());
+                        if let Some(fence) = batch.processed_through() {
+                            assert!(last_fence.is_none_or(|previous| fence > previous));
+                            assert_eq!(Some(&fence), settled.last());
+                            last_fence = Some(fence);
+                        } else {
+                            assert_eq!(processed, 0);
+                        }
+                        assert_eq!(
+                            batch.report().remaining_queued_envelopes(),
+                            receipts.len() - settled.len()
+                        );
+                    }
+                }
+            }
+            assert_eq!(settled, receipts);
+            assert_eq!(app.status(), crate::RuntimeStatus::Running);
+            assert!(app.trace().len() <= trace_capacity);
+        }
+    }
 }
 
 #[test]
