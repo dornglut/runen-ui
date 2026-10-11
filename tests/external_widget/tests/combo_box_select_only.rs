@@ -214,3 +214,35 @@ fn keyboard_ime_escape_and_enter_keep_focus_and_committed_value_separate() {
     assert!(!app.state().open);
     assert_eq!(app.focus().focused_node(), Some(&owner));
 }
+
+#[test]
+fn semantic_expand_and_collapse_actions_follow_application_open_state() {
+    let mut app = AppRuntime::<App>::mount(State::default());
+    settle(&mut app);
+    let owner = id(&app, "choice.owner");
+    command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
+    let published = app.publish_surface(&SurfaceBuildContext::tight(
+        &runenui_core::StyleEnvironment::default(),
+        LogicalSize::try_new(500.0, 260.0).unwrap_or_else(|_| unreachable!()),
+    )).unwrap_or_else(|e| unreachable!("closed ComboBox semantics: {e:?}"));
+    let combo = published.semantic_publication().snapshot().nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("ComboBox role"));
+    assert!(combo.supported_actions().contains(&SemanticAction::Expand));
+    assert!(!combo.supported_actions().contains(&SemanticAction::Collapse));
+    command(&mut app, owner.clone(), SemanticCommand::Expand);
+    assert!(app.state().open);
+    assert_eq!(app.state().log, [ComboBoxRequest::Open]);
+    let published = app.publish_surface(&SurfaceBuildContext::tight(
+        &runenui_core::StyleEnvironment::default(),
+        LogicalSize::try_new(500.0, 260.0).unwrap_or_else(|_| unreachable!()),
+    )).unwrap_or_else(|e| unreachable!("expanded ComboBox semantics: {e:?}"));
+    let combo = published.semantic_publication().snapshot().nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("ComboBox role"));
+    assert!(combo.supported_actions().contains(&SemanticAction::Collapse));
+    command(&mut app, owner.clone(), SemanticCommand::Collapse);
+    assert!(!app.state().open);
+    assert_eq!(app.state().log, [ComboBoxRequest::Open, ComboBoxRequest::Close]);
+    assert_eq!(app.focus().focused_node(), Some(&owner));
+}
