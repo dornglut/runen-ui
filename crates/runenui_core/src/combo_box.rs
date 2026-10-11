@@ -90,13 +90,13 @@ impl<Action> ComboBox<Action> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct Candidate {
+struct Candidate {
     id: ElementId,
     selected: bool,
     enabled: bool,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum InvalidComboBox {
+pub enum InvalidComboBox {
     MissingOptionId,
     DuplicateOptionId,
     MultipleSelected,
@@ -104,16 +104,16 @@ pub(crate) enum InvalidComboBox {
     OwnerIdCollision,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ComboState {
+pub struct ComboState {
     pub(crate) label: String,
     pub(crate) popup_id: ElementId,
-    pub(crate) options: Vec<Candidate>,
+    options: Vec<Candidate>,
     pub(crate) active: Option<ElementId>,
     pub(crate) open: bool,
     pub(crate) enabled: bool,
     pub(crate) invalid: Option<InvalidComboBox>,
 }
-pub(crate) struct ComboWidget<Action> {
+pub struct ComboWidget<Action> {
     label: String,
     popup_id: ElementId,
     options: Vec<Candidate>,
@@ -170,7 +170,7 @@ impl<Action> ComboWidget<Action> {
         Some((*action.borrow_mut())())
     }
     pub(crate) fn proxy_event(
-        &mut self,
+        &self,
         state: &mut ComboState,
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
@@ -580,7 +580,7 @@ pub fn combo_box<Action>(
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EditableComboBoxError {
-    /// A Composite editor must be public single-line M10 TextField.
+    /// A composite editor must be a public single-line M10 `TextField`.
     IncompatibleEditor,
 }
 impl fmt::Display for EditableComboBoxError {
@@ -590,7 +590,7 @@ impl fmt::Display for EditableComboBoxError {
 }
 impl std::error::Error for EditableComboBoxError {}
 
-/// One focused TextField/M10 editor with ComboBox semantics and a proxy Option popup.
+/// One focused M10 `TextField` with `ComboBox` semantics and an `OptionItem` popup.
 pub struct EditableComboBox<Action> {
     editor: TextField<Action>,
     label: String,
@@ -641,7 +641,7 @@ impl<Action: 'static> View<Action> for EditableComboBox<Action> {
     }
 }
 
-/// Composes an existing public single-line M10 TextField with standard OptionItems.
+/// Composes an existing public single-line M10 `TextField` with standard `OptionItem` values.
 ///
 /// # Errors
 /// Rejects multiline, secret or already-composite editor configurations.

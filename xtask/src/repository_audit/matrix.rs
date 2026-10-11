@@ -41,6 +41,7 @@ const M11_DELIVERY_SLICES: &[&str] = &[
     "M11SLIDER",
     "M11SPIN",
     "M11TREE",
+    "M11COMBO",
     "M11SPLITTER",
     "M11PROGRESS",
     "M11TOOLBAR",
@@ -1022,6 +1023,11 @@ mod tests {
             "owner-accepted",
         ),
         (
+            "M11COMBO",
+            &["M11CTRL-85", "M11CTRL-86", "M11CTRL-87", "M11CTRL-88", "M11CTRL-89"],
+            "blocked",
+        ),
+        (
             "M11SLIDER",
             &["M11CTRL-72", "M11CTRL-73", "M11CTRL-74"],
             "owner-accepted",
@@ -1044,7 +1050,7 @@ mod tests {
         let mut findings = Vec::new();
         let (rows, parse_schema_errors) = parse_rows(&contents, M11_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
-        assert_eq!(rows.len(), 84);
+        assert_eq!(rows.len(), 89);
 
         for (slice, ids, status) in M11_EXPECTED_SLICES {
             assert_m11_slice(&rows, slice, ids, status);
@@ -1068,6 +1074,7 @@ mod tests {
                 "M11SLIDER",
                 "M11SPIN",
                 "M11TREE",
+                "M11COMBO",
                 "M11SPLITTER",
                 "M11PROGRESS",
                 "M11TOOLBAR",
@@ -1205,7 +1212,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 536);
+        assert_eq!(total, 541);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }

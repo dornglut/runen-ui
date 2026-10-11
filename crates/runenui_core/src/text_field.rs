@@ -164,7 +164,7 @@ impl<Action> TextField<Action> {
             && self.spin.is_none()
             && self.combo.is_none()
     }
-    pub(crate) fn combo_owner_id(&self) -> Option<&ElementId> {
+    pub(crate) const fn combo_owner_id(&self) -> Option<&ElementId> {
         self.common.id.as_ref()
     }
     pub(crate) const fn combo_editor_enabled(&self) -> bool {
@@ -342,6 +342,58 @@ impl<Action> fmt::Debug for TextFieldWidget<Action> {
     }
 }
 
+fn project_combo_semantics(
+    mut node: SemanticNodeContribution,
+    field_state: &TextFieldState,
+    context: SemanticContributionContext,
+) -> Option<SemanticNodeContribution> {
+        if let Some(combo) = field_state.combo.as_ref() {
+            if combo.invalid.is_some() {
+                return None;
+            }
+            node = node
+                .with_name(combo.label.clone())
+                .with_popup(SemanticPopupKind::ListBox)
+                .with_autocomplete(
+                    field_state
+                        .combo_autocomplete
+                        .unwrap_or(SemanticAutocomplete::List),
+                )
+                .with_action(SemanticAction::RequestFocus);
+            if combo.enabled {
+                node = node
+                    .with_action(SemanticAction::Activate)
+                    .with_action(if combo.open {
+                        SemanticAction::Collapse
+                    } else {
+                        SemanticAction::Expand
+                    });
+            }
+            if combo.open {
+                node = node.with_relationship(SemanticRelationship::new(
+                    SemanticRelationshipKind::Controls,
+                    SemanticReference::Authored {
+                        element_id: combo.popup_id.clone(),
+                        semantic_key: None,
+                    },
+                ));
+                if let Some(id) = combo.active.as_ref() {
+                    node = node.with_relationship(SemanticRelationship::new(
+                        SemanticRelationshipKind::ActiveDescendant,
+                        SemanticReference::Authored {
+                            element_id: id.clone(),
+                            semantic_key: None,
+                        },
+                    ));
+                }
+            }
+            if context.has_mounted_children() {
+                node = node.with_mounted_children();
+            }
+        }
+    Some(node)
+}
+
 impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
     type State = TextFieldState;
 
@@ -439,8 +491,11 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         event: &UiEvent,
         context: &mut EventContext<'_, Action>,
     ) -> crate::WidgetEventOutput {
-        if let (Some(combo), Some(current)) = (self.combo.as_mut(), state.combo.as_mut()) {
-            combo.proxy_event(current, event, context, true);
+        if let (Some(combo), Some(current)) = (self.combo.as_ref(), state.combo.as_mut()) {
+            let proxy_output = combo.proxy_event(current, event, context, true);
+            if context.default_is_prevented() {
+                return proxy_output;
+            }
         }
         if context.phase() == EventPhase::Target
             && !context.default_is_prevented()
@@ -601,50 +656,9 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         if let Some(placeholder) = &self.state.placeholder {
             node = node.with_placeholder(placeholder.clone());
         }
-        if let Some(combo) = field_state.combo.as_ref() {
-            if combo.invalid.is_some() {
-                return SemanticContribution::empty();
-            }
-            node = node
-                .with_name(combo.label.clone())
-                .with_popup(SemanticPopupKind::ListBox)
-                .with_autocomplete(
-                    field_state
-                        .combo_autocomplete
-                        .unwrap_or(SemanticAutocomplete::List),
-                )
-                .with_action(SemanticAction::RequestFocus);
-            if combo.enabled {
-                node = node
-                    .with_action(SemanticAction::Activate)
-                    .with_action(if combo.open {
-                        SemanticAction::Collapse
-                    } else {
-                        SemanticAction::Expand
-                    });
-            }
-            if combo.open {
-                node = node.with_relationship(SemanticRelationship::new(
-                    SemanticRelationshipKind::Controls,
-                    SemanticReference::Authored {
-                        element_id: combo.popup_id.clone(),
-                        semantic_key: None,
-                    },
-                ));
-                if let Some(id) = combo.active.as_ref() {
-                    node = node.with_relationship(SemanticRelationship::new(
-                        SemanticRelationshipKind::ActiveDescendant,
-                        SemanticReference::Authored {
-                            element_id: id.clone(),
-                            semantic_key: None,
-                        },
-                    ));
-                }
-            }
-            if context.has_mounted_children() {
-                node = node.with_mounted_children();
-            }
-        }
+        let Some(mut node) = project_combo_semantics(node, field_state, context) else {
+            return SemanticContribution::empty();
+        };
         if let Some(spin) = &self.state.spin {
             node = node
                 .with_name(spin.label.clone())
