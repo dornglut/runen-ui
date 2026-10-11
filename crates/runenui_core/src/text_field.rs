@@ -480,6 +480,14 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         crate::WidgetEventOutput::none()
     }
 
+    fn diagnostics(&self, state: &Self::State) -> Vec<crate::WidgetDiagnostic> {
+        if let (Some(combo), Some(current)) = (self.combo.as_ref(), state.combo.as_ref()) {
+            combo.diagnostics(current)
+        } else {
+            Vec::new()
+        }
+    }
+
     fn editable(&self, _: &Self::State) -> Option<EditableContribution<Action>> {
         if self.combo.as_ref().is_some_and(|combo| combo.invalid.is_some()) {
             return None;
@@ -533,7 +541,7 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         HitContribution::single_rect(rect)
     }
 
-    fn semantics(&self, state: &Self::State, context: SemanticContributionContext) -> SemanticContribution {
+    fn semantics(&self, field_state: &Self::State, context: SemanticContributionContext) -> SemanticContribution {
         let Some(editable) = SemanticEditable::new(
             self.state.snapshot,
             &self.state.content,
@@ -550,7 +558,10 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         if let Some(invalid) = self.state.invalid {
             state = state.with_invalid(invalid);
         }
-        let role = if state.combo.is_some() {
+        if let Some(combo) = field_state.combo.as_ref() {
+            state = state.with_expanded(combo.open);
+        }
+        let role = if field_state.combo.is_some() {
             SemanticRole::ComboBox
         } else if self.state.spin.is_some() {
             SemanticRole::SpinButton
@@ -578,19 +589,14 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         if let Some(placeholder) = &self.state.placeholder {
             node = node.with_placeholder(placeholder.clone());
         }
-        if let Some(combo) = state.combo.as_ref() {
+        if let Some(combo) = field_state.combo.as_ref() {
             if combo.invalid.is_some() {
                 return SemanticContribution::empty();
             }
             node = node
                 .with_name(combo.label.clone())
                 .with_popup(SemanticPopupKind::ListBox)
-                .with_autocomplete(state.combo_autocomplete.unwrap_or(SemanticAutocomplete::List))
-                .with_state(SemanticState::ENABLED
-                    .with_disabled(state.disabled)
-                    .with_read_only(state.read_only)
-                    .with_required(state.required)
-                    .with_expanded(combo.open))
+                .with_autocomplete(field_state.combo_autocomplete.unwrap_or(SemanticAutocomplete::List))
                 .with_action(SemanticAction::RequestFocus);
             if combo.enabled {
                 node = node.with_action(SemanticAction::Activate)
