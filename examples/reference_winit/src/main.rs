@@ -87,6 +87,23 @@ fn native_release_retry_deadline(
     }
 }
 
+fn release_native_pointer(
+    modes: &mut pointer_mode::PointerModes,
+    platform: &mut impl pointer_mode::Platform,
+    retry_at: &mut Option<Instant>,
+    now: Instant,
+) -> Result<(), pointer_mode::Failure> {
+    if matches!(modes.state(), HostPointerState::ReleaseFailed) {
+        *retry_at = native_release_retry_deadline(modes.state(), *retry_at, now);
+        if !native_release_retry_due(*retry_at, now) {
+            return Err(pointer_mode::Failure::ReleaseFailed);
+        }
+    }
+    let result = modes.release(platform);
+    *retry_at = native_release_retry_deadline(modes.state(), None, now);
+    result
+}
+
 fn revoke_pointer_for_runtime_stop(
     status: runenui_runtime::RuntimeStatus,
     modes: &mut pointer_mode::PointerModes,
@@ -1857,15 +1874,13 @@ impl ReferenceHost {
                     ..
                 })
         );
-        let result = self
-            .framework_services
-            .pointer_modes_mut()
-            .release(&mut WinitPointer(window));
+        let result = release_native_pointer(
+            self.framework_services.pointer_modes_mut(),
+            &mut WinitPointer(window),
+            &mut self.native_release_retry_at,
+            Instant::now(),
+        );
         self.framework_services.refresh_native_input_method(window);
-        self.native_release_retry_at = result
-            .is_err()
-            .then(|| Instant::now().checked_add(NATIVE_RELEASE_RETRY_INTERVAL))
-            .flatten();
         proof!(
             "stage=host_pointer_release previous={previous_mode_state:?} reason={reason:?} result={result:?}"
         );
@@ -3054,6 +3069,76 @@ mod tests {
             "successful native retry must not revive stopped-runtime input"
         );
         assert!(!modes.gameplay_motion_allowed());
+    }
+
+    #[test]
+    fn lifecycle_and_repeated_release_intent_preserve_failed_unlock_deadline() {
+        let mut modes = pointer_mode::PointerModes::default();
+        let mut native = PointerProbe::default();
+        assert!(modes.focus_changed(true, &mut native).is_ok());
+        let scope = pointer_mode::Scope {
+            window_epoch: 1,
+            surface: None,
+        };
+        assert!(
+            modes
+                .request(scope, pointer_mode::Mode::ConfinedAbsolute, &mut native)
+                .is_ok()
+        );
+        native.failed_releases = 2;
+        let now = Instant::now();
+        let mut retry = None;
+        assert_eq!(
+            super::release_native_pointer(&mut modes, &mut native, &mut retry, now),
+            Err(pointer_mode::Failure::ReleaseFailed)
+        );
+        let first_deadline = Some(now + NATIVE_RELEASE_RETRY_INTERVAL);
+        assert_eq!(retry, first_deadline);
+        let grabs = native.grabs;
+        for elapsed in [0, 100, 500, 999] {
+            assert_eq!(
+                modes.focus_changed(false, &mut native),
+                Err(pointer_mode::Failure::ReleaseFailed)
+            );
+            assert_eq!(
+                super::release_native_pointer(
+                    &mut modes,
+                    &mut native,
+                    &mut retry,
+                    now + std::time::Duration::from_millis(elapsed)
+                ),
+                Err(pointer_mode::Failure::ReleaseFailed)
+            );
+            assert_eq!(native.grabs, grabs);
+            assert_eq!(retry, first_deadline);
+            assert!(native.visible);
+            assert!(!modes.ui_pointer_allowed());
+        }
+        assert_eq!(
+            super::release_native_pointer(
+                &mut modes,
+                &mut native,
+                &mut retry,
+                now + NATIVE_RELEASE_RETRY_INTERVAL
+            ),
+            Err(pointer_mode::Failure::ReleaseFailed)
+        );
+        assert_eq!(native.grabs, grabs + 1);
+        assert_eq!(retry, Some(now + NATIVE_RELEASE_RETRY_INTERVAL * 2));
+        assert!(
+            super::release_native_pointer(
+                &mut modes,
+                &mut native,
+                &mut retry,
+                now + NATIVE_RELEASE_RETRY_INTERVAL * 2
+            )
+            .is_ok()
+        );
+        assert_eq!(native.grabs, grabs + 2);
+        assert_eq!(retry, None);
+        assert_eq!(native.native_mode, pointer_mode::Mode::Absolute);
+        assert!(native.visible);
+        assert!(!modes.ui_pointer_allowed());
     }
 
     #[test]

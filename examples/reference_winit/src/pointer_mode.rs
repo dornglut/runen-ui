@@ -134,7 +134,22 @@ impl PointerModes {
     /// The host cursor-service result must not report success while false.
     /// This reports controller policy, not independent OS realization proof.
     pub const fn ui_cursor_presentation_applied(&self) -> bool {
-        self.ui_pointer_allowed() && !self.awaiting_fresh_absolute_point
+        self.ui_pointer_allowed()
+            && !self.awaiting_fresh_absolute_point
+            && !(self.windows_confined_cursor_override() && !self.ui_visible)
+    }
+
+    // Pinned winit's Windows backend point-clips GRABBED + HIDDEN, even
+    // without LOCKED. Keep confinement absolute by overriding visibility.
+    const fn windows_confined_cursor_override(&self) -> bool {
+        cfg!(target_os = "windows")
+            && matches!(
+                self.state,
+                State::Active(Lease {
+                    mode: Mode::ConfinedAbsolute,
+                    ..
+                })
+            )
     }
 
     pub const fn gameplay_motion_allowed(&self) -> bool {
@@ -185,6 +200,11 @@ impl PointerModes {
             (self.ui_shape, self.ui_visible)
         } else if self.focused
             && !self.awaiting_fresh_absolute_point
+            && self.windows_confined_cursor_override()
+        {
+            (self.ui_shape, true)
+        } else if self.focused
+            && !self.awaiting_fresh_absolute_point
             && matches!(
                 self.state,
                 State::Active(Lease {
@@ -211,6 +231,12 @@ impl PointerModes {
             // UI cursor baseline upon refocus. A fresh translated absolute
             // point is required before the old preference may be reapplied.
             self.revoke_focus();
+            if matches!(self.state, State::ReleaseFailed) {
+                // Lifecycle notification revokes admission immediately, but
+                // native retry remains under the host's bounded deadline.
+                self.apply_cursor(platform);
+                return Err(Failure::ReleaseFailed);
+            }
             // Loss of activation invalidates the native lease before runtime work.
             self.release(platform)?;
         }
@@ -770,8 +796,34 @@ mod tests {
         assert!(modes.ui_pointer_allowed());
         assert!(host.visible);
         modes.confirm_fresh_absolute_point(&mut host);
-        assert!(!host.visible);
+        assert_eq!(host.visible, cfg!(target_os = "windows"));
         assert_eq!(host.mode, Mode::ConfinedAbsolute);
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn hidden_ui_baseline_cannot_turn_windows_confinement_into_point_lock() {
+        let (mut modes, mut host) = focused();
+        modes.set_ui_cursor(&mut host, CursorShape::Text, false);
+        assert!(!host.visible);
+        assert!(matches!(
+            modes.request(scope(1), Mode::ConfinedAbsolute, &mut host),
+            Ok(Outcome::Realized(_))
+        ));
+        assert!(host.visible);
+        assert!(modes.ui_pointer_allowed());
+        assert!(!modes.ui_cursor_presentation_applied());
+        modes.set_ui_cursor(&mut host, CursorShape::Pointer, false);
+        assert!(host.visible);
+        modes.set_ui_cursor(&mut host, CursorShape::Pointer, true);
+        assert!(modes.ui_cursor_presentation_applied());
+        modes.set_ui_cursor(&mut host, CursorShape::Text, false);
+        assert!(!modes.ui_cursor_presentation_applied());
+        assert!(modes.release(&mut host).is_ok());
+        assert!(host.visible);
+        modes.confirm_fresh_absolute_point(&mut host);
+        assert!(!host.visible);
+        assert!(modes.ui_cursor_presentation_applied());
     }
 
     #[test]
