@@ -1,8 +1,9 @@
 #![allow(refining_impl_trait)]
 //! Select-only ComboBox uses one focus owner and app-selected Option callbacks.
 use runenui_core::{
-    ComboBoxRequest, CommandOrigin, ElementId, NoHostProtocol, SemanticAction, SemanticCommand,
-    SemanticRole, UiApp, View, combo_box, option_item,
+    ComboBoxRequest, CommandOrigin, ElementId, LogicalPoint, NoHostProtocol, PointerButton,
+    PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
+    SemanticCommand, SemanticRole, UiApp, View, combo_box, option_item,
 };
 use runenui_runtime::{
     AppRuntime, FontFamilyName, GenericFontFamily, LogicalSize, MountedNodeId, PumpBudget,
@@ -301,4 +302,72 @@ fn closed_select_only_displays_app_selected_option_using_retained_m8_text_not_st
         "both selected options use their own ordinary three-letter label");
     assert_ne!(one, two,
         "changing only app-authored selected Option changes retained text glyphs");
+}
+
+#[test]
+fn physical_option_click_uses_standard_option_activation_without_moving_owner_focus() {
+    let mut app = AppRuntime::<App>::mount(State::default());
+    app.register_text_font_bytes(FONT.to_vec())
+        .unwrap_or_else(|_| unreachable!("known test font"));
+    app.set_text_generic_family_mapping(
+        GenericFontFamily::SansSerif,
+        &[FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!())],
+    ).unwrap_or_else(|_| unreachable!("known test font family"));
+    settle(&mut app);
+    let owner = id(&app, "choice.owner");
+    command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
+    command(&mut app, owner.clone(), SemanticCommand::Activate);
+    assert!(app.state().open);
+
+    let publish = |app: &mut AppRuntime<App>| app
+        .publish_surface(&SurfaceBuildContext::tight(
+            &runenui_core::StyleEnvironment::default(),
+            LogicalSize::try_new(500.0, 260.0).unwrap_or_else(|_| unreachable!()),
+        ))
+        .unwrap_or_else(|error| unreachable!("current popup published: {error:?}"));
+
+    let frame = publish(&mut app);
+    let option = frame.frame().nodes().iter()
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "choice.two"))
+        .unwrap_or_else(|| unreachable!("visible current proxy Option"));
+    let bounds = option.bounds();
+    assert!(bounds.width() > 0.0 && bounds.height() > 0.0);
+    let point = LogicalPoint::new(
+        bounds.width().mul_add(0.5, bounds.x()),
+        bounds.height().mul_add(0.5, bounds.y()),
+    ).unwrap_or_else(|_| unreachable!("finite current Option geometry"));
+    let pointer = PointerId::new(331).unwrap_or_else(|| unreachable!("nonzero pointer id"));
+
+    app.submit_pointer(PointerEvent::new(
+        pointer,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Move,
+        point,
+        frame.input_context().clone(),
+    )).unwrap_or_else(|_| unreachable!("current hover admitted"));
+    settle(&mut app);
+    let hover = publish(&mut app);
+    app.submit_pointer(
+        PointerEvent::new(
+            pointer, PointerDeviceKind::Mouse, PointerPhase::Down,
+            point, hover.input_context().clone(),
+        )
+        .with_buttons(PointerButtons::new([PointerButton::Primary]))
+        .with_changed_button(PointerButton::Primary),
+    ).unwrap_or_else(|_| unreachable!("current primary down admitted"));
+    settle(&mut app);
+    assert_eq!(app.state().chosen, 0, "Down must not commit selection");
+    let down = publish(&mut app);
+    app.submit_pointer(
+        PointerEvent::new(
+            pointer, PointerDeviceKind::Mouse, PointerPhase::Up,
+            point, down.input_context().clone(),
+        )
+        .with_changed_button(PointerButton::Primary),
+    ).unwrap_or_else(|_| unreachable!("matching primary Up admitted"));
+    settle(&mut app);
+    assert_eq!(app.state().chosen, 2, "normal Option activation owns physical click");
+    assert!(!app.state().open, "application closes popup after choosing");
+    assert_eq!(app.focus().focused_node(), Some(&owner),
+        "nonfocusable proxy never moves the M4 real focus owner");
 }
