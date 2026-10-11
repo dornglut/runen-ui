@@ -2,8 +2,7 @@
 //! All committed values and popup visibility are authored by the application.
 use crate::{
     ChildBearingWidget, Element, ElementId, ElementKey, EventContext, EventPhase, FocusEventKind,
-    Focusability,
-    HitContribution, HitContributionContext, KeyboardCompositionState, KeyboardPhase,
+    Focusability, HitContribution, HitContributionContext, KeyboardCompositionState, KeyboardPhase,
     LayoutContainer, LayoutStyle, LogicalKey, OptionItem, Popover, PresentationFocusPolicy,
     PresentationOutsidePointerPolicy, SemanticAction, SemanticAutocomplete, SemanticCommand,
     SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticPopupKind,
@@ -300,19 +299,27 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
             && previous.popup_id == self.popup_id
             && self.invalid.is_none()
         {
-            // An authored ID is not a mounted-generation identity. In particular,
-            // a keyed Option may be replaced while reusing the same authored ID.
-            // Preserve an active proxy only for the same authored reconciliation
-            // slot and key; movement/replacement retires rather than retargets.
+            // An authored ID is not a mounted-generation identity. An Option
+            // with the same ID but a replaced reconciliation key must retire.
+            // Keyed moves under this ListBox preserve identity; an unkeyed
+            // candidate only retains its original reconciliation slot.
             next.active = previous.active.as_ref().and_then(|active| {
-                previous.options.iter().position(|item| &item.id == active).and_then(|index| {
-                    let old = &previous.options[index];
-                    self.options.get(index)
-                        .filter(|current| {
-                            current.id == old.id && current.key == old.key && current.enabled
-                        })
-                        .map(|_| active.clone())
-                })
+                previous
+                    .options
+                    .iter()
+                    .enumerate()
+                    .find(|(_, item)| &item.id == active)
+                    .and_then(|(index, old)| {
+                        let candidate = match old.key.as_ref() {
+                            Some(key) => self.options.iter().find(|current| {
+                                current.id == old.id && current.key.as_ref() == Some(key)
+                            }),
+                            None => self.options.get(index).filter(|current| {
+                                current.id == old.id && current.key.is_none()
+                            }),
+                        };
+                        candidate.filter(|current| current.enabled).map(|_| active.clone())
+                    })
             });
         }
         if previous != next {

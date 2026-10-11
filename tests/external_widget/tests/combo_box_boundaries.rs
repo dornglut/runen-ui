@@ -8,15 +8,15 @@ use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, Surfac
 
 #[derive(Clone, Copy)]
 enum Mode { Disabled, MissingId, Churn, OwnerCollision, PopupOwnerCollision }
-struct State { mode: Mode, replacement: bool, popup_replaced: bool, option_rekeyed: bool, chosen: u8, actions: Vec<u8> }
-enum Action { Request(ComboBoxRequest), Choose(u8), Replace, ReplacePopup, RekeyOption }
+struct State { mode: Mode, replacement: bool, popup_replaced: bool, option_rekeyed: bool, reordered: bool, chosen: u8, actions: Vec<u8> }
+enum Action { Request(ComboBoxRequest), Choose(u8), Replace, ReplacePopup, RekeyOption, Reorder }
 struct App;
 impl UiApp for App {
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
     fn root(state: &Self::State) -> impl View<Self::Action> {
-        let options = vec![
+        let mut options = vec![
             if matches!(state.mode, Mode::MissingId) {
                 option_item("First", false).on_activate(|| Action::Choose(1))
             } else {
@@ -39,6 +39,9 @@ impl UiApp for App {
                 })
                 .on_activate(|| Action::Choose(2)),
         ];
+        if state.reordered {
+            options.reverse();
+        }
         combo_box(
             "Boundary",
             ElementId::new(if matches!(state.mode, Mode::PopupOwnerCollision) {
@@ -62,12 +65,13 @@ impl UiApp for App {
             Action::Replace => state.replacement = true,
             Action::ReplacePopup => state.popup_replaced = true,
             Action::RekeyOption => state.option_rekeyed = true,
+            Action::Reorder => state.reordered = true,
         }
     }
 }
 fn new(mode: Mode) -> AppRuntime<App> {
     let mut app = AppRuntime::<App>::mount(State {
-        mode, replacement: false, popup_replaced: false, option_rekeyed: false,
+        mode, replacement: false, popup_replaced: false, option_rekeyed: false, reordered: false,
         chosen: 0, actions: Vec::new(),
     });
     settle(&mut app);
@@ -253,5 +257,47 @@ fn same_authored_id_with_new_reconciliation_key_must_retire_active_option_genera
     assert_eq!(app.state().chosen, 0);
     assert!(app.state().actions.is_empty(),
         "old active Option cannot commit through a replacement's new callback");
+    assert_eq!(app.focus().focused_node(), Some(&owner));
+}
+
+#[test]
+fn same_key_option_move_keeps_active_candidate_and_m4_focus_without_reselection() {
+    let mut app = new(Mode::Churn);
+    let owner = id(&app, "boundary.owner");
+    app.submit_command(
+        owner.clone(), SemanticCommand::RequestFocus, CommandOrigin::programmatic(),
+    ).unwrap_or_else(|_| unreachable!("focus current owner"));
+    settle(&mut app);
+    app.submit_command(
+        owner.clone(), SemanticCommand::FocusDown, CommandOrigin::programmatic(),
+    ).unwrap_or_else(|_| unreachable!("navigate to keyed second"));
+    settle(&mut app);
+    let original = id(&app, "boundary.second");
+
+    app.submit_action(Action::Reorder)
+        .unwrap_or_else(|_| unreachable!("reorder ordinary authored Options"));
+    settle(&mut app);
+    assert_eq!(id(&app, "boundary.second"), original,
+        "M3 keyed same-parent reorder preserves mounted Option generation");
+    let snapshot = publish(&mut app);
+    let nodes = snapshot.semantic_publication().snapshot();
+    let combo = nodes.nodes().iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("ComboBox remains published"));
+    let active = combo.relationships().iter()
+        .find(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
+        .unwrap_or_else(|| unreachable!("same keyed active Option survives reorder"));
+    assert_eq!(nodes.nodes().iter()
+        .find(|node| node.id() == active.target())
+        .and_then(|node| node.name()), Some("Second"));
+    assert_eq!(app.state().chosen, 0);
+    assert!(app.state().actions.is_empty());
+    assert_eq!(app.focus().focused_node(), Some(&owner));
+
+    app.submit_command(owner.clone(), SemanticCommand::Activate, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("current active Option activation"));
+    settle(&mut app);
+    assert_eq!(app.state().chosen, 2);
+    assert_eq!(app.state().actions, [2]);
     assert_eq!(app.focus().focused_node(), Some(&owner));
 }
