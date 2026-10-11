@@ -92,10 +92,13 @@ fn revoke_pointer_for_runtime_stop(
     modes: &mut pointer_mode::PointerModes,
     platform: &mut impl pointer_mode::Platform,
 ) -> Result<(), pointer_mode::Failure> {
-    if status != runenui_runtime::RuntimeStatus::Running
-        && !matches!(modes.state(), HostPointerState::ReleaseFailed)
-    {
-        modes.focus_changed(false, platform)?;
+    if status != runenui_runtime::RuntimeStatus::Running {
+        // Revoke eligibility even if acquisition rollback already failed:
+        // a later successful retry must not restore a stopped runtime's UI.
+        modes.revoke_focus();
+        if !matches!(modes.state(), HostPointerState::ReleaseFailed) {
+            modes.release(platform)?;
+        }
     }
     Ok(())
 }
@@ -3012,6 +3015,45 @@ mod tests {
             assert!(!modes.observe_motion(&scope, (2.0, 1.0), &mut native));
             assert_eq!(native.native_mode, pointer_mode::Mode::Absolute);
         }
+    }
+
+    #[test]
+    fn stopped_runtime_during_failed_acquisition_cannot_rearm_ui_on_retry() {
+        let mut modes = pointer_mode::PointerModes::default();
+        let mut native = PointerProbe {
+            fail_acquire: true,
+            failed_releases: 1,
+            ..PointerProbe::default()
+        };
+        assert!(modes.focus_changed(true, &mut native).is_ok());
+        let scope = pointer_mode::Scope {
+            window_epoch: 1,
+            surface: None,
+        };
+        assert_eq!(
+            modes.request(scope, pointer_mode::Mode::LockedRelative, &mut native),
+            Err(pointer_mode::Failure::ReleaseFailed)
+        );
+        let grabs = native.grabs;
+        assert!(
+            super::revoke_pointer_for_runtime_stop(
+                runenui_runtime::RuntimeStatus::Closed,
+                &mut modes,
+                &mut native
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            native.grabs, grabs,
+            "terminal observation must preserve the bounded retry"
+        );
+        assert!(modes.release(&mut native).is_ok());
+        assert!(native.visible);
+        assert!(
+            !modes.ui_pointer_allowed(),
+            "successful native retry must not revive stopped-runtime input"
+        );
+        assert!(!modes.gameplay_motion_allowed());
     }
 
     #[test]

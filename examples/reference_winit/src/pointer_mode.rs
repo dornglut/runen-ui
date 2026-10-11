@@ -210,12 +210,20 @@ impl PointerModes {
             // Even ordinary absolute mode must not resurrect a stale hidden
             // UI cursor baseline upon refocus. A fresh translated absolute
             // point is required before the old preference may be reapplied.
-            self.awaiting_fresh_absolute_point = true;
+            self.revoke_focus();
             // Loss of activation invalidates the native lease before runtime work.
             self.release(platform)?;
         }
         self.apply_cursor(platform);
         Ok(())
+    }
+
+    /// Revoke host input admission before cleanup, without retrying native I/O.
+    /// A caller still owes native release; an existing failed release stays
+    /// failed and must use the host's bounded retry rather than rearming UI.
+    pub const fn revoke_focus(&mut self) {
+        self.focused = false;
+        self.awaiting_fresh_absolute_point = true;
     }
 
     pub fn request(
