@@ -1185,9 +1185,12 @@ mod tests {
             prior_ownership.revision(),
             "nonclaiming keyboard routing must not invent an ownership transition"
         );
-        assert!(batch.ordered_records().iter().all(|record| {
-            !matches!(record, InputArbitrationRecord::OwnershipChanged(_))
-        }));
+        assert!(
+            batch
+                .ordered_records()
+                .iter()
+                .all(|record| { !matches!(record, InputArbitrationRecord::OwnershipChanged(_)) })
+        );
         let settlements = batch
             .ordered_records()
             .iter()
