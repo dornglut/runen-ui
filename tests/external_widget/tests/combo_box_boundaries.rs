@@ -7,7 +7,7 @@ use runenui_core::{
 use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext};
 
 #[derive(Clone, Copy)]
-enum Mode { Disabled, MissingId, Churn }
+enum Mode { Disabled, MissingId, Churn, OwnerCollision, PopupOwnerCollision }
 struct State { mode: Mode, replacement: bool, popup_replaced: bool, chosen: u8, actions: Vec<u8> }
 enum Action { Request(ComboBoxRequest), Choose(u8), Replace, ReplacePopup }
 struct App;
@@ -20,7 +20,12 @@ impl UiApp for App {
             if matches!(state.mode, Mode::MissingId) {
                 option_item("First", false).on_activate(|| Action::Choose(1))
             } else {
-                option_item("First", false).id("boundary.first")
+                option_item("First", false)
+                    .id(if matches!(state.mode, Mode::OwnerCollision) {
+                        "boundary.owner"
+                    } else {
+                        "boundary.first"
+                    })
                     .on_activate(|| Action::Choose(1))
             },
             option_item("Second", false)
@@ -29,7 +34,13 @@ impl UiApp for App {
         ];
         combo_box(
             "Boundary",
-            ElementId::new(if state.popup_replaced { "boundary.new-popup" } else { "boundary.popup" })
+            ElementId::new(if matches!(state.mode, Mode::PopupOwnerCollision) {
+                "boundary.owner"
+            } else if state.popup_replaced {
+                "boundary.new-popup"
+            } else {
+                "boundary.popup"
+            })
                 .unwrap_or_else(|_| unreachable!()),
             options, Action::Request,
         )
@@ -159,4 +170,35 @@ fn replacing_controlled_listbox_retires_old_transient_active_candidate() {
     assert_eq!(app.state().chosen, 0);
     assert!(app.state().actions.is_empty());
     assert_eq!(app.focus().focused_node(), Some(&owner));
+}
+
+#[test]
+fn option_id_equal_to_owner_id_fails_closed_without_ambiguous_semantic_identity() {
+    let mut app = new(Mode::OwnerCollision);
+    let owner = id(&app, "boundary.owner");
+    assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
+    assert_eq!(
+        app.index().nodes().iter()
+            .filter(|node| node.authored_id().is_some_and(|id| id.as_str() == "boundary.owner"))
+            .count(),
+        1,
+        "invalid option must not mount with the owner's authored identity"
+    );
+    let publication = publish(&mut app);
+    assert!(publication.semantic_publication().snapshot().nodes().iter().all(|node|
+        node.role() != SemanticRole::ComboBox && node.role() != SemanticRole::Option
+    ));
+    assert!(app.state().actions.is_empty());
+}
+
+#[test]
+fn popup_id_equal_to_owner_id_fails_closed_before_semantic_target_resolution() {
+    let mut app = new(Mode::PopupOwnerCollision);
+    let owner = id(&app, "boundary.owner");
+    assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
+    let publication = publish(&mut app);
+    assert!(publication.semantic_publication().snapshot().nodes().iter().all(|node|
+        node.role() != SemanticRole::ComboBox && node.role() != SemanticRole::ListBox
+    ));
+    assert!(app.state().actions.is_empty());
 }

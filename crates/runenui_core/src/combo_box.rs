@@ -101,6 +101,7 @@ enum InvalidComboBox {
     DuplicateOptionId,
     MultipleSelected,
     PopupIdCollision,
+    OwnerIdCollision,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ComboState {
@@ -387,6 +388,10 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
                 "runenui.control.combo.popup-id-collision",
                 "ComboBox popup ID must differ from all option IDs",
             ),
+            InvalidComboBox::OwnerIdCollision => (
+                "runenui.control.combo.owner-id-collision",
+                "ComboBox owner ID must differ from the popup and all Option IDs",
+            ),
         };
         vec![WidgetDiagnostic::new(code, text)]
     }
@@ -422,12 +427,17 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
         let mut option_activations = Vec::new();
         let mut popup_options = Vec::new();
         let mut invalid = None;
+        if self.common.id.as_ref() == Some(&self.popup_id) {
+            invalid = Some(InvalidComboBox::OwnerIdCollision);
+        }
         for mut item in self.options {
             let Some((id, selected, enabled)) = item.combo_proxy_facts() else {
                 invalid.get_or_insert(InvalidComboBox::MissingOptionId);
                 continue;
             };
-            if id == self.popup_id {
+            if self.common.id.as_ref() == Some(&id) {
+                invalid.get_or_insert(InvalidComboBox::OwnerIdCollision);
+            } else if id == self.popup_id {
                 invalid.get_or_insert(InvalidComboBox::PopupIdCollision);
             } else if !seen.insert(id.as_str().to_owned()) {
                 invalid.get_or_insert(InvalidComboBox::DuplicateOptionId);
