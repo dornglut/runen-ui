@@ -10,7 +10,9 @@ use core::{
 };
 use runenui_core::{
     Color, ElementId, FontFamilyName, GenericFontFamily, NoHostProtocol, SemanticRelationshipKind,
-    SemanticRole, StyleEnvironment, UiApp, View, combo_box, option_item,
+    SemanticRole, SemanticEditableMode, StyleEnvironment, TextAffinity, TextDocumentId,
+    TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, UiApp, View,
+    combo_box, editable_combo_box, option_item, text_field,
 };
 use runenui_render_wgpu::{
     Renderer, RendererInitError, RendererOptions, ResourcePayload, ResourceProvider,
@@ -168,6 +170,131 @@ fn select_only_combo_popup_projects_real_m8_options_and_real_wgpu_pixels()
     if let Some(path) = dir.map(PathBuf::from) {
         fs::create_dir_all(&path)?;
         for (name, result) in [("m11-combo-open.png", &a), ("m11-combo-closed.png", &b)] {
+            let extent = result.readback().extent();
+            image::save_buffer(
+                path.join(name),
+                result.readback().rgba8_srgb(),
+                extent.width(),
+                extent.height(),
+                image::ColorType::Rgba8,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+struct EditableComboGpuApp;
+impl UiApp for EditableComboGpuApp {
+    type State = bool;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(open: &Self::State) -> impl View<Self::Action> {
+        let value = "search";
+        let snapshot = TextDocumentSnapshot::new(
+            TextDocumentId::new(1331),
+            TextDocumentRevision::new(1),
+        );
+        let caret = TextPosition::new(
+            snapshot, value, value.len(), TextAffinity::Upstream,
+        ).unwrap_or_else(|_| unreachable!("valid input text"));
+        let editor = text_field(
+            snapshot,
+            value,
+            TextSelection::collapsed(caret),
+            SemanticEditableMode::SingleLine,
+            |_| (),
+        ).unwrap_or_else(|_| unreachable!("single-line editor"))
+            .id("gpu.editable.owner")
+            .foreground(Color::WHITE);
+        editable_combo_box(
+            editor,
+            "Search",
+            ElementId::new("gpu.editable.popup").unwrap_or_else(|_| unreachable!()),
+            [
+                option_item("Alpha", false)
+                    .id("gpu.editable.alpha")
+                    .foreground(Color::WHITE)
+                    .on_activate(|| ()),
+                option_item("Bravo", false)
+                    .id("gpu.editable.bravo")
+                    .foreground(Color::WHITE)
+                    .on_activate(|| ()),
+            ],
+            |_| (),
+        ).unwrap_or_else(|_| unreachable!("compatible M10 editor"))
+            .open(*open)
+    }
+
+    fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+fn editable_publication(
+    open: bool,
+) -> Result<runenui_runtime::SurfacePublication, Box<dyn Error>> {
+    let mut app = AppRuntime::<EditableComboGpuApp>::mount(open);
+    assert!(app.pump(runenui_runtime::PumpBudget::new(
+        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
+    )).is_quiescent());
+    app.register_text_font_bytes(FONT.to_vec())?;
+    app.set_text_generic_family_mapping(
+        GenericFontFamily::SansSerif,
+        &[FontFamilyName::new("Cantarell")?],
+    )?;
+    app.publish_surface(&SurfaceBuildContext::tight(
+        &StyleEnvironment::default(),
+        LogicalSize::try_new(400.0, 200.0)?,
+    ))
+    .map_err(|error| std::io::Error::other(format!("editable ComboBox surface: {error:?}")))
+    .map_err(Into::into)
+}
+
+#[test]
+fn editable_combo_shares_m10_text_pixels_and_projects_current_m5_popup()
+-> Result<(), Box<dyn Error>> {
+    let required = std::env::var_os("RUNENUI_M11SLIDER_EVIDENCE_DIR").is_some()
+        || std::env::var_os("RUNENUI_M11COMBO_EVIDENCE_DIR").is_some();
+    let mut renderer = match block_on(Renderer::request(RendererOptions::new())) {
+        Ok(renderer) => renderer,
+        Err(RendererInitError::AdapterUnavailable { .. }) if !required => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    let open = editable_publication(true)?;
+    let closed = editable_publication(false)?;
+    for (publication, count) in [(&open, 2), (&closed, 0)] {
+        let snapshot = publication.semantic_publication().snapshot();
+        let editable_combo = snapshot.nodes().iter()
+            .find(|node| node.role() == SemanticRole::ComboBox)
+            .ok_or_else(|| std::io::Error::other("editable ComboBox primary semantics missing"))?;
+        assert!(editable_combo.editable().is_some(),
+            "the single M10 editor is the ComboBox semantic primary");
+        assert_eq!(editable_combo.editable_mode(), Some(SemanticEditableMode::SingleLine));
+        assert!(!snapshot.nodes().iter()
+            .any(|node| node.role() == SemanticRole::EditableText),
+            "must never mount another primary text editor");
+        assert_eq!(snapshot.nodes().iter()
+            .filter(|node| node.role() == SemanticRole::Option).count(), count);
+        assert_eq!(editable_combo.relationships().iter()
+            .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
+            .count(), usize::from(count > 0));
+        let expected_text_runs = if count == 0 { 1 } else { 3 };
+        assert_eq!(publication.paint_scene().items().iter()
+            .filter(|item| item.primitive().as_shaped_text_run().is_some()).count(),
+            expected_text_runs,
+            "same M8 source shapes editor text and ordinary popup Option labels");
+    }
+    let a = renderer.render_offscreen_publication(open.paint_publication(), &NoResources)?;
+    let b = renderer.render_offscreen_publication(closed.paint_publication(), &NoResources)?;
+    assert_ne!(a.readback().rgba8_srgb(), b.readback().rgba8_srgb(),
+        "editable popup changes real native-wgpu pixels without a second editor");
+    let dir = std::env::var_os("RUNENUI_M11COMBO_EVIDENCE_DIR")
+        .or_else(|| std::env::var_os("RUNENUI_M11SLIDER_EVIDENCE_DIR"));
+    if let Some(path) = dir.map(PathBuf::from) {
+        fs::create_dir_all(&path)?;
+        for (name, result) in [
+            ("m11-combo-editable-open.png", &a),
+            ("m11-combo-editable-closed.png", &b),
+        ] {
             let extent = result.readback().extent();
             image::save_buffer(
                 path.join(name),
