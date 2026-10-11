@@ -1,17 +1,17 @@
 //! Select-only ComboBox over M4 real focus and M5 active-descendant semantics.
 //! All committed values and popup visibility are authored by the application.
 use crate::{
-    ChildBearingWidget, CommonNodeAuthoring, Element, ElementId, EventContext, EventPhase,
+    ChildBearingWidget, Element, ElementId, EventContext, EventPhase,
     Focusability, HitContribution, HitContributionContext, KeyboardCompositionState, KeyboardPhase,
     LayoutContainer, LayoutStyle, LogicalKey, OptionItem, Popover, PresentationFocusPolicy,
-    PresentationOutsidePointerPolicy, SemanticAction, SemanticCommand, SemanticCommandEvent,
+    PresentationOutsidePointerPolicy, SemanticAction, SemanticCommand,
     SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticPopupKind,
     SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
     SurfacePresentation, SurfacePresentationAnchor, SurfacePresentationPlacement,
     SurfacePresentationSide, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
     WidgetActivationOutput, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetMeasure,
     WidgetMeasureInput, WidgetUpdateContext, list_box,
-    element::{common_node_builder_methods},
+    element::{CommonNodeAuthoring, common_node_builder_methods},
     widget_erasure::WidgetAdapter,
 };
 use core::fmt;
@@ -28,16 +28,16 @@ type RequestHandler<Action> = Rc<RefCell<Box<dyn FnMut(ComboBoxRequest) -> Actio
 pub enum ComboBoxRequest {
     Open,
     Close,
-    /// An exact currently authored Option, resolved by the application to its
+    /// An exact currently authored `Option`, resolved by the application to its
     /// own durable domain value. The authored ID must not be stored as value.
     Accept(ElementId),
 }
 
-/// A select-only ComboBox using standard OptionItem children.
+/// A select-only `ComboBox` using standard `OptionItem` children.
 ///
-/// One real M4 focus target owns a transient active Option. The application's
-/// selected Option and opened/closed popup remain authoritative. An editable
-/// variant must reuse M10 TextField, not instantiate a second editor.
+/// One real M4 focus target owns a transient active `Option`. The application's
+/// selected `Option` and opened/closed popup remain authoritative. An editable
+/// variant must reuse M10 `TextField`, not instantiate a second editor.
 pub struct ComboBox<Action> {
     label: String,
     popup_id: ElementId,
@@ -60,7 +60,7 @@ impl<Action> fmt::Debug for ComboBox<Action> {
 }
 impl<Action> ComboBox<Action> {
     /// Options must have distinct explicit authored IDs. They remain the
-    /// original public OptionItem contract, not a ComboBox-specific item type.
+    /// original public `OptionItem` contract, not a `ComboBox`-specific item type.
     #[must_use]
     pub fn new(
         label: impl Into<String>,
@@ -427,7 +427,7 @@ impl<Action: 'static> View<Action> for ComboBox<Action> {
     }
 }
 
-/// Authors one application-owned select-only ComboBox.
+/// Authors one application-owned select-only `ComboBox`.
 #[must_use]
 pub fn combo_box<Action>(
     label: impl Into<String>,
