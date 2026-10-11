@@ -306,7 +306,7 @@ fn assert_captured_close_outside_hit(close_phase: PointerPhase, trace_disabled: 
             .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
     );
     if trace_disabled {
-        assert_eq!(runtime.trace().len(), 0, "arbitration must not require diagnostic trace");
+        assert_eq!(runtime.trace().len(), 0);
     }
 }
 
