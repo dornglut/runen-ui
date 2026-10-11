@@ -357,8 +357,7 @@ fn modal_ignore_still_blocks_ordinary_outside_pointer_without_dismissal() {
     assert!(runtime.state().a.open);
 }
 
-#[test]
-fn public_modal_barrier_and_outside_dismissal_have_explicit_conflict_reasons() {
+fn assert_modal_outside_claims_with_trace_capacity(trace_capacity: usize) {
     for (policy, modal, reason) in [
         (
             PresentationOutsidePointerPolicy::Ignore,
@@ -373,7 +372,10 @@ fn public_modal_barrier_and_outside_dismissal_have_explicit_conflict_reasons() {
     ] {
         let mut state = interaction_state(policy);
         state.a.modal = modal;
-        let mut runtime = AppRuntime::<InteractionApp>::mount(state);
+        let mut runtime = AppRuntime::<InteractionApp>::mount_with_config(
+            state,
+            RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
+        );
         let environment = StyleEnvironment::default();
         let publication = runtime
             .publish_surface(&context(&environment, 100, 60))
@@ -409,6 +411,18 @@ fn public_modal_barrier_and_outside_dismissal_have_explicit_conflict_reasons() {
                     && matches!(facts.route(), UiInputRoute::PresentationBlocked { .. })
         ));
         assert_eq!(runtime.state().outside_presses, 0);
+        if trace_capacity == 0 {
+            assert_eq!(runtime.trace().kinds().count(), 0);
+        }
+    }
+}
+
+#[test]
+fn public_modal_barrier_and_outside_dismissal_have_explicit_conflict_reasons() {
+    // Both a modal barrier and an outside dismissal must certify the same
+    // exact reached input when optional diagnostics are completely disabled.
+    for trace_capacity in [512, 0] {
+        assert_modal_outside_claims_with_trace_capacity(trace_capacity);
     }
 }
 
