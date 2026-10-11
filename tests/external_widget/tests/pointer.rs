@@ -288,10 +288,12 @@ fn assert_captured_close_outside_hit(close_phase: PointerPhase) {
     let repeated = runtime
         .pump(PumpBudget::new(128, 128, 128, 128))
         .unwrap_or_else(|_| unreachable!("closed pointer stream cannot replay native input"));
-    assert!(!repeated
-        .ordered_records()
-        .iter()
-        .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))));
+    assert!(
+        !repeated
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+    );
 }
 
 #[test]
