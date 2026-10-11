@@ -2,15 +2,15 @@ use core::fmt;
 use std::rc::Rc;
 
 use crate::{
-    EditIntent, EditableContribution, EditableContributionError, EditingSessionPolicy, ElementId,
-    EventContext, EventPhase, Focusability, HitContribution, HitContributionContext, IntoElementId,
-    KeyboardCompositionState, KeyboardPhase, LogicalKey, SemanticAction, SemanticContribution,
-    SemanticContributionContext, SemanticEditable, SemanticEditableMode, SemanticInvalidState,
-    SemanticNodeContribution, SemanticRange, SemanticReference, SemanticRelationship,
+    ChildBearingWidget, EditIntent, EditableContribution, EditableContributionError,
+    EditingSessionPolicy, ElementId, EventContext, EventPhase, Focusability, HitContribution,
+    HitContributionContext, IntoElementId, KeyboardCompositionState, KeyboardPhase, LogicalKey,
+    SemanticAction, SemanticAutocomplete, SemanticContribution, SemanticContributionContext,
+    SemanticEditable, SemanticEditableMode, SemanticInvalidState, SemanticNodeContribution,
+    SemanticPopupKind, SemanticRange, SemanticReference, SemanticRelationship,
     SemanticRelationshipKind, SemanticRole, SemanticState, TextDocumentSnapshot, TextNewlinePolicy,
     TextSelection, TextSensitivity, UiEvent, WidgetInvalidation, WidgetMeasure, WidgetMeasureInput,
-    WidgetTextInput, WidgetUpdateContext, ChildBearingWidget,
-    SemanticAutocomplete, SemanticPopupKind,
+    WidgetTextInput, WidgetUpdateContext,
     element::{
         AuthoringDiagnostic, CommonNodeAuthoring, Element, View, common_node_builder_methods,
     },
@@ -424,8 +424,12 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
     }
 
     fn text_input(&self, _: &Self::State) -> WidgetTextInput {
-        let enabled = !self.state.disabled && !self.state.read_only
-            && self.combo.as_ref().is_none_or(|combo| combo.invalid.is_none());
+        let enabled = !self.state.disabled
+            && !self.state.read_only
+            && self
+                .combo
+                .as_ref()
+                .is_none_or(|combo| combo.invalid.is_none());
         WidgetTextInput::new(enabled, enabled)
     }
 
@@ -489,7 +493,11 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
     }
 
     fn editable(&self, _: &Self::State) -> Option<EditableContribution<Action>> {
-        if self.combo.as_ref().is_some_and(|combo| combo.invalid.is_some()) {
+        if self
+            .combo
+            .as_ref()
+            .is_some_and(|combo| combo.invalid.is_some())
+        {
             return None;
         }
         let mapper = Rc::clone(&self.mapper);
@@ -541,7 +549,11 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
         HitContribution::single_rect(rect)
     }
 
-    fn semantics(&self, field_state: &Self::State, context: SemanticContributionContext) -> SemanticContribution {
+    fn semantics(
+        &self,
+        field_state: &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
         let Some(editable) = SemanticEditable::new(
             self.state.snapshot,
             &self.state.content,
@@ -596,10 +608,15 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             node = node
                 .with_name(combo.label.clone())
                 .with_popup(SemanticPopupKind::ListBox)
-                .with_autocomplete(field_state.combo_autocomplete.unwrap_or(SemanticAutocomplete::List))
+                .with_autocomplete(
+                    field_state
+                        .combo_autocomplete
+                        .unwrap_or(SemanticAutocomplete::List),
+                )
                 .with_action(SemanticAction::RequestFocus);
             if combo.enabled {
-                node = node.with_action(SemanticAction::Activate)
+                node = node
+                    .with_action(SemanticAction::Activate)
                     .with_action(if combo.open {
                         SemanticAction::Collapse
                     } else {
@@ -669,11 +686,14 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
     }
 }
 
-impl<Action> ChildBearingWidget<Action> for TextFieldWidget<Action> {}
+impl<Action: 'static> ChildBearingWidget<Action> for TextFieldWidget<Action> {}
 
 impl<Action: 'static> View<Action> for TextField<Action> {
     fn into_element(self) -> Element<Action> {
-        let invalid_combo = self.combo.as_ref().is_some_and(|combo| combo.invalid.is_some());
+        let invalid_combo = self
+            .combo
+            .as_ref()
+            .is_some_and(|combo| combo.invalid.is_some());
         let combo_state = self.combo.as_ref().map(Widget::create_state);
         let (fields, diagnostics) = self.common.into_authored_fields(
             if self.disabled || invalid_combo {
