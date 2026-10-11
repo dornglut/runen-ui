@@ -8,7 +8,7 @@ use runenui_core::{
     SemanticRelationshipKind, SemanticRole, SemanticCommand, StyleEnvironment,
     TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
     TextPosition, TextSelection, UiApp, UpdateOutput, View,
-    editable_combo_box, option_item, text_field,
+    button, editable_combo_box, option_item, row, text_field,
 };
 use runenui_runtime::{
     AppRuntime, FontFamilyName, GenericFontFamily, LogicalSize, MountedNodeId,
@@ -26,6 +26,7 @@ enum Action {
     Edit(Box<EditIntent>),
     Popup(ComboBoxRequest),
     Choose(u8),
+    ReplaceOption,
 }
 
 struct State {
@@ -34,6 +35,7 @@ struct State {
     open: bool,
     chosen: u8,
     popup_log: Vec<ComboBoxRequest>,
+    replace_option: bool,
 }
 
 struct App;
@@ -58,7 +60,7 @@ impl UiApp for App {
             |intent| Action::Edit(Box::new(intent)),
         ).unwrap_or_else(|_| unreachable!("one checked M10 source"))
             .id("editable.owner");
-        editable_combo_box(
+        let combo = editable_combo_box(
             editor,
             "Search suggestions",
             ElementId::new("editable.list").unwrap_or_else(|_| unreachable!()),
@@ -67,13 +69,17 @@ impl UiApp for App {
                     .id("editable.alpha")
                     .on_activate(|| Action::Choose(1)),
                 option_item("Beta", state.chosen == 2)
-                    .id("editable.beta")
+                    .id(if state.replace_option { "editable.replacement" } else { "editable.beta" })
                     .on_activate(|| Action::Choose(2)),
             ],
             Action::Popup,
         ).unwrap_or_else(|_| unreachable!("public single-line editor"))
             .open(state.open)
-            .autocomplete(SemanticAutocomplete::List)
+            .autocomplete(SemanticAutocomplete::List);
+        row(vec![
+            combo.into_element(),
+            button("Next").id("editable.next").into_element(),
+        ])
     }
 
     fn update(
@@ -102,6 +108,10 @@ impl UiApp for App {
                 state.open = false;
                 UpdateOutput::effects(Effects::none())
             }
+            Action::ReplaceOption => {
+                state.replace_option = true;
+                UpdateOutput::effects(Effects::none())
+            }
         }
     }
 }
@@ -109,7 +119,7 @@ impl UiApp for App {
 fn runtime() -> AppRuntime<App> {
     let mut runtime = AppRuntime::<App>::mount(State {
         source: "q".into(), revision: 1, open: true,
-        chosen: 0, popup_log: Vec::new(),
+        chosen: 0, popup_log: Vec::new(), replace_option: false,
     });
     assert!(runtime.register_text_font_bytes(FONT.to_vec()).is_ok());
     assert!(runtime.set_text_generic_family_mapping(
@@ -254,4 +264,63 @@ fn editable_constructor_rejects_multiline_and_secret_m10_sources() {
         Vec::<runenui_core::OptionItem<()>>::new(),
         |_| (),
     ).is_err());
+}
+
+#[test]
+fn escape_dismisses_without_mutating_committed_value_or_real_focus() {
+    let mut runtime = runtime();
+    let owner = id(&runtime, "editable.owner");
+    cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+    cmd(&mut runtime, owner.clone(), SemanticCommand::FocusDown);
+    assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
+    runtime.submit_keyboard(key(
+        LogicalKey::Escape,
+        PhysicalKey::Escape,
+        KeyboardCompositionState::Inactive,
+    )).unwrap_or_else(|_| unreachable!("escape ingress"));
+    settle(&mut runtime);
+    assert!(!runtime.state().open);
+    assert_eq!(runtime.state().chosen, 0);
+    assert_eq!(runtime.state().source, "q");
+    assert_eq!(runtime.state().popup_log, [ComboBoxRequest::Close]);
+    assert_eq!(runtime.focus().focused_node(), Some(&owner));
+    assert_eq!(active(&mut runtime), None);
+}
+
+#[test]
+fn tab_uses_m4_real_focus_and_dismisses_without_accepting_the_active_option() {
+    let mut runtime = runtime();
+    let owner = id(&runtime, "editable.owner");
+    let next = id(&runtime, "editable.next");
+    cmd(&mut runtime, owner, SemanticCommand::RequestFocus);
+    cmd(&mut runtime, id(&runtime, "editable.owner"), SemanticCommand::FocusDown);
+    assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
+    runtime.submit_keyboard(key(
+        LogicalKey::Tab,
+        PhysicalKey::Tab,
+        KeyboardCompositionState::Inactive,
+    )).unwrap_or_else(|_| unreachable!("Tab ingress"));
+    settle(&mut runtime);
+    assert_eq!(runtime.focus().focused_node(), Some(&next));
+    assert!(!runtime.state().open);
+    assert_eq!(runtime.state().chosen, 0);
+}
+
+#[test]
+fn replacing_exact_active_option_retires_proxy_without_sibling_retargeting() {
+    let mut runtime = runtime();
+    let owner = id(&runtime, "editable.owner");
+    cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+    cmd(&mut runtime, owner.clone(), SemanticCommand::FocusDown);
+    assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
+    let previous = id(&runtime, "editable.beta");
+    runtime.submit_action(Action::ReplaceOption)
+        .unwrap_or_else(|_| unreachable!("application replaces authored Option"));
+    settle(&mut runtime);
+    assert!(runtime.index().nodes().iter().all(|node| node.id() != &previous));
+    assert_eq!(active(&mut runtime), None,
+        "new Option at the same list position cannot impersonate removed identity");
+    cmd(&mut runtime, owner.clone(), SemanticCommand::Activate);
+    assert_eq!(runtime.state().chosen, 0);
+    assert_eq!(runtime.focus().focused_node(), Some(&owner));
 }
