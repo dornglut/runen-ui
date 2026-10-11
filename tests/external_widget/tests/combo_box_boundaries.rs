@@ -30,7 +30,13 @@ impl UiApp for App {
             },
             option_item("Second", false)
                 .id(if state.replacement { "boundary.replacement" } else { "boundary.second" })
-                .key(if state.option_rekeyed { "boundary.option.new" } else { "boundary.option.old" })
+                .key(if state.replacement {
+                    "boundary.option.replacement"
+                } else if state.option_rekeyed {
+                    "boundary.option.rekeyed"
+                } else {
+                    "boundary.option.initial"
+                })
                 .on_activate(|| Action::Choose(2)),
         ];
         combo_box(

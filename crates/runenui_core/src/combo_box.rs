@@ -305,10 +305,9 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
             // Preserve an active proxy only for the same authored reconciliation
             // slot and key; movement/replacement retires rather than retargets.
             next.active = previous.active.as_ref().and_then(|active| {
-                previous.options.iter().enumerate().find_map(|(index, old)| {
-                    (old.id == *active)
-                        .then(|| self.options.get(index))
-                        .flatten()
+                previous.options.iter().position(|item| &item.id == active).and_then(|index| {
+                    let old = &previous.options[index];
+                    self.options.get(index)
                         .filter(|current| {
                             current.id == old.id && current.key == old.key && current.enabled
                         })
