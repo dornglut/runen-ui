@@ -157,9 +157,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         crate::UiInputProcessingRejection::InsufficientTransactionCapacity
                     }
                 };
-                self.note_external_pointer_finality(
-                    crate::UiInputFinality::ProcessingRejected(rejection),
-                );
+                self.note_external_pointer_finality(crate::UiInputFinality::ProcessingRejected(
+                    rejection,
+                ));
             }
             return self.pointer_runtime_outcome();
         };

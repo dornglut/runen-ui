@@ -1339,8 +1339,8 @@ fn nonterminal_pointer_routed_capacity_refusal_is_processing_rejected_not_aborte
     app.pump(PumpBudget::new(64, 64, 64, 64))
         .unwrap_or_else(|_| unreachable!("initial public mount settles"));
     let environment = StyleEnvironment::default();
-    let extent = LogicalSize::try_new(64.0, 64.0)
-        .unwrap_or_else(|_| unreachable!("valid logical extent"));
+    let extent =
+        LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("valid logical extent"));
     let publication = app
         .publish_surface(&SurfaceBuildContext::tight(&environment, extent))
         .unwrap_or_else(|_| unreachable!("retained surface accepted"));
@@ -1355,8 +1355,8 @@ fn nonterminal_pointer_routed_capacity_refusal_is_processing_rejected_not_aborte
     app.pump(PumpBudget::new(64, 64, 64, 64))
         .unwrap_or_else(|_| unreachable!("publication work settles"));
 
-    let pointer_id = PointerId::new(207)
-        .unwrap_or_else(|| unreachable!("positive pointer identity"));
+    let pointer_id =
+        PointerId::new(207).unwrap_or_else(|| unreachable!("positive pointer identity"));
     let down = PointerEvent::new(
         pointer_id,
         PointerDeviceKind::Mouse,
@@ -1374,7 +1374,10 @@ fn nonterminal_pointer_routed_capacity_refusal_is_processing_rejected_not_aborte
         .pump(PumpBudget::new(1, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("pointer preflight refusal is observable"));
     assert_eq!(batch.processed_through(), Some(receipt));
-    assert_eq!(batch.final_ownership().status(), crate::RuntimeStatus::Running);
+    assert_eq!(
+        batch.final_ownership().status(),
+        crate::RuntimeStatus::Running
+    );
     assert!(batch.final_ownership().pointers().is_empty());
     assert_eq!(*app.state(), 0);
     let settlements: Vec<_> = batch
@@ -1397,17 +1400,21 @@ fn nonterminal_pointer_routed_capacity_refusal_is_processing_rejected_not_aborte
             crate::UiInputProcessingRejection::InsufficientTransactionCapacity
         )
     ));
-    assert!(!batch.ordered_records().iter().any(|record| matches!(
-        record,
-        InputArbitrationRecord::ScopeRetired(_)
-    )));
+    assert!(
+        !batch
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::ScopeRetired(_)))
+    );
     let repeated = app
         .pump(PumpBudget::new(1, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("rejected receipt never replays"));
-    assert!(!repeated.ordered_records().iter().any(|record| matches!(
-        record,
-        InputArbitrationRecord::InputSettled(_)
-    )));
+    assert!(
+        !repeated
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+    );
 }
 
 #[test]
