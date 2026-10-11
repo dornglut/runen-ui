@@ -87,8 +87,30 @@ fn select_only_keeps_real_focus_on_owner_while_selection_remains_application_own
         node.role() != SemanticRole::Option
             || !node.supported_actions().contains(&SemanticAction::RequestFocus)
     ));
+    let combo = semantics.nodes().iter().find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("ComboBox semantic owner"));
+    let first = semantics.nodes().iter()
+        .find(|node| node.role() == SemanticRole::Option && node.name() == Some("One"))
+        .unwrap_or_else(|| unreachable!("first Option"));
+    assert_eq!(combo.relationships().iter()
+        .find(|link| link.kind() == runenui_core::SemanticRelationshipKind::ActiveDescendant)
+        .map(|link| link.target()), Some(first.id()));
     command(&mut app, owner.clone(), SemanticCommand::FocusDown);
     assert_eq!(app.state().chosen, 0, "active descendant is not committed value");
+    let updated = app.publish_surface(&SurfaceBuildContext::tight(
+        &runenui_core::StyleEnvironment::default(),
+        LogicalSize::try_new(500.0, 260.0).unwrap_or_else(|_| unreachable!()),
+    )).unwrap_or_else(|error| unreachable!("active semantic publication: {error:?}"));
+    let snapshot = updated.semantic_publication().snapshot();
+    let combo = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("current ComboBox semantic"));
+    let second = snapshot.nodes().iter()
+        .find(|node| node.role() == SemanticRole::Option && node.name() == Some("Two"))
+        .unwrap_or_else(|| unreachable!("second Option"));
+    assert_eq!(combo.relationships().iter()
+        .find(|link| link.kind() == runenui_core::SemanticRelationshipKind::ActiveDescendant)
+        .map(|link| link.target()), Some(second.id()),
+        "transient active Option changes while the app value remains uncommitted");
     command(&mut app, owner.clone(), SemanticCommand::Activate);
     assert_eq!(app.state().chosen, 2);
     assert!(!app.state().open);
