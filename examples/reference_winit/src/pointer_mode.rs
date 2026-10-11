@@ -136,7 +136,7 @@ impl PointerModes {
     pub const fn ui_cursor_presentation_applied(&self) -> bool {
         self.ui_pointer_allowed()
             && !self.awaiting_fresh_absolute_point
-            && !(self.windows_confined_cursor_override() && !self.ui_visible)
+            && (!self.windows_confined_cursor_override() || self.ui_visible)
     }
 
     // Pinned winit's Windows backend point-clips GRABBED + HIDDEN, even
