@@ -4,14 +4,13 @@ use crate::{
     ChildBearingWidget, Element, ElementId, EventContext, EventPhase, FocusEventKind, Focusability,
     HitContribution, HitContributionContext, KeyboardCompositionState, KeyboardPhase,
     LayoutContainer, LayoutStyle, LogicalKey, OptionItem, Popover, PresentationFocusPolicy,
-    PresentationOutsidePointerPolicy, SemanticAction, SemanticCommand, SemanticContribution,
-    SemanticContributionContext, SemanticNodeContribution, SemanticPopupKind, SemanticReference,
-    SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
-    SemanticAutocomplete, TextField,
+    PresentationOutsidePointerPolicy, SemanticAction, SemanticAutocomplete, SemanticCommand,
+    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticPopupKind,
+    SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
     SurfacePresentation, SurfacePresentationAnchor, SurfacePresentationPlacement,
-    SurfacePresentationSide, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
-    WidgetActivationOutput, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetMeasure,
-    WidgetMeasureInput, WidgetUpdateContext,
+    SurfacePresentationSide, TextField, UiEvent, View, Widget, WidgetActivation,
+    WidgetActivationContext, WidgetActivationOutput, WidgetDiagnostic, WidgetEventOutput,
+    WidgetInvalidation, WidgetMeasure, WidgetMeasureInput, WidgetUpdateContext,
     element::{CommonNodeAuthoring, common_node_builder_methods},
     list_box,
     widget_erasure::WidgetAdapter,
@@ -164,7 +163,10 @@ impl<Action> ComboWidget<Action> {
             return None;
         }
         let id = state.active.as_ref()?;
-        let (_, action) = self.option_activations.iter().find(|(candidate, _)| candidate == id)?;
+        let (_, action) = self
+            .option_activations
+            .iter()
+            .find(|(candidate, _)| candidate == id)?;
         Some((*action.borrow_mut())())
     }
     pub(crate) fn proxy_event(
@@ -259,7 +261,6 @@ impl<Action> ComboWidget<Action> {
         }
         WidgetEventOutput::none()
     }
-
 }
 #[derive(Clone, Copy)]
 enum Navigation {
@@ -324,7 +325,8 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
                 ComboBoxRequest::Open,
             ));
         }
-        self.accept_active(state).map_or_else(WidgetActivationOutput::none, WidgetActivationOutput::action)
+        self.accept_active(state)
+            .map_or_else(WidgetActivationOutput::none, WidgetActivationOutput::action)
     }
     fn event(
         &mut self,
