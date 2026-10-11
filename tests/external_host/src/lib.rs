@@ -1457,6 +1457,44 @@ mod tests {
         );
     }
 
+    fn assert_foreign_pointer_device_refusal(
+        runtime: &mut AppRuntime<ExternalHostApp>,
+        before: &runenui_runtime::InputOwnershipSnapshot,
+        down: &UiInputSettlement,
+        pointer: PointerId,
+        foreign_device: InputDeviceId,
+        outside: LogicalPoint,
+        context: runenui_core::SurfaceInputContext,
+    ) -> UiInputSettlement {
+        let refused = settled_public_pointer(
+            runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Move,
+                outside,
+                context,
+            )
+            .with_device_id(foreign_device)
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        );
+        assert_eq!(refused.device_id(), Some(foreign_device));
+        assert!(down.sequence() < refused.sequence());
+        assert_eq!(down.scope(), refused.scope());
+        assert!(matches!(
+            refused.finality(),
+            UiInputFinality::ProcessingRejected(
+                runenui_runtime::UiInputProcessingRejection::InvalidPointerStream
+            )
+        ));
+        let after_refusal = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("rejected input cannot steal ownership"));
+        assert_eq!(&after_refusal, before);
+        assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
+        refused
+    }
+
     #[test]
     fn public_foreign_pointer_device_cannot_steal_owned_stream_or_create_claim() {
         let mut runtime = AppRuntime::<ExternalHostApp>::mount_with_config(
@@ -1521,32 +1559,15 @@ mod tests {
                 && stream.capture_owner() == Some(target)
         }));
 
-        let refused = settled_public_pointer(
+        let refused = assert_foreign_pointer_device_refusal(
             &mut runtime,
-            PointerEvent::new(
-                pointer,
-                PointerDeviceKind::Mouse,
-                PointerPhase::Move,
-                outside,
-                publication.input_context().clone(),
-            )
-            .with_device_id(foreign_device)
-            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+            &before,
+            &down,
+            pointer,
+            foreign_device,
+            outside,
+            publication.input_context().clone(),
         );
-        assert_eq!(refused.device_id(), Some(foreign_device));
-        assert!(down.sequence() < refused.sequence());
-        assert_eq!(down.scope(), refused.scope());
-        assert!(matches!(
-            refused.finality(),
-            UiInputFinality::ProcessingRejected(
-                runenui_runtime::UiInputProcessingRejection::InvalidPointerStream
-            )
-        ));
-        let after_refusal = runtime
-            .input_ownership()
-            .unwrap_or_else(|_| unreachable!("rejected input cannot steal ownership"));
-        assert_eq!(after_refusal, before);
-        assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
 
         let up = settled_public_pointer(
             &mut runtime,
