@@ -315,7 +315,7 @@ impl UiApp for SourceQualifiedSpaceApp {
     }
 }
 
-fn source_space_key(phase: KeyboardPhase, device_id: InputDeviceId) -> KeyboardEvent {
+const fn source_space_key(phase: KeyboardPhase, device_id: InputDeviceId) -> KeyboardEvent {
     KeyboardEvent::new(
         phase,
         PhysicalKey::Space,
