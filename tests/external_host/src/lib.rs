@@ -1627,10 +1627,7 @@ mod tests {
         assert_eq!(settled.scope(), batch.final_ownership().scope());
         assert_eq!(settled.family(), UiInputFamily::Pointer);
         assert_eq!(settled.pointer_id(), Some(pointer));
-        assert_eq!(
-            settled.surface_id(),
-            Some(publication.input_context().surface_id())
-        );
+        assert_eq!(settled.surface_id(), Some(publication.input_context().surface_id()));
         assert!(matches!(
             settled.finality(),
             UiInputFinality::Committed(facts)
