@@ -1378,7 +1378,7 @@ fn nonterminal_pointer_routed_capacity_refusal_is_processing_rejected_not_aborte
         batch.final_ownership().status(),
         crate::RuntimeStatus::Running
     );
-    assert!(batch.final_ownership().pointers().is_empty());
+    assert_eq!(batch.final_ownership().pointers(), []);
     assert_eq!(*app.state(), 0);
     let settlements: Vec<_> = batch
         .ordered_records()
