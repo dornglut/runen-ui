@@ -1,4 +1,4 @@
-//! Select-only ComboBox over M4 real focus and M5 active-descendant semantics.
+//! Select-only `ComboBox` over M4 real focus and M5 active-descendant semantics.
 //! All committed values and popup visibility are authored by the application.
 use crate::{
     ChildBearingWidget, Element, ElementId, EventContext, EventPhase, Focusability,
@@ -282,14 +282,14 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
             None
         };
         if let Some(directive) = directive {
-            if !state.open {
-                context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Open));
-            } else {
+            if state.open {
                 let old = state.active.clone();
                 self.choose(state, directive);
                 if state.active != old {
                     context.invalidate(WidgetInvalidation::SEMANTICS);
                 }
+            } else {
+                context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Open));
             }
             context.prevent_default();
             context.stop_propagation();

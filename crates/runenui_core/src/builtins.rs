@@ -1485,6 +1485,8 @@ impl ListBoxSelectionMode {
 ///
 /// `RunenUI` deliberately stores no durable application item identity here.
 /// Capture application-domain IDs or values in the ordinary activation callback.
+type ComboSharedActivation<Action> = std::rc::Rc<std::cell::RefCell<Box<dyn FnMut() -> Action>>>;
+
 /// Selection of one public Option's focus policy; modes are mutually exclusive.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OptionFocusPolicy {
@@ -1596,11 +1598,11 @@ impl<Action> OptionItem<Action> {
     }
 
     /// Share one Option callback for both ordinary pointer activation and
-    /// the owning ComboBox's keyboard acceptance. Durable values never come
-    /// from a widget-local active ElementId.
+    /// the owning `ComboBox`'s keyboard acceptance. Durable values never come
+    /// from a widget-local active `ElementId`.
     pub(crate) fn share_combo_activation(
         &mut self,
-    ) -> Option<std::rc::Rc<std::cell::RefCell<Box<dyn FnMut() -> Action>>>>
+    ) -> Option<ComboSharedActivation<Action>>
     where
         Action: 'static,
     {
