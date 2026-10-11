@@ -3,18 +3,18 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    CommandOrigin, CommittedTextEvent, Element, EventContext, EventPhase, KeyLocation,
-    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
+    CommandOrigin, CommittedTextEvent, Element, EventContext, EventPhase, InputDeviceId,
+    KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
     NoHostProtocol, PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
-    WidgetEventOutput, container,
+    WidgetEventOutput, button, container,
 };
 use runenui_external_widget_conformance::{
     ExternalInputAction, ExternalInputAncestor, ExternalInputFact, ExternalInputKind,
     ExternalInputWidget,
 };
 use runenui_runtime::{
-    AppRuntime, InputArbitrationRecord, PumpBudget, TraceRecordKind, UiInputClaimReason,
-    UiInputConflict, UiInputFamily, UiInputFinality,
+    AppRuntime, InputArbitrationRecord, PumpBudget, RuntimeConfig, TraceConfig, TraceRecordKind,
+    UiDefaultDisposition, UiInputClaimReason, UiInputConflict, UiInputFamily, UiInputFinality,
 };
 
 #[derive(Debug)]
@@ -294,6 +294,144 @@ fn downstream_text_and_composition_receipts_have_exact_exclusive_ui_finality() {
             batch.final_ownership().revision()
         );
     }
+}
+
+
+struct SourceQualifiedSpaceApp;
+
+impl UiApp for SourceQualifiedSpaceApp {
+    type State = usize;
+    type Action = usize;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &Self::State) -> impl View<Self::Action> {
+        button("Space")
+            .id("host-space")
+            .key("host-space")
+            .on_activate(|| 1)
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        *state += action;
+    }
+}
+
+fn source_space_key(phase: KeyboardPhase, device_id: InputDeviceId) -> KeyboardEvent {
+    KeyboardEvent::new(
+        phase,
+        PhysicalKey::Space,
+        LogicalKey::Space,
+        KeyModifiers::NONE,
+        false,
+        KeyLocation::Standard,
+        KeyboardCompositionState::Inactive,
+        Some(device_id),
+    )
+}
+
+fn source_space_settlement(
+    runtime: &mut AppRuntime<SourceQualifiedSpaceApp>,
+    phase: KeyboardPhase,
+    device_id: InputDeviceId,
+    expected: UiInputConflict,
+    owner: Option<InputDeviceId>,
+) -> runenui_runtime::UiInputSettlement {
+    let receipt = runtime
+        .submit_keyboard(source_space_key(phase, device_id))
+        .unwrap_or_else(|_| unreachable!("focused native Space is admitted"))
+        .sequence();
+    let batch = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("one native Space reaches canonical commit"));
+    assert_eq!(batch.processed_through(), Some(receipt));
+    let settled = batch
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::InputSettled(value) => Some(value),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(settled.len(), 1);
+    let value = settled[0];
+    assert_eq!(value.sequence(), receipt);
+    assert_eq!(value.scope(), batch.final_ownership().scope());
+    assert_eq!(value.family(), UiInputFamily::Keyboard);
+    assert_eq!(value.device_id(), Some(device_id));
+    assert_eq!(value.ownership_revision(), batch.final_ownership().revision());
+    assert_eq!(batch.final_ownership().keyboard().space_activation_device_id(), owner);
+    assert!(matches!(
+        value.finality(),
+        UiInputFinality::Committed(facts)
+            if facts.conflict() == expected
+                && facts.reasons().contains(&UiInputClaimReason::ActivationDefault)
+                    == (expected == UiInputConflict::ExclusiveUi)
+    ));
+    value.clone()
+}
+
+#[test]
+fn public_space_lifetime_ignores_foreign_device_down_and_up_without_ghost_claim() {
+    let mut runtime = AppRuntime::<SourceQualifiedSpaceApp>::mount_with_config(
+        0,
+        RuntimeConfig::default().with_trace_config(TraceConfig::new(0)),
+    );
+    let budget = PumpBudget::new(32, 32, 32, 32);
+    let _ = runtime
+        .pump(budget)
+        .unwrap_or_else(|_| unreachable!("button fixture mounts"));
+    let authored =
+        runenui_core::ElementId::new("host-space").unwrap_or_else(|_| unreachable!("static id"));
+    let target = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("space button exists"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(target, SemanticCommand::RequestFocus, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("host-space focus admitted"));
+    let _ = runtime
+        .pump(budget)
+        .unwrap_or_else(|_| unreachable!("host-space focus commits"));
+    let a = InputDeviceId::new(21).unwrap_or_else(|| unreachable!("valid source A"));
+    let b = InputDeviceId::new(22).unwrap_or_else(|| unreachable!("valid source B"));
+    let down_a = source_space_settlement(
+        &mut runtime, KeyboardPhase::Down, a, UiInputConflict::ExclusiveUi, Some(a),
+    );
+    assert!(matches!(
+        down_a.finality(),
+        UiInputFinality::Committed(facts)
+            if facts.default_disposition() == UiDefaultDisposition::Applied
+    ));
+    let down_b = source_space_settlement(
+        &mut runtime, KeyboardPhase::Down, b, UiInputConflict::ObservedNonexclusive, Some(a),
+    );
+    let up_b = source_space_settlement(
+        &mut runtime, KeyboardPhase::Up, b, UiInputConflict::ObservedNonexclusive, Some(a),
+    );
+    let up_a = source_space_settlement(
+        &mut runtime, KeyboardPhase::Up, a, UiInputConflict::ExclusiveUi, None,
+    );
+    assert!(down_a.sequence() < down_b.sequence());
+    assert!(down_b.sequence() < up_b.sequence());
+    assert!(up_b.sequence() < up_a.sequence());
+    assert_eq!(runtime.state(), &0, "queued activation is not yet committed");
+    let finality = up_a.finality();
+    assert!(matches!(
+        finality,
+        UiInputFinality::Committed(facts)
+            if facts.default_disposition() == UiDefaultDisposition::Queued
+    ));
+    assert!(runtime
+        .pump(budget)
+        .unwrap_or_else(|_| unreachable!("later activation work commits"))
+        .ordered_records()
+        .iter()
+        .all(|record| !matches!(record, InputArbitrationRecord::InputSettled(_))));
+    assert_eq!(runtime.state(), &1, "exact owning Space release activates once");
 }
 
 #[derive(Debug)]
