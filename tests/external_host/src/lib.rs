@@ -23,7 +23,8 @@ mod tests {
         Brush, Color, CommandOrigin, DragDropEvent, DragDropPayloadKind, DragDropPayloadMetadata,
         DragDropPhase, Element, ElementId, EventContext, EventPhase, HitContribution,
         HitContributionContext, ImageDescriptor, ImageIntrinsicSize, ImageMapping,
-        ImagePaintDescriptor, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
+        ImagePaintDescriptor, InputDeviceId, KeyLocation, KeyModifiers, KeyboardCompositionState,
+        KeyboardEvent,
         KeyboardPhase, LogicalKey, LogicalLength, LogicalPoint, LogicalRect, LogicalSize,
         NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionItem,
         PhysicalKey, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
@@ -1454,6 +1455,132 @@ mod tests {
                 .iter()
                 .all(|stream| stream.pointer_id() != pointer)
         );
+    }
+
+    #[test]
+    fn public_foreign_pointer_device_cannot_steal_owned_stream_or_create_claim() {
+        let mut runtime = AppRuntime::<ExternalHostApp>::mount_with_config(
+            HostState {
+                image: ResourceRef::new(ResourceKind::Image),
+                active: false,
+            },
+            RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0)),
+        );
+        let _ = runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("native host mount settles"));
+        let env = StyleEnvironment::default();
+        let size = LogicalSize::try_new(64.0, 64.0)
+            .unwrap_or_else(|_| unreachable!("finite surface size"));
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(&env, size))
+            .unwrap_or_else(|_| unreachable!("retained native hit context"));
+        let bounds = publication.frame().nodes()[0].bounds();
+        let inside = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
+            .unwrap_or_else(|_| unreachable!("finite inside point"));
+        let outside = LogicalPoint::new(65.0, 65.0)
+            .unwrap_or_else(|_| unreachable!("finite outside point"));
+        assert_eq!(publication.hit_test_scene().target_at(outside), None);
+        let target = publication
+            .hit_test_scene()
+            .target_at(inside)
+            .unwrap_or_else(|| unreachable!("native press hits authored widget"));
+        let pointer = PointerId::new(83).unwrap_or_else(|| unreachable!("positive pointer id"));
+        let first_device =
+            InputDeviceId::new(15).unwrap_or_else(|| unreachable!("positive device id"));
+        let foreign_device =
+            InputDeviceId::new(16).unwrap_or_else(|| unreachable!("positive device id"));
+
+        let down = settled_public_pointer(
+            &mut runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                inside,
+                publication.input_context().clone(),
+            )
+            .with_device_id(first_device)
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        );
+        assert_eq!(down.device_id(), Some(first_device));
+        assert!(matches!(
+            down.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::PointerPress)
+        ));
+        let before = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("native owner is observable"));
+        assert!(before.pointers().iter().any(|stream| {
+            stream.pointer_id() == pointer
+                && stream.device_id() == Some(first_device)
+                && stream.pressed_owner() == Some(target)
+                && stream.capture_owner() == Some(target)
+        }));
+
+        let refused = settled_public_pointer(
+            &mut runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Move,
+                outside,
+                publication.input_context().clone(),
+            )
+            .with_device_id(foreign_device)
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        );
+        assert_eq!(refused.device_id(), Some(foreign_device));
+        assert!(down.sequence() < refused.sequence());
+        assert_eq!(down.scope(), refused.scope());
+        assert!(matches!(
+            refused.finality(),
+            UiInputFinality::ProcessingRejected(
+                runenui_runtime::UiInputProcessingRejection::InvalidPointerStream
+            )
+        ));
+        let after_refusal = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("rejected input cannot steal ownership"));
+        assert_eq!(after_refusal, before);
+        assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
+
+        let up = settled_public_pointer(
+            &mut runtime,
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                outside,
+                publication.input_context().clone(),
+            )
+            .with_device_id(first_device)
+            .with_changed_button(PointerButton::Primary),
+        );
+        assert!(refused.sequence() < up.sequence());
+        assert_eq!(up.device_id(), Some(first_device));
+        assert!(matches!(
+            up.finality(),
+            UiInputFinality::Committed(facts)
+                if facts.conflict() == UiInputConflict::ExclusiveUi
+                    && facts.reasons().contains(&UiInputClaimReason::PointerCapture)
+                    && matches!(facts.route(), UiInputRoute::Captured { target: owner }
+                        if owner == target)
+        ));
+        let released = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("matching release commits cleanup"));
+        assert!(released.pointers().iter().all(|stream| stream.pointer_id() != pointer));
+        assert!(!runtime.state().active);
+        assert!(!runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("settled device occurrences never replay"))
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))));
     }
 
     #[test]
