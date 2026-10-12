@@ -628,6 +628,7 @@ struct DisplayedFrame {
 }
 
 impl DisplayedFrame {
+    #[must_use]
     fn from_pending(pending: &PendingFrame) -> Self {
         Self {
             input_context: pending.publication.input_context().clone(),
