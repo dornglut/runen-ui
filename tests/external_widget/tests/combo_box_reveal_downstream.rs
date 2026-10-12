@@ -12,7 +12,7 @@ use runenui_core::{
     SemanticRole, SemanticState, container, list_box, option_item, scroll_container,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext,
+    AppRuntime, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig, SurfaceBuildContext,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -296,4 +296,96 @@ fn downstream_semantic_composite_reveals_deep_initial_option_without_builtin_wid
         "public downstream Widget must receive the same post-publication reveal"
     );
     assert_eq!(app.focus().focused_node(), None);
+}
+
+#[test]
+fn initial_generic_reveal_respects_full_command_fifo_without_a_private_retry() {
+    let mut app = AppRuntime::<InitialApp>::mount_with_config(
+        (),
+        RuntimeConfig::default().with_queue_capacity(2),
+    );
+    assert!(
+        app.pump(PumpBudget::new(256, 256, 256, 256))
+            .unwrap_or_else(|error| unreachable!("initial work: {error:?}"))
+            .report()
+            .is_quiescent()
+    );
+    let authored = ElementId::new("initial.custom.owner").unwrap_or_else(|_| unreachable!());
+    let owner = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("current downstream owner"))
+        .id()
+        .clone();
+    for _ in 0..2 {
+        app.submit_command(
+            owner.clone(),
+            SemanticCommand::ScrollIntoView,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("two ordinary FIFO slots"));
+    }
+    let environment = runenui_core::StyleEnvironment::default();
+    let frame = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::try_new(350.0, 320.0).unwrap_or_else(|_| unreachable!()),
+    );
+    let initial = app
+        .publish_surface(&frame)
+        .unwrap_or_else(|error| unreachable!("publication remains coherent: {error:?}"));
+    assert!(initial.semantic_publication().snapshot().nodes().iter().any(|node| {
+        node.role() == SemanticRole::ComboBox && node.state().expanded() == Some(true)
+    }));
+    let list_authored = ElementId::new("initial.custom.list").unwrap_or_else(|_| unreachable!());
+    let list = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&list_authored))
+        .unwrap_or_else(|| unreachable!("current bounded list"))
+        .id()
+        .clone();
+    let viewport = app
+        .index()
+        .node(&list)
+        .and_then(|node| node.parent())
+        .unwrap_or_else(|| unreachable!("standard scrolling ancestor"))
+        .clone();
+    assert_eq!(
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!())
+            .interaction()
+            .scroll_offset()
+            .1,
+        0.0,
+        "rejected publication reveal cannot bypass the full FIFO"
+    );
+    assert!(
+        app.pump(PumpBudget::new(256, 256, 256, 256))
+            .unwrap_or_else(|error| unreachable!("draining existing commands: {error:?}"))
+            .report()
+            .is_quiescent()
+    );
+    let _ = app
+        .publish_surface(&frame)
+        .unwrap_or_else(|error| unreachable!("same open publication: {error:?}"));
+    assert!(
+        app.pump(PumpBudget::new(256, 256, 256, 256))
+            .unwrap_or_else(|error| unreachable!("unchanged semantic publication: {error:?}"))
+            .report()
+            .is_quiescent()
+    );
+    assert_eq!(
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!())
+            .interaction()
+            .scroll_offset()
+            .1,
+        0.0,
+        "failed generation-bound reveal must not retry as a deferred authored ID"
+    );
 }
