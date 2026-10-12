@@ -1010,18 +1010,8 @@ mod tests {
             RENDER_WGPU_PACKAGE.to_owned(),
             WINIT_PACKAGE.to_owned(),
         ]);
-        let gallery = member(
-            "examples/gallery",
-            GALLERY_PACKAGE,
-            deps.clone(),
-            BTreeSet::new(),
-        );
-        let unrelated = member(
-            "examples/unrelated",
-            "unrelated",
-            deps.clone(),
-            BTreeSet::new(),
-        );
+        let gallery = member("examples/gallery", GALLERY_PACKAGE, deps.clone(), BTreeSet::new());
+        let unrelated = member("examples/unrelated", "unrelated", deps, BTreeSet::new());
         let missing_renderer = member(
             "examples/gallery",
             GALLERY_PACKAGE,
