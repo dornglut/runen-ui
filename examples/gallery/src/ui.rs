@@ -385,8 +385,7 @@ fn inspector(state: &GalleryState) -> Element<GalleryAction> {
         text("Application-owned values update as controls are used.")
             .typography(typography(12, false))
             .foreground(MUTED),
-        text(format!("Page: {}", state.page.title()))
-            .id("gallery.inspector.page"),
+        text(format!("Page: {}", state.page.title())).id("gallery.inspector.page"),
         text(format!("Activations: {}", state.presses)).id("gallery.inspector.presses"),
         text(format!("Checked: {}", state.checked)).id("gallery.inspector.checked"),
         text(format!("Text revision: {}", state.document_revision))
