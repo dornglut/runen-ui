@@ -459,12 +459,16 @@ impl GalleryHost {
             .keyboard
             .cancel_all(self.modifiers, self.text.keyboard_composition_state())
         {
-            if let Err(error) = self.runtime.submit_keyboard(cancel) {
-                fatal(
-                    event_loop,
-                    &format!("keyboard cancellation failed: {error}"),
-                );
-                return;
+            match self.runtime.submit_keyboard(cancel) {
+                Ok(_) => {}
+                Err(error) if error.kind() == SubmitKeyboardErrorKind::NoFocusedTarget => {}
+                Err(error) => {
+                    fatal(
+                        event_loop,
+                        &format!("keyboard cancellation failed: {error}"),
+                    );
+                    return;
+                }
             }
         }
         self.pump();
