@@ -51,7 +51,7 @@ use runenui_render_wgpu::{
     ResourceProviderError, ResourceProviderErrorKind, ResourceRequest,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, PumpBudget, RedrawRequest, SubmitCompositionErrorKind,
+    AppRuntime, PumpBudget, RedrawRequest, SubmitCompositionErrorKind,
     SubmitKeyboardErrorKind, SubmitTextErrorKind, SurfaceBuildContext, SurfacePublication,
 };
 use runenui_winit::native_mapping::{NativeMapping, NativePointError};
@@ -2826,7 +2826,7 @@ mod tests {
     use super::{
         AppRuntime, CommandOrigin, CommittedTextEvent, DemoApp, DemoHistoryEntry, DemoState,
         DisplayedFrame, HOST_PUMP_BUDGET, INITIAL_EDITOR_TEXT, KeyboardEvent, LARGE_DOCUMENT_LINES,
-        LogicalSize, MAX_EDITOR_HISTORY_ENTRIES, NATIVE_RELEASE_RETRY_INTERVAL, NativeMapping,
+        MAX_EDITOR_HISTORY_ENTRIES, NATIVE_RELEASE_RETRY_INTERVAL, NativeMapping,
         PendingFrame, PointIngressDiagnostic, RAW_MOTION_PROBE_TIMEOUT, ReferenceDocumentPreset,
         STRESS_DOCUMENT_LINES, SemanticAdapter, SemanticCommand, StyleEnvironment,
         SurfaceBuildContext, earliest_host_deadline,
@@ -2840,7 +2840,7 @@ mod tests {
     use runenui_core::{
         InputDeviceId, KeyModifiers, KeyboardPhase, LogicalPoint, PointerButton, PointerPhase,
     };
-    use runenui_runtime::{FontSourcePolicy, RuntimeConfig};
+    use runenui_runtime::{FontSourcePolicy, LogicalSize, RuntimeConfig};
     use std::time::Instant;
     use winit::{
         dpi::{PhysicalPosition, PhysicalSize},
