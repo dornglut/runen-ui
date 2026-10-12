@@ -141,7 +141,8 @@ mod tests {
     #[test]
     fn public_adapter_focus_and_capability_are_exactly_gated() {
         let mut runtime = AppRuntime::<DemoApp>::mount(());
-        runtime.pump(PumpBudget::new(16, 16, 16, 16))
+        runtime
+            .pump(PumpBudget::new(16, 16, 16, 16))
             .unwrap_or_else(|_| unreachable!("standalone public test mounts"));
         let id = runtime.index().nodes()[0].id().clone();
         let mut state = TextInputState::default();

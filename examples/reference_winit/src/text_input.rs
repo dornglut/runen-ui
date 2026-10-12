@@ -3,15 +3,15 @@
 
 #[cfg(test)]
 mod tests {
-    use runenui_winit::text_input::{
-        TextInputState, keyboard_committed_text_candidate, translate_preedit_range,
-    };
     use crate::{DemoApp, DemoState};
     use runenui_core::{
         CommandOrigin, CompositionGeneration, KeyboardCompositionState, LogicalKey,
         SemanticCommand, WidgetTextInput,
     };
     use runenui_runtime::{AppRuntime, MountedNodeId, PumpBudget};
+    use runenui_winit::text_input::{
+        TextInputState, keyboard_committed_text_candidate, translate_preedit_range,
+    };
     use winit::event::ElementState;
 
     const fn full_pump() -> PumpBudget {
