@@ -465,8 +465,13 @@ mod tests {
             .find(|node| node.authored_id() == Some(&id("gallery.basics.activate")))
             .unwrap_or_else(|| unreachable!("button has a published visual node"));
         let bounds = node.bounds();
-        let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
-            .unwrap_or_else(|_| unreachable!("published button location is finite"));
+        // The interactive Button has rounded corners: sample its center, not a
+        // corner pixel that may legitimately lie outside its hit shape.
+        let point = LogicalPoint::new(
+            bounds.x() + bounds.width() / 2.0,
+            bounds.y() + bounds.height() / 2.0,
+        )
+        .unwrap_or_else(|_| unreachable!("published button center is finite"));
         assert_eq!(
             published.hit_test_scene().target_at(point),
             Some(node.id()),
