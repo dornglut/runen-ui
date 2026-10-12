@@ -87,7 +87,12 @@ struct ProbeDirectory(PathBuf);
 
 impl ProbeDirectory {
     fn new(root: &Path) -> Result<Self, String> {
-        let directory = root.join("target").join(format!(
+        // Configured Cargo output may live outside the workspace, leaving this
+        // ignored probe parent absent even after successful workspace checks.
+        let target = root.join("target");
+        fs::create_dir_all(&target)
+            .map_err(|error| format!("failed to create {}: {error}", target.display()))?;
+        let directory = target.join(format!(
             "runenui-public-feature-probe-{}-{}",
             process::id(),
             NEXT_PROBE.fetch_add(1, Ordering::Relaxed)
@@ -203,7 +208,38 @@ fn is_expected_private_seam_rejection(diagnostics: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_expected_private_seam_rejection, public_test_arguments};
+    use super::{
+        NEXT_PROBE, ProbeDirectory, is_expected_private_seam_rejection, public_test_arguments,
+    };
+
+    #[test]
+    fn fresh_probe_creates_its_parent_and_retains_other_probe_owners() -> Result<(), String> {
+        let temporary_root = std::env::temp_dir().join(format!(
+            "runenui-public-feature-root-{}-{}",
+            std::process::id(),
+            NEXT_PROBE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&temporary_root).map_err(|error| error.to_string())?;
+        let root = ProbeDirectory(temporary_root);
+        assert!(!root.0.join("target").exists());
+
+        let first = ProbeDirectory::new(&root.0)?;
+        let second = ProbeDirectory::new(&root.0)?;
+        let retained = root.0.join("target/retained.txt");
+        std::fs::write(&retained, "another owner").map_err(|error| error.to_string())?;
+        assert_ne!(first.0, second.0);
+        assert!(first.0.is_dir());
+        let first_path = first.0.clone();
+        drop(first);
+        assert!(!first_path.exists());
+        assert!(second.0.is_dir());
+        drop(second);
+        assert_eq!(
+            std::fs::read_to_string(retained).map_err(|error| error.to_string())?,
+            "another owner"
+        );
+        Ok(())
+    }
 
     #[test]
     fn public_lane_selects_only_downstream_packages_without_all_features() {
