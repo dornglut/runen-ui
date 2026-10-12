@@ -439,7 +439,9 @@ impl GalleryHost {
         if self.window_flags.suppressed {
             return;
         }
-        if (self.pending_frame.is_some() || self.pending_redraw.is_some() || self.window_flags.needs_publication)
+        if (self.pending_frame.is_some()
+            || self.pending_redraw.is_some()
+            || self.window_flags.needs_publication)
             && let Some(window) = self.window.as_ref()
         {
             window.request_redraw();
@@ -976,7 +978,9 @@ impl ApplicationHandler<HostEvent> for GalleryHost {
             } if !self.window_flags.suppressed => {
                 self.key_input(event_loop, device_id, &event, is_synthetic);
             }
-            WindowEvent::Ime(ime) if !self.window_flags.suppressed => self.ime_event(event_loop, ime),
+            WindowEvent::Ime(ime) if !self.window_flags.suppressed => {
+                self.ime_event(event_loop, ime)
+            }
             WindowEvent::ModifiersChanged(state) => self.modifiers = modifiers(state.state()),
             WindowEvent::Focused(false) => self.lose_native_focus(event_loop),
             WindowEvent::Focused(true) => {
