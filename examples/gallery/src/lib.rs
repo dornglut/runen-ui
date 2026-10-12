@@ -15,6 +15,7 @@ mod tests {
         KeyboardEvent, KeyboardPhase, LogicalKey, LogicalLength, LogicalPoint, PhysicalKey,
         PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
         SemanticCommand, SemanticRelationshipKind, SemanticRole, StyleEnvironment,
+        StyleInteractionState, StyleRecipeId,
     };
     use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
 
@@ -25,6 +26,24 @@ mod tests {
 
     fn id(value: &str) -> ElementId {
         ElementId::new(value).unwrap_or_else(|_| unreachable!("static gallery id is valid"))
+    }
+
+    #[test]
+    fn gallery_focus_style_is_keyboard_visible_without_permanent_outline() {
+        let style = style_environment();
+        let id = StyleRecipeId::from_static("gallery.focusable")
+            .unwrap_or_else(|_| unreachable!("static Gallery recipe id is valid"));
+        let recipe = style
+            .theme()
+            .recipe(&id)
+            .unwrap_or_else(|| unreachable!("Gallery registers its focus recipe"));
+        assert!(recipe.base().outline().is_none());
+        assert!(
+            recipe
+                .interaction(StyleInteractionState::FocusVisible)
+                .and_then(|properties| properties.outline())
+                .is_some()
+        );
     }
 
     #[test]
