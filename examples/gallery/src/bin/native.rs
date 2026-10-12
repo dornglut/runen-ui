@@ -979,7 +979,7 @@ impl ApplicationHandler<HostEvent> for GalleryHost {
                 self.key_input(event_loop, device_id, &event, is_synthetic);
             }
             WindowEvent::Ime(ime) if !self.window_flags.suppressed => {
-                self.ime_event(event_loop, ime)
+                self.ime_event(event_loop, ime);
             }
             WindowEvent::ModifiersChanged(state) => self.modifiers = modifiers(state.state()),
             WindowEvent::Focused(false) => self.lose_native_focus(event_loop),
