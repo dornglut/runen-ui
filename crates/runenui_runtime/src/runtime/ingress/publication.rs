@@ -1,7 +1,7 @@
 use core::mem;
 
 use runenui_core::{
-    CommandOrigin, MonotonicInstant, SemanticCommand, SemanticRelationshipKind, SemanticRole,
+    CommandOrigin, MonotonicInstant, SemanticCommand, SemanticRelationshipKind,
 };
 
 use super::{
@@ -179,9 +179,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.enter_terminal(reason, 0);
             return Err(PublishSurfaceError::Terminal(reason));
         }
-        // Only a newly expanded ComboBox needs a first-mount reveal. Its
-        // Options do not exist during the event that requested opening; the
-        // previous *published* semantic identity is the authoritative boundary.
+        // A newly expanded composite may request an initial active-descendant
+        // reveal before that descendant exists in its mounted tree. Retain the
+        // previous published semantic identities to distinguish a new mount
+        // from already-published navigation without recognizing widget types.
         let previously_open = self
             .surface_publication
             .current_semantic_publication()
@@ -191,17 +192,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     .nodes()
                     .iter()
                     .filter(|node| {
-                        node.role() == SemanticRole::ComboBox
-                            && node.state().expanded() == Some(true)
+                        node.state().expanded() == Some(true)
                     })
                     .map(|node| node.id().clone())
                     .collect()
             });
-        // An open-close-reopen can reconcile fresh Option generations without
-        // publishing an intermediate closed snapshot. The previous exact
-        // semantic Option identities distinguish that mount from navigation
-        // among already-published live Options.
-        let previously_published_options = self
+        // A close/reopen without an intermediate closed publication replaces
+        // exact descendant lifetimes. Compare all previous semantic generations
+        // rather than assuming any particular control or descendant role.
+        let previously_published_descendants = self
             .surface_publication
             .current_semantic_publication()
             .map_or_else(Vec::new, |current| {
@@ -209,7 +208,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     .snapshot()
                     .nodes()
                     .iter()
-                    .filter(|node| node.role() == SemanticRole::Option)
                     .map(|node| node.id().clone())
                     .collect()
             });
@@ -324,10 +322,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // The geometry and semantic identities are now atomically retained.
         // Route one exact mounted-generation reveal through the existing M4/#344
         // command queue, never through a second scroll or focus controller.
-        self.reveal_newly_opened_combo_active_options(
+        self.reveal_newly_published_active_descendants(
             &publication,
             &previously_open,
-            &previously_published_options,
+            &previously_published_descendants,
             published,
         );
         if let RuntimeStatus::Terminal(reason) = self.status {
@@ -351,11 +349,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(publication)
     }
 
-    fn reveal_newly_opened_combo_active_options(
+    fn reveal_newly_published_active_descendants(
         &mut self,
         publication: &crate::SurfacePublication,
         previously_open: &[runenui_core::SemanticNodeId],
-        previously_published_options: &[runenui_core::SemanticNodeId],
+        previously_published_descendants: &[runenui_core::SemanticNodeId],
         causal_parent: Option<TraceSequence>,
     ) {
         let snapshot = publication.semantic_publication().snapshot();
@@ -363,15 +361,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .nodes()
             .iter()
             .filter(|node| {
-                node.role() == SemanticRole::ComboBox
-                    && node.state().expanded() == Some(true)
+                node.state().expanded() == Some(true)
                     && !node.state().disabled()
                     && !node.state().inert()
             })
             .filter_map(|combo| {
-                // The semantic compositor already validated ActiveDescendant
-                // under Controls, but recheck exactly one visible relationship
-                // of each kind and the current mounted ancestry before queuing.
+                // The semantic compositor validates these generic relationships;
+                // demand exactly one of each and current mounted ancestry. No
+                // built-in control role or widget type is special to this path.
                 let relation = |kind| {
                     let mut matches = combo
                         .relationships()
@@ -388,15 +385,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 // needs this post-publication command. Already-mounted keyboard
                 // navigation has its own exact event-time routed command.
                 if previously_open.contains(combo.id())
-                    && previously_published_options.contains(active_id)
+                    && previously_published_descendants.contains(active_id)
                 {
                     return None;
                 }
-                if list.role() != SemanticRole::ListBox
-                    || option.role() != SemanticRole::Option
-                    || option.state().disabled()
-                    || option.state().inert()
-                {
+                if option.state().disabled() || option.state().inert() {
                     return None;
                 }
                 let combo_owner = self.tree.semantic_action_authority(combo.id()).ok()?;
