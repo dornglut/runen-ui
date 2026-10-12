@@ -11,7 +11,7 @@ use winit::{
     window::Window,
 };
 
-/// Checked physical extent, native scale, and the corresponding RunenUI sizes.
+/// Checked physical extent, native scale, and the corresponding `RunenUI` sizes.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NativeMapping {
     physical_size: PhysicalSize<u32>,
