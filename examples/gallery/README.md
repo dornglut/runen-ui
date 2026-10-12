@@ -53,9 +53,8 @@ directly observed result from a compile-only or simulated result.
 
 An observed native walkthrough, independent final review, exact-head
 validation and separately owner-authorized protected acceptance are required
-before Gallery slice [#457](https://github.com/dornglut/runen-ui/issues/457)
-can close. The full control catalog remains tracked by
-[#455](https://github.com/dornglut/runen-ui/issues/455).
+before Gallery slice #457 can close. The full control catalog remains
+separately tracked by parent issue #455.
 
 Counter remains the minimal teaching example and reference_winit remains the
 specialized native integration host.
