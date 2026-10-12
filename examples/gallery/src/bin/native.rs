@@ -978,9 +978,7 @@ impl ApplicationHandler<HostEvent> for GalleryHost {
             } if !self.window_flags.suppressed && self.window_flags.focused => {
                 self.key_input(event_loop, device_id, &event, is_synthetic);
             }
-            WindowEvent::Ime(ime)
-                if !self.window_flags.suppressed && self.window_flags.focused =>
-            {
+            WindowEvent::Ime(ime) if !self.window_flags.suppressed && self.window_flags.focused => {
                 self.ime_event(event_loop, ime);
             }
             WindowEvent::ModifiersChanged(state) => self.modifiers = modifiers(state.state()),

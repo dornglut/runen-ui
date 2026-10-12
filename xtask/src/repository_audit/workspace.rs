@@ -513,9 +513,7 @@ fn validate_required_workspace_dependencies(
         ));
     }
 
-    if member.package == GALLERY_PACKAGE
-        && !workspace_dependencies.contains(RENDER_WGPU_PACKAGE)
-    {
+    if member.package == GALLERY_PACKAGE && !workspace_dependencies.contains(RENDER_WGPU_PACKAGE) {
         findings.push(Finding::fatal(
             "workspace.gallery_renderer_dependency_missing",
             Some(path_text(&member.relative.join("Cargo.toml"))),
@@ -896,14 +894,13 @@ mod tests {
 
     use super::{
         CORE_PACKAGE, EXTERNAL_HOST_PACKAGE, EXTERNAL_WIDGET_PACKAGE, GALLERY_PACKAGE,
-        REFERENCE_WINIT_PACKAGE,
-        RENDER_WGPU_PACKAGE, RUNTIME_PACKAGE, TESTING_PACKAGE, TEXT_PACKAGE, WINIT_PACKAGE,
-        WorkspaceMember, documented_package_names, external_host_forbidden_source_pattern,
-        is_public_consumer, parse_dependency_names, parse_feature_names, parse_package_name,
-        parse_workspace_members, private_feature_names, validate_dependency_direction,
-        validate_external_host_dependencies, validate_neutral_accessibility_dependencies,
-        validate_renderer_external_dependencies, validate_text_external_dependencies,
-        validate_winit_external_dependencies,
+        REFERENCE_WINIT_PACKAGE, RENDER_WGPU_PACKAGE, RUNTIME_PACKAGE, TESTING_PACKAGE,
+        TEXT_PACKAGE, WINIT_PACKAGE, WorkspaceMember, documented_package_names,
+        external_host_forbidden_source_pattern, is_public_consumer, parse_dependency_names,
+        parse_feature_names, parse_package_name, parse_workspace_members, private_feature_names,
+        validate_dependency_direction, validate_external_host_dependencies,
+        validate_neutral_accessibility_dependencies, validate_renderer_external_dependencies,
+        validate_text_external_dependencies, validate_winit_external_dependencies,
     };
 
     fn member(
@@ -983,7 +980,12 @@ mod tests {
 
     #[test]
     fn gallery_native_dependencies_are_explicitly_bounded_without_widening_other_examples() {
-        let core = member("crates/runenui_core", CORE_PACKAGE, BTreeSet::new(), BTreeSet::new());
+        let core = member(
+            "crates/runenui_core",
+            CORE_PACKAGE,
+            BTreeSet::new(),
+            BTreeSet::new(),
+        );
         let runtime = member(
             "crates/runenui_runtime",
             RUNTIME_PACKAGE,
@@ -1008,8 +1010,18 @@ mod tests {
             RENDER_WGPU_PACKAGE.to_owned(),
             WINIT_PACKAGE.to_owned(),
         ]);
-        let gallery = member("examples/gallery", GALLERY_PACKAGE, deps.clone(), BTreeSet::new());
-        let unrelated = member("examples/unrelated", "unrelated", deps.clone(), BTreeSet::new());
+        let gallery = member(
+            "examples/gallery",
+            GALLERY_PACKAGE,
+            deps.clone(),
+            BTreeSet::new(),
+        );
+        let unrelated = member(
+            "examples/unrelated",
+            "unrelated",
+            deps.clone(),
+            BTreeSet::new(),
+        );
         let missing_renderer = member(
             "examples/gallery",
             GALLERY_PACKAGE,
@@ -1041,7 +1053,10 @@ mod tests {
 
         let mut accepted = Vec::new();
         validate_dependency_direction(&gallery, &members, &mut accepted);
-        assert!(accepted.is_empty(), "bounded native Gallery must be admitted: {accepted:?}");
+        assert!(
+            accepted.is_empty(),
+            "bounded native Gallery must be admitted: {accepted:?}"
+        );
 
         let mut rejected = Vec::new();
         validate_dependency_direction(&unrelated, &members, &mut rejected);
@@ -1055,8 +1070,14 @@ mod tests {
         );
 
         for (incomplete, error_code) in [
-            (&missing_renderer, "workspace.gallery_renderer_dependency_missing"),
-            (&missing_winit, "workspace.native_consumer_winit_dependency_missing"),
+            (
+                &missing_renderer,
+                "workspace.gallery_renderer_dependency_missing",
+            ),
+            (
+                &missing_winit,
+                "workspace.native_consumer_winit_dependency_missing",
+            ),
         ] {
             let mut findings = Vec::new();
             validate_dependency_direction(incomplete, &members, &mut findings);
