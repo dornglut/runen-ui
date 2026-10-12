@@ -401,6 +401,39 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         causal_parent: None,
                     },
                 ),
+                RoutedEventOutput::DescendantScroll {
+                    owner,
+                    authored_id,
+                    origin,
+                } => {
+                    if owner != *current {
+                        continue;
+                    }
+                    let Some(target) = self
+                        .tree
+                        .unique_descendant_by_authored_id(&owner, &authored_id)
+                    else {
+                        continue;
+                    };
+                    if !self
+                        .tree
+                        .activation(&target)
+                        .is_ok_and(|facts| facts.enabled())
+                    {
+                        continue;
+                    }
+                    (
+                        TraceRecordKind::DelegatedCommandCollected {
+                            command: runenui_core::SemanticCommand::ScrollIntoView,
+                        },
+                        CollectedRoutedOutput::Command {
+                            target,
+                            command: runenui_core::SemanticCommand::ScrollIntoView,
+                            origin,
+                            causal_parent: None,
+                        },
+                    )
+                }
                 RoutedEventOutput::ApplicationCommand {
                     target,
                     command,

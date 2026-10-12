@@ -224,6 +224,7 @@
 mod application;
 mod application_command;
 mod builtins;
+mod combo_box;
 mod computed_style;
 mod editing;
 mod effects;
@@ -296,6 +297,10 @@ pub use builtins::{
     checkbox, column, command_binding, command_scope, container, disclosure, list_box, option_item,
     radio_button, radio_group, row, scroll_bar, scroll_container, scroll_viewport, selectable_text,
     shortcut_scope, switch, tab, tab_list, tab_panel, text,
+};
+pub use combo_box::{
+    ComboBox, ComboBoxRequest, EditableComboBox, EditableComboBoxError, combo_box,
+    editable_combo_box,
 };
 pub use computed_style::ComputedStyle;
 pub use editing::{

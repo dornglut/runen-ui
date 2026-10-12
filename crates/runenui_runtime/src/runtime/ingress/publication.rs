@@ -1,6 +1,6 @@
 use core::mem;
 
-use runenui_core::MonotonicInstant;
+use runenui_core::{CommandOrigin, MonotonicInstant, SemanticCommand, SemanticRelationshipKind};
 
 use super::{
     HostProtocol, MandatoryTracePlan, QueueCommitError, Runtime, RuntimeStatus,
@@ -177,6 +177,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.enter_terminal(reason, 0);
             return Err(PublishSurfaceError::Terminal(reason));
         }
+        // Retain a cheap immutable handle to the previous committed semantic
+        // publication. Exact lookup is O(1) per candidate, without cloning
+        // every semantic node or building an unbounded mirror of its IDs.
+        let previous_semantics = self
+            .surface_publication
+            .current_semantic_publication()
+            .cloned();
         let instant = self.now();
         let focused_owner = self.focus.focused_node().cloned();
         let interaction = self
@@ -285,6 +292,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if let RuntimeStatus::Terminal(reason) = self.status {
             return Err(PublishSurfaceError::Terminal(reason));
         }
+        // The geometry and semantic identities are now atomically retained.
+        // Route one exact mounted-generation reveal through the existing M4/#344
+        // command queue, never through a second scroll or focus controller.
+        self.reveal_newly_published_active_descendants(
+            &publication,
+            previous_semantics.as_ref(),
+            published,
+        );
+        if let RuntimeStatus::Terminal(reason) = self.status {
+            return Err(PublishSurfaceError::Terminal(reason));
+        }
         if admission.stationary_rehit {
             self.commit_stationary_pointer_rehit(&publication, instant, published);
         }
@@ -301,6 +319,90 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.commit_admitted_redraw_request(admission, published, instant);
         }
         Ok(publication)
+    }
+
+    fn reveal_newly_published_active_descendants(
+        &mut self,
+        publication: &crate::SurfacePublication,
+        previous: Option<&crate::SemanticPublication>,
+        causal_parent: Option<TraceSequence>,
+    ) {
+        let snapshot = publication.semantic_publication().snapshot();
+        // Stream current semantic owners rather than materializing a second
+        // unbounded list of candidates. Admission remains with the canonical
+        // #344 command FIFO, even for very large semantic publications.
+        for combo in snapshot.nodes().iter().filter(|node| {
+            node.state().expanded() == Some(true)
+                && !node.state().disabled()
+                && !node.state().inert()
+        }) {
+            let target = (|| {
+                // The semantic compositor validates these generic relationships;
+                // demand exactly one of each and current mounted ancestry. No
+                // built-in control role or widget type is special to this path.
+                let relation = |kind| {
+                    let mut matches = combo
+                        .relationships()
+                        .iter()
+                        .filter(|relationship| relationship.kind() == kind);
+                    let first = matches.next()?;
+                    matches.next().is_none().then_some(first.target())
+                };
+                let list_id = relation(SemanticRelationshipKind::Controls)?;
+                let active_id = relation(SemanticRelationshipKind::ActiveDescendant)?;
+                // Both relationship targets must exist in this committed snapshot.
+                snapshot.node(list_id)?;
+                let option = snapshot.node(active_id)?;
+                // Only a newly opened popup or a newly mounted Option generation
+                // needs this post-publication command. Already-mounted keyboard
+                // navigation has its own exact event-time routed command.
+                if previous.is_some_and(|previous| {
+                    let old = previous.snapshot();
+                    old.node(combo.id())
+                        .is_some_and(|node| node.state().expanded() == Some(true))
+                        && old.node(active_id).is_some()
+                }) {
+                    return None;
+                }
+                if option.state().disabled() || option.state().inert() {
+                    return None;
+                }
+                let combo_owner = self.tree.semantic_action_authority(combo.id()).ok()?;
+                let list_owner = self.tree.semantic_action_authority(list_id).ok()?;
+                let option_owner = self.tree.semantic_action_authority(active_id).ok()?;
+                if !combo_owner.activation().enabled()
+                    || !list_owner.activation().enabled()
+                    || !option_owner.activation().enabled()
+                    || !self
+                        .tree
+                        .is_descendant_or_self(list_owner.owner(), combo_owner.owner())
+                    || !self
+                        .tree
+                        .is_descendant_or_self(option_owner.owner(), list_owner.owner())
+                {
+                    return None;
+                }
+                Some(option_owner.owner().clone())
+            })();
+            let Some(target) = target else {
+                continue;
+            };
+            // Capacity rejection leaves the retained publication intact and
+            // cannot redirect the reveal to another Option or move real focus.
+            // Counter/sequence exhaustion uses the normal terminal protocol.
+            if self
+                .submit_command_with_parent(
+                    target,
+                    SemanticCommand::ScrollIntoView,
+                    CommandOrigin::programmatic(),
+                    causal_parent,
+                )
+                .is_err()
+                && !matches!(self.status, RuntimeStatus::Running)
+            {
+                break;
+            }
+        }
     }
 
     fn record_motion_trace_facts(

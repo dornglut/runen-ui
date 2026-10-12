@@ -4,9 +4,9 @@ use core::{fmt, future::Future};
 
 use crate::{
     ApplicationCommandDisposition, ApplicationCommandId, CommandOrigin, DragDropEvent,
-    DragDropPhase, EventPhase, LogicalPoint, LogicalSize, MonotonicInstant, MountedNodeId,
-    PointerId, ScrollControlSnapshot, SemanticCommand, SendTaskStartFailure, TimerEffect,
-    WidgetInvalidation, WorkFamily, WorkKey, WorkSequence, effects::MountedEffect,
+    DragDropPhase, ElementId, EventPhase, LogicalPoint, LogicalSize, MonotonicInstant,
+    MountedNodeId, PointerId, ScrollControlSnapshot, SemanticCommand, SendTaskStartFailure,
+    TimerEffect, WidgetInvalidation, WorkFamily, WorkKey, WorkSequence, effects::MountedEffect,
     widget_context::WidgetWorkCollector,
 };
 
@@ -17,6 +17,13 @@ pub enum RoutedEventOutput<Action> {
     Command {
         target: MountedNodeId,
         command: SemanticCommand,
+        origin: CommandOrigin,
+    },
+    /// One same-mounted-subtree lookup, bound to an exact live descendant during
+    /// collection before the canonical routed command FIFO is committed.
+    DescendantScroll {
+        owner: MountedNodeId,
+        authored_id: ElementId,
         origin: CommandOrigin,
     },
     ApplicationCommand {
@@ -247,6 +254,23 @@ impl<'a, Action> EventContext<'a, Action> {
         }
     }
 
+    /// Requests standard #344 `ScrollIntoView` for one uniquely mounted, enabled
+    /// descendant of the routed owner. Runtime resolves its exact generation
+    /// *within this event transaction*; absent, ambiguous or disabled children
+    /// produce no command. This never grants focus, stores scroll offsets, or
+    /// retargets an authored ID after the command reaches the FIFO.
+    ///
+    /// A child mounted by a later application action is not eligible here.
+    pub fn emit_scroll_into_view_descendant(&mut self, authored_id: &ElementId) {
+        if self.reserve_output() {
+            self.ordered.push(RoutedEventOutput::DescendantScroll {
+                owner: self.current_target.clone(),
+                authored_id: authored_id.clone(),
+                origin: CommandOrigin::delegated(self.origin.source()),
+            });
+        }
+    }
+
     /// Stages one contextual application command for later FIFO processing.
     pub fn emit_application_command(&mut self, command: ApplicationCommandId) {
         if self.reserve_output() {
@@ -471,6 +495,15 @@ impl<'a, Action> EventContext<'a, Action> {
                 } => RoutedEventOutput::Command {
                     target,
                     command,
+                    origin,
+                },
+                RoutedEventOutput::DescendantScroll {
+                    owner,
+                    authored_id,
+                    origin,
+                } => RoutedEventOutput::DescendantScroll {
+                    owner,
+                    authored_id,
                     origin,
                 },
                 RoutedEventOutput::ApplicationCommand {

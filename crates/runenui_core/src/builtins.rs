@@ -1485,12 +1485,22 @@ impl ListBoxSelectionMode {
 ///
 /// `RunenUI` deliberately stores no durable application item identity here.
 /// Capture application-domain IDs or values in the ordinary activation callback.
+type ComboSharedActivation<Action> = std::rc::Rc<std::cell::RefCell<Box<dyn FnMut() -> Action>>>;
+
+/// Selection of one public Option's focus policy; modes are mutually exclusive.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OptionFocusPolicy {
+    Ordinary,
+    DiscoverableWhenDisabled,
+    ComboBoxProxy,
+}
+
 pub struct OptionItem<Action> {
     label: String,
     selected: bool,
     common: CommonNodeAuthoring,
     enabled: bool,
-    discoverable_when_disabled: bool,
+    focus_policy: OptionFocusPolicy,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     collection_position: Option<SemanticCollectionPosition>,
 }
@@ -1505,10 +1515,7 @@ impl<Action> fmt::Debug for OptionItem<Action> {
             .field("key", &self.common.key)
             .field("layout", &self.common.layout)
             .field("enabled", &self.enabled)
-            .field(
-                "discoverable_when_disabled",
-                &self.discoverable_when_disabled,
-            )
+            .field("focus_policy", &self.focus_policy)
             .field("actionable", &self.activation_factory.is_some())
             .field("has_callback", &self.activation_factory.is_some())
             .field("collection_position", &self.collection_position)
@@ -1527,7 +1534,7 @@ impl<Action> OptionItem<Action> {
             selected,
             common: CommonNodeAuthoring::default(),
             enabled: true,
-            discoverable_when_disabled: false,
+            focus_policy: OptionFocusPolicy::Ordinary,
             activation_factory: None,
             collection_position: None,
         }
@@ -1549,7 +1556,20 @@ impl<Action> OptionItem<Action> {
     /// Keeps a disabled option in focus-group discovery while activation stays disabled.
     #[must_use]
     pub const fn discoverable_when_disabled(mut self, discoverable: bool) -> Self {
-        self.discoverable_when_disabled = discoverable;
+        self.focus_policy = if discoverable {
+            OptionFocusPolicy::DiscoverableWhenDisabled
+        } else {
+            OptionFocusPolicy::Ordinary
+        };
+        self
+    }
+
+    /// Use this existing Option in a `ComboBox` popup without M4 real focus
+    /// or a semantic `RequestFocus` action. Popup activation and selected value
+    /// still flow through the standard application-owned Option callback.
+    #[must_use]
+    pub const fn combo_box_proxy(mut self) -> Self {
+        self.focus_policy = OptionFocusPolicy::ComboBoxProxy;
         self
     }
 
@@ -1564,8 +1584,43 @@ impl<Action> OptionItem<Action> {
         self.selected
     }
 
-    const fn focus_eligible_for_list_box_entry(&self) -> bool {
-        self.enabled || self.discoverable_when_disabled
+    fn focus_eligible_for_list_box_entry(&self) -> bool {
+        self.focus_policy != OptionFocusPolicy::ComboBoxProxy
+            && (self.enabled || self.focus_policy == OptionFocusPolicy::DiscoverableWhenDisabled)
+    }
+
+    /// One current authored proxy reference; it is never application value identity.
+    pub(crate) fn combo_proxy_facts(&self) -> Option<(crate::ElementId, bool, bool)> {
+        self.common
+            .id
+            .clone()
+            .map(|id| (id, self.selected, self.enabled))
+    }
+
+    /// Existing reconciliation key, not a second Option identity authority.
+    /// An active proxy must not survive authoring that replaces its mounted node.
+    pub(crate) const fn combo_proxy_key(&self) -> Option<&crate::ElementKey> {
+        self.common.key.as_ref()
+    }
+
+    /// Derive only transient collapsed-display text from the currently
+    /// application-selected Option; no selection value is retained.
+    pub(crate) fn combo_selected_display(&self) -> Option<&str> {
+        self.selected.then_some(&self.label)
+    }
+
+    /// Share one Option callback for both ordinary pointer activation and
+    /// the owning `ComboBox`'s keyboard acceptance. Durable values never come
+    /// from a widget-local active `ElementId`.
+    pub(crate) fn share_combo_activation(&mut self) -> Option<ComboSharedActivation<Action>>
+    where
+        Action: 'static,
+    {
+        let callback = self.activation_factory.take()?;
+        let shared = std::rc::Rc::new(std::cell::RefCell::new(callback));
+        let option_callback = std::rc::Rc::clone(&shared);
+        self.activation_factory = Some(Box::new(move || (*option_callback.borrow_mut())()));
+        Some(shared)
     }
 
     fn search_text(&self) -> &str {
@@ -1582,6 +1637,7 @@ struct OptionItemWidget<Action> {
     label: String,
     selected: bool,
     enabled: bool,
+    focus_policy: OptionFocusPolicy,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     collection_position: Option<SemanticCollectionPosition>,
 }
@@ -1593,6 +1649,7 @@ impl<Action> fmt::Debug for OptionItemWidget<Action> {
             .field("label", &self.label)
             .field("selected", &self.selected)
             .field("enabled", &self.enabled)
+            .field("focus_policy", &self.focus_policy)
             .field("actionable", &self.activation_factory.is_some())
             .field("has_callback", &self.activation_factory.is_some())
             .field("collection_position", &self.collection_position)
@@ -1605,6 +1662,7 @@ struct OptionItemWidgetState {
     label: String,
     selected: bool,
     enabled: bool,
+    focus_policy: OptionFocusPolicy,
     actionable: bool,
     collection_position: Option<SemanticCollectionPosition>,
 }
@@ -1617,6 +1675,7 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
             label: self.label.clone(),
             selected: self.selected,
             enabled: self.enabled,
+            focus_policy: self.focus_policy,
             actionable: self.activation_factory.is_some(),
             collection_position: self.collection_position,
         }
@@ -1634,6 +1693,9 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
         {
             context.invalidate(WidgetInvalidation::SEMANTICS);
         }
+        if state.focus_policy != self.focus_policy {
+            context.invalidate(WidgetInvalidation::INTERACTION | WidgetInvalidation::SEMANTICS);
+        }
         if state.enabled != self.enabled {
             context.invalidate(
                 WidgetInvalidation::INTERACTION
@@ -1648,6 +1710,7 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
         state.label.clone_from(&self.label);
         state.selected = self.selected;
         state.enabled = self.enabled;
+        state.focus_policy = self.focus_policy;
         state.actionable = actionable;
         state.collection_position = self.collection_position;
     }
@@ -1696,8 +1759,10 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
                 SemanticState::ENABLED
                     .with_disabled(!state.enabled)
                     .with_selected(state.selected),
-            )
-            .with_action(SemanticAction::RequestFocus);
+            );
+        if state.focus_policy != OptionFocusPolicy::ComboBoxProxy {
+            node = node.with_action(SemanticAction::RequestFocus);
+        }
         if let Some(position) = state.collection_position {
             node = node.with_collection_position(position);
         }
@@ -1710,10 +1775,10 @@ impl<Action> Widget<Action> for OptionItemWidget<Action> {
 
 impl<Action: 'static> View<Action> for OptionItem<Action> {
     fn into_element(self) -> Element<Action> {
-        let focusability = if self.discoverable_when_disabled {
-            Focusability::FocusableWhenDisabled
-        } else {
-            Focusability::Focusable
+        let focusability = match self.focus_policy {
+            OptionFocusPolicy::Ordinary => Focusability::Focusable,
+            OptionFocusPolicy::DiscoverableWhenDisabled => Focusability::FocusableWhenDisabled,
+            OptionFocusPolicy::ComboBoxProxy => Focusability::NotFocusable,
         };
         let (fields, diagnostics) = self.common.into_authored_fields(focusability, None);
         Element::from_authored_parts(
@@ -1722,6 +1787,7 @@ impl<Action: 'static> View<Action> for OptionItem<Action> {
                 label: self.label,
                 selected: self.selected,
                 enabled: self.enabled,
+                focus_policy: self.focus_policy,
                 activation_factory: self.activation_factory,
                 collection_position: self.collection_position,
             })),
