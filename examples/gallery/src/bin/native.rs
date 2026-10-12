@@ -1,4 +1,4 @@
-//! Standalone native Gallery host over accepted public RunenUI contracts.
+//! Standalone native Gallery host over accepted public `RunenUI` contracts.
 //!
 //! Only this executable owns its winit window, pump, successful displayed
 //! input context, GPU recovery and OS input lifecycle. No widget/editor or
@@ -167,6 +167,25 @@ struct DisplayedFrame {
     mapping: NativeMapping,
 }
 
+// Native OS facts only; not a mirror of runtime focus, editing or surface identity.
+#[derive(Default)]
+struct WindowFlags {
+    needs_publication: bool,
+    suppressed: bool,
+    focused: bool,
+}
+
+#[derive(Default)]
+struct InputFlags {
+    ime_enabled: bool,
+    initialized_focus: bool,
+}
+
+fn fatal(event_loop: &ActiveEventLoop, detail: &str) {
+    eprintln!("Gallery native host: {detail}");
+    event_loop.exit();
+}
+
 struct GalleryHost {
     runtime: AppRuntime<GalleryApp>,
     proxy: EventLoopProxy<HostEvent>,
@@ -183,11 +202,8 @@ struct GalleryHost {
     keyboard: KeyboardInputState,
     text: TextInputState,
     modifiers: KeyModifiers,
-    needs_publication: bool,
-    suppressed: bool,
-    focused: bool,
-    ime_enabled: bool,
-    initialized_focus: bool,
+    window_flags: WindowFlags,
+    input_flags: InputFlags,
 }
 
 impl GalleryHost {
@@ -218,24 +234,19 @@ impl GalleryHost {
             keyboard: KeyboardInputState::default(),
             text: TextInputState::default(),
             modifiers: KeyModifiers::NONE,
-            needs_publication: false,
-            suppressed: false,
-            focused: true,
-            ime_enabled: false,
-            initialized_focus: false,
+            window_flags: WindowFlags {
+                focused: true,
+                ..WindowFlags::default()
+            },
+            input_flags: InputFlags::default(),
         }
-    }
-
-    fn fail(&mut self, event_loop: &ActiveEventLoop, detail: &str) {
-        eprintln!("Gallery native host: {detail}");
-        event_loop.exit();
     }
 
     fn device(&mut self, event_loop: &ActiveEventLoop, id: DeviceId) -> Option<InputDeviceId> {
         match self.devices.resolve(id) {
             Ok(id) => Some(id),
             Err(DeviceIdentityError::Exhausted) => {
-                self.fail(event_loop, "native device identity exhausted");
+                fatal(event_loop, "native device identity exhausted");
                 None
             }
         }
@@ -248,15 +259,15 @@ impl GalleryHost {
         if reset {
             self.set_ime_enabled(false);
         }
-        self.set_ime_enabled(!self.suppressed && self.text.accepts_composition());
+        self.set_ime_enabled(!self.window_flags.suppressed && self.text.accepts_composition());
     }
 
     fn set_ime_enabled(&mut self, enabled: bool) {
-        if enabled != self.ime_enabled {
+        if enabled != self.input_flags.ime_enabled {
             if let Some(window) = self.window.as_ref() {
                 window.set_ime_allowed(enabled);
             }
-            self.ime_enabled = enabled;
+            self.input_flags.ime_enabled = enabled;
         }
     }
 
@@ -273,17 +284,17 @@ impl GalleryHost {
     }
 
     fn initial_focus(&mut self, event_loop: &ActiveEventLoop) {
-        if self.initialized_focus || !self.focused {
+        if self.input_flags.initialized_focus || !self.window_flags.focused {
             return;
         }
-        self.initialized_focus = true;
+        self.input_flags.initialized_focus = true;
         let id = ElementId::new("gallery.nav.basics")
             .unwrap_or_else(|_| unreachable!("static Gallery focus id is valid"));
         if let Err(error) = self
             .runtime
             .submit_automation_command(id, SemanticCommand::RequestFocus)
         {
-            self.fail(
+            fatal(
                 event_loop,
                 &format!("initial focus could not be requested: {error:?}"),
             );
@@ -348,7 +359,7 @@ impl GalleryHost {
         }
         self.mapping = next;
         self.pending_frame = None;
-        self.needs_publication = next.is_some();
+        self.window_flags.needs_publication = next.is_some();
         true
     }
 
@@ -392,7 +403,7 @@ impl GalleryHost {
         if self.pending_redraw.is_none() {
             self.pending_redraw = self.runtime.take_redraw_request();
         }
-        if self.pending_redraw.is_none() && !self.needs_publication {
+        if self.pending_redraw.is_none() && !self.window_flags.needs_publication {
             return Ok(());
         }
         let style = StyleEnvironment::default();
@@ -415,7 +426,7 @@ impl GalleryHost {
                 .acknowledge_redraw(&redraw)
                 .map_err(|error| format!("redraw acknowledgement failed: {error:?}"))?;
         }
-        self.needs_publication = false;
+        self.window_flags.needs_publication = false;
         self.pending_frame = Some(PendingFrame {
             publication,
             mapping,
@@ -425,10 +436,10 @@ impl GalleryHost {
     }
 
     fn redraw(&self) {
-        if self.suppressed {
+        if self.window_flags.suppressed {
             return;
         }
-        if (self.pending_frame.is_some() || self.pending_redraw.is_some() || self.needs_publication)
+        if (self.pending_frame.is_some() || self.pending_redraw.is_some() || self.window_flags.needs_publication)
             && let Some(window) = self.window.as_ref()
         {
             window.request_redraw();
@@ -447,7 +458,7 @@ impl GalleryHost {
             .cancel_all(self.modifiers, self.text.keyboard_composition_state())
         {
             if let Err(error) = self.runtime.submit_keyboard(cancel) {
-                self.fail(
+                fatal(
                     event_loop,
                     &format!("keyboard cancellation failed: {error}"),
                 );
@@ -460,7 +471,7 @@ impl GalleryHost {
     fn submit_pointer(&mut self, event_loop: &ActiveEventLoop, event: PointerEvent) {
         self.pump();
         if let Err(error) = self.runtime.submit_pointer(event) {
-            self.fail(event_loop, &format!("native pointer input failed: {error}"));
+            fatal(event_loop, &format!("native pointer input failed: {error}"));
             return;
         }
         self.drive(event_loop);
@@ -502,7 +513,7 @@ impl GalleryHost {
         };
         match self.mouse.cursor_moved(device, point) {
             Ok(event) => self.submit_pointer(event_loop, event),
-            Err(error) => self.fail(
+            Err(error) => fatal(
                 event_loop,
                 &format!("native cursor input invalid: {error:?}"),
             ),
@@ -532,7 +543,7 @@ impl GalleryHost {
         match self.mouse.button_input(device, state, button, point) {
             Ok(MouseButtonOutcome::Submit(event)) => self.submit_pointer(event_loop, event),
             Ok(MouseButtonOutcome::Suppressed(_)) => {}
-            Err(error) => self.fail(
+            Err(error) => fatal(
                 event_loop,
                 &format!("native mouse button invalid: {error:?}"),
             ),
@@ -576,7 +587,7 @@ impl GalleryHost {
         }
         match self.mouse.wheel(device, point, delta) {
             Ok(event) => self.submit_pointer(event_loop, event),
-            Err(error) => self.fail(
+            Err(error) => fatal(
                 event_loop,
                 &format!("native wheel input invalid: {error:?}"),
             ),
@@ -602,7 +613,7 @@ impl GalleryHost {
                     SubmitTextErrorKind::NoFocusedTarget
                         | SubmitTextErrorKind::FocusedTargetNotTextCapable
                 ) => {}
-            Err(error) => self.fail(
+            Err(error) => fatal(
                 event_loop,
                 &format!("native committed text failed: {error}"),
             ),
@@ -640,7 +651,7 @@ impl GalleryHost {
                     Ok(_) => {}
                     Err(error) if error.kind() == SubmitKeyboardErrorKind::NoFocusedTarget => {}
                     Err(error) => {
-                        self.fail(
+                        fatal(
                             event_loop,
                             &format!("native keyboard input failed: {error}"),
                         );
@@ -674,7 +685,7 @@ impl GalleryHost {
             {
                 self.text.retire_composition();
             }
-            Err(error) => self.fail(event_loop, &format!("native IME cancel failed: {error}")),
+            Err(error) => fatal(event_loop, &format!("native IME cancel failed: {error}")),
         }
     }
 
@@ -711,7 +722,7 @@ impl GalleryHost {
                             None
                         }
                         Err(error) => {
-                            self.fail(event_loop, &format!("native IME start failed: {error}"));
+                            fatal(event_loop, &format!("native IME start failed: {error}"));
                             None
                         }
                     }
@@ -736,7 +747,7 @@ impl GalleryHost {
                         self.text.retire_composition();
                     }
                     Err(error) => {
-                        self.fail(event_loop, &format!("native IME preedit failed: {error}"));
+                        fatal(event_loop, &format!("native IME preedit failed: {error}"));
                         return;
                     }
                 }
@@ -755,7 +766,7 @@ impl GalleryHost {
                             self.text.retire_composition();
                         }
                         Err(error) => {
-                            self.fail(event_loop, &format!("native IME end failed: {error}"));
+                            fatal(event_loop, &format!("native IME end failed: {error}"));
                             return;
                         }
                     }
@@ -770,7 +781,7 @@ impl GalleryHost {
     fn present(&mut self, event_loop: &ActiveEventLoop) {
         self.drive(event_loop);
         if let Err(error) = self.publish() {
-            self.fail(event_loop, &error);
+            fatal(event_loop, &error);
             return;
         }
         let Some(frame) = self.pending_frame.clone() else {
@@ -778,11 +789,11 @@ impl GalleryHost {
         };
         if self.mapping != Some(frame.mapping) {
             self.pending_frame = None;
-            self.needs_publication = self.mapping.is_some();
+            self.window_flags.needs_publication = self.mapping.is_some();
             self.redraw();
             return;
         }
-        if self.suppressed {
+        if self.window_flags.suppressed {
             return;
         }
         let Some(window) = self.window.as_ref() else {
@@ -809,7 +820,7 @@ impl GalleryHost {
                 self.drive(event_loop);
                 self.redraw();
             }
-            Ok(_) => self.fail(event_loop, "renderer did not actually present the Gallery"),
+            Ok(_) => fatal(event_loop, "renderer did not actually present the Gallery"),
             Err(
                 PublicationRenderError::SurfaceTimeout | PublicationRenderError::SurfaceOccluded,
             ) => {
@@ -821,7 +832,7 @@ impl GalleryHost {
                 | PublicationRenderError::SurfaceNotConfigured,
             ) => {
                 if let Err(error) = self.configure_renderer(true) {
-                    self.fail(event_loop, &error);
+                    fatal(event_loop, &error);
                 } else {
                     self.redraw();
                 }
@@ -831,27 +842,26 @@ impl GalleryHost {
                 self.displayed = None;
                 self.pending_frame = None;
                 self.renderer = None;
-                self.needs_publication = self.mapping.is_some();
+                self.window_flags.needs_publication = self.mapping.is_some();
                 if let Err(error) = self
                     .create_target(event_loop)
                     .and_then(|()| self.configure_renderer(false))
                 {
-                    self.fail(event_loop, &error);
+                    fatal(event_loop, &error);
                 } else {
                     self.redraw();
                 }
             }
-            Err(error) => self.fail(event_loop, &format!("native presentation failed: {error}")),
+            Err(error) => fatal(event_loop, &format!("native presentation failed: {error}")),
         }
     }
 
     fn accessibility_event(&mut self, event_loop: &ActiveEventLoop, event: AccessibilityEvent) {
         if let AccessibilityEvent::ActionRequested(request) = event
             && let Ok(action) = self.semantics.action_request(&request)
+            && let Err(error) = self.runtime.submit_semantic_action(action)
         {
-            if let Err(error) = self.runtime.submit_semantic_action(action) {
-                eprintln!("Gallery accessibility action withheld: {error:?}");
-            }
+            eprintln!("Gallery accessibility action withheld: {error:?}");
         }
         self.drive(event_loop);
         self.redraw();
@@ -861,7 +871,7 @@ impl GalleryHost {
         if self.refresh_mapping() {
             self.cancel_pointer(event_loop);
             if let Err(error) = self.configure_renderer(false) {
-                self.fail(event_loop, &error);
+                fatal(event_loop, &error);
                 return;
             }
         }
@@ -870,7 +880,7 @@ impl GalleryHost {
     }
 
     fn lose_native_focus(&mut self, event_loop: &ActiveEventLoop) {
-        self.focused = false;
+        self.window_flags.focused = false;
         self.cancel_keyboard(event_loop);
         self.cancel_pointer(event_loop);
         self.cancel_composition(event_loop);
@@ -884,15 +894,15 @@ impl GalleryHost {
 impl ApplicationHandler<HostEvent> for GalleryHost {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if let Err(error) = self.create_target(event_loop) {
-            self.fail(event_loop, &error);
+            fatal(event_loop, &error);
             return;
         }
-        self.suppressed = false;
-        self.focused = self
+        self.window_flags.suppressed = false;
+        self.window_flags.focused = self
             .window
             .as_ref()
             .is_some_and(|window| window.has_focus());
-        self.text.set_window_focused(self.focused);
+        self.text.set_window_focused(self.window_flags.focused);
         self.drive(event_loop);
         self.redraw();
     }
@@ -903,8 +913,8 @@ impl ApplicationHandler<HostEvent> for GalleryHost {
         self.mapping = None;
         self.pending_frame = None;
         self.displayed = None;
-        self.needs_publication = false;
-        self.suppressed = true;
+        self.window_flags.needs_publication = false;
+        self.window_flags.suppressed = true;
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: HostEvent) {
@@ -943,7 +953,7 @@ impl ApplicationHandler<HostEvent> for GalleryHost {
             WindowEvent::CursorMoved {
                 device_id,
                 position,
-            } if !self.suppressed => {
+            } if !self.window_flags.suppressed => {
                 self.cursor_moved(event_loop, device_id, position);
             }
             WindowEvent::CursorLeft { .. } => self.cancel_pointer(event_loop),
@@ -951,26 +961,26 @@ impl ApplicationHandler<HostEvent> for GalleryHost {
                 device_id,
                 state,
                 button,
-            } if !self.suppressed => {
+            } if !self.window_flags.suppressed => {
                 self.mouse_button(event_loop, device_id, state, button);
             }
             WindowEvent::MouseWheel {
                 device_id, delta, ..
-            } if !self.suppressed => {
+            } if !self.window_flags.suppressed => {
                 self.mouse_wheel(event_loop, device_id, delta);
             }
             WindowEvent::KeyboardInput {
                 device_id,
                 event,
                 is_synthetic,
-            } if !self.suppressed => {
+            } if !self.window_flags.suppressed => {
                 self.key_input(event_loop, device_id, &event, is_synthetic);
             }
-            WindowEvent::Ime(ime) if !self.suppressed => self.ime_event(event_loop, ime),
+            WindowEvent::Ime(ime) if !self.window_flags.suppressed => self.ime_event(event_loop, ime),
             WindowEvent::ModifiersChanged(state) => self.modifiers = modifiers(state.state()),
             WindowEvent::Focused(false) => self.lose_native_focus(event_loop),
             WindowEvent::Focused(true) => {
-                self.focused = true;
+                self.window_flags.focused = true;
                 self.text.set_window_focused(true);
                 self.drive(event_loop);
             }
@@ -978,13 +988,13 @@ impl ApplicationHandler<HostEvent> for GalleryHost {
                 if occluded {
                     self.lose_native_focus(event_loop);
                 }
-                self.suppressed = occluded;
+                self.window_flags.suppressed = occluded;
                 if !occluded {
-                    self.focused = self
+                    self.window_flags.focused = self
                         .window
                         .as_ref()
                         .is_some_and(|window| window.has_focus());
-                    self.text.set_window_focused(self.focused);
+                    self.text.set_window_focused(self.window_flags.focused);
                     self.drive(event_loop);
                 }
                 self.redraw();
