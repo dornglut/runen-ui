@@ -17,6 +17,7 @@ mod keyboard_input;
 mod mouse_input;
 mod pointer_mode;
 mod proof_trace;
+#[cfg(test)]
 mod text_input;
 mod wheel_input;
 
@@ -53,8 +54,10 @@ use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, RasterScale, RedrawRequest, SubmitCompositionErrorKind,
     SubmitKeyboardErrorKind, SubmitTextErrorKind, SurfaceBuildContext, SurfacePublication,
 };
+use runenui_winit::text_input::{
+    TextInputState, keyboard_committed_text_candidate, translate_preedit_range,
+};
 use runenui_winit::touch_input::{TouchIngressDiagnostic, TouchInputState};
-use text_input::{TextInputState, keyboard_committed_text_candidate, translate_preedit_range};
 use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalPosition, PhysicalSize},
