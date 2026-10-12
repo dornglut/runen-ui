@@ -14,8 +14,8 @@ mod tests {
         CommittedTextEvent, ElementId, KeyLocation, KeyModifiers, KeyboardCompositionState,
         KeyboardEvent, KeyboardPhase, LogicalKey, LogicalLength, LogicalPoint, PhysicalKey,
         PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
-        SemanticCommand, SemanticRelationshipKind, SemanticRole, StyleEnvironment,
-        StyleInteractionState, StyleRecipeId,
+        SemanticCommand, SemanticRelationshipKind, SemanticRole, StyleInteractionState,
+        StyleRecipeId,
     };
     use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
 
@@ -226,7 +226,7 @@ mod tests {
         app.submit_automation_command(id("gallery.nav.inputs"), SemanticCommand::Activate)
             .unwrap_or_else(|_| unreachable!("gallery input navigation exists"));
         settle(&mut app);
-        let style = StyleEnvironment::default();
+        let style = style_environment();
         let context = SurfaceBuildContext::tight(
             &style,
             LogicalSize::new(LogicalLength::from(760_u16), LogicalLength::from(520_u16)),
@@ -285,7 +285,7 @@ mod tests {
         .unwrap_or_else(|_| unreachable!("TextField can commit UTF-8"));
         settle(&mut app);
 
-        let style = StyleEnvironment::default();
+        let style = style_environment();
         let context = SurfaceBuildContext::tight(
             &style,
             LogicalSize::new(LogicalLength::from(760_u16), LogicalLength::from(520_u16)),
@@ -319,7 +319,7 @@ mod tests {
     fn gallery_navigation_and_inspector_remain_mounted_on_narrow_surface() {
         let mut app = AppRuntime::<GalleryApp>::mount(GalleryState::default());
         settle(&mut app);
-        let style = StyleEnvironment::default();
+        let style = style_environment();
         for (width, height) in [(760_u16, 520_u16), (320_u16, 480_u16)] {
             let context = SurfaceBuildContext::tight(
                 &style,
@@ -450,7 +450,7 @@ mod tests {
     fn gallery_native_neutral_pointer_click_activates_published_button() {
         let mut app = AppRuntime::<GalleryApp>::mount(GalleryState::default());
         settle(&mut app);
-        let style = StyleEnvironment::default();
+        let style = style_environment();
         let context = SurfaceBuildContext::tight(
             &style,
             LogicalSize::new(LogicalLength::from(760_u16), LogicalLength::from(520_u16)),
@@ -514,7 +514,7 @@ mod tests {
     fn gallery_publishes_one_public_semantic_tree() {
         let mut app = AppRuntime::<GalleryApp>::mount(GalleryState::default());
         settle(&mut app);
-        let style = StyleEnvironment::default();
+        let style = style_environment();
         let context = SurfaceBuildContext::tight(
             &style,
             LogicalSize::new(LogicalLength::from(760_u16), LogicalLength::from(520_u16)),
