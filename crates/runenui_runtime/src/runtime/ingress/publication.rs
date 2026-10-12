@@ -328,15 +328,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         causal_parent: Option<TraceSequence>,
     ) {
         let snapshot = publication.semantic_publication().snapshot();
-        let targets = snapshot
-            .nodes()
-            .iter()
-            .filter(|node| {
-                node.state().expanded() == Some(true)
-                    && !node.state().disabled()
-                    && !node.state().inert()
-            })
-            .filter_map(|combo| {
+        // Stream current semantic owners rather than materializing a second
+        // unbounded list of candidates. Admission remains with the canonical
+        // #344 command FIFO, even for very large semantic publications.
+        for combo in snapshot.nodes().iter().filter(|node| {
+            node.state().expanded() == Some(true)
+                && !node.state().disabled()
+                && !node.state().inert()
+        }) {
+            let target = (|| {
                 // The semantic compositor validates these generic relationships;
                 // demand exactly one of each and current mounted ancestry. No
                 // built-in control role or widget type is special to this path.
@@ -383,9 +383,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     return None;
                 }
                 Some(option_owner.owner().clone())
-            })
-            .collect::<Vec<_>>();
-        for target in targets {
+            })();
+            let Some(target) = target else {
+                continue;
+            };
             // Capacity rejection leaves the retained publication intact and
             // cannot redirect the reveal to another Option or move real focus.
             // Counter/sequence exhaustion uses the normal terminal protocol.
