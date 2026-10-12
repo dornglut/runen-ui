@@ -5,6 +5,7 @@ mod app;
 mod ui;
 
 pub use app::{GalleryAction, GalleryApp, GalleryState, Page};
+pub use ui::style_environment;
 
 #[cfg(test)]
 mod tests {

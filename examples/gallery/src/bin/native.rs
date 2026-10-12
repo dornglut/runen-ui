@@ -13,7 +13,7 @@ use std::{
     time::Instant,
 };
 
-use gallery::{GalleryApp, GalleryState};
+use gallery::{GalleryApp, GalleryState, style_environment};
 use runenui_core::{
     CommittedTextEvent, ElementId, InputDeviceId, KeyModifiers, LogicalDelta, PointerEvent,
     SemanticCommand, StyleEnvironment, SurfaceInputContext,
@@ -188,6 +188,7 @@ fn fatal(event_loop: &ActiveEventLoop, detail: &str) {
 
 struct GalleryHost {
     runtime: AppRuntime<GalleryApp>,
+    style_environment: StyleEnvironment,
     proxy: EventLoopProxy<HostEvent>,
     window: Option<Arc<Window>>,
     accessibility: Option<accesskit_winit::Adapter>,
@@ -220,6 +221,7 @@ impl GalleryHost {
         });
         Self {
             runtime,
+            style_environment: style_environment(),
             proxy,
             window: None,
             accessibility: None,
@@ -406,9 +408,9 @@ impl GalleryHost {
         if self.pending_redraw.is_none() && !self.window_flags.needs_publication {
             return Ok(());
         }
-        let style = StyleEnvironment::default();
-        let context = SurfaceBuildContext::tight(&style, mapping.logical_size())
-            .with_raster_scale(mapping.raster_scale());
+        let context =
+            SurfaceBuildContext::tight(&self.style_environment, mapping.logical_size())
+                .with_raster_scale(mapping.raster_scale());
         let publication = self
             .runtime
             .publish_surface(&context)

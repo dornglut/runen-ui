@@ -1,10 +1,38 @@
 use runenui_core::{
-    Color, EdgeInsets, Element, FlexContainerStyle, FlexDirection, FlexWrap, LayoutBound,
-    LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, OverflowPolicy, OverflowStyle,
-    SemanticEditableMode, View, button, checkbox, children, column, row, text, text_field,
+    Brush, Color, EdgeInsets, Element, FlexContainerStyle, FlexDirection, FlexWrap, LayoutBound,
+    LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, Outline, OverflowPolicy,
+    OverflowStyle, SemanticEditableMode, StrokeStyle, StyleEnvironment, StyleInteractionState,
+    StyleProperties, StyleRecipe, StyleRecipeId, StyleTheme, StyleTokens, View, button, checkbox,
+    children, column, row, text, text_field,
 };
 
 use crate::app::{GalleryAction, GalleryState, Page};
+
+
+fn focus_recipe_id() -> StyleRecipeId {
+    StyleRecipeId::from_static("gallery.focusable")
+        .unwrap_or_else(|_| unreachable!("static Gallery focus recipe is valid"))
+}
+
+/// The same app-owned focus-visible style input is used by native and headless publications.
+#[must_use]
+pub fn style_environment() -> StyleEnvironment {
+    let mut recipe = StyleRecipe::new(StyleProperties::EMPTY);
+    recipe
+        .define_interaction(
+            StyleInteractionState::FocusVisible,
+            StyleProperties::EMPTY.with_outline(Outline::new(
+                Brush::solid(Color::rgb(238, 240, 246)),
+                StrokeStyle::new(LogicalLength::from(2_u16)),
+            )),
+        )
+        .unwrap_or_else(|_| unreachable!("Gallery declares one focus-visible state"));
+    let mut theme = StyleTheme::new(StyleTokens::new());
+    theme
+        .define_recipe(focus_recipe_id(), recipe)
+        .unwrap_or_else(|_| unreachable!("Gallery declares one focus recipe"));
+    StyleEnvironment::new(theme)
+}
 
 fn side_layout() -> LayoutStyle {
     LayoutStyle::default()
@@ -34,6 +62,7 @@ fn basics(state: &GalleryState) -> Element<GalleryAction> {
         button("Activate")
             .id("gallery.basics.activate")
             .key("gallery.basics.activate")
+            .recipe(focus_recipe_id())
             .background(Color::rgb(72, 100, 146))
             .padding(padding(10))
             .on_activate(|| GalleryAction::Increment),
@@ -41,6 +70,7 @@ fn basics(state: &GalleryState) -> Element<GalleryAction> {
         button("Disabled")
             .disabled()
             .id("gallery.basics.disabled")
+            .recipe(focus_recipe_id())
             .background(Color::rgb(65, 65, 75))
             .padding(padding(10)),
         text("Use Tab, Enter, Space, and pointer activation."),
@@ -69,6 +99,7 @@ fn inputs(state: &GalleryState) -> Element<GalleryAction> {
         checkbox("Enable preview", state.checked)
             .id("gallery.inputs.checkbox")
             .key("gallery.inputs.checkbox")
+            .recipe(focus_recipe_id())
             .on_activate(|| GalleryAction::Toggle),
         text(format!("Checked: {}", state.checked)),
         text("TextField").id("gallery.inputs.textfield.label"),
@@ -77,6 +108,7 @@ fn inputs(state: &GalleryState) -> Element<GalleryAction> {
             .labelled_by("gallery.inputs.textfield.label")
             .id("gallery.inputs.textfield")
             .key("gallery.inputs.textfield")
+            .recipe(focus_recipe_id())
             .background(Color::rgb(50, 57, 73))
             .padding(padding(10)),
         text(format!("Application value: {}", state.document)),
@@ -122,10 +154,12 @@ pub fn root(state: &GalleryState) -> Element<GalleryAction> {
             button("Basics")
                 .id("gallery.nav.basics")
                 .key("gallery.nav.basics")
+                .recipe(focus_recipe_id())
                 .on_activate(|| GalleryAction::Navigate(Page::Basics)),
             button("Inputs")
                 .id("gallery.nav.inputs")
                 .key("gallery.nav.inputs")
+                .recipe(focus_recipe_id())
                 .on_activate(|| GalleryAction::Navigate(Page::Inputs)),
         ])
         .key("gallery.navigation")
