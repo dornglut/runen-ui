@@ -97,7 +97,7 @@ pub fn handle_mouse_wheel(
         host.note_point_ingress_diagnostic(PointIngressDiagnostic::NoDisplayedFrame);
         return;
     };
-    let scroll_delta = match normalize_wheel_delta(delta, displayed_mapping.native_scale_factor) {
+    let scroll_delta = match normalize_wheel_delta(delta, displayed_mapping.native_scale_factor()) {
         Ok(delta) => delta,
         Err(diagnostic) => {
             eprintln!("reference_winit wheel ingress withheld: {diagnostic:?}");
