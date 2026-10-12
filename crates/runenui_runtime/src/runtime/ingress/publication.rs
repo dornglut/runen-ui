@@ -1,8 +1,6 @@
 use core::mem;
 
-use runenui_core::{
-    CommandOrigin, MonotonicInstant, SemanticCommand, SemanticRelationshipKind,
-};
+use runenui_core::{CommandOrigin, MonotonicInstant, SemanticCommand, SemanticRelationshipKind};
 
 use super::{
     HostProtocol, MandatoryTracePlan, QueueCommitError, Runtime, RuntimeStatus,
