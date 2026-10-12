@@ -53,8 +53,8 @@ directly observed result from a compile-only or simulated result.
 
 An observed native walkthrough, independent final review, exact-head
 validation and separately owner-authorized protected acceptance are required
-before Gallery slice #457 can close. The full control catalog remains
-separately tracked by parent issue #455.
+before the initial native Gallery slice can be accepted. The broader interactive
+control catalog remains a separately tracked future slice.
 
 Counter remains the minimal teaching example and reference_winit remains the
 specialized native integration host.
