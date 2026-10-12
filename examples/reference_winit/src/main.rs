@@ -51,8 +51,8 @@ use runenui_render_wgpu::{
     ResourceProviderError, ResourceProviderErrorKind, ResourceRequest,
 };
 use runenui_runtime::{
-    AppRuntime, PumpBudget, RedrawRequest, SubmitCompositionErrorKind,
-    SubmitKeyboardErrorKind, SubmitTextErrorKind, SurfaceBuildContext, SurfacePublication,
+    AppRuntime, PumpBudget, RedrawRequest, SubmitCompositionErrorKind, SubmitKeyboardErrorKind,
+    SubmitTextErrorKind, SurfaceBuildContext, SurfacePublication,
 };
 use runenui_winit::native_mapping::{NativeMapping, NativePointError};
 use runenui_winit::text_input::{
@@ -2826,8 +2826,8 @@ mod tests {
     use super::{
         AppRuntime, CommandOrigin, CommittedTextEvent, DemoApp, DemoHistoryEntry, DemoState,
         DisplayedFrame, HOST_PUMP_BUDGET, INITIAL_EDITOR_TEXT, KeyboardEvent, LARGE_DOCUMENT_LINES,
-        MAX_EDITOR_HISTORY_ENTRIES, NATIVE_RELEASE_RETRY_INTERVAL, NativeMapping,
-        PendingFrame, PointIngressDiagnostic, RAW_MOTION_PROBE_TIMEOUT, ReferenceDocumentPreset,
+        MAX_EDITOR_HISTORY_ENTRIES, NATIVE_RELEASE_RETRY_INTERVAL, NativeMapping, PendingFrame,
+        PointIngressDiagnostic, RAW_MOTION_PROBE_TIMEOUT, ReferenceDocumentPreset,
         STRESS_DOCUMENT_LINES, SemanticAdapter, SemanticCommand, StyleEnvironment,
         SurfaceBuildContext, earliest_host_deadline,
         mouse_input::{
