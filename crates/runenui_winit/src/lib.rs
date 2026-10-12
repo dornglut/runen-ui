@@ -11,6 +11,7 @@ pub mod device_identity;
 pub mod keyboard_input;
 pub mod mouse_input;
 pub mod touch_input;
+pub mod text_input;
 
 #[cfg(test)]
 struct DemoApp;
