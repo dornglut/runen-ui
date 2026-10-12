@@ -395,7 +395,7 @@ mod tests {
                     .nodes()
                     .iter()
                     .find(|node| node.authored_id() == Some(&id(authored)))
-                    .unwrap_or_else(|| panic!("missing authored Gallery node: {authored}"))
+                    .unwrap_or_else(|| unreachable!("missing authored Gallery node: {authored}"))
                     .bounds()
             };
             let nav = bounds("gallery.navigation");
