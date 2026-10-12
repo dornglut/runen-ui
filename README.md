@@ -14,7 +14,9 @@ editing sessions, layout, semantics, deterministic work and atomic publication.
 - `runenui_text` shapes text into retained renderer-neutral artifacts, shared
   with editing, layout and presentation.
 - `runenui_runtime` implements mounted identity and the single live UI
-  authority, including deterministic testing and renderer-facing publication.
+  authority, including deterministic scheduling and renderer-facing publication.
+- `runenui_testing` provides downstream deterministic testing ergonomics
+  through ordinary public core/runtime contracts.
 - `runenui_render_wgpu` and `runenui_winit` provide reusable downstream
   GPU, input and accessibility edges without becoming widget-behavior owners.
 - `examples/counter` is the small runnable application; `examples/reference_winit`
