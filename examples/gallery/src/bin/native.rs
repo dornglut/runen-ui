@@ -133,9 +133,10 @@ fn modifiers(native: ModifiersState) -> KeyModifiers {
 )]
 fn wheel_delta(delta: MouseScrollDelta, displayed_scale: f64) -> Option<LogicalDelta> {
     let (x, y) = match delta {
-        MouseScrollDelta::LineDelta(x, y) => {
-            (f64::from(x) * WHEEL_LINE_STEP, f64::from(y) * WHEEL_LINE_STEP)
-        }
+        MouseScrollDelta::LineDelta(x, y) => (
+            f64::from(x) * WHEEL_LINE_STEP,
+            f64::from(y) * WHEEL_LINE_STEP,
+        ),
         MouseScrollDelta::PixelDelta(position) => {
             if !displayed_scale.is_finite() || displayed_scale <= 0.0 {
                 return None;
@@ -278,9 +279,14 @@ impl GalleryHost {
         self.initialized_focus = true;
         let id = ElementId::new("gallery.nav.basics")
             .unwrap_or_else(|_| unreachable!("static Gallery focus id is valid"));
-        if let Err(error) = self.runtime.submit_automation_command(id, SemanticCommand::RequestFocus)
+        if let Err(error) = self
+            .runtime
+            .submit_automation_command(id, SemanticCommand::RequestFocus)
         {
-            self.fail(event_loop, &format!("initial focus could not be requested: {error:?}"));
+            self.fail(
+                event_loop,
+                &format!("initial focus could not be requested: {error:?}"),
+            );
         } else {
             self.pump();
         }
@@ -355,9 +361,9 @@ impl GalleryHost {
             .as_mut()
             .ok_or_else(|| "renderer is missing".to_owned())?;
         let size = mapping.physical_size();
-        let configured = renderer.configured_surface_extent().is_some_and(|extent| {
-            extent.width() == size.width && extent.height() == size.height
-        });
+        let configured = renderer
+            .configured_surface_extent()
+            .is_some_and(|extent| extent.width() == size.width && extent.height() == size.height);
         if force || !configured {
             renderer
                 .configure_surface(size.width, size.height)
@@ -373,7 +379,10 @@ impl GalleryHost {
         let Some(mapping) = self.mapping else {
             return Ok(());
         };
-        let configured = self.renderer.as_ref().and_then(Renderer::configured_surface_extent);
+        let configured = self
+            .renderer
+            .as_ref()
+            .and_then(Renderer::configured_surface_extent);
         if !configured.is_some_and(|extent| {
             extent.width() == mapping.physical_size().width
                 && extent.height() == mapping.physical_size().height
@@ -438,7 +447,10 @@ impl GalleryHost {
             .cancel_all(self.modifiers, self.text.keyboard_composition_state())
         {
             if let Err(error) = self.runtime.submit_keyboard(cancel) {
-                self.fail(event_loop, &format!("keyboard cancellation failed: {error}"));
+                self.fail(
+                    event_loop,
+                    &format!("keyboard cancellation failed: {error}"),
+                );
                 return;
             }
         }
@@ -458,7 +470,10 @@ impl GalleryHost {
     fn pointer_point(&self) -> Option<TranslatedPointerPoint> {
         let displayed = self.displayed.as_ref()?;
         let native = self.mouse.last_native_position()?;
-        let position = displayed.mapping.translate_cursor(self.mapping, native).ok()?;
+        let position = displayed
+            .mapping
+            .translate_cursor(self.mapping, native)
+            .ok()?;
         Some(TranslatedPointerPoint {
             position,
             input_context: displayed.input_context.clone(),
@@ -487,7 +502,10 @@ impl GalleryHost {
         };
         match self.mouse.cursor_moved(device, point) {
             Ok(event) => self.submit_pointer(event_loop, event),
-            Err(error) => self.fail(event_loop, &format!("native cursor input invalid: {error:?}")),
+            Err(error) => self.fail(
+                event_loop,
+                &format!("native cursor input invalid: {error:?}"),
+            ),
         }
     }
 
@@ -514,7 +532,10 @@ impl GalleryHost {
         match self.mouse.button_input(device, state, button, point) {
             Ok(MouseButtonOutcome::Submit(event)) => self.submit_pointer(event_loop, event),
             Ok(MouseButtonOutcome::Suppressed(_)) => {}
-            Err(error) => self.fail(event_loop, &format!("native mouse button invalid: {error:?}")),
+            Err(error) => self.fail(
+                event_loop,
+                &format!("native mouse button invalid: {error:?}"),
+            ),
         }
     }
 
@@ -538,7 +559,10 @@ impl GalleryHost {
             self.cancel_pointer(event_loop);
             return;
         };
-        let Some(scale) = self.displayed.as_ref().map(|frame| frame.mapping.native_scale_factor())
+        let Some(scale) = self
+            .displayed
+            .as_ref()
+            .map(|frame| frame.mapping.native_scale_factor())
         else {
             return;
         };
@@ -552,7 +576,10 @@ impl GalleryHost {
         }
         match self.mouse.wheel(device, point, delta) {
             Ok(event) => self.submit_pointer(event_loop, event),
-            Err(error) => self.fail(event_loop, &format!("native wheel input invalid: {error:?}")),
+            Err(error) => self.fail(
+                event_loop,
+                &format!("native wheel input invalid: {error:?}"),
+            ),
         }
     }
 
