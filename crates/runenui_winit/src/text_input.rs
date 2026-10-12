@@ -121,6 +121,12 @@ pub fn keyboard_committed_text_candidate<'a>(
     text.filter(|text| !text.is_empty())
 }
 
+/// Converts an optional native preedit range into checked UTF-8 byte offsets.
+///
+/// # Errors
+///
+/// Returns [`CompositionRangeError`] if the native range is reversed, out of
+/// bounds, or not aligned to Unicode scalar boundaries in `preedit`.
 pub fn translate_preedit_range(
     preedit: &str,
     range: Option<(usize, usize)>,
