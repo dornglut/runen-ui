@@ -8,7 +8,6 @@ use runenui_core::{
 
 use crate::app::{GalleryAction, GalleryState, Page};
 
-
 fn focus_recipe_id() -> StyleRecipeId {
     StyleRecipeId::from_static("gallery.focusable")
         .unwrap_or_else(|_| unreachable!("static Gallery focus recipe is valid"))

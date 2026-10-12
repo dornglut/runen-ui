@@ -408,9 +408,8 @@ impl GalleryHost {
         if self.pending_redraw.is_none() && !self.window_flags.needs_publication {
             return Ok(());
         }
-        let context =
-            SurfaceBuildContext::tight(&self.style_environment, mapping.logical_size())
-                .with_raster_scale(mapping.raster_scale());
+        let context = SurfaceBuildContext::tight(&self.style_environment, mapping.logical_size())
+            .with_raster_scale(mapping.raster_scale());
         let publication = self
             .runtime
             .publish_surface(&context)
