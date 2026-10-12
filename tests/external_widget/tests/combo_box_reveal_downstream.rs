@@ -155,8 +155,18 @@ fn custom_child_bearing_widget_reveals_only_unique_enabled_exact_mounted_descend
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+enum InitialMode {
+    Enabled,
+    DisabledOwner,
+    InertOwner,
+    DisabledActiveOption,
+}
+
 #[derive(Debug)]
-struct InitialCompositeOwner;
+struct InitialCompositeOwner {
+    mode: InitialMode,
+}
 
 impl Widget<()> for InitialCompositeOwner {
     type State = ();
@@ -172,10 +182,15 @@ impl Widget<()> for InitialCompositeOwner {
             element_id: ElementId::new(name).unwrap_or_else(|_| unreachable!("known authored ID")),
             semantic_key: None,
         };
+        let semantic_state = match self.mode {
+            InitialMode::Enabled | InitialMode::DisabledActiveOption => SemanticState::ENABLED,
+            InitialMode::DisabledOwner => SemanticState::ENABLED.with_disabled(true),
+            InitialMode::InertOwner => SemanticState::ENABLED.with_inert(true),
+        };
         let mut owner = SemanticNodeContribution::primary(SemanticRole::ComboBox)
             .with_name("Independent downstream owner")
             .with_popup(SemanticPopupKind::ListBox)
-            .with_state(SemanticState::ENABLED.with_expanded(true))
+            .with_state(semantic_state.with_expanded(true))
             .with_relationship(SemanticRelationship::new(
                 SemanticRelationshipKind::Controls,
                 reference("initial.custom.list"),
@@ -194,14 +209,15 @@ impl ChildBearingWidget<()> for InitialCompositeOwner {}
 
 struct InitialApp;
 impl UiApp for InitialApp {
-    type State = ();
+    type State = InitialMode;
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &()) -> impl View<()> {
+    fn root(mode: &InitialMode) -> impl View<()> {
         let options = (0..18_u8).map(|index| {
             option_item(format!("Option {index:02}"), index == 17)
                 .id(format!("initial.custom.option.{index}"))
+                .enabled(!matches!(mode, InitialMode::DisabledActiveOption) || index != 17)
                 .combo_box_proxy()
                 .on_activate(|| ())
                 .with_layout(
@@ -223,18 +239,18 @@ impl UiApp for InitialApp {
         )
         .into_element()
         .with_focusability(Focusability::NotFocusable);
-        container(InitialCompositeOwner, [viewport])
+        container(InitialCompositeOwner { mode: *mode }, [viewport])
             .id("initial.custom.owner")
             .into_element()
             .focusable(true)
     }
 
-    fn update(_: &mut (), (): ()) {}
+    fn update(_: &mut InitialMode, (): ()) {}
 }
 
 #[test]
 fn downstream_semantic_composite_reveals_deep_initial_option_without_builtin_widget() {
-    let mut app = AppRuntime::<InitialApp>::mount(());
+    let mut app = AppRuntime::<InitialApp>::mount(InitialMode::Enabled);
     assert!(
         app.pump(PumpBudget::new(256, 256, 256, 256))
             .unwrap_or_else(|error| unreachable!("initial downstream pump: {error:?}"))
@@ -301,7 +317,7 @@ fn downstream_semantic_composite_reveals_deep_initial_option_without_builtin_wid
 #[test]
 fn initial_generic_reveal_respects_full_command_fifo_without_a_private_retry() {
     let mut app = AppRuntime::<InitialApp>::mount_with_config(
-        (),
+        InitialMode::Enabled,
         RuntimeConfig::default().with_queue_capacity(2),
     );
     assert!(
@@ -388,4 +404,70 @@ fn initial_generic_reveal_respects_full_command_fifo_without_a_private_retry() {
         0.0,
         "failed generation-bound reveal must not retry as a deferred authored ID"
     );
+}
+
+#[test]
+fn first_publication_reveal_rejects_semantically_disabled_inert_or_ineligible_targets() {
+    for mode in [
+        InitialMode::DisabledOwner,
+        InitialMode::InertOwner,
+        InitialMode::DisabledActiveOption,
+    ] {
+        let mut app = AppRuntime::<InitialApp>::mount(mode);
+        assert!(
+            app.pump(PumpBudget::new(256, 256, 256, 256))
+                .unwrap_or_else(|error| unreachable!("initial downstream work: {error:?}"))
+                .report()
+                .is_quiescent()
+        );
+        let list_authored =
+            ElementId::new("initial.custom.list").unwrap_or_else(|_| unreachable!());
+        let list = app
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&list_authored))
+            .unwrap_or_else(|| unreachable!("bounded option list is mounted"))
+            .id()
+            .clone();
+        let viewport = app
+            .index()
+            .node(&list)
+            .and_then(|node| node.parent())
+            .unwrap_or_else(|| unreachable!("standard scroll viewport"))
+            .clone();
+        let _ = app
+            .publish_surface(&SurfaceBuildContext::tight(
+                &runenui_core::StyleEnvironment::default(),
+                LogicalSize::try_new(350.0, 320.0).unwrap_or_else(|_| unreachable!()),
+            ))
+            .unwrap_or_else(|error| unreachable!("semantic publication: {error:?}"));
+        assert_eq!(
+            app.index()
+                .node(&viewport)
+                .unwrap_or_else(|| unreachable!())
+                .interaction()
+                .scroll_offset()
+                .1,
+            0.0,
+            "publication must not directly scroll an ineligible owner: {mode:?}"
+        );
+        assert!(
+            app.pump(PumpBudget::new(256, 256, 256, 256))
+                .unwrap_or_else(|error| unreachable!("no invalid reveal: {error:?}"))
+                .report()
+                .is_quiescent()
+        );
+        assert_eq!(
+            app.index()
+                .node(&viewport)
+                .unwrap_or_else(|| unreachable!())
+                .interaction()
+                .scroll_offset()
+                .1,
+            0.0,
+            "invalid semantic or disabled target must not emit queued scroll: {mode:?}"
+        );
+        assert_eq!(app.focus().focused_node(), None);
+    }
 }
