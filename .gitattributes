@@ -1,0 +1,8 @@
+# The validation plan compares this scheduling projection byte for byte.
+/validation-partitions.txt text eol=lf
+
+# Dependency authority tests parse exact lockfile package boundaries.
+/Cargo.lock text eol=lf
+
+# Source authority tests embed Rust files and compare formatted LF fragments.
+*.rs text eol=lf

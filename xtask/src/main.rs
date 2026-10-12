@@ -770,7 +770,8 @@ mod tests {
         let Err(error) = validate_current_licensing(directory.path()) else {
             return Err("newly declared invalid member unexpectedly passed licensing".to_owned());
         };
-        assert!(error.contains("crates/new/Cargo.toml"));
+        let member_manifest = Path::new("crates/new").join("Cargo.toml");
+        assert!(error.contains(&member_manifest.display().to_string()));
         assert!(error.contains("license.workspace = true"));
         Ok(())
     }
