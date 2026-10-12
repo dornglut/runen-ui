@@ -8,6 +8,8 @@ Format intentional Rust changes with the formatter enforced by CI:
 cargo +stable fmt --all
 ```
 
+Git preserves LF for Rust sources embedded by source authority tests and for the byte-exact partition inventory. New checkout attributes do not retroactively rewrite existing clean files: a checkout may retain CRLF even when `git status` is clean. A fresh checkout applies the attributes. Preserve any local changes when preparing that checkout; validation remains read-only.
+
 Run the complete repository baseline with:
 
 ```powershell
