@@ -1,0 +1,16 @@
+[package]
+name = "gallery"
+version.workspace = true
+description = "Interactive RunenUI public-control gallery (initial application shell)"
+readme = "README.md"
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+edition.workspace = true
+
+[dependencies]
+runenui_core = { path = "../../crates/runenui_core", version = "0.1.0" }
+runenui_runtime = { path = "../../crates/runenui_runtime", version = "0.1.0" }
+
+[lints]
+workspace = true
