@@ -346,6 +346,85 @@ mod tests {
     }
 
     #[test]
+    fn gallery_navigation_has_distinct_active_and_idle_recipes() {
+        let style = style_environment();
+        let selected = StyleRecipeId::from_static("gallery.nav.selected")
+            .unwrap_or_else(|_| unreachable!("static active navigation recipe is valid"));
+        let idle = StyleRecipeId::from_static("gallery.nav.default")
+            .unwrap_or_else(|_| unreachable!("static idle navigation recipe is valid"));
+        let active_recipe = style
+            .theme()
+            .recipe(&selected)
+            .unwrap_or_else(|| unreachable!("active navigation recipe is registered"));
+        let idle_recipe = style
+            .theme()
+            .recipe(&idle)
+            .unwrap_or_else(|| unreachable!("idle navigation recipe is registered"));
+        assert_ne!(
+            active_recipe.base().background(),
+            idle_recipe.base().background(),
+            "selected page must remain visually distinguishable"
+        );
+        for recipe in [active_recipe, idle_recipe] {
+            assert!(
+                recipe
+                    .interaction(StyleInteractionState::FocusVisible)
+                    .and_then(|properties| properties.outline())
+                    .is_some(),
+                "navigation focus must stay keyboard visible"
+            );
+        }
+    }
+
+    #[test]
+    fn gallery_shell_reflows_navigation_and_inspector_without_discarding_controls() {
+        let mut app = AppRuntime::<GalleryApp>::mount(GalleryState::default());
+        settle(&mut app);
+        let style = style_environment();
+        for (width, height) in [(1200_u16, 720_u16), (320_u16, 480_u16)] {
+            let context = SurfaceBuildContext::tight(
+                &style,
+                LogicalSize::new(LogicalLength::from(width), LogicalLength::from(height)),
+            );
+            let publication = app
+                .publish_surface(&context)
+                .unwrap_or_else(|_| unreachable!("Gallery publishes at both viewport widths"));
+            let bounds = |authored: &str| {
+                publication
+                    .frame()
+                    .nodes()
+                    .iter()
+                    .find(|node| node.authored_id() == Some(&id(authored)))
+                    .unwrap_or_else(|| panic!("missing authored Gallery node: {authored}"))
+                    .bounds()
+            };
+            let nav = bounds("gallery.navigation");
+            let workspace = bounds("gallery.preview");
+            let sample = bounds("gallery.card.basics");
+            let state = bounds("gallery.inspector");
+            if width == 1200 {
+                assert!(
+                    workspace.x() > nav.x(),
+                    "wide viewport should put navigation beside the workspace"
+                );
+                assert!(
+                    state.x() > sample.x(),
+                    "wide viewport should put the inspector beside the sample"
+                );
+            } else {
+                assert!(
+                    workspace.y() > nav.y(),
+                    "narrow viewport should wrap the workspace below navigation"
+                );
+                assert!(
+                    state.y() > sample.y(),
+                    "narrow viewport should wrap the inspector below the sample"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn gallery_native_neutral_keyboard_enter_activates_focused_button() {
         let mut app = AppRuntime::<GalleryApp>::mount(GalleryState::default());
         settle(&mut app);

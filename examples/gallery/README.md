@@ -5,9 +5,11 @@ developers can navigate and interact with accepted M11 controls.
 
 This initial application-model slice exposes **Basics** (Button, disabled
 Button) and **Inputs** (Checkbox, TextField) with application-owned state and
-ordinary public `UiApp`/M10/M11 contracts. The wrapping navigation/preview
-layout and a read-only live state inspector use standard public authoring;
-narrow-window publication tests are structural. A native winit/wgpu/AccessKit
+ordinary public `UiApp`/M10/M11 contracts. The Gallery uses a selected-page
+navigation rail, a distinct live-preview panel and a read-only state inspector.
+The rail and preview sit side-by-side at ordinary desktop widths, while narrower
+windows wrap the workspace and inspector vertically. Layout tests check that
+reflow geometry and control mounting persist, but are not a visual native OS proof. A native winit/wgpu/AccessKit
 executable now integrates the same public Gallery application using the
 accepted native mapping, keyboard/pointer and M10 text/IME translation edges.
 Hosted headless validation does **not** establish actual OS window or IME behavior;

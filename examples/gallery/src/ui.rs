@@ -379,9 +379,9 @@ fn inspector(state: &GalleryState) -> Element<GalleryAction> {
         text("LIVE STATE")
             .typography(typography(11, true))
             .foreground(MUTED),
-        text("Inspector")
+        text("Live application state")
             .id("gallery.inspector.title")
-            .typography(typography(18, true)),
+            .typography(typography(16, true)),
         text("Application-owned values update as controls are used.")
             .typography(typography(12, false))
             .foreground(MUTED),
