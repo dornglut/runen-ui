@@ -16,8 +16,8 @@ use std::{
 
 use app::{Counter, CounterApp};
 use runenui_core::{
-    ElementId, InputDeviceId, KeyModifiers, KeyboardCompositionState, LogicalDelta,
-    PointerEvent, SemanticCommand, StyleEnvironment, SurfaceInputContext,
+    ElementId, InputDeviceId, KeyModifiers, KeyboardCompositionState, LogicalDelta, PointerEvent,
+    SemanticCommand, StyleEnvironment, SurfaceInputContext,
 };
 use runenui_render_wgpu::{
     PublicationRenderError, Renderer, RendererOptions, ResourcePayload, ResourceProvider,
@@ -25,8 +25,7 @@ use runenui_render_wgpu::{
 };
 use runenui_runtime::{
     AppRuntime, FontSourcePolicy, MonotonicClock, MonotonicInstant, PumpBudget, RedrawRequest,
-    RuntimeConfig, SubmitKeyboardErrorKind, SurfaceBuildContext,
-    SurfacePublication,
+    RuntimeConfig, SubmitKeyboardErrorKind, SurfaceBuildContext, SurfacePublication,
 };
 use runenui_winit::{
     accessibility::{AccessibilityEvent, SemanticAdapter},
@@ -373,7 +372,10 @@ impl CounterHost {
         });
         if force || !configured_matches {
             renderer
-                .configure_surface(mapping.physical_size().width, mapping.physical_size().height)
+                .configure_surface(
+                    mapping.physical_size().width,
+                    mapping.physical_size().height,
+                )
                 .map_err(|error| format!("native surface configuration failed: {error}"))?;
         }
         Ok(())

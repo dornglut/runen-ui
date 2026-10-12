@@ -151,7 +151,15 @@ mod tests {
         for extent in [PhysicalSize::new(0, 1), PhysicalSize::new(1, 0)] {
             assert!(NativeMapping::from_parts(extent, 1.0).is_none());
         }
-        for scale in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY, f64::MAX, 1.0e-100] {
+        for scale in [
+            0.0,
+            -1.0,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::MAX,
+            1.0e-100,
+        ] {
             assert!(
                 NativeMapping::from_parts(PhysicalSize::new(10, 10), scale).is_none(),
                 "invalid native scale {scale:?}"

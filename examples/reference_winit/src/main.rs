@@ -961,7 +961,10 @@ impl ReferenceHost {
         });
         if force || !configured_matches {
             renderer
-                .configure_surface(mapping.physical_size().width, mapping.physical_size().height)
+                .configure_surface(
+                    mapping.physical_size().width,
+                    mapping.physical_size().height,
+                )
                 .map_err(|error| format!("native surface configuration failed: {error}"))?;
             proof!(
                 "stage=surface_configured physical={}x{} force={force}",
