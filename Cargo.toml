@@ -40,3 +40,7 @@ unimplemented = "warn"
 
 [profile.test]
 debug = false
+
+# Keep the running validator separate from the artifacts its checks rebuild.
+[profile.validation-bootstrap]
+inherits = "dev"
