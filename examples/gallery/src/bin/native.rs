@@ -575,7 +575,10 @@ impl GalleryHost {
                     SubmitTextErrorKind::NoFocusedTarget
                         | SubmitTextErrorKind::FocusedTargetNotTextCapable
                 ) => {}
-            Err(error) => self.fail(event_loop, &format!("native committed text failed: {error}")),
+            Err(error) => self.fail(
+                event_loop,
+                &format!("native committed text failed: {error}"),
+            ),
         }
     }
 
@@ -610,7 +613,10 @@ impl GalleryHost {
                     Ok(_) => {}
                     Err(error) if error.kind() == SubmitKeyboardErrorKind::NoFocusedTarget => {}
                     Err(error) => {
-                        self.fail(event_loop, &format!("native keyboard input failed: {error}"));
+                        self.fail(
+                            event_loop,
+                            &format!("native keyboard input failed: {error}"),
+                        );
                         return;
                     }
                 }
@@ -664,7 +670,8 @@ impl GalleryHost {
                     match self.runtime.start_composition(None) {
                         Ok(submission) => {
                             let generation = submission.generation().clone();
-                            self.text.remember_composition_generation(generation.clone());
+                            self.text
+                                .remember_composition_generation(generation.clone());
                             Some(generation)
                         }
                         Err(error)
@@ -672,7 +679,10 @@ impl GalleryHost {
                                 error.kind(),
                                 SubmitCompositionErrorKind::NoFocusedTarget
                                     | SubmitCompositionErrorKind::FocusedTargetNotCompositionCapable
-                            ) => None,
+                            ) =>
+                        {
+                            None
+                        }
                         Err(error) => {
                             self.fail(event_loop, &format!("native IME start failed: {error}"));
                             None
@@ -684,7 +694,10 @@ impl GalleryHost {
                 let Some(generation) = generation else {
                     return;
                 };
-                match self.runtime.submit_composition_update(generation, preedit, range) {
+                match self
+                    .runtime
+                    .submit_composition_update(generation, preedit, range)
+                {
                     Ok(_) => {}
                     Err(error)
                         if matches!(
@@ -770,7 +783,9 @@ impl GalleryHost {
                 self.redraw();
             }
             Ok(_) => self.fail(event_loop, "renderer did not actually present the Gallery"),
-            Err(PublicationRenderError::SurfaceTimeout | PublicationRenderError::SurfaceOccluded) => {
+            Err(
+                PublicationRenderError::SurfaceTimeout | PublicationRenderError::SurfaceOccluded,
+            ) => {
                 self.redraw();
             }
             Err(
@@ -846,7 +861,10 @@ impl ApplicationHandler<HostEvent> for GalleryHost {
             return;
         }
         self.suppressed = false;
-        self.focused = self.window.as_ref().is_some_and(|window| window.has_focus());
+        self.focused = self
+            .window
+            .as_ref()
+            .is_some_and(|window| window.has_focus());
         self.text.set_window_focused(self.focused);
         self.drive(event_loop);
         self.redraw();
@@ -895,17 +913,30 @@ impl ApplicationHandler<HostEvent> for GalleryHost {
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                 self.mapping_changed(event_loop);
             }
-            WindowEvent::CursorMoved { device_id, position } if !self.suppressed => {
+            WindowEvent::CursorMoved {
+                device_id,
+                position,
+            } if !self.suppressed => {
                 self.cursor_moved(event_loop, device_id, position);
             }
             WindowEvent::CursorLeft { .. } => self.cancel_pointer(event_loop),
-            WindowEvent::MouseInput { device_id, state, button } if !self.suppressed => {
+            WindowEvent::MouseInput {
+                device_id,
+                state,
+                button,
+            } if !self.suppressed => {
                 self.mouse_button(event_loop, device_id, state, button);
             }
-            WindowEvent::MouseWheel { device_id, delta, .. } if !self.suppressed => {
+            WindowEvent::MouseWheel {
+                device_id, delta, ..
+            } if !self.suppressed => {
                 self.mouse_wheel(event_loop, device_id, delta);
             }
-            WindowEvent::KeyboardInput { device_id, event, is_synthetic } if !self.suppressed => {
+            WindowEvent::KeyboardInput {
+                device_id,
+                event,
+                is_synthetic,
+            } if !self.suppressed => {
                 self.key_input(event_loop, device_id, &event, is_synthetic);
             }
             WindowEvent::Ime(ime) if !self.suppressed => self.ime_event(event_loop, ime),
@@ -922,7 +953,10 @@ impl ApplicationHandler<HostEvent> for GalleryHost {
                 }
                 self.suppressed = occluded;
                 if !occluded {
-                    self.focused = self.window.as_ref().is_some_and(|window| window.has_focus());
+                    self.focused = self
+                        .window
+                        .as_ref()
+                        .is_some_and(|window| window.has_focus());
                     self.text.set_window_focused(self.focused);
                     self.drive(event_loop);
                 }
@@ -970,9 +1004,12 @@ mod tests {
         .unwrap_or_else(|| unreachable!("pixel wheel fixture valid"));
         assert_eq!(pixel.x(), 60.0);
         assert_eq!(pixel.y(), -15.0);
-        assert!(wheel_delta(
-            MouseScrollDelta::PixelDelta(PhysicalPosition::new(12.0, 12.0)),
-            0.0
-        ).is_none());
+        assert!(
+            wheel_delta(
+                MouseScrollDelta::PixelDelta(PhysicalPosition::new(12.0, 12.0)),
+                0.0
+            )
+            .is_none()
+        );
     }
 }
