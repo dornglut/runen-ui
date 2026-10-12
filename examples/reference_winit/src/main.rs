@@ -51,9 +51,10 @@ use runenui_render_wgpu::{
     ResourceProviderError, ResourceProviderErrorKind, ResourceRequest,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, PumpBudget, RasterScale, RedrawRequest, SubmitCompositionErrorKind,
+    AppRuntime, LogicalSize, PumpBudget, RedrawRequest, SubmitCompositionErrorKind,
     SubmitKeyboardErrorKind, SubmitTextErrorKind, SurfaceBuildContext, SurfacePublication,
 };
+use runenui_winit::native_mapping::{NativeMapping, NativePointError};
 use runenui_winit::text_input::{
     TextInputState, keyboard_committed_text_candidate, translate_preedit_range,
 };
@@ -614,57 +615,6 @@ impl ResourceProvider for NoResources {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct NativeMapping {
-    physical_size: PhysicalSize<u32>,
-    native_scale_factor: f64,
-    logical_size: LogicalSize,
-    raster_scale: RasterScale,
-}
-
-impl NativeMapping {
-    #[must_use]
-    fn from_window(window: &Window) -> Option<Self> {
-        Self::from_parts(window.inner_size(), window.scale_factor())
-    }
-
-    #[must_use]
-    #[allow(
-        clippy::cast_possible_truncation,
-        reason = "native f64 geometry is range-checked before conversion into RunenUI's accepted f32 neutral protocol"
-    )]
-    fn from_parts(physical_size: PhysicalSize<u32>, native_scale_factor: f64) -> Option<Self> {
-        if physical_size.width == 0
-            || physical_size.height == 0
-            || !native_scale_factor.is_finite()
-            || native_scale_factor <= 0.0
-            || native_scale_factor > f64::from(f32::MAX)
-        {
-            return None;
-        }
-
-        let logical_width = f64::from(physical_size.width) / native_scale_factor;
-        let logical_height = f64::from(physical_size.height) / native_scale_factor;
-        if !logical_width.is_finite()
-            || !logical_height.is_finite()
-            || logical_width > f64::from(f32::MAX)
-            || logical_height > f64::from(f32::MAX)
-        {
-            return None;
-        }
-
-        let logical_size =
-            LogicalSize::try_new(logical_width as f32, logical_height as f32).ok()?;
-        let raster_scale = RasterScale::new(native_scale_factor as f32).ok()?;
-        Some(Self {
-            physical_size,
-            native_scale_factor,
-            logical_size,
-            raster_scale,
-        })
-    }
-}
-
 #[derive(Clone, Debug)]
 struct PendingFrame {
     publication: SurfacePublication,
@@ -678,7 +628,6 @@ struct DisplayedFrame {
 }
 
 impl DisplayedFrame {
-    #[must_use]
     fn from_pending(pending: &PendingFrame) -> Self {
         Self {
             input_context: pending.publication.input_context().clone(),
@@ -686,39 +635,15 @@ impl DisplayedFrame {
         }
     }
 
-    #[allow(
-        clippy::cast_possible_truncation,
-        reason = "native f64 pointer coordinates are finite and f32-range-checked before conversion into RunenUI logical coordinates"
-    )]
     fn translate_cursor(
         &self,
         current_mapping: Option<NativeMapping>,
         physical_position: PhysicalPosition<f64>,
     ) -> Result<TranslatedPointerPoint, PointIngressDiagnostic> {
-        let current_mapping =
-            current_mapping.ok_or(PointIngressDiagnostic::NativeMappingUnavailable)?;
-        if current_mapping != self.mapping {
-            return Err(PointIngressDiagnostic::DisplayedMappingMismatch);
-        }
-        if !physical_position.x.is_finite() || !physical_position.y.is_finite() {
-            return Err(PointIngressDiagnostic::NonFiniteNativePosition);
-        }
-
-        let logical_x = physical_position.x / self.mapping.native_scale_factor;
-        let logical_y = physical_position.y / self.mapping.native_scale_factor;
-        if !logical_x.is_finite()
-            || !logical_y.is_finite()
-            || logical_x < f64::from(f32::MIN)
-            || logical_x > f64::from(f32::MAX)
-            || logical_y < f64::from(f32::MIN)
-            || logical_y > f64::from(f32::MAX)
-        {
-            return Err(PointIngressDiagnostic::LogicalPositionOutOfRange);
-        }
-
-        let position = LogicalPoint::new(logical_x as f32, logical_y as f32).unwrap_or_else(|_| {
-            unreachable!("translated logical cursor coordinates were validated")
-        });
+        let position = self
+            .mapping
+            .translate_cursor(current_mapping, physical_position)
+            .map_err(PointIngressDiagnostic::from)?;
         Ok(TranslatedPointerPoint {
             position,
             input_context: self.input_context.clone(),
@@ -735,6 +660,17 @@ enum PointIngressDiagnostic {
     CursorPositionUnavailable,
     NonFiniteNativePosition,
     LogicalPositionOutOfRange,
+}
+
+impl From<NativePointError> for PointIngressDiagnostic {
+    fn from(error: NativePointError) -> Self {
+        match error {
+            NativePointError::MappingUnavailable => Self::NativeMappingUnavailable,
+            NativePointError::DisplayedMappingMismatch => Self::DisplayedMappingMismatch,
+            NativePointError::NonFiniteNativePosition => Self::NonFiniteNativePosition,
+            NativePointError::LogicalPositionOutOfRange => Self::LogicalPositionOutOfRange,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -999,12 +935,12 @@ impl ReferenceHost {
         match next {
             Some(mapping) => proof!(
                 "stage=mapping_changed physical={}x{} native_scale={} logical={}x{} raster_scale={}",
-                mapping.physical_size.width,
-                mapping.physical_size.height,
-                mapping.native_scale_factor,
-                mapping.logical_size.width(),
-                mapping.logical_size.height(),
-                mapping.raster_scale.get()
+                mapping.physical_size().width,
+                mapping.physical_size().height,
+                mapping.native_scale_factor(),
+                mapping.logical_size().width(),
+                mapping.logical_size().height(),
+                mapping.raster_scale().get()
             ),
             None => proof!("stage=mapping_unavailable"),
         }
@@ -1020,17 +956,17 @@ impl ReferenceHost {
             .as_mut()
             .ok_or_else(|| "surface configuration requires the renderer".to_owned())?;
         let configured_matches = renderer.configured_surface_extent().is_some_and(|extent| {
-            extent.width() == mapping.physical_size.width
-                && extent.height() == mapping.physical_size.height
+            extent.width() == mapping.physical_size().width
+                && extent.height() == mapping.physical_size().height
         });
         if force || !configured_matches {
             renderer
-                .configure_surface(mapping.physical_size.width, mapping.physical_size.height)
+                .configure_surface(mapping.physical_size().width, mapping.physical_size().height)
                 .map_err(|error| format!("native surface configuration failed: {error}"))?;
             proof!(
                 "stage=surface_configured physical={}x{} force={force}",
-                mapping.physical_size.width,
-                mapping.physical_size.height
+                mapping.physical_size().width,
+                mapping.physical_size().height
             );
         }
         Ok(())
@@ -1041,8 +977,8 @@ impl ReferenceHost {
             .as_ref()
             .and_then(Renderer::configured_surface_extent)
             .is_some_and(|extent| {
-                extent.width() == mapping.physical_size.width
-                    && extent.height() == mapping.physical_size.height
+                extent.width() == mapping.physical_size().width
+                    && extent.height() == mapping.physical_size().height
             })
     }
 
@@ -1314,8 +1250,8 @@ impl ReferenceHost {
             return Ok(false);
         }
 
-        let context = SurfaceBuildContext::tight(&self.style_environment, mapping.logical_size)
-            .with_raster_scale(mapping.raster_scale);
+        let context = SurfaceBuildContext::tight(&self.style_environment, mapping.logical_size())
+            .with_raster_scale(mapping.raster_scale());
         let publication = self
             .runtime
             .publish_surface(&context)
@@ -1340,9 +1276,9 @@ impl ReferenceHost {
         proof!(
             "stage=surface_published input_context={:?} physical={}x{} native_scale={}",
             publication.input_context(),
-            mapping.physical_size.width,
-            mapping.physical_size.height,
-            mapping.native_scale_factor
+            mapping.physical_size().width,
+            mapping.physical_size().height,
+            mapping.native_scale_factor()
         );
 
         if let Some(request) = self.pending_redraw.take() {
@@ -2415,9 +2351,9 @@ impl ReferenceHost {
         proof!(
             "stage=presented input_context={:?} physical={}x{} native_scale={}",
             pending.publication.input_context(),
-            pending.mapping.physical_size.width,
-            pending.mapping.physical_size.height,
-            pending.mapping.native_scale_factor
+            pending.mapping.physical_size().width,
+            pending.mapping.physical_size().height,
+            pending.mapping.native_scale_factor()
         );
         self.drive_runtime(event_loop);
         self.request_pending_redraw();
@@ -2452,9 +2388,9 @@ impl ReferenceHost {
         proof!(
             "stage=present_attempt input_context={:?} physical={}x{} native_scale={}",
             pending.publication.input_context(),
-            pending.mapping.physical_size.width,
-            pending.mapping.physical_size.height,
-            pending.mapping.native_scale_factor
+            pending.mapping.physical_size().width,
+            pending.mapping.physical_size().height,
+            pending.mapping.native_scale_factor()
         );
         let render_result = self
             .renderer
@@ -3287,8 +3223,8 @@ mod tests {
             .report()
             .to_owned();
         let style_environment = StyleEnvironment::default();
-        let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size)
-            .with_raster_scale(mapping.raster_scale);
+        let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size())
+            .with_raster_scale(mapping.raster_scale());
         let publication = runtime.publish_surface(&context).unwrap_or_else(|error| {
             unreachable!("fixture surface publication is valid: {error:?}")
         });
@@ -3314,8 +3250,8 @@ mod tests {
         let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
             .unwrap_or_else(|| unreachable!("the fixture mapping is valid"));
         let style_environment = StyleEnvironment::default();
-        let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size)
-            .with_raster_scale(mapping.raster_scale);
+        let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size())
+            .with_raster_scale(mapping.raster_scale());
         let publication = runtime.publish_surface(&context).unwrap_or_else(|error| {
             unreachable!("reference editor publication is valid: {error:?}")
         });
@@ -3412,8 +3348,8 @@ mod tests {
             .to_owned();
         assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
         let style_environment = StyleEnvironment::default();
-        let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size)
-            .with_raster_scale(mapping.raster_scale);
+        let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size())
+            .with_raster_scale(mapping.raster_scale());
         let initial = runtime
             .publish_surface(&context)
             .unwrap_or_else(|error| unreachable!("reference editor surface is valid: {error:?}"));
@@ -3903,8 +3839,8 @@ mod tests {
         let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
             .unwrap_or_else(|| unreachable!("measurement mapping is valid"));
         let environment = StyleEnvironment::default();
-        let context = SurfaceBuildContext::tight(&environment, mapping.logical_size)
-            .with_raster_scale(mapping.raster_scale);
+        let context = SurfaceBuildContext::tight(&environment, mapping.logical_size())
+            .with_raster_scale(mapping.raster_scale());
         for (name, extra_lines) in [
             ("short", 0),
             ("medium", 20),
@@ -4122,8 +4058,8 @@ mod tests {
         let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
             .unwrap_or_else(|| unreachable!("measurement mapping is valid"));
         let environment = StyleEnvironment::default();
-        let context = SurfaceBuildContext::tight(&environment, mapping.logical_size)
-            .with_raster_scale(mapping.raster_scale);
+        let context = SurfaceBuildContext::tight(&environment, mapping.logical_size())
+            .with_raster_scale(mapping.raster_scale());
         let fixture = "multiline responsiveness fixture — retained text layout\n";
 
         for (name, lines) in [
@@ -4341,8 +4277,8 @@ mod tests {
         let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
             .unwrap_or_else(|| unreachable!("profile mapping is valid"));
         let environment = StyleEnvironment::default();
-        let context = SurfaceBuildContext::tight(&environment, mapping.logical_size)
-            .with_raster_scale(mapping.raster_scale);
+        let context = SurfaceBuildContext::tight(&environment, mapping.logical_size())
+            .with_raster_scale(mapping.raster_scale());
         let fixture = "multiline responsiveness fixture — retained text layout\n";
         let replacement_fixture = "replacement publication fixture — retained text layout state\n";
 
@@ -4554,11 +4490,11 @@ mod tests {
     fn native_mapping_preserves_physical_extent_and_derives_neutral_values() {
         let mapping = NativeMapping::from_parts(PhysicalSize::new(1200, 800), 2.0)
             .unwrap_or_else(|| unreachable!("the fixture native mapping is valid"));
-        assert_eq!(mapping.physical_size, PhysicalSize::new(1200, 800));
-        assert!((mapping.logical_size.width() - 600.0).abs() < f32::EPSILON);
-        assert!((mapping.logical_size.height() - 400.0).abs() < f32::EPSILON);
-        assert!((mapping.raster_scale.get() - 2.0).abs() < f32::EPSILON);
-        assert!((mapping.native_scale_factor - 2.0).abs() < f64::EPSILON);
+        assert_eq!(mapping.physical_size(), PhysicalSize::new(1200, 800));
+        assert!((mapping.logical_size().width() - 600.0).abs() < f32::EPSILON);
+        assert!((mapping.logical_size().height() - 400.0).abs() < f32::EPSILON);
+        assert!((mapping.raster_scale().get() - 2.0).abs() < f32::EPSILON);
+        assert!((mapping.native_scale_factor() - 2.0).abs() < f64::EPSILON);
     }
 
     #[test]

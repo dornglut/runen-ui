@@ -16,7 +16,7 @@ use std::{
 
 use app::{Counter, CounterApp};
 use runenui_core::{
-    ElementId, InputDeviceId, KeyModifiers, KeyboardCompositionState, LogicalDelta, LogicalPoint,
+    ElementId, InputDeviceId, KeyModifiers, KeyboardCompositionState, LogicalDelta,
     PointerEvent, SemanticCommand, StyleEnvironment, SurfaceInputContext,
 };
 use runenui_render_wgpu::{
@@ -24,8 +24,8 @@ use runenui_render_wgpu::{
     ResourceProviderError, ResourceProviderErrorKind, ResourceRequest,
 };
 use runenui_runtime::{
-    AppRuntime, FontSourcePolicy, LogicalSize, MonotonicClock, MonotonicInstant, PumpBudget,
-    RasterScale, RedrawRequest, RuntimeConfig, SubmitKeyboardErrorKind, SurfaceBuildContext,
+    AppRuntime, FontSourcePolicy, MonotonicClock, MonotonicInstant, PumpBudget, RedrawRequest,
+    RuntimeConfig, SubmitKeyboardErrorKind, SurfaceBuildContext,
     SurfacePublication,
 };
 use runenui_winit::{
@@ -33,6 +33,7 @@ use runenui_winit::{
     device_identity::{DeviceIdentityError, DeviceIdentityMap},
     keyboard_input::{KeyboardInputOutcome, KeyboardInputState, NativeKeyTransition},
     mouse_input::{MouseButtonOutcome, MouseInputState, TranslatedPointerPoint},
+    native_mapping::{NativeMapping, NativePointError},
 };
 use winit::{
     application::ApplicationHandler,
@@ -71,50 +72,6 @@ impl ResourceProvider for NoExternalResources {
             ResourceProviderErrorKind::Missing,
             "Counter provides no external image resources",
         ))
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct NativeMapping {
-    physical_size: PhysicalSize<u32>,
-    native_scale_factor: f64,
-    logical_size: LogicalSize,
-    raster_scale: RasterScale,
-}
-
-impl NativeMapping {
-    fn from_window(window: &Window) -> Option<Self> {
-        Self::from_parts(window.inner_size(), window.scale_factor())
-    }
-
-    #[allow(
-        clippy::cast_possible_truncation,
-        reason = "native f64 geometry is range-checked before conversion into RunenUI's f32 neutral protocol"
-    )]
-    fn from_parts(physical_size: PhysicalSize<u32>, native_scale_factor: f64) -> Option<Self> {
-        if physical_size.width == 0
-            || physical_size.height == 0
-            || !native_scale_factor.is_finite()
-            || native_scale_factor <= 0.0
-            || native_scale_factor > f64::from(f32::MAX)
-        {
-            return None;
-        }
-        let logical_width = f64::from(physical_size.width) / native_scale_factor;
-        let logical_height = f64::from(physical_size.height) / native_scale_factor;
-        if !logical_width.is_finite()
-            || !logical_height.is_finite()
-            || logical_width > f64::from(f32::MAX)
-            || logical_height > f64::from(f32::MAX)
-        {
-            return None;
-        }
-        Some(Self {
-            physical_size,
-            native_scale_factor,
-            logical_size: LogicalSize::try_new(logical_width as f32, logical_height as f32).ok()?,
-            raster_scale: RasterScale::new(native_scale_factor as f32).ok()?,
-        })
     }
 }
 
@@ -175,6 +132,17 @@ enum PointIngressDiagnostic {
     LogicalPositionOutOfRange,
 }
 
+impl From<NativePointError> for PointIngressDiagnostic {
+    fn from(error: NativePointError) -> Self {
+        match error {
+            NativePointError::MappingUnavailable => Self::NativeMappingUnavailable,
+            NativePointError::DisplayedMappingMismatch => Self::DisplayedMappingMismatch,
+            NativePointError::NonFiniteNativePosition => Self::NonFiniteNativePosition,
+            NativePointError::LogicalPositionOutOfRange => Self::LogicalPositionOutOfRange,
+        }
+    }
+}
+
 impl DisplayedFrame {
     fn from_pending(pending: &PendingFrame) -> Self {
         Self {
@@ -183,36 +151,15 @@ impl DisplayedFrame {
         }
     }
 
-    #[allow(
-        clippy::cast_possible_truncation,
-        reason = "native pointer coordinates are finite and range-checked before conversion into RunenUI logical coordinates"
-    )]
     fn translate_cursor(
         &self,
         current_mapping: Option<NativeMapping>,
         physical_position: PhysicalPosition<f64>,
     ) -> Result<TranslatedPointerPoint, PointIngressDiagnostic> {
-        let current_mapping =
-            current_mapping.ok_or(PointIngressDiagnostic::NativeMappingUnavailable)?;
-        if current_mapping != self.mapping {
-            return Err(PointIngressDiagnostic::DisplayedMappingMismatch);
-        }
-        if !physical_position.x.is_finite() || !physical_position.y.is_finite() {
-            return Err(PointIngressDiagnostic::NonFiniteNativePosition);
-        }
-        let logical_x = physical_position.x / self.mapping.native_scale_factor;
-        let logical_y = physical_position.y / self.mapping.native_scale_factor;
-        if !logical_x.is_finite()
-            || !logical_y.is_finite()
-            || logical_x < f64::from(f32::MIN)
-            || logical_x > f64::from(f32::MAX)
-            || logical_y < f64::from(f32::MIN)
-            || logical_y > f64::from(f32::MAX)
-        {
-            return Err(PointIngressDiagnostic::LogicalPositionOutOfRange);
-        }
-        let position = LogicalPoint::new(logical_x as f32, logical_y as f32)
-            .unwrap_or_else(|_| unreachable!("validated translated cursor is finite"));
+        let position = self
+            .mapping
+            .translate_cursor(current_mapping, physical_position)
+            .map_err(PointIngressDiagnostic::from)?;
         Ok(TranslatedPointerPoint {
             position,
             input_context: self.input_context.clone(),
@@ -421,12 +368,12 @@ impl CounterHost {
             .as_mut()
             .ok_or_else(|| "surface configuration requires the renderer".to_owned())?;
         let configured_matches = renderer.configured_surface_extent().is_some_and(|extent| {
-            extent.width() == mapping.physical_size.width
-                && extent.height() == mapping.physical_size.height
+            extent.width() == mapping.physical_size().width
+                && extent.height() == mapping.physical_size().height
         });
         if force || !configured_matches {
             renderer
-                .configure_surface(mapping.physical_size.width, mapping.physical_size.height)
+                .configure_surface(mapping.physical_size().width, mapping.physical_size().height)
                 .map_err(|error| format!("native surface configuration failed: {error}"))?;
         }
         Ok(())
@@ -437,8 +384,8 @@ impl CounterHost {
             .as_ref()
             .and_then(Renderer::configured_surface_extent)
             .is_some_and(|extent| {
-                extent.width() == mapping.physical_size.width
-                    && extent.height() == mapping.physical_size.height
+                extent.width() == mapping.physical_size().width
+                    && extent.height() == mapping.physical_size().height
             })
     }
 
@@ -527,8 +474,8 @@ impl CounterHost {
         if self.pending_redraw.is_none() && !self.mapping_publication_needed {
             return Ok(false);
         }
-        let context = SurfaceBuildContext::tight(&self.style_environment, mapping.logical_size)
-            .with_raster_scale(mapping.raster_scale);
+        let context = SurfaceBuildContext::tight(&self.style_environment, mapping.logical_size())
+            .with_raster_scale(mapping.raster_scale());
         let publication = self
             .runtime
             .publish_surface(&context)
@@ -745,7 +692,7 @@ impl CounterHost {
             return;
         };
         let Some(scroll_delta) =
-            normalize_wheel_delta(delta, displayed_mapping.native_scale_factor)
+            normalize_wheel_delta(delta, displayed_mapping.native_scale_factor())
         else {
             eprintln!("Counter native wheel input withheld: unrepresentable delta");
             return;
