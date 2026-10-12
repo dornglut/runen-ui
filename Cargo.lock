@@ -691,6 +691,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gallery"
+version = "0.1.0"
+dependencies = [
+ "runenui_core",
+ "runenui_runtime",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
