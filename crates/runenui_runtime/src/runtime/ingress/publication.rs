@@ -179,38 +179,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.enter_terminal(reason, 0);
             return Err(PublishSurfaceError::Terminal(reason));
         }
-        // A newly expanded composite may request an initial active-descendant
-        // reveal before that descendant exists in its mounted tree. Retain the
-        // previous published semantic identities to distinguish a new mount
-        // from already-published navigation without recognizing widget types.
-        let previously_open = self
+        // Retain a cheap immutable handle to the previous committed semantic
+        // publication. Exact lookup is O(1) per candidate, without cloning
+        // every semantic node or building an unbounded mirror of its IDs.
+        let previous_semantics = self
             .surface_publication
             .current_semantic_publication()
-            .map_or_else(Vec::new, |current| {
-                current
-                    .snapshot()
-                    .nodes()
-                    .iter()
-                    .filter(|node| {
-                        node.state().expanded() == Some(true)
-                    })
-                    .map(|node| node.id().clone())
-                    .collect()
-            });
-        // A close/reopen without an intermediate closed publication replaces
-        // exact descendant lifetimes. Compare all previous semantic generations
-        // rather than assuming any particular control or descendant role.
-        let previously_published_descendants = self
-            .surface_publication
-            .current_semantic_publication()
-            .map_or_else(Vec::new, |current| {
-                current
-                    .snapshot()
-                    .nodes()
-                    .iter()
-                    .map(|node| node.id().clone())
-                    .collect()
-            });
+            .cloned();
         let instant = self.now();
         let focused_owner = self.focus.focused_node().cloned();
         let interaction = self
@@ -324,8 +299,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // command queue, never through a second scroll or focus controller.
         self.reveal_newly_published_active_descendants(
             &publication,
-            &previously_open,
-            &previously_published_descendants,
+            previous_semantics.as_ref(),
             published,
         );
         if let RuntimeStatus::Terminal(reason) = self.status {
@@ -352,8 +326,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     fn reveal_newly_published_active_descendants(
         &mut self,
         publication: &crate::SurfacePublication,
-        previously_open: &[runenui_core::SemanticNodeId],
-        previously_published_descendants: &[runenui_core::SemanticNodeId],
+        previous: Option<&crate::SemanticPublication>,
         causal_parent: Option<TraceSequence>,
     ) {
         let snapshot = publication.semantic_publication().snapshot();
@@ -384,9 +357,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 // Only a newly opened popup or a newly mounted Option generation
                 // needs this post-publication command. Already-mounted keyboard
                 // navigation has its own exact event-time routed command.
-                if previously_open.contains(combo.id())
-                    && previously_published_descendants.contains(active_id)
-                {
+                if previous.is_some_and(|previous| {
+                    let old = previous.snapshot();
+                    old.node(combo.id())
+                        .is_some_and(|node| node.state().expanded() == Some(true))
+                        && old.node(active_id).is_some()
+                }) {
                     return None;
                 }
                 if option.state().disabled() || option.state().inert() {
