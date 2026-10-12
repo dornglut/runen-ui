@@ -350,7 +350,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 };
                 let list_id = relation(SemanticRelationshipKind::Controls)?;
                 let active_id = relation(SemanticRelationshipKind::ActiveDescendant)?;
-                let list = snapshot.node(list_id)?;
+                // Both relationship targets must exist in this committed snapshot.
+                snapshot.node(list_id)?;
                 let option = snapshot.node(active_id)?;
                 // Only a newly opened popup or a newly mounted Option generation
                 // needs this post-publication command. Already-mounted keyboard
