@@ -2,33 +2,29 @@
 
 RunenUI targets host-neutral, renderer-neutral Rust UI for headless, standalone, and embedded application profiles. The repository is pre-1.0 and currently provides a deterministic headless framework foundation plus a proof-level real host/renderer/accessibility production spine; it is not yet a production-complete desktop UI stack.
 
-## Current accepted foundation
+## Framework overview
 
-The implemented foundation includes:
+RunenUI is a host-neutral, renderer-neutral Rust UI framework. Applications author
+typed state, actions, transient `View`/`Element` trees and public standard
+controls; the mounted runtime owns reconciliation, focus, input routing, text
+editing sessions, layout, semantics, deterministic work and atomic publication.
 
-- typed application state/action/update and transient `View`/`Element` authoring;
-- persistent keyed mounted runtime state with checked generational identity and lifecycle;
-- validated logical geometry plus an accepted production style environment/cascade with metric typography integration and an accepted runtime-owned production Block/Flex/Grid layout path over exact mounted topology, alongside hit-test and renderer-facing publication products;
-- normalized production sizing, positioning/Overlay, bounded intrinsic/custom measurement, baseline handling, clipping and inspectable logical overflow/content/scroll extents through private low-level Taffy algorithms rather than a second retained layout tree;
-- accepted renderer-neutral production text through `runenui_text`: explicit deterministic/production font-source policy, international shaping/bidi/grapheme handling, line breaking/reflow, immutable measurement/artifact/resource facts, exact final-layout feedback, scale-independent shaped-resource lifetime, and M10B immutable caret/hit/selection/navigation/candidate geometry plus transient preedit projection mapping over that same retained layout;
-- accepted M10C application-owned transactional editing through host-neutral edit intents and immediate resolutions, bounded runtime-owned owner-local sessions and FIFO predecessor chains, canonical routed editing defaults, editable semantic/AccessKit projection, application-owned undo metadata, and fail-closed secret redaction;
-- exact integrated correlation from Taffy available-space measurement through retained text artifacts/resources into paint and semantic bounds/content, with deterministic bundled-font public tests and retained publication/raster-scale re-realization proof;
-- accepted wgpu SDF/MSDF realization of those exact already-shaped outline resources through renderer-owned quality classes and atlas pages, with no shaped-text provider or hidden alpha fallback, including the responsive multiscript real-wgpu evidence corpus;
-- accepted M9A renderer-neutral visual/composition vocabulary and publication: structural rectangle/rounded-rectangle/ellipse/path geometry, generic fills/strokes, solid/linear/radial brushes, image fit/crop/nine-slice mapping, typed outline/shadow/opacity/static-presentation style facts, snapshot-local composition groups, conservative effect bounds, and alpha-independent ordinary-shadow support;
-- accepted M9B deterministic motion through the same style/layout/publication path: target-keyed transition policy, owner-local explicit timelines, runtime-owned live motion/declaration lifecycle, one monotonic candidate instant, deterministic easing/interpolation, explicit reduced-motion policy, differential invalidation/group lifetime, existing redraw/wake scheduling, atomic staged commit/retry, and canonical motion trace;
-- accepted M9C integrated visual-motion closure over those same authorities: one sampled presentation transform correlates paint, hit, directional focus, semantics, and presentation-relative clips; public `ManualClock` proof observes deterministic timing/layout/text/semantic results through ordinary runtime contracts; canonical hover/focus/active facts drive the accepted style/transition path; and the real-wgpu path proves retained sampled-publication retry plus cache and fresh renderer/device reconstruction without resampling or resource rebinding;
-- real-wgpu realization of the accepted M9 visual vocabulary through renderer-private disposable tessellation, gradient/clip/group/shadow resources and bounded mask work, while motion samples arrive only through immutable renderer-neutral publication and never move clock/timeline/style/interpolation authority into the renderer;
-- bounded effects, tasks, timers, subscriptions, host requests, deterministic clocks, wake/redraw, explicit pumping, trace/export/replay;
-- canonical routed pointer, keyboard, committed-text, IME, focus, automation, and semantic-command interaction;
-- independent semantic identity/publication/action ingress;
-- public deterministic headless application testing through `runenui_testing`;
-- an accepted reusable wgpu renderer/resource edge with real offscreen/readback and native presentation proof;
-- reusable winit input and AccessKit translation exercised by standalone native hosts;
-- a separate winit-free downstream host proof that owns pump/publication/render/present sequencing through ordinary public contracts.
+- `runenui_core` defines the public authoring, interaction, layout/style,
+  semantic, visual and motion contracts.
+- `runenui_text` shapes text into retained renderer-neutral artifacts, shared
+  with editing, layout and presentation.
+- `runenui_runtime` implements mounted identity and the single live UI
+  authority, including deterministic testing and renderer-facing publication.
+- `runenui_render_wgpu` and `runenui_winit` provide reusable downstream
+  GPU, input and accessibility edges without becoming widget-behavior owners.
+- `examples/counter` is the small runnable application; `examples/reference_winit`
+  is the specialized native-host integration reference. Neither is a
+  comprehensive control gallery.
 
-The renderer-neutral paint/hit scene protocol is complete through M6 at proof maturity, the M7 reference production spine is complete at proof maturity, M8 is accepted complete at its production style/layout/international-text foundation scope, M9 is accepted complete at its visual/composition, deterministic-motion, and integrated-closure scope, and M10B exact text-coordinate/caret-map plus M10C transactional-editing work is owner-accepted. Framework services, production scrolling/pointer selection, integrated M10 closure, standard controls, virtualization, multi-window lifecycle, and supported platform breadth remain later roadmap outcomes.
-
-See [current status](docs/status.md) for capability maturity and [roadmap](docs/roadmap.md) for durable sequencing.
+For **current accepted capabilities and maturity**, see the canonical
+[current status](docs/status.md) and permanent [conformance contracts](docs/conformance/README.md).
+For **planned capability and dependencies**, see the [roadmap](docs/roadmap.md).
+This overview intentionally does not duplicate milestone acceptance snapshots.
 
 ## Workspace
 
