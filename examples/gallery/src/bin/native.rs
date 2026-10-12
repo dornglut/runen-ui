@@ -975,10 +975,12 @@ impl ApplicationHandler<HostEvent> for GalleryHost {
                 device_id,
                 event,
                 is_synthetic,
-            } if !self.window_flags.suppressed => {
+            } if !self.window_flags.suppressed && self.window_flags.focused => {
                 self.key_input(event_loop, device_id, &event, is_synthetic);
             }
-            WindowEvent::Ime(ime) if !self.window_flags.suppressed => {
+            WindowEvent::Ime(ime)
+                if !self.window_flags.suppressed && self.window_flags.focused =>
+            {
                 self.ime_event(event_loop, ime);
             }
             WindowEvent::ModifiersChanged(state) => self.modifiers = modifiers(state.state()),
@@ -1031,6 +1033,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gallery_text_adapter_revokes_capability_when_page_unmounts_editor() {
+        let mut app = AppRuntime::<GalleryApp>::mount(GalleryState::default());
+        app.pump(PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("Gallery root settles"));
+        let inputs = ElementId::new("gallery.nav.inputs")
+            .unwrap_or_else(|_| unreachable!("static navigation id is valid"));
+        app.submit_automation_command(inputs, SemanticCommand::Activate)
+            .unwrap_or_else(|_| unreachable!("Inputs navigation is mounted"));
+        app.pump(PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("Inputs selection settles"));
+        let editor = ElementId::new("gallery.inputs.textfield")
+            .unwrap_or_else(|_| unreachable!("static editor id is valid"));
+        app.submit_automation_command(editor, SemanticCommand::RequestFocus)
+            .unwrap_or_else(|_| unreachable!("TextField accepts focus"));
+        app.pump(PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("TextField focus settles"));
+
+        let mut adapter = TextInputState::default();
+        adapter.set_window_focused(true);
+        adapter.sync_runtime(
+            app.focus().focused_node().cloned(),
+            app.focused_text_input_capability(),
+        );
+        assert!(adapter.accepts_committed_text());
+        assert!(adapter.accepts_composition());
+
+        let basics = ElementId::new("gallery.nav.basics")
+            .unwrap_or_else(|_| unreachable!("static navigation id is valid"));
+        app.submit_automation_command(basics, SemanticCommand::Activate)
+            .unwrap_or_else(|_| unreachable!("Basics navigation is mounted"));
+        app.pump(PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("TextField unmount settles"));
+        adapter.sync_runtime(
+            app.focus().focused_node().cloned(),
+            app.focused_text_input_capability(),
+        );
+        assert!(!adapter.accepts_committed_text());
+        assert!(!adapter.accepts_composition());
+    }
 
     #[test]
     fn gallery_native_wheel_policy_uses_displayed_pixel_scale() {
