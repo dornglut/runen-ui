@@ -157,17 +157,19 @@ For runtime-shaped text, retained paint publication lifetime also preserves the 
 
 M9 composition/effect structure and sampled results are likewise immutable publication content, not a retained renderer tree/timeline. Renderer-private geometry, group targets, shadow masks and caches are disposable and reconstructible; renderer realization failure before submission does not mutate RunenUI publication or motion authority.
 
-## Current limitations
+## Public contract boundaries and limitations
 
-The current public surface is pre-1.0 and may change incompatibly when accepted architecture requires a clean cutover. Important missing production capabilities include:
+The public Rust API is pre-1.0 and may change incompatibly when reviewed
+architecture requires a clean cutover. Runtime and renderer contracts do not
+implicitly supply every platform profile, native host lifecycle, or resource
+format. Distinct planned breadth includes large virtualized data-backed
+collections, multi-window production lifecycle and platform/Engine
+qualification, and intrinsic COLR/SVG/bitmap glyph rendering.
 
-- broader production host/application ergonomics beyond the accepted proof-level native and external-host paths;
-- virtualization and native scrolling mechanics beyond the accepted logical overflow/content/scroll extents;
-- integrated public-widget/native/real-wgpu closure (M10F);
-- supported rendering for intrinsic COLR/SVG/bitmap glyph formats; current behavior diagnoses that breadth explicitly;
-- multi-window lifecycle and supported platform-profile breadth;
-- a complete standard control library.
-
-M7 is accepted complete at proof maturity through the real wgpu renderer/resource edge, standalone winit host/native-input/presentation path, reusable winit/AccessKit adapter, native Counter showcase, and winit-free downstream external-host proof over the same public contracts. M8 is accepted complete at its production-foundation scope through deterministic production style resolution, renderer-neutral international text, runtime-owned Block/Flex/Grid layout with exact text feedback, retained measurement-to-paint resource identity, semantic content/bounds correlation, deterministic bundled-font public proof, and real-wgpu SDF/MSDF responsive/multiscript integration. M9 is accepted complete at its production visual/motion scope through static visual/composition vocabulary and runtime publication, deterministic transition/timeline semantics, integrated transform/interaction/public-manual-time correlation, real-wgpu motion retry/cache/device reconstruction, and final single-path authority cleanup. M10B is accepted through exact text coordinates and one retained-layout caret/preedit mapping authority; M10C is accepted through application-owned transactional editing, bounded runtime sessions/chains, editable semantics, and secret redaction. M10E is owner-accepted for runtime scrolling, pointer selection, touch arbitration, and controller normalization; M10F integrated closure remains blocked. Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent observable/proof requirements live under [conformance](../conformance/README.md).
+These limitations do not redefine the accepted M10 editing/interaction or M11
+standard-control contracts. Use [status](../status.md) for accepted capability
+maturity, [conformance](../conformance/README.md) for required behavioral
+proof, and the [roadmap](../roadmap.md) for future scope. This document owns
+public API authority boundaries, not a parallel list of accepted milestones.
 
 Do not infer support from a target ADR, design document, type name, or roadmap entry alone. Code/tests establish current behavior; source/Rustdoc establishes the exact public Rust surface.
