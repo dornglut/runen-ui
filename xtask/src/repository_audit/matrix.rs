@@ -1031,7 +1031,7 @@ mod tests {
                 "M11CTRL-88",
                 "M11CTRL-89",
             ],
-            "blocked",
+            "owner-accepted",
         ),
         (
             "M11SLIDER",
