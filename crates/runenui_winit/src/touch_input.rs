@@ -477,9 +477,12 @@ mod tests {
     #[test]
     fn selective_device_cancellation_preserves_foreign_contacts_and_runtime_streams() {
         let (mut runtime, context) = traced_runtime_and_context();
-        let device_a = InputDeviceId::new(31).unwrap_or_else(|| unreachable!("device A is nonzero"));
-        let device_b = InputDeviceId::new(32).unwrap_or_else(|| unreachable!("device B is nonzero"));
-        let replacement = InputDeviceId::new(33).unwrap_or_else(|| unreachable!("replacement generation is nonzero"));
+        let device_a =
+            InputDeviceId::new(31).unwrap_or_else(|| unreachable!("device A is nonzero"));
+        let device_b =
+            InputDeviceId::new(32).unwrap_or_else(|| unreachable!("device B is nonzero"));
+        let replacement = InputDeviceId::new(33)
+            .unwrap_or_else(|| unreachable!("replacement generation is nonzero"));
         let mut touch = TouchInputState::default();
 
         // Both backends are free to issue the same native contact ID.
@@ -574,8 +577,10 @@ mod tests {
     #[test]
     fn completed_device_contact_is_not_cancelled_and_foreign_device_remains_live() {
         let (_, context) = traced_runtime_and_context();
-        let device_a = InputDeviceId::new(41).unwrap_or_else(|| unreachable!("device A is nonzero"));
-        let device_b = InputDeviceId::new(42).unwrap_or_else(|| unreachable!("device B is nonzero"));
+        let device_a =
+            InputDeviceId::new(41).unwrap_or_else(|| unreachable!("device A is nonzero"));
+        let device_b =
+            InputDeviceId::new(42).unwrap_or_else(|| unreachable!("device B is nonzero"));
         let mut touch = TouchInputState::default();
         touch
             .transition(
@@ -596,13 +601,7 @@ mod tests {
             )
             .unwrap_or_else(|_| unreachable!("A ends"));
         let down_b = touch
-            .transition(
-                device_b,
-                5,
-                TouchPhase::Started,
-                point(2.0, 3.0),
-                context,
-            )
+            .transition(device_b, 5, TouchPhase::Started, point(2.0, 3.0), context)
             .unwrap_or_else(|_| unreachable!("B starts with the same native ID"));
         assert_eq!(touch.cancel_device(device_a).len(), 0);
         assert_eq!(touch.active_contact_count(), 1);
