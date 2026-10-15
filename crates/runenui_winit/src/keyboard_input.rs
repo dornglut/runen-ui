@@ -698,18 +698,23 @@ mod tests {
         let physical = WinitPhysicalKey::Code(KeyCode::KeyA);
         let down = transition(ElementState::Pressed, physical, &logical, false, false);
         let down_a = submitted(keyboard.key_input(
-            a, &down, KeyModifiers::NONE, KeyboardCompositionState::Inactive,
+            a,
+            &down,
+            KeyModifiers::NONE,
+            KeyboardCompositionState::Inactive,
         ));
         let down_b = submitted(keyboard.key_input(
-            b, &down, KeyModifiers::NONE, KeyboardCompositionState::Inactive,
+            b,
+            &down,
+            KeyModifiers::NONE,
+            KeyboardCompositionState::Inactive,
         ));
         assert_eq!(down_a.device_id(), Some(a));
         assert_eq!(down_b.device_id(), Some(b));
         assert_eq!(keyboard.pressed_len(), 2);
 
-        let cancelled = keyboard.cancel_device(
-            a, KeyModifiers::SHIFT, KeyboardCompositionState::Active,
-        );
+        let cancelled =
+            keyboard.cancel_device(a, KeyModifiers::SHIFT, KeyboardCompositionState::Active);
         assert_eq!(cancelled.len(), 1);
         assert_eq!(cancelled[0].phase(), KeyboardPhase::Cancel);
         assert_eq!(cancelled[0].device_id(), Some(a));
@@ -722,7 +727,9 @@ mod tests {
         );
         assert_eq!(keyboard.pressed_len(), 1);
         assert_eq!(
-            keyboard.cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive).len(),
+            keyboard
+                .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
+                .len(),
             0
         );
         assert!(matches!(
@@ -754,7 +761,10 @@ mod tests {
 
         let new_device = device(63);
         let successor = submitted(keyboard.key_input(
-            new_device, &down, KeyModifiers::NONE, KeyboardCompositionState::Inactive,
+            new_device,
+            &down,
+            KeyModifiers::NONE,
+            KeyboardCompositionState::Inactive,
         ));
         assert_eq!(successor.device_id(), Some(new_device));
         assert_eq!(successor.phase(), KeyboardPhase::Down);
@@ -780,17 +790,21 @@ mod tests {
                 KeyboardCompositionState::Inactive,
             ));
         }
-        let cancelled = keyboard.cancel_device(
-            a, KeyModifiers::NONE, KeyboardCompositionState::Inactive,
-        );
+        let cancelled =
+            keyboard.cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive);
         assert_eq!(cancelled.len(), 2);
-        assert_eq!(cancelled[0].physical_key(), &NeutralPhysicalKey::Code(String::from("KeyA")));
-        assert_eq!(cancelled[1].physical_key(), &NeutralPhysicalKey::Code(String::from("KeyC")));
+        assert_eq!(
+            cancelled[0].physical_key(),
+            &NeutralPhysicalKey::Code(String::from("KeyA"))
+        );
+        assert_eq!(
+            cancelled[1].physical_key(),
+            &NeutralPhysicalKey::Code(String::from("KeyC"))
+        );
         assert!(cancelled.iter().all(|key| key.device_id() == Some(a)));
         assert_eq!(keyboard.pressed_len(), 2);
-        let b_cancelled = keyboard.cancel_all(
-            KeyModifiers::ALT, KeyboardCompositionState::Inactive,
-        );
+        let b_cancelled =
+            keyboard.cancel_all(KeyModifiers::ALT, KeyboardCompositionState::Inactive);
         assert_eq!(b_cancelled.len(), 2);
         assert!(b_cancelled.iter().all(|key| key.device_id() == Some(b)));
         assert_eq!(keyboard.pressed_len(), 0);
