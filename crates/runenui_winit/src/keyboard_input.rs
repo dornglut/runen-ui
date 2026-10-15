@@ -160,6 +160,27 @@ impl KeyboardInputState {
         }
     }
 
+    /// Cancels only the still-pressed keys of one checked native device lifetime.
+    ///
+    /// The other devices' keys remain live in their original admission order.
+    /// A source or window teardown must instead use `cancel_all`.
+    pub fn cancel_device(
+        &mut self,
+        device_id: InputDeviceId,
+        modifiers: KeyModifiers,
+        composition: KeyboardCompositionState,
+    ) -> Vec<KeyboardEvent> {
+        let mut cancelled = Vec::new();
+        self.pressed.retain(|pressed| {
+            if pressed.device_id != device_id {
+                return true;
+            }
+            cancelled.push(cancelled_key(pressed.clone(), modifiers, composition));
+            false
+        });
+        cancelled
+    }
+
     pub fn cancel_all(
         &mut self,
         modifiers: KeyModifiers,
@@ -167,18 +188,7 @@ impl KeyboardInputState {
     ) -> Vec<KeyboardEvent> {
         self.pressed
             .drain(..)
-            .map(|pressed| {
-                KeyboardEvent::new(
-                    KeyboardPhase::Cancel,
-                    pressed.physical_key,
-                    pressed.logical_key,
-                    modifiers,
-                    false,
-                    pressed.location,
-                    composition,
-                    Some(pressed.device_id),
-                )
-            })
+            .map(|pressed| cancelled_key(pressed, modifiers, composition))
             .collect()
     }
 
@@ -186,6 +196,23 @@ impl KeyboardInputState {
     const fn pressed_len(&self) -> usize {
         self.pressed.len()
     }
+}
+
+fn cancelled_key(
+    pressed: PressedKey,
+    modifiers: KeyModifiers,
+    composition: KeyboardCompositionState,
+) -> KeyboardEvent {
+    KeyboardEvent::new(
+        KeyboardPhase::Cancel,
+        pressed.physical_key,
+        pressed.logical_key,
+        modifiers,
+        false,
+        pressed.location,
+        composition,
+        Some(pressed.device_id),
+    )
 }
 
 fn translate_physical_key(key: WinitPhysicalKey) -> PhysicalKey {
@@ -659,6 +686,127 @@ mod tests {
             ),
             KeyboardInputOutcome::Suppressed(KeyboardIngressDiagnostic::RepeatWithoutPress)
         ));
+        assert_eq!(keyboard.pressed_len(), 0);
+    }
+
+    #[test]
+    fn selective_device_cancellation_preserves_same_key_from_another_keyboard() {
+        let mut keyboard = KeyboardInputState::default();
+        let a = device(61);
+        let b = device(62);
+        let logical = WinitKey::Character("a".into());
+        let physical = WinitPhysicalKey::Code(KeyCode::KeyA);
+        let down = transition(ElementState::Pressed, physical, &logical, false, false);
+        let down_a = submitted(keyboard.key_input(
+            a,
+            &down,
+            KeyModifiers::NONE,
+            KeyboardCompositionState::Inactive,
+        ));
+        let down_b = submitted(keyboard.key_input(
+            b,
+            &down,
+            KeyModifiers::NONE,
+            KeyboardCompositionState::Inactive,
+        ));
+        assert_eq!(down_a.device_id(), Some(a));
+        assert_eq!(down_b.device_id(), Some(b));
+        assert_eq!(keyboard.pressed_len(), 2);
+
+        let cancelled =
+            keyboard.cancel_device(a, KeyModifiers::SHIFT, KeyboardCompositionState::Active);
+        assert_eq!(cancelled.len(), 1);
+        assert_eq!(cancelled[0].phase(), KeyboardPhase::Cancel);
+        assert_eq!(cancelled[0].device_id(), Some(a));
+        assert_eq!(cancelled[0].physical_key(), down_a.physical_key());
+        assert_eq!(cancelled[0].logical_key(), down_a.logical_key());
+        assert_eq!(cancelled[0].modifiers(), KeyModifiers::SHIFT);
+        assert_eq!(
+            cancelled[0].composition_state(),
+            KeyboardCompositionState::Active
+        );
+        assert_eq!(keyboard.pressed_len(), 1);
+        assert_eq!(
+            keyboard
+                .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
+                .len(),
+            0
+        );
+        assert!(matches!(
+            keyboard.key_input(
+                a,
+                &transition(ElementState::Released, physical, &logical, false, false),
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            ),
+            KeyboardInputOutcome::Suppressed(KeyboardIngressDiagnostic::ReleaseWithoutPress)
+        ));
+        let repeated_b = submitted(keyboard.key_input(
+            b,
+            &transition(ElementState::Pressed, physical, &logical, true, false),
+            KeyModifiers::NONE,
+            KeyboardCompositionState::Inactive,
+        ));
+        assert_eq!(repeated_b.phase(), KeyboardPhase::Down);
+        assert!(repeated_b.is_repeat());
+        let up_b = submitted(keyboard.key_input(
+            b,
+            &transition(ElementState::Released, physical, &logical, false, false),
+            KeyModifiers::NONE,
+            KeyboardCompositionState::Inactive,
+        ));
+        assert_eq!(up_b.phase(), KeyboardPhase::Up);
+        assert_eq!(up_b.device_id(), Some(b));
+        assert_eq!(keyboard.pressed_len(), 0);
+
+        let new_device = device(63);
+        let successor = submitted(keyboard.key_input(
+            new_device,
+            &down,
+            KeyModifiers::NONE,
+            KeyboardCompositionState::Inactive,
+        ));
+        assert_eq!(successor.device_id(), Some(new_device));
+        assert_eq!(successor.phase(), KeyboardPhase::Down);
+    }
+
+    #[test]
+    fn selective_cancel_preserves_interleaved_admission_order_and_other_devices() {
+        let mut keyboard = KeyboardInputState::default();
+        let a = device(64);
+        let b = device(65);
+        let logical_a = WinitKey::Character("a".into());
+        let logical_c = WinitKey::Character("c".into());
+        for (device, physical, logical) in [
+            (a, WinitPhysicalKey::Code(KeyCode::KeyA), &logical_a),
+            (b, WinitPhysicalKey::Code(KeyCode::KeyA), &logical_a),
+            (a, WinitPhysicalKey::Code(KeyCode::KeyC), &logical_c),
+            (b, WinitPhysicalKey::Code(KeyCode::KeyC), &logical_c),
+        ] {
+            let _ = submitted(keyboard.key_input(
+                device,
+                &transition(ElementState::Pressed, physical, logical, false, false),
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            ));
+        }
+        let cancelled =
+            keyboard.cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive);
+        assert_eq!(cancelled.len(), 2);
+        assert_eq!(
+            cancelled[0].physical_key(),
+            &NeutralPhysicalKey::Code(String::from("KeyA"))
+        );
+        assert_eq!(
+            cancelled[1].physical_key(),
+            &NeutralPhysicalKey::Code(String::from("KeyC"))
+        );
+        assert!(cancelled.iter().all(|key| key.device_id() == Some(a)));
+        assert_eq!(keyboard.pressed_len(), 2);
+        let b_cancelled =
+            keyboard.cancel_all(KeyModifiers::ALT, KeyboardCompositionState::Inactive);
+        assert_eq!(b_cancelled.len(), 2);
+        assert!(b_cancelled.iter().all(|key| key.device_id() == Some(b)));
         assert_eq!(keyboard.pressed_len(), 0);
     }
 
