@@ -16,6 +16,7 @@ const RENDER_WGPU_PACKAGE: &str = "runenui_render_wgpu";
 const WINIT_PACKAGE: &str = "runenui_winit";
 const TESTING_PACKAGE: &str = "runenui_testing";
 const REFERENCE_WINIT_PACKAGE: &str = "reference_winit";
+const GALLERY_PACKAGE: &str = "gallery";
 const EXTERNAL_HOST_PACKAGE: &str = "runenui_external_host_conformance";
 const EXTERNAL_WIDGET_PACKAGE: &str = "runenui_external_widget_conformance";
 const XTASK_PACKAGE: &str = "xtask";
@@ -375,7 +376,7 @@ fn validate_dependency_direction(
         TEXT_PACKAGE => BTreeSet::from([CORE_PACKAGE]),
         RUNTIME_PACKAGE => BTreeSet::from([CORE_PACKAGE, TEXT_PACKAGE]),
         WINIT_PACKAGE => BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE]),
-        REFERENCE_WINIT_PACKAGE | "counter" => BTreeSet::from([
+        REFERENCE_WINIT_PACKAGE | "counter" | GALLERY_PACKAGE => BTreeSet::from([
             CORE_PACKAGE,
             RUNTIME_PACKAGE,
             RENDER_WGPU_PACKAGE,
@@ -479,8 +480,10 @@ fn validate_required_workspace_dependencies(
         }
     }
 
-    if matches!(member.package.as_str(), REFERENCE_WINIT_PACKAGE | "counter")
-        && !workspace_dependencies.contains(WINIT_PACKAGE)
+    if matches!(
+        member.package.as_str(),
+        REFERENCE_WINIT_PACKAGE | "counter" | GALLERY_PACKAGE
+    ) && !workspace_dependencies.contains(WINIT_PACKAGE)
     {
         findings.push(Finding::fatal(
             "workspace.native_consumer_winit_dependency_missing",
@@ -507,6 +510,14 @@ fn validate_required_workspace_dependencies(
             "workspace.reference_host_renderer_dependency_missing",
             Some(path_text(&member.relative.join("Cargo.toml"))),
             "reference_winit must consume runenui_render_wgpu as the standalone M7 native host",
+        ));
+    }
+
+    if member.package == GALLERY_PACKAGE && !workspace_dependencies.contains(RENDER_WGPU_PACKAGE) {
+        findings.push(Finding::fatal(
+            "workspace.gallery_renderer_dependency_missing",
+            Some(path_text(&member.relative.join("Cargo.toml"))),
+            "gallery must consume runenui_render_wgpu as its bounded native public-control host",
         ));
     }
 }
@@ -882,14 +893,14 @@ mod tests {
     };
 
     use super::{
-        CORE_PACKAGE, EXTERNAL_HOST_PACKAGE, EXTERNAL_WIDGET_PACKAGE, REFERENCE_WINIT_PACKAGE,
-        RENDER_WGPU_PACKAGE, RUNTIME_PACKAGE, TESTING_PACKAGE, TEXT_PACKAGE, WINIT_PACKAGE,
-        WorkspaceMember, documented_package_names, external_host_forbidden_source_pattern,
-        is_public_consumer, parse_dependency_names, parse_feature_names, parse_package_name,
-        parse_workspace_members, private_feature_names, validate_dependency_direction,
-        validate_external_host_dependencies, validate_neutral_accessibility_dependencies,
-        validate_renderer_external_dependencies, validate_text_external_dependencies,
-        validate_winit_external_dependencies,
+        CORE_PACKAGE, EXTERNAL_HOST_PACKAGE, EXTERNAL_WIDGET_PACKAGE, GALLERY_PACKAGE,
+        REFERENCE_WINIT_PACKAGE, RENDER_WGPU_PACKAGE, RUNTIME_PACKAGE, TESTING_PACKAGE,
+        TEXT_PACKAGE, WINIT_PACKAGE, WorkspaceMember, documented_package_names,
+        external_host_forbidden_source_pattern, is_public_consumer, parse_dependency_names,
+        parse_feature_names, parse_package_name, parse_workspace_members, private_feature_names,
+        validate_dependency_direction, validate_external_host_dependencies,
+        validate_neutral_accessibility_dependencies, validate_renderer_external_dependencies,
+        validate_text_external_dependencies, validate_winit_external_dependencies,
     };
 
     fn member(
@@ -965,6 +976,111 @@ mod tests {
                 "internal-test-seams".to_owned(),
             ])
         );
+    }
+
+    #[test]
+    fn gallery_native_dependencies_are_explicitly_bounded_without_widening_other_examples() {
+        let core = member(
+            "crates/runenui_core",
+            CORE_PACKAGE,
+            BTreeSet::new(),
+            BTreeSet::new(),
+        );
+        let runtime = member(
+            "crates/runenui_runtime",
+            RUNTIME_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let renderer = member(
+            "crates/runenui_render_wgpu",
+            RENDER_WGPU_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let native = member(
+            "crates/runenui_winit",
+            WINIT_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let deps = BTreeSet::from([
+            CORE_PACKAGE.to_owned(),
+            RUNTIME_PACKAGE.to_owned(),
+            RENDER_WGPU_PACKAGE.to_owned(),
+            WINIT_PACKAGE.to_owned(),
+        ]);
+        let gallery = member(
+            "examples/gallery",
+            GALLERY_PACKAGE,
+            deps.clone(),
+            BTreeSet::new(),
+        );
+        let unrelated = member("examples/unrelated", "unrelated", deps, BTreeSet::new());
+        let missing_renderer = member(
+            "examples/gallery",
+            GALLERY_PACKAGE,
+            BTreeSet::from([
+                CORE_PACKAGE.to_owned(),
+                RUNTIME_PACKAGE.to_owned(),
+                WINIT_PACKAGE.to_owned(),
+            ]),
+            BTreeSet::new(),
+        );
+        let missing_winit = member(
+            "examples/gallery",
+            GALLERY_PACKAGE,
+            BTreeSet::from([
+                CORE_PACKAGE.to_owned(),
+                RUNTIME_PACKAGE.to_owned(),
+                RENDER_WGPU_PACKAGE.to_owned(),
+            ]),
+            BTreeSet::new(),
+        );
+        let members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (renderer.package.as_str(), &renderer),
+            (native.package.as_str(), &native),
+            (gallery.package.as_str(), &gallery),
+            (unrelated.package.as_str(), &unrelated),
+        ]);
+
+        let mut accepted = Vec::new();
+        validate_dependency_direction(&gallery, &members, &mut accepted);
+        assert!(
+            accepted.is_empty(),
+            "bounded native Gallery must be admitted: {accepted:?}"
+        );
+
+        let mut rejected = Vec::new();
+        validate_dependency_direction(&unrelated, &members, &mut rejected);
+        assert_eq!(
+            rejected
+                .iter()
+                .filter(|finding| finding.code == "workspace.forbidden_dependency_direction")
+                .count(),
+            2,
+            "unclassified examples must still reject renderer and native dependencies"
+        );
+
+        for (incomplete, error_code) in [
+            (
+                &missing_renderer,
+                "workspace.gallery_renderer_dependency_missing",
+            ),
+            (
+                &missing_winit,
+                "workspace.native_consumer_winit_dependency_missing",
+            ),
+        ] {
+            let mut findings = Vec::new();
+            validate_dependency_direction(incomplete, &members, &mut findings);
+            assert!(
+                findings.iter().any(|finding| finding.code == error_code),
+                "Gallery must fail closed if a required native edge is missing: {error_code}"
+            );
+        }
     }
 
     #[test]

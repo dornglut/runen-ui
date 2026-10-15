@@ -1,0 +1,25 @@
+[package]
+name = "gallery"
+version.workspace = true
+description = "Native public-control Gallery with a retained deterministic diagnostic runner"
+default-run = "gallery-native"
+readme = "README.md"
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+edition.workspace = true
+
+[dependencies]
+runenui_core = { path = "../../crates/runenui_core", version = "0.1.0" }
+runenui_runtime = { path = "../../crates/runenui_runtime", version = "0.1.0" }
+runenui_render_wgpu = { path = "../../crates/runenui_render_wgpu", version = "0.1.0" }
+runenui_winit = { path = "../../crates/runenui_winit", version = "0.1.0" }
+accesskit_winit = { version = "=0.33.2", default-features = false, features = ["rwh_06"] }
+winit = { version = "=0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen", "x11"] }
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "gallery-native"
+path = "src/bin/native.rs"
