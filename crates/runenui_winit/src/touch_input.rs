@@ -142,6 +142,30 @@ impl TouchInputState {
         }
     }
 
+    /// Retires only contacts owned by the specified original device lifetime.
+    ///
+    /// All other devices remain independently live, including contacts whose
+    /// native IDs overlap the removed device. The host owns device-generation
+    /// invalidation; this operation does not reuse neutral pointer identities.
+    pub fn cancel_device(&mut self, device_id: InputDeviceId) -> Vec<PointerEvent> {
+        let mut cancelled = Vec::new();
+        self.contacts.retain(|(contact_device, _), contact| {
+            if *contact_device != device_id {
+                return true;
+            }
+            cancelled.push(pointer_event(
+                contact.pointer_id,
+                device_id,
+                PointerPhase::Cancel,
+                contact.position,
+                LogicalDelta::ZERO,
+                contact.input_context.clone(),
+            ));
+            false
+        });
+        cancelled
+    }
+
     /// Cancels all still-live contacts using their last valid displayed context.
     pub fn cancel_all(&mut self) -> Vec<PointerEvent> {
         std::mem::take(&mut self.contacts)
@@ -381,6 +405,212 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
+    }
+
+    fn assert_retired_contact_cannot_continue(
+        touch: &mut TouchInputState,
+        device: InputDeviceId,
+        context: &SurfaceInputContext,
+    ) {
+        for phase in [TouchPhase::Moved, TouchPhase::Ended] {
+            assert_eq!(
+                touch.transition(device, 7, phase, point(4.0, 6.0), context.clone()),
+                Err(TouchIngressDiagnostic::UnknownContact),
+                "removed device cannot continue its former native contact"
+            );
+        }
+    }
+
+    fn finish_unaffected_contact(
+        touch: &mut TouchInputState,
+        runtime: &mut AppRuntime<App>,
+        device: InputDeviceId,
+        context: &SurfaceInputContext,
+        pointer: runenui_core::PointerId,
+    ) {
+        for (phase, position) in [
+            (TouchPhase::Moved, point(12.0, 25.0)),
+            (TouchPhase::Ended, point(12.0, 25.0)),
+        ] {
+            let event = touch
+                .transition(device, 7, phase, position, context.clone())
+                .unwrap_or_else(|_| unreachable!("unaffected contact remains valid"));
+            assert_eq!(event.pointer_id(), pointer);
+            submit_and_pump(runtime, event);
+        }
+    }
+
+    fn assert_exact_touch_stream_closure(runtime: &AppRuntime<App>, expected: &[u64]) {
+        let mut registered: Vec<_> = runtime
+            .trace()
+            .records()
+            .filter_map(|record| match record.kind() {
+                TraceRecordKind::PointerStreamRegistered { pointer_id, .. } => {
+                    Some(pointer_id.get())
+                }
+                _ => None,
+            })
+            .collect();
+        let mut closed: Vec<_> = runtime
+            .trace()
+            .records()
+            .filter_map(|record| match record.kind() {
+                TraceRecordKind::PointerStreamClosed { pointer_id } => Some(pointer_id.get()),
+                _ => None,
+            })
+            .collect();
+        let mut expected = expected.to_vec();
+        expected.sort_unstable();
+        registered.sort_unstable();
+        closed.sort_unstable();
+        assert_eq!(registered, expected);
+        assert_eq!(closed, expected);
+        assert!(
+            !runtime.trace().records().any(|record| matches!(
+                record.kind(),
+                TraceRecordKind::PointerIngressRejected { .. }
+            )),
+            "selective cancellation must retain the ordinary pointer protocol"
+        );
+    }
+
+    #[test]
+    fn selective_device_cancellation_preserves_foreign_contacts_and_runtime_streams() {
+        let (mut runtime, context) = traced_runtime_and_context();
+        let device_a =
+            InputDeviceId::new(31).unwrap_or_else(|| unreachable!("device A is nonzero"));
+        let device_b =
+            InputDeviceId::new(32).unwrap_or_else(|| unreachable!("device B is nonzero"));
+        let replacement = InputDeviceId::new(33)
+            .unwrap_or_else(|| unreachable!("replacement generation is nonzero"));
+        let mut touch = TouchInputState::default();
+
+        // Both backends are free to issue the same native contact ID.
+        let down_a = touch
+            .transition(
+                device_a,
+                7,
+                TouchPhase::Started,
+                point(1.0, 2.0),
+                context.clone(),
+            )
+            .unwrap_or_else(|_| unreachable!("A contact begins"));
+        let down_b = touch
+            .transition(
+                device_b,
+                7,
+                TouchPhase::Started,
+                point(10.0, 20.0),
+                context.clone(),
+            )
+            .unwrap_or_else(|_| unreachable!("B contact begins independently"));
+        assert_ne!(down_a.pointer_id(), down_b.pointer_id());
+        submit_and_pump(&mut runtime, down_a.clone());
+        submit_and_pump(&mut runtime, down_b.clone());
+
+        let moved_a = touch
+            .transition(
+                device_a,
+                7,
+                TouchPhase::Moved,
+                point(3.0, 5.0),
+                context.clone(),
+            )
+            .unwrap_or_else(|_| unreachable!("A position advances before removal"));
+        submit_and_pump(&mut runtime, moved_a);
+        let cancelled_a = touch.cancel_device(device_a);
+        assert_eq!(touch.active_contact_count(), 1);
+        assert_eq!(cancelled_a.len(), 1);
+        assert_eq!(cancelled_a[0].pointer_id(), down_a.pointer_id());
+        assert_eq!(cancelled_a[0].device_id(), Some(device_a));
+        assert_eq!(cancelled_a[0].phase(), PointerPhase::Cancel);
+        assert_eq!(cancelled_a[0].position(), point(3.0, 5.0));
+        assert_eq!(cancelled_a[0].surface_context(), &context);
+        assert!(cancelled_a[0].buttons().is_empty());
+        assert_eq!(cancelled_a[0].changed_button(), None);
+        for event in cancelled_a {
+            submit_and_pump(&mut runtime, event);
+        }
+        assert_eq!(touch.cancel_device(device_a).len(), 0);
+        assert_retired_contact_cannot_continue(&mut touch, device_a, &context);
+
+        // B remains live and its ordinary movement and Up are not fabricated
+        // into a Cancel merely because device A disconnected.
+        finish_unaffected_contact(
+            &mut touch,
+            &mut runtime,
+            device_b,
+            &context,
+            down_b.pointer_id(),
+        );
+        assert_eq!(touch.active_contact_count(), 0);
+
+        // Device-generation allocation belongs to the host. A successor
+        // generation cannot inherit or reuse any former pointer stream ID.
+        let successor = touch
+            .transition(
+                replacement,
+                7,
+                TouchPhase::Started,
+                point(1.0, 2.0),
+                context,
+            )
+            .unwrap_or_else(|_| unreachable!("successor device starts a distinct contact"));
+        assert_ne!(successor.pointer_id(), down_a.pointer_id());
+        assert_ne!(successor.pointer_id(), down_b.pointer_id());
+        let successor_id = successor.pointer_id().get();
+        submit_and_pump(&mut runtime, successor);
+        for event in touch.cancel_all() {
+            submit_and_pump(&mut runtime, event);
+        }
+
+        assert_exact_touch_stream_closure(
+            &runtime,
+            &[
+                down_a.pointer_id().get(),
+                down_b.pointer_id().get(),
+                successor_id,
+            ],
+        );
+    }
+
+    #[test]
+    fn completed_device_contact_is_not_cancelled_and_foreign_device_remains_live() {
+        let (_, context) = traced_runtime_and_context();
+        let device_a =
+            InputDeviceId::new(41).unwrap_or_else(|| unreachable!("device A is nonzero"));
+        let device_b =
+            InputDeviceId::new(42).unwrap_or_else(|| unreachable!("device B is nonzero"));
+        let mut touch = TouchInputState::default();
+        touch
+            .transition(
+                device_a,
+                5,
+                TouchPhase::Started,
+                point(1.0, 2.0),
+                context.clone(),
+            )
+            .unwrap_or_else(|_| unreachable!("A starts"));
+        touch
+            .transition(
+                device_a,
+                5,
+                TouchPhase::Ended,
+                point(1.0, 2.0),
+                context.clone(),
+            )
+            .unwrap_or_else(|_| unreachable!("A ends"));
+        let down_b = touch
+            .transition(device_b, 5, TouchPhase::Started, point(2.0, 3.0), context)
+            .unwrap_or_else(|_| unreachable!("B starts with the same native ID"));
+        assert_eq!(touch.cancel_device(device_a).len(), 0);
+        assert_eq!(touch.active_contact_count(), 1);
+        let cancelled_b = touch.cancel_device(device_b);
+        assert_eq!(cancelled_b.len(), 1);
+        assert_eq!(cancelled_b[0].pointer_id(), down_b.pointer_id());
+        assert_eq!(cancelled_b[0].device_id(), Some(device_b));
+        assert_eq!(touch.active_contact_count(), 0);
+        assert_eq!(touch.cancel_device(device_b).len(), 0);
     }
 
     #[test]
