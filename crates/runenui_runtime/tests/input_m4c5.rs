@@ -1120,7 +1120,7 @@ fn key_04_unmount_retires_widget_held_key_without_a_fake_terminal_receipt() {
 
 /// Characterizes the FIFO hazard that a focus transfer can commit between
 /// keyboard queue admission and actual callback delivery. Live original A can
-/// receive a committed Down *after* its FocusOut, unlike a Down processed
+/// receive a committed Down *after* its `FocusOut`, unlike a Down processed
 /// before the transfer. This is evidence for #472, not desired new semantics.
 #[test]
 fn key_04_focus_transfer_ahead_of_queued_down_can_rearm_old_unfocused_widget() {
