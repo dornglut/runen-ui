@@ -683,7 +683,10 @@ mod tests {
         let old = pending_down(&mut first, a, physical, &key);
         let mut second = KeyboardInputState::default();
         let unrelated = pending_down(&mut second, a, physical, &key);
-        assert_ne!(old, unrelated, "adapter lifetimes never reuse pending token identity");
+        assert_ne!(
+            old, unrelated,
+            "adapter lifetimes never reuse pending token identity"
+        );
         assert_eq!(
             second.resolve_down_admission(old, KeyboardDownDecision::RejectedBeforeQueue),
             Err(KeyboardDownAdmissionError::StaleOrAlreadyResolved)
@@ -695,7 +698,10 @@ mod tests {
         drop(first);
         let mut replacement = KeyboardInputState::default();
         let fresh = pending_down(&mut replacement, a, physical, &key);
-        assert_ne!(old, fresh, "replacement must not alias the old adapter's first Down");
+        assert_ne!(
+            old, fresh,
+            "replacement must not alias the old adapter's first Down"
+        );
         assert_eq!(
             replacement.resolve_down_admission(old, KeyboardDownDecision::RejectedBeforeQueue),
             Err(KeyboardDownAdmissionError::StaleOrAlreadyResolved)
