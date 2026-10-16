@@ -2216,6 +2216,10 @@ impl ReferenceHost {
         true
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one native callback must keep original admission, held-repeat, text, and failure ordering correlated"
+    )]
     fn handle_keyboard_input(
         &mut self,
         event_loop: &ActiveEventLoop,
