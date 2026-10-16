@@ -812,6 +812,7 @@ impl Widget<FocusHoldAction> for FocusHoldWidget {
         if context.phase() != EventPhase::Target {
             return WidgetEventOutput::none();
         }
+        let mut changed = false;
         match event {
             UiEvent::Keyboard(key) => {
                 if let Some(device) = key.device_id() {
@@ -820,22 +821,30 @@ impl Widget<FocusHoldAction> for FocusHoldWidget {
                         KeyboardPhase::Down if !key.is_repeat() => {
                             if !state.contains(&identity) {
                                 state.push(identity);
+                                changed = true;
                             }
                         }
                         KeyboardPhase::Up | KeyboardPhase::Cancel => {
+                            let before = state.len();
                             state.retain(|existing| existing != &identity);
+                            changed = state.len() != before;
                         }
                         _ => {}
                     }
                 }
             }
             UiEvent::Focus(focus) if focus.kind() == FocusEventKind::Out => {
+                changed = !state.is_empty();
                 state.clear();
             }
             _ => {}
         }
         self.held_devices.borrow_mut().clone_from(state);
-        WidgetEventOutput::none()
+        if changed {
+            WidgetEventOutput::changed()
+        } else {
+            WidgetEventOutput::none()
+        }
     }
 
     fn unmount(&self, state: &mut Self::State, _: &mut runenui_core::WidgetUnmountContext) {
