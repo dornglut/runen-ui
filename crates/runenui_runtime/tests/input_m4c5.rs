@@ -1308,7 +1308,12 @@ fn text_04_focus_transfer_ahead_of_queued_text_commit_reaches_old_recipient() {
         .unwrap_or_else(|_| unreachable!("A is still focused at text queue admission"))
         .sequence();
     let batch = runtime
-        .pump(PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX))
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
         .unwrap_or_else(|_| unreachable!("focus then text FIFO pump"));
     assert_eq!(
         runtime.focus().focused_node(),
