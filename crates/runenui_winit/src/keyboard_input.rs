@@ -322,15 +322,20 @@ impl KeyboardInputState {
         }
     }
 
-    /// Cancel only original Down generations that might have entered M13.
-    /// `RejectedBeforeQueue` entries carry no M13 press, and do not fabricate
-    /// terminal M13 Cancel receipts on device removal.
+    /// Atomically cancel source keys only after their original Down admissions
+    /// are resolved. Unknown queue admission must never fabricate a Cancel.
     pub fn cancel_device(
         &mut self,
         device_id: InputDeviceId,
         modifiers: KeyModifiers,
         composition: KeyboardCompositionState,
-    ) -> Vec<KeyboardEvent> {
+    ) -> Result<Vec<KeyboardEvent>, KeyboardIngressFailure> {
+        if self.pressed.iter().any(|pressed| {
+            pressed.device_id == device_id
+                && matches!(pressed.admission, DownAdmission::Pending(_))
+        }) {
+            return Err(KeyboardIngressFailure::UnresolvedOriginalDownAdmission);
+        }
         let mut cancelled = Vec::new();
         self.pressed.retain(|pressed| {
             if pressed.device_id != device_id {
@@ -341,19 +346,28 @@ impl KeyboardInputState {
             }
             false
         });
-        cancelled
+        Ok(cancelled)
     }
 
+    /// Atomically cancel all keys after checking every original admission.
     pub fn cancel_all(
         &mut self,
         modifiers: KeyModifiers,
         composition: KeyboardCompositionState,
-    ) -> Vec<KeyboardEvent> {
-        self.pressed
+    ) -> Result<Vec<KeyboardEvent>, KeyboardIngressFailure> {
+        if self
+            .pressed
+            .iter()
+            .any(|pressed| matches!(pressed.admission, DownAdmission::Pending(_)))
+        {
+            return Err(KeyboardIngressFailure::UnresolvedOriginalDownAdmission);
+        }
+        Ok(self
+            .pressed
             .drain(..)
             .filter(|pressed| pressed.admission != DownAdmission::RejectedBeforeQueue)
             .map(|pressed| cancelled_key(pressed, modifiers, composition))
-            .collect()
+            .collect())
     }
 
     #[cfg(test)]

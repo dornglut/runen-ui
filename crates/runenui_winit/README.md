@@ -30,15 +30,16 @@ Pending original Down generations fail closed on repeats **and physical or
 synthetic release**. An unresolved Up/Cancel returns the typed fatal
 `KeyboardIngressFailure::UnresolvedOriginalDownAdmission` without erasing the
 pending entry or fabricating a terminal runtime event. Whole-source/device
-retirement still exposes unresolved Cancels for mandatory host M13 handling;
-it is not a way to downgrade an unacknowledged original Down. Rejected generations
+retirement returns an **atomic typed failure** if any affected original Down
+is Pending, without erasing the physical entry or fabricating a Cancel. The
+host MUST fail closed, not downgrade the unresolved admission. Rejected generations
 remain in the existing adapter pressed-key collection as physical tombstones.
 Their repeats and authentic Up are suppressed as **UI events** (not physical
 observations), and device/source cancellation produces no fictitious M13 Cancel.
 Queued generations emit Up/Cancel and require normal M13 scope/finality handling.
 Pending generations cannot issue ordinary Up until their exact admission decision;
-if retirement occurs first, their generated device/source Cancel remains mandatory
-and cannot be reclassified as never-admitted.
+if retirement occurs first, the typed failure is mandatory and cannot be
+reclassified as never-admitted.
 
 Admission tokens contain one checked adapter-lifetime identity and one
 nonwrapping per-adapter Down generation: they cannot acknowledge

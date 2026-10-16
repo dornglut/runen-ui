@@ -603,9 +603,19 @@ impl CounterHost {
     }
 
     fn cancel_keyboard_authority(&mut self, event_loop: &ActiveEventLoop) -> bool {
-        let events = self
+        let events = match self
             .keyboard
-            .cancel_all(self.modifiers, KeyboardCompositionState::Inactive);
+            .cancel_all(self.modifiers, KeyboardCompositionState::Inactive)
+        {
+            Ok(events) => events,
+            Err(error) => {
+                self.fail(
+                    event_loop,
+                    &format!("unresolved native key admission at source cancellation: {error:?}"),
+                );
+                return false;
+            }
+        };
         for event in events {
             if self.submit_keyboard_event(event_loop, event).is_none() {
                 return false;

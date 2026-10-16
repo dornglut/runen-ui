@@ -1953,9 +1953,19 @@ impl ReferenceHost {
     }
 
     fn cancel_keyboard_authority(&mut self, event_loop: &ActiveEventLoop, reason: &str) -> bool {
-        let events = self
+        let events = match self
             .keyboard
-            .cancel_all(self.modifiers, self.text_input.keyboard_composition_state());
+            .cancel_all(self.modifiers, self.text_input.keyboard_composition_state())
+        {
+            Ok(events) => events,
+            Err(error) => {
+                self.fail(
+                    event_loop,
+                    &format!("unresolved native key admission at {reason}: {error:?}"),
+                );
+                return false;
+            }
+        };
         if events.is_empty() {
             return true;
         }
