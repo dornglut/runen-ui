@@ -1220,6 +1220,65 @@ fn key_04_focus_transfer_ahead_of_queued_down_can_rearm_old_unfocused_widget() {
         vec![(device, PhysicalKey::Code(String::from("KeyW")))],
         "a later committed Down reached A after its only FocusOut"
     );
+
+    // The final focused mounted ID can also equal the admission target even
+    // though its original focus lifetime was retired in the intervening FIFO.
+    // A target-equality-only processing guard would not catch this ABA case.
+    let a_returned = Rc::new(RefCell::new(Vec::new()));
+    let mut focus_left_and_returned = AppRuntime::<FocusHoldApp>::mount(FocusHoldState {
+        a: Rc::clone(&a_returned),
+        b: Rc::new(RefCell::new(Vec::new())),
+        a_present: true,
+    });
+    settle_hold(&mut focus_left_and_returned);
+    focus_hold(&mut focus_left_and_returned, "hold-a");
+    let original_a = focus_left_and_returned
+        .focus()
+        .focused_node()
+        .unwrap_or_else(|| unreachable!("A focused for original admission"))
+        .clone();
+    let intermediate_b = get_b(&mut focus_left_and_returned);
+    focus_left_and_returned
+        .submit_command(
+            intermediate_b,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("first focus transfer is queued"));
+    focus_left_and_returned
+        .submit_command(
+            original_a.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus return is queued"));
+    let aba_receipt = focus_left_and_returned
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("Down admitted while original A is focused"))
+        .sequence();
+    let aba_batch = focus_left_and_returned
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("A-B-A-before-Down FIFO pump"));
+    assert_eq!(
+        focus_left_and_returned.focus().focused_node(),
+        Some(&original_a),
+        "the final mounted focus target equals the admission target"
+    );
+    assert!(aba_batch.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(settled)
+            if settled.sequence() == aba_receipt
+                && matches!(
+                    settled.finality(),
+                    UiInputFinality::Committed(facts)
+                        if matches!(facts.route(), UiInputRoute::Routed { target } if target == &original_a)
+                )
+    )));
+    assert_eq!(
+        *a_returned.borrow(),
+        vec![(device, PhysicalKey::Code(String::from("KeyW")))],
+        "the old queued Down rearms A after FocusOut and FocusIn of a new focus lifetime"
+    );
 }
 
 /// Queue admission is not an accepted original-key interaction lifetime.
