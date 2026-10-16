@@ -1168,7 +1168,10 @@ fn key_04_focus_transfer_ahead_of_queued_down_can_rearm_old_unfocused_widget() {
         )
         .unwrap_or_else(|_| unreachable!("B focus queues second"));
     settle_hold(&mut delivered_before_focus);
-    assert!(a_first.borrow().is_empty(), "Down then FocusOut retires old state");
+    assert!(
+        a_first.borrow().is_empty(),
+        "Down then FocusOut retires old state"
+    );
 
     let a_late = Rc::new(RefCell::new(Vec::new()));
     let mut focus_before_delivery = AppRuntime::<FocusHoldApp>::mount(FocusHoldState {
@@ -1198,7 +1201,10 @@ fn key_04_focus_transfer_ahead_of_queued_down_can_rearm_old_unfocused_widget() {
     let batch = focus_before_delivery
         .pump(budget())
         .unwrap_or_else(|_| unreachable!("exact FIFO focus-then-down pump"));
-    assert_eq!(focus_before_delivery.focus().focused_node(), Some(&b_target));
+    assert_eq!(
+        focus_before_delivery.focus().focused_node(),
+        Some(&b_target)
+    );
     assert!(batch.ordered_records().iter().any(|record| matches!(
         record,
         InputArbitrationRecord::InputSettled(settled)
