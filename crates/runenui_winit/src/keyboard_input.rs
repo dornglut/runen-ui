@@ -80,9 +80,10 @@ pub enum KeyboardIngressDiagnostic {
     ReleaseOfRejectedDown,
 }
 
-/// Failure to preserve the native keyboard ingress contract. Unlike ordinary
-/// suppressed OS events, this MUST terminate the embedding host's input
-/// authority; it is not a UI nonclaim or gameplay permission.
+/// An unrepresentable native keyboard ingress failure.
+///
+/// Unlike ordinary suppressed OS events, this MUST terminate the embedding
+/// host's input authority; it is not a UI nonclaim or gameplay permission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum KeyboardIngressFailure {
     AdmissionIdentityExhausted,
