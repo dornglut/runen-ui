@@ -822,7 +822,7 @@ impl Widget<()> for FocusHoldWidget {
                         KeyboardPhase::Up | KeyboardPhase::Cancel => {
                             held.retain(|existing| *existing != device);
                         }
-                        KeyboardPhase::Down => {}
+                        _ => {}
                     }
                 }
             }
