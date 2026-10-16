@@ -2257,9 +2257,22 @@ impl ReferenceHost {
         let Some(device_id) = self.resolve_native_device_id(event_loop, native_device_id) else {
             return;
         };
-        // Do not infer a pre-queue keyboard rejection from a partial focus
-        // projection. Let the canonical runtime decide admission; the
-        // translator then retains a rejected physical generation until Up.
+        // No new UI work is required for a repeat when the native reference
+        // host has no focused target. Preserve the adapter's original key
+        // lifetime; a later Up/device loss still owns its terminal path.
+        // Original nonrepeat Down MUST enter the adapter and canonical runtime
+        // so a genuine NoFocusedTarget rejection is explicitly acknowledged.
+        if event.repeat
+            && matches!(event.state, ElementState::Pressed)
+            && !is_synthetic
+            && self.runtime.focus().focused_node().is_none()
+        {
+            self.note_keyboard_ingress_diagnostic(
+                KeyboardIngressDiagnostic::NoFocusedRuntimeTarget,
+            );
+            return;
+        }
+
         let composition = self.text_input.keyboard_composition_state();
         let transition = NativeKeyTransition::from_event(event, is_synthetic);
         let outcome = self
