@@ -25,7 +25,8 @@ use accessibility::{AccessibilityEvent, SemanticAdapter};
 use device_identity::{DeviceIdentityError, DeviceIdentityMap};
 use framework_services::NativeFrameworkServices;
 use keyboard_input::{
-    KeyboardIngressDiagnostic, KeyboardInputOutcome, KeyboardInputState, NativeKeyTransition,
+    KeyboardDownDecision, KeyboardIngressDiagnostic, KeyboardInputOutcome, KeyboardInputState,
+    NativeKeyTransition,
 };
 use mouse_input::{
     MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
@@ -1425,27 +1426,33 @@ impl ReferenceHost {
         self.request_pending_redraw();
     }
 
+    /// Queue admission is not M13 processing/finality. Return the exact
+    /// pre-queue disposition to the adapter only for the original Down.
     fn submit_keyboard_event(
         &mut self,
         event_loop: &ActiveEventLoop,
         event: KeyboardEvent,
         stage: &str,
-    ) -> bool {
+    ) -> Option<KeyboardDownDecision> {
         proof!("stage=keyboard_translated source={stage:?} event={event:?}");
         match self.runtime.submit_keyboard(event) {
-            Ok(_) => true,
-            Err(error) if error.kind() == SubmitKeyboardErrorKind::NoFocusedTarget => {
+            Ok(_) => Some(KeyboardDownDecision::Queued),
+            Err(error)
+                if error.kind() == SubmitKeyboardErrorKind::NoFocusedTarget
+                    && error.event().phase() == runenui_core::KeyboardPhase::Down
+                    && !error.event().is_repeat() =>
+            {
                 self.note_keyboard_ingress_diagnostic(
                     KeyboardIngressDiagnostic::NoFocusedRuntimeTarget,
                 );
-                true
+                Some(KeyboardDownDecision::RejectedBeforeQueue)
             }
             Err(error) => {
                 self.fail(
                     event_loop,
                     &format!("{stage} could not enter runtime input: {error}"),
                 );
-                false
+                None
             }
         }
     }
@@ -1954,7 +1961,10 @@ impl ReferenceHost {
         }
         eprintln!("reference_winit keyboard lifetimes cancelled: {reason}");
         for event in events {
-            if !self.submit_keyboard_event(event_loop, event, "native keyboard cancellation") {
+            if self
+                .submit_keyboard_event(event_loop, event, "native keyboard cancellation")
+                .is_none()
+            {
                 return false;
             }
         }
@@ -2263,7 +2273,10 @@ impl ReferenceHost {
             .keyboard
             .key_input(device_id, &transition, self.modifiers, composition);
         match outcome {
-            KeyboardInputOutcome::Submit(keyboard_event) => {
+            KeyboardInputOutcome::Submit {
+                event: keyboard_event,
+                down_admission,
+            } => {
                 let committed_text = keyboard_committed_text_candidate(
                     event.state,
                     is_synthetic,
@@ -2274,11 +2287,20 @@ impl ReferenceHost {
                 )
                 .map(str::to_owned);
                 self.last_keyboard_ingress_diagnostic = None;
-                if !self.submit_keyboard_event(
+                let Some(decision) = self.submit_keyboard_event(
                     event_loop,
                     keyboard_event,
                     "native keyboard translation",
-                ) {
+                ) else {
+                    return;
+                };
+                if let Some(admission) = down_admission
+                    && let Err(error) = self.keyboard.resolve_down_admission(admission, decision)
+                {
+                    self.fail(
+                        event_loop,
+                        &format!("original keyboard admission lifetime changed: {error:?}"),
+                    );
                     return;
                 }
                 if let Some(text) = committed_text
