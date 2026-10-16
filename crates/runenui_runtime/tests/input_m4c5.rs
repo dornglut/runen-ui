@@ -793,11 +793,11 @@ fn key_04_keyboard_rejections_preserve_the_owned_event_and_runtime_state() {
 /// state belongs to the mounted widget; this Rc is a read-only test projection.
 #[derive(Debug)]
 struct FocusHoldWidget {
-    held_devices: Rc<RefCell<Vec<InputDeviceId>>>,
+    held_devices: Rc<RefCell<Vec<(InputDeviceId, PhysicalKey)>>>,
 }
 
 impl Widget<FocusHoldAction> for FocusHoldWidget {
-    type State = Vec<InputDeviceId>;
+    type State = Vec<(InputDeviceId, PhysicalKey)>;
 
     fn create_state(&self) -> Self::State {
         Vec::new()
@@ -815,14 +815,15 @@ impl Widget<FocusHoldAction> for FocusHoldWidget {
         match event {
             UiEvent::Keyboard(key) => {
                 if let Some(device) = key.device_id() {
+                    let identity = (device, key.physical_key().clone());
                     match key.phase() {
                         KeyboardPhase::Down if !key.is_repeat() => {
-                            if !state.contains(&device) {
-                                state.push(device);
+                            if !state.contains(&identity) {
+                                state.push(identity);
                             }
                         }
                         KeyboardPhase::Up | KeyboardPhase::Cancel => {
-                            state.retain(|existing| *existing != device);
+                            state.retain(|existing| existing != &identity);
                         }
                         _ => {}
                     }
@@ -852,8 +853,8 @@ enum FocusHoldAction {
 
 #[derive(Debug)]
 struct FocusHoldState {
-    a: Rc<RefCell<Vec<InputDeviceId>>>,
-    b: Rc<RefCell<Vec<InputDeviceId>>>,
+    a: Rc<RefCell<Vec<(InputDeviceId, PhysicalKey)>>>,
+    b: Rc<RefCell<Vec<(InputDeviceId, PhysicalKey)>>>,
     a_present: bool,
 }
 
@@ -886,7 +887,7 @@ impl UiApp for FocusHoldApp {
         );
         container(
             FocusHoldWidget {
-                held_devices: Rc::clone(&state.a),
+                held_devices: Rc::new(RefCell::new(Vec::new())),
             },
             children,
         )
@@ -970,7 +971,10 @@ fn key_04_focusout_retires_widget_holds_without_original_key_capture() {
         .submit_keyboard(key(KeyboardPhase::Down, device_a))
         .unwrap_or_else(|_| unreachable!("original A Down admitted"));
     settle_hold(&mut runtime);
-    assert_eq!(*a.borrow(), vec![device_a]);
+    assert_eq!(
+        *a.borrow(),
+        vec![(device_a, PhysicalKey::Code(String::from("KeyW")))]
+    );
     assert!(b.borrow().is_empty());
 
     focus_hold(&mut runtime, "hold-b");
@@ -979,7 +983,10 @@ fn key_04_focusout_retires_widget_holds_without_original_key_capture() {
         .submit_keyboard(key(KeyboardPhase::Down, device_b))
         .unwrap_or_else(|_| unreachable!("independent B Down admitted"));
     settle_hold(&mut runtime);
-    assert_eq!(*b.borrow(), vec![device_b]);
+    assert_eq!(
+        *b.borrow(),
+        vec![(device_b, PhysicalKey::Code(String::from("KeyW")))]
+    );
 
     runtime
         .submit_keyboard(key(KeyboardPhase::Up, device_a))
@@ -987,8 +994,8 @@ fn key_04_focusout_retires_widget_holds_without_original_key_capture() {
     settle_hold(&mut runtime);
     assert_eq!(
         *b.borrow(),
-        vec![device_b],
-        "foreign A Up cannot retire B's device-qualified Down"
+        vec![(device_b, PhysicalKey::Code(String::from("KeyW")))],
+        "foreign A Up cannot retire B's device+physical Down"
     );
     focus_hold(&mut runtime, "hold-a");
     assert!(a.borrow().is_empty());
@@ -1044,7 +1051,10 @@ fn key_04_unmount_retires_widget_held_key_without_a_fake_terminal_receipt() {
             if input.sequence() == receipt
                 && matches!(input.finality(), UiInputFinality::Committed(_))
     )));
-    assert_eq!(*a.borrow(), vec![device]);
+    assert_eq!(
+        *a.borrow(),
+        vec![(device, PhysicalKey::Code(String::from("KeyW")))]
+    );
 
     runtime
         .submit_action(FocusHoldAction::RemoveA)
