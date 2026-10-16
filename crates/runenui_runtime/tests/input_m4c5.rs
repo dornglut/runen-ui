@@ -10,10 +10,11 @@ use runenui_core::{
     WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetTextInput, container,
 };
 use runenui_runtime::{
-    AppRuntime, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason,
-    SubmitAutomationErrorKind, SubmitCommandErrorKind, SubmitCompositionErrorKind,
-    SubmitKeyboardErrorKind, SubmitTextErrorKind, TraceAutomationRecordRole, TraceConfig,
-    TraceDeliveryOutcome, TraceInputRecordRole, TraceRecord, TraceRecordKind,
+    AppRuntime, InputArbitrationRecord, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus,
+    RuntimeTerminalReason, SubmitAutomationErrorKind, SubmitCommandErrorKind,
+    SubmitCompositionErrorKind, SubmitKeyboardErrorKind, SubmitTextErrorKind,
+    TraceAutomationRecordRole, TraceConfig, TraceDeliveryOutcome, TraceInputRecordRole, TraceRecord,
+    TraceRecordKind, UiInputFinality, UiInputProcessingRejection, UiInputRoute,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -786,6 +787,91 @@ fn key_04_keyboard_rejections_preserve_the_owned_event_and_runtime_state() {
     assert_eq!(error.kind(), SubmitKeyboardErrorKind::Full);
     assert_eq!(error.into_event(), event);
     assert_eq!(full.state().activations, 0);
+}
+
+/// Queue admission is not an accepted original-key interaction lifetime.
+/// The same final missing focus can follow either a committed Down or a Down
+/// invalidated before processing; a future continuation cannot be minted
+/// solely from the original submission receipt or final focus snapshot.
+#[test]
+fn key_04_admitted_down_finality_depends_on_fifo_order_before_focus_removal() {
+    let key = || {
+        keyboard(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("KeyW")),
+            LogicalKey::Character(String::from("w")),
+            false,
+            None,
+        )
+    };
+    let budget = || PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX);
+
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut delivered_first = mounted(InputState::standard(Rc::clone(&log)));
+    focus(&mut delivered_first, "target");
+    let initial_target = target(&mut delivered_first, "target");
+    let delivered_sequence = delivered_first
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("focused original Down must queue"))
+        .sequence();
+    delivered_first
+        .submit_action(InputAction::Remove)
+        .unwrap_or_else(|_| unreachable!("later removal must queue"));
+    let delivery = delivered_first
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("ordered commit and removal"))
+        .ordered_records()
+        .to_vec();
+    let delivered = delivery.iter().find_map(|record| match record {
+        InputArbitrationRecord::InputSettled(settled)
+            if settled.sequence() == delivered_sequence =>
+        {
+            Some(settled)
+        }
+        _ => None,
+    });
+    assert!(matches!(
+        delivered.map(|settled| settled.finality()),
+        Some(UiInputFinality::Committed(facts))
+            if matches!(facts.route(), UiInputRoute::Routed { target } if target == &initial_target)
+    ));
+    assert!(
+        delivered_first.focus().focused_node().is_none(),
+        "after the later removal the final focus is absent"
+    );
+
+    let mut removed_first = mounted(InputState::standard(log));
+    focus(&mut removed_first, "target");
+    removed_first
+        .submit_action(InputAction::Remove)
+        .unwrap_or_else(|_| unreachable!("earlier removal must queue"));
+    let invalidated_sequence = removed_first
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("original focus still exists at queue admission"))
+        .sequence();
+    let invalidated = removed_first
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("ordered removal and input rejection"))
+        .ordered_records()
+        .to_vec();
+    let rejected = invalidated.iter().find_map(|record| match record {
+        InputArbitrationRecord::InputSettled(settled)
+            if settled.sequence() == invalidated_sequence =>
+        {
+            Some(settled.finality())
+        }
+        _ => None,
+    });
+    assert!(matches!(
+        rejected,
+        Some(UiInputFinality::ProcessingRejected(
+            UiInputProcessingRejection::StaleTarget | UiInputProcessingRejection::MissingTarget
+        ))
+    ));
+    assert!(
+        removed_first.focus().focused_node().is_none(),
+        "both FIFO orders finish with the same missing focus"
+    );
 }
 
 /// Characterizes accepted ADR 0005's focus-relative keyboard routing.
