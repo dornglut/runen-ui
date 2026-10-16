@@ -789,20 +789,23 @@ fn key_04_keyboard_rejections_preserve_the_owned_event_and_runtime_state() {
     assert_eq!(full.state().activations, 0);
 }
 
-/// Models an independent ordinary widget's per-device held-key state.
+/// Models ordinary widget-local per-device key state. The canonical held
+/// state belongs to the mounted widget; this Rc is a read-only test projection.
 #[derive(Debug)]
 struct FocusHoldWidget {
     held_devices: Rc<RefCell<Vec<InputDeviceId>>>,
 }
 
 impl Widget<FocusHoldAction> for FocusHoldWidget {
-    type State = ();
+    type State = Vec<InputDeviceId>;
 
-    fn create_state(&self) -> Self::State {}
+    fn create_state(&self) -> Self::State {
+        Vec::new()
+    }
 
     fn event(
         &mut self,
-        (): &mut Self::State,
+        state: &mut Self::State,
         event: &UiEvent,
         context: &mut EventContext<'_, FocusHoldAction>,
     ) -> WidgetEventOutput {
@@ -812,29 +815,30 @@ impl Widget<FocusHoldAction> for FocusHoldWidget {
         match event {
             UiEvent::Keyboard(key) => {
                 if let Some(device) = key.device_id() {
-                    let mut held = self.held_devices.borrow_mut();
                     match key.phase() {
                         KeyboardPhase::Down if !key.is_repeat() => {
-                            if !held.contains(&device) {
-                                held.push(device);
+                            if !state.contains(&device) {
+                                state.push(device);
                             }
                         }
                         KeyboardPhase::Up | KeyboardPhase::Cancel => {
-                            held.retain(|existing| *existing != device);
+                            state.retain(|existing| *existing != device);
                         }
                         _ => {}
                     }
                 }
             }
             UiEvent::Focus(focus) if focus.kind() == FocusEventKind::Out => {
-                self.held_devices.borrow_mut().clear();
+                state.clear();
             }
             _ => {}
         }
+        *self.held_devices.borrow_mut() = state.clone();
         WidgetEventOutput::none()
     }
 
-    fn unmount(&self, (): &mut Self::State, _: &mut runenui_core::WidgetUnmountContext) {
+    fn unmount(&self, state: &mut Self::State, _: &mut runenui_core::WidgetUnmountContext) {
+        state.clear();
         self.held_devices.borrow_mut().clear();
     }
 }
