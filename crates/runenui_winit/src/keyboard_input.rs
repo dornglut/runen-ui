@@ -649,6 +649,45 @@ mod tests {
     }
 
     #[test]
+    fn pending_source_cancellation_is_atomic_and_does_not_affect_another_keyboard() {
+        let mut keyboard = KeyboardInputState::default();
+        let a = device(106);
+        let b = device(107);
+        let logical = WinitKey::Character("w".into());
+        let physical = WinitPhysicalKey::Code(KeyCode::KeyW);
+        let pending_a = pending_down(&mut keyboard, a, physical, &logical);
+        let queued_b = pending_down(&mut keyboard, b, physical, &logical);
+        keyboard
+            .resolve_down_admission(queued_b, KeyboardDownDecision::Queued)
+            .expect("B was queued");
+
+        assert!(matches!(
+            keyboard.cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive),
+            Err(KeyboardIngressFailure::UnresolvedOriginalDownAdmission)
+        ));
+        assert!(matches!(
+            keyboard.cancel_all(KeyModifiers::NONE, KeyboardCompositionState::Inactive),
+            Err(KeyboardIngressFailure::UnresolvedOriginalDownAdmission)
+        ));
+        assert_eq!(keyboard.pressed_len(), 2, "neither failure removed a key");
+        let b_cancels = keyboard
+            .cancel_device(b, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
+            .expect("B is independently admitted");
+        assert_eq!(b_cancels.len(), 1);
+        assert_eq!(b_cancels[0].device_id(), Some(b));
+        assert_eq!(keyboard.pressed_len(), 1);
+        assert_eq!(
+            keyboard.resolve_down_admission(pending_a, KeyboardDownDecision::RejectedBeforeQueue),
+            Ok(())
+        );
+        let a_cancels = keyboard
+            .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
+            .expect("A's original Down was rejected before queue");
+        assert!(a_cancels.is_empty());
+        assert_eq!(keyboard.pressed_len(), 0);
+    }
+
+    #[test]
     fn rejected_original_down_retains_only_physical_tombstone_until_authentic_up() {
         let mut keyboard = KeyboardInputState::default();
         let a = device(81);
@@ -705,6 +744,7 @@ mod tests {
         assert_eq!(
             keyboard
                 .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
+                .expect("all affected original Downs are resolved")
                 .len(),
             1,
         );
@@ -728,6 +768,7 @@ mod tests {
         assert_eq!(
             keyboard
                 .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
+                .expect("all affected original Downs are resolved")
                 .len(),
             0
         );
@@ -763,15 +804,22 @@ mod tests {
             .resolve_down_admission(queued, KeyboardDownDecision::Queued)
             .unwrap_or_else(|error| unreachable!("expected live original admission: {error:?}"));
         let pending = pending_down(&mut keyboard, a, WinitPhysicalKey::Code(KeyCode::KeyZ), &x);
-        let cancels = keyboard.cancel_all(KeyModifiers::NONE, KeyboardCompositionState::Inactive);
-        assert_eq!(cancels.len(), 2);
+        assert!(matches!(
+            keyboard.cancel_all(KeyModifiers::NONE, KeyboardCompositionState::Inactive),
+            Err(KeyboardIngressFailure::UnresolvedOriginalDownAdmission)
+        ));
+        assert_eq!(keyboard.pressed_len(), 3, "failure must be atomic");
+        assert_eq!(
+            keyboard.resolve_down_admission(pending, KeyboardDownDecision::RejectedBeforeQueue),
+            Ok(())
+        );
+        let cancels = keyboard
+            .cancel_all(KeyModifiers::NONE, KeyboardCompositionState::Inactive)
+            .expect("all affected original Downs are now resolved");
+        assert_eq!(cancels.len(), 1);
         assert_eq!(
             cancels[0].physical_key(),
             &NeutralPhysicalKey::Code(String::from("KeyX"))
-        );
-        assert_eq!(
-            cancels[1].physical_key(),
-            &NeutralPhysicalKey::Code(String::from("KeyZ"))
         );
         assert_eq!(
             keyboard.resolve_down_admission(pending, KeyboardDownDecision::RejectedBeforeQueue),
@@ -1200,12 +1248,20 @@ mod tests {
         let logical = WinitKey::Character("a".into());
         let physical = WinitPhysicalKey::Code(KeyCode::KeyA);
         let down = transition(ElementState::Pressed, physical, &logical, false, false);
-        let down_a = submitted(keyboard.key_input(
+        let KeyboardInputOutcome::Submit {
+            event: down_a,
+            down_admission: Some(admission_a),
+        } = keyboard.key_input(
             a,
             &down,
             KeyModifiers::NONE,
             KeyboardCompositionState::Inactive,
-        ));
+        ) else {
+            unreachable!("original A Down has one admission token");
+        };
+        keyboard
+            .resolve_down_admission(admission_a, KeyboardDownDecision::Queued)
+            .expect("A original Down is queued");
         let KeyboardInputOutcome::Submit {
             event: down_b,
             down_admission: Some(admission_b),
@@ -1225,8 +1281,9 @@ mod tests {
         assert_eq!(down_b.device_id(), Some(b));
         assert_eq!(keyboard.pressed_len(), 2);
 
-        let cancelled =
-            keyboard.cancel_device(a, KeyModifiers::SHIFT, KeyboardCompositionState::Active);
+        let cancelled = keyboard
+            .cancel_device(a, KeyModifiers::SHIFT, KeyboardCompositionState::Active)
+            .expect("A original Down is queued");
         assert_eq!(cancelled.len(), 1);
         assert_eq!(cancelled[0].phase(), KeyboardPhase::Cancel);
         assert_eq!(cancelled[0].device_id(), Some(a));
@@ -1241,6 +1298,7 @@ mod tests {
         assert_eq!(
             keyboard
                 .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
+                .expect("all affected original Downs are resolved")
                 .len(),
             0
         );
@@ -1295,15 +1353,14 @@ mod tests {
             (a, WinitPhysicalKey::Code(KeyCode::KeyC), &logical_c),
             (b, WinitPhysicalKey::Code(KeyCode::KeyC), &logical_c),
         ] {
-            let _ = submitted(keyboard.key_input(
-                device,
-                &transition(ElementState::Pressed, physical, logical, false, false),
-                KeyModifiers::NONE,
-                KeyboardCompositionState::Inactive,
-            ));
+            let admission = pending_down(&mut keyboard, device, physical, logical);
+            keyboard
+                .resolve_down_admission(admission, KeyboardDownDecision::Queued)
+                .expect("original Down is queued");
         }
-        let cancelled =
-            keyboard.cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive);
+        let cancelled = keyboard
+            .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
+            .expect("A originals are queued");
         assert_eq!(cancelled.len(), 2);
         assert_eq!(
             cancelled[0].physical_key(),
@@ -1315,8 +1372,9 @@ mod tests {
         );
         assert!(cancelled.iter().all(|key| key.device_id() == Some(a)));
         assert_eq!(keyboard.pressed_len(), 2);
-        let b_cancelled =
-            keyboard.cancel_all(KeyModifiers::ALT, KeyboardCompositionState::Inactive);
+        let b_cancelled = keyboard
+            .cancel_all(KeyModifiers::ALT, KeyboardCompositionState::Inactive)
+            .expect("B originals are queued");
         assert_eq!(b_cancelled.len(), 2);
         assert!(b_cancelled.iter().all(|key| key.device_id() == Some(b)));
         assert_eq!(keyboard.pressed_len(), 0);
@@ -1337,15 +1395,15 @@ mod tests {
                 &logical_enter,
             ),
         ] {
-            let _event = submitted(keyboard.key_input(
-                device,
-                &transition(ElementState::Pressed, physical, logical, false, false),
-                KeyModifiers::NONE,
-                KeyboardCompositionState::Inactive,
-            ));
+            let admission = pending_down(&mut keyboard, device, physical, logical);
+            keyboard
+                .resolve_down_admission(admission, KeyboardDownDecision::Queued)
+                .expect("original Down is queued");
         }
 
-        let cancelled = keyboard.cancel_all(KeyModifiers::META, KeyboardCompositionState::Inactive);
+        let cancelled = keyboard
+            .cancel_all(KeyModifiers::META, KeyboardCompositionState::Inactive)
+            .expect("all original Downs are queued");
         assert_eq!(cancelled.len(), 2);
         assert_eq!(cancelled[0].device_id(), Some(device_a));
         assert_eq!(cancelled[1].device_id(), Some(device_b));
