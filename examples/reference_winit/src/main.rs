@@ -2216,10 +2216,6 @@ impl ReferenceHost {
         true
     }
 
-    #[allow(
-        clippy::too_many_lines,
-        reason = "one original OS keyboard callback keeps admission, text commitment, and failure handling ordered"
-    )]
     fn handle_keyboard_input(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -2261,16 +2257,9 @@ impl ReferenceHost {
         let Some(device_id) = self.resolve_native_device_id(event_loop, native_device_id) else {
             return;
         };
-        if matches!(event.state, ElementState::Pressed)
-            && !is_synthetic
-            && self.runtime.focus().focused_node().is_none()
-        {
-            self.note_keyboard_ingress_diagnostic(
-                KeyboardIngressDiagnostic::NoFocusedRuntimeTarget,
-            );
-            return;
-        }
-
+        // Do not infer a pre-queue keyboard rejection from a partial focus
+        // projection. Let the canonical runtime decide admission; the
+        // translator then retains a rejected physical generation until Up.
         let composition = self.text_input.keyboard_composition_state();
         let transition = NativeKeyTransition::from_event(event, is_synthetic);
         let outcome = self
