@@ -895,6 +895,118 @@ fn key_04_cancel_after_original_focus_removed_has_no_fake_queue_admission() {
     assert_eq!(rejected.into_event(), cancel);
 }
 
+/// An authentic physical Up is also an ordinary focus-relative event under
+/// ADR 0005. This test does not authorize using it for device-loss cleanup.
+#[test]
+fn key_04_physical_up_after_focus_transfer_targets_new_focus() {
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut state = InputState::standard(Rc::clone(&log));
+    state.observe_focus = true;
+    let mut runtime = mounted(state);
+    let device = InputDeviceId::new(59).unwrap_or_else(|| unreachable!("nonzero device"));
+    let physical = PhysicalKey::Code(String::from("KeyW"));
+    let logical = LogicalKey::Character(String::from("w"));
+    focus(&mut runtime, "target");
+    runtime
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Down,
+            physical.clone(),
+            logical.clone(),
+            false,
+            Some(device),
+        ))
+        .unwrap_or_else(|_| unreachable!("focused Down must enter the queue"));
+    settle(&mut runtime);
+    clear_log(&runtime);
+    focus(&mut runtime, "other");
+    let events = log.borrow();
+    assert!(events.iter().any(|entry| {
+        entry.node == "target"
+            && entry.phase == Some(EventPhase::Target)
+            && entry.input == ObservedInput::Focus(FocusEventKind::Out)
+    }));
+    drop(events);
+    clear_log(&runtime);
+    runtime
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Up,
+            physical,
+            logical,
+            false,
+            Some(device),
+        ))
+        .unwrap_or_else(|_| unreachable!("current new focus admits physical Up"));
+    settle(&mut runtime);
+    let events = log.borrow();
+    assert!(events.iter().any(|entry| {
+        entry.node == "other"
+            && entry.phase == Some(EventPhase::Target)
+            && entry.input == ObservedInput::Keyboard(KeyboardPhase::Up)
+    }));
+    assert!(!events.iter().any(|entry| {
+        entry.node == "target"
+            && entry.phase == Some(EventPhase::Target)
+            && entry.input == ObservedInput::Keyboard(KeyboardPhase::Up)
+    }));
+}
+
+/// Matching a mounted node ID after focus A→B→A does not prove that an Up
+/// belongs to the original focus lifetime. No runtime key lease is inferred.
+#[test]
+fn key_04_physical_up_after_focus_return_reuses_current_target_not_original_generation() {
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut state = InputState::standard(Rc::clone(&log));
+    state.observe_focus = true;
+    let mut runtime = mounted(state);
+    let device = InputDeviceId::new(60).unwrap_or_else(|| unreachable!("nonzero device"));
+    focus(&mut runtime, "target");
+    runtime
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("KeyW")),
+            LogicalKey::Character(String::from("w")),
+            false,
+            Some(device),
+        ))
+        .unwrap_or_else(|_| unreachable!("first focus accepts Down"));
+    settle(&mut runtime);
+    clear_log(&runtime);
+    focus(&mut runtime, "other");
+    focus(&mut runtime, "target");
+    let transitions = log.borrow();
+    let out = transitions.iter().position(|entry| {
+        entry.node == "target"
+            && entry.phase == Some(EventPhase::Target)
+            && entry.input == ObservedInput::Focus(FocusEventKind::Out)
+    });
+    let back = transitions.iter().rposition(|entry| {
+        entry.node == "target"
+            && entry.phase == Some(EventPhase::Target)
+            && entry.input == ObservedInput::Focus(FocusEventKind::In)
+    });
+    assert!(
+        matches!((out, back), (Some(a), Some(b)) if a < b),
+        "focus returned to the same mounted ID only after its old lifetime retired"
+    );
+    drop(transitions);
+    clear_log(&runtime);
+    runtime
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Up,
+            PhysicalKey::Code(String::from("KeyW")),
+            LogicalKey::Character(String::from("w")),
+            false,
+            Some(device),
+        ))
+        .unwrap_or_else(|_| unreachable!("current focus admits Up"));
+    settle(&mut runtime);
+    assert!(log.borrow().iter().any(|entry| {
+        entry.node == "target"
+            && entry.phase == Some(EventPhase::Target)
+            && entry.input == ObservedInput::Keyboard(KeyboardPhase::Up)
+    }));
+}
+
 #[test]
 #[allow(clippy::assert_is_empty)]
 #[allow(
