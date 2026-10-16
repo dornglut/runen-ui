@@ -997,6 +997,35 @@ fn key_04_focusout_retires_widget_holds_without_original_key_capture() {
         vec![(device_b, PhysicalKey::Code(String::from("KeyW")))],
         "foreign A Up cannot retire B's device+physical Down"
     );
+
+    runtime
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("KeyX")),
+            LogicalKey::Character(String::from("x")),
+            false,
+            Some(device_b),
+        ))
+        .unwrap_or_else(|_| unreachable!("independent B X is admitted"));
+    settle_hold(&mut runtime);
+    assert_eq!(
+        *b.borrow(),
+        vec![
+            (device_b, PhysicalKey::Code(String::from("KeyW"))),
+            (device_b, PhysicalKey::Code(String::from("KeyX"))),
+        ]
+    );
+
+    runtime
+        .submit_keyboard(key(KeyboardPhase::Up, device_b))
+        .unwrap_or_else(|_| unreachable!("B W Up is admitted"));
+    settle_hold(&mut runtime);
+    assert_eq!(
+        *b.borrow(),
+        vec![(device_b, PhysicalKey::Code(String::from("KeyX")))],
+        "B W release cannot retire a different physical key on the same device"
+    );
+
     focus_hold(&mut runtime, "hold-a");
     assert!(a.borrow().is_empty());
     assert!(b.borrow().is_empty(), "B FocusOut retired B without B Up");
