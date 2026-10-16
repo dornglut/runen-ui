@@ -828,6 +828,13 @@ impl CounterHost {
                 eprintln!("Counter keyboard input withheld: {diagnostic:?}");
                 return;
             }
+            KeyboardInputOutcome::Failed(failure) => {
+                self.fail(
+                    event_loop,
+                    &format!("Counter native keyboard ingress failed closed: {failure:?}"),
+                );
+                return;
+            }
         }
         self.drive_runtime(event_loop);
         self.request_pending_redraw();

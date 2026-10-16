@@ -78,6 +78,13 @@ pub enum KeyboardIngressDiagnostic {
     RepeatOfRejectedDown,
     RepeatWhileAdmissionPending,
     ReleaseOfRejectedDown,
+}
+
+/// Failure to preserve the native keyboard ingress contract. Unlike ordinary
+/// suppressed OS events, this MUST terminate the embedding host's input
+/// authority; it is not a UI nonclaim or gameplay permission.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum KeyboardIngressFailure {
     AdmissionIdentityExhausted,
 }
 
@@ -89,6 +96,7 @@ pub enum KeyboardInputOutcome {
         down_admission: Option<KeyboardDownAdmission>,
     },
     Suppressed(KeyboardIngressDiagnostic),
+    Failed(KeyboardIngressFailure),
 }
 
 #[derive(Default)]
@@ -204,8 +212,8 @@ impl KeyboardInputState {
                 }
                 let Some(next) = self.next_down_admission.checked_add(1) else {
                     // Never alias an old acknowledgment to a new lifetime.
-                    return KeyboardInputOutcome::Suppressed(
-                        KeyboardIngressDiagnostic::AdmissionIdentityExhausted,
+                    return KeyboardInputOutcome::Failed(
+                        KeyboardIngressFailure::AdmissionIdentityExhausted,
                     );
                 };
                 self.next_down_admission = next;
@@ -432,7 +440,8 @@ const fn translate_key_location(location: WinitKeyLocation) -> KeyLocation {
 mod tests {
     use super::{
         KeyboardDownAdmission, KeyboardDownAdmissionError, KeyboardDownDecision,
-        KeyboardIngressDiagnostic, KeyboardInputOutcome, KeyboardInputState, NativeKeyTransition,
+        KeyboardIngressDiagnostic, KeyboardIngressFailure, KeyboardInputOutcome,
+        KeyboardInputState, NativeKeyTransition,
         native_shortcut_command, translate_key_location, translate_logical_key,
         translate_physical_key,
     };
@@ -474,6 +483,9 @@ mod tests {
             KeyboardInputOutcome::Submit { event, .. } => event,
             KeyboardInputOutcome::Suppressed(diagnostic) => {
                 unreachable!("fixture transition must submit: {diagnostic:?}")
+            }
+            KeyboardInputOutcome::Failed(failure) => {
+                unreachable!("fixture transition must not fail: {failure:?}")
             }
         }
     }
@@ -653,7 +665,7 @@ mod tests {
                 KeyModifiers::NONE,
                 KeyboardCompositionState::Inactive,
             ),
-            KeyboardInputOutcome::Suppressed(KeyboardIngressDiagnostic::AdmissionIdentityExhausted)
+            KeyboardInputOutcome::Failed(KeyboardIngressFailure::AdmissionIdentityExhausted)
         ));
         assert_eq!(keyboard.pressed_len(), 0);
     }

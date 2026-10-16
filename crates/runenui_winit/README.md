@@ -33,6 +33,9 @@ observations), and device/source cancellation produces no fictitious M13 Cancel.
 Queued or unresolved generations still emit Up/Cancel and require normal M13
 scope/finality handling. Admission tokens never wrap, cannot acknowledge a
 different or already retired generation and do not carry game permission.
+Checked token exhaustion yields `KeyboardInputOutcome::Failed`, **not** an
+ordinary suppressible diagnostic: the host must fail closed rather than
+quietly resume native gameplay with an unrepresented physical Down.
 
 The host still owns exact native source/window/device identity and any game
 input policy. The RunenUI runtime alone owns M13 queue, processing, focus and

@@ -2318,6 +2318,13 @@ impl ReferenceHost {
                 self.note_keyboard_ingress_diagnostic(diagnostic);
                 return;
             }
+            KeyboardInputOutcome::Failed(failure) => {
+                self.fail(
+                    event_loop,
+                    &format!("native keyboard ingress failed closed: {failure:?}"),
+                );
+                return;
+            }
         }
         self.drive_runtime(event_loop);
         self.request_pending_redraw();
