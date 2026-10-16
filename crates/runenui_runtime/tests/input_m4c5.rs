@@ -1046,7 +1046,10 @@ fn key_04_unmount_retires_widget_held_key_without_a_fake_terminal_receipt() {
         .submit_action(FocusHoldAction::RemoveA)
         .unwrap_or_else(|_| unreachable!("owner removal queued"));
     settle_hold(&mut runtime);
-    assert!(a.borrow().is_empty(), "widget unmount must retire its held state");
+    assert!(
+        a.borrow().is_empty(),
+        "widget unmount must retire its held state"
+    );
     assert!(runtime.focus().focused_node().is_none());
 
     let cancel = keyboard(
