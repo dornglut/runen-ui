@@ -1118,6 +1118,103 @@ fn key_04_unmount_retires_widget_held_key_without_a_fake_terminal_receipt() {
     assert_eq!(error.into_event(), cancel);
 }
 
+/// Characterizes the FIFO hazard that a focus transfer can commit between
+/// keyboard queue admission and actual callback delivery. Live original A can
+/// receive a committed Down *after* its FocusOut, unlike a Down processed
+/// before the transfer. This is evidence for #472, not desired new semantics.
+#[test]
+fn key_04_focus_transfer_ahead_of_queued_down_can_rearm_old_unfocused_widget() {
+    let device = InputDeviceId::new(74).unwrap_or_else(|| unreachable!("nonzero device"));
+    let key = || {
+        keyboard(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("KeyW")),
+            LogicalKey::Character(String::from("w")),
+            false,
+            Some(device),
+        )
+    };
+    let get_b = |runtime: &mut AppRuntime<FocusHoldApp>| {
+        let id = runenui_core::ElementId::new("hold-b")
+            .unwrap_or_else(|_| unreachable!("fixture authored ID"));
+        runtime
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&id))
+            .unwrap_or_else(|| unreachable!("B must be mounted"))
+            .id()
+            .clone()
+    };
+    let budget = || PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX);
+
+    let a_first = Rc::new(RefCell::new(Vec::new()));
+    let mut delivered_before_focus = AppRuntime::<FocusHoldApp>::mount(FocusHoldState {
+        a: Rc::clone(&a_first),
+        b: Rc::new(RefCell::new(Vec::new())),
+        a_present: true,
+    });
+    settle_hold(&mut delivered_before_focus);
+    focus_hold(&mut delivered_before_focus, "hold-a");
+    let _down = delivered_before_focus
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("original A Down queues first"));
+    delivered_before_focus
+        .submit_command(
+            get_b(&mut delivered_before_focus),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("B focus queues second"));
+    settle_hold(&mut delivered_before_focus);
+    assert!(a_first.borrow().is_empty(), "Down then FocusOut retires old state");
+
+    let a_late = Rc::new(RefCell::new(Vec::new()));
+    let mut focus_before_delivery = AppRuntime::<FocusHoldApp>::mount(FocusHoldState {
+        a: Rc::clone(&a_late),
+        b: Rc::new(RefCell::new(Vec::new())),
+        a_present: true,
+    });
+    settle_hold(&mut focus_before_delivery);
+    focus_hold(&mut focus_before_delivery, "hold-a");
+    let b_target = get_b(&mut focus_before_delivery);
+    let a_target = focus_before_delivery
+        .focus()
+        .focused_node()
+        .unwrap_or_else(|| unreachable!("A focused before queue admission"))
+        .clone();
+    focus_before_delivery
+        .submit_command(
+            b_target.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus command queued first"));
+    let down_receipt = focus_before_delivery
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("Down still sees A at queue admission"))
+        .sequence();
+    let batch = focus_before_delivery
+        .pump(budget())
+        .unwrap_or_else(|_| unreachable!("exact FIFO focus-then-down pump"));
+    assert_eq!(focus_before_delivery.focus().focused_node(), Some(&b_target));
+    assert!(batch.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(settled)
+            if settled.sequence() == down_receipt
+                && matches!(
+                    settled.finality(),
+                    UiInputFinality::Committed(facts)
+                        if matches!(facts.route(), UiInputRoute::Routed { target } if target == &a_target)
+                )
+    )));
+    assert_eq!(
+        *a_late.borrow(),
+        vec![(device, PhysicalKey::Code(String::from("KeyW")))],
+        "a later committed Down reached A after its only FocusOut"
+    );
+}
+
 /// Queue admission is not an accepted original-key interaction lifetime.
 /// The same final missing focus can follow either a committed Down or a Down
 /// invalidated before processing; a future continuation cannot be minted
