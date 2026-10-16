@@ -779,6 +779,91 @@ fn key_04_keyboard_rejections_preserve_the_owned_event_and_runtime_state() {
     assert_eq!(full.state().activations, 0);
 }
 
+/// Characterizes accepted ADR 0005's focus-relative keyboard routing.
+/// This is NOT proof that a derived device-loss Cancel has retired the
+/// original key interaction. #472 separately owns that missing distinction.
+#[test]
+fn key_04_cancel_after_focus_transfer_uses_current_focus_not_original_down() {
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = mounted(InputState::standard(Rc::clone(&log)));
+    let device = InputDeviceId::new(57).unwrap_or_else(|| unreachable!("nonzero device"));
+    let down = keyboard(
+        KeyboardPhase::Down,
+        PhysicalKey::Code(String::from("KeyW")),
+        LogicalKey::Character(String::from("w")),
+        false,
+        Some(device),
+    );
+    let cancel = keyboard(
+        KeyboardPhase::Cancel,
+        PhysicalKey::Code(String::from("KeyW")),
+        LogicalKey::Character(String::from("w")),
+        false,
+        Some(device),
+    );
+    focus(&mut runtime, "target");
+    runtime
+        .submit_keyboard(down)
+        .unwrap_or_else(|_| unreachable!("initial focused Down is queue-admitted"));
+    settle(&mut runtime);
+    clear_log(&runtime);
+    focus(&mut runtime, "other");
+    clear_log(&runtime);
+    runtime
+        .submit_keyboard(cancel)
+        .unwrap_or_else(|_| unreachable!("current other focus admits keyboard Cancel"));
+    settle(&mut runtime);
+    let observations = log.borrow();
+    assert!(observations.iter().any(|entry| {
+        entry.node == "other"
+            && entry.phase == Some(EventPhase::Target)
+            && entry.input == ObservedInput::Keyboard(KeyboardPhase::Cancel)
+    }));
+    assert!(!observations.iter().any(|entry| {
+        entry.node == "target"
+            && entry.phase == Some(EventPhase::Target)
+            && entry.input == ObservedInput::Keyboard(KeyboardPhase::Cancel)
+    }));
+}
+
+/// A previously admitted original Down is not itself a lease enabling a
+/// later Cancel to bypass runtime's checked current focus. This remains
+/// fail-closed until #472 chooses an owner-certified integrity contract.
+#[test]
+fn key_04_cancel_after_original_focus_removed_has_no_fake_queue_admission() {
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = mounted(InputState::standard(log));
+    let device = InputDeviceId::new(58).unwrap_or_else(|| unreachable!("nonzero device"));
+    focus(&mut runtime, "target");
+    runtime
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("KeyW")),
+            LogicalKey::Character(String::from("w")),
+            false,
+            Some(device),
+        ))
+        .unwrap_or_else(|_| unreachable!("focused Down enters runtime queue"));
+    settle(&mut runtime);
+    runtime
+        .submit_action(InputAction::Remove)
+        .unwrap_or_else(|_| unreachable!("removal enters runtime queue"));
+    settle(&mut runtime);
+    assert!(runtime.focus().focused_node().is_none(), "removed exact focus is retired");
+    let cancel = keyboard(
+        KeyboardPhase::Cancel,
+        PhysicalKey::Code(String::from("KeyW")),
+        LogicalKey::Character(String::from("w")),
+        false,
+        Some(device),
+    );
+    let Err(rejected) = runtime.submit_keyboard(cancel.clone()) else {
+        unreachable!("no-focus derived Cancel cannot fabricate a current runtime target");
+    };
+    assert_eq!(rejected.kind(), SubmitKeyboardErrorKind::NoFocusedTarget);
+    assert_eq!(rejected.into_event(), cancel);
+}
+
 #[test]
 #[allow(clippy::assert_is_empty)]
 #[allow(
