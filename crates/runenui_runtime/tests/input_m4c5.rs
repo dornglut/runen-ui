@@ -13,8 +13,8 @@ use runenui_runtime::{
     AppRuntime, InputArbitrationRecord, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus,
     RuntimeTerminalReason, SubmitAutomationErrorKind, SubmitCommandErrorKind,
     SubmitCompositionErrorKind, SubmitKeyboardErrorKind, SubmitTextErrorKind,
-    TraceAutomationRecordRole, TraceConfig, TraceDeliveryOutcome, TraceInputRecordRole, TraceRecord,
-    TraceRecordKind, UiInputFinality, UiInputProcessingRejection, UiInputRoute,
+    TraceAutomationRecordRole, TraceConfig, TraceDeliveryOutcome, TraceInputRecordRole,
+    TraceRecord, TraceRecordKind, UiInputFinality, UiInputProcessingRejection, UiInputRoute,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
