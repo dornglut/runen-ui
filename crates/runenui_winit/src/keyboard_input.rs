@@ -490,17 +490,16 @@ mod tests {
             KeyModifiers::NONE,
             KeyboardCompositionState::Inactive,
         );
-        match outcome {
-            KeyboardInputOutcome::Submit {
-                event,
-                down_admission: Some(admission),
-            } => {
-                assert_eq!(event.phase(), KeyboardPhase::Down);
-                assert!(!event.is_repeat());
-                admission
-            }
-            _ => panic!("original Down must require one explicit admission decision"),
-        }
+        let KeyboardInputOutcome::Submit {
+            event,
+            down_admission: Some(admission),
+        } = outcome
+        else {
+            unreachable!("original Down must require one explicit admission decision");
+        };
+        assert_eq!(event.phase(), KeyboardPhase::Down);
+        assert!(!event.is_repeat());
+        admission
     }
 
     #[test]
@@ -576,10 +575,10 @@ mod tests {
         let queued_b = pending_down(&mut keyboard, b, physical, &logical);
         keyboard
             .resolve_down_admission(reject_a, KeyboardDownDecision::RejectedBeforeQueue)
-            .unwrap();
+            .unwrap_or_else(|error| unreachable!("expected live original admission: {error:?}"));
         keyboard
             .resolve_down_admission(queued_b, KeyboardDownDecision::Queued)
-            .unwrap();
+            .unwrap_or_else(|error| unreachable!("expected live original admission: {error:?}"));
         assert_eq!(
             keyboard
                 .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
@@ -613,10 +612,10 @@ mod tests {
         let queued = pending_down(&mut keyboard, a, WinitPhysicalKey::Code(KeyCode::KeyX), &x);
         keyboard
             .resolve_down_admission(rejected, KeyboardDownDecision::RejectedBeforeQueue)
-            .unwrap();
+            .unwrap_or_else(|error| unreachable!("expected live original admission: {error:?}"));
         keyboard
             .resolve_down_admission(queued, KeyboardDownDecision::Queued)
-            .unwrap();
+            .unwrap_or_else(|error| unreachable!("expected live original admission: {error:?}"));
         let pending = pending_down(&mut keyboard, a, WinitPhysicalKey::Code(KeyCode::KeyZ), &x);
         let cancels = keyboard.cancel_all(KeyModifiers::NONE, KeyboardCompositionState::Inactive);
         assert_eq!(cancels.len(), 2);
@@ -893,17 +892,16 @@ mod tests {
         let logical = WinitKey::Named(NamedKey::Space);
         let physical = WinitPhysicalKey::Code(KeyCode::Space);
 
-        let (down, admission) = match keyboard.key_input(
+        let KeyboardInputOutcome::Submit {
+            event: down,
+            down_admission: Some(admission),
+        } = keyboard.key_input(
             device,
             &transition(ElementState::Pressed, physical, &logical, false, false),
             modifiers,
             KeyboardCompositionState::Inactive,
-        ) {
-            KeyboardInputOutcome::Submit {
-                event,
-                down_admission: Some(admission),
-            } => (event, admission),
-            _ => panic!("original Down must require an explicit acknowledgment"),
+        ) else {
+            unreachable!("original Down must require an explicit acknowledgment");
         };
         assert!(matches!(
             keyboard.key_input(
@@ -918,7 +916,7 @@ mod tests {
         ));
         keyboard
             .resolve_down_admission(admission, KeyboardDownDecision::Queued)
-            .unwrap();
+            .unwrap_or_else(|error| unreachable!("expected live original admission: {error:?}"));
         assert_eq!(down.phase(), KeyboardPhase::Down);
         assert!(!down.is_repeat());
         assert_eq!(down.device_id(), Some(device));
@@ -1020,21 +1018,20 @@ mod tests {
             KeyModifiers::NONE,
             KeyboardCompositionState::Inactive,
         ));
-        let (down_b, admission_b) = match keyboard.key_input(
+        let KeyboardInputOutcome::Submit {
+            event: down_b,
+            down_admission: Some(admission_b),
+        } = keyboard.key_input(
             b,
             &down,
             KeyModifiers::NONE,
             KeyboardCompositionState::Inactive,
-        ) {
-            KeyboardInputOutcome::Submit {
-                event,
-                down_admission: Some(admission),
-            } => (event, admission),
-            _ => panic!("B original Down must require admission"),
+        ) else {
+            unreachable!("B original Down must require admission");
         };
         keyboard
             .resolve_down_admission(admission_b, KeyboardDownDecision::Queued)
-            .unwrap();
+            .unwrap_or_else(|error| unreachable!("expected live original admission: {error:?}"));
         assert_eq!(down_a.device_id(), Some(a));
         assert_eq!(down_b.device_id(), Some(b));
         assert_eq!(keyboard.pressed_len(), 2);
