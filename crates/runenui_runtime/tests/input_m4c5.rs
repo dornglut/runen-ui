@@ -795,7 +795,7 @@ struct FocusHoldWidget {
     held_devices: Rc<RefCell<Vec<InputDeviceId>>>,
 }
 
-impl Widget<()> for FocusHoldWidget {
+impl Widget<FocusHoldAction> for FocusHoldWidget {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -804,7 +804,7 @@ impl Widget<()> for FocusHoldWidget {
         &mut self,
         (): &mut Self::State,
         event: &UiEvent,
-        context: &mut EventContext<'_, ()>,
+        context: &mut EventContext<'_, FocusHoldAction>,
     ) -> WidgetEventOutput {
         if context.phase() != EventPhase::Target {
             return WidgetEventOutput::none();
@@ -839,46 +839,62 @@ impl Widget<()> for FocusHoldWidget {
     }
 }
 
-impl ChildBearingWidget<()> for FocusHoldWidget {}
+impl ChildBearingWidget<FocusHoldAction> for FocusHoldWidget {}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FocusHoldAction {
+    RemoveA,
+}
 
 #[derive(Debug)]
 struct FocusHoldState {
     a: Rc<RefCell<Vec<InputDeviceId>>>,
     b: Rc<RefCell<Vec<InputDeviceId>>>,
+    a_present: bool,
 }
 
 struct FocusHoldApp;
 
 impl UiApp for FocusHoldApp {
     type State = FocusHoldState;
-    type Action = ();
+    type Action = FocusHoldAction;
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> impl View<Self::Action> {
-        container(
-            FocusHoldWidget {
-                held_devices: Rc::clone(&state.a),
-            },
-            vec![
+        let mut children = Vec::new();
+        if state.a_present {
+            children.push(
                 Element::new(FocusHoldWidget {
                     held_devices: Rc::clone(&state.a),
                 })
                 .id("hold-a")
                 .key("hold-a")
                 .focusable(true),
-                Element::new(FocusHoldWidget {
-                    held_devices: Rc::clone(&state.b),
-                })
-                .id("hold-b")
-                .key("hold-b")
-                .focusable(true),
-            ],
+            );
+        }
+        children.push(
+            Element::new(FocusHoldWidget {
+                held_devices: Rc::clone(&state.b),
+            })
+            .id("hold-b")
+            .key("hold-b")
+            .focusable(true),
+        );
+        container(
+            FocusHoldWidget {
+                held_devices: Rc::clone(&state.a),
+            },
+            children,
         )
         .id("hold-root")
         .key("hold-root")
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update(state: &mut Self::State, action: Self::Action) {
+        match action {
+            FocusHoldAction::RemoveA => state.a_present = false,
+        }
+    }
 }
 
 fn settle_hold(runtime: &mut AppRuntime<FocusHoldApp>) {
@@ -930,6 +946,7 @@ fn key_04_focusout_retires_widget_holds_without_original_key_capture() {
     let mut runtime = AppRuntime::<FocusHoldApp>::mount(FocusHoldState {
         a: Rc::clone(&a),
         b: Rc::clone(&b),
+        a_present: true,
     });
     settle_hold(&mut runtime);
     let device_a = InputDeviceId::new(71).unwrap_or_else(|| unreachable!("nonzero device"));
@@ -981,6 +998,69 @@ fn key_04_focusout_retires_widget_holds_without_original_key_capture() {
         a.borrow().is_empty(),
         "A→B→A must not resurrect its original held-key semantic lifetime"
     );
+}
+
+/// Removal may suppress FocusOut to an unmounted target; widget unmount
+/// remains the required local cleanup boundary. The already-committed Down
+/// cannot be misclassified as a never-admitted original key afterwards.
+#[test]
+fn key_04_unmount_retires_widget_held_key_without_a_fake_terminal_receipt() {
+    let a = Rc::new(RefCell::new(Vec::new()));
+    let b = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<FocusHoldApp>::mount(FocusHoldState {
+        a: Rc::clone(&a),
+        b,
+        a_present: true,
+    });
+    settle_hold(&mut runtime);
+    let device = InputDeviceId::new(73).unwrap_or_else(|| unreachable!("nonzero device"));
+    focus_hold(&mut runtime, "hold-a");
+    let original = keyboard(
+        KeyboardPhase::Down,
+        PhysicalKey::Code(String::from("KeyW")),
+        LogicalKey::Character(String::from("w")),
+        false,
+        Some(device),
+    );
+    let receipt = runtime
+        .submit_keyboard(original)
+        .unwrap_or_else(|_| unreachable!("original Down admitted to focused A"))
+        .sequence();
+    let settled = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("Down settles before removal"));
+    assert!(settled.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(input)
+            if input.sequence() == receipt
+                && matches!(input.finality(), UiInputFinality::Committed(_))
+    )));
+    assert_eq!(*a.borrow(), vec![device]);
+
+    runtime
+        .submit_action(FocusHoldAction::RemoveA)
+        .unwrap_or_else(|_| unreachable!("owner removal queued"));
+    settle_hold(&mut runtime);
+    assert!(a.borrow().is_empty(), "widget unmount must retire its held state");
+    assert!(runtime.focus().focused_node().is_none());
+
+    let cancel = keyboard(
+        KeyboardPhase::Cancel,
+        PhysicalKey::Code(String::from("KeyW")),
+        LogicalKey::Character(String::from("w")),
+        false,
+        Some(device),
+    );
+    let Err(error) = runtime.submit_keyboard(cancel.clone()) else {
+        unreachable!("no-focus Cancel has no generic callback recipient");
+    };
+    assert_eq!(error.kind(), SubmitKeyboardErrorKind::NoFocusedTarget);
+    assert_eq!(error.into_event(), cancel);
 }
 
 /// Queue admission is not an accepted original-key interaction lifetime.
