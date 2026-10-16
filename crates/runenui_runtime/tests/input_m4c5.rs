@@ -834,7 +834,7 @@ impl Widget<FocusHoldAction> for FocusHoldWidget {
             }
             _ => {}
         }
-        *self.held_devices.borrow_mut() = state.clone();
+        self.held_devices.borrow_mut().clone_from(state);
         WidgetEventOutput::none()
     }
 
