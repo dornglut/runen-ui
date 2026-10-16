@@ -227,21 +227,20 @@ impl KeyboardInputState {
                         KeyboardIngressFailure::AdmissionIdentityExhausted,
                     );
                 };
-                let adapter_id = match self.adapter_id {
-                    Some(id) => id,
-                    None => {
-                        let Ok(id) = NEXT_KEYBOARD_ADAPTER_ID.fetch_update(
-                            Ordering::Relaxed,
-                            Ordering::Relaxed,
-                            |current| current.checked_add(1),
-                        ) else {
-                            return KeyboardInputOutcome::Failed(
-                                KeyboardIngressFailure::AdmissionIdentityExhausted,
-                            );
-                        };
-                        self.adapter_id = Some(id);
-                        id
-                    }
+                let adapter_id = if let Some(id) = self.adapter_id {
+                    id
+                } else {
+                    let Ok(id) = NEXT_KEYBOARD_ADAPTER_ID.try_update(
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                        |current| current.checked_add(1),
+                    ) else {
+                        return KeyboardInputOutcome::Failed(
+                            KeyboardIngressFailure::AdmissionIdentityExhausted,
+                        );
+                    };
+                    self.adapter_id = Some(id);
+                    id
                 };
                 self.next_down_admission = next;
                 let admission = KeyboardDownAdmission {
