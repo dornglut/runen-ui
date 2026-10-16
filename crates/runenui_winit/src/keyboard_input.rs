@@ -616,9 +616,7 @@ mod tests {
                 KeyModifiers::NONE,
                 KeyboardCompositionState::Inactive,
             ),
-            KeyboardInputOutcome::Failed(
-                KeyboardIngressFailure::UnresolvedOriginalDownAdmission
-            )
+            KeyboardInputOutcome::Failed(KeyboardIngressFailure::UnresolvedOriginalDownAdmission)
         ));
         assert_eq!(
             keyboard.resolve_down_admission(next, KeyboardDownDecision::Queued),
@@ -1126,12 +1124,11 @@ mod tests {
         let device = device(2);
         let logical = WinitKey::Named(NamedKey::Space);
         let physical = WinitPhysicalKey::Code(KeyCode::Space);
-        let _down = submitted(keyboard.key_input(
-            device,
-            &transition(ElementState::Pressed, physical, &logical, false, false),
-            KeyModifiers::NONE,
-            KeyboardCompositionState::Inactive,
-        ));
+        let admission = pending_down(&mut keyboard, device, physical, &logical);
+        assert_eq!(
+            keyboard.resolve_down_admission(admission, KeyboardDownDecision::Queued),
+            Ok(())
+        );
 
         let cancel = submitted(keyboard.key_input(
             device,
