@@ -832,8 +832,10 @@ fn key_04_cancel_after_focus_transfer_uses_current_focus_not_original_down() {
                 && entry.phase == Some(EventPhase::Target)
                 && entry.input == ObservedInput::Focus(FocusEventKind::In)
         });
-        assert!(matches!((out, into), (Some(a), Some(b)) if a < b),
-            "old widget must receive committed FocusOut before new widget FocusIn");
+        assert!(
+            matches!((out, into), (Some(a), Some(b)) if a < b),
+            "old widget must receive committed FocusOut before new widget FocusIn"
+        );
     }
     clear_log(&runtime);
     runtime
