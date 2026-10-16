@@ -900,7 +900,8 @@ mod tests {
             &transition(ElementState::Pressed, physical, &logical, false, false),
             modifiers,
             KeyboardCompositionState::Inactive,
-        ) else {
+        )
+        else {
             unreachable!("original Down must require an explicit acknowledgment");
         };
         assert!(matches!(
@@ -1026,7 +1027,8 @@ mod tests {
             &down,
             KeyModifiers::NONE,
             KeyboardCompositionState::Inactive,
-        ) else {
+        )
+        else {
             unreachable!("B original Down must require admission");
         };
         keyboard
