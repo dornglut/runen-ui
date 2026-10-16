@@ -4,7 +4,8 @@ use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, CommittedTextEvent, CompositionCancelReason,
-    CompositionEvent, Element, EventContext, EventPhase, InputDeviceId, KeyLocation, KeyModifiers,
+    CompositionEvent, Element, EventContext, EventPhase, FocusEventKind, InputDeviceId,
+    KeyLocation, KeyModifiers,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
     PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
     WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetTextInput, container,
@@ -19,6 +20,7 @@ use runenui_runtime::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ObservedInput {
     Keyboard(KeyboardPhase),
+    Focus(FocusEventKind),
     Text { bytes: usize, scalars: usize },
     CompositionStart,
     CompositionUpdate { has_range: bool },
@@ -91,6 +93,7 @@ struct InputState {
     prevent_keyboard: bool,
     prevent_text: bool,
     duplicate_target_id: bool,
+    observe_focus: bool,
     activations: usize,
 }
 
@@ -107,6 +110,7 @@ impl InputState {
             prevent_keyboard: false,
             prevent_text: false,
             duplicate_target_id: false,
+            observe_focus: false,
             activations: 0,
         }
     }
@@ -126,11 +130,13 @@ struct InputWidget {
     composition_capable: bool,
     prevent_keyboard: bool,
     prevent_text: bool,
+    observe_focus: bool,
 }
 
 impl InputWidget {
     fn observe(&self, event: &UiEvent, context: &mut EventContext<'_, InputAction>) {
         let input = match event {
+            UiEvent::Focus(event) if self.observe_focus => ObservedInput::Focus(event.kind()),
             UiEvent::Keyboard(event) => {
                 if self.prevent_keyboard && context.phase() == EventPhase::Target {
                     context.prevent_default();
@@ -302,6 +308,7 @@ impl UiApp for InputApp {
                     composition_capable: state.composition_capable,
                     prevent_keyboard: state.prevent_keyboard,
                     prevent_text: state.prevent_text,
+                    observe_focus: state.observe_focus,
                 })
             };
             children.push(target.id("target").key("target").focusable(true));
@@ -316,6 +323,7 @@ impl UiApp for InputApp {
                 composition_capable: false,
                 prevent_keyboard: false,
                 prevent_text: false,
+                observe_focus: state.observe_focus,
             })
             .id("other")
             .key("other")
@@ -332,6 +340,7 @@ impl UiApp for InputApp {
                     composition_capable: false,
                     prevent_keyboard: false,
                     prevent_text: false,
+                    observe_focus: state.observe_focus,
                 })
                 .id("target")
                 .key("duplicate"),
@@ -347,6 +356,7 @@ impl UiApp for InputApp {
                 composition_capable: false,
                 prevent_keyboard: false,
                 prevent_text: false,
+                observe_focus: false,
             },
             children,
         )
@@ -785,7 +795,9 @@ fn key_04_keyboard_rejections_preserve_the_owned_event_and_runtime_state() {
 #[test]
 fn key_04_cancel_after_focus_transfer_uses_current_focus_not_original_down() {
     let log = Rc::new(RefCell::new(Vec::new()));
-    let mut runtime = mounted(InputState::standard(Rc::clone(&log)));
+    let mut state = InputState::standard(Rc::clone(&log));
+    state.observe_focus = true;
+    let mut runtime = mounted(state);
     let device = InputDeviceId::new(57).unwrap_or_else(|| unreachable!("nonzero device"));
     let down = keyboard(
         KeyboardPhase::Down,
@@ -808,6 +820,21 @@ fn key_04_cancel_after_focus_transfer_uses_current_focus_not_original_down() {
     settle(&mut runtime);
     clear_log(&runtime);
     focus(&mut runtime, "other");
+    {
+        let transfer = log.borrow();
+        let out = transfer.iter().position(|entry| {
+            entry.node == "target"
+                && entry.phase == Some(EventPhase::Target)
+                && entry.input == ObservedInput::Focus(FocusEventKind::Out)
+        });
+        let into = transfer.iter().position(|entry| {
+            entry.node == "other"
+                && entry.phase == Some(EventPhase::Target)
+                && entry.input == ObservedInput::Focus(FocusEventKind::In)
+        });
+        assert!(matches!((out, into), (Some(a), Some(b)) if a < b),
+            "old widget must receive committed FocusOut before new widget FocusIn");
+    }
     clear_log(&runtime);
     runtime
         .submit_keyboard(cancel)
