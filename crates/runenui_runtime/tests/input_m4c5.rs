@@ -1123,6 +1123,10 @@ fn key_04_unmount_retires_widget_held_key_without_a_fake_terminal_receipt() {
 /// receive a committed Down *after* its `FocusOut`, unlike a Down processed
 /// before the transfer. This is evidence for #472, not desired new semantics.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one public regression compares three exact FIFO orders including focus ABA"
+)]
 fn key_04_focus_transfer_ahead_of_queued_down_can_rearm_old_unfocused_widget() {
     let device = InputDeviceId::new(74).unwrap_or_else(|| unreachable!("nonzero device"));
     let key = || {
