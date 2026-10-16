@@ -441,9 +441,8 @@ mod tests {
     use super::{
         KeyboardDownAdmission, KeyboardDownAdmissionError, KeyboardDownDecision,
         KeyboardIngressDiagnostic, KeyboardIngressFailure, KeyboardInputOutcome,
-        KeyboardInputState, NativeKeyTransition,
-        native_shortcut_command, translate_key_location, translate_logical_key,
-        translate_physical_key,
+        KeyboardInputState, NativeKeyTransition, native_shortcut_command, translate_key_location,
+        translate_logical_key, translate_physical_key,
     };
     use runenui_core::{
         InputDeviceId, KeyModifiers, KeyboardCompositionState, KeyboardPhase,
