@@ -1281,6 +1281,69 @@ fn key_04_focus_transfer_ahead_of_queued_down_can_rearm_old_unfocused_widget() {
     );
 }
 
+/// Characterizes the same stale-focus FIFO mechanism for an ordinary text
+/// commit: a focused text-capable A admits the commit, but a queued focus
+/// transfer to non-text B executes first. Routing still calls the old live A.
+/// This is a shared-runtime investigation finding, not approved text policy.
+#[test]
+fn text_04_focus_transfer_ahead_of_queued_text_commit_reaches_old_recipient() {
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = mounted(InputState::standard(Rc::clone(&log)));
+    focus(&mut runtime, "target");
+    clear_log(&runtime);
+    let a_target = target(&mut runtime, "target");
+    let b_target = target(&mut runtime, "other");
+    runtime
+        .submit_command(
+            b_target.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus transfer to B queues first"));
+    let receipt = runtime
+        .submit_text(
+            CommittedTextEvent::new("x", None)
+                .unwrap_or_else(|_| unreachable!("ordinary committed text is valid")),
+        )
+        .unwrap_or_else(|_| unreachable!("A is still focused at text queue admission"))
+        .sequence();
+    let batch = runtime
+        .pump(PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("focus then text FIFO pump"));
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&b_target),
+        "non-text B owns focus when old A's text is processed"
+    );
+    assert!(batch.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(settled)
+            if settled.sequence() == receipt
+                && matches!(
+                    settled.finality(),
+                    UiInputFinality::Committed(facts)
+                        if matches!(facts.route(), UiInputRoute::Routed { target } if target == &a_target)
+                )
+    )));
+    assert!(
+        log.borrow().iter().any(|entry| {
+            entry.node == "target"
+                && entry.phase == Some(EventPhase::Target)
+                && entry.input
+                    == ObservedInput::Text {
+                        bytes: 1,
+                        scalars: 1,
+                    }
+        }),
+        "live but unfocused A received the committed text callback"
+    );
+    assert!(!log.borrow().iter().any(|entry| {
+        entry.node == "other"
+            && entry.phase == Some(EventPhase::Target)
+            && matches!(entry.input, ObservedInput::Text { .. })
+    }));
+}
+
 /// Queue admission is not an accepted original-key interaction lifetime.
 /// The same final missing focus can follow either a committed Down or a Down
 /// invalidated before processing; a future continuation cannot be minted
