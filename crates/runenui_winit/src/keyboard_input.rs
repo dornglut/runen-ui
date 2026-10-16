@@ -658,7 +658,7 @@ mod tests {
         let queued_b = pending_down(&mut keyboard, b, physical, &logical);
         keyboard
             .resolve_down_admission(queued_b, KeyboardDownDecision::Queued)
-            .expect("B was queued");
+            .unwrap_or_else(|error| unreachable!("B was queued: {error:?}"));
         let queued_a = pending_down(
             &mut keyboard,
             a,
@@ -667,7 +667,7 @@ mod tests {
         );
         keyboard
             .resolve_down_admission(queued_a, KeyboardDownDecision::Queued)
-            .expect("A's independent X was queued");
+            .unwrap_or_else(|error| unreachable!("A's independent X was queued: {error:?}"));
 
         assert!(matches!(
             keyboard.cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive),
@@ -680,7 +680,7 @@ mod tests {
         assert_eq!(keyboard.pressed_len(), 3, "neither failure removed a key");
         let b_cancels = keyboard
             .cancel_device(b, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
-            .expect("B is independently admitted");
+            .unwrap_or_else(|error| unreachable!("B is independently admitted: {error:?}"));
         assert_eq!(b_cancels.len(), 1);
         assert_eq!(b_cancels[0].device_id(), Some(b));
         assert_eq!(keyboard.pressed_len(), 2);
@@ -690,7 +690,7 @@ mod tests {
         );
         let a_cancels = keyboard
             .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
-            .expect("A's original Down was rejected before queue");
+            .unwrap_or_else(|error| unreachable!("A's original Down was rejected before queue: {error:?}"));
         assert_eq!(a_cancels.len(), 1, "A's already queued X survives the failed Cancel");
         assert_eq!(
             a_cancels[0].physical_key(),
@@ -756,7 +756,7 @@ mod tests {
         assert_eq!(
             keyboard
                 .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
-                .expect("all affected original Downs are resolved")
+                .unwrap_or_else(|error| unreachable!("all affected original Downs are resolved: {error:?}"))
                 .len(),
             1,
         );
@@ -780,7 +780,7 @@ mod tests {
         assert_eq!(
             keyboard
                 .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
-                .expect("all affected original Downs are resolved")
+                .unwrap_or_else(|error| unreachable!("all affected original Downs are resolved: {error:?}"))
                 .len(),
             0
         );
@@ -827,7 +827,7 @@ mod tests {
         );
         let cancels = keyboard
             .cancel_all(KeyModifiers::NONE, KeyboardCompositionState::Inactive)
-            .expect("all affected original Downs are now resolved");
+            .unwrap_or_else(|error| unreachable!("all affected original Downs are now resolved: {error:?}"));
         assert_eq!(cancels.len(), 1);
         assert_eq!(
             cancels[0].physical_key(),
@@ -1274,7 +1274,7 @@ mod tests {
         };
         keyboard
             .resolve_down_admission(admission_a, KeyboardDownDecision::Queued)
-            .expect("A original Down is queued");
+            .unwrap_or_else(|error| unreachable!("A original Down is queued: {error:?}"));
         let KeyboardInputOutcome::Submit {
             event: down_b,
             down_admission: Some(admission_b),
@@ -1296,7 +1296,7 @@ mod tests {
 
         let cancelled = keyboard
             .cancel_device(a, KeyModifiers::SHIFT, KeyboardCompositionState::Active)
-            .expect("A original Down is queued");
+            .unwrap_or_else(|error| unreachable!("A original Down is queued: {error:?}"));
         assert_eq!(cancelled.len(), 1);
         assert_eq!(cancelled[0].phase(), KeyboardPhase::Cancel);
         assert_eq!(cancelled[0].device_id(), Some(a));
@@ -1311,7 +1311,7 @@ mod tests {
         assert_eq!(
             keyboard
                 .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
-                .expect("all affected original Downs are resolved")
+                .unwrap_or_else(|error| unreachable!("all affected original Downs are resolved: {error:?}"))
                 .len(),
             0
         );
@@ -1369,11 +1369,11 @@ mod tests {
             let admission = pending_down(&mut keyboard, device, physical, logical);
             keyboard
                 .resolve_down_admission(admission, KeyboardDownDecision::Queued)
-                .expect("original Down is queued");
+                .unwrap_or_else(|error| unreachable!("original Down is queued: {error:?}"));
         }
         let cancelled = keyboard
             .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
-            .expect("A originals are queued");
+            .unwrap_or_else(|error| unreachable!("A originals are queued: {error:?}"));
         assert_eq!(cancelled.len(), 2);
         assert_eq!(
             cancelled[0].physical_key(),
@@ -1387,7 +1387,7 @@ mod tests {
         assert_eq!(keyboard.pressed_len(), 2);
         let b_cancelled = keyboard
             .cancel_all(KeyModifiers::ALT, KeyboardCompositionState::Inactive)
-            .expect("B originals are queued");
+            .unwrap_or_else(|error| unreachable!("B originals are queued: {error:?}"));
         assert_eq!(b_cancelled.len(), 2);
         assert!(b_cancelled.iter().all(|key| key.device_id() == Some(b)));
         assert_eq!(keyboard.pressed_len(), 0);
@@ -1411,12 +1411,12 @@ mod tests {
             let admission = pending_down(&mut keyboard, device, physical, logical);
             keyboard
                 .resolve_down_admission(admission, KeyboardDownDecision::Queued)
-                .expect("original Down is queued");
+                .unwrap_or_else(|error| unreachable!("original Down is queued: {error:?}"));
         }
 
         let cancelled = keyboard
             .cancel_all(KeyModifiers::META, KeyboardCompositionState::Inactive)
-            .expect("all original Downs are queued");
+            .unwrap_or_else(|error| unreachable!("all original Downs are queued: {error:?}"));
         assert_eq!(cancelled.len(), 2);
         assert_eq!(cancelled[0].device_id(), Some(device_a));
         assert_eq!(cancelled[1].device_id(), Some(device_b));
