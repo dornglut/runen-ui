@@ -690,8 +690,14 @@ mod tests {
         );
         let a_cancels = keyboard
             .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
-            .unwrap_or_else(|error| unreachable!("A's original Down was rejected before queue: {error:?}"));
-        assert_eq!(a_cancels.len(), 1, "A's already queued X survives the failed Cancel");
+            .unwrap_or_else(|error| {
+                unreachable!("A's original Down was rejected before queue: {error:?}")
+            });
+        assert_eq!(
+            a_cancels.len(),
+            1,
+            "A's already queued X survives the failed Cancel"
+        );
         assert_eq!(
             a_cancels[0].physical_key(),
             &NeutralPhysicalKey::Code(String::from("KeyX"))
@@ -756,7 +762,9 @@ mod tests {
         assert_eq!(
             keyboard
                 .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
-                .unwrap_or_else(|error| unreachable!("all affected original Downs are resolved: {error:?}"))
+                .unwrap_or_else(|error| unreachable!(
+                    "all affected original Downs are resolved: {error:?}"
+                ))
                 .len(),
             1,
         );
@@ -780,7 +788,9 @@ mod tests {
         assert_eq!(
             keyboard
                 .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
-                .unwrap_or_else(|error| unreachable!("all affected original Downs are resolved: {error:?}"))
+                .unwrap_or_else(|error| unreachable!(
+                    "all affected original Downs are resolved: {error:?}"
+                ))
                 .len(),
             0
         );
@@ -827,7 +837,9 @@ mod tests {
         );
         let cancels = keyboard
             .cancel_all(KeyModifiers::NONE, KeyboardCompositionState::Inactive)
-            .unwrap_or_else(|error| unreachable!("all affected original Downs are now resolved: {error:?}"));
+            .unwrap_or_else(|error| {
+                unreachable!("all affected original Downs are now resolved: {error:?}")
+            });
         assert_eq!(cancels.len(), 1);
         assert_eq!(
             cancels[0].physical_key(),
@@ -1311,7 +1323,9 @@ mod tests {
         assert_eq!(
             keyboard
                 .cancel_device(a, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
-                .unwrap_or_else(|error| unreachable!("all affected original Downs are resolved: {error:?}"))
+                .unwrap_or_else(|error| unreachable!(
+                    "all affected original Downs are resolved: {error:?}"
+                ))
                 .len(),
             0
         );
