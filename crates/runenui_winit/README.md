@@ -12,3 +12,30 @@
 It intentionally does **not** own or hide a winit event loop, window creation, `AppRuntime::pump`, wake/redraw handling, surface publication or acknowledgement, displayed-frame authority, renderer configuration/recovery, or presentation. Those remain visibly host-owned in each application. The crate has no `runenui_render_wgpu` dependency.
 
 The adapter state is derived edge state. RunenUI runtime, semantic, input, and publication authority remain in `runenui_runtime`; native types do not enter `runenui_core` or `runenui_runtime`.
+
+## Native keyboard admission lifecycle
+
+`KeyboardInputState::key_input` translates an original physical Down into a
+`KeyboardInputOutcome::Submit` containing both the neutral keyboard event
+and one opaque `down_admission` token. The adapter's original device/key
+entry starts **Pending**, not canonically admitted. The embedding host MUST
+call `resolve_down_admission(token, KeyboardDownDecision::Queued)` only when
+the canonical runtime actually admits the event to its queue; this does **not**
+claim M13 settlement or UI conflict. Only an exact, definitive **pre-queue**
+rejection of that same original Down (such as a proven `NoFocusedTarget`)
+permits `KeyboardDownDecision::RejectedBeforeQueue`. A capacity, terminal,
+ambiguous or missing-receipt failure does not qualify.
+
+Pending original Down generations fail closed on repeats; rejected generations
+remain in the existing adapter pressed-key collection as physical tombstones.
+Their repeats and authentic Up are suppressed as **UI events** (not physical
+observations), and device/source cancellation produces no fictitious M13 Cancel.
+Queued or unresolved generations still emit Up/Cancel and require normal M13
+scope/finality handling. Admission tokens never wrap, cannot acknowledge a
+different or already retired generation and do not carry game permission.
+
+The host still owns exact native source/window/device identity and any game
+input policy. The RunenUI runtime alone owns M13 queue, processing, focus and
+finality. Do not treat a rejected Down, suppressed repeat or derived Cancel as
+proof of new gameplay eligibility. See the native example hosts and the
+[M13 arbitration contract](../../docs/adr/0019-event-correlated-host-input-arbitration.md).

@@ -10,7 +10,7 @@ use winit::{
     },
 };
 
-/// One original physical Down translation, not an M13 WorkSequence or a
+/// One original physical Down translation, not an M13 `WorkSequence` or a
 /// runtime input settlement. The translator never mints gameplay permission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct KeyboardDownAdmission(u64);
@@ -99,13 +99,18 @@ pub struct KeyboardInputState {
 
 impl KeyboardInputState {
     /// Resolve only the original pending translated Down. Hosts MUST mark
-    /// RejectedBeforeQueue only after proving that this exact original Down
-    /// received a definitive pre-sequence rejection (such as NoFocusedTarget)
+    /// `RejectedBeforeQueue` only after proving that this exact original Down
+    /// received a definitive pre-sequence rejection (such as `NoFocusedTarget`)
     /// in the same live runtime scope. Capacity, terminal, pending receipts,
     /// missing settlement and a rejected derived Cancel do not qualify.
     ///
     /// A queued Down remains subject to normal M13 finality and exact-scope
     /// cancellation obligations; this adapter is not their authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns `KeyboardDownAdmissionError::StaleOrAlreadyResolved` if the
+    /// exact original Down is no longer pending or the token was already used.
     pub fn resolve_down_admission(
         &mut self,
         admission: KeyboardDownAdmission,
@@ -125,6 +130,10 @@ impl KeyboardInputState {
         Ok(())
     }
 
+    // A single original transition machine owns Down/repeat/Up ordering.
+    // Splitting it for a line-count threshold would scatter the pressed-key
+    // invariant and complicate the explicit admission-state change.
+    #[allow(clippy::too_many_lines)]
     pub fn key_input(
         &mut self,
         device_id: InputDeviceId,
@@ -265,7 +274,7 @@ impl KeyboardInputState {
     }
 
     /// Cancel only original Down generations that might have entered M13.
-    /// RejectedBeforeQueue entries carry no M13 press, and do not fabricate
+    /// `RejectedBeforeQueue` entries carry no M13 press, and do not fabricate
     /// terminal M13 Cancel receipts on device removal.
     pub fn cancel_device(
         &mut self,

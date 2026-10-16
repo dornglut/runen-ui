@@ -607,7 +607,7 @@ impl CounterHost {
             .keyboard
             .cancel_all(self.modifiers, KeyboardCompositionState::Inactive);
         for event in events {
-            if !self.submit_keyboard_event(event_loop, event) {
+            if self.submit_keyboard_event(event_loop, event).is_none() {
                 return false;
             }
         }
