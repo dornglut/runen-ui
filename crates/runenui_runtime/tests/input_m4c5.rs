@@ -892,7 +892,10 @@ fn settle_hold(runtime: &mut AppRuntime<FocusHoldApp>) {
         .unwrap_or_else(|_| unreachable!("hold fixture must pump canonically"))
         .report()
         .to_owned();
-    assert!(report.is_quiescent(), "hold fixture failed to settle: {report:?}");
+    assert!(
+        report.is_quiescent(),
+        "hold fixture failed to settle: {report:?}"
+    );
 }
 
 fn focus_hold(runtime: &mut AppRuntime<FocusHoldApp>, authored_id: &str) {
