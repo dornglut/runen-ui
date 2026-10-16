@@ -849,7 +849,10 @@ fn key_04_cancel_after_original_focus_removed_has_no_fake_queue_admission() {
         .submit_action(InputAction::Remove)
         .unwrap_or_else(|_| unreachable!("removal enters runtime queue"));
     settle(&mut runtime);
-    assert!(runtime.focus().focused_node().is_none(), "removed exact focus is retired");
+    assert!(
+        runtime.focus().focused_node().is_none(),
+        "removed exact focus is retired"
+    );
     let cancel = keyboard(
         KeyboardPhase::Cancel,
         PhysicalKey::Code(String::from("KeyW")),
