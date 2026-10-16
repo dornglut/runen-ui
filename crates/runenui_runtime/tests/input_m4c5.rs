@@ -1159,9 +1159,10 @@ fn key_04_focus_transfer_ahead_of_queued_down_can_rearm_old_unfocused_widget() {
     let _down = delivered_before_focus
         .submit_keyboard(key())
         .unwrap_or_else(|_| unreachable!("original A Down queues first"));
+    let first_b = get_b(&mut delivered_before_focus);
     delivered_before_focus
         .submit_command(
-            get_b(&mut delivered_before_focus),
+            first_b,
             SemanticCommand::RequestFocus,
             CommandOrigin::programmatic(),
         )
