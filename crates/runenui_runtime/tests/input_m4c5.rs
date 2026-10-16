@@ -1000,7 +1000,7 @@ fn key_04_focusout_retires_widget_holds_without_original_key_capture() {
     );
 }
 
-/// Removal may suppress FocusOut to an unmounted target; widget unmount
+/// Removal may suppress `FocusOut` to an unmounted target; widget unmount
 /// remains the required local cleanup boundary. The already-committed Down
 /// cannot be misclassified as a never-admitted original key afterwards.
 #[test]
