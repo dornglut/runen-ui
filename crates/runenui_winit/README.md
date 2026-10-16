@@ -26,13 +26,22 @@ rejection of that same original Down (such as a proven `NoFocusedTarget`)
 permits `KeyboardDownDecision::RejectedBeforeQueue`. A capacity, terminal,
 ambiguous or missing-receipt failure does not qualify.
 
-Pending original Down generations fail closed on repeats; rejected generations
+Pending original Down generations fail closed on repeats **and physical or
+synthetic release**. An unresolved Up/Cancel returns the typed fatal
+`KeyboardIngressFailure::UnresolvedOriginalDownAdmission` without erasing the
+pending entry or fabricating a terminal runtime event. Whole-source/device
+retirement still exposes unresolved Cancels for mandatory host M13 handling;
+it is not a way to downgrade an unacknowledged original Down. Rejected generations
 remain in the existing adapter pressed-key collection as physical tombstones.
 Their repeats and authentic Up are suppressed as **UI events** (not physical
 observations), and device/source cancellation produces no fictitious M13 Cancel.
-Queued or unresolved generations still emit Up/Cancel and require normal M13
-scope/finality handling. Admission tokens contain one checked adapter-lifetime
-identity and one nonwrapping per-adapter Down generation: they cannot acknowledge
+Queued generations emit Up/Cancel and require normal M13 scope/finality handling.
+Pending generations cannot issue ordinary Up until their exact admission decision;
+if retirement occurs first, their generated device/source Cancel remains mandatory
+and cannot be reclassified as never-admitted.
+
+Admission tokens contain one checked adapter-lifetime identity and one
+nonwrapping per-adapter Down generation: they cannot acknowledge
 a key from a replaced or concurrent adapter, nor a retired generation. These
 identifiers never carry runtime authority, an M13 work receipt or game permission.
 Checked token exhaustion yields `KeyboardInputOutcome::Failed`, **not** an

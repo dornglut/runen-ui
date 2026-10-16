@@ -96,6 +96,9 @@ pub enum KeyboardIngressDiagnostic {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum KeyboardIngressFailure {
     AdmissionIdentityExhausted,
+    /// A terminal key transition arrived before the original Down's runtime
+    /// queue-admission outcome was acknowledged. No terminal UI event is safe.
+    UnresolvedOriginalDownAdmission,
 }
 
 /// Original Down carries a one-use adapter-local acknowledgment identity.
@@ -274,6 +277,15 @@ impl KeyboardInputState {
                         KeyboardIngressDiagnostic::ReleaseWithoutPress,
                     );
                 };
+                // An unresolved original Down may never have reached M13. Do not
+                // erase its provenance or publish a terminal Up/Cancel that could
+                // be routed to an unrelated focused widget. The host must fail
+                // closed; an authentic admission decision can still resolve it.
+                if matches!(self.pressed[index].admission, DownAdmission::Pending(_)) {
+                    return KeyboardInputOutcome::Failed(
+                        KeyboardIngressFailure::UnresolvedOriginalDownAdmission,
+                    );
+                }
                 let pressed = self.pressed.remove(index);
                 if pressed.admission == DownAdmission::RejectedBeforeQueue {
                     return KeyboardInputOutcome::Suppressed(
@@ -540,6 +552,88 @@ mod tests {
         assert_eq!(event.phase(), KeyboardPhase::Down);
         assert!(!event.is_repeat());
         admission
+    }
+
+    #[test]
+    fn unresolved_original_down_cannot_publish_a_terminal_up_or_synthetic_cancel() {
+        let mut keyboard = KeyboardInputState::default();
+        let a = device(104);
+        let b = device(105);
+        let logical = WinitKey::Character("w".into());
+        let physical = WinitPhysicalKey::Code(KeyCode::KeyW);
+        let pending = pending_down(&mut keyboard, a, physical, &logical);
+        let other = pending_down(&mut keyboard, b, physical, &logical);
+        assert_eq!(
+            keyboard.resolve_down_admission(other, KeyboardDownDecision::Queued),
+            Ok(())
+        );
+
+        for synthetic in [false, true] {
+            assert!(matches!(
+                keyboard.key_input(
+                    a,
+                    &transition(ElementState::Released, physical, &logical, false, synthetic),
+                    KeyModifiers::NONE,
+                    KeyboardCompositionState::Inactive,
+                ),
+                KeyboardInputOutcome::Failed(
+                    KeyboardIngressFailure::UnresolvedOriginalDownAdmission
+                )
+            ));
+            assert_eq!(keyboard.pressed_len(), 2);
+        }
+
+        // The terminal failure did not silently resolve, delete or alias the
+        // original token. A real pre-queue rejection can still be acknowledged.
+        assert_eq!(
+            keyboard.resolve_down_admission(pending, KeyboardDownDecision::RejectedBeforeQueue),
+            Ok(())
+        );
+        assert!(matches!(
+            keyboard.key_input(
+                a,
+                &transition(ElementState::Released, physical, &logical, false, false),
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            ),
+            KeyboardInputOutcome::Suppressed(KeyboardIngressDiagnostic::ReleaseOfRejectedDown)
+        ));
+        let b_up = submitted(keyboard.key_input(
+            b,
+            &transition(ElementState::Released, physical, &logical, false, false),
+            KeyModifiers::NONE,
+            KeyboardCompositionState::Inactive,
+        ));
+        assert_eq!(b_up.phase(), KeyboardPhase::Up);
+        assert_eq!(keyboard.pressed_len(), 0);
+
+        let next = pending_down(&mut keyboard, a, physical, &logical);
+        assert_ne!(next, pending);
+        assert!(matches!(
+            keyboard.key_input(
+                a,
+                &transition(ElementState::Released, physical, &logical, false, false),
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            ),
+            KeyboardInputOutcome::Failed(
+                KeyboardIngressFailure::UnresolvedOriginalDownAdmission
+            )
+        ));
+        assert_eq!(
+            keyboard.resolve_down_admission(next, KeyboardDownDecision::Queued),
+            Ok(())
+        );
+        assert_eq!(
+            submitted(keyboard.key_input(
+                a,
+                &transition(ElementState::Released, physical, &logical, false, false),
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            ))
+            .phase(),
+            KeyboardPhase::Up
+        );
     }
 
     #[test]
