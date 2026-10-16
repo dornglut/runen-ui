@@ -324,6 +324,11 @@ impl KeyboardInputState {
 
     /// Atomically cancel source keys only after their original Down admissions
     /// are resolved. Unknown queue admission must never fabricate a Cancel.
+    ///
+    /// # Errors
+    ///
+    /// Returns `UnresolvedOriginalDownAdmission` without removing any key or
+    /// emitting a Cancel if this device still has a pending original Down.
     pub fn cancel_device(
         &mut self,
         device_id: InputDeviceId,
@@ -349,6 +354,11 @@ impl KeyboardInputState {
     }
 
     /// Atomically cancel all keys after checking every original admission.
+    ///
+    /// # Errors
+    ///
+    /// Returns `UnresolvedOriginalDownAdmission` without removing any key or
+    /// emitting a Cancel if any original Down is still pending.
     pub fn cancel_all(
         &mut self,
         modifiers: KeyModifiers,
