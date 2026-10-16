@@ -32,8 +32,10 @@ synthetic release**. An unresolved Up/Cancel returns the typed fatal
 pending entry or fabricating a terminal runtime event. Whole-source/device
 retirement returns an **atomic typed failure** if any affected original Down
 is Pending, without erasing the physical entry or fabricating a Cancel. The
-host MUST fail closed, not downgrade the unresolved admission. Rejected generations
-remain in the existing adapter pressed-key collection as physical tombstones.
+host MUST fail closed, not downgrade the unresolved admission.
+
+Rejected generations remain in the existing adapter pressed-key collection as
+physical tombstones.
 Their repeats and authentic Up are suppressed as **UI events** (not physical
 observations), and device/source cancellation produces no fictitious M13 Cancel.
 Queued generations emit Up/Cancel and require normal M13 scope/finality handling.
