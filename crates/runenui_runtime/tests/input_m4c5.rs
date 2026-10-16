@@ -831,7 +831,7 @@ fn key_04_admitted_down_finality_depends_on_fifo_order_before_focus_removal() {
         _ => None,
     });
     assert!(matches!(
-        delivered.map(|settled| settled.finality()),
+        delivered.map(runenui_runtime::UiInputSettlement::finality),
         Some(UiInputFinality::Committed(facts))
             if matches!(facts.route(), UiInputRoute::Routed { target } if target == &initial_target)
     ));
