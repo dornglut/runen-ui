@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use runenui_core::{
     InputDeviceId, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
     KeyboardPhase, LogicalKey, PhysicalKey, SemanticCommand,
@@ -10,10 +12,17 @@ use winit::{
     },
 };
 
+// Process-local adapter-edge identity, not an M13 runtime scope or sequence.
+// Rebinding/replacement must not reuse pending acknowledgment identities.
+static NEXT_KEYBOARD_ADAPTER_ID: AtomicUsize = AtomicUsize::new(1);
+
 /// One original physical Down translation, not an M13 `WorkSequence` or a
 /// runtime input settlement. The translator never mints gameplay permission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct KeyboardDownAdmission(u64);
+pub struct KeyboardDownAdmission {
+    adapter_id: usize,
+    down_generation: u64,
+}
 
 /// The embedding host must derive this from the actual runtime submission:
 /// queued work is not committed processing, and only a definitive pre-queue
@@ -104,6 +113,7 @@ pub enum KeyboardInputOutcome {
 pub struct KeyboardInputState {
     pressed: Vec<PressedKey>,
     next_down_admission: u64,
+    adapter_id: Option<usize>,
 }
 
 impl KeyboardInputState {
@@ -217,8 +227,27 @@ impl KeyboardInputState {
                         KeyboardIngressFailure::AdmissionIdentityExhausted,
                     );
                 };
+                let adapter_id = match self.adapter_id {
+                    Some(id) => id,
+                    None => {
+                        let Ok(id) = NEXT_KEYBOARD_ADAPTER_ID.fetch_update(
+                            Ordering::Relaxed,
+                            Ordering::Relaxed,
+                            |current| current.checked_add(1),
+                        ) else {
+                            return KeyboardInputOutcome::Failed(
+                                KeyboardIngressFailure::AdmissionIdentityExhausted,
+                            );
+                        };
+                        self.adapter_id = Some(id);
+                        id
+                    }
+                };
                 self.next_down_admission = next;
-                let admission = KeyboardDownAdmission(next);
+                let admission = KeyboardDownAdmission {
+                    adapter_id,
+                    down_generation: next,
+                };
                 self.pressed.push(PressedKey {
                     device_id,
                     physical_key: physical_key.clone(),
@@ -642,6 +671,42 @@ mod tests {
         assert_eq!(
             keyboard.resolve_down_admission(pending, KeyboardDownDecision::RejectedBeforeQueue),
             Err(KeyboardDownAdmissionError::StaleOrAlreadyResolved)
+        );
+    }
+
+    #[test]
+    fn original_down_token_cannot_alias_another_adapter_or_replacement() {
+        let a = device(101);
+        let key = WinitKey::Character("w".into());
+        let physical = WinitPhysicalKey::Code(KeyCode::KeyW);
+        let mut first = KeyboardInputState::default();
+        let old = pending_down(&mut first, a, physical, &key);
+        let mut second = KeyboardInputState::default();
+        let unrelated = pending_down(&mut second, a, physical, &key);
+        assert_ne!(old, unrelated, "adapter lifetimes never reuse pending token identity");
+        assert_eq!(
+            second.resolve_down_admission(old, KeyboardDownDecision::RejectedBeforeQueue),
+            Err(KeyboardDownAdmissionError::StaleOrAlreadyResolved)
+        );
+        assert_eq!(
+            first.resolve_down_admission(unrelated, KeyboardDownDecision::Queued),
+            Err(KeyboardDownAdmissionError::StaleOrAlreadyResolved)
+        );
+        drop(first);
+        let mut replacement = KeyboardInputState::default();
+        let fresh = pending_down(&mut replacement, a, physical, &key);
+        assert_ne!(old, fresh, "replacement must not alias the old adapter's first Down");
+        assert_eq!(
+            replacement.resolve_down_admission(old, KeyboardDownDecision::RejectedBeforeQueue),
+            Err(KeyboardDownAdmissionError::StaleOrAlreadyResolved)
+        );
+        assert_eq!(
+            replacement.resolve_down_admission(fresh, KeyboardDownDecision::Queued),
+            Ok(())
+        );
+        assert_eq!(
+            second.resolve_down_admission(unrelated, KeyboardDownDecision::Queued),
+            Ok(())
         );
     }
 

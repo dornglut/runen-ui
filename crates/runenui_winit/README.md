@@ -31,8 +31,10 @@ remain in the existing adapter pressed-key collection as physical tombstones.
 Their repeats and authentic Up are suppressed as **UI events** (not physical
 observations), and device/source cancellation produces no fictitious M13 Cancel.
 Queued or unresolved generations still emit Up/Cancel and require normal M13
-scope/finality handling. Admission tokens never wrap, cannot acknowledge a
-different or already retired generation and do not carry game permission.
+scope/finality handling. Admission tokens contain one checked adapter-lifetime
+identity and one nonwrapping per-adapter Down generation: they cannot acknowledge
+a key from a replaced or concurrent adapter, nor a retired generation. These
+identifiers never carry runtime authority, an M13 work receipt or game permission.
 Checked token exhaustion yields `KeyboardInputOutcome::Failed`, **not** an
 ordinary suppressible diagnostic: the host must fail closed rather than
 quietly resume native gameplay with an unrepresented physical Down.
