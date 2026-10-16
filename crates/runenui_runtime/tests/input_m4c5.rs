@@ -789,6 +789,197 @@ fn key_04_keyboard_rejections_preserve_the_owned_event_and_runtime_state() {
     assert_eq!(full.state().activations, 0);
 }
 
+/// Models an independent ordinary widget's per-device held-key state.
+#[derive(Debug)]
+struct FocusHoldWidget {
+    held_devices: Rc<RefCell<Vec<InputDeviceId>>>,
+}
+
+impl Widget<()> for FocusHoldWidget {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ()>,
+    ) -> WidgetEventOutput {
+        if context.phase() != EventPhase::Target {
+            return WidgetEventOutput::none();
+        }
+        match event {
+            UiEvent::Keyboard(key) => {
+                if let Some(device) = key.device_id() {
+                    let mut held = self.held_devices.borrow_mut();
+                    match key.phase() {
+                        KeyboardPhase::Down if !key.is_repeat() => {
+                            if !held.contains(&device) {
+                                held.push(device);
+                            }
+                        }
+                        KeyboardPhase::Up | KeyboardPhase::Cancel => {
+                            held.retain(|existing| *existing != device);
+                        }
+                        KeyboardPhase::Down => {}
+                    }
+                }
+            }
+            UiEvent::Focus(focus) if focus.kind() == FocusEventKind::Out => {
+                self.held_devices.borrow_mut().clear();
+            }
+            _ => {}
+        }
+        WidgetEventOutput::none()
+    }
+
+    fn unmount(&self, (): &mut Self::State, _: &mut runenui_core::WidgetUnmountContext) {
+        self.held_devices.borrow_mut().clear();
+    }
+}
+
+impl ChildBearingWidget<()> for FocusHoldWidget {}
+
+#[derive(Debug)]
+struct FocusHoldState {
+    a: Rc<RefCell<Vec<InputDeviceId>>>,
+    b: Rc<RefCell<Vec<InputDeviceId>>>,
+}
+
+struct FocusHoldApp;
+
+impl UiApp for FocusHoldApp {
+    type State = FocusHoldState;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        container(
+            FocusHoldWidget {
+                held_devices: Rc::clone(&state.a),
+            },
+            vec![
+                Element::new(FocusHoldWidget {
+                    held_devices: Rc::clone(&state.a),
+                })
+                .id("hold-a")
+                .key("hold-a")
+                .focusable(true),
+                Element::new(FocusHoldWidget {
+                    held_devices: Rc::clone(&state.b),
+                })
+                .id("hold-b")
+                .key("hold-b")
+                .focusable(true),
+            ],
+        )
+        .id("hold-root")
+        .key("hold-root")
+    }
+
+    fn update(_: &mut Self::State, _: Self::Action) {}
+}
+
+fn settle_hold(runtime: &mut AppRuntime<FocusHoldApp>) {
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("hold fixture must pump canonically"))
+        .report()
+        .to_owned();
+    assert!(report.is_quiescent(), "hold fixture failed to settle: {report:?}");
+}
+
+fn focus_hold(runtime: &mut AppRuntime<FocusHoldApp>, authored_id: &str) {
+    let id = runenui_core::ElementId::new(authored_id)
+        .unwrap_or_else(|_| unreachable!("valid focus id"));
+    let target = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&id))
+        .unwrap_or_else(|| unreachable!("focus target is mounted"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus command is accepted"));
+    settle_hold(runtime);
+}
+
+/// Ordinary Up is correctly focus-relative; local FocusOut/unmount is what
+/// retires each widget's own held-key semantic lifetime. A foreign device's
+/// terminal cannot release an independent key at the newly focused widget.
+/// This does not certify the separate no-focus native Cancel admission path.
+#[test]
+fn key_04_focusout_retires_widget_holds_without_original_key_capture() {
+    let a = Rc::new(RefCell::new(Vec::new()));
+    let b = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<FocusHoldApp>::mount(FocusHoldState {
+        a: Rc::clone(&a),
+        b: Rc::clone(&b),
+    });
+    settle_hold(&mut runtime);
+    let device_a = InputDeviceId::new(71).unwrap_or_else(|| unreachable!("nonzero device"));
+    let device_b = InputDeviceId::new(72).unwrap_or_else(|| unreachable!("nonzero device"));
+    let key = |phase, device| {
+        keyboard(
+            phase,
+            PhysicalKey::Code(String::from("KeyW")),
+            LogicalKey::Character(String::from("w")),
+            false,
+            Some(device),
+        )
+    };
+
+    focus_hold(&mut runtime, "hold-a");
+    runtime
+        .submit_keyboard(key(KeyboardPhase::Down, device_a))
+        .unwrap_or_else(|_| unreachable!("original A Down admitted"));
+    settle_hold(&mut runtime);
+    assert_eq!(*a.borrow(), vec![device_a]);
+    assert!(b.borrow().is_empty());
+
+    focus_hold(&mut runtime, "hold-b");
+    assert!(a.borrow().is_empty(), "FocusOut retired A before B input");
+    runtime
+        .submit_keyboard(key(KeyboardPhase::Down, device_b))
+        .unwrap_or_else(|_| unreachable!("independent B Down admitted"));
+    settle_hold(&mut runtime);
+    assert_eq!(*b.borrow(), vec![device_b]);
+
+    runtime
+        .submit_keyboard(key(KeyboardPhase::Up, device_a))
+        .unwrap_or_else(|_| unreachable!("physical Up targets current B"));
+    settle_hold(&mut runtime);
+    assert_eq!(
+        *b.borrow(),
+        vec![device_b],
+        "foreign A Up cannot retire B's device-qualified Down"
+    );
+    focus_hold(&mut runtime, "hold-a");
+    assert!(a.borrow().is_empty());
+    assert!(b.borrow().is_empty(), "B FocusOut retired B without B Up");
+
+    runtime
+        .submit_keyboard(key(KeyboardPhase::Cancel, device_a))
+        .unwrap_or_else(|_| unreachable!("late Cancel follows current A focus"));
+    settle_hold(&mut runtime);
+    assert!(
+        a.borrow().is_empty(),
+        "A→B→A must not resurrect its original held-key semantic lifetime"
+    );
+}
+
 /// Queue admission is not an accepted original-key interaction lifetime.
 /// The same final missing focus can follow either a committed Down or a Down
 /// invalidated before processing; a future continuation cannot be minted
