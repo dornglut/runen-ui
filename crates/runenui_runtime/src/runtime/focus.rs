@@ -1001,13 +1001,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if self.tree.target_status(&owner) != TargetStatus::Live {
             return Ok(false);
         }
-        let Ok(route) = self.tree.event_route(&owner) else {
-            return Ok(false);
-        };
-        if route.as_slice() != self.focus.route() {
-            return Ok(false);
-        }
-
         let sequence = cause
             .sequence
             .unwrap_or_else(|| unreachable!("reconciled focus retirement has one action sequence"));
@@ -1020,6 +1013,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             cause.causal_parent,
             TraceReservation::continuation(),
         );
+        let route = match self.checked_focus_route(&owner) {
+            Ok(route) => route,
+            Err(failure) => {
+                return Err(self.poison_routed_facts(&facts, failure, Some(&owner)));
+            }
+        };
+        if route.as_slice() != self.focus.route() {
+            return Ok(false);
+        }
         let mut transaction = self
             .try_begin_routed_transaction_with_trace(facts, MandatoryTracePlan::focus_commit())?;
         if let Err(error) =
