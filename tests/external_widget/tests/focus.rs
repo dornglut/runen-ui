@@ -638,6 +638,7 @@ struct FocusOutOrderState {
     processed: Vec<FocusOutOrderAction>,
 }
 
+#[derive(Debug)]
 struct FocusOutOrderWidget {
     enabled: bool,
 }
