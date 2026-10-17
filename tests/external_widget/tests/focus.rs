@@ -1208,15 +1208,15 @@ fn cross_parent_reparent_remounts_and_suppresses_old_focus_route() {
         .trace()
         .records()
         .skip(trace_start)
-        .filter_map(|record| {
+        .filter(|record| {
             matches!(
                 record.kind(),
                 TraceRecordKind::FocusNotificationResolved {
                     kind: FocusEventKind::Out
                 }
             )
-            .then(|| record.context().delivery())
         })
+        .map(|record| record.context().delivery())
         .collect::<Vec<_>>();
     assert_eq!(outcomes, [Some(TraceDeliveryOutcome::Suppressed)]);
 }
@@ -1238,15 +1238,15 @@ fn shutdown_suppresses_focus_out_without_routing_to_unmounted_owners() {
         .trace()
         .records()
         .skip(trace_start)
-        .filter_map(|record| {
+        .filter(|record| {
             matches!(
                 record.kind(),
                 TraceRecordKind::FocusNotificationResolved {
                     kind: FocusEventKind::Out
                 }
             )
-            .then(|| record.context().delivery())
         })
+        .map(|record| record.context().delivery())
         .collect::<Vec<_>>();
     assert_eq!(outcomes, [Some(TraceDeliveryOutcome::Suppressed)]);
 }
