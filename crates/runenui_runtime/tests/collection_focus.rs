@@ -698,6 +698,66 @@ fn output_free_focus_retirement_has_exact_queue_admission_boundary() {
 }
 
 #[test]
+fn default_limits_focusout_requires_the_full_conservative_queue_headroom() {
+    // Production defaults: 4096 waiting envelopes and 1024 possible
+    // routed outputs, conservatively reserving 2048 queue positions.
+    // These are synthetic bursts, not representative throughput measurements.
+    const REQUIRED_FREE_SLOTS: usize = 2 * 1024;
+    const WAITING_CAPACITY: usize = 4096;
+    for (submitted, delivered) in [
+        (WAITING_CAPACITY - REQUIRED_FREE_SLOTS + 1, true),
+        (WAITING_CAPACITY - REQUIRED_FREE_SLOTS + 2, false),
+    ] {
+        let mut runtime = AppRuntime::<App>::mount(State { discoverable: true });
+        settle(&mut runtime);
+        let owner = id(&mut runtime, "disabled");
+        command(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+        let trace_start = runtime.trace().len();
+
+        for index in 0..submitted {
+            runtime
+                .submit_action(Action::UseDiscoverablePolicy(index != 0))
+                .unwrap_or_else(|_| unreachable!("default queue accepts the synthetic burst"));
+        }
+        let batch = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("one-envelope pump remains observable"));
+        assert_eq!(batch.report().processed_envelopes(), 1);
+        assert!(!runtime.state().discoverable);
+        let focused = runtime.focus().focused_node();
+        assert_eq!(focused, (!delivered).then_some(&owner));
+        let delivered_trace = runtime.trace().records().skip(trace_start).any(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        });
+        assert_eq!(delivered_trace, delivered);
+        if delivered {
+            assert_eq!(runtime.status(), RuntimeStatus::Running);
+            assert_eq!(batch.report().remaining_queued_envelopes(), submitted - 1);
+        } else {
+            assert_eq!(
+                runtime.status(),
+                RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+            );
+            assert_eq!(
+                batch.report().outcome(),
+                runenui_runtime::PumpOutcome::Terminal(RuntimeTerminalReason::Poisoned)
+            );
+            assert!(runtime.trace().records().skip(trace_start).any(|record| matches!(
+                record.kind(),
+                TraceRecordKind::RoutedEventAdmissionRejected {
+                    capacity: runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
+                }
+            )));
+        }
+    }
+}
+
+#[test]
 fn queue_pressure_without_focus_retirement_does_not_reserve_optional_focus_out() {
     let mut runtime = AppRuntime::<App>::mount_with_config(
         State { discoverable: true },
