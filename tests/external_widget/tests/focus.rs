@@ -777,3 +777,271 @@ fn compatible_disablement_notification_outputs_precede_application_effects() {
         ]
     );
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReconciliationFocusAction {
+    Retain,
+    Reorder,
+    Disable,
+    ReorderAndDisable,
+    Remove,
+    Replace,
+}
+
+struct ReconciliationFocusState {
+    log: Rc<RefCell<Vec<ExternalFocusFact>>>,
+    change: ReconciliationFocusAction,
+}
+
+#[derive(Debug)]
+struct ReplacementFocusWidget;
+
+impl Widget<ReconciliationFocusAction> for ReplacementFocusWidget {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+}
+
+struct ReconciliationFocusApp;
+
+impl UiApp for ReconciliationFocusApp {
+    type State = ReconciliationFocusState;
+    type Action = ReconciliationFocusAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        let enabled = !matches!(
+            state.change,
+            ReconciliationFocusAction::Disable | ReconciliationFocusAction::ReorderAndDisable
+        );
+        let target = if state.change == ReconciliationFocusAction::Replace {
+            Element::new(ReplacementFocusWidget)
+                .key("a")
+                .id("reconciliation.a")
+                .focusable(true)
+        } else {
+            Element::new(ExternalFocusWidget::new("a", Rc::clone(&state.log), enabled))
+                .key("a")
+                .id("reconciliation.a")
+                .focusable(true)
+        };
+        let sibling = Element::new(ExternalFocusWidget::new(
+            "sibling",
+            Rc::clone(&state.log),
+            false,
+        ))
+        .key("sibling")
+        .id("reconciliation.sibling");
+        let children = match state.change {
+            ReconciliationFocusAction::Remove => vec![sibling],
+            ReconciliationFocusAction::Reorder | ReconciliationFocusAction::ReorderAndDisable => {
+                vec![sibling, target]
+            }
+            _ => vec![target, sibling],
+        };
+        container(
+            ExternalFocusWidget::new("root", Rc::clone(&state.log), false),
+            children,
+        )
+        .id("reconciliation.root")
+        .key("root")
+        .into_element()
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        state.change = action;
+    }
+}
+
+fn focused_reconciliation_fixture(
+    trace_capacity: usize,
+) -> (
+    AppRuntime<ReconciliationFocusApp>,
+    Rc<RefCell<Vec<ExternalFocusFact>>>,
+    MountedNodeId,
+) {
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<ReconciliationFocusApp>::mount_with_config(
+        ReconciliationFocusState {
+            log: Rc::clone(&log),
+            change: ReconciliationFocusAction::Retain,
+        },
+        runenui_runtime::RuntimeConfig::default()
+            .with_trace_config(runenui_runtime::TraceConfig::new(trace_capacity)),
+    );
+    assert!(
+        runtime
+            .pump(FULL_PUMP)
+            .unwrap_or_else(|_| unreachable!("initial reconciliation"))
+            .report()
+            .is_quiescent()
+    );
+    let target = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "reconciliation.a")
+        })
+        .unwrap_or_else(|| unreachable!("A is mounted"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(
+            target.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus request is admitted"));
+    assert!(
+        runtime
+            .pump(FULL_PUMP)
+            .unwrap_or_else(|_| unreachable!("initial focus"))
+            .report()
+            .is_quiescent()
+    );
+    assert_eq!(runtime.focus().focused_node(), Some(&target));
+    log.borrow_mut().clear();
+    (runtime, log, target)
+}
+
+#[test]
+fn reconciled_retention_never_synthesizes_focus_out_even_after_sibling_reorder() {
+    for change in [
+        ReconciliationFocusAction::Retain,
+        ReconciliationFocusAction::Reorder,
+    ] {
+        let (mut runtime, log, target) = focused_reconciliation_fixture(256);
+        let trace_start = runtime.trace().len();
+        runtime
+            .submit_action(change)
+            .unwrap_or_else(|_| unreachable!("retained action is admitted"));
+        let zero = runtime
+            .pump(PumpBudget::new(0, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("zero-budget pump"));
+        assert_eq!(zero.report().processed_envelopes(), 0);
+        assert_eq!(runtime.focus().focused_node(), Some(&target));
+        let one = runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("single-envelope pump"));
+        assert_eq!(one.report().processed_envelopes(), 1);
+        assert_eq!(runtime.focus().focused_node(), Some(&target));
+        assert!(runtime.index().node(&target).is_some());
+        assert!(log.borrow().is_empty());
+        assert!(!runtime.trace().records().skip(trace_start).any(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out
+                }
+            )
+        }));
+    }
+}
+
+#[test]
+fn sibling_reorder_and_disablement_delivers_on_unchanged_old_route_once() {
+    let (mut runtime, log, target) = focused_reconciliation_fixture(256);
+    runtime
+        .submit_action(ReconciliationFocusAction::ReorderAndDisable)
+        .unwrap_or_else(|_| unreachable!("reordered disablement admitted"));
+    assert!(
+        runtime
+            .pump(FULL_PUMP)
+            .unwrap_or_else(|_| unreachable!("reordered disablement settles"))
+            .report()
+            .is_quiescent()
+    );
+    assert_eq!(runtime.focus().focused_node(), None);
+    assert!(runtime.index().node(&target).is_some());
+    let log = log.borrow();
+    assert_eq!(
+        log.iter()
+            .map(|event| (event.widget, event.phase, event.kind, event.reason))
+            .collect::<Vec<_>>(),
+        [
+            ("root", EventPhase::Capture, FocusEventKind::Out, FocusReason::Disablement),
+            ("a", EventPhase::Target, FocusEventKind::Out, FocusReason::Disablement),
+            ("root", EventPhase::Bubble, FocusEventKind::Out, FocusReason::Disablement),
+        ]
+    );
+}
+
+#[test]
+fn removal_and_replacement_suppress_post_unmount_focus_out() {
+    for change in [
+        ReconciliationFocusAction::Remove,
+        ReconciliationFocusAction::Replace,
+    ] {
+        let (mut runtime, log, old) = focused_reconciliation_fixture(256);
+        let trace_start = runtime.trace().len();
+        runtime
+            .submit_action(change)
+            .unwrap_or_else(|_| unreachable!("retirement action admitted"));
+        assert!(
+            runtime
+                .pump(FULL_PUMP)
+                .unwrap_or_else(|_| unreachable!("retirement settles"))
+                .report()
+                .is_quiescent()
+        );
+        assert_eq!(runtime.focus().focused_node(), None);
+        assert_eq!(runtime.focus().reason(), Some(FocusReason::Removal));
+        assert!(runtime.index().node(&old).is_none());
+        assert!(log.borrow().is_empty(), "no callback may target an unmounted old widget");
+        let out = runtime
+            .trace()
+            .records()
+            .skip(trace_start)
+            .filter(|record| matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out
+                }
+            ))
+            .collect::<Vec<_>>();
+        assert_eq!(out.len(), 1);
+        assert_eq!(
+            out[0].context().delivery(),
+            Some(TraceDeliveryOutcome::Suppressed)
+        );
+    }
+}
+
+#[test]
+fn disabled_trace_does_not_disable_real_focus_out_delivery() {
+    let (mut runtime, log, target) = focused_reconciliation_fixture(0);
+    runtime
+        .submit_action(ReconciliationFocusAction::Disable)
+        .unwrap_or_else(|_| unreachable!("disablement admitted"));
+    assert!(
+        runtime
+            .pump(FULL_PUMP)
+            .unwrap_or_else(|_| unreachable!("disablement settles"))
+            .report()
+            .is_quiescent()
+    );
+    assert!(runtime.index().node(&target).is_some());
+    assert_eq!(runtime.focus().focused_node(), None);
+    assert_eq!(runtime.trace().len(), 0);
+    assert_eq!(
+        log.borrow()
+            .iter()
+            .map(|event| (event.widget, event.phase, event.kind))
+            .collect::<Vec<_>>(),
+        [
+            ("root", EventPhase::Capture, FocusEventKind::Out),
+            ("a", EventPhase::Target, FocusEventKind::Out),
+            ("root", EventPhase::Bubble, FocusEventKind::Out),
+        ]
+    );
+    log.borrow_mut().clear();
+    runtime
+        .submit_action(ReconciliationFocusAction::Disable)
+        .unwrap_or_else(|_| unreachable!("idempotent disablement admitted"));
+    runtime
+        .pump(FULL_PUMP)
+        .unwrap_or_else(|_| unreachable!("idempotent disablement settles"));
+    assert!(log.borrow().is_empty(), "retired focus cannot notify twice");
+}
