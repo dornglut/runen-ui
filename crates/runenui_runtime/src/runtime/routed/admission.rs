@@ -183,7 +183,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     /// The reconciliation path knows there is only one old live route and
-    /// no future focus-in destination. Reserve exactly its C/T/B FocusOut
+    /// no future focus-in destination. Reserve exactly its C/T/B `FocusOut`
     /// invocations rather than every candidate in the mounted publication.
     pub(super) fn prepare_reconciled_focus_out_route(
         &mut self,
