@@ -272,7 +272,15 @@ pub(crate) fn process_application_action<App: UiApp>(
             match runtime.commit_live_reconciled_focus_out(cause) {
                 Ok(delivered) => delivered,
                 Err(failure) => {
-                    let reason = mutation_phase.terminal_reason(RuntimeTerminalReason::Poisoned);
+                    // Routed capacity exhaustion may already terminalize the runtime
+                    // with its exact reason. The outer application transaction
+                    // must report that same terminal reason to the pump.
+                    let reason = match runtime.status {
+                        RuntimeStatus::Terminal(reason) => reason,
+                        RuntimeStatus::Running | RuntimeStatus::Closed => {
+                            mutation_phase.terminal_reason(RuntimeTerminalReason::Poisoned)
+                        }
+                    };
                     let cancelled =
                         runtime.enter_terminal_with_parent(reason, 0, failure.causal_parent());
                     return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
