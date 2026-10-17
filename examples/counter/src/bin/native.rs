@@ -30,7 +30,9 @@ use runenui_runtime::{
 use runenui_winit::{
     accessibility::{AccessibilityEvent, SemanticAdapter},
     device_identity::{DeviceIdentityError, DeviceIdentityMap},
-    keyboard_input::{KeyboardInputOutcome, KeyboardInputState, NativeKeyTransition},
+    keyboard_input::{
+        KeyboardDownDecision, KeyboardInputOutcome, KeyboardInputState, NativeKeyTransition,
+    },
     mouse_input::{MouseButtonOutcome, MouseInputState, TranslatedPointerPoint},
     native_mapping::{NativeMapping, NativePointError},
 };
@@ -543,16 +545,22 @@ impl CounterHost {
         &mut self,
         event_loop: &ActiveEventLoop,
         event: runenui_core::KeyboardEvent,
-    ) -> bool {
+    ) -> Option<KeyboardDownDecision> {
         match self.runtime.submit_keyboard(event) {
-            Ok(_) => true,
-            Err(error) if error.kind() == SubmitKeyboardErrorKind::NoFocusedTarget => true,
+            Ok(_) => Some(KeyboardDownDecision::Queued),
+            Err(error)
+                if error.kind() == SubmitKeyboardErrorKind::NoFocusedTarget
+                    && error.event().phase() == runenui_core::KeyboardPhase::Down
+                    && !error.event().is_repeat() =>
+            {
+                Some(KeyboardDownDecision::RejectedBeforeQueue)
+            }
             Err(error) => {
                 self.fail(
                     event_loop,
                     &format!("native keyboard input failed: {error}"),
                 );
-                false
+                None
             }
         }
     }
@@ -595,11 +603,21 @@ impl CounterHost {
     }
 
     fn cancel_keyboard_authority(&mut self, event_loop: &ActiveEventLoop) -> bool {
-        let events = self
+        let events = match self
             .keyboard
-            .cancel_all(self.modifiers, KeyboardCompositionState::Inactive);
+            .cancel_all(self.modifiers, KeyboardCompositionState::Inactive)
+        {
+            Ok(events) => events,
+            Err(error) => {
+                self.fail(
+                    event_loop,
+                    &format!("unresolved native key admission at source cancellation: {error:?}"),
+                );
+                return false;
+            }
+        };
         for event in events {
-            if !self.submit_keyboard_event(event_loop, event) {
+            if self.submit_keyboard_event(event_loop, event).is_none() {
                 return false;
             }
         }
@@ -799,13 +817,32 @@ impl CounterHost {
             self.modifiers,
             KeyboardCompositionState::Inactive,
         ) {
-            KeyboardInputOutcome::Submit(event) => {
-                if !self.submit_keyboard_event(event_loop, event) {
+            KeyboardInputOutcome::Submit {
+                event,
+                down_admission,
+            } => {
+                let Some(decision) = self.submit_keyboard_event(event_loop, event) else {
+                    return;
+                };
+                if let Some(admission) = down_admission
+                    && let Err(error) = self.keyboard.resolve_down_admission(admission, decision)
+                {
+                    self.fail(
+                        event_loop,
+                        &format!("keyboard admission lifetime changed: {error:?}"),
+                    );
                     return;
                 }
             }
             KeyboardInputOutcome::Suppressed(diagnostic) => {
                 eprintln!("Counter keyboard input withheld: {diagnostic:?}");
+                return;
+            }
+            KeyboardInputOutcome::Failed(failure) => {
+                self.fail(
+                    event_loop,
+                    &format!("Counter native keyboard ingress failed closed: {failure:?}"),
+                );
                 return;
             }
         }
