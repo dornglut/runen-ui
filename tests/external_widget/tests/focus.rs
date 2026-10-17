@@ -780,6 +780,7 @@ fn compatible_disablement_notification_outputs_precede_application_effects() {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ReconciliationFocusAction {
+    Noop,
     Retain,
     Reorder,
     Disable,
@@ -796,7 +797,7 @@ struct ReconciliationFocusState {
 #[derive(Debug)]
 struct ReplacementFocusWidget;
 
-impl Widget<ReconciliationFocusAction> for ReplacementFocusWidget {
+impl Widget<()> for ReplacementFocusWidget {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -820,10 +821,14 @@ impl UiApp for ReconciliationFocusApp {
                 .id("reconciliation.a")
                 .focusable(true)
         } else {
-            Element::new(ExternalFocusWidget::new("a", Rc::clone(&state.log), enabled))
-                .key("a")
-                .id("reconciliation.a")
-                .focusable(true)
+            Element::new(ExternalFocusWidget::new(
+                "a",
+                Rc::clone(&state.log),
+                enabled,
+            ))
+            .key("a")
+            .id("reconciliation.a")
+            .focusable(true)
         };
         let sibling = Element::new(ExternalFocusWidget::new(
             "sibling",
@@ -846,10 +851,13 @@ impl UiApp for ReconciliationFocusApp {
         .id("reconciliation.root")
         .key("root")
         .into_element()
+        .map_action(|()| ReconciliationFocusAction::Noop)
     }
 
     fn update(state: &mut Self::State, action: Self::Action) {
-        state.change = action;
+        if action != ReconciliationFocusAction::Noop {
+            state.change = action;
+        }
     }
 }
 
@@ -961,9 +969,24 @@ fn sibling_reorder_and_disablement_delivers_on_unchanged_old_route_once() {
             .map(|event| (event.widget, event.phase, event.kind, event.reason))
             .collect::<Vec<_>>(),
         [
-            ("root", EventPhase::Capture, FocusEventKind::Out, FocusReason::Disablement),
-            ("a", EventPhase::Target, FocusEventKind::Out, FocusReason::Disablement),
-            ("root", EventPhase::Bubble, FocusEventKind::Out, FocusReason::Disablement),
+            (
+                "root",
+                EventPhase::Capture,
+                FocusEventKind::Out,
+                FocusReason::Disablement
+            ),
+            (
+                "a",
+                EventPhase::Target,
+                FocusEventKind::Out,
+                FocusReason::Disablement
+            ),
+            (
+                "root",
+                EventPhase::Bubble,
+                FocusEventKind::Out,
+                FocusReason::Disablement
+            ),
         ]
     );
 }
@@ -989,17 +1012,22 @@ fn removal_and_replacement_suppress_post_unmount_focus_out() {
         assert_eq!(runtime.focus().focused_node(), None);
         assert_eq!(runtime.focus().reason(), Some(FocusReason::Removal));
         assert!(runtime.index().node(&old).is_none());
-        assert!(log.borrow().is_empty(), "no callback may target an unmounted old widget");
+        assert!(
+            log.borrow().is_empty(),
+            "no callback may target an unmounted old widget"
+        );
         let out = runtime
             .trace()
             .records()
             .skip(trace_start)
-            .filter(|record| matches!(
-                record.kind(),
-                TraceRecordKind::FocusNotificationResolved {
-                    kind: FocusEventKind::Out
-                }
-            ))
+            .filter(|record| {
+                matches!(
+                    record.kind(),
+                    TraceRecordKind::FocusNotificationResolved {
+                        kind: FocusEventKind::Out
+                    }
+                )
+            })
             .collect::<Vec<_>>();
         assert_eq!(out.len(), 1);
         assert_eq!(
