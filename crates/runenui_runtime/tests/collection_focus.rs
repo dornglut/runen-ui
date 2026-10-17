@@ -758,7 +758,11 @@ fn reconciled_focusout_trace_exhaustion_reports_one_terminal_reason() {
         }
     )));
     assert!(!runtime.trace().records().any(|record| {
-        matches!(record.kind(), TraceRecordKind::FocusNotificationResolved { kind: FocusEventKind::Out })
-            && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        matches!(
+            record.kind(),
+            TraceRecordKind::FocusNotificationResolved {
+                kind: FocusEventKind::Out
+            }
+        ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
     }));
 }
