@@ -1093,14 +1093,10 @@ impl UiApp for ReparentFocusApp {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> Element<Self::Action> {
-        let target = Element::new(ExternalFocusWidget::new(
-            "a",
-            Rc::clone(&state.log),
-            true,
-        ))
-        .id("reparent.a")
-        .key("a")
-        .focusable(true);
+        let target = Element::new(ExternalFocusWidget::new("a", Rc::clone(&state.log), true))
+            .id("reparent.a")
+            .key("a")
+            .focusable(true);
         let (left, right) = if state.right {
             (Vec::new(), vec![target])
         } else {
