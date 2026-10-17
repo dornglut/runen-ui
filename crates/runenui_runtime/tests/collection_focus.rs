@@ -686,7 +686,8 @@ fn output_free_focus_retirement_has_exact_queue_admission_boundary() {
                     matches!(
                         record.kind(),
                         TraceRecordKind::RoutedEventAdmissionRejected {
-                            capacity: runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
+                            capacity:
+                                runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
                         }
                     )
                 }),
