@@ -2375,12 +2375,18 @@ fn reconciliation_disablement_retires_active_composition_and_space_before_live_f
         "composition cancellation reaches the still-live old target"
     );
     assert!(
-        !observations.iter().any(|fact| fact.input == ObservedInput::Unmounted),
+        !observations
+            .iter()
+            .any(|fact| fact.input == ObservedInput::Unmounted),
         "compatible disablement must not unmount the old widget"
     );
     drop(observations);
 
-    let records = runtime.trace().records().skip(trace_start).collect::<Vec<_>>();
+    let records = runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .collect::<Vec<_>>();
     let composition_cancel = records
         .iter()
         .position(|record| {

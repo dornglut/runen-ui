@@ -640,11 +640,7 @@ fn output_free_focus_retirement_has_exact_queue_admission_boundary() {
         );
         settle(&mut runtime);
         let owner = id(&mut runtime, "disabled");
-        command(
-            &mut runtime,
-            owner.clone(),
-            SemanticCommand::RequestFocus,
-        );
+        command(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
         assert_eq!(runtime.focus().focused_node(), Some(&owner));
         let trace_start = runtime.trace().len();
         for index in 0..submitted {
@@ -697,11 +693,7 @@ fn queue_pressure_without_focus_retirement_does_not_reserve_optional_focus_out()
     );
     settle(&mut runtime);
     let owner = id(&mut runtime, "disabled");
-    command(
-        &mut runtime,
-        owner.clone(),
-        SemanticCommand::RequestFocus,
-    );
+    command(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
     for _ in 0..16 {
         runtime
             .submit_action(Action::UseDiscoverablePolicy(true))
