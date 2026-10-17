@@ -301,7 +301,10 @@ fn counter_authored_activation_bursts_have_bounded_observed_fifo_depth() {
             }
         }
         assert!(quiescent, "counter example must settle under bounded pumps");
-        assert_eq!(runtime.state().count, i32::try_from(burst).unwrap_or_else(|_| unreachable!("bounded test burst fits")));
+        assert_eq!(
+            runtime.state().count,
+            i32::try_from(burst).unwrap_or_else(|_| unreachable!("bounded test burst fits"))
+        );
         assert_eq!(
             processed,
             burst * 2,
