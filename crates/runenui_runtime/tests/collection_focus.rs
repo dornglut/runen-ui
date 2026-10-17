@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use runenui_core::{
-    CommandOrigin, Element, FocusGroup, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy,
+    CommandOrigin, Element, FocusEventKind, FocusGroup, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy,
     FocusGroupTypeAhead, Focusability, KeyLocation, KeyModifiers, KeyboardCompositionState,
     KeyboardEvent, KeyboardPhase, LayoutContainer, LayoutDimension, LayoutStyle, LogicalKey,
     LogicalLength, NoHostProtocol, OverflowPolicy, OverflowStyle, PhysicalKey, SemanticCommand,
@@ -11,7 +11,7 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, FocusReason, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig,
-    SurfaceBuildContext, TraceConfig, TraceRecordKind,
+    SurfaceBuildContext, TraceConfig, TraceDeliveryOutcome, TraceRecordKind,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -559,6 +559,17 @@ fn removing_disabled_discoverability_clears_existing_focus_as_disablement() {
 
     assert_eq!(runtime.focus().focused_node(), None);
     assert_eq!(runtime.focus().reason(), Some(FocusReason::Disablement));
+    assert!(
+        runtime.trace().records().any(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        }),
+        "compatible disablement must route noncancelable FocusOut while the old route remains live"
+    );
     let disabled = id(&mut runtime, "disabled");
     assert!(
         runtime

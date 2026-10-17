@@ -5,7 +5,8 @@ use runenui_core::{
 };
 
 use super::{
-    CollectedRoutedOutput, RoutedFailureLineage, RoutedTransaction, Runtime, RuntimeStatus,
+    CollectedRoutedOutput, RoutedFailureLineage, RoutedIngressFacts, RoutedTransaction, Runtime,
+    RuntimeStatus,
 };
 use crate::{
     MountedNodeId, ReconciliationGeneration, TraceContext, TraceDeliveryOutcome, TraceEventContext,
@@ -981,6 +982,64 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 && tree.target_status(target) == TargetStatus::Live
                 && nearest_scope(tree, target).as_ref() == Some(scope)
         });
+    }
+
+    /// Reuses the checked routed focus transaction for a compatible update that
+    /// retired an old *unchanged and fully live* route. This is deliberately
+    /// not used for removal, replacement or reparented/stale old routes.
+    ///
+    /// Application reconciliation has already mutated the mounted tree; an
+    /// admission/commit failure must terminalize the outer action rather than
+    /// silently suppress this required noncancelable notification.
+    pub(in crate::runtime) fn commit_live_reconciled_focus_out(
+        &mut self,
+        cause: InputLifetimeCleanupCause,
+    ) -> Result<bool, RoutedFailureLineage> {
+        let Some(owner) = self.focus.focused_node().cloned() else {
+            return Ok(false);
+        };
+        if self.tree.target_status(&owner) != TargetStatus::Live {
+            return Ok(false);
+        }
+        let Ok(route) = self.tree.event_route(&owner) else {
+            return Ok(false);
+        };
+        if route != self.focus.route() {
+            return Ok(false);
+        }
+
+        let sequence = cause
+            .sequence
+            .unwrap_or_else(|| unreachable!("reconciled focus retirement has one action sequence"));
+        let facts = RoutedIngressFacts::new(
+            sequence,
+            owner.clone(),
+            cause.origin,
+            cause.instant,
+            TraceEventContext::new(TraceEventFamily::Focus, false),
+            cause.causal_parent,
+            TraceReservation::continuation(),
+        );
+        let mut transaction = self.try_begin_focus_input_transaction(
+            facts,
+            MandatoryTracePlan::none(),
+            0,
+        )?;
+        if let Err(error) =
+            self.commit_focus_transition(&mut transaction, None, FocusReason::Disablement)
+        {
+            let current = transaction.failure_current_target.clone();
+            return Err(self.poison_transaction(&transaction, error, current.as_ref()));
+        }
+        let failure = transaction.failure_facts();
+        if self.commit_routed_transaction(transaction).is_err() {
+            return Err(self.poison_routed_event(
+                &failure,
+                TraceRoutedIntegrityFailure::CommitInvariantFailure,
+                Some(&owner),
+            ));
+        }
+        Ok(true)
     }
 
     pub(in crate::runtime) fn commit_reconciled_focus_cleanup(
