@@ -11,8 +11,9 @@ use runenui_core::{
     children, column, row,
 };
 use runenui_runtime::{
-    AppRuntime, FocusReason, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig,
-    SurfaceBuildContext, TraceConfig, TraceDeliveryOutcome, TraceRecordKind,
+    AppRuntime, FocusReason, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits,
+    RuntimeStatus, RuntimeTerminalReason, SurfaceBuildContext, TraceConfig, TraceDeliveryOutcome,
+    TraceRecordKind,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -577,5 +578,45 @@ fn removing_disabled_discoverability_clears_existing_focus_as_disablement() {
             .index()
             .node(&disabled)
             .is_some_and(|node| !node.is_focusable())
+    );
+}
+
+#[test]
+fn compatible_disablement_queue_saturation_does_not_claim_focus_out_delivery() {
+    let limits = RuntimeLimits::default()
+        .with_waiting_envelopes(2)
+        .with_transaction_outputs(1);
+    let mut runtime = AppRuntime::<App>::mount_with_config(
+        State { discoverable: true },
+        RuntimeConfig::default().with_limits(limits),
+    );
+    settle(&mut runtime);
+    let owner = id(&mut runtime, "disabled");
+    command(&mut runtime, owner, SemanticCommand::RequestFocus);
+    let trace_before = runtime.trace().len();
+
+    for _ in 0..2 {
+        runtime
+            .submit_action(Action::UseDiscoverablePolicy(false))
+            .unwrap_or_else(|_| unreachable!("two actions fit exactly into the queue"));
+    }
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("bounded pump must return the terminal outcome"));
+    assert_eq!(
+        runtime.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned),
+        "missing capacity after application mutation must not leave a half-running runtime"
+    );
+    assert!(
+        !runtime.trace().records().skip(trace_before).any(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        }),
+        "a rejected routed FocusOut cannot be reported as delivered"
     );
 }
