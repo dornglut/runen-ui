@@ -1020,8 +1020,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             cause.causal_parent,
             TraceReservation::continuation(),
         );
-        let mut transaction =
-            self.try_begin_focus_input_transaction(facts, MandatoryTracePlan::none(), 0)?;
+        let mut transaction = self.try_begin_reconciled_focus_out_transaction(facts, &route)?;
         if let Err(error) =
             self.commit_focus_transition(&mut transaction, None, FocusReason::Disablement)
         {
