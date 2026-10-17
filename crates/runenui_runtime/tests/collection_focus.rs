@@ -583,8 +583,9 @@ fn removing_disabled_discoverability_clears_existing_focus_as_disablement() {
 
 #[test]
 fn compatible_disablement_queue_saturation_does_not_claim_focus_out_delivery() {
+    const CAPACITY: usize = 16;
     let limits = RuntimeLimits::default()
-        .with_waiting_envelopes(2)
+        .with_waiting_envelopes(CAPACITY)
         .with_transaction_outputs(1);
     let mut runtime = AppRuntime::<App>::mount_with_config(
         State { discoverable: true },
@@ -595,10 +596,10 @@ fn compatible_disablement_queue_saturation_does_not_claim_focus_out_delivery() {
     command(&mut runtime, owner, SemanticCommand::RequestFocus);
     let trace_before = runtime.trace().len();
 
-    for _ in 0..2 {
+    for _ in 0..CAPACITY {
         runtime
             .submit_action(Action::UseDiscoverablePolicy(false))
-            .unwrap_or_else(|_| unreachable!("two actions fit exactly into the queue"));
+            .unwrap_or_else(|_| unreachable!("the queue admits exactly its full capacity"));
     }
     let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
