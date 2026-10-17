@@ -747,12 +747,19 @@ fn default_limits_focusout_requires_the_full_conservative_queue_headroom() {
                 batch.report().outcome(),
                 runenui_runtime::PumpOutcome::Terminal(RuntimeTerminalReason::Poisoned)
             );
-            assert!(runtime.trace().records().skip(trace_start).any(|record| matches!(
-                record.kind(),
-                TraceRecordKind::RoutedEventAdmissionRejected {
-                    capacity: runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
-                }
-            )));
+            assert!(
+                runtime
+                    .trace()
+                    .records()
+                    .skip(trace_start)
+                    .any(|record| matches!(
+                        record.kind(),
+                        TraceRecordKind::RoutedEventAdmissionRejected {
+                            capacity:
+                                runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
+                        }
+                    ))
+            );
         }
     }
 }
