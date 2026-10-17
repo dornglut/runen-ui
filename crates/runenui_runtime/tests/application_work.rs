@@ -525,6 +525,12 @@ fn accepted_action_effects_hit_exact_post_mutation_fifo_boundaries() {
         (4096, 1024),
     ] {
         for missing_one_slot in [false, true] {
+            // Popping an accepted head always frees one slot. A single
+            // emitted envelope therefore cannot overrun the FIFO solely
+            // because of followers that were already queued.
+            if emitted == 1 && missing_one_slot {
+                continue;
+            }
             let waiting_followers = capacity - emitted + usize::from(missing_one_slot);
             let mut runtime = capacity_probe(capacity, 1024);
             runtime
