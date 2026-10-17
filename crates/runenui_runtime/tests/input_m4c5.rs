@@ -2568,7 +2568,10 @@ fn composition_output_can_exhaust_the_following_required_focus_out_reservation()
                 batch.report().outcome(),
                 runenui_runtime::PumpOutcome::Terminal(RuntimeTerminalReason::Poisoned)
             );
-            assert!(focus_out.is_none(), "the second callback cannot claim delivery");
+            assert!(
+                focus_out.is_none(),
+                "the second callback cannot claim delivery"
+            );
             assert!(records.iter().any(|record| matches!(
                 record.kind(),
                 TraceRecordKind::RoutedEventAdmissionRejected {
