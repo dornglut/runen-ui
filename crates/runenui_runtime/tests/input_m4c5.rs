@@ -2511,7 +2511,6 @@ fn composition_output_can_exhaust_the_following_required_focus_out_reservation()
             .unwrap_or_else(|_| unreachable!("live owner accepts composition"));
         settle(&mut runtime);
         clear_log(&runtime);
-        let trace_start = runtime.trace().len();
 
         // After the first Disable envelope is popped, 14 remain waiting:
         // two slots suffice for composition cancellation, but if its routed
@@ -2524,6 +2523,9 @@ fn composition_output_can_exhaust_the_following_required_focus_out_reservation()
                 .submit_action(InputAction::Activated)
                 .unwrap_or_else(|_| unreachable!("filler action is admitted"));
         }
+        // Exclude the external admissions: any later accepted action belongs to
+        // the composition callback and can be proven to precede the failure.
+        let trace_start = runtime.trace().len();
         let batch = runtime
             .pump(PumpBudget::new(1, 0, 0, 0))
             .unwrap_or_else(|_| unreachable!("bounded pump is observable"));
@@ -2558,7 +2560,25 @@ fn composition_output_can_exhaust_the_following_required_focus_out_reservation()
                 }
             ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
         });
+        let emitted = records.iter().position(|record| {
+            matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted)
+        });
         if emit_cancel_action {
+            let emitted_at = emitted
+                .unwrap_or_else(|| unreachable!("composition callback output was queued"));
+            let rejected_at = records
+                .iter()
+                .position(|record| matches!(
+                    record.kind(),
+                    TraceRecordKind::RoutedEventAdmissionRejected {
+                        capacity: runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
+                    }
+                ))
+                .unwrap_or_else(|| unreachable!("FocusOut reservation was rejected"));
+            assert!(
+                cancelled.is_some_and(|at| at < emitted_at) && emitted_at < rejected_at,
+                "the first callback output commits before the second notification rejects"
+            );
             assert_eq!(runtime.focus().focused_node(), Some(&owner));
             assert_eq!(
                 runtime.status(),
@@ -2579,6 +2599,10 @@ fn composition_output_can_exhaust_the_following_required_focus_out_reservation()
                 }
             )));
         } else {
+            assert!(
+                emitted.is_none(),
+                "an output-free composition callback creates no extra action"
+            );
             assert_eq!(runtime.status(), RuntimeStatus::Running);
             assert_eq!(runtime.focus().focused_node(), None);
             assert!(
