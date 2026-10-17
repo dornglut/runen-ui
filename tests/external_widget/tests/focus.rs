@@ -1073,3 +1073,184 @@ fn disabled_trace_does_not_disable_real_focus_out_delivery() {
         .unwrap_or_else(|_| unreachable!("idempotent disablement settles"));
     assert!(log.borrow().is_empty(), "retired focus cannot notify twice");
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReparentFocusAction {
+    Noop,
+    Move,
+}
+
+struct ReparentFocusState {
+    log: Rc<RefCell<Vec<ExternalFocusFact>>>,
+    right: bool,
+}
+
+struct ReparentFocusApp;
+
+impl UiApp for ReparentFocusApp {
+    type State = ReparentFocusState;
+    type Action = ReparentFocusAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        let target = Element::new(ExternalFocusWidget::new(
+            "a",
+            Rc::clone(&state.log),
+            true,
+        ))
+        .id("reparent.a")
+        .key("a")
+        .focusable(true);
+        let (left, right) = if state.right {
+            (Vec::new(), vec![target])
+        } else {
+            (vec![target], Vec::new())
+        };
+        column(vec![
+            container(
+                ExternalFocusWidget::new("left", Rc::clone(&state.log), false),
+                left,
+            )
+            .id("reparent.left")
+            .key("left")
+            .into_element(),
+            container(
+                ExternalFocusWidget::new("right", Rc::clone(&state.log), false),
+                right,
+            )
+            .id("reparent.right")
+            .key("right")
+            .into_element(),
+        ])
+        .id("reparent.root")
+        .key("root")
+        .into_element()
+        .map_action(|()| ReparentFocusAction::Noop)
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        if action == ReparentFocusAction::Move {
+            state.right = true;
+        }
+    }
+}
+
+/// Cross-parent keyed moves do not preserve mounted identity in the public
+/// reconciliation model. The old route must never be traversed after unmount.
+#[test]
+fn cross_parent_reparent_remounts_and_suppresses_old_focus_route() {
+    let log = Rc::new(RefCell::new(Vec::<ExternalFocusFact>::new()));
+    let mut runtime = AppRuntime::<ReparentFocusApp>::mount(ReparentFocusState {
+        log: Rc::clone(&log),
+        right: false,
+    });
+    assert!(
+        runtime
+            .pump(FULL_PUMP)
+            .unwrap_or_else(|_| unreachable!("initial mount"))
+            .report()
+            .is_quiescent()
+    );
+    let old = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "reparent.a")
+        })
+        .unwrap_or_else(|| unreachable!("initial A exists"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(
+            old.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("old A accepts focus"));
+    runtime
+        .pump(FULL_PUMP)
+        .unwrap_or_else(|_| unreachable!("focus settles"));
+    assert_eq!(runtime.focus().focused_node(), Some(&old));
+    log.borrow_mut().clear();
+    let trace_start = runtime.trace().len();
+
+    runtime
+        .submit_action(ReparentFocusAction::Move)
+        .unwrap_or_else(|_| unreachable!("move action accepted"));
+    assert!(
+        runtime
+            .pump(FULL_PUMP)
+            .unwrap_or_else(|_| unreachable!("move settles"))
+            .report()
+            .is_quiescent()
+    );
+    let new = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "reparent.a")
+        })
+        .unwrap_or_else(|| unreachable!("new A exists"))
+        .id()
+        .clone();
+    assert_ne!(
+        old, new,
+        "a cross-parent move creates a new mounted lifetime"
+    );
+    assert!(runtime.index().node(&old).is_none());
+    assert_eq!(runtime.focus().focused_node(), None);
+    assert_eq!(runtime.focus().reason(), Some(FocusReason::Removal));
+    assert!(
+        log.borrow().is_empty(),
+        "retired old route cannot receive callbacks"
+    );
+    let outcomes = runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .filter_map(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out
+                }
+            )
+            .then(|| record.context().delivery())
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(outcomes, [Some(TraceDeliveryOutcome::Suppressed)]);
+}
+
+#[test]
+fn shutdown_suppresses_focus_out_without_routing_to_unmounted_owners() {
+    let (mut runtime, log, old) = focused_reconciliation_fixture(256);
+    let trace_start = runtime.trace().len();
+    runtime
+        .shutdown()
+        .unwrap_or_else(|_| unreachable!("shutdown completes"));
+    assert_eq!(runtime.focus().focused_node(), None);
+    assert!(runtime.index().node(&old).is_none());
+    assert!(
+        log.borrow().is_empty(),
+        "shutdown cannot dispatch focus callbacks"
+    );
+    let outcomes = runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .filter_map(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out
+                }
+            )
+            .then(|| record.context().delivery())
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(outcomes, [Some(TraceDeliveryOutcome::Suppressed)]);
+}
