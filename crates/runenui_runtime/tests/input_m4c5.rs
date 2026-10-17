@@ -2560,20 +2560,23 @@ fn composition_output_can_exhaust_the_following_required_focus_out_reservation()
                 }
             ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
         });
-        let emitted = records.iter().position(|record| {
-            matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted)
-        });
+        let emitted = records
+            .iter()
+            .position(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted));
         if emit_cancel_action {
-            let emitted_at = emitted
-                .unwrap_or_else(|| unreachable!("composition callback output was queued"));
+            let emitted_at =
+                emitted.unwrap_or_else(|| unreachable!("composition callback output was queued"));
             let rejected_at = records
                 .iter()
-                .position(|record| matches!(
-                    record.kind(),
-                    TraceRecordKind::RoutedEventAdmissionRejected {
-                        capacity: runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
-                    }
-                ))
+                .position(|record| {
+                    matches!(
+                        record.kind(),
+                        TraceRecordKind::RoutedEventAdmissionRejected {
+                            capacity:
+                                runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
+                        }
+                    )
+                })
                 .unwrap_or_else(|| unreachable!("FocusOut reservation was rejected"));
             assert!(
                 cancelled.is_some_and(|at| at < emitted_at) && emitted_at < rejected_at,
