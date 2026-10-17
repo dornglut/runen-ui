@@ -260,3 +260,53 @@ fn m4_close_01_counter_converges_all_canonical_activation_origins() {
         "all six canonical activation sources must converge through application update"
     );
 }
+
+#[test]
+fn counter_authored_activation_bursts_have_bounded_observed_fifo_depth() {
+    // This is the repository's actual authored Counter app and canonical
+    // Activate route, not a synthetic app-effect generator or a production
+    // traffic sample. Counts are deterministic queue observations, not time.
+    for burst in [1_usize, 4, 8] {
+        let mut runtime = mounted_counter();
+        let increment = increment_target(&mut runtime);
+        for _ in 0..burst {
+            runtime
+                .submit_command(
+                    increment.clone(),
+                    SemanticCommand::Activate,
+                    CommandOrigin::programmatic(),
+                )
+                .unwrap_or_else(|_| unreachable!("counter command accepted"));
+        }
+
+        let mut processed = 0;
+        let mut peak_queued = burst;
+        let mut quiescent = false;
+        for _ in 0..(burst * 8 + 16) {
+            let report = runtime
+                .pump(PumpBudget::new(1, 0, 0, 0))
+                .unwrap_or_else(|_| unreachable!("bounded counter pump"))
+                .report()
+                .to_owned();
+            processed += report.processed_envelopes();
+            peak_queued = peak_queued.max(report.remaining_queued_envelopes());
+            assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
+            assert!(
+                report.remaining_queued_envelopes() <= burst,
+                "canonical activation should not expand waiting depth in this example"
+            );
+            if report.is_quiescent() {
+                quiescent = true;
+                break;
+            }
+        }
+        assert!(quiescent, "counter example must settle under bounded pumps");
+        assert_eq!(runtime.state().count, burst as i32);
+        assert_eq!(
+            processed,
+            burst * 2,
+            "each example command should route once and enqueue one later action"
+        );
+        assert_eq!(peak_queued, burst);
+    }
+}
