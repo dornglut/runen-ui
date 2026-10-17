@@ -544,12 +544,21 @@ fn compatible_disablement_delivers_real_focus_out_to_live_downstream_route() {
         log: Rc::clone(&log),
         enabled: true,
     });
-    assert!(runtime.pump(FULL_PUMP).unwrap_or_else(|_| unreachable!()).report().is_quiescent());
+    assert!(
+        runtime
+            .pump(FULL_PUMP)
+            .unwrap_or_else(|_| unreachable!())
+            .report()
+            .is_quiescent()
+    );
     let target = runtime
         .index()
         .nodes()
         .iter()
-        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "compatible.focus.a"))
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "compatible.focus.a")
+        })
         .unwrap_or_else(|| unreachable!("A is mounted"))
         .id()
         .clone();
@@ -560,13 +569,25 @@ fn compatible_disablement_delivers_real_focus_out_to_live_downstream_route() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("A accepts focus before disablement"));
-    assert!(runtime.pump(FULL_PUMP).unwrap_or_else(|_| unreachable!()).report().is_quiescent());
+    assert!(
+        runtime
+            .pump(FULL_PUMP)
+            .unwrap_or_else(|_| unreachable!())
+            .report()
+            .is_quiescent()
+    );
     log.borrow_mut().clear();
 
     runtime
         .submit_action(())
         .unwrap_or_else(|_| unreachable!("compatible update must be admitted"));
-    assert!(runtime.pump(FULL_PUMP).unwrap_or_else(|_| unreachable!()).report().is_quiescent());
+    assert!(
+        runtime
+            .pump(FULL_PUMP)
+            .unwrap_or_else(|_| unreachable!())
+            .report()
+            .is_quiescent()
+    );
 
     assert_eq!(runtime.focus().focused_node(), None);
     assert!(
@@ -575,11 +596,29 @@ fn compatible_disablement_delivers_real_focus_out_to_live_downstream_route() {
     );
     let events = log.borrow();
     assert_eq!(
-        events.iter().map(|event| (event.widget, event.phase, event.kind, event.reason)).collect::<Vec<_>>(),
+        events
+            .iter()
+            .map(|event| (event.widget, event.phase, event.kind, event.reason))
+            .collect::<Vec<_>>(),
         [
-            ("root", EventPhase::Capture, FocusEventKind::Out, FocusReason::Disablement),
-            ("a", EventPhase::Target, FocusEventKind::Out, FocusReason::Disablement),
-            ("root", EventPhase::Bubble, FocusEventKind::Out, FocusReason::Disablement),
+            (
+                "root",
+                EventPhase::Capture,
+                FocusEventKind::Out,
+                FocusReason::Disablement
+            ),
+            (
+                "a",
+                EventPhase::Target,
+                FocusEventKind::Out,
+                FocusReason::Disablement
+            ),
+            (
+                "root",
+                EventPhase::Bubble,
+                FocusEventKind::Out,
+                FocusReason::Disablement
+            ),
         ],
         "one noncancelable routed FocusOut precedes any later app effects"
     );
