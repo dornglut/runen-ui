@@ -3,11 +3,12 @@
 use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use runenui_core::{
-    CommandOrigin, Effects, Element, EventContext, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusGroup,
-    FocusGroupBoundaryPolicy, FocusGroupEntry, FocusGroupTypeAhead, FocusReason, FocusScope,
-    FocusScopePolicy, Focusability, KeyLocation, KeyModifiers, KeyboardCompositionState,
-    KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey, SemanticCommand, UiApp,
-    UiEvent, View, Widget, WidgetActivation, WidgetEventOutput, column, container,
+    CommandOrigin, Effects, Element, EventContext, EventPhase, FocusBoundaryPolicy, FocusEventKind,
+    FocusGroup, FocusGroupBoundaryPolicy, FocusGroupEntry, FocusGroupTypeAhead, FocusReason,
+    FocusScope, FocusScopePolicy, Focusability, KeyLocation, KeyModifiers,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
+    PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
+    WidgetEventOutput, column, container,
 };
 use runenui_external_widget_conformance::{
     ExternalFocusFact, ExternalFocusWidget, external_focus_panel,
@@ -658,8 +659,7 @@ impl Widget<FocusOutOrderAction> for FocusOutOrderWidget {
     ) -> WidgetEventOutput {
         if context.phase() == EventPhase::Target
             && event.as_focus().is_some_and(|focus| {
-                focus.kind() == FocusEventKind::Out
-                    && focus.reason() == FocusReason::Disablement
+                focus.kind() == FocusEventKind::Out && focus.reason() == FocusReason::Disablement
             })
         {
             context.emit(FocusOutOrderAction::NotificationOutput);
