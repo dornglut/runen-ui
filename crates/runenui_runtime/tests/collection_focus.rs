@@ -722,3 +722,43 @@ fn queue_pressure_without_focus_retirement_does_not_reserve_optional_focus_out()
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.focus().focused_node(), Some(&owner));
 }
+
+#[cfg(feature = "internal-test-seams")]
+#[test]
+fn reconciled_focusout_trace_exhaustion_reports_one_terminal_reason() {
+    let mut runtime = AppRuntime::<App>::mount(State { discoverable: true });
+    settle(&mut runtime);
+    let owner = id(&mut runtime, "disabled");
+    command(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+    assert_eq!(runtime.focus().focused_node(), Some(&owner));
+
+    runtime
+        .submit_action(Action::UseDiscoverablePolicy(false))
+        .unwrap_or_else(|_| unreachable!("application action admitted before trace exhaustion"));
+    // Leave enough trace IDs for the base application transaction but not
+    // the maximum routed FocusOut plan after opaque state reconciliation.
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 30);
+    let batch = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("terminal pump must remain observable"));
+    assert_eq!(batch.report().processed_envelopes(), 1);
+    assert!(!runtime.state().discoverable);
+    assert_eq!(
+        runtime.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::TraceSequenceExhausted)
+    );
+    assert_eq!(
+        batch.report().outcome(),
+        runenui_runtime::PumpOutcome::Terminal(RuntimeTerminalReason::TraceSequenceExhausted)
+    );
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::RoutedEventAdmissionRejected {
+            capacity: runenui_runtime::TraceRoutedAdmissionRejection::TraceSequenceExhausted
+        }
+    )));
+    assert!(!runtime.trace().records().any(|record| {
+        matches!(record.kind(), TraceRecordKind::FocusNotificationResolved { kind: FocusEventKind::Out })
+            && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+    }));
+}
