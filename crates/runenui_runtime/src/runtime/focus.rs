@@ -1004,7 +1004,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Ok(route) = self.tree.event_route(&owner) else {
             return Ok(false);
         };
-        if route != self.focus.route() {
+        if route.as_slice() != self.focus.route() {
             return Ok(false);
         }
 
