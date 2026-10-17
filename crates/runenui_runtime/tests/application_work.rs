@@ -446,3 +446,151 @@ fn initial_transaction_rejects_capacity_sequence_generation_and_aggregate_limits
         RuntimeTerminalReason::WorkGenerationExhausted,
     );
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CapacityAction {
+    Emit(usize),
+    Cascade(u8),
+    Noop,
+}
+
+#[derive(Default)]
+struct CapacityState {
+    updates: usize,
+    completed_leaves: usize,
+}
+
+struct CapacityProbeApp;
+
+impl UiApp for CapacityProbeApp {
+    type State = CapacityState;
+    type Action = CapacityAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &Self::State) -> impl View<Self::Action> {
+        text("capacity-probe")
+    }
+
+    fn update(
+        state: &mut Self::State,
+        action: Self::Action,
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        state.updates += 1;
+        let (count, next) = match action {
+            CapacityAction::Emit(count) => (count, CapacityAction::Noop),
+            CapacityAction::Cascade(remaining) if remaining > 0 => {
+                (2, CapacityAction::Cascade(remaining - 1))
+            }
+            CapacityAction::Cascade(_) | CapacityAction::Noop => {
+                state.completed_leaves += 1;
+                (0, CapacityAction::Noop)
+            }
+        };
+        (0..count).fold(Effects::none(), |effects, _| {
+            effects.then(Effects::action(next))
+        })
+    }
+}
+
+fn capacity_probe(capacity: usize, output_allowance: usize) -> AppRuntime<CapacityProbeApp> {
+    let limits = RuntimeLimits::default()
+        .with_waiting_envelopes(capacity)
+        .with_transaction_outputs(output_allowance);
+    let mut runtime = AppRuntime::<CapacityProbeApp>::mount_with_config(
+        CapacityState::default(),
+        RuntimeConfig::default().with_limits(limits),
+    );
+    let initial = runtime
+        .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("initial deterministic pump"));
+    assert!(initial.report().is_quiescent());
+    runtime
+}
+
+#[test]
+fn accepted_action_effects_hit_exact_post_mutation_fifo_boundaries() {
+    // Independent from focus: the basic application transaction also cannot
+    // commit outputs if earlier accepted followers consumed its queue headroom.
+    // No output exceeds the configured transaction allowance.
+    for (capacity, emitted) in [
+        (16, 1),
+        (16, 8),
+        (16, 16),
+        (64, 1),
+        (64, 8),
+        (64, 64),
+        (4096, 1),
+        (4096, 8),
+        (4096, 64),
+        (4096, 1024),
+    ] {
+        for missing_one_slot in [false, true] {
+            let waiting_followers = capacity - emitted + usize::from(missing_one_slot);
+            let mut runtime = capacity_probe(capacity, 1024);
+            runtime
+                .submit_action(CapacityAction::Emit(emitted))
+                .unwrap_or_else(|_| unreachable!("one producer enters the FIFO"));
+            for _ in 0..waiting_followers {
+                runtime
+                    .submit_action(CapacityAction::Noop)
+                    .unwrap_or_else(|_| unreachable!("bounded following actions accepted"));
+            }
+            let report = runtime
+                .pump(PumpBudget::new(1, 0, 0, 0))
+                .unwrap_or_else(|_| unreachable!("one-envelope pump is observable"))
+                .report()
+                .to_owned();
+            assert_eq!(report.processed_envelopes(), 1);
+            assert_eq!(runtime.state().updates, 1);
+            assert_eq!(runtime.state().completed_leaves, 0);
+            if missing_one_slot {
+                assert_eq!(
+                    runtime.status(),
+                    RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+                );
+                assert_eq!(
+                    report.outcome(),
+                    PumpOutcome::Terminal(RuntimeTerminalReason::Poisoned)
+                );
+                assert_eq!(report.remaining_queued_envelopes(), 0);
+            } else {
+                assert_eq!(runtime.status(), RuntimeStatus::Running);
+                assert_eq!(report.remaining_queued_envelopes(), capacity);
+            }
+        }
+    }
+}
+
+#[test]
+fn bounded_recursive_action_fanout_exhausts_a_finite_fifo_without_external_ingress() {
+    // Every individual update emits at most two actions and respects its
+    // per-transaction allowance. Recursive breadth-first fanout can still
+    // exhaust any fixed FIFO; the short chain is the nonterminal control.
+    for (depth, expected_terminal) in [(2, false), (8, true)] {
+        let mut runtime = capacity_probe(16, 2);
+        runtime
+            .submit_action(CapacityAction::Cascade(depth))
+            .unwrap_or_else(|_| unreachable!("seed action admitted"));
+        let report = runtime
+            .pump(PumpBudget::new(256, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("bounded pump returns"))
+            .report()
+            .to_owned();
+        if expected_terminal {
+            assert!(runtime.state().updates > 1);
+            assert_eq!(
+                runtime.status(),
+                RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+            );
+            assert_eq!(
+                report.outcome(),
+                PumpOutcome::Terminal(RuntimeTerminalReason::Poisoned)
+            );
+        } else {
+            assert_eq!(runtime.status(), RuntimeStatus::Running);
+            assert_eq!(runtime.state().updates, 7);
+            assert_eq!(runtime.state().completed_leaves, 4);
+            assert!(report.is_quiescent());
+        }
+    }
+}
