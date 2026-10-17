@@ -1136,7 +1136,7 @@ fn key_04_unmount_retires_widget_held_key_without_a_fake_terminal_receipt() {
 }
 
 /// Source-level reconciliation disables a still-mounted focused node but
-/// records FocusOut as suppressed. Characterizes the existing gap rather than
+/// records `FocusOut` as suppressed. Characterizes the existing gap rather than
 /// requiring that a repaired focus implementation preserve stale held keys.
 #[test]
 fn key_04_compatible_disablement_can_retain_old_widget_held_key() {
