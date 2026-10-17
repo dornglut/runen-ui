@@ -2324,6 +2324,10 @@ fn automation_04_disabled_tracing_preserves_resolution_and_command_behavior() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one end-to-end reconciliation proof connects composition, Space, FocusOut and stale-release chronology"
+)]
 fn reconciliation_disablement_retires_active_composition_and_space_before_live_focus_out() {
     let log = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = mounted(InputState::standard(Rc::clone(&log)));
@@ -2358,7 +2362,10 @@ fn reconciliation_disablement_retires_active_composition_and_space_before_live_f
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.focus().focused_node(), None);
     assert_eq!(
-        runtime.index().node(&original_target).map(|node| node.id()),
+        runtime
+            .index()
+            .node(&original_target)
+            .map(runenui_runtime::MountedNodeRef::id),
         Some(&original_target),
         "the disabled focus owner retains its exact mounted lifetime"
     );

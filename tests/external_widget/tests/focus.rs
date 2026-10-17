@@ -1250,3 +1250,171 @@ fn shutdown_suppresses_focus_out_without_routing_to_unmounted_owners() {
         .collect::<Vec<_>>();
     assert_eq!(outcomes, [Some(TraceDeliveryOutcome::Suppressed)]);
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HeldKeyAction {
+    Disable,
+}
+
+struct HeldKeyState {
+    held: Rc<RefCell<Vec<PhysicalKey>>>,
+    focus_outs: Rc<RefCell<usize>>,
+    unmounts: Rc<RefCell<usize>>,
+    enabled: bool,
+}
+
+#[derive(Debug)]
+struct HeldKeyProbe {
+    held: Rc<RefCell<Vec<PhysicalKey>>>,
+    focus_outs: Rc<RefCell<usize>>,
+    unmounts: Rc<RefCell<usize>>,
+    enabled: bool,
+}
+
+impl Widget<HeldKeyAction> for HeldKeyProbe {
+    type State = Rc<RefCell<Vec<PhysicalKey>>>;
+
+    fn create_state(&self) -> Self::State {
+        Rc::clone(&self.held)
+    }
+
+    fn activation(&self, _: &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(self.enabled)
+    }
+
+    fn event(
+        &mut self,
+        state: &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, HeldKeyAction>,
+    ) -> WidgetEventOutput {
+        if context.phase() != EventPhase::Target {
+            return WidgetEventOutput::none();
+        }
+        match event {
+            UiEvent::Keyboard(key)
+                if key.phase() == KeyboardPhase::Down && !key.is_repeat() =>
+            {
+                state.borrow_mut().push(key.physical_key().clone());
+                WidgetEventOutput::changed()
+            }
+            UiEvent::Focus(focus) if focus.kind() == FocusEventKind::Out => {
+                state.borrow_mut().clear();
+                *self.focus_outs.borrow_mut() += 1;
+                WidgetEventOutput::changed()
+            }
+            _ => WidgetEventOutput::none(),
+        }
+    }
+
+    fn unmount(&self, _: &mut Self::State, _: &mut runenui_core::WidgetUnmountContext) {
+        *self.unmounts.borrow_mut() += 1;
+    }
+}
+
+struct HeldKeyApp;
+
+impl UiApp for HeldKeyApp {
+    type State = HeldKeyState;
+    type Action = HeldKeyAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        column(vec![
+            Element::new(HeldKeyProbe {
+                held: Rc::clone(&state.held),
+                focus_outs: Rc::clone(&state.focus_outs),
+                unmounts: Rc::clone(&state.unmounts),
+                enabled: state.enabled,
+            })
+            .id("held.a")
+            .key("held.a")
+            .focusable(true),
+        ])
+        .id("held.root")
+        .key("held.root")
+        .into_element()
+    }
+
+    fn update(state: &mut Self::State, HeldKeyAction::Disable: Self::Action) {
+        state.enabled = false;
+    }
+}
+
+/// A concrete downstream widget retains key state in its mounted Widget::State.
+/// Compatible disablement must invoke its live FocusOut cleanup instead of
+/// reporting a trace-only or suppressed departure, without unmounting the widget.
+#[test]
+fn live_reconciliation_focus_out_clears_widget_held_key_without_unmount() {
+    let held = Rc::new(RefCell::new(Vec::<PhysicalKey>::new()));
+    let focus_outs = Rc::new(RefCell::new(0_usize));
+    let unmounts = Rc::new(RefCell::new(0_usize));
+    let mut runtime = AppRuntime::<HeldKeyApp>::mount(HeldKeyState {
+        held: Rc::clone(&held),
+        focus_outs: Rc::clone(&focus_outs),
+        unmounts: Rc::clone(&unmounts),
+        enabled: true,
+    });
+    assert!(
+        runtime
+            .pump(FULL_PUMP)
+            .unwrap_or_else(|_| unreachable!("mount completes"))
+            .report()
+            .is_quiescent()
+    );
+    let a = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "held.a")
+        })
+        .unwrap_or_else(|| unreachable!("key owner is mounted"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(
+            a.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("programmatic focus admitted"));
+    runtime
+        .pump(FULL_PUMP)
+        .unwrap_or_else(|_| unreachable!("focus settles"));
+    assert_eq!(runtime.focus().focused_node(), Some(&a));
+
+    runtime
+        .submit_keyboard(group_character("w"))
+        .unwrap_or_else(|_| unreachable!("keyboard Down admitted"));
+    runtime
+        .pump(FULL_PUMP)
+        .unwrap_or_else(|_| unreachable!("key press settles"));
+    assert_eq!(
+        held.borrow().as_slice(),
+        [PhysicalKey::Code(String::from("KeyX"))],
+        "mounted widget state owns the held key before focus loss"
+    );
+
+    runtime
+        .submit_action(HeldKeyAction::Disable)
+        .unwrap_or_else(|_| unreachable!("disable action admitted"));
+    runtime
+        .pump(FULL_PUMP)
+        .unwrap_or_else(|_| unreachable!("disablement settles"));
+    assert_eq!(runtime.focus().focused_node(), None);
+    assert!(runtime.index().node(&a).is_some());
+    assert!(held.borrow().is_empty(), "FocusOut clears widget-local held state");
+    assert_eq!(*focus_outs.borrow(), 1);
+    assert_eq!(*unmounts.borrow(), 0);
+
+    runtime
+        .submit_action(HeldKeyAction::Disable)
+        .unwrap_or_else(|_| unreachable!("idempotent disablement admitted"));
+    runtime
+        .pump(FULL_PUMP)
+        .unwrap_or_else(|_| unreachable!("second update settles"));
+    assert_eq!(*focus_outs.borrow(), 1, "the retired focus lifetime cannot notify twice");
+    assert_eq!(*unmounts.borrow(), 0);
+}
