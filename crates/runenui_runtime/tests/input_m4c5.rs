@@ -794,10 +794,19 @@ fn key_04_keyboard_rejections_preserve_the_owned_event_and_runtime_state() {
 #[derive(Debug)]
 struct FocusHoldWidget {
     held_devices: Rc<RefCell<Vec<(InputDeviceId, PhysicalKey)>>>,
+    enabled: bool,
 }
 
 impl Widget<FocusHoldAction> for FocusHoldWidget {
     type State = Vec<(InputDeviceId, PhysicalKey)>;
+
+    fn activation(&self, _: &Self::State) -> WidgetActivation {
+        if self.enabled {
+            WidgetActivation::NONE
+        } else {
+            WidgetActivation::disabled()
+        }
+    }
 
     fn create_state(&self) -> Self::State {
         Vec::new()
@@ -858,6 +867,7 @@ impl ChildBearingWidget<FocusHoldAction> for FocusHoldWidget {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FocusHoldAction {
     RemoveA,
+    DisableA,
 }
 
 #[derive(Debug)]
@@ -865,6 +875,7 @@ struct FocusHoldState {
     a: Rc<RefCell<Vec<(InputDeviceId, PhysicalKey)>>>,
     b: Rc<RefCell<Vec<(InputDeviceId, PhysicalKey)>>>,
     a_present: bool,
+    a_enabled: bool,
 }
 
 struct FocusHoldApp;
@@ -880,6 +891,7 @@ impl UiApp for FocusHoldApp {
             children.push(
                 Element::new(FocusHoldWidget {
                     held_devices: Rc::clone(&state.a),
+                    enabled: state.a_enabled,
                 })
                 .id("hold-a")
                 .key("hold-a")
@@ -889,6 +901,7 @@ impl UiApp for FocusHoldApp {
         children.push(
             Element::new(FocusHoldWidget {
                 held_devices: Rc::clone(&state.b),
+                enabled: true,
             })
             .id("hold-b")
             .key("hold-b")
@@ -897,6 +910,7 @@ impl UiApp for FocusHoldApp {
         container(
             FocusHoldWidget {
                 held_devices: Rc::new(RefCell::new(Vec::new())),
+                enabled: true,
             },
             children,
         )
@@ -907,6 +921,7 @@ impl UiApp for FocusHoldApp {
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
             FocusHoldAction::RemoveA => state.a_present = false,
+            FocusHoldAction::DisableA => state.a_enabled = false,
         }
     }
 }
@@ -961,6 +976,7 @@ fn key_04_focusout_retires_widget_holds_without_original_key_capture() {
         a: Rc::clone(&a),
         b: Rc::clone(&b),
         a_present: true,
+        a_enabled: true,
     });
     settle_hold(&mut runtime);
     let device_a = InputDeviceId::new(71).unwrap_or_else(|| unreachable!("nonzero device"));
@@ -1060,6 +1076,7 @@ fn key_04_unmount_retires_widget_held_key_without_a_fake_terminal_receipt() {
         a: Rc::clone(&a),
         b,
         a_present: true,
+        a_enabled: true,
     });
     settle_hold(&mut runtime);
     let device = InputDeviceId::new(73).unwrap_or_else(|| unreachable!("nonzero device"));
@@ -1118,6 +1135,61 @@ fn key_04_unmount_retires_widget_held_key_without_a_fake_terminal_receipt() {
     assert_eq!(error.into_event(), cancel);
 }
 
+/// Source-level reconciliation disables a still-mounted focused node but
+/// records FocusOut as suppressed. Characterizes the existing gap rather than
+/// requiring that a repaired focus implementation preserve stale held keys.
+#[test]
+fn key_04_compatible_disablement_can_retain_old_widget_held_key() {
+    let held_a = Rc::new(RefCell::new(Vec::new()));
+    let device = InputDeviceId::new(76).unwrap_or_else(|| unreachable!("nonzero device"));
+    let key = PhysicalKey::Code(String::from("KeyW"));
+    let mut runtime = AppRuntime::<FocusHoldApp>::mount(FocusHoldState {
+        a: Rc::clone(&held_a),
+        b: Rc::new(RefCell::new(Vec::new())),
+        a_present: true,
+        a_enabled: true,
+    });
+    settle_hold(&mut runtime);
+    focus_hold(&mut runtime, "hold-a");
+    let original = runtime
+        .focus()
+        .focused_node()
+        .cloned()
+        .unwrap_or_else(|| unreachable!("A must be focused"));
+
+    let down = runtime
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Down,
+            key.clone(),
+            LogicalKey::Character(String::from("w")),
+            false,
+            Some(device),
+        ))
+        .unwrap_or_else(|_| unreachable!("A Down must enter the original focus session"));
+    settle_hold(&mut runtime);
+    assert_eq!(&*held_a.borrow(), &vec![(device, key.clone())]);
+    assert_eq!(runtime.focus().focused_node(), Some(&original));
+    assert!(down.sequence().get() > 0);
+
+    runtime
+        .submit_action(FocusHoldAction::DisableA)
+        .unwrap_or_else(|_| unreachable!("compatible disablement action must queue"));
+    settle_hold(&mut runtime);
+    assert!(
+        runtime.index().node(&original).is_some(),
+        "the exact original widget remains mounted, not unmounted"
+    );
+    assert!(
+        runtime.focus().focused_node().is_none(),
+        "reconciliation retires focus of the disabled live widget"
+    );
+    assert_eq!(
+        &*held_a.borrow(),
+        &vec![(device, key)],
+        "suppressed FocusOut does not clear a custom widget's already held key"
+    );
+}
+
 /// Characterizes the FIFO hazard that a focus transfer can commit between
 /// keyboard queue admission and actual callback delivery. Live original A can
 /// receive a committed Down *after* its `FocusOut`, unlike a Down processed
@@ -1157,6 +1229,7 @@ fn key_04_focus_transfer_ahead_of_queued_down_can_rearm_old_unfocused_widget() {
         a: Rc::clone(&a_first),
         b: Rc::new(RefCell::new(Vec::new())),
         a_present: true,
+        a_enabled: true,
     });
     settle_hold(&mut delivered_before_focus);
     focus_hold(&mut delivered_before_focus, "hold-a");
@@ -1182,6 +1255,7 @@ fn key_04_focus_transfer_ahead_of_queued_down_can_rearm_old_unfocused_widget() {
         a: Rc::clone(&a_late),
         b: Rc::new(RefCell::new(Vec::new())),
         a_present: true,
+        a_enabled: true,
     });
     settle_hold(&mut focus_before_delivery);
     focus_hold(&mut focus_before_delivery, "hold-a");
@@ -1233,6 +1307,7 @@ fn key_04_focus_transfer_ahead_of_queued_down_can_rearm_old_unfocused_widget() {
         a: Rc::clone(&a_returned),
         b: Rc::new(RefCell::new(Vec::new())),
         a_present: true,
+        a_enabled: true,
     });
     settle_hold(&mut focus_left_and_returned);
     focus_hold(&mut focus_left_and_returned, "hold-a");
