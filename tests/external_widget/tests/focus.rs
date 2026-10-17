@@ -1292,9 +1292,7 @@ impl Widget<HeldKeyAction> for HeldKeyProbe {
             return WidgetEventOutput::none();
         }
         match event {
-            UiEvent::Keyboard(key)
-                if key.phase() == KeyboardPhase::Down && !key.is_repeat() =>
-            {
+            UiEvent::Keyboard(key) if key.phase() == KeyboardPhase::Down && !key.is_repeat() => {
                 state.borrow_mut().push(key.physical_key().clone());
                 WidgetEventOutput::changed()
             }
@@ -1366,10 +1364,7 @@ fn live_reconciliation_focus_out_clears_widget_held_key_without_unmount() {
         .index()
         .nodes()
         .iter()
-        .find(|node| {
-            node.authored_id()
-                .is_some_and(|id| id.as_str() == "held.a")
-        })
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "held.a"))
         .unwrap_or_else(|| unreachable!("key owner is mounted"))
         .id()
         .clone();
@@ -1405,7 +1400,10 @@ fn live_reconciliation_focus_out_clears_widget_held_key_without_unmount() {
         .unwrap_or_else(|_| unreachable!("disablement settles"));
     assert_eq!(runtime.focus().focused_node(), None);
     assert!(runtime.index().node(&a).is_some());
-    assert!(held.borrow().is_empty(), "FocusOut clears widget-local held state");
+    assert!(
+        held.borrow().is_empty(),
+        "FocusOut clears widget-local held state"
+    );
     assert_eq!(*focus_outs.borrow(), 1);
     assert_eq!(*unmounts.borrow(), 0);
 
@@ -1415,6 +1413,10 @@ fn live_reconciliation_focus_out_clears_widget_held_key_without_unmount() {
     runtime
         .pump(FULL_PUMP)
         .unwrap_or_else(|_| unreachable!("second update settles"));
-    assert_eq!(*focus_outs.borrow(), 1, "the retired focus lifetime cannot notify twice");
+    assert_eq!(
+        *focus_outs.borrow(),
+        1,
+        "the retired focus lifetime cannot notify twice"
+    );
     assert_eq!(*unmounts.borrow(), 0);
 }
