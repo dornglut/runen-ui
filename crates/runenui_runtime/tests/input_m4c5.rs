@@ -1360,6 +1360,66 @@ fn key_04_focus_transfer_ahead_of_queued_down_can_rearm_old_unfocused_widget() {
     );
 }
 
+/// A queued ordinary text event can reach its original focused widget even
+/// after that widget loses committed-text capability without losing focus.
+/// This is current-behavior characterization, not a desired delivery rule.
+#[test]
+fn text_04_queued_commit_reaches_focused_owner_after_capability_revocation() {
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = mounted(InputState::standard(Rc::clone(&log)));
+    focus(&mut runtime, "target");
+    clear_log(&runtime);
+    let a = target(&mut runtime, "target");
+
+    runtime
+        .submit_action(InputAction::LoseTextCapability)
+        .unwrap_or_else(|_| unreachable!("capability revocation queues before text"));
+    let sequence = runtime
+        .submit_text(
+            CommittedTextEvent::new("x", None)
+                .unwrap_or_else(|_| unreachable!("single Unicode scalar text")),
+        )
+        .unwrap_or_else(|_| unreachable!("text is eligible when admitted"))
+        .sequence();
+    let batch = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("action then text FIFO pump"));
+
+    assert_eq!(runtime.focus().focused_node(), Some(&a));
+    assert!(
+        !batch
+            .final_ownership()
+            .keyboard()
+            .text_input_capability()
+            .accepts_committed_text(),
+        "current focused widget no longer accepts committed text"
+    );
+    assert!(batch.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(settled)
+            if settled.sequence() == sequence
+                && matches!(
+                    settled.finality(),
+                    UiInputFinality::Committed(facts)
+                        if matches!(facts.route(), UiInputRoute::Routed { target } if target == &a)
+                )
+    )));
+    assert!(log.borrow().iter().any(|entry| {
+        entry.node == "target"
+            && entry.phase == Some(EventPhase::Target)
+            && entry.input
+                == ObservedInput::Text {
+                    bytes: 1,
+                    scalars: 1,
+                }
+    }));
+}
+
 /// Characterizes the same stale-focus FIFO mechanism for an ordinary text
 /// commit: a focused text-capable A admits the commit, but a queued focus
 /// transfer to non-text B executes first. Routing still calls the old live A.
