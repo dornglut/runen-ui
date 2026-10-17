@@ -1339,8 +1339,8 @@ impl UiApp for HeldKeyApp {
     }
 }
 
-/// A concrete downstream widget retains key state in its mounted Widget::State.
-/// Compatible disablement must invoke its live FocusOut cleanup instead of
+/// A concrete downstream widget retains key state in its mounted `Widget::State`.
+/// Compatible disablement must invoke its live `FocusOut` cleanup instead of
 /// reporting a trace-only or suppressed departure, without unmounting the widget.
 #[test]
 fn live_reconciliation_focus_out_clears_widget_held_key_without_unmount() {
