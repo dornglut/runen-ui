@@ -182,35 +182,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         .ok()
     }
 
-    /// The reconciliation path knows there is only one old live route and
-    /// no future focus-in destination. Reserve exactly its C/T/B `FocusOut`
-    /// invocations rather than every candidate in the mounted publication.
-    pub(super) fn prepare_reconciled_focus_out_route(
-        &mut self,
-        facts: &RoutedIngressFacts,
-        old_route: &[MountedNodeId],
-    ) -> Result<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan), RoutedFailureLineage> {
-        let invocations = old_route
-            .len()
-            .checked_mul(2)
-            .and_then(|count| count.checked_sub(1))
-            .ok_or_else(|| {
-                self.handle_routed_admission_rejection(
-                    TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
-                    facts,
-                )
-            })?;
-        self.try_prepare_routed_invocations(
-            facts,
-            false,
-            &[],
-            old_route,
-            invocations,
-            MandatoryTracePlan::focus_commit(),
-            0,
-        )
-    }
-
     pub(super) fn prepare_focus_routed_route(
         &mut self,
         facts: &RoutedIngressFacts,

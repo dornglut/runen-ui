@@ -304,15 +304,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
     }
 
-    pub(crate) fn try_begin_reconciled_focus_out_transaction(
-        &mut self,
-        facts: RoutedIngressFacts,
-        old_route: &[MountedNodeId],
-    ) -> Result<RoutedTransaction<Action>, RoutedFailureLineage> {
-        let (route, admission) = self.prepare_reconciled_focus_out_route(&facts, old_route)?;
-        Ok(self.start_routed_transaction(facts, route, Vec::new(), admission))
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub(in crate::runtime) fn begin_pointer_routed_transaction(
         &mut self,
