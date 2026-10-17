@@ -3,11 +3,11 @@
 use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use runenui_core::{
-    CommandOrigin, Element, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusGroup,
+    CommandOrigin, Effects, Element, EventContext, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusGroup,
     FocusGroupBoundaryPolicy, FocusGroupEntry, FocusGroupTypeAhead, FocusReason, FocusScope,
     FocusScopePolicy, Focusability, KeyLocation, KeyModifiers, KeyboardCompositionState,
     KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey, SemanticCommand, UiApp,
-    View, column, container,
+    UiEvent, View, Widget, WidgetActivation, WidgetEventOutput, column, container,
 };
 use runenui_external_widget_conformance::{
     ExternalFocusFact, ExternalFocusWidget, external_focus_panel,
@@ -623,4 +623,156 @@ fn compatible_disablement_delivers_real_focus_out_to_live_downstream_route() {
         "one noncancelable routed FocusOut precedes any later app effects"
     );
     assert!(events.iter().all(|event| !event.has_related_target));
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FocusOutOrderAction {
+    Disable,
+    NotificationOutput,
+    UpdateOutput,
+}
+
+struct FocusOutOrderState {
+    enabled: bool,
+    processed: Vec<FocusOutOrderAction>,
+}
+
+struct FocusOutOrderWidget {
+    enabled: bool,
+}
+
+impl Widget<FocusOutOrderAction> for FocusOutOrderWidget {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(self.enabled)
+    }
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, FocusOutOrderAction>,
+    ) -> WidgetEventOutput {
+        if context.phase() == EventPhase::Target
+            && event.as_focus().is_some_and(|focus| {
+                focus.kind() == FocusEventKind::Out
+                    && focus.reason() == FocusReason::Disablement
+            })
+        {
+            context.emit(FocusOutOrderAction::NotificationOutput);
+        }
+        WidgetEventOutput::none()
+    }
+}
+
+struct FocusOutOrderApp;
+
+impl UiApp for FocusOutOrderApp {
+    type State = FocusOutOrderState;
+    type Action = FocusOutOrderAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        column(vec![
+            Element::new(FocusOutOrderWidget {
+                enabled: state.enabled,
+            })
+            .id("focus.output.a")
+            .key("a")
+            .focusable(true),
+        ])
+        .id("focus.output.root")
+        .key("root")
+        .into_element()
+    }
+
+    fn update(
+        state: &mut Self::State,
+        action: Self::Action,
+    ) -> Effects<Self::Action, Self::HostProtocol> {
+        state.processed.push(action);
+        match action {
+            FocusOutOrderAction::Disable => {
+                state.enabled = false;
+                Effects::action(FocusOutOrderAction::UpdateOutput)
+            }
+            FocusOutOrderAction::NotificationOutput | FocusOutOrderAction::UpdateOutput => {
+                Effects::none()
+            }
+        }
+    }
+}
+
+/// Reconciled focus notifications emit ordinary work before the initiating
+/// application update's own effects. Partial pumps cannot reverse that FIFO.
+#[test]
+fn compatible_disablement_notification_outputs_precede_application_effects() {
+    let mut runtime = AppRuntime::<FocusOutOrderApp>::mount(FocusOutOrderState {
+        enabled: true,
+        processed: Vec::new(),
+    });
+    runtime
+        .pump(FULL_PUMP)
+        .unwrap_or_else(|_| unreachable!("initial pump"));
+    let owner = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "focus.output.a")
+        })
+        .unwrap_or_else(|| unreachable!("downstream target exists"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(
+            owner.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus command admitted"));
+    runtime
+        .pump(FULL_PUMP)
+        .unwrap_or_else(|_| unreachable!("focus command settles"));
+    assert_eq!(runtime.focus().focused_node(), Some(&owner));
+
+    runtime
+        .submit_action(FocusOutOrderAction::Disable)
+        .unwrap_or_else(|_| unreachable!("disable action admitted"));
+    let first = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("first bounded pump"));
+    assert_eq!(first.report().processed_envelopes(), 1);
+    assert_eq!(runtime.state().processed, [FocusOutOrderAction::Disable]);
+    assert_eq!(runtime.focus().focused_node(), None);
+
+    let second = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("notification output pump"));
+    assert_eq!(second.report().processed_envelopes(), 1);
+    assert_eq!(
+        runtime.state().processed,
+        [
+            FocusOutOrderAction::Disable,
+            FocusOutOrderAction::NotificationOutput
+        ],
+        "routed FocusOut output is ahead of the application update effect"
+    );
+
+    let third = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("application effect pump"));
+    assert_eq!(third.report().processed_envelopes(), 1);
+    assert_eq!(
+        runtime.state().processed,
+        [
+            FocusOutOrderAction::Disable,
+            FocusOutOrderAction::NotificationOutput,
+            FocusOutOrderAction::UpdateOutput,
+        ]
+    );
 }
