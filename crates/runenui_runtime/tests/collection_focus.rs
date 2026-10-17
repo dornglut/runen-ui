@@ -766,3 +766,45 @@ fn reconciled_focusout_trace_exhaustion_reports_one_terminal_reason() {
         ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
     }));
 }
+
+#[cfg(feature = "internal-test-seams")]
+#[test]
+fn reconciled_focusout_work_sequence_exhaustion_has_one_terminal_reason() {
+    let mut runtime = AppRuntime::<App>::mount(State { discoverable: true });
+    settle(&mut runtime);
+    let owner = id(&mut runtime, "disabled");
+    command(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+
+    runtime
+        .submit_action(Action::UseDiscoverablePolicy(false))
+        .unwrap_or_else(|_| unreachable!("action admitted before sequence limit"));
+    runtime.__seed_next_work_sequence_for_test(u64::MAX);
+    let batch = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("terminal sequence exhaustion remains observable"));
+    assert_eq!(batch.report().processed_envelopes(), 1);
+    assert!(!runtime.state().discoverable);
+    assert_eq!(runtime.focus().focused_node(), Some(&owner));
+    assert_eq!(
+        runtime.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::WorkSequenceExhausted)
+    );
+    assert_eq!(
+        batch.report().outcome(),
+        runenui_runtime::PumpOutcome::Terminal(RuntimeTerminalReason::WorkSequenceExhausted)
+    );
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::RoutedEventAdmissionRejected {
+            capacity: runenui_runtime::TraceRoutedAdmissionRejection::WorkSequenceExhausted
+        }
+    )));
+    assert!(!runtime.trace().records().any(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::FocusNotificationResolved {
+                kind: FocusEventKind::Out
+            }
+        ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+    }));
+}
