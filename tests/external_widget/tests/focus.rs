@@ -498,3 +498,90 @@ fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
         .unwrap_or_else(|_| unreachable!("pump observation"));
     assert_eq!(runtime.focus().focused_node(), Some(&b));
 }
+
+struct CompatibleDisableState {
+    log: Rc<RefCell<Vec<ExternalFocusFact>>>,
+    enabled: bool,
+}
+
+struct CompatibleDisableApp;
+
+impl UiApp for CompatibleDisableApp {
+    type State = CompatibleDisableState;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<()> {
+        container(
+            ExternalFocusWidget::new("root", Rc::clone(&state.log), false),
+            vec![
+                Element::new(ExternalFocusWidget::new(
+                    "a",
+                    Rc::clone(&state.log),
+                    state.enabled,
+                ))
+                .id("compatible.focus.a")
+                .key("a")
+                .focusable(true),
+            ],
+        )
+        .id("compatible.focus.root")
+        .key("root")
+        .into_element()
+    }
+
+    fn update(state: &mut Self::State, (): Self::Action) {
+        state.enabled = false;
+    }
+}
+
+/// A still-mounted old focus route must observe the real C/T/B notification,
+/// including a disabled target whose private state cannot rely on trace alone.
+#[test]
+fn compatible_disablement_delivers_real_focus_out_to_live_downstream_route() {
+    let log = Rc::new(RefCell::new(Vec::<ExternalFocusFact>::new()));
+    let mut runtime = AppRuntime::<CompatibleDisableApp>::mount(CompatibleDisableState {
+        log: Rc::clone(&log),
+        enabled: true,
+    });
+    assert!(runtime.pump(FULL_PUMP).unwrap_or_else(|_| unreachable!()).report().is_quiescent());
+    let target = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "compatible.focus.a"))
+        .unwrap_or_else(|| unreachable!("A is mounted"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(
+            target.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("A accepts focus before disablement"));
+    assert!(runtime.pump(FULL_PUMP).unwrap_or_else(|_| unreachable!()).report().is_quiescent());
+    log.borrow_mut().clear();
+
+    runtime
+        .submit_action(())
+        .unwrap_or_else(|_| unreachable!("compatible update must be admitted"));
+    assert!(runtime.pump(FULL_PUMP).unwrap_or_else(|_| unreachable!()).report().is_quiescent());
+
+    assert_eq!(runtime.focus().focused_node(), None);
+    assert!(
+        runtime.index().node(&target).is_some(),
+        "the exact old widget stays mounted"
+    );
+    let events = log.borrow();
+    assert_eq!(
+        events.iter().map(|event| (event.widget, event.phase, event.kind, event.reason)).collect::<Vec<_>>(),
+        [
+            ("root", EventPhase::Capture, FocusEventKind::Out, FocusReason::Disablement),
+            ("a", EventPhase::Target, FocusEventKind::Out, FocusReason::Disablement),
+            ("root", EventPhase::Bubble, FocusEventKind::Out, FocusReason::Disablement),
+        ],
+        "one noncancelable routed FocusOut precedes any later app effects"
+    );
+    assert!(events.iter().all(|event| !event.has_related_target));
+}
