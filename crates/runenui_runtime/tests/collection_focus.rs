@@ -654,16 +654,8 @@ fn output_free_focus_retirement_has_exact_queue_admission_boundary() {
         assert_eq!(one.report().processed_envelopes(), 1);
         assert_eq!(
             runtime.focus().focused_node(),
-            None,
-            "submitted={submitted}; status={:?}; discoverable={}; accepted-action trace={:?}",
-            runtime.status(),
-            runtime.state().discoverable,
-            runtime
-                .trace()
-                .records()
-                .skip(trace_start)
-                .map(|record| record.kind())
-                .collect::<Vec<_>>()
+            (!admitted).then_some(&owner),
+            "admitted retirement clears focus; rejected preflight cannot claim a committed transition"
         );
         assert!(
             runtime.index().node(&owner).is_some(),
@@ -688,6 +680,17 @@ fn output_free_focus_retirement_has_exact_queue_admission_boundary() {
             assert_eq!(
                 runtime.status(),
                 RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+            );
+            assert!(
+                runtime.trace().records().skip(trace_start).any(|record| {
+                    matches!(
+                        record.kind(),
+                        TraceRecordKind::RoutedEventAdmissionRejected {
+                            capacity: runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
+                        }
+                    )
+                }),
+                "checked queue pressure must report the precise rejected authority"
             );
         }
     }
