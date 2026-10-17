@@ -2322,3 +2322,136 @@ fn automation_04_disabled_tracing_preserves_resolution_and_command_behavior() {
     assert_eq!(runtime.state().activations, 1);
     assert_eq!(runtime.trace().len(), 0);
 }
+
+#[test]
+fn reconciliation_disablement_retires_active_composition_and_space_before_live_focus_out() {
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = mounted(InputState::standard(Rc::clone(&log)));
+    focus(&mut runtime, "target");
+    let original_target = target(&mut runtime, "target");
+    let device = InputDeviceId::new(23).unwrap_or_else(|| unreachable!("nonzero device"));
+    runtime
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Down,
+            PhysicalKey::Space,
+            LogicalKey::Space,
+            false,
+            Some(device),
+        ))
+        .unwrap_or_else(|_| unreachable!("Space down accepted on focused target"));
+    settle(&mut runtime);
+
+    let composition = runtime
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("composition-capable owner accepts start"));
+    settle(&mut runtime);
+    clear_log(&runtime);
+    let trace_start = runtime.trace().len();
+
+    runtime
+        .submit_action(InputAction::Disable)
+        .unwrap_or_else(|_| unreachable!("compatible disablement admitted"));
+    let receipt = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("bounded action pump"));
+    assert_eq!(receipt.report().processed_envelopes(), 1);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.focus().focused_node(), None);
+    assert_eq!(
+        runtime.index().node(&original_target).map(|node| node.id()),
+        Some(&original_target),
+        "the disabled focus owner retains its exact mounted lifetime"
+    );
+    assert_eq!(runtime.state().activations, 0);
+    let observations = log.borrow();
+    assert!(
+        observations.iter().any(|fact| {
+            fact.node == "target"
+                && fact.phase == Some(EventPhase::Target)
+                && fact.input
+                    == ObservedInput::CompositionCancel(CompositionCancelReason::Disablement)
+                && fact.cancelable == Some(false)
+        }),
+        "composition cancellation reaches the still-live old target"
+    );
+    assert!(
+        !observations.iter().any(|fact| fact.input == ObservedInput::Unmounted),
+        "compatible disablement must not unmount the old widget"
+    );
+    drop(observations);
+
+    let records = runtime.trace().records().skip(trace_start).collect::<Vec<_>>();
+    let composition_cancel = records
+        .iter()
+        .position(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::CompositionCancelled {
+                    reason: CompositionCancelReason::Disablement
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        })
+        .unwrap_or_else(|| unreachable!("composition cancellation is delivered"));
+    let space_cleanup = records
+        .iter()
+        .position(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::KeyboardSpaceOwnershipCleared {
+                    reason: runenui_runtime::TraceSpaceCleanupReason::Disablement
+                }
+            )
+        })
+        .unwrap_or_else(|| unreachable!("Space ownership is revoked on disablement"));
+    let focus_out = records
+        .iter()
+        .position(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: runenui_runtime::FocusEventKind::Out
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        })
+        .unwrap_or_else(|| unreachable!("the live old focus route observes FocusOut"));
+    assert!(
+        composition_cancel < space_cleanup && space_cleanup < focus_out,
+        "IME and Space retirement precede the delivered live-route FocusOut"
+    );
+    assert_eq!(
+        records
+            .iter()
+            .filter(|record| {
+                matches!(
+                    record.kind(),
+                    TraceRecordKind::FocusNotificationResolved {
+                        kind: runenui_runtime::FocusEventKind::Out
+                    }
+                )
+            })
+            .count(),
+        1,
+        "the reconciled focus lifetime retires exactly once"
+    );
+    assert!(matches!(
+        runtime.submit_composition_end(composition.generation().clone()),
+        Err(error) if error.kind() == SubmitCompositionErrorKind::StaleGeneration
+    ));
+
+    focus(&mut runtime, "other");
+    runtime
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Up,
+            PhysicalKey::Space,
+            LogicalKey::Space,
+            false,
+            Some(device),
+        ))
+        .unwrap_or_else(|_| unreachable!("stale key release enters the canonical input path"));
+    settle(&mut runtime);
+    assert_eq!(
+        runtime.state().activations,
+        0,
+        "stale Space must not activate another owner"
+    );
+}
