@@ -192,10 +192,9 @@ impl UiApp for App {
         match action {
             Action::Edit(intent) => {
                 let range = intent.replacement();
-                state.source.replace_range(
-                    range.start()..range.end(),
-                    intent.replacement_text(),
-                );
+                state
+                    .source
+                    .replace_range(range.start()..range.end(), intent.replacement_text());
                 state.revision += 1;
                 UpdateOutput::edit(EditResolution::accepted(
                     intent.request().clone(),
@@ -211,9 +210,12 @@ impl UiApp for App {
 }
 
 fn settle(app: &mut AppRuntime<App>) {
-    assert!(app.pump(PumpBudget::new(256, 256, 256, 256)).unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+    assert!(
+        app.pump(PumpBudget::new(256, 256, 256, 256))
+            .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
             .report()
-            .is_quiescent());
+            .is_quiescent()
+    );
 }
 
 #[test]
@@ -223,48 +225,85 @@ fn downstream_widget_owns_the_same_editable_proxy_contract_without_private_runti
         revision: 1,
         chosen: 0,
     });
-    app.register_text_font_bytes(FONT.to_vec()).unwrap_or_else(|_| unreachable!());
+    app.register_text_font_bytes(FONT.to_vec())
+        .unwrap_or_else(|_| unreachable!());
     app.set_text_generic_family_mapping(
         GenericFontFamily::SansSerif,
         &[FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!())],
-    ).unwrap_or_else(|_| unreachable!());
+    )
+    .unwrap_or_else(|_| unreachable!());
     settle(&mut app);
-    let owner = app.index().nodes().iter()
-        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "parity.owner"))
+    let owner = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "parity.owner")
+        })
         .unwrap_or_else(|| unreachable!("downstream mounted owner"))
-        .id().clone();
-    assert!(app.index().nodes().iter().all(|node|
-        node.authored_id().is_none_or(|id| id.as_str() != "parity.first")
-            || !node.is_focusable()));
+        .id()
+        .clone();
+    assert!(app.index().nodes().iter().all(|node| {
+        node.authored_id()
+            .is_none_or(|id| id.as_str() != "parity.first")
+            || !node.is_focusable()
+    }));
     app.submit_command(
         owner.clone(),
         SemanticCommand::RequestFocus,
         CommandOrigin::programmatic(),
-    ).unwrap_or_else(|_| unreachable!("current focus command"));
+    )
+    .unwrap_or_else(|_| unreachable!("current focus command"));
     settle(&mut app);
-    let semantic = app.publish_surface(&SurfaceBuildContext::tight(
-        &runenui_core::StyleEnvironment::default(),
-        LogicalSize::try_new(480.0, 260.0).unwrap_or_else(|_| unreachable!()),
-    )).unwrap_or_else(|error| unreachable!("downstream publication: {error:?}"));
+    let semantic = app
+        .publish_surface(&SurfaceBuildContext::tight(
+            &runenui_core::StyleEnvironment::default(),
+            LogicalSize::try_new(480.0, 260.0).unwrap_or_else(|_| unreachable!()),
+        ))
+        .unwrap_or_else(|error| unreachable!("downstream publication: {error:?}"));
     let snapshot = semantic.semantic_publication().snapshot();
-    let combo = snapshot.nodes().iter()
+    let combo = snapshot
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("downstream ComboBox semantics"));
     assert!(combo.editable().is_some());
-    assert_eq!(combo.editable_mode(), Some(SemanticEditableMode::SingleLine));
-    assert!(!snapshot.nodes().iter()
-        .any(|node| node.role() == SemanticRole::EditableText));
-    assert_eq!(combo.relationships().iter()
-        .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
-        .count(), 1);
+    assert_eq!(
+        combo.editable_mode(),
+        Some(SemanticEditableMode::SingleLine)
+    );
+    assert!(
+        !snapshot
+            .nodes()
+            .iter()
+            .any(|node| node.role() == SemanticRole::EditableText)
+    );
+    assert_eq!(
+        combo
+            .relationships()
+            .iter()
+            .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
+            .count(),
+        1
+    );
     assert_eq!(app.focus().focused_node(), Some(&owner));
-    app.submit_command(owner.clone(), SemanticCommand::FocusDown, CommandOrigin::programmatic())
-        .unwrap_or_else(|_| unreachable!("routed proxy navigation"));
+    app.submit_command(
+        owner.clone(),
+        SemanticCommand::FocusDown,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("routed proxy navigation"));
     settle(&mut app);
-    assert_eq!(app.state().chosen, 0, "active Option cannot commit durable selection");
-    app.submit_text(CommittedTextEvent::new("x", None)
-        .unwrap_or_else(|_| unreachable!("source text")))
-        .unwrap_or_else(|_| unreachable!("M10 downstream text ingress"));
+    assert_eq!(
+        app.state().chosen,
+        0,
+        "active Option cannot commit durable selection"
+    );
+    app.submit_text(
+        CommittedTextEvent::new("x", None).unwrap_or_else(|_| unreachable!("source text")),
+    )
+    .unwrap_or_else(|_| unreachable!("M10 downstream text ingress"));
     settle(&mut app);
     assert_eq!(app.state().source, "ax");
     assert_eq!(app.state().chosen, 0);
