@@ -657,3 +657,225 @@ mod focus_route_output_probe {
         assert_eq!(runtime.state().processed_outputs, 3);
     }
 }
+
+
+#[cfg(test)]
+mod real_composition_focus_budget_probe {
+    // Actual public focus-transfer routing, not a second scheduler or a
+    // hypothetical credit model. The unmerged compatible-disablement path
+    // remains the responsibility of #475.
+    use std::{cell::RefCell, rc::Rc};
+
+    use runenui_core::{
+        CommandOrigin, CompositionEvent, Element, ElementId, EventContext, EventPhase,
+        FocusEventKind, NoHostProtocol, SemanticCommand, UiApp, UiEvent, Widget,
+        WidgetActivation, WidgetEventOutput, WidgetTextInput, column,
+    };
+    use runenui_runtime::{
+        AppRuntime, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus,
+        RuntimeTerminalReason,
+    };
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum Action {
+        CompositionCleanup,
+        FocusCleanup,
+    }
+
+    struct State {
+        emitted_on_cancel: bool,
+        emitted_on_focus_out: bool,
+        observed: Rc<RefCell<Vec<Action>>>,
+        processed: Vec<Action>,
+    }
+
+    #[derive(Debug)]
+    struct CleanupWidget {
+        owner: bool,
+        emit_cancel: bool,
+        emit_focus_out: bool,
+        observed: Rc<RefCell<Vec<Action>>>,
+    }
+
+    impl Widget<Action> for CleanupWidget {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn activation(&self, (): &Self::State) -> WidgetActivation {
+            WidgetActivation::actionable(true)
+        }
+
+        fn text_input(&self, (): &Self::State) -> WidgetTextInput {
+            if self.owner {
+                WidgetTextInput::new(true, true)
+            } else {
+                WidgetTextInput::NONE
+            }
+        }
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, Action>,
+        ) -> WidgetEventOutput {
+            if !self.owner || context.phase() != EventPhase::Target {
+                return WidgetEventOutput::none();
+            }
+            let output = match event {
+                UiEvent::Composition(CompositionEvent::Cancel(_)) if self.emit_cancel => {
+                    Some(Action::CompositionCleanup)
+                }
+                UiEvent::Focus(focus)
+                    if focus.kind() == FocusEventKind::Out && self.emit_focus_out =>
+                {
+                    Some(Action::FocusCleanup)
+                }
+                _ => None,
+            };
+            if let Some(output) = output {
+                self.observed.borrow_mut().push(output);
+                context.emit(output);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    struct App;
+
+    impl UiApp for App {
+        type State = State;
+        type Action = Action;
+        type HostProtocol = NoHostProtocol;
+
+        fn root(state: &Self::State) -> impl runenui_core::View<Self::Action> {
+            column(vec![
+                Element::new(CleanupWidget {
+                    owner: true,
+                    emit_cancel: state.emitted_on_cancel,
+                    emit_focus_out: state.emitted_on_focus_out,
+                    observed: Rc::clone(&state.observed),
+                })
+                .id("old-focus")
+                .key("old-focus")
+                .focusable(true),
+                Element::new(CleanupWidget {
+                    owner: false,
+                    emit_cancel: false,
+                    emit_focus_out: false,
+                    observed: Rc::clone(&state.observed),
+                })
+                .id("new-focus")
+                .key("new-focus")
+                .focusable(true),
+            ])
+        }
+
+        fn update(state: &mut Self::State, action: Self::Action) {
+            state.processed.push(action);
+        }
+    }
+
+    fn target(runtime: &AppRuntime<App>, name: &str) -> MountedNodeId {
+        let authored = ElementId::new(name).unwrap_or_else(|_| unreachable!("fixture id"));
+        runtime
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored))
+            .unwrap_or_else(|| unreachable!("fixture mounted target"))
+            .id()
+            .clone()
+    }
+
+    fn settle(runtime: &mut AppRuntime<App>) {
+        let report = runtime
+            .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("public pump"))
+            .report()
+            .to_owned();
+        assert!(report.is_quiescent());
+    }
+
+    #[test]
+    fn actual_composition_cancel_and_focus_out_share_one_routed_allowance() {
+        // C=16, 64 and 4096 distinguish budget integrity from mere queue
+        // pressure. A one-output allowance is insufficient for two actual
+        // callbacks even when thousands of FIFO slots remain free.
+        for capacity in [16, 64, 4096] {
+            for (emit_cancel, emit_focus_out, output_limit, should_poison) in [
+                (false, true, 1, false),
+                (true, false, 1, false),
+                (true, true, 1, true),
+                (true, true, 2, false),
+            ] {
+                let observed = Rc::new(RefCell::new(Vec::new()));
+                let mut runtime = AppRuntime::<App>::mount_with_config(
+                    State {
+                        emitted_on_cancel: emit_cancel,
+                        emitted_on_focus_out: emit_focus_out,
+                        observed: Rc::clone(&observed),
+                        processed: Vec::new(),
+                    },
+                    RuntimeConfig::default().with_limits(
+                        RuntimeLimits::default()
+                            .with_waiting_envelopes(capacity)
+                            .with_transaction_outputs(output_limit),
+                    ),
+                );
+                settle(&mut runtime);
+                let old = target(&runtime, "old-focus");
+                let new = target(&runtime, "new-focus");
+                runtime
+                    .submit_command(
+                        old,
+                        SemanticCommand::RequestFocus,
+                        CommandOrigin::programmatic(),
+                    )
+                    .unwrap_or_else(|_| unreachable!("old focus accepted"));
+                settle(&mut runtime);
+                runtime
+                    .start_composition(None)
+                    .unwrap_or_else(|_| unreachable!("old owner accepts composition"));
+                settle(&mut runtime);
+                assert!(observed.borrow().is_empty());
+
+                runtime
+                    .submit_command(
+                        new,
+                        SemanticCommand::RequestFocus,
+                        CommandOrigin::programmatic(),
+                    )
+                    .unwrap_or_else(|_| unreachable!("transfer accepted"));
+                let report = runtime
+                    .pump(PumpBudget::new(1, 0, 0, 0))
+                    .unwrap_or_else(|_| unreachable!("one source command"))
+                    .report()
+                    .to_owned();
+                assert_eq!(report.processed_envelopes(), 1);
+                let mut expected = Vec::new();
+                if emit_cancel {
+                    expected.push(Action::CompositionCleanup);
+                }
+                if emit_focus_out {
+                    expected.push(Action::FocusCleanup);
+                }
+                assert_eq!(&*observed.borrow(), &expected);
+                assert!(runtime.state().processed.is_empty());
+                if should_poison {
+                    assert_eq!(
+                        runtime.status(),
+                        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned),
+                        "C={capacity}, allowance={output_limit}",
+                    );
+                } else {
+                    assert_eq!(runtime.status(), RuntimeStatus::Running);
+                    assert_eq!(report.remaining_queued_envelopes(), expected.len());
+                    settle(&mut runtime);
+                    assert_eq!(runtime.state().processed, expected);
+                }
+            }
+        }
+    }
+}
