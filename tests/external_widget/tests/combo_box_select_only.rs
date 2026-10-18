@@ -56,7 +56,7 @@ fn settle(app: &mut AppRuntime<App>) {
             .report()
             .is_quiescent());
 }
-fn id(app: &AppRuntime<App>, id: &str) -> MountedNodeId {
+fn id(app: &mut AppRuntime<App>, id: &str) -> MountedNodeId {
     let id = ElementId::new(id).unwrap_or_else(|_| unreachable!("valid test ID"));
     app.index().nodes().iter()
         .find(|node| node.authored_id() == Some(&id))
@@ -72,14 +72,14 @@ fn command(app: &mut AppRuntime<App>, target: MountedNodeId, cmd: SemanticComman
 fn select_only_keeps_real_focus_on_owner_while_selection_remains_application_owned() {
     let mut app = AppRuntime::<App>::mount(State::default());
     settle(&mut app);
-    let owner = id(&app, "choice.owner");
+    let owner = id(&mut app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     command(&mut app, owner.clone(), SemanticCommand::Activate);
     assert!(app.state().open);
     assert_eq!(app.state().log, [ComboBoxRequest::Open]);
     assert_eq!(app.focus().focused_node(), Some(&owner));
-    let one = id(&app, "choice.one");
-    let two = id(&app, "choice.two");
+    let one = id(&mut app, "choice.one");
+    let two = id(&mut app, "choice.two");
     assert!(!app.index().node(&one).is_some_and(|node| node.is_focusable()));
     assert!(!app.index().node(&two).is_some_and(|node| node.is_focusable()));
     let published = app.publish_surface(&SurfaceBuildContext::tight(
@@ -183,7 +183,7 @@ fn keyboard_ime_escape_and_enter_keep_focus_and_committed_value_separate() {
     use runenui_core::{KeyboardCompositionState as Composition, LogicalKey, PhysicalKey};
     let mut app = AppRuntime::<App>::mount(State::default());
     settle(&mut app);
-    let owner = id(&app, "choice.owner");
+    let owner = id(&mut app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     app.submit_keyboard(key(PhysicalKey::ArrowDown, LogicalKey::ArrowDown,
         Composition::Inactive)).unwrap_or_else(|_| unreachable!("arrow ingress"));
@@ -225,7 +225,7 @@ fn keyboard_ime_escape_and_enter_keep_focus_and_committed_value_separate() {
 fn semantic_expand_and_collapse_actions_follow_application_open_state() {
     let mut app = AppRuntime::<App>::mount(State::default());
     settle(&mut app);
-    let owner = id(&app, "choice.owner");
+    let owner = id(&mut app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     let published = app.publish_surface(&SurfaceBuildContext::tight(
         &runenui_core::StyleEnvironment::default(),
@@ -316,7 +316,7 @@ fn physical_option_click_uses_standard_option_activation_without_moving_owner_fo
         &[FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!())],
     ).unwrap_or_else(|_| unreachable!("known test font family"));
     settle(&mut app);
-    let owner = id(&app, "choice.owner");
+    let owner = id(&mut app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     command(&mut app, owner.clone(), SemanticCommand::Activate);
     assert!(app.state().open);
@@ -438,7 +438,7 @@ fn select_only_combo_claims_only_its_recognized_native_arrow_key() {
                 RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
             );
             settle(&mut app);
-            let owner = id(&app, "choice.owner");
+            let owner = id(&mut app, "choice.owner");
             command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
             let scope = app.input_ownership()
                 .unwrap_or_else(|_| unreachable!("live input scope"))
