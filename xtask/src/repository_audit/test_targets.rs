@@ -278,7 +278,7 @@ mod tests {
         let mut findings = Vec::new();
         // This historical fixture has an explicit #483 exemption until qualified.
         check_coverage(&files, &registered, &mut findings);
-        assert!(findings.is_empty());
+        assert_eq!(findings.len(), 0);
         // The quarantine cannot remain after the source becomes an executed module.
         registered.insert(
             "combo_box_boundaries.rs".to_owned(),
