@@ -173,7 +173,9 @@ fn nested_imports(contents: &str, path: &str, findings: &mut Vec<Finding>) -> Ve
             .is_some()
         {
             if let Some(file) = pending.take() {
-                if !file.ends_with(".rs") || file.contains('/') || file.contains('\\') {
+                if Path::new(file).extension().is_none_or(|extension| extension != "rs")
+                    || file.contains('/')
+                    || file.contains('\\') {
                     failure(
                         findings,
                         path,
@@ -352,7 +354,7 @@ mod tests {
 
     #[test]
     fn duplicate_imports_fail_even_when_every_file_is_covered() {
-        let files = ["one.rs"].into_iter().map(str::to_owned).collect();
+        let files = std::iter::once("one.rs").map(str::to_owned).collect();
         let registered = BTreeMap::from([(
             "one.rs".to_owned(),
             vec![
