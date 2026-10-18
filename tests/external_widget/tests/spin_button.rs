@@ -263,64 +263,109 @@ fn m10_editing_remains_application_owned_and_step_readiness_respects_disabled_re
     settle(&mut runtime);
     let publication = publish(&mut runtime);
     let (surface, target) = semantic_target(&publication);
-    assert!(runtime.submit_semantic_action(SemanticActionRequest::new(
-        surface, target, SemanticAction::Increment,
-    )).is_err());
-    runtime.submit_action(Action::ReadOnly(false))
+    assert!(
+        runtime
+            .submit_semantic_action(SemanticActionRequest::new(
+                surface,
+                target,
+                SemanticAction::Increment,
+            ))
+            .is_err()
+    );
+    runtime
+        .submit_action(Action::ReadOnly(false))
         .unwrap_or_else(|_| unreachable!("app update"));
-    runtime.submit_action(Action::Disabled(true))
+    runtime
+        .submit_action(Action::Disabled(true))
         .unwrap_or_else(|_| unreachable!("app update"));
     settle(&mut runtime);
     let publication = publish(&mut runtime);
     let (surface, target) = semantic_target(&publication);
-    assert!(runtime.submit_semantic_action(SemanticActionRequest::new(
-        surface, target, SemanticAction::Increment,
-    )).is_err());
+    assert!(
+        runtime
+            .submit_semantic_action(SemanticActionRequest::new(
+                surface,
+                target,
+                SemanticAction::Increment,
+            ))
+            .is_err()
+    );
 }
 
 #[test]
 fn keyboard_up_and_down_emit_signed_app_steps_without_replacing_caret_arrows() {
     let mut runtime = runtime("-1");
     let id = runtime.index().nodes()[0].id().clone();
-    runtime.submit_command(id, SemanticCommand::RequestFocus, CommandOrigin::programmatic())
+    runtime
+        .submit_command(
+            id,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
         .unwrap_or_else(|_| unreachable!("focus request"));
     settle(&mut runtime);
     for key in [LogicalKey::ArrowUp, LogicalKey::ArrowDown] {
-        runtime.submit_keyboard(KeyboardEvent::new(
-            KeyboardPhase::Down, PhysicalKey::Code("Arrow".to_owned()), key,
-            KeyModifiers::NONE, false, KeyLocation::Standard,
-            KeyboardCompositionState::Inactive, None,
-        )).unwrap_or_else(|_| unreachable!("key routed"));
+        runtime
+            .submit_keyboard(KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::Code("Arrow".to_owned()),
+                key,
+                KeyModifiers::NONE,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            ))
+            .unwrap_or_else(|_| unreachable!("key routed"));
     }
     settle(&mut runtime);
     assert_eq!(runtime.state().text, "-1");
-    assert_eq!(runtime.state().requests, [
-        SpinButtonRequest::AdjustBy(number(0.5)),
-        SpinButtonRequest::AdjustBy(number(-0.5)),
-    ]);
+    assert_eq!(
+        runtime.state().requests,
+        [
+            SpinButtonRequest::AdjustBy(number(0.5)),
+            SpinButtonRequest::AdjustBy(number(-0.5)),
+        ]
+    );
 }
-
 
 #[test]
 fn numeric_bounds_and_absolute_action_reject_out_of_range_without_stale_value_filter() {
     let mut runtime = runtime("100");
     let published = publish(&mut runtime);
     let (surface, target) = semantic_target(&published);
-    assert!(runtime.submit_semantic_action(SemanticActionRequest::set_value(
-        surface.clone(), target.clone(), number(1000.0),
-    )).is_err());
-    runtime.submit_semantic_action(SemanticActionRequest::new(
-        surface.clone(), target.clone(), SemanticAction::Increment,
-    )).unwrap_or_else(|_| unreachable!("bound step is still a relative intent"));
-    runtime.submit_semantic_action(SemanticActionRequest::new(
-        surface, target, SemanticAction::Decrement,
-    )).unwrap_or_else(|_| unreachable!("reverse step is admitted"));
+    assert!(
+        runtime
+            .submit_semantic_action(SemanticActionRequest::set_value(
+                surface.clone(),
+                target.clone(),
+                number(1000.0),
+            ))
+            .is_err()
+    );
+    runtime
+        .submit_semantic_action(SemanticActionRequest::new(
+            surface.clone(),
+            target.clone(),
+            SemanticAction::Increment,
+        ))
+        .unwrap_or_else(|_| unreachable!("bound step is still a relative intent"));
+    runtime
+        .submit_semantic_action(SemanticActionRequest::new(
+            surface,
+            target,
+            SemanticAction::Decrement,
+        ))
+        .unwrap_or_else(|_| unreachable!("reverse step is admitted"));
     settle(&mut runtime);
     assert_eq!(runtime.state().text, "99.5");
-    assert_eq!(runtime.state().requests, [
-        SpinButtonRequest::AdjustBy(number(0.5)),
-        SpinButtonRequest::AdjustBy(number(-0.5)),
-    ]);
+    assert_eq!(
+        runtime.state().requests,
+        [
+            SpinButtonRequest::AdjustBy(number(0.5)),
+            SpinButtonRequest::AdjustBy(number(-0.5)),
+        ]
+    );
 }
 
 #[test]
