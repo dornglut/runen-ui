@@ -119,13 +119,16 @@ fn disabled_owner_blocks_option_activation_and_never_advertises_active_proxy() {
     assert!(app.state().actions.is_empty());
     let published = publish(&mut app);
     let snapshot = published.semantic_publication().snapshot();
-    let combo = snapshot.nodes().iter().find(|n| n.role() == SemanticRole::ComboBox)
+    let combo = snapshot
+        .nodes()
+        .iter()
+        .find(|n| n.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("disabled ComboBox semantically queryable"));
     assert_eq!(combo.state().disabled(), true);
     assert_eq!(combo.state().expanded(), Some(false));
-    assert!(!combo.relationships().iter()
-        .any(|rel| rel.kind() == SemanticRelationshipKind::ActiveDescendant
-            || rel.kind() == SemanticRelationshipKind::Controls));
+    assert!(!combo.relationships().iter().any(|rel| rel.kind()
+        == SemanticRelationshipKind::ActiveDescendant
+        || rel.kind() == SemanticRelationshipKind::Controls));
     assert!(snapshot.nodes().iter().all(|node|
         node.role() != SemanticRole::Option && node.role() != SemanticRole::ListBox
     ));
@@ -134,34 +137,64 @@ fn disabled_owner_blocks_option_activation_and_never_advertises_active_proxy() {
 fn missing_authored_option_identity_fails_closed_before_mounted_popup_creation() {
     let mut app = new(Mode::MissingId);
     let owner = id(&mut app, "boundary.owner");
-    assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
+    assert!(
+        !app.index()
+            .node(&owner)
+            .is_some_and(|node| node.is_focusable())
+    );
     let publication = publish(&mut app);
-    assert!(publication.semantic_publication().snapshot().nodes().iter()
-        .all(|n| n.role() != SemanticRole::ComboBox && n.role() != SemanticRole::Option));
+    assert!(
+        publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .all(|n| n.role() != SemanticRole::ComboBox && n.role() != SemanticRole::Option)
+    );
 }
 #[test]
 fn active_option_replacement_clears_proxy_without_committing_another_value() {
     let mut app = new(Mode::Churn);
     let owner = id(&mut app, "boundary.owner");
-    app.submit_command(owner.clone(), SemanticCommand::RequestFocus,
-        CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!());
+    app.submit_command(
+        owner.clone(),
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!());
     settle(&mut app);
-    app.submit_command(owner.clone(), SemanticCommand::FocusDown,
-        CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!());
+    app.submit_command(
+        owner.clone(),
+        SemanticCommand::FocusDown,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!());
     settle(&mut app);
     let old = id(&mut app, "boundary.second");
-    app.submit_action(Action::Replace).unwrap_or_else(|_| unreachable!());
+    app.submit_action(Action::Replace)
+        .unwrap_or_else(|_| unreachable!());
     settle(&mut app);
     assert!(!app.index().nodes().iter().any(|n| n.id() == &old));
     let current = publish(&mut app);
     let snapshot = current.semantic_publication().snapshot();
-    let combo = snapshot.nodes().iter().find(|n| n.role() == SemanticRole::ComboBox)
+    let combo = snapshot
+        .nodes()
+        .iter()
+        .find(|n| n.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("ComboBox still valid"));
-    assert!(!combo.relationships().iter()
-        .any(|rel| rel.kind() == SemanticRelationshipKind::ActiveDescendant),
-        "an exact removed Option must not be retargeted by sibling position");
-    app.submit_command(owner, SemanticCommand::Activate, CommandOrigin::programmatic())
-        .unwrap_or_else(|_| unreachable!());
+    assert!(
+        !combo
+            .relationships()
+            .iter()
+            .any(|rel| rel.kind() == SemanticRelationshipKind::ActiveDescendant),
+        "an exact removed Option must not be retargeted by sibling position"
+    );
+    app.submit_command(
+        owner,
+        SemanticCommand::Activate,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!());
     settle(&mut app);
     assert_eq!(app.state().chosen, 0);
     assert!(app.state().actions.is_empty());
@@ -171,13 +204,22 @@ fn active_option_replacement_clears_proxy_without_committing_another_value() {
 fn replacing_controlled_listbox_retires_old_transient_active_candidate() {
     let mut app = new(Mode::Churn);
     let owner = id(&mut app, "boundary.owner");
-    app.submit_command(owner.clone(), SemanticCommand::RequestFocus,
-        CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!());
+    app.submit_command(
+        owner.clone(),
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!());
     settle(&mut app);
-    app.submit_command(owner.clone(), SemanticCommand::FocusDown,
-        CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!());
+    app.submit_command(
+        owner.clone(),
+        SemanticCommand::FocusDown,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!());
     settle(&mut app);
-    app.submit_action(Action::ReplacePopup).unwrap_or_else(|_| unreachable!());
+    app.submit_action(Action::ReplacePopup)
+        .unwrap_or_else(|_| unreachable!());
     settle(&mut app);
     let current = publish(&mut app);
     let snapshot = current.semantic_publication().snapshot();
