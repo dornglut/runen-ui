@@ -322,17 +322,32 @@ fn same_key_option_move_keeps_active_candidate_and_m4_focus_without_reselection(
 fn duplicate_option_reconciliation_keys_fail_closed_before_mounting_popup_proxy() {
     let mut app = new(Mode::DuplicateKey);
     let owner = id(&mut app, "boundary.owner");
-    assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
-    assert!(app.index().nodes().iter().all(|node|
-        node.authored_id().is_none_or(|id| id.as_str() != "boundary.first")
-    ), "invalid popup Options are not mounted");
+    assert!(
+        !app.index()
+            .node(&owner)
+            .is_some_and(|node| node.is_focusable())
+    );
+    assert!(
+        app.index().nodes().iter().all(|node| node
+            .authored_id()
+            .is_none_or(|id| id.as_str() != "boundary.first")),
+        "invalid popup Options are not mounted"
+    );
     let published = publish(&mut app);
-    assert!(published.semantic_publication().snapshot().nodes().iter()
-        .all(|node| node.role() != SemanticRole::ComboBox
-            && node.role() != SemanticRole::Option
-            && node.role() != SemanticRole::ListBox));
-    assert!(app.state().actions.is_empty(),
-        "ambiguous sibling reconciliation keys cannot activate an Option");
+    assert!(
+        published
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .all(|node| node.role() != SemanticRole::ComboBox
+                && node.role() != SemanticRole::Option
+                && node.role() != SemanticRole::ListBox)
+    );
+    assert!(
+        app.state().actions.is_empty(),
+        "ambiguous sibling reconciliation keys cannot activate an Option"
+    );
 }
 
 // Even if the application retains its requested open state, disabling the
@@ -344,28 +359,50 @@ fn disabling_an_open_combo_unmounts_blocking_popup_and_reenabling_restores_app_a
     let old_popup = id(&mut app, "boundary.popup");
     let old_option = id(&mut app, "boundary.first");
     let before = publish(&mut app);
-    let node = before.semantic_publication().snapshot().nodes().iter()
+    let node = before
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("enabled open ComboBox"));
     assert_eq!(node.state().expanded(), Some(true));
-    assert!(node.relationships().iter()
-        .any(|rel| rel.kind() == SemanticRelationshipKind::Controls));
+    assert!(
+        node.relationships()
+            .iter()
+            .any(|rel| rel.kind() == SemanticRelationshipKind::Controls)
+    );
 
-    app.submit_action(Action::Disable).unwrap_or_else(|_| unreachable!("disable action admitted"));
+    app.submit_action(Action::Disable)
+        .unwrap_or_else(|_| unreachable!("disable action admitted"));
     settle(&mut app);
-    assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
-    assert!(app.index().nodes().iter().all(|node|
-        node.id() != &old_option && node.id() != &old_popup));
+    assert!(
+        !app.index()
+            .node(&owner)
+            .is_some_and(|node| node.is_focusable())
+    );
+    assert!(
+        app.index()
+            .nodes()
+            .iter()
+            .all(|node| node.id() != &old_option && node.id() != &old_popup)
+    );
     let disabled = publish(&mut app);
     let semantics = disabled.semantic_publication().snapshot();
-    let combo = semantics.nodes().iter()
+    let combo = semantics
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("disabled owner remains semantic"));
     assert_eq!(combo.state().disabled(), true);
     assert_eq!(combo.state().expanded(), Some(false));
-    assert!(combo.relationships().iter().all(|rel|
-        rel.kind() != SemanticRelationshipKind::Controls
-            && rel.kind() != SemanticRelationshipKind::ActiveDescendant));
+    assert!(
+        combo
+            .relationships()
+            .iter()
+            .all(|rel| rel.kind() != SemanticRelationshipKind::Controls
+                && rel.kind() != SemanticRelationshipKind::ActiveDescendant)
+    );
     assert!(semantics.nodes().iter().all(|node|
         node.role() != SemanticRole::ListBox && node.role() != SemanticRole::Option));
     assert!(app.state().actions.is_empty());
@@ -373,7 +410,8 @@ fn disabling_an_open_combo_unmounts_blocking_popup_and_reenabling_restores_app_a
 
     // App-owned open(true) remains authored: re-enabling restores a *fresh*
     // mounted popup and never resurrects a stale old-generation Option.
-    app.submit_action(Action::Enable).unwrap_or_else(|_| unreachable!("reenable action admitted"));
+    app.submit_action(Action::Enable)
+        .unwrap_or_else(|_| unreachable!("reenable action admitted"));
     settle(&mut app);
     let popup = id(&mut app, "boundary.popup");
     let option = id(&mut app, "boundary.first");
@@ -381,13 +419,22 @@ fn disabling_an_open_combo_unmounts_blocking_popup_and_reenabling_restores_app_a
     assert_ne!(option, old_option);
     let enabled = publish(&mut app);
     let semantics = enabled.semantic_publication().snapshot();
-    let combo = semantics.nodes().iter()
+    let combo = semantics
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("re-enabled ComboBox"));
     assert_eq!(combo.state().disabled(), false);
     assert_eq!(combo.state().expanded(), Some(true));
-    assert!(combo.relationships().iter()
-        .any(|rel| rel.kind() == SemanticRelationshipKind::Controls));
-    assert!(app.state().actions.is_empty(), "re-authoring visibility is not a selection action");
+    assert!(
+        combo
+            .relationships()
+            .iter()
+            .any(|rel| rel.kind() == SemanticRelationshipKind::Controls)
+    );
+    assert!(
+        app.state().actions.is_empty(),
+        "re-authoring visibility is not a selection action"
+    );
     assert_eq!(app.state().chosen, 0);
 }
