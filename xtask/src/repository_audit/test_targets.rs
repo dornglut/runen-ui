@@ -223,11 +223,12 @@ fn expand_nested_imports(
 fn check_coverage(
     sources: &BTreeSet<String>,
     registered: &BTreeMap<String, Vec<String>>,
+    pending_remediation: &[&str],
     findings: &mut Vec<Finding>,
 ) {
     for source in sources {
         match registered.get(source) {
-            None if PENDING_REMEDIATION.contains(&source.as_str()) => {}
+            None if pending_remediation.contains(&source.as_str()) => {}
             None => failure(
                 findings,
                 TEST_DIRECTORY,
@@ -250,7 +251,7 @@ fn check_coverage(
             );
         }
     }
-    for pending in PENDING_REMEDIATION {
+    for pending in pending_remediation {
         if sources.contains(*pending) && registered.contains_key(*pending) {
             failure(
                 findings,
@@ -290,7 +291,7 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<(), Stri
         audit_suite(root, suite, &mut registered, findings)?;
     }
     expand_nested_imports(root, &mut registered, findings)?;
-    check_coverage(&sources, &registered, findings);
+    check_coverage(&sources, &registered, PENDING_REMEDIATION, findings);
     for pending in PENDING_REMEDIATION {
         if !sources.contains(*pending) {
             failure(
@@ -334,7 +335,7 @@ mod tests {
             vec!["input_control_editing".to_owned()],
         );
         let mut findings = Vec::new();
-        check_coverage(&files, &registered, &mut findings);
+        check_coverage(&files, &registered, &[], &mut findings);
         assert_eq!(findings.len(), 2);
         assert!(
             findings
@@ -355,29 +356,27 @@ mod tests {
             ],
         )]);
         let mut findings = Vec::new();
-        check_coverage(&files, &registered, &mut findings);
+        check_coverage(&files, &registered, &[], &mut findings);
         assert_eq!(findings.len(), 1);
         assert!(findings[0].message.contains("more than once"));
     }
 
     #[test]
     fn quarantine_is_checked_and_must_retire_when_registered() {
-        let files = super::PENDING_REMEDIATION
-            .iter()
-            .map(|name| (*name).to_owned())
-            .collect();
+        // Keep the invariant executable even after the real quarantine is empty.
+        const PENDING: &[&str] = &["synthetic_unregistered.rs"];
+        let files = PENDING.iter().map(|name| (*name).to_owned()).collect();
         let mut registered = BTreeMap::new();
         let mut findings = Vec::new();
-        // This historical fixture has an explicit #483 exemption until qualified.
-        check_coverage(&files, &registered, &mut findings);
+        // A known omission is exempt only before it becomes executable.
+        check_coverage(&files, &registered, PENDING, &mut findings);
         assert_eq!(findings.len(), 0);
-        // The quarantine cannot remain after the source becomes an executed module.
         registered.insert(
-            "combo_box_boundaries.rs".to_owned(),
+            "synthetic_unregistered.rs".to_owned(),
             vec!["semantic_application".to_owned()],
         );
         findings.clear();
-        check_coverage(&files, &registered, &mut findings);
+        check_coverage(&files, &registered, PENDING, &mut findings);
         assert!(
             findings
                 .iter()
