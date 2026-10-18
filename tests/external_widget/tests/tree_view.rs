@@ -306,48 +306,62 @@ fn ordered_real_focus_home_end_and_type_ahead_leave_selection_application_owned(
         .unwrap_or_else(|_| unreachable!("Home key ingress"));
     settle(&mut runtime);
     assert_eq!(runtime.focus().focused_node(), Some(&parent));
-    runtime.submit_keyboard(navigation_key(PhysicalKey::End, LogicalKey::End))
+    runtime
+        .submit_keyboard(navigation_key(PhysicalKey::End, LogicalKey::End))
         .unwrap_or_else(|_| unreachable!("End key ingress"));
     settle(&mut runtime);
     assert_eq!(runtime.focus().focused_node(), Some(&other));
 
-    runtime.submit_keyboard(navigation_key(
-        PhysicalKey::Code("KeyB".into()), LogicalKey::Character("b".into()),
-    )).unwrap_or_else(|_| unreachable!("type-ahead ingress"));
+    runtime
+        .submit_keyboard(navigation_key(
+            PhysicalKey::Code("KeyB".into()),
+            LogicalKey::Character("b".into()),
+        ))
+        .unwrap_or_else(|_| unreachable!("type-ahead ingress"));
     settle(&mut runtime);
     assert_eq!(runtime.focus().focused_node(), Some(&b));
     assert_eq!(runtime.state().selected, "parent");
-    assert!(runtime.state().actions.is_empty(), "navigation cannot commit selection");
+    assert!(
+        runtime.state().actions.is_empty(),
+        "navigation cannot commit selection"
+    );
 }
 
 #[test]
 fn opt_in_selection_follows_focus_through_generic_activation_not_tree_registry() {
     let mut runtime = fresh(true);
-    runtime.submit_action(Action::FollowFocus(true))
+    runtime
+        .submit_action(Action::FollowFocus(true))
         .unwrap_or_else(|_| unreachable!("application authors follow policy"));
     settle(&mut runtime);
     let parent = item(&mut runtime, "tree.parent");
     command(&mut runtime, parent.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, parent, SemanticCommand::FocusDown);
     assert_eq!(runtime.state().selected, "a");
-    assert_eq!(runtime.state().actions, [
-        TreeItemRequest::Select("a".into()),
-    ]);
+    assert_eq!(
+        runtime.state().actions,
+        [TreeItemRequest::Select("a".into()),]
+    );
 }
 
 #[test]
 fn right_with_only_ineligible_descendants_never_enters_next_sibling() {
     let mut runtime = fresh(true);
-    runtime.submit_action(Action::DisabledA(true))
+    runtime
+        .submit_action(Action::DisabledA(true))
         .unwrap_or_else(|_| unreachable!("application disables the first child"));
-    runtime.submit_action(Action::ShowB(false))
+    runtime
+        .submit_action(Action::ShowB(false))
         .unwrap_or_else(|_| unreachable!("application removes the second child"));
     settle(&mut runtime);
     let parent = item(&mut runtime, "tree.parent");
     command(&mut runtime, parent.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, parent.clone(), SemanticCommand::FocusRight);
-    assert_eq!(runtime.focus().focused_node(), Some(&parent),
-        "no eligible child must not enter the following root TreeItem");
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&parent),
+        "no eligible child must not enter the following root TreeItem"
+    );
     assert_eq!(runtime.state().selected, "parent");
     assert!(runtime.state().actions.is_empty());
 }
@@ -356,19 +370,27 @@ fn right_with_only_ineligible_descendants_never_enters_next_sibling() {
 fn nested_tree_child_hit_wins_over_ancestor_container_extent() {
     let mut runtime = fresh(true);
     let child = item(&mut runtime, "tree.b");
-    let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
-        &runenui_core::StyleEnvironment::default(),
-        LogicalSize::try_new(640.0, 480.0).unwrap_or_else(|_| unreachable!()),
-    )).unwrap_or_else(|error| unreachable!("tree hit publication: {error:?}"));
-    let bounds = publication.frame().node(&child)
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &runenui_core::StyleEnvironment::default(),
+            LogicalSize::try_new(640.0, 480.0).unwrap_or_else(|_| unreachable!()),
+        ))
+        .unwrap_or_else(|error| unreachable!("tree hit publication: {error:?}"));
+    let bounds = publication
+        .frame()
+        .node(&child)
         .unwrap_or_else(|| unreachable!("nested child has published geometry"))
         .bounds();
     let point = runenui_core::LogicalPoint::new(
         bounds.x() + bounds.width() / 2.0,
         bounds.y() + bounds.height() / 2.0,
-    ).unwrap_or_else(|_| unreachable!("finite child center"));
-    assert_eq!(publication.hit_test_scene().target_at(point), Some(&child),
-        "nested child must win hit routing despite parent container covering descendants");
+    )
+    .unwrap_or_else(|_| unreachable!("finite child center"));
+    assert_eq!(
+        publication.hit_test_scene().target_at(point),
+        Some(&child),
+        "nested child must win hit routing despite parent container covering descendants"
+    );
 }
 
 #[test]
@@ -377,13 +399,17 @@ fn explicit_semantic_expand_and_collapse_share_application_owned_fifo() {
     let parent = item(&mut runtime, "tree.parent");
     command(&mut runtime, parent.clone(), SemanticCommand::Expand);
     assert!(runtime.state().expanded);
-    assert_eq!(runtime.state().actions, [
-        TreeItemRequest::Expand("parent".to_owned()),
-    ]);
+    assert_eq!(
+        runtime.state().actions,
+        [TreeItemRequest::Expand("parent".to_owned()),]
+    );
     command(&mut runtime, parent, SemanticCommand::Collapse);
     assert!(!runtime.state().expanded);
-    assert_eq!(runtime.state().actions, [
-        TreeItemRequest::Expand("parent".to_owned()),
-        TreeItemRequest::Collapse("parent".to_owned()),
-    ]);
+    assert_eq!(
+        runtime.state().actions,
+        [
+            TreeItemRequest::Expand("parent".to_owned()),
+            TreeItemRequest::Collapse("parent".to_owned()),
+        ]
+    );
 }
