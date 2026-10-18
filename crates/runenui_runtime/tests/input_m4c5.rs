@@ -2392,7 +2392,8 @@ fn focusability_only_retirement_preflights_pending_ime_callbacks_with_focusout()
             let observed = log.borrow().clone();
             assert!(
                 observed.iter().all(|entry| {
-                    entry.input == ObservedInput::CompositionCancel(CompositionCancelReason::Shutdown)
+                    entry.input
+                        == ObservedInput::CompositionCancel(CompositionCancelReason::Shutdown)
                 }),
                 "rejected disablement may only route terminal Shutdown cleanup, not the unadmitted Disablement/FocusOut; observed: {observed:?}"
             );
