@@ -3,6 +3,7 @@
 mod context;
 mod matrix;
 mod source;
+mod test_targets;
 mod workspace;
 
 use std::{
@@ -272,6 +273,7 @@ fn build_report(root: &Path) -> Result<AuditReport, String> {
     }
 
     audit_repository_governance(root, &mut report.findings)?;
+    test_targets::audit(root, &mut report.findings)?;
     audit_documentation_authority(root, &mut report.findings)?;
     context::audit(root, &mut report.findings)?;
     report.metrics.matrix = matrix::audit(root, &mut report.findings)?;

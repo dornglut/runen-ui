@@ -18,3 +18,17 @@ mod splitter;
 mod standard_scrollbar;
 #[path = "../subscriptions.rs"]
 mod subscriptions;
+#[path = "../input_arbitration_classification.rs"]
+mod input_arbitration_classification;
+#[path = "../input_arbitration_controls.rs"]
+mod input_arbitration_controls;
+#[path = "../input_arbitration_finality.rs"]
+mod input_arbitration_finality;
+#[path = "../input_arbitration_menu.rs"]
+mod input_arbitration_menu;
+#[path = "../input_arbitration_pointer_route.rs"]
+mod input_arbitration_pointer_route;
+#[path = "../input_arbitration_slot_families.rs"]
+mod input_arbitration_slot_families;
+#[path = "../input_arbitration_text_boundary.rs"]
+mod input_arbitration_text_boundary;
