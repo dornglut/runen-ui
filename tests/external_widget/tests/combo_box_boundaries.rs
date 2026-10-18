@@ -92,7 +92,7 @@ fn settle(app: &mut AppRuntime<App>) {
             .report()
             .is_quiescent());
 }
-fn id(app: &AppRuntime<App>, name: &str) -> MountedNodeId {
+fn id(app: &mut AppRuntime<App>, name: &str) -> MountedNodeId {
     let id = ElementId::new(name).unwrap_or_else(|_| unreachable!());
     app.index().nodes().iter()
         .find(|node| node.authored_id() == Some(&id))
@@ -108,7 +108,7 @@ fn publish(app: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
 #[test]
 fn disabled_owner_blocks_option_activation_and_never_advertises_active_proxy() {
     let mut app = new(Mode::Disabled);
-    let owner = id(&app, "boundary.owner");
+    let owner = id(&mut app, "boundary.owner");
     assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
     assert!(app.index().nodes().iter().all(|node| node.authored_id().is_none_or(
         |id| id.as_str() != "boundary.first" && id.as_str() != "boundary.popup"
@@ -121,7 +121,7 @@ fn disabled_owner_blocks_option_activation_and_never_advertises_active_proxy() {
     let snapshot = published.semantic_publication().snapshot();
     let combo = snapshot.nodes().iter().find(|n| n.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("disabled ComboBox semantically queryable"));
-    assert_eq!(combo.state().disabled(), Some(true));
+    assert_eq!(combo.state().disabled(), true);
     assert_eq!(combo.state().expanded(), Some(false));
     assert!(!combo.relationships().iter()
         .any(|rel| rel.kind() == SemanticRelationshipKind::ActiveDescendant
@@ -133,7 +133,7 @@ fn disabled_owner_blocks_option_activation_and_never_advertises_active_proxy() {
 #[test]
 fn missing_authored_option_identity_fails_closed_before_mounted_popup_creation() {
     let mut app = new(Mode::MissingId);
-    let owner = id(&app, "boundary.owner");
+    let owner = id(&mut app, "boundary.owner");
     assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
     let publication = publish(&mut app);
     assert!(publication.semantic_publication().snapshot().nodes().iter()
@@ -142,14 +142,14 @@ fn missing_authored_option_identity_fails_closed_before_mounted_popup_creation()
 #[test]
 fn active_option_replacement_clears_proxy_without_committing_another_value() {
     let mut app = new(Mode::Churn);
-    let owner = id(&app, "boundary.owner");
+    let owner = id(&mut app, "boundary.owner");
     app.submit_command(owner.clone(), SemanticCommand::RequestFocus,
         CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!());
     settle(&mut app);
     app.submit_command(owner.clone(), SemanticCommand::FocusDown,
         CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!());
     settle(&mut app);
-    let old = id(&app, "boundary.second");
+    let old = id(&mut app, "boundary.second");
     app.submit_action(Action::Replace).unwrap_or_else(|_| unreachable!());
     settle(&mut app);
     assert!(!app.index().nodes().iter().any(|n| n.id() == &old));
@@ -170,7 +170,7 @@ fn active_option_replacement_clears_proxy_without_committing_another_value() {
 #[test]
 fn replacing_controlled_listbox_retires_old_transient_active_candidate() {
     let mut app = new(Mode::Churn);
-    let owner = id(&app, "boundary.owner");
+    let owner = id(&mut app, "boundary.owner");
     app.submit_command(owner.clone(), SemanticCommand::RequestFocus,
         CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!());
     settle(&mut app);
@@ -204,7 +204,7 @@ fn replacing_controlled_listbox_retires_old_transient_active_candidate() {
 #[test]
 fn option_id_equal_to_owner_id_fails_closed_without_ambiguous_semantic_identity() {
     let mut app = new(Mode::OwnerCollision);
-    let owner = id(&app, "boundary.owner");
+    let owner = id(&mut app, "boundary.owner");
     assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
     assert_eq!(
         app.index().nodes().iter()
@@ -223,7 +223,7 @@ fn option_id_equal_to_owner_id_fails_closed_without_ambiguous_semantic_identity(
 #[test]
 fn popup_id_equal_to_owner_id_fails_closed_before_semantic_target_resolution() {
     let mut app = new(Mode::PopupOwnerCollision);
-    let owner = id(&app, "boundary.owner");
+    let owner = id(&mut app, "boundary.owner");
     assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
     let publication = publish(&mut app);
     assert!(publication.semantic_publication().snapshot().nodes().iter().all(|node|
@@ -235,7 +235,7 @@ fn popup_id_equal_to_owner_id_fails_closed_before_semantic_target_resolution() {
 #[test]
 fn same_authored_id_with_new_reconciliation_key_must_retire_active_option_generation() {
     let mut app = new(Mode::Churn);
-    let owner = id(&app, "boundary.owner");
+    let owner = id(&mut app, "boundary.owner");
     app.submit_command(
         owner.clone(), SemanticCommand::RequestFocus, CommandOrigin::programmatic(),
     ).unwrap_or_else(|_| unreachable!("focus current owner"));
@@ -245,7 +245,7 @@ fn same_authored_id_with_new_reconciliation_key_must_retire_active_option_genera
     ).unwrap_or_else(|_| unreachable!("navigate to second"));
     settle(&mut app);
 
-    let previous = id(&app, "boundary.second");
+    let previous = id(&mut app, "boundary.second");
     let before = publish(&mut app);
     let combo = before.semantic_publication().snapshot().nodes().iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
@@ -256,7 +256,7 @@ fn same_authored_id_with_new_reconciliation_key_must_retire_active_option_genera
     app.submit_action(Action::RekeyOption)
         .unwrap_or_else(|_| unreachable!("app changes standard Option reconciliation key"));
     settle(&mut app);
-    let replacement = id(&app, "boundary.second");
+    let replacement = id(&mut app, "boundary.second");
     assert_ne!(previous, replacement,
         "accepted M3 keyed reconciliation retires the old Option mounted generation");
 
@@ -279,7 +279,7 @@ fn same_authored_id_with_new_reconciliation_key_must_retire_active_option_genera
 #[test]
 fn same_key_option_move_keeps_active_candidate_and_m4_focus_without_reselection() {
     let mut app = new(Mode::Churn);
-    let owner = id(&app, "boundary.owner");
+    let owner = id(&mut app, "boundary.owner");
     app.submit_command(
         owner.clone(), SemanticCommand::RequestFocus, CommandOrigin::programmatic(),
     ).unwrap_or_else(|_| unreachable!("focus current owner"));
@@ -288,12 +288,12 @@ fn same_key_option_move_keeps_active_candidate_and_m4_focus_without_reselection(
         owner.clone(), SemanticCommand::FocusDown, CommandOrigin::programmatic(),
     ).unwrap_or_else(|_| unreachable!("navigate to keyed second"));
     settle(&mut app);
-    let original = id(&app, "boundary.second");
+    let original = id(&mut app, "boundary.second");
 
     app.submit_action(Action::Reorder)
         .unwrap_or_else(|_| unreachable!("reorder ordinary authored Options"));
     settle(&mut app);
-    assert_eq!(id(&app, "boundary.second"), original,
+    assert_eq!(id(&mut app, "boundary.second"), original,
         "M3 keyed same-parent reorder preserves mounted Option generation");
     let snapshot = publish(&mut app);
     let nodes = snapshot.semantic_publication().snapshot();
@@ -321,7 +321,7 @@ fn same_key_option_move_keeps_active_candidate_and_m4_focus_without_reselection(
 #[test]
 fn duplicate_option_reconciliation_keys_fail_closed_before_mounting_popup_proxy() {
     let mut app = new(Mode::DuplicateKey);
-    let owner = id(&app, "boundary.owner");
+    let owner = id(&mut app, "boundary.owner");
     assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
     assert!(app.index().nodes().iter().all(|node|
         node.authored_id().is_none_or(|id| id.as_str() != "boundary.first")
@@ -340,9 +340,9 @@ fn duplicate_option_reconciliation_keys_fail_closed_before_mounting_popup_proxy(
 #[test]
 fn disabling_an_open_combo_unmounts_blocking_popup_and_reenabling_restores_app_authored_state() {
     let mut app = new(Mode::Churn);
-    let owner = id(&app, "boundary.owner");
-    let old_popup = id(&app, "boundary.popup");
-    let old_option = id(&app, "boundary.first");
+    let owner = id(&mut app, "boundary.owner");
+    let old_popup = id(&mut app, "boundary.popup");
+    let old_option = id(&mut app, "boundary.first");
     let before = publish(&mut app);
     let node = before.semantic_publication().snapshot().nodes().iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
@@ -361,7 +361,7 @@ fn disabling_an_open_combo_unmounts_blocking_popup_and_reenabling_restores_app_a
     let combo = semantics.nodes().iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("disabled owner remains semantic"));
-    assert_eq!(combo.state().disabled(), Some(true));
+    assert_eq!(combo.state().disabled(), true);
     assert_eq!(combo.state().expanded(), Some(false));
     assert!(combo.relationships().iter().all(|rel|
         rel.kind() != SemanticRelationshipKind::Controls
@@ -375,8 +375,8 @@ fn disabling_an_open_combo_unmounts_blocking_popup_and_reenabling_restores_app_a
     // mounted popup and never resurrects a stale old-generation Option.
     app.submit_action(Action::Enable).unwrap_or_else(|_| unreachable!("reenable action admitted"));
     settle(&mut app);
-    let popup = id(&app, "boundary.popup");
-    let option = id(&app, "boundary.first");
+    let popup = id(&mut app, "boundary.popup");
+    let option = id(&mut app, "boundary.first");
     assert_ne!(popup, old_popup);
     assert_ne!(option, old_option);
     let enabled = publish(&mut app);
@@ -384,7 +384,7 @@ fn disabling_an_open_combo_unmounts_blocking_popup_and_reenabling_restores_app_a
     let combo = semantics.nodes().iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("re-enabled ComboBox"));
-    assert_eq!(combo.state().disabled(), Some(false));
+    assert_eq!(combo.state().disabled(), false);
     assert_eq!(combo.state().expanded(), Some(true));
     assert!(combo.relationships().iter()
         .any(|rel| rel.kind() == SemanticRelationshipKind::Controls));

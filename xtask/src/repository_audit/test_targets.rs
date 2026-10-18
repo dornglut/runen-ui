@@ -23,7 +23,6 @@ const SUITES: &[&str] = &[
 // A file must leave this quarantine as soon as its suite import is accepted.
 // M11 CTRL-85/86 authoring policy remains accepted; #482 closed unmerged.
 const PENDING_REMEDIATION: &[&str] = &[
-    "combo_box_boundaries.rs",
     "combo_box_editable.rs",
     "combo_box_reveal_downstream.rs",
     "combo_box_scroll_viewport.rs",

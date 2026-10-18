@@ -1,3 +1,5 @@
+#[path = "../combo_box_boundaries.rs"]
+mod combo_box_boundaries;
 #[path = "../combo_box_focus_lifecycle.rs"]
 mod combo_box_focus_lifecycle;
 #[path = "../combo_box_option_proxy.rs"]
