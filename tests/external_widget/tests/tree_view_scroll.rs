@@ -14,7 +14,7 @@ impl UiApp for ScrollTreeApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root(&(): &Self::State) -> impl View<Self::Action> {
         let item_layout = || {
             LayoutStyle::default()
                 .with_container(LayoutContainer::Flex(
@@ -46,7 +46,7 @@ impl UiApp for ScrollTreeApp {
                     .with_overflow(overflow),
             )
     }
-    fn update(_: &mut Self::State, (): Self::Action) {}
+    fn update(&mut (): &mut Self::State, (): Self::Action) {}
 }
 fn settle(runtime: &mut AppRuntime<ScrollTreeApp>) {
     let batch = runtime
