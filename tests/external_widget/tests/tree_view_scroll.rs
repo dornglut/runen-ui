@@ -3,8 +3,8 @@
 //! `TreeView` reveal must use only M4 focus and the standard #344 scroll container.
 use runenui_core::{
     CommandOrigin, FlexContainerStyle, FlexDirection, LayoutContainer, LayoutDimension,
-    LayoutStyle, LogicalLength, NoHostProtocol, OverflowPolicy, OverflowStyle, SemanticCommand, UiApp,
-    View, scroll_container, tree_item, tree_view,
+    LayoutStyle, LogicalLength, NoHostProtocol, OverflowPolicy, OverflowStyle, SemanticCommand,
+    UiApp, View, scroll_container, tree_item, tree_view,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext};
 
