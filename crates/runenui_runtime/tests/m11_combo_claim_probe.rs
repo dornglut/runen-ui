@@ -4,11 +4,13 @@
 
 use runenui_core::{
     ComboBoxRequest, CommandOrigin, ElementId, KeyLocation, KeyModifiers, KeyboardCompositionState,
-    KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey, SemanticCommand, UiApp,
-    View, combo_box, option_item,
+    KeyboardEvent, KeyboardPhase, LogicalKey, LogicalPoint, NoHostProtocol, PhysicalKey,
+    PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
+    SceneShape, SemanticCommand, UiApp, View, combo_box, option_item,
 };
 use runenui_runtime::{
-    AppRuntime, InputArbitrationRecord, MountedNodeId, PumpBudget, RuntimeConfig, TraceConfig,
+    AppRuntime, FontFamilyName, GenericFontFamily, HitTestScene, InputArbitrationRecord,
+    LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig, SurfaceBuildContext, TraceConfig,
     UiDefaultDisposition, UiInputClaimReason, UiInputConflict, UiInputFinality,
 };
 
@@ -177,4 +179,123 @@ fn generic_focus_navigation_claim_is_not_an_explicit_combo_widget_claim() {
             assert_eq!(runtime.state().chosen, 0);
         }
     }
+}
+
+
+const FONT: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/Cantarell-Regular.ttf");
+
+fn option_two(runtime: &mut AppRuntime<App>) -> MountedNodeId {
+    let id = ElementId::new("probe.two").unwrap_or_else(|_| unreachable!("valid option ID"));
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&id))
+        .unwrap_or_else(|| unreachable!("mounted real OptionItem"))
+        .id()
+        .clone()
+}
+
+fn published(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
+    runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &runenui_core::StyleEnvironment::default(),
+            LogicalSize::try_new(500.0, 260.0).unwrap_or_else(|_| unreachable!("finite surface")),
+        ))
+        .unwrap_or_else(|error| unreachable!("correlated hit publication: {error:?}"))
+}
+
+fn displayed_option_center(scene: &HitTestScene, option: &MountedNodeId) -> LogicalPoint {
+    let region = scene
+        .regions()
+        .iter()
+        .find(|region| region.target() == option && matches!(region.shape(), SceneShape::Rect(_)))
+        .unwrap_or_else(|| unreachable!("option has a projected rectangular physical hit region"));
+    let SceneShape::Rect(bounds) = region.shape() else {
+        unreachable!("selected a rectangle")
+    };
+    assert!(bounds.width() > 0.0 && bounds.height() > 0.0);
+    let local = LogicalPoint::new(
+        bounds.width().mul_add(0.5, bounds.x()),
+        bounds.height().mul_add(0.5, bounds.y()),
+    )
+    .unwrap_or_else(|_| unreachable!("finite region center"));
+    region
+        .local_to_surface()
+        .transform_point(local)
+        .unwrap_or_else(|| unreachable!("non-singular accepted Option projection"))
+}
+
+#[test]
+fn published_hit_region_activates_the_exact_option_without_focus_transfer() {
+    let mut runtime = mount_focused(512);
+    runtime
+        .register_text_font_bytes(FONT.to_vec())
+        .unwrap_or_else(|_| unreachable!("fixture font accepted"));
+    runtime
+        .set_text_generic_family_mapping(
+            GenericFontFamily::SansSerif,
+            &[FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!())],
+        )
+        .unwrap_or_else(|_| unreachable!("fixture font mapping accepted"));
+    settle(&mut runtime);
+    let option = option_two(&mut runtime);
+    let initial = published(&mut runtime);
+    let owner = runtime.focus().focused_node().cloned();
+    let point = displayed_option_center(initial.hit_test_scene(), &option);
+    assert_eq!(
+        initial.hit_test_scene().target_at(point),
+        Some(&option),
+        "the input authority must resolve this exact physical Option generation"
+    );
+    let pointer = PointerId::new(331).unwrap_or_else(|| unreachable!("nonzero pointer"));
+    runtime
+        .submit_pointer(PointerEvent::new(
+            pointer,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Move,
+            point,
+            initial.input_context().clone(),
+        ))
+        .unwrap_or_else(|_| unreachable!("Move admitted"));
+    settle(&mut runtime);
+
+    let hovered = published(&mut runtime);
+    let down_point = displayed_option_center(hovered.hit_test_scene(), &option);
+    assert_eq!(hovered.hit_test_scene().target_at(down_point), Some(&option));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                down_point,
+                hovered.input_context().clone(),
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|_| unreachable!("Down admitted"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().chosen, 0);
+
+    let pressed = published(&mut runtime);
+    let up_point = displayed_option_center(pressed.hit_test_scene(), &option);
+    assert_eq!(pressed.hit_test_scene().target_at(up_point), Some(&option));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                up_point,
+                pressed.input_context().clone(),
+            )
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|_| unreachable!("Up admitted"));
+    settle(&mut runtime);
+    assert_eq!(runtime.state().chosen, 2, "canonical Option callback must choose Two");
+    assert!(!runtime.state().open);
+    assert_eq!(runtime.focus().focused_node(), owner.as_ref());
 }
