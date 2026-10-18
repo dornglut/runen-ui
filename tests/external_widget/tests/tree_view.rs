@@ -134,56 +134,96 @@ fn collapse_expand_and_activation_are_application_fifo_with_stable_domain_ids() 
     let a = item(&mut runtime, "tree.a");
     command(&mut runtime, a, SemanticCommand::Activate);
     assert_eq!(runtime.state().selected, "a");
-    assert_eq!(runtime.state().actions[1], TreeItemRequest::Select("a".to_owned()));
+    assert_eq!(
+        runtime.state().actions[1],
+        TreeItemRequest::Select("a".to_owned())
+    );
     let parent = item(&mut runtime, "tree.parent");
     command(&mut runtime, parent.clone(), SemanticCommand::FocusLeft);
     assert!(!runtime.state().expanded);
-    assert_eq!(runtime.state().actions[2], TreeItemRequest::Collapse("parent".to_owned()));
-    assert!(!runtime.index().nodes().iter().any(|n|
-        n.authored_id().is_some_and(|id| id.as_str() == "tree.a")));
+    assert_eq!(
+        runtime.state().actions[2],
+        TreeItemRequest::Collapse("parent".to_owned())
+    );
+    assert!(
+        !runtime
+            .index()
+            .nodes()
+            .iter()
+            .any(|n| n.authored_id().is_some_and(|id| id.as_str() == "tree.a"))
+    );
 }
 
 #[test]
 fn exact_semantic_tree_hierarchy_selection_and_expand_commands() {
     let mut runtime = fresh(true);
-    let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
-        &runenui_core::StyleEnvironment::default(),
-        LogicalSize::try_new(640.0, 480.0).unwrap_or_else(|_| unreachable!()),
-    )).unwrap_or_else(|error| unreachable!("tree publication: {error:?}"));
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &runenui_core::StyleEnvironment::default(),
+            LogicalSize::try_new(640.0, 480.0).unwrap_or_else(|_| unreachable!()),
+        ))
+        .unwrap_or_else(|error| unreachable!("tree publication: {error:?}"));
     let snapshot = publication.semantic_publication().snapshot();
-    let tree = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::Tree)
+    let tree = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::Tree)
         .unwrap_or_else(|| unreachable!("Tree semantic role"));
     assert_eq!(tree.children().len(), 2);
-    let parent = snapshot.nodes().iter().find(|node|
-        node.role() == SemanticRole::TreeItem && node.name() == Some("Folder")
-    ).unwrap_or_else(|| unreachable!("TreeItem role"));
+    let parent = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::TreeItem && node.name() == Some("Folder"))
+        .unwrap_or_else(|| unreachable!("TreeItem role"));
     assert_eq!(parent.state().selected(), Some(true));
     assert_eq!(parent.state().expanded(), Some(true));
-    assert_eq!(parent.hierarchy_level().map(runenui_core::SemanticHierarchyLevel::get), Some(1));
-    assert_eq!(parent.collection_position(), Some(
-        SemanticCollectionPosition::new(0, Some(2)).unwrap_or_else(|_| unreachable!())
-    ));
+    assert_eq!(
+        parent
+            .hierarchy_level()
+            .map(runenui_core::SemanticHierarchyLevel::get),
+        Some(1)
+    );
+    assert_eq!(
+        parent.collection_position(),
+        Some(SemanticCollectionPosition::new(0, Some(2)).unwrap_or_else(|_| unreachable!()))
+    );
     assert_eq!(parent.children().len(), 2);
-    assert!(parent.supported_actions().contains(&SemanticAction::Collapse));
-    let first = snapshot.nodes().iter().find(|node|
-        node.role() == SemanticRole::TreeItem && node.name() == Some("Alpha")
-    ).unwrap_or_else(|| unreachable!("nested TreeItem"));
-    assert_eq!(first.hierarchy_level().map(runenui_core::SemanticHierarchyLevel::get), Some(2));
+    assert!(
+        parent
+            .supported_actions()
+            .contains(&SemanticAction::Collapse)
+    );
+    let first = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::TreeItem && node.name() == Some("Alpha"))
+        .unwrap_or_else(|| unreachable!("nested TreeItem"));
+    assert_eq!(
+        first
+            .hierarchy_level()
+            .map(runenui_core::SemanticHierarchyLevel::get),
+        Some(2)
+    );
 }
 
 #[test]
 fn disabled_discoverability_is_generic_group_focus_without_disabled_activation() {
     let mut runtime = fresh(true);
-    runtime.submit_action(Action::DisabledA(true))
+    runtime
+        .submit_action(Action::DisabledA(true))
         .unwrap_or_else(|_| unreachable!("application authors disabled state"));
     settle(&mut runtime);
     let parent = item(&mut runtime, "tree.parent");
     let b = item(&mut runtime, "tree.b");
     command(&mut runtime, parent.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, parent.clone(), SemanticCommand::FocusRight);
-    assert_eq!(runtime.focus().focused_node(), Some(&b),
-        "ineligible disabled child skipped without private Tree registry");
-    runtime.submit_action(Action::DiscoverA(true))
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&b),
+        "ineligible disabled child skipped without private Tree registry"
+    );
+    runtime
+        .submit_action(Action::DiscoverA(true))
         .unwrap_or_else(|_| unreachable!("application authors discoverability"));
     settle(&mut runtime);
     let parent = item(&mut runtime, "tree.parent");
@@ -193,8 +233,10 @@ fn disabled_discoverability_is_generic_group_focus_without_disabled_activation()
     assert_eq!(runtime.focus().focused_node(), Some(&a));
     command(&mut runtime, a.clone(), SemanticCommand::Activate);
     assert_eq!(runtime.state().selected, "parent");
-    assert!(runtime.state().actions.is_empty(),
-        "disabled but discoverable item never activates");
+    assert!(
+        runtime.state().actions.is_empty(),
+        "disabled but discoverable item never activates"
+    );
 }
 
 #[test]
@@ -203,7 +245,8 @@ fn collapsing_or_removing_focused_descendant_retires_exact_target_identity() {
     let old_b = item(&mut runtime, "tree.b");
     command(&mut runtime, old_b.clone(), SemanticCommand::RequestFocus);
     assert_eq!(runtime.focus().focused_node(), Some(&old_b));
-    runtime.submit_action(Action::Expanded(false))
+    runtime
+        .submit_action(Action::Expanded(false))
         .unwrap_or_else(|_| unreachable!("application collapses"));
     settle(&mut runtime);
     assert_ne!(runtime.focus().focused_node(), Some(&old_b));
@@ -436,7 +479,11 @@ fn nested_tree_child_hit_wins_over_ancestor_container_extent() {
     assert_eq!(
         publication.hit_test_scene().target_at(point),
         Some(&child),
-        "nested child must win hit routing despite parent container covering descendants"
+        "nested child must win hit routing despite parent container covering descendants; published bounds x={} y={} width={} height={}",
+        bounds.x(),
+        bounds.y(),
+        bounds.width(),
+        bounds.height()
     );
 }
 
