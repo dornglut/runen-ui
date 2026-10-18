@@ -2,8 +2,8 @@
 
 //! Durable application identity must survive replacement of rendered/mounted items.
 use runenui_core::{
-    CommandOrigin, NoHostProtocol, SemanticCommand, TreeItemRequest, UiApp, View,
-    tree_item, tree_view,
+    CommandOrigin, NoHostProtocol, SemanticCommand, TreeItemRequest, UiApp, View, tree_item,
+    tree_view,
 };
 use runenui_runtime::{AppRuntime, MountedNodeId, PumpBudget};
 
@@ -52,39 +52,66 @@ fn pump(runtime: &mut AppRuntime<App>) {
         .unwrap_or_else(|_| unreachable!("TreeView pump observation"));
     assert!(batch.report().is_quiescent());
 }
-fn mounted(runtime: &AppRuntime<App>, generation: u8) -> MountedNodeId {
+fn mounted(runtime: &mut AppRuntime<App>, generation: u8) -> MountedNodeId {
     let id = runenui_core::ElementId::new(format!("realized.{generation}"))
         .unwrap_or_else(|_| unreachable!("valid realization name"));
-    runtime.index().nodes().iter()
+    runtime
+        .index()
+        .nodes()
+        .iter()
         .find(|node| node.authored_id() == Some(&id))
         .unwrap_or_else(|| unreachable!("current realization exists"))
-        .id().clone()
+        .id()
+        .clone()
 }
 #[test]
 fn domain_selection_survives_rebuild_with_new_mounted_identity() {
     let mut runtime = AppRuntime::<App>::mount(State::default());
     pump(&mut runtime);
-    let original = mounted(&runtime, 0);
-    runtime.submit_command(original.clone(), SemanticCommand::Activate,
-        CommandOrigin::programmatic())
+    let original = mounted(&mut runtime, 0);
+    runtime
+        .submit_command(
+            original.clone(),
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
         .unwrap_or_else(|_| unreachable!("first activation admitted"));
     pump(&mut runtime);
-    assert_eq!(runtime.state().selected.as_deref(), Some("stable-domain-item"));
-    assert_eq!(runtime.state().actions, [
-        TreeItemRequest::Select("stable-domain-item".to_owned())
-    ]);
-    runtime.submit_action(Action::Rebuild)
+    assert_eq!(
+        runtime.state().selected.as_deref(),
+        Some("stable-domain-item")
+    );
+    assert_eq!(
+        runtime.state().actions,
+        [TreeItemRequest::Select("stable-domain-item".to_owned())]
+    );
+    runtime
+        .submit_action(Action::Rebuild)
         .unwrap_or_else(|_| unreachable!("re-author realized identity"));
     pump(&mut runtime);
-    let next = mounted(&runtime, 1);
+    let next = mounted(&mut runtime, 1);
     assert_ne!(original, next, "realized identity actually changed");
-    assert!(!runtime.index().nodes().iter().any(|node| node.id() == &original),
-        "stale realization retired");
-    runtime.submit_command(next, SemanticCommand::Activate, CommandOrigin::programmatic())
+    assert!(
+        !runtime
+            .index()
+            .nodes()
+            .iter()
+            .any(|node| node.id() == &original),
+        "stale realization retired"
+    );
+    runtime
+        .submit_command(
+            next,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
         .unwrap_or_else(|_| unreachable!("current activation admitted"));
     pump(&mut runtime);
-    assert_eq!(runtime.state().actions, [
-        TreeItemRequest::Select("stable-domain-item".to_owned()),
-        TreeItemRequest::Select("stable-domain-item".to_owned()),
-    ]);
+    assert_eq!(
+        runtime.state().actions,
+        [
+            TreeItemRequest::Select("stable-domain-item".to_owned()),
+            TreeItemRequest::Select("stable-domain-item".to_owned()),
+        ]
+    );
 }

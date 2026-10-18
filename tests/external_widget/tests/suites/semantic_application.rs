@@ -30,3 +30,5 @@ mod semantic_m5c_conformance;
 mod tabs;
 #[path = "../toolbar.rs"]
 mod toolbar;
+#[path = "../tree_view_domain_identity.rs"]
+mod tree_view_domain_identity;

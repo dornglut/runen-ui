@@ -8,3 +8,5 @@ mod layout_publication;
 mod menu_controls;
 #[path = "../presentation_controls.rs"]
 mod presentation_controls;
+#[path = "../tree_view_scroll.rs"]
+mod tree_view_scroll;

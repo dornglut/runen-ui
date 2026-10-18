@@ -34,9 +34,7 @@ const PENDING_REMEDIATION: &[&str] = &[
     "spin_button.rs",
     "text_field.rs",
     "tree_view.rs",
-    "tree_view_domain_identity.rs",
     "tree_view_downstream.rs",
-    "tree_view_scroll.rs",
 ];
 
 fn failure(findings: &mut Vec<Finding>, path: &str, message: impl Into<String>) {
