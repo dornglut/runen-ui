@@ -2389,9 +2389,10 @@ fn focusability_only_retirement_preflights_pending_ime_callbacks_with_focusout()
                 "combined mandatory callback and trace plan must reject before mutation of routed state"
             );
             assert_eq!(runtime.focus().focused_node(), Some(&old));
+            let observed = log.borrow().clone();
             assert!(
-                log.borrow().is_empty(),
-                "no composition/FocusOut callback may run before the complete plan is admitted"
+                observed.is_empty(),
+                "no routed callback before complete admission; observed: {observed:?}"
             );
             assert!(runtime.trace().records().any(|record| matches!(
                 record.kind(),
