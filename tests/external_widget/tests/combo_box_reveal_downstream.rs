@@ -337,6 +337,22 @@ fn downstream_semantic_composite_reveals_deep_initial_option_without_builtin_wid
     assert_eq!(app.focus().focused_node(), None);
 }
 
+// Saturate only with ordinary accepted commands; no special reveal queue.
+fn fill_command_fifo(
+    app: &mut AppRuntime<InitialApp>,
+    owner: &MountedNodeId,
+    capacity: usize,
+) {
+    for _ in 0..capacity {
+        app.submit_command(
+            owner.clone(),
+            SemanticCommand::ScrollIntoView,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("each ordinary FIFO slot must admit a command"));
+    }
+}
+
 #[test]
 fn initial_generic_reveal_respects_full_command_fifo_without_a_private_retry() {
     // The composite's initial work must fit before the FIFO can be saturated.
@@ -367,14 +383,7 @@ fn initial_generic_reveal_respects_full_command_fifo_without_a_private_retry() {
         .unwrap_or_else(|| unreachable!("current downstream owner"))
         .id()
         .clone();
-    for _ in 0..CAPACITY {
-        app.submit_command(
-            owner.clone(),
-            SemanticCommand::ScrollIntoView,
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("each ordinary FIFO slot must admit a command"));
-    }
+    fill_command_fifo(&mut app, &owner, CAPACITY);
     let environment = runenui_core::StyleEnvironment::default();
     let frame = SurfaceBuildContext::tight(
         &environment,
