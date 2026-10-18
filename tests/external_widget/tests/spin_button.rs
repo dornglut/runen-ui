@@ -203,23 +203,41 @@ fn semantic_steps_are_fifo_relative_to_live_application_state() {
     let mut runtime = runtime("4");
     let publication = publish(&mut runtime);
     let (surface, target) = semantic_target(&publication);
-    let node = publication.semantic_publication().snapshot().node(&target)
+    let node = publication
+        .semantic_publication()
+        .snapshot()
+        .node(&target)
         .unwrap_or_else(|| unreachable!("semantic target resolves"));
-    assert_eq!(node.range().and_then(runenui_core::SemanticRange::current), Some(number(4.0)));
+    assert_eq!(
+        node.range().and_then(runenui_core::SemanticRange::current),
+        Some(number(4.0))
+    );
     for _ in 0..2 {
-        runtime.submit_semantic_action(SemanticActionRequest::new(
-            surface.clone(), target.clone(), SemanticAction::Increment,
-        )).unwrap_or_else(|_| unreachable!("published step is available"));
+        runtime
+            .submit_semantic_action(SemanticActionRequest::new(
+                surface.clone(),
+                target.clone(),
+                SemanticAction::Increment,
+            ))
+            .unwrap_or_else(|_| unreachable!("published step is available"));
     }
-    assert_eq!(runtime.state().text, "4", "enqueue does not mutate application");
+    assert_eq!(
+        runtime.state().text,
+        "4",
+        "enqueue does not mutate application"
+    );
     settle(&mut runtime);
     assert_eq!(runtime.state().text, "5");
     assert_eq!(runtime.state().requests.len(), 2);
     let after = publish(&mut runtime);
     let (surface, target) = semantic_target(&after);
-    runtime.submit_semantic_action(SemanticActionRequest::set_value(
-        surface, target, number(-9.5),
-    )).unwrap_or_else(|_| unreachable!("absolute set admitted"));
+    runtime
+        .submit_semantic_action(SemanticActionRequest::set_value(
+            surface,
+            target,
+            number(-9.5),
+        ))
+        .unwrap_or_else(|_| unreachable!("absolute set admitted"));
     settle(&mut runtime);
     assert_eq!(runtime.state().text, "-9.5");
 }
@@ -227,19 +245,35 @@ fn semantic_steps_are_fifo_relative_to_live_application_state() {
 #[test]
 fn incomplete_and_invalid_text_never_fabricates_numeric_semantics() {
     let mut runtime = runtime("4");
-    runtime.submit_action(Action::Text("-".into()))
+    runtime
+        .submit_action(Action::Text("-".into()))
         .unwrap_or_else(|_| unreachable!("application owns invalid text"));
     settle(&mut runtime);
     let publication = publish(&mut runtime);
     let (surface, target) = semantic_target(&publication);
     let semantic = publication.semantic_publication().snapshot();
-    let node = semantic.node(&target)
+    let node = semantic
+        .node(&target)
         .unwrap_or_else(|| unreachable!("SpinButton still semantic"));
-    assert!(node.range().and_then(runenui_core::SemanticRange::current).is_none());
-    assert!(!node.supported_actions().contains(&SemanticAction::Increment));
-    assert!(runtime.submit_semantic_action(SemanticActionRequest::new(
-        surface, target, SemanticAction::Increment,
-    )).is_err());
+    assert!(
+        node.range()
+            .and_then(runenui_core::SemanticRange::current)
+            .is_none()
+    );
+    assert!(
+        !node
+            .supported_actions()
+            .contains(&SemanticAction::Increment)
+    );
+    assert!(
+        runtime
+            .submit_semantic_action(SemanticActionRequest::new(
+                surface,
+                target,
+                SemanticAction::Increment,
+            ))
+            .is_err()
+    );
     assert_eq!(runtime.state().text, "-");
     assert!(runtime.state().requests.is_empty());
 }
@@ -248,17 +282,26 @@ fn incomplete_and_invalid_text_never_fabricates_numeric_semantics() {
 fn m10_editing_remains_application_owned_and_step_readiness_respects_disabled_read_only() {
     let mut runtime = runtime("1");
     let id = runtime.index().nodes()[0].id().clone();
-    runtime.submit_command(id, SemanticCommand::RequestFocus, CommandOrigin::programmatic())
+    runtime
+        .submit_command(
+            id,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
         .unwrap_or_else(|_| unreachable!("focus request admitted"));
     settle(&mut runtime);
-    runtime.submit_text(CommittedTextEvent::new("2", None)
-        .unwrap_or_else(|_| unreachable!("nonempty text event")))
+    runtime
+        .submit_text(
+            CommittedTextEvent::new("2", None)
+                .unwrap_or_else(|_| unreachable!("nonempty text event")),
+        )
         .unwrap_or_else(|_| unreachable!("focused M10 TextField admits edit"));
     settle(&mut runtime);
     assert_eq!(runtime.state().text, "12");
     assert_eq!(runtime.state().revision, 2);
 
-    runtime.submit_action(Action::ReadOnly(true))
+    runtime
+        .submit_action(Action::ReadOnly(true))
         .unwrap_or_else(|_| unreachable!("app update"));
     settle(&mut runtime);
     let publication = publish(&mut runtime);
