@@ -26,10 +26,9 @@ impl UiApp for App {
             combo_box(
                 "Choose",
                 ElementId::new("focus.combo.list").unwrap_or_else(|_| unreachable!()),
-                [
-                    option_item("Alpha", state.committed == 1)
-                        .id("focus.combo.alpha").on_activate(|| Action::Other),
-                ],
+                [option_item("Alpha", state.committed == 1)
+                    .id("focus.combo.alpha")
+                    .on_activate(|| Action::Other)],
                 Action::Popup,
             )
             .id("focus.combo.owner")
@@ -54,21 +53,37 @@ impl UiApp for App {
     }
 }
 fn settle(runtime: &mut AppRuntime<App>) {
-    assert!(runtime.pump(PumpBudget::new(
-        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+    assert!(
+        runtime
+            .pump(PumpBudget::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ))
+            .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
             .report()
-            .is_quiescent());
+            .is_quiescent()
+    );
 }
-fn id(runtime: &AppRuntime<App>, text: &str) -> MountedNodeId {
+fn id(runtime: &mut AppRuntime<App>, text: &str) -> MountedNodeId {
     let authored = ElementId::new(text).unwrap_or_else(|_| unreachable!());
-    runtime.index().nodes().iter()
+    runtime
+        .index()
+        .nodes()
+        .iter()
         .find(|node| node.authored_id() == Some(&authored))
         .unwrap_or_else(|| unreachable!("focus fixture node exists"))
-        .id().clone()
+        .id()
+        .clone()
 }
 fn focus(runtime: &mut AppRuntime<App>, target: MountedNodeId) {
-    runtime.submit_command(target, SemanticCommand::RequestFocus, CommandOrigin::programmatic())
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
         .unwrap_or_else(|_| unreachable!("focus command admitted"));
     settle(runtime);
 }
@@ -81,18 +96,23 @@ fn leaving_combo_box_real_focus_closes_popup_only_via_application_fifo() {
         requests: Vec::new(),
     });
     settle(&mut runtime);
-    let owner = id(&runtime, "focus.combo.owner");
-    let other = id(&runtime, "focus.other");
+    let owner = id(&mut runtime, "focus.combo.owner");
+    let other = id(&mut runtime, "focus.other");
     focus(&mut runtime, owner.clone());
     assert!(runtime.state().open);
     assert!(runtime.state().requests.is_empty());
     focus(&mut runtime, other.clone());
     assert_eq!(runtime.focus().focused_node(), Some(&other));
-    assert!(!runtime.state().open, "popup follows app's committed Close update");
+    assert!(
+        !runtime.state().open,
+        "popup follows app's committed Close update"
+    );
     assert_eq!(runtime.state().requests, [ComboBoxRequest::Close]);
     assert_eq!(runtime.state().committed, 0);
-    assert!(!runtime.index().nodes().iter()
-        .any(|node| node.authored_id().is_some_and(|id| id.as_str() == "focus.combo.alpha")));
+    assert!(!runtime.index().nodes().iter().any(|node| {
+        node.authored_id()
+            .is_some_and(|id| id.as_str() == "focus.combo.alpha")
+    }));
 }
 
 #[test]
@@ -105,7 +125,7 @@ fn compatible_disable_closes_app_owned_popup_once_and_reenable_does_not_reopen()
             requests: Vec::new(),
         });
         settle(&mut runtime);
-        let owner = id(&runtime, "focus.combo.owner");
+        let owner = id(&mut runtime, "focus.combo.owner");
         focus(&mut runtime, owner.clone());
 
         runtime
@@ -117,7 +137,7 @@ fn compatible_disable_closes_app_owned_popup_once_and_reenable_does_not_reopen()
             .report()
             .to_owned();
         assert_eq!(report.processed_envelopes(), 1);
-        assert_eq!(id(&runtime, "focus.combo.owner"), owner);
+        assert_eq!(id(&mut runtime, "focus.combo.owner"), owner);
         assert!(!runtime.state().enabled);
         assert_eq!(runtime.state().open, initially_open);
         assert!(runtime.state().requests.is_empty());
@@ -148,12 +168,15 @@ fn compatible_disable_closes_app_owned_popup_once_and_reenable_does_not_reopen()
             .unwrap_or_else(|_| unreachable!("reenable accepted"));
         settle(&mut runtime);
         assert!(runtime.state().enabled);
-        assert!(!runtime.state().open, "stale authored Open cannot resurrect popup");
+        assert!(
+            !runtime.state().open,
+            "stale authored Open cannot resurrect popup"
+        );
         assert!(!runtime.index().nodes().iter().any(|node| {
             node.authored_id()
                 .is_some_and(|id| id.as_str() == "focus.combo.alpha")
         }));
-        assert_eq!(id(&runtime, "focus.combo.owner"), owner);
+        assert_eq!(id(&mut runtime, "focus.combo.owner"), owner);
     }
 }
 
