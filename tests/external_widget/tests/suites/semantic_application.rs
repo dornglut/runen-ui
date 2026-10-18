@@ -4,8 +4,6 @@ mod combo_box_boundaries;
 mod combo_box_focus_lifecycle;
 #[path = "../combo_box_option_proxy.rs"]
 mod combo_box_option_proxy;
-#[path = "../combo_box_select_only.rs"]
-mod combo_box_select_only;
 #[path = "../content.rs"]
 mod content;
 #[path = "../disclosure.rs"]
