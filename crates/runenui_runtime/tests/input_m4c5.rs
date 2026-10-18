@@ -2347,6 +2347,76 @@ fn automation_04_disabled_tracing_preserves_resolution_and_command_behavior() {
 }
 
 #[test]
+fn focusability_only_retirement_preflights_pending_ime_callbacks_with_focusout() {
+    // Three-node root/target/other tree: the old FocusOut and a still-live
+    // composition cancellation each invoke the old C/T/B route. A preflight
+    // that counts only FocusOut undercharges the mandatory callback trace.
+    // Work and trace admission remain independent, so set R=1 and make the
+    // non-wrapping trace authority the controlled tight resource.
+    for active_composition in [false, true] {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut runtime = mounted_with_config(
+            InputState::standard(Rc::clone(&log)),
+            RuntimeConfig::default().with_limits(
+                RuntimeLimits::default().with_transaction_outputs(1),
+            ),
+        );
+        focus(&mut runtime, "target");
+        let old = target(&mut runtime, "target");
+        if active_composition {
+            runtime
+                .start_composition(None)
+                .unwrap_or_else(|_| unreachable!("focused live owner accepts composition"));
+            settle(&mut runtime);
+        }
+        clear_log(&runtime);
+        runtime
+            .submit_action(InputAction::RetireFocusability)
+            .unwrap_or_else(|_| unreachable!("original action admitted"));
+        // Fits the ordinary single FocusOut preflight but not the additional
+        // mandatory composition C/T/B invocations and retirement facts.
+        runtime.__seed_next_trace_sequence_for_test(u64::MAX - 76);
+        let report = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("one source action processed"))
+            .report()
+            .to_owned();
+        assert_eq!(report.processed_envelopes(), 1);
+        assert!(!runtime.state().focus_eligible);
+        if active_composition {
+            assert_eq!(
+                runtime.status(),
+                RuntimeStatus::Terminal(RuntimeTerminalReason::TraceSequenceExhausted),
+                "combined mandatory callback and trace plan must reject before mutation of routed state"
+            );
+            assert_eq!(runtime.focus().focused_node(), Some(&old));
+            assert!(
+                log.borrow().is_empty(),
+                "no composition/FocusOut callback may run before the complete plan is admitted"
+            );
+            assert!(runtime.trace().records().any(|record| matches!(
+                record.kind(),
+                TraceRecordKind::RoutedEventAdmissionRejected {
+                    capacity: runenui_runtime::TraceRoutedAdmissionRejection::TraceSequenceExhausted
+                }
+            )));
+        } else {
+            assert_eq!(runtime.status(), RuntimeStatus::Running);
+            assert_eq!(runtime.focus().focused_node(), None);
+            assert!(
+                runtime.trace().records().any(|record| matches!(
+                    record.kind(),
+                    TraceRecordKind::FocusNotificationResolved {
+                        kind: runenui_runtime::FocusEventKind::Out
+                    }
+                ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)),
+                "ordinary FocusOut without composition keeps its prior admitted budget"
+            );
+        }
+    }
+}
+
+#[test]
 #[allow(
     clippy::too_many_lines,
     reason = "focusability-only revocation must preserve the exact old live route and distinct cleanup reasons"
