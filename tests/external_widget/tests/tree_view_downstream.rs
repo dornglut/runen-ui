@@ -24,7 +24,7 @@ impl Widget<Action> for TreeRoot {
     fn create_state(&self) -> Self::State {}
     fn semantics(
         &self,
-        _: &Self::State,
+        &(): &Self::State,
         context: SemanticContributionContext,
     ) -> SemanticContribution {
         let mut node = SemanticNodeContribution::primary(SemanticRole::Tree)
@@ -44,7 +44,7 @@ impl Widget<Action> for Branch {
     fn create_state(&self) -> Self::State {}
     fn semantics(
         &self,
-        _: &Self::State,
+        &(): &Self::State,
         context: SemanticContributionContext,
     ) -> SemanticContribution {
         let mut node = SemanticNodeContribution::primary(SemanticRole::TreeItem)
