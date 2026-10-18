@@ -162,7 +162,7 @@ fn generic_focus_navigation_claim_is_not_an_explicit_combo_widget_claim() {
             };
             assert_eq!(
                 facts.reasons(),
-                reason.as_ref().map_or(&[][..], std::slice::from_ref),
+                reason.as_slice(),
                 "phase={phase:?} modifiers={modifiers:?} composition={composition:?} trace={trace_capacity}"
             );
             assert_eq!(facts.default_disposition(), disposition);
