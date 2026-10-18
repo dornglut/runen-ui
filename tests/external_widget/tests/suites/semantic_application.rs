@@ -26,6 +26,8 @@ mod semantic_m5b_conformance;
 mod semantic_m5c_action_readiness;
 #[path = "../semantic_m5c_conformance.rs"]
 mod semantic_m5c_conformance;
+#[path = "../spin_button.rs"]
+mod spin_button;
 #[path = "../tabs.rs"]
 mod tabs;
 #[path = "../text_field.rs"]

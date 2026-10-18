@@ -32,6 +32,10 @@ enum Action {
     Remove,
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent application-owned readiness and presence facts in the external fixture"
+)]
 struct State {
     text: String,
     revision: u64,
@@ -431,7 +435,7 @@ fn read_only_and_disabled_sibling_buttons_reject_ordinary_activation() {
             let button = snapshot.nodes().iter().find(|node| {
                 node.role() == SemanticRole::Button && node.name() == Some(label)
             }).unwrap_or_else(|| unreachable!("ordinary button remains semantic"));
-            assert!(button.state().disabled());
+            assert_eq!(button.state().disabled(), Some(true));
             assert!(runtime.submit_semantic_action(SemanticActionRequest::new(
                 snapshot.surface_id().clone(), button.id().clone(), SemanticAction::Activate,
             )).is_err());
@@ -534,27 +538,27 @@ impl runenui_core::Widget<()> for DownstreamSpin {
     type State = ();
     fn create_state(&self) -> Self::State {}
 
-    fn text_input(&self, _: &Self::State) -> runenui_core::WidgetTextInput {
+    fn text_input(&self, &(): &Self::State) -> runenui_core::WidgetTextInput {
         runenui_core::WidgetTextInput::new(true, true)
     }
 
-    fn editable(&self, _: &Self::State) -> Option<runenui_core::EditableContribution<()>> {
+    fn editable(&self, &(): &Self::State) -> Option<runenui_core::EditableContribution<()>> {
         runenui_core::EditableContribution::new(
-            self.snapshot, &self.text, self.selection, runenui_core::TextSensitivity::Public,
+            self.snapshot, self.text.as_str(), self.selection, runenui_core::TextSensitivity::Public,
             false, false, runenui_core::EditingSessionPolicy::PreserveExact, |_| (),
         )
         .ok()
         .map(|value| value.with_newline_policy(runenui_core::TextNewlinePolicy::ReplaceWithSpace))
     }
 
-    fn measure(&self, _: &Self::State, _: runenui_core::WidgetMeasureInput) -> runenui_core::WidgetMeasure {
+    fn measure(&self, &(): &Self::State, _: runenui_core::WidgetMeasureInput) -> runenui_core::WidgetMeasure {
         runenui_core::WidgetMeasure::Text(
-            runenui_core::TextLeafMeasure::new(&self.text)
+            runenui_core::TextLeafMeasure::new(self.text.as_str())
                 .with_wrap_mode(runenui_core::TextLeafWrap::NoWrap),
         )
     }
 
-    fn semantics(&self, _: &Self::State, _: runenui_core::SemanticContributionContext)
+    fn semantics(&self, &(): &Self::State, _: runenui_core::SemanticContributionContext)
         -> runenui_core::SemanticContribution {
         let editable = runenui_core::SemanticEditable::new(
             self.snapshot, &self.text, self.selection,
@@ -592,7 +596,7 @@ fn downstream_widget_can_author_identical_editing_range_and_action_contracts() {
     let caret = TextPosition::new(snapshot, value, value.len(), TextAffinity::Upstream)
         .unwrap_or_else(|_| unreachable!("fixture UTF8 caret"));
     let selection = TextSelection::collapsed(caret);
-    let range = SpinButtonRange::new(-10.0, 100.0, Some(12.0), 0.5)
+    let range = SpinButtonRange::new(Some(-10.0), Some(100.0), Some(12.0), 0.5)
         .unwrap_or_else(|_| unreachable!("valid test range"));
     let downstream: runenui_core::Element<()> = runenui_core::Element::new(DownstreamSpin {
         snapshot, text: value.into(), selection,
