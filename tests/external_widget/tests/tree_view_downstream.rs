@@ -86,10 +86,14 @@ impl Widget<Action> for Leaf {
             SemanticNodeContribution::primary(SemanticRole::TreeItem)
                 .with_name(self.name)
                 .with_state(SemanticState::ENABLED.with_selected(*state))
-                .with_hierarchy_level(SemanticHierarchyLevel::new(2)
-                    .unwrap_or_else(|_| unreachable!("level 2 valid")))
-                .with_collection_position(SemanticCollectionPosition::new(self.index, Some(2))
-                    .unwrap_or_else(|_| unreachable!("sibling position valid")))
+                .with_hierarchy_level(
+                    SemanticHierarchyLevel::new(2)
+                        .unwrap_or_else(|_| unreachable!("level 2 valid")),
+                )
+                .with_collection_position(
+                    SemanticCollectionPosition::new(self.index, Some(2))
+                        .unwrap_or_else(|_| unreachable!("sibling position valid")),
+                )
                 .with_action(SemanticAction::RequestFocus)
                 .with_action(SemanticAction::Activate),
         )
@@ -128,8 +132,10 @@ impl UiApp for CustomTree {
                 FocusGroup::new()
                     .with_boundary(FocusGroupBoundaryPolicy::Stop)
                     .with_activation(FocusGroupActivationPolicy::Manual)
-                    .with_type_ahead(FocusGroupTypeAhead::new(Duration::from_millis(500))
-                        .unwrap_or_else(|_| unreachable!("bounded search timeout"))),
+                    .with_type_ahead(
+                        FocusGroupTypeAhead::new(Duration::from_millis(500))
+                            .unwrap_or_else(|_| unreachable!("bounded search timeout")),
+                    ),
             )
     }
     fn update(state: &mut Self::State, action: Self::Action) {
@@ -158,40 +164,82 @@ fn custom_tree_uses_exact_public_hierarchy_focus_and_domain_selection() {
         .unwrap_or_else(|_| unreachable!("valid authoring ID"));
     let leaf_id = runenui_core::ElementId::new("custom.domain-alpha")
         .unwrap_or_else(|_| unreachable!("valid authoring ID"));
-    let branch = runtime.index().nodes().iter()
+    let branch = runtime
+        .index()
+        .nodes()
+        .iter()
         .find(|node| node.authored_id() == Some(&branch_id))
-        .unwrap_or_else(|| unreachable!("custom branch mounted")).id().clone();
-    let leaf = runtime.index().nodes().iter()
+        .unwrap_or_else(|| unreachable!("custom branch mounted"))
+        .id()
+        .clone();
+    let leaf = runtime
+        .index()
+        .nodes()
+        .iter()
         .find(|node| node.authored_id() == Some(&leaf_id))
-        .unwrap_or_else(|| unreachable!("custom leaf mounted")).id().clone();
-    runtime.submit_command(branch.clone(), SemanticCommand::RequestFocus,
-        CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!("focus admitted"));
+        .unwrap_or_else(|| unreachable!("custom leaf mounted"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(
+            branch.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus admitted"));
     settle(&mut runtime);
-    runtime.submit_command(branch, SemanticCommand::FocusGroupNext,
-        CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!("group navigation admitted"));
+    runtime
+        .submit_command(
+            branch,
+            SemanticCommand::FocusGroupNext,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("group navigation admitted"));
     settle(&mut runtime);
     assert_eq!(runtime.focus().focused_node(), Some(&leaf));
-    assert_eq!(runtime.state(), "domain-alpha", "focus does not commit selection");
-    runtime.submit_command(leaf, SemanticCommand::Activate,
-        CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!("activation admitted"));
+    assert_eq!(
+        runtime.state(),
+        "domain-alpha",
+        "focus does not commit selection"
+    );
+    runtime
+        .submit_command(
+            leaf,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("activation admitted"));
     settle(&mut runtime);
 
-    let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
-        &runenui_core::StyleEnvironment::default(),
-        LogicalSize::try_new(640.0, 480.0).unwrap_or_else(|_| unreachable!()),
-    )).unwrap_or_else(|error| unreachable!("public Tree contribution: {error:?}"));
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &runenui_core::StyleEnvironment::default(),
+            LogicalSize::try_new(640.0, 480.0).unwrap_or_else(|_| unreachable!()),
+        ))
+        .unwrap_or_else(|error| unreachable!("public Tree contribution: {error:?}"));
     let snapshot = publication.semantic_publication().snapshot();
-    let tree = snapshot.nodes().iter()
+    let tree = snapshot
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::Tree)
         .unwrap_or_else(|| unreachable!("downstream Tree projects"));
     assert_eq!(tree.children().len(), 1);
-    let branch = snapshot.nodes().iter()
+    let branch = snapshot
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::TreeItem && node.name() == Some("Folder"))
         .unwrap_or_else(|| unreachable!("downstream branch projects"));
     assert_eq!(branch.children().len(), 2);
-    assert_eq!(branch.hierarchy_level().map(SemanticHierarchyLevel::get), Some(1));
-    assert!(snapshot.nodes().iter()
-        .any(|node| node.role() == SemanticRole::TreeItem
-            && node.name() == Some("A")
-            && node.hierarchy_level().map(SemanticHierarchyLevel::get) == Some(2)));
+    assert_eq!(
+        branch.hierarchy_level().map(SemanticHierarchyLevel::get),
+        Some(1)
+    );
+    assert!(
+        snapshot
+            .nodes()
+            .iter()
+            .any(|node| node.role() == SemanticRole::TreeItem
+                && node.name() == Some("A")
+                && node.hierarchy_level().map(SemanticHierarchyLevel::get) == Some(2))
+    );
 }
