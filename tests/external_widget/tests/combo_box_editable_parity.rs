@@ -34,6 +34,7 @@ struct State {
     revision: u64,
     chosen: u8,
 }
+#[derive(Debug)]
 struct Owner {
     snapshot: TextDocumentSnapshot,
     source: String,
@@ -81,7 +82,7 @@ impl Widget<Action> for Owner {
     fn editable(&self, _: &Self::State) -> Option<EditableContribution<Action>> {
         EditableContribution::new(
             self.snapshot,
-            &self.source,
+            self.source.as_str(),
             self.selection,
             TextSensitivity::Public,
             false,
@@ -94,7 +95,7 @@ impl Widget<Action> for Owner {
     }
 
     fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text(TextLeafMeasure::new(&self.source))
+        WidgetMeasure::Text(TextLeafMeasure::new(self.source.as_str()))
     }
 
     fn semantics(
@@ -104,7 +105,7 @@ impl Widget<Action> for Owner {
     ) -> SemanticContribution {
         let Some(editable) = SemanticEditable::new(
             self.snapshot,
-            &self.source,
+            self.source.as_str(),
             self.selection,
             TextSensitivity::Public,
             false,
@@ -157,7 +158,7 @@ impl UiApp for App {
         let snapshot = doc(state.revision);
         let caret = TextPosition::new(
             snapshot,
-            &state.source,
+            state.source.as_str(),
             state.source.len(),
             TextAffinity::Upstream,
         ).unwrap_or_else(|_| unreachable!("valid downstream caret"));
