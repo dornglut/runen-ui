@@ -514,14 +514,26 @@ fn exact_removed_semantic_target_is_not_reused_for_replacement_text() {
 fn composition_active_key_rejects_numeric_adjustment() {
     let mut runtime = runtime("-1");
     let id = runtime.index().nodes()[0].id().clone();
-    runtime.submit_command(id, SemanticCommand::RequestFocus, CommandOrigin::programmatic())
+    runtime
+        .submit_command(
+            id,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
         .unwrap_or_else(|_| unreachable!("focus request"));
     settle(&mut runtime);
-    runtime.submit_keyboard(KeyboardEvent::new(
-        KeyboardPhase::Down, PhysicalKey::Code("ArrowUp".to_owned()),
-        LogicalKey::ArrowUp, KeyModifiers::NONE, false, KeyLocation::Standard,
-        KeyboardCompositionState::Active, None,
-    )).unwrap_or_else(|_| unreachable!("composition-time key routed"));
+    runtime
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code("ArrowUp".to_owned()),
+            LogicalKey::ArrowUp,
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Active,
+            None,
+        ))
+        .unwrap_or_else(|_| unreachable!("composition-time key routed"));
     settle(&mut runtime);
     assert!(runtime.state().requests.is_empty());
     assert_eq!(runtime.state().text, "-1");
@@ -544,31 +556,52 @@ impl runenui_core::Widget<()> for DownstreamSpin {
 
     fn editable(&self, &(): &Self::State) -> Option<runenui_core::EditableContribution<()>> {
         runenui_core::EditableContribution::new(
-            self.snapshot, self.text.as_str(), self.selection, runenui_core::TextSensitivity::Public,
-            false, false, runenui_core::EditingSessionPolicy::PreserveExact, |_| (),
+            self.snapshot,
+            self.text.as_str(),
+            self.selection,
+            runenui_core::TextSensitivity::Public,
+            false,
+            false,
+            runenui_core::EditingSessionPolicy::PreserveExact,
+            |_| (),
         )
         .ok()
         .map(|value| value.with_newline_policy(runenui_core::TextNewlinePolicy::ReplaceWithSpace))
     }
 
-    fn measure(&self, &(): &Self::State, _: runenui_core::WidgetMeasureInput) -> runenui_core::WidgetMeasure {
+    fn measure(
+        &self,
+        &(): &Self::State,
+        _: runenui_core::WidgetMeasureInput,
+    ) -> runenui_core::WidgetMeasure {
         runenui_core::WidgetMeasure::Text(
             runenui_core::TextLeafMeasure::new(self.text.as_str())
                 .with_wrap_mode(runenui_core::TextLeafWrap::NoWrap),
         )
     }
 
-    fn semantics(&self, &(): &Self::State, _: runenui_core::SemanticContributionContext)
-        -> runenui_core::SemanticContribution {
+    fn semantics(
+        &self,
+        &(): &Self::State,
+        _: runenui_core::SemanticContributionContext,
+    ) -> runenui_core::SemanticContribution {
         let editable = runenui_core::SemanticEditable::new(
-            self.snapshot, &self.text, self.selection,
-            runenui_core::TextSensitivity::Public, false,
-        ).unwrap_or_else(|| unreachable!("same checked M10 source"));
+            self.snapshot,
+            &self.text,
+            self.selection,
+            runenui_core::TextSensitivity::Public,
+            false,
+        )
+        .unwrap_or_else(|| unreachable!("same checked M10 source"));
         let node = runenui_core::SemanticNodeContribution::primary(SemanticRole::SpinButton)
             .with_name("Amount")
             .with_range(self.range.clone())
-            .with_state(runenui_core::SemanticState::ENABLED
-                .with_disabled(false).with_read_only(false).with_required(false))
+            .with_state(
+                runenui_core::SemanticState::ENABLED
+                    .with_disabled(false)
+                    .with_read_only(false)
+                    .with_required(false),
+            )
             .with_editable(editable)
             .with_editable_mode(runenui_core::SemanticEditableMode::SingleLine)
             .with_action(SemanticAction::MoveBackward)
@@ -599,33 +632,40 @@ fn downstream_widget_can_author_identical_editing_range_and_action_contracts() {
     let range = SpinButtonRange::new(Some(-10.0), Some(100.0), Some(12.0), 0.5)
         .unwrap_or_else(|_| unreachable!("valid test range"));
     let downstream: runenui_core::Element<()> = runenui_core::Element::new(DownstreamSpin {
-        snapshot, text: value.into(), selection,
+        snapshot,
+        text: value.into(),
+        selection,
         range: range.semantic_range().clone(),
-    }).focusable(true);
+    })
+    .focusable(true);
     let standard = spin_button("Amount", snapshot, value, selection, range, |_| ())
         .unwrap_or_else(|_| unreachable!("same checked standard field"))
         .on_adjust(|_| ())
         .into_element();
 
-    let (_, _, _, _, _, _, _, _, downstream, _) =
-        downstream.into_runtime_parts().into_parts();
-    let (_, _, _, _, _, _, _, _, standard, _) =
-        standard.into_runtime_parts().into_parts();
+    let (_, _, _, _, _, _, _, _, downstream, _) = downstream.into_runtime_parts().into_parts();
+    let (_, _, _, _, _, _, _, _, standard, _) = standard.into_runtime_parts().into_parts();
     let a = downstream.create_state();
     let b = standard.create_state();
     assert_eq!(downstream.text_input(&a), standard.text_input(&b));
     assert_eq!(
-        downstream.editable(&a).unwrap_or_else(|_| unreachable!("custom M10"))
+        downstream
+            .editable(&a)
+            .unwrap_or_else(|_| unreachable!("custom M10"))
             .unwrap_or_else(|| unreachable!("custom editor"))
             .newline_policy(),
-        standard.editable(&b).unwrap_or_else(|_| unreachable!("standard M10"))
+        standard
+            .editable(&b)
+            .unwrap_or_else(|_| unreachable!("standard M10"))
             .unwrap_or_else(|| unreachable!("standard editor"))
             .newline_policy(),
     );
     assert_eq!(
-        downstream.semantics(&a, runenui_core::SemanticContributionContext::default())
+        downstream
+            .semantics(&a, runenui_core::SemanticContributionContext::default())
             .unwrap_or_else(|_| unreachable!("custom role")),
-        standard.semantics(&b, runenui_core::SemanticContributionContext::default())
+        standard
+            .semantics(&b, runenui_core::SemanticContributionContext::default())
             .unwrap_or_else(|_| unreachable!("standard role")),
     );
 }
