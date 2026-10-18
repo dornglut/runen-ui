@@ -236,3 +236,177 @@ fn app_zero_outputs_and_no_existing_widget_do_not_bound_new_subtree_mount_output
         }
     }
 }
+
+#[cfg(test)]
+mod queue_credit_design_probe {
+    // An executable *accounting model*, not a replacement queue or a test of
+    // runtime APIs. It deliberately omits unrelated work-family/trace charges.
+    // Its only claim is FIFO envelope + held-ticket conservation for a bounded
+    // two-notification turn. Whole-turn budget enforceability is separate.
+    use std::collections::VecDeque;
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct Payload(usize);
+
+    struct Envelope {
+        sequence: u64,
+        payload: Payload,
+        reserved_outputs: usize,
+    }
+
+    struct TicketLedger {
+        capacity: usize,
+        waiting: VecDeque<Envelope>,
+        held_outputs: usize,
+        next_sequence: u64,
+    }
+
+    impl TicketLedger {
+        fn new(capacity: usize) -> Self {
+            Self {
+                capacity,
+                waiting: VecDeque::new(),
+                held_outputs: 0,
+                next_sequence: 1,
+            }
+        }
+
+        // Precharge the originating ingress, NOT its already-dequeued head.
+        // On full, the exact original payload remains owned by the caller.
+        fn submit(&mut self, payload: Payload, upper_bound: usize) -> Result<u64, Payload> {
+            let fits = self
+                .waiting
+                .len()
+                .checked_add(self.held_outputs)
+                .and_then(|used| used.checked_add(1))
+                .and_then(|used| used.checked_add(upper_bound))
+                .is_some_and(|used| used <= self.capacity);
+            if !fits {
+                return Err(payload);
+            }
+            let sequence = self.next_sequence;
+            self.next_sequence = self
+                .next_sequence
+                .checked_add(1)
+                .unwrap_or_else(|| unreachable!("tiny design-model sequence space"));
+            self.held_outputs += upper_bound;
+            self.waiting.push_back(Envelope {
+                sequence,
+                payload,
+                reserved_outputs: upper_bound,
+            });
+            Ok(sequence)
+        }
+
+        // All emitted children in this proof are terminal (zero-output)
+        // envelopes. Recursive producer reservations need a separate bound.
+        fn commit_head(&mut self, emitted: Vec<Payload>) -> (usize, u64, Vec<u64>) {
+            let head = self
+                .waiting
+                .pop_front()
+                .unwrap_or_else(|| unreachable!("admitted head exists"));
+            assert!(
+                emitted.len() <= head.reserved_outputs,
+                "over-emission is a producer contract failure, not a retry"
+            );
+            self.held_outputs -= head.reserved_outputs;
+            let mut sequences = Vec::new();
+            for payload in emitted {
+                let sequence = self.next_sequence;
+                self.next_sequence = self
+                    .next_sequence
+                    .checked_add(1)
+                    .unwrap_or_else(|| unreachable!("tiny design-model sequence space"));
+                self.waiting.push_back(Envelope {
+                    sequence,
+                    payload,
+                    reserved_outputs: 0,
+                });
+                sequences.push(sequence);
+            }
+            assert!(self.waiting.len() + self.held_outputs <= self.capacity);
+            (head.payload.0, head.sequence, sequences)
+        }
+    }
+
+    #[test]
+    fn early_ticket_prevents_follower_overcommit_and_preserves_fifo_lineage() {
+        let mut ledger = TicketLedger::new(16);
+        // Two ordinary routed notifications, each conservatively using two
+        // queue positions for up to one output (source: routed/admission.rs).
+        assert_eq!(
+            ledger
+                .submit(Payload(1), 4)
+                .unwrap_or_else(|_| unreachable!("qualified turn admitted")),
+            1
+        );
+        for index in 0..11 {
+            ledger
+                .submit(Payload(10 + index), 0)
+                .unwrap_or_else(|_| unreachable!("remaining headroom admits followers"));
+        }
+        assert_eq!(
+            ledger.submit(Payload(99), 0),
+            Err(Payload(99)),
+            "held capacity refuses later ingress without losing its payload"
+        );
+        let (payload, head_sequence, child_sequences) =
+            ledger.commit_head(vec![Payload(100), Payload(101)]);
+        assert_eq!((payload, head_sequence), (1, 1));
+        assert_eq!(child_sequences, [13, 14]);
+        assert_eq!(ledger.waiting.len(), 13);
+        assert_eq!(ledger.held_outputs, 0);
+        assert_eq!(ledger.waiting.front().map(|envelope| envelope.sequence), Some(2));
+        assert_eq!(ledger.waiting.back().map(|envelope| envelope.sequence), Some(14));
+    }
+
+    #[test]
+    fn generic_two_routed_precharges_cannot_admit_an_origin_at_default_limits() {
+        const DEFAULT_CAPACITY: usize = 4096;
+        const GLOBAL_OUTPUT_LIMIT: usize = 1024;
+        let mut generic = TicketLedger::new(DEFAULT_CAPACITY);
+        assert_eq!(
+            generic.submit(Payload(1), 2 * GLOBAL_OUTPUT_LIMIT * 2),
+            Err(Payload(1)),
+            "an ingress position plus both global worst-case reservations exceeds capacity"
+        );
+
+        // A bound of one output per routed transaction would instead cost
+        // four places. This is purely hypothetical until every actual callback
+        // and framework output is enforced to respect that *whole-turn* bound.
+        let mut qualified = TicketLedger::new(DEFAULT_CAPACITY);
+        qualified
+            .submit(Payload(1), 4)
+            .unwrap_or_else(|_| unreachable!("bounded origin admitted"));
+        for _ in 0..4091 {
+            qualified
+                .submit(Payload(2), 0)
+                .unwrap_or_else(|_| unreachable!("available capacity admits followers"));
+        }
+        assert_eq!(qualified.submit(Payload(3), 0), Err(Payload(3)));
+        let (_, _, outputs) = qualified.commit_head(vec![Payload(4), Payload(5)]);
+        assert_eq!(outputs.len(), 2);
+        assert_eq!(qualified.held_outputs, 0);
+        assert_eq!(qualified.waiting.len(), 4093);
+    }
+
+    #[test]
+    fn staging_at_a_saturated_already_accepted_fifo_head_cannot_make_space() {
+        let mut legacy = TicketLedger::new(16);
+        legacy
+            .submit(Payload(1), 0)
+            .unwrap_or_else(|_| unreachable!("legacy origin admitted"));
+        for _ in 0..15 {
+            legacy
+                .submit(Payload(2), 0)
+                .unwrap_or_else(|_| unreachable!("legacy followers fill queue"));
+        }
+        // A staged check before invoking the accepted head could discover
+        // two outputs, but its 15 successors cannot overtake that head.
+        // Without early credits, a final refusal contract or changed ordering,
+        // discovering the precise output count does not grant progress.
+        let queued_behind_head = legacy.waiting.len() - 1;
+        assert_eq!(queued_behind_head, 15);
+        assert!(queued_behind_head + 2 > legacy.capacity);
+    }
+}
