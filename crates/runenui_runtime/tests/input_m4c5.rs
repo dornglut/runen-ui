@@ -4,9 +4,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, CommittedTextEvent, CompositionCancelReason,
-    CompositionEvent, Element, EventContext, EventPhase, Focusability, InputDeviceId, KeyLocation, KeyModifiers,
-    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
-    PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
+    CompositionEvent, Element, EventContext, EventPhase, Focusability, InputDeviceId, KeyLocation,
+    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
+    NoHostProtocol, PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
     WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetTextInput, container,
 };
 use runenui_runtime::{
@@ -317,16 +317,13 @@ impl UiApp for InputApp {
                     emit_composition_cancel_action: state.emit_composition_cancel_action,
                 })
             };
-            children.push(
-                target
-                    .id("target")
-                    .key("target")
-                    .with_focusability(if state.focus_eligible {
-                        Focusability::Focusable
-                    } else {
-                        Focusability::NotFocusable
-                    }),
-            );
+            children.push(target.id("target").key("target").with_focusability(
+                if state.focus_eligible {
+                    Focusability::Focusable
+                } else {
+                    Focusability::NotFocusable
+                },
+            ));
         }
         children.push(
             Element::new(InputWidget {

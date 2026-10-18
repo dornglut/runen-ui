@@ -709,13 +709,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             )
         });
         if let Some(old) = old_target.as_ref() {
-            self.cancel_composition_in_transaction(
-                transaction,
-                old,
-                runenui_core::CompositionCancelReason::FocusTransfer,
-            )?;
+            // A compatible focusability-only retirement can keep the old
+            // widget enabled and composition-capable. Its cleanup is still
+            // Disablement, not an ordinary navigation focus transfer.
+            let cancellation_reason = if reason == FocusReason::Disablement {
+                CompositionCancelReason::Disablement
+            } else {
+                CompositionCancelReason::FocusTransfer
+            };
+            self.cancel_composition_in_transaction(transaction, old, cancellation_reason)?;
         }
-        self.revoke_space_for_focus_transfer(transaction, old_target.as_ref());
+        self.revoke_space_for_focus_change(transaction, old_target.as_ref(), reason);
         let old_route = match old_target.as_ref() {
             Some(old) if self.tree.target_status(old) == TargetStatus::Live => {
                 self.checked_focus_route(old)?
@@ -801,18 +805,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(())
     }
 
-    fn revoke_space_for_focus_transfer(
+    fn revoke_space_for_focus_change(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
         old_target: Option<&MountedNodeId>,
+        reason: FocusReason,
     ) {
         if self
             .space_ownership
             .as_ref()
             .is_some_and(|owner| old_target == Some(&owner.target))
         {
+            let cleanup_reason = if reason == FocusReason::Disablement {
+                TraceSpaceCleanupReason::Disablement
+            } else {
+                TraceSpaceCleanupReason::FocusTransfer
+            };
             transaction.parent = self.revoke_space_ownership_with_cause(
-                TraceSpaceCleanupReason::FocusTransfer,
+                cleanup_reason,
                 InputLifetimeCleanupCause::new(
                     Some(transaction.sequence),
                     transaction.parent,
