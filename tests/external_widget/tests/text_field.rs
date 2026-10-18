@@ -90,10 +90,8 @@ impl Widget<EditIntent> for DownstreamField {
 
 #[test]
 fn downstream_text_field_matches_standard_m10_and_m8_contracts() {
-    let snapshot = TextDocumentSnapshot::new(
-        TextDocumentId::new(105),
-        TextDocumentRevision::new(7),
-    );
+    let snapshot =
+        TextDocumentSnapshot::new(TextDocumentId::new(105), TextDocumentRevision::new(7));
     let source = "abc";
     let caret = TextPosition::new(snapshot, source, source.len(), TextAffinity::Upstream)
         .unwrap_or_else(|_| unreachable!("fixture caret is valid"));
@@ -112,10 +110,8 @@ fn downstream_text_field_matches_standard_m10_and_m8_contracts() {
         let standard = text_field(snapshot, source, selection, mode, |intent| intent)
             .unwrap_or_else(|_| unreachable!("fixture is a valid field"))
             .into_element();
-        let (_, _, _, _, _, _, _, _, downstream, _) =
-            downstream.into_runtime_parts().into_parts();
-        let (_, _, _, _, _, _, _, _, standard, _) =
-            standard.into_runtime_parts().into_parts();
+        let (_, _, _, _, _, _, _, _, downstream, _) = downstream.into_runtime_parts().into_parts();
+        let (_, _, _, _, _, _, _, _, standard, _) = standard.into_runtime_parts().into_parts();
         let downstream_state = downstream.create_state();
         let standard_state = standard.create_state();
         assert_eq!(
