@@ -29,7 +29,10 @@ struct State {
     actions: Vec<u8>,
 }
 enum Action {
-    #[expect(dead_code, reason = "request payload is intentionally opaque to this app-owned FIFO test")]
+    #[expect(
+        dead_code,
+        reason = "request payload is intentionally opaque to this app-owned FIFO test"
+    )]
     Request(ComboBoxRequest),
     Choose(u8),
     Replace,
@@ -179,7 +182,7 @@ fn disabled_owner_blocks_option_activation_and_never_advertises_active_proxy() {
         CommandOrigin::programmatic(),
     );
     settle(&mut app);
-    assert_eq!(app.state().actions.as_slice(), &[]);
+    assert_eq!(app.state().actions, Vec::<u8>::new());
     let published = publish(&mut app);
     let snapshot = published.semantic_publication().snapshot();
     let combo = snapshot
@@ -260,7 +263,7 @@ fn active_option_replacement_clears_proxy_without_committing_another_value() {
     .unwrap_or_else(|_| unreachable!());
     settle(&mut app);
     assert_eq!(app.state().chosen, 0);
-    assert_eq!(app.state().actions.as_slice(), &[]);
+    assert_eq!(app.state().actions, Vec::<u8>::new());
 }
 
 #[test]
@@ -319,7 +322,7 @@ fn replacing_controlled_listbox_retires_old_transient_active_candidate() {
         "replacement must not carry old transient second-item navigation"
     );
     assert_eq!(app.state().chosen, 0);
-    assert_eq!(app.state().actions.as_slice(), &[]);
+    assert_eq!(app.state().actions, Vec::<u8>::new());
     assert_eq!(app.focus().focused_node(), Some(&owner));
 }
 
@@ -354,7 +357,7 @@ fn option_id_equal_to_owner_id_fails_closed_without_ambiguous_semantic_identity(
                 |node| node.role() != SemanticRole::ComboBox && node.role() != SemanticRole::Option
             )
     );
-    assert_eq!(app.state().actions.as_slice(), &[]);
+    assert_eq!(app.state().actions, Vec::<u8>::new());
 }
 
 #[test]
@@ -376,7 +379,7 @@ fn popup_id_equal_to_owner_id_fails_closed_before_semantic_target_resolution() {
             .all(|node| node.role() != SemanticRole::ComboBox
                 && node.role() != SemanticRole::ListBox)
     );
-    assert_eq!(app.state().actions.as_slice(), &[]);
+    assert_eq!(app.state().actions, Vec::<u8>::new());
 }
 
 #[test]
@@ -504,7 +507,7 @@ fn same_key_option_move_keeps_active_candidate_and_m4_focus_without_reselection(
         Some("Second")
     );
     assert_eq!(app.state().chosen, 0);
-    assert_eq!(app.state().actions.as_slice(), &[]);
+    assert_eq!(app.state().actions, Vec::<u8>::new());
     assert_eq!(app.focus().focused_node(), Some(&owner));
 
     app.submit_command(
@@ -606,7 +609,7 @@ fn disabling_an_open_combo_unmounts_blocking_popup_and_reenabling_restores_app_a
     );
     assert!(semantics.nodes().iter().all(|node|
         node.role() != SemanticRole::ListBox && node.role() != SemanticRole::Option));
-    assert_eq!(app.state().actions.as_slice(), &[]);
+    assert_eq!(app.state().actions, Vec::<u8>::new());
     assert_eq!(app.state().chosen, 0);
 
     // App-owned open(true) remains authored: re-enabling restores a *fresh*
