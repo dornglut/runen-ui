@@ -15,6 +15,7 @@ use runenui_runtime::{
 #[derive(Clone, Copy)]
 enum Action {
     Change,
+    Arm(usize),
     Follower,
     MountedOutput,
 }
@@ -65,8 +66,10 @@ impl UiApp for NoApplicationEffectsApp {
 
     fn update(state: &mut Self::State, action: Self::Action) {
         state.processed_actions += 1;
-        if matches!(action, Action::Change) {
-            state.revision += 1;
+        match action {
+            Action::Change => state.revision += 1,
+            Action::Arm(outputs) => state.emitted_per_widget_update = outputs,
+            Action::Follower | Action::MountedOutput => {}
         }
         // Intentionally no application effects: the only new work comes from
         // the *mounted* compatible widget's post-mutation update callback.
@@ -134,6 +137,74 @@ fn app_zero_outputs_do_not_bound_retained_widget_update_outputs() {
             );
         } else {
             assert_eq!(runtime.status(), RuntimeStatus::Running);
+        }
+    }
+}
+
+#[test]
+fn ingress_time_state_dependent_widget_bound_can_be_invalidated_by_older_actions() {
+    const CAPACITY: usize = 16;
+
+    for (future_widget_outputs, should_poison) in [(2, false), (3, true)] {
+        let config = RuntimeConfig::default().with_limits(
+            RuntimeLimits::default()
+                .with_waiting_envelopes(CAPACITY)
+                .with_transaction_outputs(3),
+        );
+        let mut runtime = AppRuntime::<NoApplicationEffectsApp>::mount_with_config(
+            State {
+                revision: 0,
+                emitted_per_widget_update: 0,
+                processed_actions: 0,
+            },
+            config,
+        );
+        let initial = runtime
+            .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("initial mount pump"))
+            .report()
+            .to_owned();
+        assert!(initial.is_quiescent());
+
+        // A naive admission query using the current application state when
+        // Change enters the FIFO would observe output bound 0. The *older*
+        // Arm action mutates that output-driving state before Change executes.
+        runtime
+            .submit_action(Action::Arm(future_widget_outputs))
+            .unwrap_or_else(|_| unreachable!("older action accepted"));
+        runtime
+            .submit_action(Action::Change)
+            .unwrap_or_else(|_| unreachable!("later action accepted"));
+        assert_eq!(runtime.state().emitted_per_widget_update, 0);
+        for _ in 0..(CAPACITY - 2) {
+            runtime
+                .submit_action(Action::Follower)
+                .unwrap_or_else(|_| unreachable!("queue fills behind accepted actions"));
+        }
+        let older = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("older pump"))
+            .report()
+            .to_owned();
+        assert_eq!(older.remaining_queued_envelopes(), CAPACITY - 1);
+        assert_eq!(runtime.state().emitted_per_widget_update, future_widget_outputs);
+        assert_eq!(runtime.state().revision, 0);
+
+        let later = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("later pump"))
+            .report()
+            .to_owned();
+        assert_eq!(later.processed_envelopes(), 1);
+        assert_eq!(runtime.state().processed_actions, 2);
+        assert_eq!(runtime.state().revision, 1);
+        if should_poison {
+            assert_eq!(runtime.status(), RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned));
+            assert_eq!(later.outcome(), PumpOutcome::Terminal(RuntimeTerminalReason::Poisoned));
+            assert_eq!(later.remaining_queued_envelopes(), 0);
+        } else {
+            assert_eq!(runtime.status(), RuntimeStatus::Running);
+            assert_eq!(later.remaining_queued_envelopes(), CAPACITY);
         }
     }
 }
