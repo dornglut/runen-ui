@@ -407,7 +407,8 @@ fn mounted_popup_navigation_routes_exact_active_option_reveal_through_standard_s
     let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     let list = id(&mut app, "viewport.list");
-    let viewport = app.index()
+    let viewport = app
+        .index()
         .node(&list)
         .and_then(|node| node.parent())
         .unwrap_or_else(|| unreachable!("scroll viewport"))
@@ -415,29 +416,51 @@ fn mounted_popup_navigation_routes_exact_active_option_reveal_through_standard_s
     let target = id(&mut app, "viewport.option.17");
     let _ = publish(&mut app);
     assert_eq!(
-        app.index().node(&viewport).unwrap_or_else(|| unreachable!())
-            .interaction().scroll_offset().1,
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!())
+            .interaction()
+            .scroll_offset()
+            .1,
         0.0
     );
     command(&mut app, owner.clone(), SemanticCommand::FocusGroupLast);
     assert!(
-        app.index().node(&viewport).unwrap_or_else(|| unreachable!())
-            .interaction().scroll_offset().1 > 0.0,
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!())
+            .interaction()
+            .scroll_offset()
+            .1
+            > 0.0,
         "navigation must queue exact active Option reveal, not just update semantics"
     );
     let publication = publish(&mut app);
     let semantic = publication.semantic_publication().snapshot();
-    let combo = semantic.nodes().iter()
+    let combo = semantic
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("one ComboBox owner"));
-    let active = combo.relationships().iter()
+    let active = combo
+        .relationships()
+        .iter()
         .find(|relationship| relationship.kind() == SemanticRelationshipKind::ActiveDescendant)
         .unwrap_or_else(|| unreachable!("last navigated proxy"));
-    assert_eq!(semantic.node(active.target()).and_then(|node| node.name()), Some("Option 17"));
+    assert_eq!(
+        semantic.node(active.target()).and_then(|node| node.name()),
+        Some("Option 17")
+    );
     assert_eq!(app.focus().focused_node(), Some(&owner));
     assert_eq!(app.state().chosen, 0);
     assert_eq!(app.state().open, true);
-    assert_eq!(app.index().node(&target).unwrap_or_else(|| unreachable!()).is_focusable(), false);
+    assert_eq!(
+        app.index()
+            .node(&target)
+            .unwrap_or_else(|| unreachable!())
+            .is_focusable(),
+        false
+    );
 }
 
 #[test]
@@ -449,32 +472,58 @@ fn first_published_open_combo_reveals_deep_selected_option_after_mount_and_geome
     });
     settle(&mut app);
     let list = id(&mut app, "viewport.list");
-    let viewport = app.index()
+    let viewport = app
+        .index()
         .node(&list)
         .and_then(|node| node.parent())
         .unwrap_or_else(|| unreachable!("standard scroll owner"))
         .clone();
     let deepest = id(&mut app, "viewport.option.17");
     let first = publish(&mut app);
-    let owner_bounds = first.frame().node(&viewport)
-        .unwrap_or_else(|| unreachable!("published viewport")).bounds();
-    let target_bounds = first.frame().node(&deepest)
-        .unwrap_or_else(|| unreachable!("published deep Option")).bounds();
+    let owner_bounds = first
+        .frame()
+        .node(&viewport)
+        .unwrap_or_else(|| unreachable!("published viewport"))
+        .bounds();
+    let target_bounds = first
+        .frame()
+        .node(&deepest)
+        .unwrap_or_else(|| unreachable!("published deep Option"))
+        .bounds();
     assert!(target_bounds.max_y() > owner_bounds.max_y());
     assert_eq!(
-        app.index().node(&viewport).unwrap_or_else(|| unreachable!())
-            .interaction().scroll_offset().1,
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!())
+            .interaction()
+            .scroll_offset()
+            .1,
         0.0,
         "publication does not mutate scroll outside the canonical FIFO"
     );
     settle(&mut app);
-    assert!(app.index().node(&viewport).unwrap_or_else(|| unreachable!())
-        .interaction().scroll_offset().1 > 0.0);
+    assert!(
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!())
+            .interaction()
+            .scroll_offset()
+            .1
+            > 0.0
+    );
     let after = publish(&mut app);
     assert_eq!(app.state().chosen, 17);
     assert!(app.state().open);
-    assert_eq!(app.focus().focused_node(), None, "reveal cannot synthesize real focus");
-    let options = after.semantic_publication().snapshot().nodes().iter()
+    assert_eq!(
+        app.focus().focused_node(),
+        None,
+        "reveal cannot synthesize real focus"
+    );
+    let options = after
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .iter()
         .filter(|node| node.role() == SemanticRole::Option)
         .count();
     assert_eq!(options, 18);
