@@ -217,8 +217,11 @@ fn committed_input_edits_application_text_without_committing_popup_candidate() {
     let mut runtime = runtime();
     let owner = id(&mut runtime, "editable.owner");
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
-    runtime.submit_text(CommittedTextEvent::new("x", None)
-        .unwrap_or_else(|_| unreachable!("nonempty committed source")))
+    runtime
+        .submit_text(
+            CommittedTextEvent::new("x", None)
+                .unwrap_or_else(|_| unreachable!("nonempty committed source")),
+        )
         .unwrap_or_else(|_| unreachable!("focused M10 accepts committed text"));
     settle(&mut runtime);
     assert_eq!(runtime.state().source, "qx");
@@ -227,35 +230,63 @@ fn committed_input_edits_application_text_without_committing_popup_candidate() {
     assert!(runtime.state().open);
     assert_eq!(runtime.focus().focused_node(), Some(&owner));
     let snapshot = publish(&mut runtime);
-    assert!(snapshot.semantic_publication().snapshot().nodes().iter()
-        .any(|node| node.role() == SemanticRole::ComboBox && node.editable().is_some()));
+    assert!(
+        snapshot
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .any(|node| node.role() == SemanticRole::ComboBox && node.editable().is_some())
+    );
 }
 
-fn key(logical: LogicalKey, physical: PhysicalKey, composition: KeyboardCompositionState) -> KeyboardEvent {
-    KeyboardEvent::new(KeyboardPhase::Down, physical, logical, KeyModifiers::NONE,
-        false, KeyLocation::Standard, composition, None)
+fn key(
+    logical: LogicalKey,
+    physical: PhysicalKey,
+    composition: KeyboardCompositionState,
+) -> KeyboardEvent {
+    KeyboardEvent::new(
+        KeyboardPhase::Down,
+        physical,
+        logical,
+        KeyModifiers::NONE,
+        false,
+        KeyLocation::Standard,
+        composition,
+        None,
+    )
 }
 #[test]
 fn composition_and_editor_caret_navigation_do_not_commit_or_move_popup_proxy() {
     let mut runtime = runtime();
     let owner = id(&mut runtime, "editable.owner");
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
-    runtime.submit_keyboard(key(
-        LogicalKey::ArrowDown, PhysicalKey::ArrowDown,
-        KeyboardCompositionState::Active,
-    )).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_keyboard(key(
+            LogicalKey::ArrowDown,
+            PhysicalKey::ArrowDown,
+            KeyboardCompositionState::Active,
+        ))
+        .unwrap_or_else(|_| unreachable!());
     settle(&mut runtime);
-    runtime.submit_keyboard(key(
-        LogicalKey::Enter, PhysicalKey::Enter, KeyboardCompositionState::Active,
-    )).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_keyboard(key(
+            LogicalKey::Enter,
+            PhysicalKey::Enter,
+            KeyboardCompositionState::Active,
+        ))
+        .unwrap_or_else(|_| unreachable!());
     settle(&mut runtime);
     assert_eq!(active(&mut runtime).as_deref(), Some("Alpha"));
     assert!(runtime.state().open);
     assert_eq!(runtime.state().chosen, 0);
-    runtime.submit_keyboard(key(
-        LogicalKey::ArrowLeft, PhysicalKey::ArrowLeft,
-        KeyboardCompositionState::Inactive,
-    )).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_keyboard(key(
+            LogicalKey::ArrowLeft,
+            PhysicalKey::ArrowLeft,
+            KeyboardCompositionState::Inactive,
+        ))
+        .unwrap_or_else(|_| unreachable!());
     settle(&mut runtime);
     assert_eq!(active(&mut runtime).as_deref(), Some("Alpha"));
     assert_eq!(runtime.focus().focused_node(), Some(&owner));
@@ -264,28 +295,35 @@ fn composition_and_editor_caret_navigation_do_not_commit_or_move_popup_proxy() {
 #[test]
 fn editable_constructor_rejects_multiline_and_secret_m10_sources() {
     let snapshot = doc(1);
-    let caret = TextPosition::new(
-        snapshot, "", 0, TextAffinity::Upstream,
-    ).unwrap_or_else(|_| unreachable!("empty source boundary"));
-    let make = |mode| text_field(
-        snapshot, "", TextSelection::collapsed(caret), mode, |_| (),
-    ).unwrap_or_else(|_| unreachable!("valid source/mode"));
+    let caret = TextPosition::new(snapshot, "", 0, TextAffinity::Upstream)
+        .unwrap_or_else(|_| unreachable!("empty source boundary"));
+    let make = |mode| {
+        text_field(snapshot, "", TextSelection::collapsed(caret), mode, |_| ())
+            .unwrap_or_else(|_| unreachable!("valid source/mode"))
+    };
 
-    assert!(editable_combo_box(
-        make(SemanticEditableMode::Multiline),
-        "No multiline",
-        ElementId::new("editable.invalid.multiline").unwrap_or_else(|_| unreachable!()),
-        Vec::<runenui_core::OptionItem<()>>::new(),
-        |_| (),
-    ).is_err());
-    assert!(editable_combo_box(
-        make(SemanticEditableMode::SingleLine)
-            .password().unwrap_or_else(|_| unreachable!("single-line secret")),
-        "No secret",
-        ElementId::new("editable.invalid.secret").unwrap_or_else(|_| unreachable!()),
-        Vec::<runenui_core::OptionItem<()>>::new(),
-        |_| (),
-    ).is_err());
+    assert!(
+        editable_combo_box(
+            make(SemanticEditableMode::Multiline),
+            "No multiline",
+            ElementId::new("editable.invalid.multiline").unwrap_or_else(|_| unreachable!()),
+            Vec::<runenui_core::OptionItem<()>>::new(),
+            |_| (),
+        )
+        .is_err()
+    );
+    assert!(
+        editable_combo_box(
+            make(SemanticEditableMode::SingleLine)
+                .password()
+                .unwrap_or_else(|_| unreachable!("single-line secret")),
+            "No secret",
+            ElementId::new("editable.invalid.secret").unwrap_or_else(|_| unreachable!()),
+            Vec::<runenui_core::OptionItem<()>>::new(),
+            |_| (),
+        )
+        .is_err()
+    );
 }
 
 #[test]
