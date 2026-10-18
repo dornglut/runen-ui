@@ -10,6 +10,10 @@ use runenui_core::{
 };
 use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext};
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent application-authored focus, visibility, selection and expansion facts"
+)]
 #[derive(Clone, Debug)]
 struct State {
     expanded: bool,
@@ -158,7 +162,7 @@ fn collapse_expand_and_activation_are_application_fifo_with_stable_domain_ids() 
     let mut runtime = fresh(false);
     let parent = item(&mut runtime, "tree.parent");
     command(&mut runtime, parent.clone(), SemanticCommand::RequestFocus);
-    command(&mut runtime, parent.clone(), SemanticCommand::FocusRight);
+    command(&mut runtime, parent, SemanticCommand::FocusRight);
     assert!(runtime.state().expanded);
     assert_eq!(
         runtime.state().actions,
@@ -172,7 +176,7 @@ fn collapse_expand_and_activation_are_application_fifo_with_stable_domain_ids() 
         TreeItemRequest::Select("a".to_owned())
     );
     let parent = item(&mut runtime, "tree.parent");
-    command(&mut runtime, parent.clone(), SemanticCommand::FocusLeft);
+    command(&mut runtime, parent, SemanticCommand::FocusLeft);
     assert!(!runtime.state().expanded);
     assert_eq!(
         runtime.state().actions[2],
@@ -249,7 +253,7 @@ fn disabled_discoverability_is_generic_group_focus_without_disabled_activation()
     let parent = item(&mut runtime, "tree.parent");
     let b = item(&mut runtime, "tree.b");
     command(&mut runtime, parent.clone(), SemanticCommand::RequestFocus);
-    command(&mut runtime, parent.clone(), SemanticCommand::FocusRight);
+    command(&mut runtime, parent, SemanticCommand::FocusRight);
     assert_eq!(
         runtime.focus().focused_node(),
         Some(&b),
@@ -261,10 +265,10 @@ fn disabled_discoverability_is_generic_group_focus_without_disabled_activation()
     settle(&mut runtime);
     let parent = item(&mut runtime, "tree.parent");
     command(&mut runtime, parent.clone(), SemanticCommand::RequestFocus);
-    command(&mut runtime, parent.clone(), SemanticCommand::FocusRight);
+    command(&mut runtime, parent, SemanticCommand::FocusRight);
     let a = item(&mut runtime, "tree.a");
     assert_eq!(runtime.focus().focused_node(), Some(&a));
-    command(&mut runtime, a.clone(), SemanticCommand::Activate);
+    command(&mut runtime, a, SemanticCommand::Activate);
     assert_eq!(runtime.state().selected, "parent");
     assert!(
         runtime.state().actions.is_empty(),
@@ -391,7 +395,7 @@ fn invalid_domain_id_and_single_selection_fail_closed_even_under_collapsed_ances
     );
 }
 
-fn navigation_key(physical: PhysicalKey, logical: LogicalKey) -> KeyboardEvent {
+const fn navigation_key(physical: PhysicalKey, logical: LogicalKey) -> KeyboardEvent {
     KeyboardEvent::new(
         KeyboardPhase::Down,
         physical,
@@ -413,7 +417,7 @@ fn ordered_real_focus_home_end_and_type_ahead_leave_selection_application_owned(
     command(&mut runtime, parent.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, parent.clone(), SemanticCommand::FocusDown);
     assert_eq!(runtime.focus().focused_node(), Some(&a));
-    command(&mut runtime, a.clone(), SemanticCommand::FocusDown);
+    command(&mut runtime, a, SemanticCommand::FocusDown);
     assert_eq!(runtime.focus().focused_node(), Some(&b));
     command(&mut runtime, b.clone(), SemanticCommand::FocusDown);
     assert_eq!(runtime.focus().focused_node(), Some(&other));
@@ -486,7 +490,7 @@ fn right_with_only_ineligible_descendants_never_enters_next_sibling() {
         "no eligible child must not enter the following root TreeItem"
     );
     assert_eq!(runtime.state().selected, "parent");
-    assert!(runtime.state().actions.is_empty());
+    assert_eq!(runtime.state().actions.as_slice(), &[]);
 }
 
 #[test]
