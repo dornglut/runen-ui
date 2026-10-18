@@ -1,5 +1,5 @@
 #![allow(refining_impl_trait)]
-//! ComboBox uses the standard bounded scroll viewport without another M4 focus owner.
+//! `ComboBox` uses the standard bounded scroll viewport without another M4 focus owner.
 use runenui_core::{
     ComboBoxRequest, CommandOrigin, ElementId, LayoutBound, LayoutDimension, LayoutStyle,
     LogicalLength, NoHostProtocol, OverflowPolicy, SemanticCommand, SemanticRelationshipKind,
@@ -111,12 +111,12 @@ fn long_combo_popup_is_bounded_and_ordinary_exact_option_reveal_preserves_owner_
     assert!(app.state().open);
     assert_eq!(app.focus().focused_node(), Some(&owner));
 
-    let list = id(&mut app, "viewport.list");
+    let popup_list = id(&mut app, "viewport.list");
     let last = id(&mut app, "viewport.option.17");
     let viewport = app
         .index()
-        .node(&list)
-        .and_then(|node| node.parent())
+        .node(&popup_list)
+        .and_then(runenui_runtime::MountedNodeRef::parent)
         .unwrap_or_else(|| unreachable!("ListBox is inside standard scroll viewport"))
         .clone();
     let mounted = app.index();
@@ -234,7 +234,7 @@ fn closed_popup_rejects_retired_exact_option_scroll_without_retargeting_reopened
     let old_viewport = app
         .index()
         .node(&old_list)
-        .and_then(|node| node.parent())
+        .and_then(runenui_runtime::MountedNodeRef::parent)
         .unwrap_or_else(|| unreachable!("original bounded scroll viewport"))
         .clone();
     let _ = publish(&mut app);
@@ -270,11 +270,11 @@ fn closed_popup_rejects_retired_exact_option_scroll_without_retargeting_reopened
         current, old,
         "reopened same authored Option gets a new generation"
     );
-    let list = id(&mut app, "viewport.list");
+    let popup_list = id(&mut app, "viewport.list");
     let viewport = app
         .index()
-        .node(&list)
-        .and_then(|node| node.parent())
+        .node(&popup_list)
+        .and_then(runenui_runtime::MountedNodeRef::parent)
         .unwrap_or_else(|| unreachable!("new bounded scroll viewport"))
         .clone();
     let _ = publish(&mut app);
@@ -304,11 +304,11 @@ fn exact_option_scroll_from_another_runtime_fails_closed_without_stealing_focus(
     let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     let foreign_option = id(&mut foreign, "viewport.option.17");
-    let list = id(&mut app, "viewport.list");
+    let popup_list = id(&mut app, "viewport.list");
     let viewport = app
         .index()
-        .node(&list)
-        .and_then(|node| node.parent())
+        .node(&popup_list)
+        .and_then(runenui_runtime::MountedNodeRef::parent)
         .unwrap_or_else(|| unreachable!("bounded local scroll viewport"))
         .clone();
     let _ = publish(&mut app);
@@ -351,11 +351,11 @@ fn full_public_command_queue_rejects_exact_option_reveal_without_alternate_scrol
     let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     let last = id(&mut app, "viewport.option.17");
-    let list = id(&mut app, "viewport.list");
+    let popup_list = id(&mut app, "viewport.list");
     let viewport = app
         .index()
-        .node(&list)
-        .and_then(|node| node.parent())
+        .node(&popup_list)
+        .and_then(runenui_runtime::MountedNodeRef::parent)
         .unwrap_or_else(|| unreachable!("bounded popup viewport"))
         .clone();
     let _ = publish(&mut app);
@@ -496,11 +496,11 @@ fn mounted_popup_navigation_routes_exact_active_option_reveal_through_standard_s
     settle(&mut app);
     let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
-    let list = id(&mut app, "viewport.list");
+    let popup_list = id(&mut app, "viewport.list");
     let viewport = app
         .index()
-        .node(&list)
-        .and_then(|node| node.parent())
+        .node(&popup_list)
+        .and_then(runenui_runtime::MountedNodeRef::parent)
         .unwrap_or_else(|| unreachable!("scroll viewport"))
         .clone();
     let target = id(&mut app, "viewport.option.17");
@@ -543,13 +543,12 @@ fn mounted_popup_navigation_routes_exact_active_option_reveal_through_standard_s
     );
     assert_eq!(app.focus().focused_node(), Some(&owner));
     assert_eq!(app.state().chosen, 0);
-    assert_eq!(app.state().open, true);
-    assert_eq!(
-        app.index()
+    assert!(app.state().open);
+    assert!(
+        !app.index()
             .node(&target)
             .unwrap_or_else(|| unreachable!())
-            .is_focusable(),
-        false
+            .is_focusable()
     );
 }
 
@@ -561,11 +560,11 @@ fn first_published_open_combo_reveals_deep_selected_option_after_mount_and_geome
         ..State::default()
     });
     settle(&mut app);
-    let list = id(&mut app, "viewport.list");
+    let popup_list = id(&mut app, "viewport.list");
     let viewport = app
         .index()
-        .node(&list)
-        .and_then(|node| node.parent())
+        .node(&popup_list)
+        .and_then(runenui_runtime::MountedNodeRef::parent)
         .unwrap_or_else(|| unreachable!("standard scroll owner"))
         .clone();
     let deepest = id(&mut app, "viewport.option.17");
@@ -665,11 +664,11 @@ fn close_and_reopen_before_an_intermediate_publication_reveals_new_option_genera
     settle(&mut app);
     let new_option = id(&mut app, "viewport.option.17");
     assert_ne!(new_option, old_option);
-    let list = id(&mut app, "viewport.list");
+    let popup_list = id(&mut app, "viewport.list");
     let viewport = app
         .index()
-        .node(&list)
-        .and_then(|node| node.parent())
+        .node(&popup_list)
+        .and_then(runenui_runtime::MountedNodeRef::parent)
         .unwrap_or_else(|| unreachable!("fresh standard viewport"))
         .clone();
     let _ = publish(&mut app);
@@ -720,11 +719,11 @@ fn queued_reveal_is_never_retargeted_after_original_option_is_retired() {
     settle(&mut app);
     let current = id(&mut app, "viewport.option.17");
     assert_ne!(current, retired);
-    let list = id(&mut app, "viewport.list");
+    let popup_list = id(&mut app, "viewport.list");
     let viewport = app
         .index()
-        .node(&list)
-        .and_then(|node| node.parent())
+        .node(&popup_list)
+        .and_then(runenui_runtime::MountedNodeRef::parent)
         .unwrap_or_else(|| unreachable!("new scroll viewport"))
         .clone();
     let _ = publish(&mut app);
