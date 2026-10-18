@@ -156,11 +156,13 @@ fn long_combo_popup_is_bounded_and_ordinary_exact_option_reveal_preserves_owner_
 fn closed_popup_unmounts_both_listbox_and_its_scroll_viewport() {
     let mut app = AppRuntime::<App>::mount(State::default());
     settle(&mut app);
-    assert!(app.index().nodes().iter().all(|node|
-        node.authored_id().is_none_or(|id|
-            id.as_str() != "viewport.list" && id.as_str() != "viewport.option.17"
-        )
-    ));
+    assert!(
+        app.index().nodes().iter().all(|node| {
+            node.authored_id().is_none_or(|id| {
+                id.as_str() != "viewport.list" && id.as_str() != "viewport.option.17"
+            })
+        })
+    );
     let publication = publish(&mut app);
     assert!(publication.semantic_publication().snapshot().nodes().iter().all(|node|
         node.role() != SemanticRole::ListBox && node.role() != SemanticRole::Option
@@ -189,7 +191,12 @@ fn closed_popup_rejects_retired_exact_option_scroll_without_retargeting_reopened
         .unwrap_or_else(|_| unreachable!("application closes standard popup"));
     settle(&mut app);
     assert!(app.index().nodes().iter().all(|node| node.id() != &old));
-    assert!(app.index().nodes().iter().all(|node| node.id() != &old_viewport));
+    assert!(
+        app.index()
+            .nodes()
+            .iter()
+            .all(|node| node.id() != &old_viewport)
+    );
     let Err(error) = app.submit_command(
         old.clone(),
         SemanticCommand::ScrollIntoView,
@@ -199,13 +206,19 @@ fn closed_popup_rejects_retired_exact_option_scroll_without_retargeting_reopened
     };
     assert_eq!(error.kind(), SubmitCommandErrorKind::StaleTarget);
     assert_eq!(error.unaccepted().target(), &old);
-    assert_eq!(error.unaccepted().command(), SemanticCommand::ScrollIntoView);
+    assert_eq!(
+        error.unaccepted().command(),
+        SemanticCommand::ScrollIntoView
+    );
 
     app.submit_action(Action::Popup(ComboBoxRequest::Open))
         .unwrap_or_else(|_| unreachable!("application reopens standard popup"));
     settle(&mut app);
     let current = id(&mut app, "viewport.option.17");
-    assert_ne!(current, old, "reopened same authored Option gets a new generation");
+    assert_ne!(
+        current, old,
+        "reopened same authored Option gets a new generation"
+    );
     let list = id(&mut app, "viewport.list");
     let viewport = app
         .index()
@@ -315,7 +328,10 @@ fn full_public_command_queue_rejects_exact_option_reveal_without_alternate_scrol
     };
     assert_eq!(error.kind(), SubmitCommandErrorKind::Full);
     assert_eq!(error.unaccepted().target(), &last);
-    assert_eq!(error.unaccepted().command(), SemanticCommand::ScrollIntoView);
+    assert_eq!(
+        error.unaccepted().command(),
+        SemanticCommand::ScrollIntoView
+    );
     settle(&mut app);
     assert_eq!(
         app.index()
@@ -333,13 +349,21 @@ fn full_public_command_queue_rejects_exact_option_reveal_without_alternate_scrol
 fn active_option_name(app: &mut AppRuntime<App>) -> Option<String> {
     let published = publish(app);
     let semantics = published.semantic_publication().snapshot();
-    let combo = semantics.nodes().iter()
+    let combo = semantics
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)?;
-    let target = combo.relationships().iter()
+    let target = combo
+        .relationships()
+        .iter()
         .find(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)?
         .target();
-    semantics.nodes().iter().find(|node| node.id() == target)
-        .and_then(|node| node.name()).map(str::to_owned)
+    semantics
+        .nodes()
+        .iter()
+        .find(|node| node.id() == target)
+        .and_then(|node| node.name())
+        .map(str::to_owned)
 }
 
 #[test]
@@ -356,13 +380,19 @@ fn sparse_enabled_candidates_navigate_without_disabled_or_out_of_range_active_ta
     // independent of committed value, even across many disabled Options.
     assert_eq!(active_option_name(&mut app).as_deref(), Some("Option 02"));
     command(&mut app, owner.clone(), SemanticCommand::FocusUp);
-    assert_eq!(active_option_name(&mut app).as_deref(), Some("Option 02"),
-        "Previous clamps at the first enabled Option");
+    assert_eq!(
+        active_option_name(&mut app).as_deref(),
+        Some("Option 02"),
+        "Previous clamps at the first enabled Option"
+    );
     command(&mut app, owner.clone(), SemanticCommand::FocusDown);
     assert_eq!(active_option_name(&mut app).as_deref(), Some("Option 14"));
     command(&mut app, owner.clone(), SemanticCommand::FocusDown);
-    assert_eq!(active_option_name(&mut app).as_deref(), Some("Option 14"),
-        "Next clamps at the last enabled Option");
+    assert_eq!(
+        active_option_name(&mut app).as_deref(),
+        Some("Option 14"),
+        "Next clamps at the last enabled Option"
+    );
     command(&mut app, owner.clone(), SemanticCommand::FocusGroupFirst);
     assert_eq!(active_option_name(&mut app).as_deref(), Some("Option 02"));
     command(&mut app, owner.clone(), SemanticCommand::FocusGroupLast);
@@ -391,13 +421,19 @@ fn all_disabled_options_have_no_active_descendant_or_keyboard_selection_action()
         SemanticCommand::FocusGroupLast,
     ] {
         command(&mut app, owner.clone(), direction);
-        assert_eq!(active_option_name(&mut app), None,
-            "no enabled Option may be used as a synthetic active descendant");
+        assert_eq!(
+            active_option_name(&mut app),
+            None,
+            "no enabled Option may be used as a synthetic active descendant"
+        );
     }
     command(&mut app, owner.clone(), SemanticCommand::Activate);
     assert_eq!(app.state().chosen, 0);
     assert_eq!(app.focus().focused_node(), Some(&owner));
-    assert!(app.state().open, "activation of no eligible Option is inert");
+    assert!(
+        app.state().open,
+        "activation of no eligible Option is inert"
+    );
 }
 
 #[test]
