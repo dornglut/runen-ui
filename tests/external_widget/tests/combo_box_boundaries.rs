@@ -7,9 +7,33 @@ use runenui_core::{
 use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext};
 
 #[derive(Clone, Copy)]
-enum Mode { Disabled, MissingId, DuplicateKey, Churn, OwnerCollision, PopupOwnerCollision }
-struct State { mode: Mode, replacement: bool, popup_replaced: bool, option_rekeyed: bool, reordered: bool, chosen: u8, actions: Vec<u8> }
-enum Action { Request(ComboBoxRequest), Choose(u8), Replace, ReplacePopup, RekeyOption, Reorder, Disable, Enable }
+enum Mode {
+    Disabled,
+    MissingId,
+    DuplicateKey,
+    Churn,
+    OwnerCollision,
+    PopupOwnerCollision,
+}
+struct State {
+    mode: Mode,
+    replacement: bool,
+    popup_replaced: bool,
+    option_rekeyed: bool,
+    reordered: bool,
+    chosen: u8,
+    actions: Vec<u8>,
+}
+enum Action {
+    Request(ComboBoxRequest),
+    Choose(u8),
+    Replace,
+    ReplacePopup,
+    RekeyOption,
+    Reorder,
+    Disable,
+    Enable,
+}
 struct App;
 impl UiApp for App {
     type State = State;
