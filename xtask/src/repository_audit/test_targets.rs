@@ -152,6 +152,77 @@ fn audit_suite(
     Ok(())
 }
 
+// A suite may import a module which itself imports ordinary sibling test
+// modules. Cargo compiles those indirect modules too; do not count them as
+// unregistered or import them a second time in the suite entrypoint.
+fn nested_imports(contents: &str, path: &str, findings: &mut Vec<Finding>) -> Vec<String> {
+    let mut pending = None;
+    let mut imports = Vec::new();
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if let Some(file) = trimmed
+            .strip_prefix("#[path = \"")
+            .and_then(|suffix| suffix.strip_suffix("\"]"))
+        {
+            if pending.replace(file).is_some() {
+                failure(findings, path, "unpaired nested #[path] attribute");
+            }
+        } else if trimmed
+            .strip_prefix("mod ")
+            .and_then(|suffix| suffix.strip_suffix(';'))
+            .is_some()
+        {
+            if let Some(file) = pending.take() {
+                if !file.ends_with(".rs") || file.contains('/') || file.contains('\\') {
+                    failure(findings, path, format!("nonlocal nested proof import: {file}"));
+                } else {
+                    imports.push(file.to_owned());
+                }
+            }
+        } else if pending.is_some() && !trimmed.is_empty() {
+            failure(findings, path, "nested #[path] does not precede a module");
+            pending = None;
+        }
+    }
+    if pending.is_some() {
+        failure(findings, path, "dangling nested #[path]");
+    }
+    imports
+}
+
+fn expand_nested_imports(
+    root: &Path,
+    registered: &mut BTreeMap<String, Vec<String>>,
+    findings: &mut Vec<Finding>,
+) -> Result<(), String> {
+    let mut scanned = BTreeSet::new();
+    loop {
+        let todo = registered
+            .iter()
+            .flat_map(|(source, suites)| {
+                suites.iter().map(move |suite| (source.clone(), suite.clone()))
+            })
+            .filter(|pair| !scanned.contains(pair))
+            .collect::<Vec<_>>();
+        if todo.is_empty() {
+            break;
+        }
+        for (source, suite) in todo {
+            scanned.insert((source.clone(), suite.clone()));
+            let relative = format!("{TEST_DIRECTORY}/{source}");
+            let content = fs::read_to_string(root.join(&relative))
+                .map_err(|error| format!("failed to read nested source {relative}: {error}"))?;
+            for included in nested_imports(&content, &relative, findings) {
+                registered
+                    .entry(included)
+                    .or_default()
+                    .push(suite.clone());
+            }
+        }
+    }
+    Ok(())
+}
+
 fn check_coverage(
     sources: &BTreeSet<String>,
     registered: &BTreeMap<String, Vec<String>>,
@@ -221,6 +292,7 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<(), Stri
     for suite in SUITES {
         audit_suite(root, suite, &mut registered, findings)?;
     }
+    expand_nested_imports(root, &mut registered, findings)?;
     check_coverage(&sources, &registered, findings);
     for pending in PENDING_REMEDIATION {
         if !sources.contains(*pending) {
@@ -239,6 +311,18 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{audit_manifest, check_coverage};
+
+    #[test]
+    fn nested_module_imports_are_counted_without_direct_suite_registration() {
+        let mut findings = Vec::new();
+        let imports = super::nested_imports(
+            "#[path = \"input_arbitration_finality.rs\"]\nmod arbitration_finality;\n",
+            "tests/external_widget/tests/input.rs",
+            &mut findings,
+        );
+        assert_eq!(imports, ["input_arbitration_finality.rs"]);
+        assert_eq!(findings.len(), 0);
+    }
 
     #[test]
     fn full_coverage_is_required_and_unknown_imports_fail() {
