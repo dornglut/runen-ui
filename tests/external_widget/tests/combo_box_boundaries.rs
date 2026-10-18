@@ -181,21 +181,38 @@ fn replacing_controlled_listbox_retires_old_transient_active_candidate() {
     settle(&mut app);
     let current = publish(&mut app);
     let snapshot = current.semantic_publication().snapshot();
-    let combo = snapshot.nodes().iter()
+    let combo = snapshot
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("new popup ComboBox"));
-    let controlled = combo.relationships().iter()
+    let controlled = combo
+        .relationships()
+        .iter()
         .find(|link| link.kind() == SemanticRelationshipKind::Controls)
         .unwrap_or_else(|| unreachable!("current controls target"));
-    assert_eq!(snapshot.nodes().iter()
-        .find(|node| node.id() == controlled.target())
-        .map(runenui_runtime::SemanticNode::role), Some(SemanticRole::ListBox));
-    let active = combo.relationships().iter()
+    assert_eq!(
+        snapshot
+            .nodes()
+            .iter()
+            .find(|node| node.id() == controlled.target())
+            .map(runenui_runtime::SemanticNode::role),
+        Some(SemanticRole::ListBox)
+    );
+    let active = combo
+        .relationships()
+        .iter()
         .find(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
         .unwrap_or_else(|| unreachable!("current active candidate"));
-    assert_eq!(snapshot.nodes().iter()
-        .find(|node| node.id() == active.target()).and_then(|node| node.name()),
-        Some("First"), "replacement must not carry old transient second-item navigation");
+    assert_eq!(
+        snapshot
+            .nodes()
+            .iter()
+            .find(|node| node.id() == active.target())
+            .and_then(|node| node.name()),
+        Some("First"),
+        "replacement must not carry old transient second-item navigation"
+    );
     assert_eq!(app.state().chosen, 0);
     assert!(app.state().actions.is_empty());
     assert_eq!(app.focus().focused_node(), Some(&owner));
@@ -205,18 +222,33 @@ fn replacing_controlled_listbox_retires_old_transient_active_candidate() {
 fn option_id_equal_to_owner_id_fails_closed_without_ambiguous_semantic_identity() {
     let mut app = new(Mode::OwnerCollision);
     let owner = id(&mut app, "boundary.owner");
-    assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
+    assert!(
+        !app.index()
+            .node(&owner)
+            .is_some_and(|node| node.is_focusable())
+    );
     assert_eq!(
-        app.index().nodes().iter()
-            .filter(|node| node.authored_id().is_some_and(|id| id.as_str() == "boundary.owner"))
+        app.index()
+            .nodes()
+            .iter()
+            .filter(|node| node
+                .authored_id()
+                .is_some_and(|id| id.as_str() == "boundary.owner"))
             .count(),
         1,
         "invalid option must not mount with the owner's authored identity"
     );
     let publication = publish(&mut app);
-    assert!(publication.semantic_publication().snapshot().nodes().iter().all(|node|
-        node.role() != SemanticRole::ComboBox && node.role() != SemanticRole::Option
-    ));
+    assert!(
+        publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .all(
+                |node| node.role() != SemanticRole::ComboBox && node.role() != SemanticRole::Option
+            )
+    );
     assert!(app.state().actions.is_empty());
 }
 
@@ -224,11 +256,21 @@ fn option_id_equal_to_owner_id_fails_closed_without_ambiguous_semantic_identity(
 fn popup_id_equal_to_owner_id_fails_closed_before_semantic_target_resolution() {
     let mut app = new(Mode::PopupOwnerCollision);
     let owner = id(&mut app, "boundary.owner");
-    assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
+    assert!(
+        !app.index()
+            .node(&owner)
+            .is_some_and(|node| node.is_focusable())
+    );
     let publication = publish(&mut app);
-    assert!(publication.semantic_publication().snapshot().nodes().iter().all(|node|
-        node.role() != SemanticRole::ComboBox && node.role() != SemanticRole::ListBox
-    ));
+    assert!(
+        publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .all(|node| node.role() != SemanticRole::ComboBox
+                && node.role() != SemanticRole::ListBox)
+    );
     assert!(app.state().actions.is_empty());
 }
 
@@ -237,12 +279,18 @@ fn same_authored_id_with_new_reconciliation_key_must_retire_active_option_genera
     let mut app = new(Mode::Churn);
     let owner = id(&mut app, "boundary.owner");
     app.submit_command(
-        owner.clone(), SemanticCommand::RequestFocus, CommandOrigin::programmatic(),
-    ).unwrap_or_else(|_| unreachable!("focus current owner"));
+        owner.clone(),
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("focus current owner"));
     settle(&mut app);
     app.submit_command(
-        owner.clone(), SemanticCommand::FocusDown, CommandOrigin::programmatic(),
-    ).unwrap_or_else(|_| unreachable!("navigate to second"));
+        owner.clone(),
+        SemanticCommand::FocusDown,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("navigate to second"));
     settle(&mut app);
 
     let previous = id(&mut app, "boundary.second");
