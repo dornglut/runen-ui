@@ -3,11 +3,10 @@
 //! The accepted `OptionItem` is also a non-focusable `ComboBox` proxy Option:
 //! source focus remains M4; target identity is resolved by existing M5 semantics.
 use runenui_core::{
-    ChildBearingWidget, CommandOrigin, ElementId, Focusability, NoHostProtocol,
-    SemanticAction, SemanticCommand, SemanticContribution, SemanticContributionContext,
-    SemanticNodeContribution, SemanticPopupKind, SemanticReference, SemanticRelationship,
-    SemanticRelationshipKind, SemanticRole, SemanticState, UiApp, View, Widget, container,
-    list_box, option_item,
+    ChildBearingWidget, CommandOrigin, ElementId, Focusability, NoHostProtocol, SemanticAction,
+    SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
+    SemanticPopupKind, SemanticReference, SemanticRelationship, SemanticRelationshipKind,
+    SemanticRole, SemanticState, UiApp, View, Widget, container, list_box, option_item,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
 
