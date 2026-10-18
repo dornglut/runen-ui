@@ -131,6 +131,7 @@ pub struct ComboWidget<Action> {
     options: Vec<Candidate>,
     selected_display: Option<String>,
     open: bool,
+    requested_open: bool,
     enabled: bool,
     pub(crate) invalid: Option<InvalidComboBox>,
     on_request: RequestHandler<Action>,
@@ -362,6 +363,13 @@ impl<Action> Widget<Action> for ComboWidget<Action> {
             if previous.label != next.label || previous.open != next.open {
                 context.invalidate(WidgetInvalidation::LAYOUT | WidgetInvalidation::PAINT);
             }
+        }
+        // This same mounted owner was effectively open, but disablement
+        // has removed its popup while the application still requests Open.
+        // Retire that request through the ordinary bounded application FIFO,
+        // not by keeping a second durable popup visibility authority.
+        if previous.open && self.requested_open && !next.open && self.invalid.is_none() {
+            context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
         }
         *state = next;
     }
@@ -614,6 +622,7 @@ fn assemble_combo<Action: 'static>(
             options,
             selected_display,
             open: effective_open,
+            requested_open: open,
             enabled: owner_enabled,
             invalid,
             on_request,

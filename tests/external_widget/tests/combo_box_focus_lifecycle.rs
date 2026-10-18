@@ -1,5 +1,5 @@
 #![allow(refining_impl_trait)]
-//! One real ComboBox focus owner; losing focus dismisses via application action.
+//! One real `ComboBox` focus owner; losing focus dismisses via application action.
 use runenui_core::{
     ComboBoxRequest, CommandOrigin, ElementId, NoHostProtocol, SemanticCommand, UiApp, View,
     button, combo_box, option_item, row,
@@ -98,9 +98,9 @@ fn leaving_combo_box_real_focus_closes_popup_only_via_application_fifo() {
     settle(&mut runtime);
     let owner = id(&mut runtime, "focus.combo.owner");
     let other = id(&mut runtime, "focus.other");
-    focus(&mut runtime, owner.clone());
+    focus(&mut runtime, owner);
     assert!(runtime.state().open);
-    assert!(runtime.state().requests.is_empty());
+    assert_eq!(runtime.state().requests.as_slice(), &[]);
     focus(&mut runtime, other.clone());
     assert_eq!(runtime.focus().focused_node(), Some(&other));
     assert!(
@@ -140,7 +140,7 @@ fn compatible_disable_closes_app_owned_popup_once_and_reenable_does_not_reopen()
         assert_eq!(id(&mut runtime, "focus.combo.owner"), owner);
         assert!(!runtime.state().enabled);
         assert_eq!(runtime.state().open, initially_open);
-        assert!(runtime.state().requests.is_empty());
+        assert_eq!(runtime.state().requests.as_slice(), &[]);
         assert_eq!(
             report.remaining_queued_envelopes(),
             usize::from(initially_open),
