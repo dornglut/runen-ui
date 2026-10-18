@@ -154,7 +154,7 @@ fn settle(runtime: &mut AppRuntime<App>) {
             .report()
             .is_quiescent());
 }
-fn id(runtime: &AppRuntime<App>, id: &str) -> MountedNodeId {
+fn id(runtime: &mut AppRuntime<App>, id: &str) -> MountedNodeId {
     let authored = ElementId::new(id).unwrap_or_else(|_| unreachable!());
     runtime.index().nodes().iter()
         .find(|node| node.authored_id() == Some(&authored))
@@ -186,7 +186,7 @@ fn active(runtime: &mut AppRuntime<App>) -> Option<String> {
 #[test]
 fn editable_combo_is_one_focused_m10_editor_and_one_active_descendant_owner() {
     let mut runtime = runtime();
-    let owner = id(&runtime, "editable.owner");
+    let owner = id(&mut runtime, "editable.owner");
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
     let publication = publish(&mut runtime);
     let snapshot = publication.semantic_publication().snapshot();
@@ -215,7 +215,7 @@ fn editable_combo_is_one_focused_m10_editor_and_one_active_descendant_owner() {
 #[test]
 fn committed_input_edits_application_text_without_committing_popup_candidate() {
     let mut runtime = runtime();
-    let owner = id(&runtime, "editable.owner");
+    let owner = id(&mut runtime, "editable.owner");
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
     runtime.submit_text(CommittedTextEvent::new("x", None)
         .unwrap_or_else(|_| unreachable!("nonempty committed source")))
@@ -238,7 +238,7 @@ fn key(logical: LogicalKey, physical: PhysicalKey, composition: KeyboardComposit
 #[test]
 fn composition_and_editor_caret_navigation_do_not_commit_or_move_popup_proxy() {
     let mut runtime = runtime();
-    let owner = id(&runtime, "editable.owner");
+    let owner = id(&mut runtime, "editable.owner");
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
     runtime.submit_keyboard(key(
         LogicalKey::ArrowDown, PhysicalKey::ArrowDown,
@@ -291,7 +291,7 @@ fn editable_constructor_rejects_multiline_and_secret_m10_sources() {
 #[test]
 fn escape_dismisses_without_mutating_committed_value_or_real_focus() {
     let mut runtime = runtime();
-    let owner = id(&runtime, "editable.owner");
+    let owner = id(&mut runtime, "editable.owner");
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
     cmd(&mut runtime, owner.clone(), SemanticCommand::FocusDown);
     assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
@@ -312,10 +312,10 @@ fn escape_dismisses_without_mutating_committed_value_or_real_focus() {
 #[test]
 fn tab_uses_m4_real_focus_and_dismisses_without_accepting_the_active_option() {
     let mut runtime = runtime();
-    let owner = id(&runtime, "editable.owner");
-    let next = id(&runtime, "editable.next");
+    let owner = id(&mut runtime, "editable.owner");
+    let next = id(&mut runtime, "editable.next");
     cmd(&mut runtime, owner, SemanticCommand::RequestFocus);
-    cmd(&mut runtime, id(&runtime, "editable.owner"), SemanticCommand::FocusDown);
+    cmd(&mut runtime, id(&mut runtime, "editable.owner"), SemanticCommand::FocusDown);
     assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
     runtime.submit_keyboard(key(
         LogicalKey::Tab,
@@ -331,11 +331,11 @@ fn tab_uses_m4_real_focus_and_dismisses_without_accepting_the_active_option() {
 #[test]
 fn replacing_exact_active_option_retires_proxy_without_sibling_retargeting() {
     let mut runtime = runtime();
-    let owner = id(&runtime, "editable.owner");
+    let owner = id(&mut runtime, "editable.owner");
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
     cmd(&mut runtime, owner.clone(), SemanticCommand::FocusDown);
     assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
-    let previous = id(&runtime, "editable.beta");
+    let previous = id(&mut runtime, "editable.beta");
     runtime.submit_action(Action::ReplaceOption)
         .unwrap_or_else(|_| unreachable!("application replaces authored Option"));
     settle(&mut runtime);
@@ -350,7 +350,7 @@ fn replacing_exact_active_option_retires_proxy_without_sibling_retargeting() {
 #[test]
 fn open_editable_enter_accepts_only_option_action_and_does_not_submit_textfield() {
     let mut runtime = runtime();
-    let owner = id(&runtime, "editable.owner");
+    let owner = id(&mut runtime, "editable.owner");
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
     cmd(&mut runtime, owner.clone(), SemanticCommand::FocusDown);
     assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
@@ -369,7 +369,7 @@ fn open_editable_enter_accepts_only_option_action_and_does_not_submit_textfield(
 #[test]
 fn closed_editable_enter_reuses_existing_textfield_submit_once_without_option_commit() {
     let mut runtime = runtime();
-    let owner = id(&runtime, "editable.owner");
+    let owner = id(&mut runtime, "editable.owner");
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
     runtime.submit_action(Action::Choose(1))
         .unwrap_or_else(|_| unreachable!("app closes popup with one chosen Option"));
@@ -389,9 +389,9 @@ fn closed_editable_enter_reuses_existing_textfield_submit_once_without_option_co
 #[test]
 fn disabling_open_editable_combo_withdraws_popup_but_preserves_application_text_and_open_intent() {
     let mut runtime = runtime();
-    let owner = id(&runtime, "editable.owner");
-    let old_option = id(&runtime, "editable.alpha");
-    let old_popup = id(&runtime, "editable.list");
+    let owner = id(&mut runtime, "editable.owner");
+    let old_option = id(&mut runtime, "editable.alpha");
+    let old_popup = id(&mut runtime, "editable.list");
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
     runtime.submit_action(Action::Disable)
         .unwrap_or_else(|_| unreachable!("application may disable its editor"));
@@ -411,7 +411,7 @@ fn disabling_open_editable_combo_withdraws_popup_but_preserves_application_text_
     let combo = semantics.nodes().iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("one disabled M10 ComboBox semantic owner"));
-    assert_eq!(combo.state().disabled(), Some(true));
+    assert!(combo.state().disabled());
     assert_eq!(combo.state().expanded(), Some(false));
     assert!(combo.relationships().iter().all(|rel|
         rel.kind() != SemanticRelationshipKind::Controls
@@ -425,14 +425,14 @@ fn disabling_open_editable_combo_withdraws_popup_but_preserves_application_text_
     runtime.submit_action(Action::Enable)
         .unwrap_or_else(|_| unreachable!("application may re-enable its editor"));
     settle(&mut runtime);
-    assert_ne!(id(&runtime, "editable.alpha"), old_option);
-    assert_ne!(id(&runtime, "editable.list"), old_popup);
+    assert_ne!(id(&mut runtime, "editable.alpha"), old_option);
+    assert_ne!(id(&mut runtime, "editable.list"), old_popup);
     let publication = publish(&mut runtime);
     let semantics = publication.semantic_publication().snapshot();
     let combo = semantics.nodes().iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("one reenabled M10 ComboBox semantic owner"));
-    assert_eq!(combo.state().disabled(), Some(false));
+    assert!(!combo.state().disabled());
     assert_eq!(combo.state().expanded(), Some(true));
     assert!(combo.relationships().iter()
         .any(|rel| rel.kind() == SemanticRelationshipKind::Controls));
@@ -455,7 +455,7 @@ fn editable_combo_native_enter_escape_claims_are_event_local_and_ime_safe() {
         (LogicalKey::Enter, PhysicalKey::Enter, KeyboardCompositionState::Active, false, 0, true),
     ] {
         let mut runtime = runtime();
-        let owner = id(&runtime, "editable.owner");
+        let owner = id(&mut runtime, "editable.owner");
         cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
         let before = runtime.input_ownership()
             .unwrap_or_else(|_| unreachable!("editable text owner snapshot"));
