@@ -33,7 +33,6 @@ const PENDING_REMEDIATION: &[&str] = &[
     "combo_box_select_only.rs",
     "spin_button.rs",
     "text_field.rs",
-    "tree_view.rs",
 ];
 
 fn failure(findings: &mut Vec<Finding>, path: &str, message: impl Into<String>) {

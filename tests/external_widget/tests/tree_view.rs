@@ -237,12 +237,25 @@ impl UiApp for InvalidTreeApp {
     }
 }
 
+// A separate public app fixture must be pumped using its own runtime type.
+fn settle_invalid(runtime: &mut AppRuntime<InvalidTreeApp>) {
+    let batch = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("InvalidTreeApp pump observation"));
+    assert!(batch.report().is_quiescent());
+}
+
 #[test]
 fn invalid_domain_id_and_single_selection_fail_closed_even_under_collapsed_ancestor() {
     let mut runtime = AppRuntime::<InvalidTreeApp>::mount(0);
     for mode in [1_u8, 2, 3] {
         runtime.submit_action(mode).unwrap_or_else(|_| unreachable!("authoring transition"));
-        settle(&mut runtime);
+        settle_invalid(&mut runtime);
         let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
             &runenui_core::StyleEnvironment::default(),
             LogicalSize::try_new(600.0, 300.0)
@@ -257,7 +270,7 @@ fn invalid_domain_id_and_single_selection_fail_closed_even_under_collapsed_ances
         ));
     }
     runtime.submit_action(0).unwrap_or_else(|_| unreachable!("valid authoring transition"));
-    settle(&mut runtime);
+    settle_invalid(&mut runtime);
     let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
         &runenui_core::StyleEnvironment::default(),
         LogicalSize::try_new(600.0, 300.0).unwrap_or_else(|_| unreachable!()),
