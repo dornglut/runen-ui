@@ -4,11 +4,11 @@
 use core::time::Duration;
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, Element, FocusGroup, FocusGroupActivationPolicy,
-    FocusGroupBoundaryPolicy, FocusGroupTypeAhead, Focusability, NoHostProtocol,
-    SemanticAction, SemanticCollectionPosition, SemanticCommand, SemanticContribution,
-    SemanticContributionContext, SemanticHierarchyLevel, SemanticNodeContribution,
-    SemanticRole, SemanticSelectionMode, SemanticState, UiApp, View, Widget, WidgetActivation,
-    WidgetActivationContext, WidgetActivationOutput, WidgetUpdateContext, container,
+    FocusGroupBoundaryPolicy, FocusGroupTypeAhead, Focusability, NoHostProtocol, SemanticAction,
+    SemanticCollectionPosition, SemanticCommand, SemanticContribution, SemanticContributionContext,
+    SemanticHierarchyLevel, SemanticNodeContribution, SemanticRole, SemanticSelectionMode,
+    SemanticState, UiApp, View, Widget, WidgetActivation, WidgetActivationContext,
+    WidgetActivationOutput, WidgetUpdateContext, container,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
 
@@ -22,8 +22,11 @@ struct TreeRoot;
 impl Widget<Action> for TreeRoot {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn semantics(&self, _: &Self::State, context: SemanticContributionContext)
-        -> SemanticContribution {
+    fn semantics(
+        &self,
+        _: &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
         let mut node = SemanticNodeContribution::primary(SemanticRole::Tree)
             .with_selection_mode(SemanticSelectionMode::Single);
         if context.has_mounted_children() {
@@ -39,15 +42,25 @@ struct Branch;
 impl Widget<Action> for Branch {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn semantics(&self, _: &Self::State, context: SemanticContributionContext)
-        -> SemanticContribution {
+    fn semantics(
+        &self,
+        _: &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
         let mut node = SemanticNodeContribution::primary(SemanticRole::TreeItem)
             .with_name("Folder")
-            .with_state(SemanticState::ENABLED.with_expanded(true).with_selected(false))
-            .with_hierarchy_level(SemanticHierarchyLevel::new(1)
-                .unwrap_or_else(|_| unreachable!("level 1 is valid")))
-            .with_collection_position(SemanticCollectionPosition::new(0, Some(1))
-                .unwrap_or_else(|_| unreachable!("root position valid")))
+            .with_state(
+                SemanticState::ENABLED
+                    .with_expanded(true)
+                    .with_selected(false),
+            )
+            .with_hierarchy_level(
+                SemanticHierarchyLevel::new(1).unwrap_or_else(|_| unreachable!("level 1 is valid")),
+            )
+            .with_collection_position(
+                SemanticCollectionPosition::new(0, Some(1))
+                    .unwrap_or_else(|_| unreachable!("root position valid")),
+            )
             .with_action(SemanticAction::RequestFocus);
         if context.has_mounted_children() {
             node = node.with_mounted_children();
@@ -66,7 +79,9 @@ struct Leaf {
 }
 impl Widget<Action> for Leaf {
     type State = bool;
-    fn create_state(&self) -> Self::State { self.selected }
+    fn create_state(&self) -> Self::State {
+        self.selected
+    }
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         if *state != self.selected {
             context.invalidate(runenui_core::WidgetInvalidation::SEMANTICS);
@@ -76,12 +91,18 @@ impl Widget<Action> for Leaf {
     fn activation(&self, _: &Self::State) -> WidgetActivation {
         WidgetActivation::actionable(true)
     }
-    fn activate(&mut self, _: &mut Self::State, _: &mut WidgetActivationContext<Action>)
-        -> WidgetActivationOutput<Action> {
+    fn activate(
+        &mut self,
+        _: &mut Self::State,
+        _: &mut WidgetActivationContext<Action>,
+    ) -> WidgetActivationOutput<Action> {
         WidgetActivationOutput::action(Action::Select(self.id.to_owned()))
     }
-    fn semantics(&self, state: &Self::State, _: SemanticContributionContext)
-        -> SemanticContribution {
+    fn semantics(
+        &self,
+        state: &Self::State,
+        _: SemanticContributionContext,
+    ) -> SemanticContribution {
         SemanticContribution::single(
             SemanticNodeContribution::primary(SemanticRole::TreeItem)
                 .with_name(self.name)
