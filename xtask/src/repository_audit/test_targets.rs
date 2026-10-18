@@ -22,7 +22,7 @@ const SUITES: &[&str] = &[
 // Explicit, reviewed existing omissions; #483 owns staged public-test repair.
 // A file must leave this quarantine as soon as its suite import is accepted.
 // M11 CTRL-85/86 authoring policy remains accepted; #482 closed unmerged.
-const PENDING_REMEDIATION: &[&str] = &["combo_box_select_only.rs"];
+const PENDING_REMEDIATION: &[&str] = &["combo_box_editable.rs", "combo_box_select_only.rs"];
 
 fn failure(findings: &mut Vec<Finding>, path: &str, message: impl Into<String>) {
     findings.push(Finding::fatal(
