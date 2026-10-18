@@ -122,7 +122,7 @@ fn editable_initial_open_and_keyboard_navigation_reveal_without_focus_or_text_mu
         let viewport = app
             .index()
             .node(&list)
-            .and_then(|node| node.parent())
+            .and_then(runenui_runtime::MountedNodeRef::parent)
             .unwrap_or_else(|| unreachable!("standard nonfocusable viewport"))
             .clone();
         let _ = publish(&mut app);
