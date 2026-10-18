@@ -173,9 +173,12 @@ fn nested_imports(contents: &str, path: &str, findings: &mut Vec<Finding>) -> Ve
             .is_some()
         {
             if let Some(file) = pending.take() {
-                if Path::new(file).extension().is_none_or(|extension| extension != "rs")
+                if Path::new(file)
+                    .extension()
+                    .is_none_or(|extension| extension != "rs")
                     || file.contains('/')
-                    || file.contains('\\') {
+                    || file.contains('\\')
+                {
                     failure(
                         findings,
                         path,
