@@ -183,11 +183,13 @@ fn check_coverage(
         }
     }
     for pending in PENDING_REMEDIATION {
-        if !sources.contains(*pending) || registered.contains_key(*pending) {
+        if sources.contains(*pending) && registered.contains_key(*pending) {
             failure(
                 findings,
                 TEST_DIRECTORY,
-                format!("obsolete or invalid #483 quarantine entry: {pending}; retire it when registered"),
+                format!(
+                    "obsolete or invalid #483 quarantine entry: {pending}; retire it when registered"
+                ),
             );
         }
     }
@@ -220,6 +222,15 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<(), Stri
         audit_suite(root, suite, &mut registered, findings)?;
     }
     check_coverage(&sources, &registered, findings);
+    for pending in PENDING_REMEDIATION {
+        if !sources.contains(*pending) {
+            failure(
+                findings,
+                TEST_DIRECTORY,
+                format!("missing #483 quarantine source: {pending}"),
+            );
+        }
+    }
     Ok(())
 }
 
@@ -286,7 +297,11 @@ mod tests {
         );
         findings.clear();
         check_coverage(&files, &registered, &mut findings);
-        assert!(findings.iter().any(|item| item.message.contains("obsolete")));
+        assert!(
+            findings
+                .iter()
+                .any(|item| item.message.contains("obsolete"))
+        );
     }
 
     #[test]
