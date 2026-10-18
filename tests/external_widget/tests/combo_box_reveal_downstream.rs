@@ -1,7 +1,7 @@
 #![allow(refining_impl_trait)]
 //! The descendant-targeted reveal protocol is an ordinary downstream Widget
 //! capability: exact mounted descendants share M4/#344's existing FIFO and
-//! surface geometry rather than relying on private ComboBox implementation.
+//! surface geometry rather than relying on private `ComboBox` implementation.
 
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, ElementId, EventContext, EventPhase, Focusability,
@@ -34,7 +34,7 @@ impl Widget<()> for RevealOwner {
 
     fn event(
         &mut self,
-        _: &mut Self::State,
+        &mut (): &mut Self::State,
         event: &UiEvent,
         context: &mut EventContext<'_, ()>,
     ) -> WidgetEventOutput {
@@ -134,7 +134,7 @@ fn custom_child_bearing_widget_reveals_only_unique_enabled_exact_mounted_descend
         let viewport = app
             .index()
             .node(&list)
-            .and_then(|node| node.parent())
+            .and_then(runenui_runtime::MountedNodeRef::parent)
             .unwrap_or_else(|| unreachable!("standard scroll viewport"))
             .clone();
         let _ = app
@@ -198,7 +198,7 @@ impl Widget<()> for InitialCompositeOwner {
 
     fn semantics(
         &self,
-        _: &Self::State,
+        &(): &Self::State,
         context: SemanticContributionContext,
     ) -> SemanticContribution {
         let reference = |name: &str| SemanticReference::Authored {
@@ -292,7 +292,7 @@ fn downstream_semantic_composite_reveals_deep_initial_option_without_builtin_wid
     let viewport = app
         .index()
         .node(&list)
-        .and_then(|node| node.parent())
+        .and_then(runenui_runtime::MountedNodeRef::parent)
         .unwrap_or_else(|| unreachable!("bounded standard viewport"))
         .clone();
     let first = app
@@ -339,9 +339,15 @@ fn downstream_semantic_composite_reveals_deep_initial_option_without_builtin_wid
 
 #[test]
 fn initial_generic_reveal_respects_full_command_fifo_without_a_private_retry() {
+    // The composite's initial work must fit before the FIFO can be saturated.
+    // Keep callback output allowance bounded independently of queue capacity.
+    const CAPACITY: usize = 64;
+    let limits = runenui_runtime::RuntimeLimits::default()
+        .with_waiting_envelopes(CAPACITY)
+        .with_transaction_outputs(1);
     let mut app = AppRuntime::<InitialApp>::mount_with_config(
         InitialMode::Enabled,
-        RuntimeConfig::default().with_queue_capacity(2),
+        RuntimeConfig::default().with_limits(limits),
     );
     let initial_work = app
         .pump(PumpBudget::new(256, 256, 256, 256))
@@ -361,13 +367,13 @@ fn initial_generic_reveal_respects_full_command_fifo_without_a_private_retry() {
         .unwrap_or_else(|| unreachable!("current downstream owner"))
         .id()
         .clone();
-    for _ in 0..2 {
+    for _ in 0..CAPACITY {
         app.submit_command(
             owner.clone(),
             SemanticCommand::ScrollIntoView,
             CommandOrigin::programmatic(),
         )
-        .unwrap_or_else(|_| unreachable!("two ordinary FIFO slots"));
+        .unwrap_or_else(|_| unreachable!("each ordinary FIFO slot must admit a command"));
     }
     let environment = runenui_core::StyleEnvironment::default();
     let frame = SurfaceBuildContext::tight(
@@ -399,7 +405,7 @@ fn initial_generic_reveal_respects_full_command_fifo_without_a_private_retry() {
     let viewport = app
         .index()
         .node(&list)
-        .and_then(|node| node.parent())
+        .and_then(runenui_runtime::MountedNodeRef::parent)
         .unwrap_or_else(|| unreachable!("standard scrolling ancestor"))
         .clone();
     assert_eq!(
@@ -466,7 +472,7 @@ fn first_publication_reveal_rejects_semantically_disabled_inert_or_ineligible_ta
         let viewport = app
             .index()
             .node(&list)
-            .and_then(|node| node.parent())
+            .and_then(runenui_runtime::MountedNodeRef::parent)
             .unwrap_or_else(|| unreachable!("standard scroll viewport"))
             .clone();
         let _ = app
