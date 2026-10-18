@@ -21,12 +21,11 @@ const SUITES: &[&str] = &[
 
 // Explicit, reviewed existing omissions; #483 owns staged public-test repair.
 // A file must leave this quarantine as soon as its suite import is accepted.
-// #477/#482 own the lifecycle file and must resolve the M11 CTRL-85/86 conflict.
+// M11 CTRL-85/86 authoring policy remains accepted; #482 closed unmerged.
 const PENDING_REMEDIATION: &[&str] = &[
     "combo_box_boundaries.rs",
     "combo_box_editable.rs",
     "combo_box_editable_parity.rs",
-    "combo_box_focus_lifecycle.rs",
     "combo_box_option_proxy.rs",
     "combo_box_reveal_downstream.rs",
     "combo_box_reveal_editable.rs",

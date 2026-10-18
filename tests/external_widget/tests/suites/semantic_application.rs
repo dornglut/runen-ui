@@ -1,3 +1,5 @@
+#[path = "../combo_box_focus_lifecycle.rs"]
+mod combo_box_focus_lifecycle;
 #[path = "../content.rs"]
 mod content;
 #[path = "../disclosure.rs"]
