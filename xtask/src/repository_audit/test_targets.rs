@@ -26,7 +26,6 @@ const PENDING_REMEDIATION: &[&str] = &[
     "combo_box_editable.rs",
     "combo_box_reveal_downstream.rs",
     "combo_box_scroll_viewport.rs",
-    "combo_box_select_only.rs",
 ];
 
 fn failure(findings: &mut Vec<Finding>, path: &str, message: impl Into<String>) {
