@@ -2357,9 +2357,8 @@ fn focusability_only_retirement_preflights_pending_ime_callbacks_with_focusout()
         let log = Rc::new(RefCell::new(Vec::new()));
         let mut runtime = mounted_with_config(
             InputState::standard(Rc::clone(&log)),
-            RuntimeConfig::default().with_limits(
-                RuntimeLimits::default().with_transaction_outputs(1),
-            ),
+            RuntimeConfig::default()
+                .with_limits(RuntimeLimits::default().with_transaction_outputs(1)),
         );
         focus(&mut runtime, "target");
         let old = target(&mut runtime, "target");
@@ -2397,7 +2396,8 @@ fn focusability_only_retirement_preflights_pending_ime_callbacks_with_focusout()
             assert!(runtime.trace().records().any(|record| matches!(
                 record.kind(),
                 TraceRecordKind::RoutedEventAdmissionRejected {
-                    capacity: runenui_runtime::TraceRoutedAdmissionRejection::TraceSequenceExhausted
+                    capacity:
+                        runenui_runtime::TraceRoutedAdmissionRejection::TraceSequenceExhausted
                 }
             )));
         } else {
@@ -2409,7 +2409,8 @@ fn focusability_only_retirement_preflights_pending_ime_callbacks_with_focusout()
                     TraceRecordKind::FocusNotificationResolved {
                         kind: runenui_runtime::FocusEventKind::Out
                     }
-                ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)),
+                ) && record.context().delivery()
+                    == Some(TraceDeliveryOutcome::Delivered)),
                 "ordinary FocusOut without composition keeps its prior admitted budget"
             );
         }

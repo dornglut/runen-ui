@@ -1038,8 +1038,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if route.as_slice() != self.focus.route() {
             return Ok(false);
         }
-        let mut transaction = self
-            .try_begin_routed_transaction_with_trace(facts, MandatoryTracePlan::focus_commit())?;
+        // Focusability alone may retire focus while composition stays valid.
+        // The forthcoming cancel and FocusOut each invoke the unchanged old
+        // route; charge both before either can mutate mounted widget state.
+        let cancel_composition = self.composition.owner() == Some(&owner);
+        let mut transaction =
+            self.try_begin_reconciled_focus_cleanup_transaction(facts, cancel_composition)?;
         if let Err(error) =
             self.commit_focus_transition(&mut transaction, None, FocusReason::Disablement)
         {
