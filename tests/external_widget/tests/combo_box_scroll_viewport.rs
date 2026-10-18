@@ -69,10 +69,15 @@ impl UiApp for App {
 
 fn settle(app: &mut AppRuntime<App>) {
     assert!(
-        app.pump(PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX))
-            .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
-            .report()
-            .is_quiescent()
+        app.pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX
+        ))
+        .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+        .report()
+        .is_quiescent()
     );
 }
 fn id(app: &mut AppRuntime<App>, text: &str) -> MountedNodeId {
@@ -110,7 +115,8 @@ fn long_combo_popup_is_bounded_and_ordinary_exact_option_reveal_preserves_owner_
 
     let list = id(&mut app, "viewport.list");
     let last = id(&mut app, "viewport.option.17");
-    let viewport = app.index()
+    let viewport = app
+        .index()
         .node(&list)
         .and_then(|node| node.parent())
         .unwrap_or_else(|| unreachable!("ListBox is inside standard scroll viewport"))
@@ -121,48 +127,95 @@ fn long_combo_popup_is_bounded_and_ordinary_exact_option_reveal_preserves_owner_
         scroll.layout().max_height(),
         LayoutBound::Length(LogicalLength::from(96_u8))
     );
-    assert_eq!(scroll.layout().overflow().vertical(), OverflowPolicy::Scroll);
-    assert_eq!(scroll.layout().overflow().horizontal(), OverflowPolicy::Clip);
-    assert!(!scroll.is_focusable(), "popup scroll viewport is not a second focus owner");
-    assert!(!mounted.node(&last).unwrap_or_else(|| unreachable!()).is_focusable());
+    assert_eq!(
+        scroll.layout().overflow().vertical(),
+        OverflowPolicy::Scroll
+    );
+    assert_eq!(
+        scroll.layout().overflow().horizontal(),
+        OverflowPolicy::Clip
+    );
+    assert!(
+        !scroll.is_focusable(),
+        "popup scroll viewport is not a second focus owner"
+    );
+    assert!(
+        !mounted
+            .node(&last)
+            .unwrap_or_else(|| unreachable!())
+            .is_focusable()
+    );
     let first = publish(&mut app);
-    let bounds = first.frame().node(&viewport).unwrap_or_else(|| unreachable!()).bounds();
-    let last_bounds = first.frame().node(&last).unwrap_or_else(|| unreachable!()).bounds();
+    let bounds = first
+        .frame()
+        .node(&viewport)
+        .unwrap_or_else(|| unreachable!())
+        .bounds();
+    let last_bounds = first
+        .frame()
+        .node(&last)
+        .unwrap_or_else(|| unreachable!())
+        .bounds();
     assert!(bounds.height() > 0.0 && bounds.height() <= 96.0);
-    assert!(last_bounds.y() + last_bounds.height() > bounds.y() + bounds.height(),
-        "long list has content outside the bounded viewport");
-    assert_eq!(app.index().node(&viewport).unwrap_or_else(|| unreachable!())
-        .interaction().scroll_offset(), (0.0, 0.0));
+    assert!(
+        last_bounds.y() + last_bounds.height() > bounds.y() + bounds.height(),
+        "long list has content outside the bounded viewport"
+    );
+    assert_eq!(
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!())
+            .interaction()
+            .scroll_offset(),
+        (0.0, 0.0)
+    );
 
     // This confirms the standard #344 targetable runtime command and viewport.
     // ComboBox active-item navigation must separately gain a safe targeted emission
     // seam before M11CTRL-88 can be accepted.
     command(&mut app, last, SemanticCommand::ScrollIntoView);
-    assert!(app.index().node(&viewport).unwrap_or_else(|| unreachable!())
-        .interaction().scroll_offset().1 > 0.0);
+    assert!(
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!())
+            .interaction()
+            .scroll_offset()
+            .1
+            > 0.0
+    );
     let after = publish(&mut app);
     let semantic = after.semantic_publication().snapshot();
-    let owner_semantic = semantic.nodes().iter()
+    let owner_semantic = semantic
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("ComboBox semantics"));
-    assert!(owner_semantic.relationships().iter()
-        .any(|link| link.kind() == SemanticRelationshipKind::Controls));
-    assert_eq!(app.state().chosen, 0, "reveal must never commit a selection");
-    assert_eq!(app.focus().focused_node(), Some(&owner),
-        "exact Option scrolling must retain real ComboBox focus");
+    assert!(
+        owner_semantic
+            .relationships()
+            .iter()
+            .any(|link| link.kind() == SemanticRelationshipKind::Controls)
+    );
+    assert_eq!(
+        app.state().chosen,
+        0,
+        "reveal must never commit a selection"
+    );
+    assert_eq!(
+        app.focus().focused_node(),
+        Some(&owner),
+        "exact Option scrolling must retain real ComboBox focus"
+    );
 }
 
 #[test]
 fn closed_popup_unmounts_both_listbox_and_its_scroll_viewport() {
     let mut app = AppRuntime::<App>::mount(State::default());
     settle(&mut app);
-    assert!(
-        app.index().nodes().iter().all(|node| {
-            node.authored_id().is_none_or(|id| {
-                id.as_str() != "viewport.list" && id.as_str() != "viewport.option.17"
-            })
-        })
-    );
+    assert!(app.index().nodes().iter().all(|node| {
+        node.authored_id()
+            .is_none_or(|id| id.as_str() != "viewport.list" && id.as_str() != "viewport.option.17")
+    }));
     let publication = publish(&mut app);
     assert!(publication.semantic_publication().snapshot().nodes().iter().all(|node|
         node.role() != SemanticRole::ListBox && node.role() != SemanticRole::Option
