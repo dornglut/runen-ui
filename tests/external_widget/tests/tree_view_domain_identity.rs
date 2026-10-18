@@ -23,8 +23,11 @@ impl UiApp for App {
     type Action = Action;
     type HostProtocol = NoHostProtocol;
     fn root(state: &Self::State) -> impl View<Self::Action> {
+        // Authored IDs identify public nodes; keys determine mounted lifetimes.
+        // Change the key as well to exercise a genuine remount.
         let leaf = tree_item("stable-domain-item", "Durable", Vec::new())
             .id(format!("realized.{}", state.generation))
+            .key(format!("realized.{}", state.generation))
             .selected(state.selected.as_deref() == Some("stable-domain-item"))
             .on_request(Action::Request);
         tree_view(vec![leaf]).id("stable.tree")
