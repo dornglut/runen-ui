@@ -5,14 +5,13 @@
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, CommittedTextEvent, EditIntent, EditResolution,
     EditableContribution, EditingSessionPolicy, Effects, ElementId, EventContext, EventPhase,
-    IntoUpdateOutput, NoHostProtocol, SemanticAction, SemanticAutocomplete,
-    SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticEditable,
-    SemanticEditableMode, SemanticNodeContribution, SemanticPopupKind, SemanticReference,
-    SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
-    TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
-    TextLeafMeasure, TextNewlinePolicy, TextPosition, TextSelection, TextSensitivity,
-    UiApp, UiEvent, UpdateOutput, View, Widget, WidgetEventOutput, WidgetInvalidation,
-    WidgetMeasure, WidgetMeasureInput, WidgetTextInput, WidgetUpdateContext,
+    IntoUpdateOutput, NoHostProtocol, SemanticAction, SemanticAutocomplete, SemanticCommand,
+    SemanticContribution, SemanticContributionContext, SemanticEditable, SemanticEditableMode,
+    SemanticNodeContribution, SemanticPopupKind, SemanticReference, SemanticRelationship,
+    SemanticRelationshipKind, SemanticRole, SemanticState, TextAffinity, TextDocumentId,
+    TextDocumentRevision, TextDocumentSnapshot, TextLeafMeasure, TextNewlinePolicy, TextPosition,
+    TextSelection, TextSensitivity, UiApp, UiEvent, UpdateOutput, View, Widget, WidgetEventOutput,
+    WidgetInvalidation, WidgetMeasure, WidgetMeasureInput, WidgetTextInput, WidgetUpdateContext,
     container, list_box, option_item,
 };
 use runenui_runtime::{
@@ -23,7 +22,10 @@ const FONT: &[u8] =
     include_bytes!("../../../crates/runenui_text/tests/fixtures/Cantarell-Regular.ttf");
 
 fn doc(revision: u64) -> TextDocumentSnapshot {
-    TextDocumentSnapshot::new(TextDocumentId::new(30331), TextDocumentRevision::new(revision))
+    TextDocumentSnapshot::new(
+        TextDocumentId::new(30331),
+        TextDocumentRevision::new(revision),
+    )
 }
 enum Action {
     Edit(Box<EditIntent>),
@@ -49,9 +51,7 @@ impl Widget<Action> for Owner {
 
     fn update(&self, _: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         context.invalidate(
-            WidgetInvalidation::SEMANTICS
-                | WidgetInvalidation::LAYOUT
-                | WidgetInvalidation::PAINT,
+            WidgetInvalidation::SEMANTICS | WidgetInvalidation::LAYOUT | WidgetInvalidation::PAINT,
         );
     }
 
@@ -112,7 +112,11 @@ impl Widget<Action> for Owner {
         ) else {
             return SemanticContribution::empty();
         };
-        let option_id = if *second_active { "parity.second" } else { "parity.first" };
+        let option_id = if *second_active {
+            "parity.second"
+        } else {
+            "parity.first"
+        };
         let mut node = SemanticNodeContribution::primary(SemanticRole::ComboBox)
             .with_name("Custom editable")
             .with_state(SemanticState::ENABLED.with_expanded(true))
@@ -161,7 +165,8 @@ impl UiApp for App {
             state.source.as_str(),
             state.source.len(),
             TextAffinity::Upstream,
-        ).unwrap_or_else(|_| unreachable!("valid downstream caret"));
+        )
+        .unwrap_or_else(|_| unreachable!("valid downstream caret"));
         let popup = list_box([
             option_item("First", state.chosen == 1)
                 .id("parity.first")
@@ -171,7 +176,8 @@ impl UiApp for App {
                 .id("parity.second")
                 .combo_box_proxy()
                 .on_activate(|| Action::Choose(2)),
-        ]).id("parity.popup");
+        ])
+        .id("parity.popup");
         container(
             Owner {
                 snapshot,
