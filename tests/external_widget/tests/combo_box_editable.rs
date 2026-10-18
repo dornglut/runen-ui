@@ -315,7 +315,8 @@ fn tab_uses_m4_real_focus_and_dismisses_without_accepting_the_active_option() {
     let owner = id(&mut runtime, "editable.owner");
     let next = id(&mut runtime, "editable.next");
     cmd(&mut runtime, owner, SemanticCommand::RequestFocus);
-    cmd(&mut runtime, id(&mut runtime, "editable.owner"), SemanticCommand::FocusDown);
+    let owner = id(&mut runtime, "editable.owner");
+    cmd(&mut runtime, owner, SemanticCommand::FocusDown);
     assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
     runtime.submit_keyboard(key(
         LogicalKey::Tab,
@@ -402,40 +403,62 @@ fn disabling_open_editable_combo_withdraws_popup_but_preserves_application_text_
     assert_eq!(runtime.state().revision, 1);
     assert_eq!(runtime.state().chosen, 0);
     assert!(runtime.state().popup_log.is_empty());
-    assert!(runtime.index().nodes().iter().all(|node|
-        node.id() != &old_option && node.id() != &old_popup
-    ), "disabled editor cannot retain an undismissable modal popup");
+    assert!(
+        runtime
+            .index()
+            .nodes()
+            .iter()
+            .all(|node| node.id() != &old_option && node.id() != &old_popup),
+        "disabled editor cannot retain an undismissable modal popup"
+    );
 
     let publication = publish(&mut runtime);
     let semantics = publication.semantic_publication().snapshot();
-    let combo = semantics.nodes().iter()
+    let combo = semantics
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("one disabled M10 ComboBox semantic owner"));
     assert!(combo.state().disabled());
     assert_eq!(combo.state().expanded(), Some(false));
-    assert!(combo.relationships().iter().all(|rel|
-        rel.kind() != SemanticRelationshipKind::Controls
-            && rel.kind() != SemanticRelationshipKind::ActiveDescendant));
+    assert!(
+        combo
+            .relationships()
+            .iter()
+            .all(|rel| rel.kind() != SemanticRelationshipKind::Controls
+                && rel.kind() != SemanticRelationshipKind::ActiveDescendant)
+    );
     assert!(semantics.nodes().iter().all(|node|
         node.role() != SemanticRole::ListBox && node.role() != SemanticRole::Option));
-    assert!(!runtime.index().node(&owner)
-        .is_some_and(|node| node.is_focusable()));
+    assert!(
+        !runtime
+            .index()
+            .node(&owner)
+            .is_some_and(|node| node.is_focusable())
+    );
     assert_eq!(runtime.state().submitted, 0);
 
-    runtime.submit_action(Action::Enable)
+    runtime
+        .submit_action(Action::Enable)
         .unwrap_or_else(|_| unreachable!("application may re-enable its editor"));
     settle(&mut runtime);
     assert_ne!(id(&mut runtime, "editable.alpha"), old_option);
     assert_ne!(id(&mut runtime, "editable.list"), old_popup);
     let publication = publish(&mut runtime);
     let semantics = publication.semantic_publication().snapshot();
-    let combo = semantics.nodes().iter()
+    let combo = semantics
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("one reenabled M10 ComboBox semantic owner"));
     assert!(!combo.state().disabled());
     assert_eq!(combo.state().expanded(), Some(true));
-    assert!(combo.relationships().iter()
-        .any(|rel| rel.kind() == SemanticRelationshipKind::Controls));
+    assert!(
+        combo
+            .relationships()
+            .iter()
+            .any(|rel| rel.kind() == SemanticRelationshipKind::Controls)
+    );
     assert_eq!(runtime.state().source, "q");
     assert_eq!(runtime.state().revision, 1);
     assert_eq!(runtime.state().chosen, 0);
@@ -450,18 +473,42 @@ fn editable_combo_native_enter_escape_claims_are_event_local_and_ime_safe() {
     };
 
     for (logical, physical, composition, claim, chosen, open) in [
-        (LogicalKey::Enter, PhysicalKey::Enter, KeyboardCompositionState::Inactive, true, 1, false),
-        (LogicalKey::Escape, PhysicalKey::Escape, KeyboardCompositionState::Inactive, true, 0, false),
-        (LogicalKey::Enter, PhysicalKey::Enter, KeyboardCompositionState::Active, false, 0, true),
+        (
+            LogicalKey::Enter,
+            PhysicalKey::Enter,
+            KeyboardCompositionState::Inactive,
+            true,
+            1,
+            false,
+        ),
+        (
+            LogicalKey::Escape,
+            PhysicalKey::Escape,
+            KeyboardCompositionState::Inactive,
+            true,
+            0,
+            false,
+        ),
+        (
+            LogicalKey::Enter,
+            PhysicalKey::Enter,
+            KeyboardCompositionState::Active,
+            false,
+            0,
+            true,
+        ),
     ] {
         let mut runtime = runtime();
         let owner = id(&mut runtime, "editable.owner");
         cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
-        let before = runtime.input_ownership()
+        let before = runtime
+            .input_ownership()
             .unwrap_or_else(|_| unreachable!("editable text owner snapshot"));
-        let receipt = runtime.submit_keyboard(key(logical, physical, composition))
+        let receipt = runtime
+            .submit_keyboard(key(logical, physical, composition))
             .unwrap_or_else(|_| unreachable!("native editable key admitted"));
-        let batch = runtime.pump(PumpBudget::new(1, 0, 0, 0))
+        let batch = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
             .unwrap_or_else(|error| unreachable!("editable native settlement: {error:?}"));
         let [InputArbitrationRecord::InputSettled(settled)] = batch.ordered_records() else {
             unreachable!("one reached keyboard input")
@@ -474,12 +521,18 @@ fn editable_combo_native_enter_escape_claims_are_event_local_and_ime_safe() {
         assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
         assert!(facts.reasons().contains(&UiInputClaimReason::TextOwner));
         assert_eq!(
-            facts.reasons().contains(&UiInputClaimReason::ExplicitWidgetClaim),
+            facts
+                .reasons()
+                .contains(&UiInputClaimReason::ExplicitWidgetClaim),
             claim,
             "IME must not silently become an explicit ComboBox acceptance"
         );
         assert_eq!(batch.processed_through(), Some(receipt.sequence()));
-        assert_eq!(runtime.state().chosen, 0, "native input is not an application update");
+        assert_eq!(
+            runtime.state().chosen,
+            0,
+            "native input is not an application update"
+        );
         assert_eq!(runtime.focus().focused_node(), Some(&owner));
         settle(&mut runtime);
         assert_eq!(runtime.state().chosen, chosen);
