@@ -2,10 +2,10 @@
 
 // Production TreeView must work from an ordinary external application.
 use runenui_core::{
-    CommandOrigin, NoHostProtocol, SemanticAction, SemanticCollectionPosition, SemanticCommand,
-    SemanticRole, TreeItemRequest, UiApp, View, tree_item, tree_view,
-    KeyboardEvent, KeyboardPhase, KeyboardCompositionState, KeyLocation, KeyModifiers,
-    LogicalKey, PhysicalKey,
+    CommandOrigin, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
+    KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey, SemanticAction,
+    SemanticCollectionPosition, SemanticCommand, SemanticRole, TreeItemRequest, UiApp, View,
+    tree_item, tree_view,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext};
 
@@ -38,18 +38,26 @@ impl UiApp for App {
             .selected(state.selected == "a")
             .enabled(!state.disabled_a)
             .discoverable_when_disabled(state.discover_a)
-            .on_request(Action::Request).id("tree.a");
+            .on_request(Action::Request)
+            .id("tree.a");
         let second = tree_item("b", "Bravo", Vec::new())
             .selected(state.selected == "b")
-            .on_request(Action::Request).id("tree.b");
-        let children = if state.show_b { vec![first, second] } else { vec![first] };
+            .on_request(Action::Request)
+            .id("tree.b");
+        let children = if state.show_b {
+            vec![first, second]
+        } else {
+            vec![first]
+        };
         let parent = tree_item("parent", "Folder", children)
             .expanded(state.expanded)
             .selected(state.selected == "parent")
-            .on_request(Action::Request).id("tree.parent");
+            .on_request(Action::Request)
+            .id("tree.parent");
         let other = tree_item("other", "Outside", Vec::new())
             .selected(state.selected == "other")
-            .on_request(Action::Request).id("tree.other");
+            .on_request(Action::Request)
+            .id("tree.other");
         tree_view(vec![parent, other])
             .selection_follows_focus(state.follow_focus)
             .id("tree.root")
@@ -66,7 +74,7 @@ impl UiApp for App {
                     TreeItemRequest::Expand(id) if id == "parent" => state.expanded = true,
                     TreeItemRequest::Collapse(id) if id == "parent" => state.expanded = false,
                     TreeItemRequest::Select(id) => state.selected.clone_from(id),
-                    _ => {},
+                    _ => {}
                 }
                 state.actions.push(intent);
             }
@@ -75,8 +83,12 @@ impl UiApp for App {
 }
 fn fresh(expanded: bool) -> AppRuntime<App> {
     let mut runtime = AppRuntime::<App>::mount(State {
-        expanded, selected: "parent".to_owned(), actions: Vec::new(),
-        disabled_a: false, discover_a: false, show_b: true,
+        expanded,
+        selected: "parent".to_owned(),
+        actions: Vec::new(),
+        disabled_a: false,
+        discover_a: false,
+        show_b: true,
         follow_focus: false,
     });
     settle(&mut runtime);
@@ -95,13 +107,18 @@ fn settle(runtime: &mut AppRuntime<App>) {
 }
 fn item(runtime: &mut AppRuntime<App>, name: &str) -> MountedNodeId {
     let authored = runenui_core::ElementId::new(name).unwrap_or_else(|_| unreachable!());
-    runtime.index().nodes().iter()
+    runtime
+        .index()
+        .nodes()
+        .iter()
         .find(|node| node.authored_id() == Some(&authored))
         .unwrap_or_else(|| unreachable!("authored tree item present"))
-        .id().clone()
+        .id()
+        .clone()
 }
 fn command(runtime: &mut AppRuntime<App>, target: MountedNodeId, key: SemanticCommand) {
-    runtime.submit_command(target, key, CommandOrigin::programmatic())
+    runtime
+        .submit_command(target, key, CommandOrigin::programmatic())
         .unwrap_or_else(|_| unreachable!("tree command admitted"));
     settle(runtime);
 }
@@ -115,7 +132,10 @@ fn exact_parent_focus_uses_bubbling_not_preceding_sibling() {
     assert_eq!(runtime.focus().focused_node(), Some(&b));
     command(&mut runtime, b, SemanticCommand::FocusLeft);
     assert_eq!(runtime.focus().focused_node(), Some(&parent));
-    assert!(runtime.state().actions.is_empty(), "focus never commits selection");
+    assert!(
+        runtime.state().actions.is_empty(),
+        "focus never commits selection"
+    );
     command(&mut runtime, parent.clone(), SemanticCommand::FocusRight);
     let first_child = item(&mut runtime, "tree.a");
     assert_eq!(runtime.focus().focused_node(), Some(&first_child));
@@ -130,7 +150,10 @@ fn collapse_expand_and_activation_are_application_fifo_with_stable_domain_ids() 
     command(&mut runtime, parent.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, parent.clone(), SemanticCommand::FocusRight);
     assert!(runtime.state().expanded);
-    assert_eq!(runtime.state().actions, [TreeItemRequest::Expand("parent".to_owned())]);
+    assert_eq!(
+        runtime.state().actions,
+        [TreeItemRequest::Expand("parent".to_owned())]
+    );
     let a = item(&mut runtime, "tree.a");
     command(&mut runtime, a, SemanticCommand::Activate);
     assert_eq!(runtime.state().selected, "a");
