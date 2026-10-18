@@ -4,11 +4,11 @@
 //! one #311 command FIFO, no durable numeric state in RunenUI.
 use runenui_core::{
     CommandOrigin, CommittedTextEvent, EditIntent, EditResolution, Effects, IntoUpdateOutput,
-    KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase,
-    LogicalKey, NoHostProtocol, PhysicalKey, SemanticAction, SemanticActionRequest,
-    SemanticCommand, SemanticNumber, SemanticRole, SpinButtonRange, SpinButtonRequest,
-    StyleEnvironment, TextAffinity, TextDocumentId, TextDocumentRevision,
-    TextDocumentSnapshot, TextPosition, TextSelection, UiApp, UpdateOutput, View, spin_button,
+    KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
+    NoHostProtocol, PhysicalKey, SemanticAction, SemanticActionRequest, SemanticCommand,
+    SemanticNumber, SemanticRole, SpinButtonRange, SpinButtonRequest, StyleEnvironment,
+    TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,
+    TextSelection, UiApp, UpdateOutput, View, spin_button,
 };
 use runenui_runtime::{
     AppRuntime, FontFamilyName, GenericFontFamily, LayoutConstraints, PumpBudget,
@@ -19,7 +19,10 @@ fn number(value: f64) -> SemanticNumber {
     SemanticNumber::new(value).unwrap_or_else(|_| unreachable!("finite fixture number"))
 }
 const fn snapshot(revision: u64) -> TextDocumentSnapshot {
-    TextDocumentSnapshot::new(TextDocumentId::new(324), TextDocumentRevision::new(revision))
+    TextDocumentSnapshot::new(
+        TextDocumentId::new(324),
+        TextDocumentRevision::new(revision),
+    )
 }
 
 enum Action {
@@ -87,9 +90,9 @@ impl UiApp for NumericApp {
             return runenui_core::text("retired numeric owner").into_element();
         }
         let doc = snapshot(state.revision);
-        let position = TextPosition::new(
-            doc, &state.text, state.text.len(), TextAffinity::Upstream,
-        ).unwrap_or_else(|_| unreachable!("app-owned UTF-8 caret"));
+        let position =
+            TextPosition::new(doc, &state.text, state.text.len(), TextAffinity::Upstream)
+                .unwrap_or_else(|_| unreachable!("app-owned UTF-8 caret"));
         let range = SpinButtonRange::new(state.minimum, state.maximum, state.value(), 0.5)
             .unwrap_or_else(|_| unreachable!("app-owned finite validated range"));
         let input = spin_button(
