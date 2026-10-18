@@ -247,32 +247,58 @@ fn same_authored_id_with_new_reconciliation_key_must_retire_active_option_genera
 
     let previous = id(&mut app, "boundary.second");
     let before = publish(&mut app);
-    let combo = before.semantic_publication().snapshot().nodes().iter()
+    let combo = before
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("ComboBox publishes"));
-    assert_eq!(combo.relationships().iter()
-        .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant).count(), 1);
+    assert_eq!(
+        combo
+            .relationships()
+            .iter()
+            .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
+            .count(),
+        1
+    );
 
     app.submit_action(Action::RekeyOption)
         .unwrap_or_else(|_| unreachable!("app changes standard Option reconciliation key"));
     settle(&mut app);
     let replacement = id(&mut app, "boundary.second");
-    assert_ne!(previous, replacement,
-        "accepted M3 keyed reconciliation retires the old Option mounted generation");
+    assert_ne!(
+        previous, replacement,
+        "accepted M3 keyed reconciliation retires the old Option mounted generation"
+    );
 
     let after = publish(&mut app);
-    let combo = after.semantic_publication().snapshot().nodes().iter()
+    let combo = after
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("ComboBox remains published"));
-    assert!(!combo.relationships().iter()
-        .any(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant),
-        "same authored ID must never retarget a replaced mounted Option generation");
-    app.submit_command(owner.clone(), SemanticCommand::Activate, CommandOrigin::programmatic())
-        .unwrap_or_else(|_| unreachable!("activation routed to current owner"));
+    assert!(
+        !combo
+            .relationships()
+            .iter()
+            .any(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant),
+        "same authored ID must never retarget a replaced mounted Option generation"
+    );
+    app.submit_command(
+        owner.clone(),
+        SemanticCommand::Activate,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("activation routed to current owner"));
     settle(&mut app);
     assert_eq!(app.state().chosen, 0);
-    assert!(app.state().actions.is_empty(),
-        "old active Option cannot commit through a replacement's new callback");
+    assert!(
+        app.state().actions.is_empty(),
+        "old active Option cannot commit through a replacement's new callback"
+    );
     assert_eq!(app.focus().focused_node(), Some(&owner));
 }
 
@@ -281,37 +307,59 @@ fn same_key_option_move_keeps_active_candidate_and_m4_focus_without_reselection(
     let mut app = new(Mode::Churn);
     let owner = id(&mut app, "boundary.owner");
     app.submit_command(
-        owner.clone(), SemanticCommand::RequestFocus, CommandOrigin::programmatic(),
-    ).unwrap_or_else(|_| unreachable!("focus current owner"));
+        owner.clone(),
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("focus current owner"));
     settle(&mut app);
     app.submit_command(
-        owner.clone(), SemanticCommand::FocusDown, CommandOrigin::programmatic(),
-    ).unwrap_or_else(|_| unreachable!("navigate to keyed second"));
+        owner.clone(),
+        SemanticCommand::FocusDown,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("navigate to keyed second"));
     settle(&mut app);
     let original = id(&mut app, "boundary.second");
 
     app.submit_action(Action::Reorder)
         .unwrap_or_else(|_| unreachable!("reorder ordinary authored Options"));
     settle(&mut app);
-    assert_eq!(id(&mut app, "boundary.second"), original,
-        "M3 keyed same-parent reorder preserves mounted Option generation");
+    assert_eq!(
+        id(&mut app, "boundary.second"),
+        original,
+        "M3 keyed same-parent reorder preserves mounted Option generation"
+    );
     let snapshot = publish(&mut app);
     let nodes = snapshot.semantic_publication().snapshot();
-    let combo = nodes.nodes().iter()
+    let combo = nodes
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("ComboBox remains published"));
-    let active = combo.relationships().iter()
+    let active = combo
+        .relationships()
+        .iter()
         .find(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
         .unwrap_or_else(|| unreachable!("same keyed active Option survives reorder"));
-    assert_eq!(nodes.nodes().iter()
-        .find(|node| node.id() == active.target())
-        .and_then(|node| node.name()), Some("Second"));
+    assert_eq!(
+        nodes
+            .nodes()
+            .iter()
+            .find(|node| node.id() == active.target())
+            .and_then(|node| node.name()),
+        Some("Second")
+    );
     assert_eq!(app.state().chosen, 0);
     assert!(app.state().actions.is_empty());
     assert_eq!(app.focus().focused_node(), Some(&owner));
 
-    app.submit_command(owner.clone(), SemanticCommand::Activate, CommandOrigin::programmatic())
-        .unwrap_or_else(|_| unreachable!("current active Option activation"));
+    app.submit_command(
+        owner.clone(),
+        SemanticCommand::Activate,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("current active Option activation"));
     settle(&mut app);
     assert_eq!(app.state().chosen, 2);
     assert_eq!(app.state().actions, [2]);
