@@ -264,9 +264,11 @@ fn invalid_domain_id_and_single_selection_fail_closed_even_under_collapsed_ances
         let snapshot = publication.semantic_publication().snapshot();
         assert!(!snapshot.nodes().iter().any(|node| node.role() == SemanticRole::Tree));
         assert!(!snapshot.nodes().iter().any(|node| node.role() == SemanticRole::TreeItem));
+        // Snapshot public focus before borrowing the mounted index mutably.
+        let focused = runtime.focus().focused_node().cloned();
         assert!(runtime.index().nodes().iter().all(|node|
             node.authored_id().is_none_or(|id| id.as_str() != "tree.invalid")
-            || runtime.focus().focused_node() != Some(node.id())
+            || focused.as_ref() != Some(node.id())
         ));
     }
     runtime.submit_action(0).unwrap_or_else(|_| unreachable!("valid authoring transition"));
