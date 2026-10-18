@@ -381,9 +381,13 @@ fn open_ended_ranges_admit_exact_recovery_and_reject_only_present_bounds() {
     let mut runtime = runtime_with_bounds("-", None, None);
     let before = publish(&mut runtime);
     let (surface, target) = semantic_target(&before);
-    runtime.submit_semantic_action(SemanticActionRequest::set_value(
-        surface, target, number(-600.0),
-    )).unwrap_or_else(|_| unreachable!("unbounded absolute numeric recovery"));
+    runtime
+        .submit_semantic_action(SemanticActionRequest::set_value(
+            surface,
+            target,
+            number(-600.0),
+        ))
+        .unwrap_or_else(|_| unreachable!("unbounded absolute numeric recovery"));
     settle(&mut runtime);
     assert_eq!(runtime.state().text, "-600");
 }
@@ -391,54 +395,86 @@ fn open_ended_ranges_admit_exact_recovery_and_reject_only_present_bounds() {
 #[test]
 fn optional_ordinary_step_buttons_share_app_actions_and_fifo_without_another_editor() {
     let mut runtime = runtime("4");
-    runtime.submit_action(Action::ShowStepControls(true))
+    runtime
+        .submit_action(Action::ShowStepControls(true))
         .unwrap_or_else(|_| unreachable!("app authors ordinary sibling buttons"));
     settle(&mut runtime);
     let publication = publish(&mut runtime);
     let snapshot = publication.semantic_publication().snapshot();
-    assert_eq!(snapshot.nodes().iter().filter(|node| node.role() == SemanticRole::SpinButton).count(), 1);
+    assert_eq!(
+        snapshot
+            .nodes()
+            .iter()
+            .filter(|node| node.role() == SemanticRole::SpinButton)
+            .count(),
+        1
+    );
     let targets = ["Increase", "Decrease"].map(|label| {
-        snapshot.nodes().iter().find(|node| {
-            node.role() == SemanticRole::Button && node.name() == Some(label)
-        })
-        .unwrap_or_else(|| unreachable!("ordinary named button projects"))
-        .id().clone()
+        snapshot
+            .nodes()
+            .iter()
+            .find(|node| node.role() == SemanticRole::Button && node.name() == Some(label))
+            .unwrap_or_else(|| unreachable!("ordinary named button projects"))
+            .id()
+            .clone()
     });
     for target in targets {
-        runtime.submit_semantic_action(SemanticActionRequest::new(
-            snapshot.surface_id().clone(), target, SemanticAction::Activate,
-        )).unwrap_or_else(|_| unreachable!("ordinary button accepts action"));
+        runtime
+            .submit_semantic_action(SemanticActionRequest::new(
+                snapshot.surface_id().clone(),
+                target,
+                SemanticAction::Activate,
+            ))
+            .unwrap_or_else(|_| unreachable!("ordinary button accepts action"));
     }
-    assert_eq!(runtime.state().text, "4", "button admission does not mutate application state");
+    assert_eq!(
+        runtime.state().text,
+        "4",
+        "button admission does not mutate application state"
+    );
     settle(&mut runtime);
     assert_eq!(runtime.state().text, "4");
-    assert_eq!(runtime.state().requests, [
-        SpinButtonRequest::AdjustBy(number(0.5)),
-        SpinButtonRequest::AdjustBy(number(-0.5)),
-    ]);
+    assert_eq!(
+        runtime.state().requests,
+        [
+            SpinButtonRequest::AdjustBy(number(0.5)),
+            SpinButtonRequest::AdjustBy(number(-0.5)),
+        ]
+    );
 }
 
 #[test]
 fn read_only_and_disabled_sibling_buttons_reject_ordinary_activation() {
     for (read_only, disabled) in [(true, false), (false, true)] {
         let mut runtime = runtime("4");
-        runtime.submit_action(Action::ShowStepControls(true))
+        runtime
+            .submit_action(Action::ShowStepControls(true))
             .unwrap_or_else(|_| unreachable!("app authors normal button controls"));
-        runtime.submit_action(Action::ReadOnly(read_only))
+        runtime
+            .submit_action(Action::ReadOnly(read_only))
             .unwrap_or_else(|_| unreachable!("app authors read-only"));
-        runtime.submit_action(Action::Disabled(disabled))
+        runtime
+            .submit_action(Action::Disabled(disabled))
             .unwrap_or_else(|_| unreachable!("app authors disabled"));
         settle(&mut runtime);
         let publication = publish(&mut runtime);
         let snapshot = publication.semantic_publication().snapshot();
         for label in ["Increase", "Decrease"] {
-            let button = snapshot.nodes().iter().find(|node| {
-                node.role() == SemanticRole::Button && node.name() == Some(label)
-            }).unwrap_or_else(|| unreachable!("ordinary button remains semantic"));
+            let button = snapshot
+                .nodes()
+                .iter()
+                .find(|node| node.role() == SemanticRole::Button && node.name() == Some(label))
+                .unwrap_or_else(|| unreachable!("ordinary button remains semantic"));
             assert!(button.state().disabled());
-            assert!(runtime.submit_semantic_action(SemanticActionRequest::new(
-                snapshot.surface_id().clone(), button.id().clone(), SemanticAction::Activate,
-            )).is_err());
+            assert!(
+                runtime
+                    .submit_semantic_action(SemanticActionRequest::new(
+                        snapshot.surface_id().clone(),
+                        button.id().clone(),
+                        SemanticAction::Activate,
+                    ))
+                    .is_err()
+            );
         }
         settle(&mut runtime);
         assert_eq!(runtime.state().text, "4");
