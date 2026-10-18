@@ -12,18 +12,25 @@ use runenui_core::{
 use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum Action { Choose(u8) }
+enum Action {
+    Choose(u8),
+}
 struct App;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct State { committed: u8 }
+struct State {
+    committed: u8,
+}
 
 #[derive(Debug)]
 struct DownstreamComboOwner;
 impl Widget<Action> for DownstreamComboOwner {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn semantics(&self, _: &Self::State, context: SemanticContributionContext)
-        -> SemanticContribution {
+    fn semantics(
+        &self,
+        &(): &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
         let mut node = SemanticNodeContribution::primary(SemanticRole::ComboBox)
             .with_name("Choose item")
             .with_popup(SemanticPopupKind::ListBox)
