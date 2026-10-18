@@ -328,21 +328,41 @@ fn absolute_set_value_recovers_invalid_text_without_fabricating_prior_current() 
     let mut runtime = runtime("-");
     let before = publish(&mut runtime);
     let (surface, target) = semantic_target(&before);
-    let node = before.semantic_publication().snapshot().node(&target)
+    let node = before
+        .semantic_publication()
+        .snapshot()
+        .node(&target)
         .unwrap_or_else(|| unreachable!("typed SpinButton target resolves"));
-    assert_eq!(node.range().and_then(runenui_core::SemanticRange::current), None);
+    assert_eq!(
+        node.range().and_then(runenui_core::SemanticRange::current),
+        None
+    );
     assert!(node.supported_actions().contains(&SemanticAction::SetValue));
-    assert!(!node.supported_actions().contains(&SemanticAction::Increment));
-    runtime.submit_semantic_action(SemanticActionRequest::set_value(
-        surface, target, number(7.5),
-    )).unwrap_or_else(|_| unreachable!("absolute SetValue is valid without prior current"));
+    assert!(
+        !node
+            .supported_actions()
+            .contains(&SemanticAction::Increment)
+    );
+    runtime
+        .submit_semantic_action(SemanticActionRequest::set_value(
+            surface,
+            target,
+            number(7.5),
+        ))
+        .unwrap_or_else(|_| unreachable!("absolute SetValue is valid without prior current"));
     settle(&mut runtime);
     assert_eq!(runtime.state().text, "7.5");
-    assert_eq!(runtime.state().requests, [SpinButtonRequest::SetValue(number(7.5))]);
+    assert_eq!(
+        runtime.state().requests,
+        [SpinButtonRequest::SetValue(number(7.5))]
+    );
     let after = publish(&mut runtime);
     let (_, target) = semantic_target(&after);
     assert_eq!(
-        after.semantic_publication().snapshot().node(&target)
+        after
+            .semantic_publication()
+            .snapshot()
+            .node(&target)
             .and_then(|node| node.range())
             .and_then(runenui_core::SemanticRange::current),
         Some(number(7.5)),
@@ -359,23 +379,50 @@ fn open_ended_ranges_admit_exact_recovery_and_reject_only_present_bounds() {
         let publication = publish(&mut runtime);
         let (surface, target) = semantic_target(&publication);
         let snapshot = publication.semantic_publication().snapshot();
-        let node = snapshot.node(&target)
+        let node = snapshot
+            .node(&target)
             .unwrap_or_else(|| unreachable!("current SpinButton semantic target"));
-        let range = node.range().unwrap_or_else(|| unreachable!("authored range"));
+        let range = node
+            .range()
+            .unwrap_or_else(|| unreachable!("authored range"));
         assert_eq!(range.current(), None);
-        assert_eq!(range.minimum().map(runenui_core::SemanticNumber::get), minimum);
-        assert_eq!(range.maximum().map(runenui_core::SemanticNumber::get), maximum);
+        assert_eq!(
+            range.minimum().map(runenui_core::SemanticNumber::get),
+            minimum
+        );
+        assert_eq!(
+            range.maximum().map(runenui_core::SemanticNumber::get),
+            maximum
+        );
         assert!(node.supported_actions().contains(&SemanticAction::SetValue));
-        assert!(!node.supported_actions().contains(&SemanticAction::Increment));
-        assert!(runtime.submit_semantic_action(SemanticActionRequest::set_value(
-            surface.clone(), target.clone(), number(rejected),
-        )).is_err(), "out-of-range SetValue must reject against the present bound");
-        runtime.submit_semantic_action(SemanticActionRequest::set_value(
-            surface, target, number(admitted),
-        )).unwrap_or_else(|_| unreachable!("open-ended absolute SetValue admitted"));
+        assert!(
+            !node
+                .supported_actions()
+                .contains(&SemanticAction::Increment)
+        );
+        assert!(
+            runtime
+                .submit_semantic_action(SemanticActionRequest::set_value(
+                    surface.clone(),
+                    target.clone(),
+                    number(rejected),
+                ))
+                .is_err(),
+            "out-of-range SetValue must reject against the present bound"
+        );
+        runtime
+            .submit_semantic_action(SemanticActionRequest::set_value(
+                surface,
+                target,
+                number(admitted),
+            ))
+            .unwrap_or_else(|_| unreachable!("open-ended absolute SetValue admitted"));
         settle(&mut runtime);
         assert_eq!(runtime.state().value(), Some(admitted));
-        assert_eq!(runtime.state().requests, [SpinButtonRequest::SetValue(number(admitted))]);
+        assert_eq!(
+            runtime.state().requests,
+            [SpinButtonRequest::SetValue(number(admitted))]
+        );
     }
 
     let mut runtime = runtime_with_bounds("-", None, None);
