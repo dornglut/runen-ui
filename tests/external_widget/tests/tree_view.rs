@@ -2,8 +2,9 @@
 
 // Production TreeView must work from an ordinary external application.
 use runenui_core::{
-    CommandOrigin, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
-    KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey, SemanticAction,
+    CommandOrigin, FlexContainerStyle, FlexDirection, KeyLocation, KeyModifiers,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LayoutContainer, LayoutDimension,
+    LayoutStyle, LogicalKey, LogicalLength, NoHostProtocol, PhysicalKey, SemanticAction,
     SemanticCollectionPosition, SemanticCommand, SemanticRole, TreeItemRequest, UiApp, View,
     tree_item, tree_view,
 };
@@ -40,10 +41,19 @@ impl UiApp for App {
             .discoverable_when_disabled(state.discover_a)
             .on_request(Action::Request)
             .id("tree.a");
+        // A hit-order proof needs a nondegenerate authored border box; the
+        // default text-only fixture can legitimately measure zero height.
         let second = tree_item("b", "Bravo", Vec::new())
             .selected(state.selected == "b")
             .on_request(Action::Request)
-            .id("tree.b");
+            .id("tree.b")
+            .with_layout(
+                LayoutStyle::default()
+                    .with_container(LayoutContainer::Flex(
+                        FlexContainerStyle::default().with_direction(FlexDirection::Column),
+                    ))
+                    .with_height(LayoutDimension::Length(LogicalLength::from(20_u8))),
+            );
         let children = if state.show_b {
             vec![first, second]
         } else {
