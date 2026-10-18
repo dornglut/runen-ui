@@ -9,6 +9,7 @@ use runenui_core::{
     WidgetTextInput, text_field,
 };
 
+#[derive(Debug)]
 struct DownstreamField {
     snapshot: TextDocumentSnapshot,
     source: String,
