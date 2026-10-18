@@ -77,6 +77,8 @@ impl UiApp for App {
                     .on_activate(|| Action::Choose(1)),
                 option_item("Beta", state.chosen == 2)
                     .id(if state.replace_option { "editable.replacement" } else { "editable.beta" })
+                    // Public element ID is not the reconciliation lifetime key.
+                    .key(if state.replace_option { "editable.replacement" } else { "editable.beta" })
                     .on_activate(|| Action::Choose(2)),
             ],
             Action::Popup,
@@ -137,50 +139,79 @@ impl UiApp for App {
 
 fn runtime() -> AppRuntime<App> {
     let mut runtime = AppRuntime::<App>::mount(State {
-        source: "q".into(), revision: 1, open: true,
-        chosen: 0, popup_log: Vec::new(), replace_option: false, submitted: 0,
+        source: "q".into(),
+        revision: 1,
+        open: true,
+        chosen: 0,
+        popup_log: Vec::new(),
+        replace_option: false,
+        submitted: 0,
         disabled: false,
     });
     assert!(runtime.register_text_font_bytes(FONT.to_vec()).is_ok());
-    assert!(runtime.set_text_generic_family_mapping(
-        GenericFontFamily::SansSerif,
-        &[FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!())],
-    ).is_ok());
+    assert!(
+        runtime
+            .set_text_generic_family_mapping(
+                GenericFontFamily::SansSerif,
+                &[FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!())],
+            )
+            .is_ok()
+    );
     settle(&mut runtime);
     runtime
 }
 fn settle(runtime: &mut AppRuntime<App>) {
-    assert!(runtime.pump(PumpBudget::new(256, 256, 256, 256)).unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+    assert!(
+        runtime
+            .pump(PumpBudget::new(256, 256, 256, 256))
+            .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
             .report()
-            .is_quiescent());
+            .is_quiescent()
+    );
 }
 fn id(runtime: &mut AppRuntime<App>, id: &str) -> MountedNodeId {
     let authored = ElementId::new(id).unwrap_or_else(|_| unreachable!());
-    runtime.index().nodes().iter()
+    runtime
+        .index()
+        .nodes()
+        .iter()
         .find(|node| node.authored_id() == Some(&authored))
         .unwrap_or_else(|| unreachable!("mounted authored owner"))
-        .id().clone()
+        .id()
+        .clone()
 }
 fn cmd(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: SemanticCommand) {
-    runtime.submit_command(target, command, CommandOrigin::programmatic())
+    runtime
+        .submit_command(target, command, CommandOrigin::programmatic())
         .unwrap_or_else(|_| unreachable!("current semantic command admitted"));
     settle(runtime);
 }
 fn publish(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
-    runtime.publish_surface(&SurfaceBuildContext::tight(
-        &StyleEnvironment::default(),
-        LogicalSize::try_new(600.0, 320.0).unwrap_or_else(|_| unreachable!()),
-    )).unwrap_or_else(|error| unreachable!("editable ComboBox publish: {error:?}"))
+    runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &StyleEnvironment::default(),
+            LogicalSize::try_new(600.0, 320.0).unwrap_or_else(|_| unreachable!()),
+        ))
+        .unwrap_or_else(|error| unreachable!("editable ComboBox publish: {error:?}"))
 }
 fn active(runtime: &mut AppRuntime<App>) -> Option<String> {
     let publication = publish(runtime);
     let snapshot = publication.semantic_publication().snapshot();
-    let owner = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::ComboBox)?;
-    let target = owner.relationships().iter()
+    let owner = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)?;
+    let target = owner
+        .relationships()
+        .iter()
         .find(|relation| relation.kind() == SemanticRelationshipKind::ActiveDescendant)?
         .target();
-    snapshot.nodes().iter().find(|node| node.id() == target)
-        .and_then(|node| node.name()).map(str::to_owned)
+    snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.id() == target)
+        .and_then(|node| node.name())
+        .map(str::to_owned)
 }
 
 #[test]
@@ -190,17 +221,38 @@ fn editable_combo_is_one_focused_m10_editor_and_one_active_descendant_owner() {
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
     let publication = publish(&mut runtime);
     let snapshot = publication.semantic_publication().snapshot();
-    let combo = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::ComboBox)
+    let combo = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("ComboBox primary"));
-    assert!(combo.editable().is_some(), "the ComboBox node itself must own M10 editing");
-    assert_eq!(combo.editable_mode(), Some(SemanticEditableMode::SingleLine));
-    assert!(!snapshot.nodes().iter().any(|node| node.role() == SemanticRole::EditableText));
-    let controls = combo.relationships().iter()
+    assert!(
+        combo.editable().is_some(),
+        "the ComboBox node itself must own M10 editing"
+    );
+    assert_eq!(
+        combo.editable_mode(),
+        Some(SemanticEditableMode::SingleLine)
+    );
+    assert!(
+        !snapshot
+            .nodes()
+            .iter()
+            .any(|node| node.role() == SemanticRole::EditableText)
+    );
+    let controls = combo
+        .relationships()
+        .iter()
         .find(|rel| rel.kind() == SemanticRelationshipKind::Controls)
         .unwrap_or_else(|| unreachable!("checked ListBox relation"));
-    assert_eq!(snapshot.nodes().iter()
-        .find(|node| node.id() == controls.target())
-        .map(runenui_runtime::SemanticNode::role), Some(SemanticRole::ListBox));
+    assert_eq!(
+        snapshot
+            .nodes()
+            .iter()
+            .find(|node| node.id() == controls.target())
+            .map(runenui_runtime::SemanticNode::role),
+        Some(SemanticRole::ListBox)
+    );
     assert_eq!(active(&mut runtime).as_deref(), Some("Alpha"));
     cmd(&mut runtime, owner.clone(), SemanticCommand::FocusDown);
     assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
