@@ -28,6 +28,8 @@ mod semantic_m5c_action_readiness;
 mod semantic_m5c_conformance;
 #[path = "../tabs.rs"]
 mod tabs;
+#[path = "../text_field.rs"]
+mod text_field;
 #[path = "../toolbar.rs"]
 mod toolbar;
 #[path = "../tree_view.rs"]
