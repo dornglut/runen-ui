@@ -208,14 +208,18 @@ fn collapsing_or_removing_focused_descendant_retires_exact_target_identity() {
     settle(&mut runtime);
     assert_ne!(runtime.focus().focused_node(), Some(&old_b));
     assert!(!runtime.index().nodes().iter().any(|n| n.id() == &old_b));
-    runtime.submit_action(Action::ShowB(false))
+    runtime
+        .submit_action(Action::ShowB(false))
         .unwrap_or_else(|_| unreachable!("application removes domain item"));
-    runtime.submit_action(Action::Expanded(true))
+    runtime
+        .submit_action(Action::Expanded(true))
         .unwrap_or_else(|_| unreachable!("application expands"));
     settle(&mut runtime);
     assert!(!runtime.index().nodes().iter().any(|n| n.id() == &old_b));
-    assert!(runtime.state().actions.is_empty(),
-        "collapse and retirement do not fabricate an app selection");
+    assert!(
+        runtime.state().actions.is_empty(),
+        "collapse and retirement do not fabricate an app selection"
+    );
 }
 
 struct InvalidTreeApp;
@@ -224,9 +228,14 @@ impl UiApp for InvalidTreeApp {
     type Action = u8;
     type HostProtocol = NoHostProtocol;
     fn root(mode: &Self::State) -> impl View<Self::Action> {
-        let child_id = if *mode == 1 { "root" } else if *mode == 2 { "" } else { "child" };
-        let child = tree_item(child_id, "Nested", Vec::new())
-            .selected(*mode == 3);
+        let child_id = if *mode == 1 {
+            "root"
+        } else if *mode == 2 {
+            ""
+        } else {
+            "child"
+        };
+        let child = tree_item(child_id, "Nested", Vec::new()).selected(*mode == 3);
         let parent = tree_item("root", "Parent", vec![child])
             .expanded(false)
             .selected(*mode == 3);
@@ -254,37 +263,68 @@ fn settle_invalid(runtime: &mut AppRuntime<InvalidTreeApp>) {
 fn invalid_domain_id_and_single_selection_fail_closed_even_under_collapsed_ancestor() {
     let mut runtime = AppRuntime::<InvalidTreeApp>::mount(0);
     for mode in [1_u8, 2, 3] {
-        runtime.submit_action(mode).unwrap_or_else(|_| unreachable!("authoring transition"));
+        runtime
+            .submit_action(mode)
+            .unwrap_or_else(|_| unreachable!("authoring transition"));
         settle_invalid(&mut runtime);
-        let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
-            &runenui_core::StyleEnvironment::default(),
-            LogicalSize::try_new(600.0, 300.0)
-                .unwrap_or_else(|_| unreachable!("finite tree surface")),
-        )).unwrap_or_else(|error| unreachable!("invalid tree reports diagnostic: {error:?}"));
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(
+                &runenui_core::StyleEnvironment::default(),
+                LogicalSize::try_new(600.0, 300.0)
+                    .unwrap_or_else(|_| unreachable!("finite tree surface")),
+            ))
+            .unwrap_or_else(|error| unreachable!("invalid tree reports diagnostic: {error:?}"));
         let snapshot = publication.semantic_publication().snapshot();
-        assert!(!snapshot.nodes().iter().any(|node| node.role() == SemanticRole::Tree));
-        assert!(!snapshot.nodes().iter().any(|node| node.role() == SemanticRole::TreeItem));
+        assert!(
+            !snapshot
+                .nodes()
+                .iter()
+                .any(|node| node.role() == SemanticRole::Tree)
+        );
+        assert!(
+            !snapshot
+                .nodes()
+                .iter()
+                .any(|node| node.role() == SemanticRole::TreeItem)
+        );
         // Snapshot public focus before borrowing the mounted index mutably.
         let focused = runtime.focus().focused_node().cloned();
-        assert!(runtime.index().nodes().iter().all(|node|
-            node.authored_id().is_none_or(|id| id.as_str() != "tree.invalid")
-            || focused.as_ref() != Some(node.id())
-        ));
+        assert!(runtime.index().nodes().iter().all(|node| {
+            node.authored_id()
+                .is_none_or(|id| id.as_str() != "tree.invalid")
+                || focused.as_ref() != Some(node.id())
+        }));
     }
-    runtime.submit_action(0).unwrap_or_else(|_| unreachable!("valid authoring transition"));
+    runtime
+        .submit_action(0)
+        .unwrap_or_else(|_| unreachable!("valid authoring transition"));
     settle_invalid(&mut runtime);
-    let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
-        &runenui_core::StyleEnvironment::default(),
-        LogicalSize::try_new(600.0, 300.0).unwrap_or_else(|_| unreachable!()),
-    )).unwrap_or_else(|error| unreachable!("restored valid tree: {error:?}"));
-    assert!(publication.semantic_publication().snapshot().nodes().iter()
-        .any(|node| node.role() == SemanticRole::Tree));
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &runenui_core::StyleEnvironment::default(),
+            LogicalSize::try_new(600.0, 300.0).unwrap_or_else(|_| unreachable!()),
+        ))
+        .unwrap_or_else(|error| unreachable!("restored valid tree: {error:?}"));
+    assert!(
+        publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .any(|node| node.role() == SemanticRole::Tree)
+    );
 }
 
 fn navigation_key(physical: PhysicalKey, logical: LogicalKey) -> KeyboardEvent {
     KeyboardEvent::new(
-        KeyboardPhase::Down, physical, logical, KeyModifiers::NONE, false,
-        KeyLocation::Standard, KeyboardCompositionState::Inactive, None,
+        KeyboardPhase::Down,
+        physical,
+        logical,
+        KeyModifiers::NONE,
+        false,
+        KeyLocation::Standard,
+        KeyboardCompositionState::Inactive,
+        None,
     )
 }
 #[test]
@@ -302,9 +342,14 @@ fn ordered_real_focus_home_end_and_type_ahead_leave_selection_application_owned(
     command(&mut runtime, b.clone(), SemanticCommand::FocusDown);
     assert_eq!(runtime.focus().focused_node(), Some(&other));
     command(&mut runtime, other.clone(), SemanticCommand::FocusDown);
-    assert_eq!(runtime.focus().focused_node(), Some(&other), "Stop not Wrap");
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&other),
+        "Stop not Wrap"
+    );
 
-    runtime.submit_keyboard(navigation_key(PhysicalKey::Home, LogicalKey::Home))
+    runtime
+        .submit_keyboard(navigation_key(PhysicalKey::Home, LogicalKey::Home))
         .unwrap_or_else(|_| unreachable!("Home key ingress"));
     settle(&mut runtime);
     assert_eq!(runtime.focus().focused_node(), Some(&parent));
