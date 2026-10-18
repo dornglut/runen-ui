@@ -77,6 +77,16 @@ struct FocusNotificationPlan {
     current: Option<MountedNodeId>,
 }
 
+// A compatible focusability-only retirement can keep composition and Space
+// capabilities active. Its cleanup remains Disablement, not FocusTransfer.
+fn composition_cancel_reason_for_focus(reason: FocusReason) -> CompositionCancelReason {
+    if reason == FocusReason::Disablement {
+        CompositionCancelReason::Disablement
+    } else {
+        CompositionCancelReason::FocusTransfer
+    }
+}
+
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     fn current_scroll_chrome_participation(&self, target: &MountedNodeId) -> Option<bool> {
         let authored = self.tree.node(target)?.scroll_chrome?;
@@ -709,15 +719,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             )
         });
         if let Some(old) = old_target.as_ref() {
-            // A compatible focusability-only retirement can keep the old
-            // widget enabled and composition-capable. Its cleanup is still
-            // Disablement, not an ordinary navigation focus transfer.
-            let cancellation_reason = if reason == FocusReason::Disablement {
-                CompositionCancelReason::Disablement
-            } else {
-                CompositionCancelReason::FocusTransfer
-            };
-            self.cancel_composition_in_transaction(transaction, old, cancellation_reason)?;
+            self.cancel_composition_in_transaction(
+                transaction,
+                old,
+                composition_cancel_reason_for_focus(reason),
+            )?;
         }
         self.revoke_space_for_focus_change(transaction, old_target.as_ref(), reason);
         let old_route = match old_target.as_ref() {
