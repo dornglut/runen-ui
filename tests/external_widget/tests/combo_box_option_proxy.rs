@@ -1,9 +1,9 @@
 #![allow(refining_impl_trait)]
 
-//! The accepted OptionItem is also a non-focusable ComboBox proxy Option:
+//! The accepted `OptionItem` is also a non-focusable `ComboBox` proxy Option:
 //! source focus remains M4; target identity is resolved by existing M5 semantics.
 use runenui_core::{
-    ChildBearingWidget, CommandOrigin, Element, ElementId, Focusability, NoHostProtocol,
+    ChildBearingWidget, CommandOrigin, ElementId, Focusability, NoHostProtocol,
     SemanticAction, SemanticCommand, SemanticContribution, SemanticContributionContext,
     SemanticNodeContribution, SemanticPopupKind, SemanticReference, SemanticRelationship,
     SemanticRelationshipKind, SemanticRole, SemanticState, UiApp, View, Widget, container,
@@ -120,7 +120,7 @@ fn popup_options_keep_standard_semantics_and_activation_without_stealing_real_fo
         runtime
             .index()
             .node(&owner)
-            .is_some_and(|n| n.is_focusable())
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
     );
     assert!(
         runtime
