@@ -174,7 +174,11 @@ fn nested_imports(contents: &str, path: &str, findings: &mut Vec<Finding>) -> Ve
         {
             if let Some(file) = pending.take() {
                 if !file.ends_with(".rs") || file.contains('/') || file.contains('\\') {
-                    failure(findings, path, format!("nonlocal nested proof import: {file}"));
+                    failure(
+                        findings,
+                        path,
+                        format!("nonlocal nested proof import: {file}"),
+                    );
                 } else {
                     imports.push(file.to_owned());
                 }
@@ -200,7 +204,9 @@ fn expand_nested_imports(
         let todo = registered
             .iter()
             .flat_map(|(source, suites)| {
-                suites.iter().map(move |suite| (source.clone(), suite.clone()))
+                suites
+                    .iter()
+                    .map(move |suite| (source.clone(), suite.clone()))
             })
             .filter(|pair| !scanned.contains(pair))
             .collect::<Vec<_>>();
@@ -213,10 +219,7 @@ fn expand_nested_imports(
             let content = fs::read_to_string(root.join(&relative))
                 .map_err(|error| format!("failed to read nested source {relative}: {error}"))?;
             for included in nested_imports(&content, &relative, findings) {
-                registered
-                    .entry(included)
-                    .or_default()
-                    .push(suite.clone());
+                registered.entry(included).or_default().push(suite.clone());
             }
         }
     }
