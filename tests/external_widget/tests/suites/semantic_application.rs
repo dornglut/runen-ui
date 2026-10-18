@@ -1,5 +1,7 @@
 #[path = "../combo_box_focus_lifecycle.rs"]
 mod combo_box_focus_lifecycle;
+#[path = "../combo_box_option_proxy.rs"]
+mod combo_box_option_proxy;
 #[path = "../content.rs"]
 mod content;
 #[path = "../disclosure.rs"]
