@@ -125,7 +125,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     /// The exact old route is immutable during this transaction. A live
-    /// composition cancellation and the mandatory FocusOut traverse that same
+    /// composition cancellation and the mandatory `FocusOut` traverse that same
     /// checked route, and BOTH must be charged before the first callback.
     pub(super) fn prepare_reconciled_focus_cleanup_route(
         &mut self,
