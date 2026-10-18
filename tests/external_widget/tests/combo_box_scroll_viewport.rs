@@ -277,7 +277,11 @@ fn full_public_command_queue_rejects_exact_option_reveal_without_alternate_scrol
             open: true,
             ..State::default()
         },
-        RuntimeConfig::default().with_queue_capacity(4),
+        RuntimeConfig::default().with_limits(
+            runenui_runtime::RuntimeLimits::default()
+                .with_waiting_envelopes(64)
+                .with_transaction_outputs(1),
+        ),
     );
     settle(&mut app);
     let owner = id(&mut app, "viewport.owner");
@@ -291,20 +295,20 @@ fn full_public_command_queue_rejects_exact_option_reveal_without_alternate_scrol
         .unwrap_or_else(|| unreachable!("bounded popup viewport"))
         .clone();
     let _ = publish(&mut app);
-    for _ in 0..4 {
+    for _ in 0..64 {
         app.submit_command(
             owner.clone(),
             SemanticCommand::ScrollIntoView,
             CommandOrigin::programmatic(),
         )
-        .unwrap_or_else(|_| unreachable!("four public FIFO slots available"));
+        .unwrap_or_else(|_| unreachable!("all configured public FIFO slots available"));
     }
     let Err(error) = app.submit_command(
         last.clone(),
         SemanticCommand::ScrollIntoView,
         CommandOrigin::programmatic(),
     ) else {
-        unreachable!("full canonical FIFO rejects fifth exact Option command")
+        unreachable!("full canonical FIFO rejects the excess exact Option command")
     };
     assert_eq!(error.kind(), SubmitCommandErrorKind::Full);
     assert_eq!(error.unaccepted().target(), &last);
@@ -474,13 +478,25 @@ fn first_published_open_combo_reveals_deep_selected_option_after_mount_and_geome
         .filter(|node| node.role() == SemanticRole::Option)
         .count();
     assert_eq!(options, 18);
-    let offset = app.index().node(&viewport).unwrap_or_else(|| unreachable!())
-        .interaction().scroll_offset().1;
+    let offset = app
+        .index()
+        .node(&viewport)
+        .unwrap_or_else(|| unreachable!())
+        .interaction()
+        .scroll_offset()
+        .1;
     // A repeated unchanged publication cannot fabricate another reveal event.
     let _ = publish(&mut app);
     settle(&mut app);
-    assert_eq!(app.index().node(&viewport).unwrap_or_else(|| unreachable!())
-        .interaction().scroll_offset().1, offset);
+    assert_eq!(
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!())
+            .interaction()
+            .scroll_offset()
+            .1,
+        offset
+    );
 }
 
 #[test]
@@ -497,7 +513,12 @@ fn close_and_reopen_before_an_intermediate_publication_reveals_new_option_genera
     app.submit_action(Action::Popup(ComboBoxRequest::Close))
         .unwrap_or_else(|_| unreachable!("close application state"));
     settle(&mut app);
-    assert!(app.index().nodes().iter().all(|node| node.id() != &old_option));
+    assert!(
+        app.index()
+            .nodes()
+            .iter()
+            .all(|node| node.id() != &old_option)
+    );
     // No surface publication occurs in the closed state: the retained semantic
     // snapshot still describes the earlier open popup.
     app.submit_action(Action::Popup(ComboBoxRequest::Open))
@@ -506,32 +527,48 @@ fn close_and_reopen_before_an_intermediate_publication_reveals_new_option_genera
     let new_option = id(&mut app, "viewport.option.17");
     assert_ne!(new_option, old_option);
     let list = id(&mut app, "viewport.list");
-    let viewport = app.index()
+    let viewport = app
+        .index()
         .node(&list)
         .and_then(|node| node.parent())
         .unwrap_or_else(|| unreachable!("fresh standard viewport"))
         .clone();
     let _ = publish(&mut app);
     settle(&mut app);
-    assert!(app.index().node(&viewport).unwrap_or_else(|| unreachable!())
-        .interaction().scroll_offset().1 > 0.0);
+    assert!(
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!())
+            .interaction()
+            .scroll_offset()
+            .1
+            > 0.0
+    );
     assert_eq!(app.state().chosen, 17);
 }
 
 #[test]
 fn queued_reveal_is_never_retargeted_after_original_option_is_retired() {
-    let mut app = AppRuntime::<App>::mount(State { open: true, ..State::default() });
+    let mut app = AppRuntime::<App>::mount(State {
+        open: true,
+        ..State::default()
+    });
     settle(&mut app);
     let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     let retired = id(&mut app, "viewport.option.17");
     let _ = publish(&mut app);
 
-    app.submit_command(owner.clone(), SemanticCommand::FocusGroupLast, CommandOrigin::programmatic())
-        .unwrap_or_else(|_| unreachable!("navigation admission"));
+    app.submit_command(
+        owner.clone(),
+        SemanticCommand::FocusGroupLast,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("navigation admission"));
     app.submit_action(Action::Popup(ComboBoxRequest::Close))
         .unwrap_or_else(|_| unreachable!("close admission"));
-    let batch = app.pump(PumpBudget::new(1, 0, 0, 0))
+    let batch = app
+        .pump(PumpBudget::new(1, 0, 0, 0))
         .unwrap_or_else(|error| unreachable!("original navigation: {error:?}"));
     assert!(batch.processed_through().is_some());
     assert!(app.state().open);
@@ -545,12 +582,23 @@ fn queued_reveal_is_never_retargeted_after_original_option_is_retired() {
     let current = id(&mut app, "viewport.option.17");
     assert_ne!(current, retired);
     let list = id(&mut app, "viewport.list");
-    let viewport = app.index().node(&list).and_then(|node| node.parent())
-        .unwrap_or_else(|| unreachable!("new scroll viewport")).clone();
+    let viewport = app
+        .index()
+        .node(&list)
+        .and_then(|node| node.parent())
+        .unwrap_or_else(|| unreachable!("new scroll viewport"))
+        .clone();
     let _ = publish(&mut app);
     settle(&mut app);
-    assert_eq!(app.index().node(&viewport).unwrap_or_else(|| unreachable!())
-        .interaction().scroll_offset().1, 0.0);
+    assert_eq!(
+        app.index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!())
+            .interaction()
+            .scroll_offset()
+            .1,
+        0.0
+    );
     assert_eq!(app.state().chosen, 0);
     assert_eq!(app.focus().focused_node(), Some(&owner));
 }
