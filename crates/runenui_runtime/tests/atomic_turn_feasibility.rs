@@ -481,3 +481,179 @@ mod queue_credit_design_probe {
         assert!(queued_behind_head + 2 > legacy.capacity);
     }
 }
+
+#[cfg(test)]
+mod focus_route_output_probe {
+    use std::{cell::RefCell, rc::Rc};
+
+    use runenui_core::{
+        ChildBearingWidget, CommandOrigin, Element, ElementId, EventContext, EventPhase,
+        FocusEventKind, NoHostProtocol, SemanticCommand, UiApp, UiEvent, Widget,
+        WidgetEventOutput, column, container,
+    };
+    use runenui_runtime::{AppRuntime, PumpBudget, RuntimeStatus};
+
+    #[derive(Clone, Copy)]
+    enum Action {
+        FocusOutput,
+    }
+
+    #[derive(Debug)]
+    struct Parent {
+        observed: Rc<RefCell<Vec<EventPhase>>>,
+    }
+
+    impl Widget<Action> for Parent {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, Action>,
+        ) -> WidgetEventOutput {
+            if event.as_focus().is_some_and(|focus| focus.kind() == FocusEventKind::Out) {
+                self.observed.borrow_mut().push(context.phase());
+                context.emit(Action::FocusOutput);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    impl ChildBearingWidget<Action> for Parent {}
+
+    #[derive(Debug)]
+    struct Leaf {
+        observed: Rc<RefCell<Vec<EventPhase>>>,
+    }
+
+    impl Widget<Action> for Leaf {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, Action>,
+        ) -> WidgetEventOutput {
+            if event.as_focus().is_some_and(|focus| focus.kind() == FocusEventKind::Out) {
+                self.observed.borrow_mut().push(context.phase());
+                context.emit(Action::FocusOutput);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    struct State {
+        observed: Rc<RefCell<Vec<EventPhase>>>,
+        processed_outputs: usize,
+    }
+
+    struct App;
+
+    impl UiApp for App {
+        type State = State;
+        type Action = Action;
+        type HostProtocol = NoHostProtocol;
+
+        fn root(state: &Self::State) -> impl runenui_core::View<Self::Action> {
+            column(vec![
+                container(
+                    Parent {
+                        observed: Rc::clone(&state.observed),
+                    },
+                    vec![
+                        Element::new(Leaf {
+                            observed: Rc::clone(&state.observed),
+                        })
+                        .id("old-focus")
+                        .focusable(true),
+                    ],
+                )
+                .key("old-parent")
+                .into_element(),
+                Element::new(Leaf {
+                    observed: Rc::clone(&state.observed),
+                })
+                .id("new-focus")
+                .focusable(true),
+            ])
+        }
+
+        fn update(state: &mut Self::State, _: Self::Action) {
+            state.processed_outputs += 1;
+        }
+    }
+
+    fn target(runtime: &AppRuntime<App>, name: &str) -> runenui_runtime::MountedNodeId {
+        let authored = ElementId::new(name).unwrap_or_else(|_| unreachable!("authored id"));
+        runtime
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored))
+            .unwrap_or_else(|| unreachable!("focusable test node"))
+            .id()
+            .clone()
+    }
+
+    fn settle(runtime: &mut AppRuntime<App>) {
+        let report = runtime
+            .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("settled focus runtime"))
+            .report()
+            .to_owned();
+        assert!(report.is_quiescent());
+    }
+
+    #[test]
+    fn real_focus_out_can_emit_across_capture_target_and_bubble_callbacks() {
+        let observed = Rc::new(RefCell::new(Vec::new()));
+        let mut runtime = AppRuntime::<App>::mount(State {
+            observed: Rc::clone(&observed),
+            processed_outputs: 0,
+        });
+        settle(&mut runtime);
+        let old = target(&runtime, "old-focus");
+        let new = target(&runtime, "new-focus");
+        runtime
+            .submit_command(
+                old,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("old focus requested"));
+        settle(&mut runtime);
+        assert!(observed.borrow().is_empty());
+
+        runtime
+            .submit_command(
+                new,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("new focus requested"));
+        // A command's routed focus notification is processed before its
+        // three emitted application actions are later dequeued.
+        let report = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("single source command"))
+            .report()
+            .to_owned();
+        assert_eq!(report.processed_envelopes(), 1);
+        assert_eq!(runtime.state().processed_outputs, 0);
+        assert_eq!(
+            &*observed.borrow(),
+            &[EventPhase::Capture, EventPhase::Target, EventPhase::Bubble]
+        );
+        assert_eq!(report.remaining_queued_envelopes(), 3);
+        assert_eq!(runtime.status(), RuntimeStatus::Running);
+
+        settle(&mut runtime);
+        assert_eq!(runtime.state().processed_outputs, 3);
+    }
+}
