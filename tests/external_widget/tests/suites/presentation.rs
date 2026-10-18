@@ -1,5 +1,7 @@
 #[path = "../combo_box_reveal_downstream.rs"]
 mod combo_box_reveal_downstream;
+#[path = "../combo_box_scroll_viewport.rs"]
+mod combo_box_scroll_viewport;
 #[path = "../combo_box_reveal_editable.rs"]
 mod combo_box_reveal_editable;
 #[path = "../element_presentation.rs"]

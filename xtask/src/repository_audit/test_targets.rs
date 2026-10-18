@@ -24,7 +24,6 @@ const SUITES: &[&str] = &[
 // M11 CTRL-85/86 authoring policy remains accepted; #482 closed unmerged.
 const PENDING_REMEDIATION: &[&str] = &[
     "combo_box_editable.rs",
-    "combo_box_scroll_viewport.rs",
     "combo_box_select_only.rs",
 ];
 

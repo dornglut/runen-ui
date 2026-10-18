@@ -75,7 +75,7 @@ fn settle(app: &mut AppRuntime<App>) {
             .is_quiescent()
     );
 }
-fn id(app: &AppRuntime<App>, text: &str) -> MountedNodeId {
+fn id(app: &mut AppRuntime<App>, text: &str) -> MountedNodeId {
     let authored = ElementId::new(text).unwrap_or_else(|_| unreachable!());
     app.index()
         .nodes()
@@ -102,14 +102,14 @@ fn publish(app: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
 fn long_combo_popup_is_bounded_and_ordinary_exact_option_reveal_preserves_owner_focus() {
     let mut app = AppRuntime::<App>::mount(State::default());
     settle(&mut app);
-    let owner = id(&app, "viewport.owner");
+    let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     command(&mut app, owner.clone(), SemanticCommand::Expand);
     assert!(app.state().open);
     assert_eq!(app.focus().focused_node(), Some(&owner));
 
-    let list = id(&app, "viewport.list");
-    let last = id(&app, "viewport.option.17");
+    let list = id(&mut app, "viewport.list");
+    let last = id(&mut app, "viewport.option.17");
     let viewport = app.index()
         .node(&list)
         .and_then(|node| node.parent())
@@ -174,10 +174,10 @@ fn closed_popup_rejects_retired_exact_option_scroll_without_retargeting_reopened
         ..State::default()
     });
     settle(&mut app);
-    let owner = id(&app, "viewport.owner");
+    let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
-    let old = id(&app, "viewport.option.17");
-    let old_list = id(&app, "viewport.list");
+    let old = id(&mut app, "viewport.option.17");
+    let old_list = id(&mut app, "viewport.list");
     let old_viewport = app
         .index()
         .node(&old_list)
@@ -204,9 +204,9 @@ fn closed_popup_rejects_retired_exact_option_scroll_without_retargeting_reopened
     app.submit_action(Action::Popup(ComboBoxRequest::Open))
         .unwrap_or_else(|_| unreachable!("application reopens standard popup"));
     settle(&mut app);
-    let current = id(&app, "viewport.option.17");
+    let current = id(&mut app, "viewport.option.17");
     assert_ne!(current, old, "reopened same authored Option gets a new generation");
-    let list = id(&app, "viewport.list");
+    let list = id(&mut app, "viewport.list");
     let viewport = app
         .index()
         .node(&list)
@@ -237,10 +237,10 @@ fn exact_option_scroll_from_another_runtime_fails_closed_without_stealing_focus(
     let mut foreign = AppRuntime::<App>::mount(state());
     settle(&mut app);
     settle(&mut foreign);
-    let owner = id(&app, "viewport.owner");
+    let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
-    let foreign_option = id(&foreign, "viewport.option.17");
-    let list = id(&app, "viewport.list");
+    let foreign_option = id(&mut foreign, "viewport.option.17");
+    let list = id(&mut app, "viewport.list");
     let viewport = app
         .index()
         .node(&list)
@@ -280,10 +280,10 @@ fn full_public_command_queue_rejects_exact_option_reveal_without_alternate_scrol
         RuntimeConfig::default().with_queue_capacity(4),
     );
     settle(&mut app);
-    let owner = id(&app, "viewport.owner");
+    let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
-    let last = id(&app, "viewport.option.17");
-    let list = id(&app, "viewport.list");
+    let last = id(&mut app, "viewport.option.17");
+    let list = id(&mut app, "viewport.list");
     let viewport = app
         .index()
         .node(&list)
@@ -343,7 +343,7 @@ fn sparse_enabled_candidates_navigate_without_disabled_or_out_of_range_active_ta
         ..State::default()
     });
     settle(&mut app);
-    let owner = id(&app, "viewport.owner");
+    let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     // Option 00 is application-selected but disabled. Active eligibility is
     // independent of committed value, even across many disabled Options.
@@ -374,7 +374,7 @@ fn all_disabled_options_have_no_active_descendant_or_keyboard_selection_action()
         ..State::default()
     });
     settle(&mut app);
-    let owner = id(&app, "viewport.owner");
+    let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     assert_eq!(active_option_name(&mut app), None);
     for direction in [
@@ -400,15 +400,15 @@ fn mounted_popup_navigation_routes_exact_active_option_reveal_through_standard_s
         ..State::default()
     });
     settle(&mut app);
-    let owner = id(&app, "viewport.owner");
+    let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
-    let list = id(&app, "viewport.list");
+    let list = id(&mut app, "viewport.list");
     let viewport = app.index()
         .node(&list)
         .and_then(|node| node.parent())
         .unwrap_or_else(|| unreachable!("scroll viewport"))
         .clone();
-    let target = id(&app, "viewport.option.17");
+    let target = id(&mut app, "viewport.option.17");
     let _ = publish(&mut app);
     assert_eq!(
         app.index().node(&viewport).unwrap_or_else(|| unreachable!())
@@ -444,13 +444,13 @@ fn first_published_open_combo_reveals_deep_selected_option_after_mount_and_geome
         ..State::default()
     });
     settle(&mut app);
-    let list = id(&app, "viewport.list");
+    let list = id(&mut app, "viewport.list");
     let viewport = app.index()
         .node(&list)
         .and_then(|node| node.parent())
         .unwrap_or_else(|| unreachable!("standard scroll owner"))
         .clone();
-    let deepest = id(&app, "viewport.option.17");
+    let deepest = id(&mut app, "viewport.option.17");
     let first = publish(&mut app);
     let owner_bounds = first.frame().node(&viewport)
         .unwrap_or_else(|| unreachable!("published viewport")).bounds();
@@ -491,7 +491,7 @@ fn close_and_reopen_before_an_intermediate_publication_reveals_new_option_genera
         ..State::default()
     });
     settle(&mut app);
-    let old_option = id(&app, "viewport.option.17");
+    let old_option = id(&mut app, "viewport.option.17");
     let _ = publish(&mut app);
     settle(&mut app);
     app.submit_action(Action::Popup(ComboBoxRequest::Close))
@@ -503,9 +503,9 @@ fn close_and_reopen_before_an_intermediate_publication_reveals_new_option_genera
     app.submit_action(Action::Popup(ComboBoxRequest::Open))
         .unwrap_or_else(|_| unreachable!("reopen application state"));
     settle(&mut app);
-    let new_option = id(&app, "viewport.option.17");
+    let new_option = id(&mut app, "viewport.option.17");
     assert_ne!(new_option, old_option);
-    let list = id(&app, "viewport.list");
+    let list = id(&mut app, "viewport.list");
     let viewport = app.index()
         .node(&list)
         .and_then(|node| node.parent())
@@ -522,9 +522,9 @@ fn close_and_reopen_before_an_intermediate_publication_reveals_new_option_genera
 fn queued_reveal_is_never_retargeted_after_original_option_is_retired() {
     let mut app = AppRuntime::<App>::mount(State { open: true, ..State::default() });
     settle(&mut app);
-    let owner = id(&app, "viewport.owner");
+    let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
-    let retired = id(&app, "viewport.option.17");
+    let retired = id(&mut app, "viewport.option.17");
     let _ = publish(&mut app);
 
     app.submit_command(owner.clone(), SemanticCommand::FocusGroupLast, CommandOrigin::programmatic())
@@ -542,9 +542,9 @@ fn queued_reveal_is_never_retargeted_after_original_option_is_retired() {
     app.submit_action(Action::Popup(ComboBoxRequest::Open))
         .unwrap_or_else(|_| unreachable!("reopen admission"));
     settle(&mut app);
-    let current = id(&app, "viewport.option.17");
+    let current = id(&mut app, "viewport.option.17");
     assert_ne!(current, retired);
-    let list = id(&app, "viewport.list");
+    let list = id(&mut app, "viewport.list");
     let viewport = app.index().node(&list).and_then(|node| node.parent())
         .unwrap_or_else(|| unreachable!("new scroll viewport")).clone();
     let _ = publish(&mut app);
