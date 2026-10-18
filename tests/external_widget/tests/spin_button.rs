@@ -1,7 +1,7 @@
 #![allow(refining_impl_trait)]
 
 //! External application proof: one TextField/M10 editor, one #310 range,
-//! one #311 command FIFO, no durable numeric state in RunenUI.
+//! one #311 command FIFO, no durable numeric state in `RunenUI`.
 use runenui_core::{
     CommandOrigin, CommittedTextEvent, EditIntent, EditResolution, Effects, IntoUpdateOutput,
     KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
@@ -315,7 +315,7 @@ fn incomplete_and_invalid_text_never_fabricates_numeric_semantics() {
             .is_err()
     );
     assert_eq!(runtime.state().text, "-");
-    assert!(runtime.state().requests.is_empty());
+    assert_eq!(runtime.state().requests.as_slice(), &[]);
 }
 
 #[test]
@@ -653,7 +653,7 @@ fn read_only_and_disabled_sibling_buttons_reject_ordinary_activation() {
         }
         settle(&mut runtime);
         assert_eq!(runtime.state().text, "4");
-        assert!(runtime.state().requests.is_empty());
+        assert_eq!(runtime.state().requests.as_slice(), &[]);
     }
 }
 
@@ -753,7 +753,7 @@ fn exact_removed_semantic_target_is_not_reused_for_replacement_text() {
             ))
             .is_err()
     );
-    assert!(runtime.state().requests.is_empty());
+    assert_eq!(runtime.state().requests.as_slice(), &[]);
 }
 
 #[test]
@@ -781,7 +781,7 @@ fn composition_active_key_rejects_numeric_adjustment() {
         ))
         .unwrap_or_else(|_| unreachable!("composition-time key routed"));
     settle(&mut runtime);
-    assert!(runtime.state().requests.is_empty());
+    assert_eq!(runtime.state().requests.as_slice(), &[]);
     assert_eq!(runtime.state().text, "-1");
 }
 
