@@ -181,7 +181,6 @@ fn generic_focus_navigation_claim_is_not_an_explicit_combo_widget_claim() {
     }
 }
 
-
 const FONT: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/Cantarell-Regular.ttf");
 
 fn option_two(runtime: &mut AppRuntime<App>) -> MountedNodeId {
@@ -262,7 +261,10 @@ fn published_hit_region_activates_the_exact_option_without_focus_transfer() {
 
     let hovered = published(&mut runtime);
     let down_point = displayed_option_center(hovered.hit_test_scene(), &option);
-    assert_eq!(hovered.hit_test_scene().target_at(down_point), Some(&option));
+    assert_eq!(
+        hovered.hit_test_scene().target_at(down_point),
+        Some(&option)
+    );
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -295,7 +297,11 @@ fn published_hit_region_activates_the_exact_option_without_focus_transfer() {
         )
         .unwrap_or_else(|_| unreachable!("Up admitted"));
     settle(&mut runtime);
-    assert_eq!(runtime.state().chosen, 2, "canonical Option callback must choose Two");
+    assert_eq!(
+        runtime.state().chosen,
+        2,
+        "canonical Option callback must choose Two"
+    );
     assert!(!runtime.state().open);
     assert_eq!(runtime.focus().focused_node(), owner.as_ref());
 }
