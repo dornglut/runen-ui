@@ -879,3 +879,195 @@ mod real_composition_focus_budget_probe {
         }
     }
 }
+
+
+#[cfg(test)]
+mod built_in_route_qualification_probe {
+    // A built-in TextField is not a closed route: an ordinary application
+    // ancestor still participates in both capture and bubble FocusOut.
+    // This probes real built-in authoring and routing, not a mock widget
+    // or an implementation of a proposed reservation API.
+    use std::{cell::RefCell, rc::Rc};
+
+    use runenui_core::{
+        ChildBearingWidget, CommandOrigin, Element, ElementId, EventContext, EventPhase,
+        FocusEventKind, NoHostProtocol, SemanticCommand, SemanticEditableMode, TextAffinity,
+        TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextField, TextPosition,
+        TextSelection, UiApp, UiEvent, View, Widget, WidgetEventOutput, column, container,
+    };
+    use runenui_runtime::{
+        AppRuntime, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus,
+        RuntimeTerminalReason,
+    };
+
+    #[derive(Debug)]
+    struct EmittingAncestor {
+        observed: Rc<RefCell<Vec<EventPhase>>>,
+    }
+
+    impl Widget<usize> for EmittingAncestor {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn event(
+            &mut self,
+            (): &mut Self::State,
+            event: &UiEvent,
+            context: &mut EventContext<'_, usize>,
+        ) -> WidgetEventOutput {
+            if event
+                .as_focus()
+                .is_some_and(|focus| focus.kind() == FocusEventKind::Out)
+            {
+                self.observed.borrow_mut().push(context.phase());
+                context.emit(1);
+            }
+            WidgetEventOutput::none()
+        }
+    }
+
+    impl ChildBearingWidget<usize> for EmittingAncestor {}
+
+    #[derive(Debug)]
+    struct OtherFocusable;
+
+    impl Widget<usize> for OtherFocusable {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+    }
+
+    struct State {
+        observed: Rc<RefCell<Vec<EventPhase>>>,
+        processed: usize,
+    }
+
+    struct App;
+
+    impl UiApp for App {
+        type State = State;
+        type Action = usize;
+        type HostProtocol = NoHostProtocol;
+
+        fn root(state: &Self::State) -> impl View<Self::Action> {
+            let snapshot = TextDocumentSnapshot::new(
+                TextDocumentId::new(1),
+                TextDocumentRevision::new(1),
+            );
+            let selection = TextSelection::collapsed(
+                TextPosition::new(snapshot, "", 0, TextAffinity::Downstream)
+                    .unwrap_or_else(|_| unreachable!("valid empty document caret")),
+            );
+            let field = TextField::new(
+                snapshot,
+                "",
+                selection,
+                SemanticEditableMode::SingleLine,
+                |_| 1,
+            )
+            .unwrap_or_else(|_| unreachable!("valid single-line editor"))
+            .id("editor")
+            .key("editor");
+
+            column(vec![
+                container(
+                    EmittingAncestor {
+                        observed: Rc::clone(&state.observed),
+                    },
+                    vec![field.into_element()],
+                )
+                .key("parent")
+                .into_element(),
+                Element::new(OtherFocusable).id("other").focusable(true),
+            ])
+        }
+
+        fn update(state: &mut Self::State, action: Self::Action) {
+            state.processed += action;
+        }
+    }
+
+    fn target(runtime: &AppRuntime<App>, name: &str) -> MountedNodeId {
+        let authored = ElementId::new(name).unwrap_or_else(|_| unreachable!("known id"));
+        runtime
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored))
+            .unwrap_or_else(|| unreachable!("mounted authored node"))
+            .id()
+            .clone()
+    }
+
+    fn settle(runtime: &mut AppRuntime<App>) {
+        let result = runtime
+            .pump(PumpBudget::new(usize::MAX, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("public pump"))
+            .report()
+            .to_owned();
+        assert!(result.is_quiescent());
+    }
+
+    #[test]
+    fn ordinary_text_field_does_not_qualify_its_arbitrary_ancestor_route() {
+        for capacity in [16, 4096] {
+            for (allowance, should_poison) in [(1, true), (2, false)] {
+                let observed = Rc::new(RefCell::new(Vec::new()));
+                let mut runtime = AppRuntime::<App>::mount_with_config(
+                    State {
+                        observed: Rc::clone(&observed),
+                        processed: 0,
+                    },
+                    RuntimeConfig::default().with_limits(
+                        RuntimeLimits::default()
+                            .with_waiting_envelopes(capacity)
+                            .with_transaction_outputs(allowance),
+                    ),
+                );
+                settle(&mut runtime);
+                runtime
+                    .submit_command(
+                        target(&runtime, "editor"),
+                        SemanticCommand::RequestFocus,
+                        CommandOrigin::programmatic(),
+                    )
+                    .unwrap_or_else(|_| unreachable!("editor focus submitted"));
+                settle(&mut runtime);
+                runtime
+                    .submit_command(
+                        target(&runtime, "other"),
+                        SemanticCommand::RequestFocus,
+                        CommandOrigin::programmatic(),
+                    )
+                    .unwrap_or_else(|_| unreachable!("focus transfer submitted"));
+                let report = runtime
+                    .pump(PumpBudget::new(1, 0, 0, 0))
+                    .unwrap_or_else(|_| unreachable!("single canonical source"))
+                    .report()
+                    .to_owned();
+
+                assert_eq!(report.processed_envelopes(), 1);
+                assert_eq!(runtime.state().processed, 0);
+                assert_eq!(
+                    &*observed.borrow(),
+                    &[EventPhase::Capture, EventPhase::Bubble],
+                    "ancestor participates twice even when the TextField emits nothing",
+                );
+
+                if should_poison {
+                    assert_eq!(
+                        runtime.status(),
+                        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned),
+                        "C={capacity}, R={allowance}",
+                    );
+                } else {
+                    assert_eq!(runtime.status(), RuntimeStatus::Running);
+                    assert_eq!(report.remaining_queued_envelopes(), 2);
+                    settle(&mut runtime);
+                    assert_eq!(runtime.state().processed, 2);
+                }
+            }
+        }
+    }
+}
