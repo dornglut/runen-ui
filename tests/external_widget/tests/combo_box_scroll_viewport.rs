@@ -295,6 +295,9 @@ fn full_public_command_queue_rejects_exact_option_reveal_without_alternate_scrol
         .unwrap_or_else(|| unreachable!("bounded popup viewport"))
         .clone();
     let _ = publish(&mut app);
+    // Initial publication may itself queue the selected Option's reveal.
+    // Settle it before explicitly filling all ordinary command slots.
+    settle(&mut app);
     for _ in 0..64 {
         app.submit_command(
             owner.clone(),
