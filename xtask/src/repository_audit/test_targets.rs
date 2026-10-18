@@ -151,10 +151,9 @@ fn nested_imports(contents: &str, path: &str, findings: &mut Vec<Finding>) -> Ve
             if pending.replace(file).is_some() {
                 failure(findings, path, "unpaired nested #[path] attribute");
             }
-        } else if trimmed
+        } else if let Some(module) = trimmed
             .strip_prefix("mod ")
             .and_then(|suffix| suffix.strip_suffix(';'))
-            .is_some()
         {
             if let Some(file) = pending.take() {
                 if Path::new(file)
@@ -171,6 +170,12 @@ fn nested_imports(contents: &str, path: &str, findings: &mut Vec<Finding>) -> Ve
                 } else {
                     imports.push(file.to_owned());
                 }
+            } else {
+                failure(
+                    findings,
+                    path,
+                    format!("nested module {module} lacks a checked sibling #[path] import"),
+                );
             }
         } else if pending.is_some() && !trimmed.is_empty() {
             failure(findings, path, "nested #[path] does not precede a module");
@@ -271,14 +276,51 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<(), Stri
     for entry in entries {
         let entry = entry.map_err(|error| format!("failed to inspect test source: {error}"))?;
         let path = entry.path();
-        if !path.is_file() || path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
-            continue;
-        }
         let name = entry
             .file_name()
             .into_string()
             .map_err(|_| "non-UTF-8 external-widget test source".to_owned())?;
-        sources.insert(name);
+        if path.is_dir() {
+            if name != "suites" {
+                failure(
+                    findings,
+                    TEST_DIRECTORY,
+                    format!("untracked nested test directory: {name}"),
+                );
+            }
+            continue;
+        }
+        if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+            sources.insert(name);
+        }
+    }
+
+    let suite_directory = format!("{TEST_DIRECTORY}/suites");
+    let suite_entries = fs::read_dir(root.join(&suite_directory))
+        .map_err(|error| format!("failed to inspect {suite_directory}: {error}"))?;
+    for entry in suite_entries {
+        let entry = entry.map_err(|error| format!("failed to inspect suite file: {error}"))?;
+        let path = entry.path();
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| "non-UTF-8 external-widget suite file".to_owned())?;
+        if path.is_dir() {
+            failure(
+                findings,
+                &suite_directory,
+                format!("untracked nested suite directory: {name}"),
+            );
+        } else if path.is_file()
+            && path.extension().and_then(|ext| ext.to_str()) == Some("rs")
+            && !SUITES.iter().any(|suite| name == format!("{suite}.rs"))
+        {
+            failure(
+                findings,
+                &suite_directory,
+                format!("unregistered suite source: {name}"),
+            );
+        }
     }
 
     let mut registered = BTreeMap::new();
@@ -315,6 +357,19 @@ mod tests {
         );
         assert_eq!(imports, ["input_arbitration_finality.rs"]);
         assert_eq!(findings.len(), 0);
+    }
+
+    #[test]
+    fn unchecked_plain_nested_modules_fail_closed() {
+        let mut findings = Vec::new();
+        let imports = super::nested_imports(
+            "mod untracked;\n",
+            "tests/external_widget/tests/input.rs",
+            &mut findings,
+        );
+        assert!(imports.is_empty());
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].message.contains("lacks a checked sibling"));
     }
 
     #[test]
