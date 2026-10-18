@@ -35,7 +35,11 @@ impl UiApp for App {
         let mut options = vec![
             first,
             option_item("Second", false)
-                .id(if state.replacement { "boundary.replacement" } else { "boundary.second" })
+                .id(if state.replacement {
+                    "boundary.replacement"
+                } else {
+                    "boundary.second"
+                })
                 .key(if state.replacement {
                     "boundary.option.replacement"
                 } else if state.option_rekeyed {
@@ -57,8 +61,9 @@ impl UiApp for App {
             } else {
                 "boundary.popup"
             })
-                .unwrap_or_else(|_| unreachable!()),
-            options, Action::Request,
+            .unwrap_or_else(|_| unreachable!()),
+            options,
+            Action::Request,
         )
         .id("boundary.owner")
         .open(true)
@@ -66,7 +71,10 @@ impl UiApp for App {
     }
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
-            Action::Choose(value) => { state.chosen = value; state.actions.push(value); }
+            Action::Choose(value) => {
+                state.chosen = value;
+                state.actions.push(value);
+            }
             Action::Request(_) => state.actions.push(9),
             Action::Replace => state.replacement = true,
             Action::ReplacePopup => state.popup_replaced = true,
@@ -79,42 +87,68 @@ impl UiApp for App {
 }
 fn new(mode: Mode) -> AppRuntime<App> {
     let mut app = AppRuntime::<App>::mount(State {
-        mode, replacement: false, popup_replaced: false, option_rekeyed: false, reordered: false,
-        chosen: 0, actions: Vec::new(),
+        mode,
+        replacement: false,
+        popup_replaced: false,
+        option_rekeyed: false,
+        reordered: false,
+        chosen: 0,
+        actions: Vec::new(),
     });
     settle(&mut app);
     app
 }
 fn settle(app: &mut AppRuntime<App>) {
-    assert!(app.pump(PumpBudget::new(
-        usize::MAX, usize::MAX, usize::MAX, usize::MAX,
-    )).unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
-            .report()
-            .is_quiescent());
+    assert!(
+        app.pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+        .report()
+        .is_quiescent()
+    );
 }
 fn id(app: &mut AppRuntime<App>, name: &str) -> MountedNodeId {
     let id = ElementId::new(name).unwrap_or_else(|_| unreachable!());
-    app.index().nodes().iter()
+    app.index()
+        .nodes()
+        .iter()
         .find(|node| node.authored_id() == Some(&id))
         .unwrap_or_else(|| unreachable!("authored ComboBox node exists"))
-        .id().clone()
+        .id()
+        .clone()
 }
 fn publish(app: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
     app.publish_surface(&SurfaceBuildContext::tight(
         &runenui_core::StyleEnvironment::default(),
         LogicalSize::try_new(500.0, 260.0).unwrap_or_else(|_| unreachable!()),
-    )).unwrap_or_else(|e| unreachable!("boundary publication: {e:?}"))
+    ))
+    .unwrap_or_else(|e| unreachable!("boundary publication: {e:?}"))
 }
 #[test]
 fn disabled_owner_blocks_option_activation_and_never_advertises_active_proxy() {
     let mut app = new(Mode::Disabled);
     let owner = id(&mut app, "boundary.owner");
-    assert!(!app.index().node(&owner).is_some_and(|node| node.is_focusable()));
-    assert!(app.index().nodes().iter().all(|node| node.authored_id().is_none_or(
-        |id| id.as_str() != "boundary.first" && id.as_str() != "boundary.popup"
-    )), "disabled owner cannot retain an undismissable blocking popup");
+    assert!(
+        !app.index()
+            .node(&owner)
+            .is_some_and(|node| node.is_focusable())
+    );
+    assert!(
+        app.index().nodes().iter().all(|node| node
+            .authored_id()
+            .is_none_or(|id| id.as_str() != "boundary.first" && id.as_str() != "boundary.popup")),
+        "disabled owner cannot retain an undismissable blocking popup"
+    );
     // A disabled owner cannot activate or open the popup through the routed path.
-    let _ = app.submit_command(owner.clone(), SemanticCommand::Activate, CommandOrigin::programmatic());
+    let _ = app.submit_command(
+        owner.clone(),
+        SemanticCommand::Activate,
+        CommandOrigin::programmatic(),
+    );
     settle(&mut app);
     assert!(app.state().actions.is_empty());
     let published = publish(&mut app);
