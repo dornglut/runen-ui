@@ -32,3 +32,5 @@ mod tabs;
 mod toolbar;
 #[path = "../tree_view_domain_identity.rs"]
 mod tree_view_domain_identity;
+#[path = "../tree_view_downstream.rs"]
+mod tree_view_downstream;
