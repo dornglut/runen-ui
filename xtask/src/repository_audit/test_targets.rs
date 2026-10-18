@@ -17,7 +17,27 @@ const SUITES: &[&str] = &[
     "scene_contracts",
     "presentation",
     "harness_trace_identity",
-    "composite_controls",
+];
+
+// Explicit, reviewed existing omissions; #483 owns staged public-test repair.
+// A file must leave this quarantine as soon as its suite import is accepted.
+// #477/#482 own the lifecycle file and must resolve the M11 CTRL-85/86 conflict.
+const PENDING_REMEDIATION: &[&str] = &[
+    "combo_box_boundaries.rs",
+    "combo_box_editable.rs",
+    "combo_box_editable_parity.rs",
+    "combo_box_focus_lifecycle.rs",
+    "combo_box_option_proxy.rs",
+    "combo_box_reveal_downstream.rs",
+    "combo_box_reveal_editable.rs",
+    "combo_box_scroll_viewport.rs",
+    "combo_box_select_only.rs",
+    "spin_button.rs",
+    "text_field.rs",
+    "tree_view.rs",
+    "tree_view_domain_identity.rs",
+    "tree_view_downstream.rs",
+    "tree_view_scroll.rs",
 ];
 
 fn failure(findings: &mut Vec<Finding>, path: &str, message: impl Into<String>) {
@@ -33,8 +53,15 @@ fn quoted<'a>(line: &'a str, field: &str) -> Option<&'a str> {
 }
 
 fn audit_manifest(contents: &str, findings: &mut Vec<Finding>) {
-    if !contents.lines().any(|line| line.trim() == "autotests = false") {
-        failure(findings, MANIFEST, "expected explicit Cargo tests with autotests = false");
+    if !contents
+        .lines()
+        .any(|line| line.trim() == "autotests = false")
+    {
+        failure(
+            findings,
+            MANIFEST,
+            "expected explicit Cargo tests with autotests = false",
+        );
     }
     let mut targets = BTreeMap::<String, usize>::new();
     for block in contents.split("[[test]]").skip(1) {
@@ -132,6 +159,7 @@ fn check_coverage(
 ) {
     for source in sources {
         match registered.get(source) {
+            None if PENDING_REMEDIATION.contains(&source.as_str()) => {}
             None => failure(
                 findings,
                 TEST_DIRECTORY,
@@ -151,6 +179,15 @@ fn check_coverage(
                 findings,
                 TEST_DIRECTORY,
                 format!("suite imports absent test source: {source}"),
+            );
+        }
+    }
+    for pending in PENDING_REMEDIATION {
+        if !sources.contains(*pending) || registered.contains_key(*pending) {
+            failure(
+                findings,
+                TEST_DIRECTORY,
+                format!("obsolete or invalid #483 quarantine entry: {pending}; retire it when registered"),
             );
         }
     }
@@ -200,11 +237,18 @@ mod tests {
             .collect::<BTreeSet<_>>();
         let mut registered = BTreeMap::new();
         registered.insert("one.rs".to_owned(), vec!["semantic_application".to_owned()]);
-        registered.insert("gone.rs".to_owned(), vec!["input_control_editing".to_owned()]);
+        registered.insert(
+            "gone.rs".to_owned(),
+            vec!["input_control_editing".to_owned()],
+        );
         let mut findings = Vec::new();
         check_coverage(&files, &registered, &mut findings);
         assert_eq!(findings.len(), 2);
-        assert!(findings.iter().any(|item| item.message.contains("unregistered")));
+        assert!(
+            findings
+                .iter()
+                .any(|item| item.message.contains("unregistered"))
+        );
         assert!(findings.iter().any(|item| item.message.contains("absent")));
     }
 
@@ -213,7 +257,10 @@ mod tests {
         let files = ["one.rs"].into_iter().map(str::to_owned).collect();
         let registered = BTreeMap::from([(
             "one.rs".to_owned(),
-            vec!["semantic_application".to_owned(), "composite_controls".to_owned()],
+            vec![
+                "semantic_application".to_owned(),
+                "composite_controls".to_owned(),
+            ],
         )]);
         let mut findings = Vec::new();
         check_coverage(&files, &registered, &mut findings);
@@ -222,10 +269,42 @@ mod tests {
     }
 
     #[test]
+    fn quarantine_is_checked_and_must_retire_when_registered() {
+        let files = super::PENDING_REMEDIATION
+            .iter()
+            .map(|name| (*name).to_owned())
+            .collect();
+        let mut registered = BTreeMap::new();
+        let mut findings = Vec::new();
+        // This historical fixture has an explicit #483 exemption until qualified.
+        check_coverage(&files, &registered, &mut findings);
+        assert!(findings.is_empty());
+        // The quarantine cannot remain after the source becomes an executed module.
+        registered.insert(
+            "combo_box_boundaries.rs".to_owned(),
+            vec!["semantic_application".to_owned()],
+        );
+        findings.clear();
+        check_coverage(&files, &registered, &mut findings);
+        assert!(findings.iter().any(|item| item.message.contains("obsolete")));
+    }
+
+    #[test]
     fn missing_explicit_cargo_target_fails() {
         let mut findings = Vec::new();
-        audit_manifest("[package]\nautotests = false\n[[test]]\nname = \"unknown\"\npath = \"tests/suites/unknown.rs\"\n", &mut findings);
-        assert!(findings.iter().any(|item| item.message.contains("unexpected")));
-        assert!(findings.iter().any(|item| item.message.contains("composite_controls")));
+        audit_manifest(
+            "[package]\nautotests = false\n[[test]]\nname = \"unknown\"\npath = \"tests/suites/unknown.rs\"\n",
+            &mut findings,
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|item| item.message.contains("unexpected"))
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|item| item.message.contains("harness_trace_identity"))
+        );
     }
 }

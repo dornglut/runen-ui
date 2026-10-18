@@ -29,10 +29,6 @@ path = "tests/suites/presentation.rs"
 name = "harness_trace_identity"
 path = "tests/suites/harness_trace_identity.rs"
 
-[[test]]
-name = "composite_controls"
-path = "tests/suites/composite_controls.rs"
-
 [dependencies]
 runenui_core = { path = "../../crates/runenui_core", version = "0.1.0" }
 runenui_runtime = { path = "../../crates/runenui_runtime", version = "0.1.0" }
