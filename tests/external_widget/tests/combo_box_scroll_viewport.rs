@@ -34,9 +34,7 @@ impl UiApp for App {
                 .id(format!("viewport.option.{index}"))
                 .enabled(
                     !state.all_disabled
-                        && (!state.navigation_with_disabled_holes
-                            || index == 2
-                            || index == 14),
+                        && (!state.navigation_with_disabled_holes || index == 2 || index == 14),
                 )
                 .with_layout(
                     LayoutStyle::default()
