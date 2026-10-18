@@ -435,7 +435,7 @@ fn read_only_and_disabled_sibling_buttons_reject_ordinary_activation() {
             let button = snapshot.nodes().iter().find(|node| {
                 node.role() == SemanticRole::Button && node.name() == Some(label)
             }).unwrap_or_else(|| unreachable!("ordinary button remains semantic"));
-            assert_eq!(button.state().disabled(), Some(true));
+            assert!(button.state().disabled());
             assert!(runtime.submit_semantic_action(SemanticActionRequest::new(
                 snapshot.surface_id().clone(), button.id().clone(), SemanticAction::Activate,
             )).is_err());
