@@ -16,5 +16,7 @@ mod input_lifecycle_cleanup;
 mod input_m4c5;
 #[path = "../keyboard_accelerators.rs"]
 mod keyboard_accelerators;
+#[path = "../m11_combo_claim_probe.rs"]
+mod m11_combo_claim_probe;
 #[path = "../scroll_control.rs"]
 mod scroll_control;
