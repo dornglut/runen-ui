@@ -338,11 +338,7 @@ fn downstream_semantic_composite_reveals_deep_initial_option_without_builtin_wid
 }
 
 // Saturate only with ordinary accepted commands; no special reveal queue.
-fn fill_command_fifo(
-    app: &mut AppRuntime<InitialApp>,
-    owner: &MountedNodeId,
-    capacity: usize,
-) {
+fn fill_command_fifo(app: &mut AppRuntime<InitialApp>, owner: &MountedNodeId, capacity: usize) {
     for _ in 0..capacity {
         app.submit_command(
             owner.clone(),
