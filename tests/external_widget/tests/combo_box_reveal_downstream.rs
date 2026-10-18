@@ -6,10 +6,10 @@
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, ElementId, EventContext, EventPhase, Focusability,
     LayoutBound, LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, NoHostProtocol,
-    OverflowPolicy, OverflowStyle, SemanticCommand, UiApp, UiEvent, View, Widget,
-    WidgetEventOutput, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
-    SemanticPopupKind, SemanticReference, SemanticRelationship, SemanticRelationshipKind,
-    SemanticRole, SemanticState, container, list_box, option_item, scroll_container,
+    OverflowPolicy, OverflowStyle, SemanticCommand, SemanticContribution,
+    SemanticContributionContext, SemanticNodeContribution, SemanticPopupKind, SemanticReference,
+    SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState, UiApp, UiEvent,
+    View, Widget, WidgetEventOutput, container, list_box, option_item, scroll_container,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig, SurfaceBuildContext,
@@ -131,25 +131,48 @@ fn custom_child_bearing_widget_reveals_only_unique_enabled_exact_mounted_descend
         settle(&mut app);
         let owner = id(&mut app, "downstream.owner");
         let list = id(&mut app, "downstream.list");
-        let viewport = app.index()
+        let viewport = app
+            .index()
             .node(&list)
             .and_then(|node| node.parent())
             .unwrap_or_else(|| unreachable!("standard scroll viewport"))
             .clone();
-        let _ = app.publish_surface(&SurfaceBuildContext::tight(
-            &runenui_core::StyleEnvironment::default(),
-            LogicalSize::try_new(350.0, 320.0).unwrap_or_else(|_| unreachable!()),
-        )).unwrap_or_else(|error| unreachable!("mounted downstream viewport: {error:?}"));
-        assert_eq!(app.index().node(&viewport).unwrap_or_else(|| unreachable!())
-            .interaction().scroll_offset().1, 0.0);
-        app.submit_command(owner.clone(), SemanticCommand::RequestFocus, CommandOrigin::programmatic())
-            .unwrap_or_else(|_| unreachable!("focus current widget"));
+        let _ = app
+            .publish_surface(&SurfaceBuildContext::tight(
+                &runenui_core::StyleEnvironment::default(),
+                LogicalSize::try_new(350.0, 320.0).unwrap_or_else(|_| unreachable!()),
+            ))
+            .unwrap_or_else(|error| unreachable!("mounted downstream viewport: {error:?}"));
+        assert_eq!(
+            app.index()
+                .node(&viewport)
+                .unwrap_or_else(|| unreachable!())
+                .interaction()
+                .scroll_offset()
+                .1,
+            0.0
+        );
+        app.submit_command(
+            owner.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus current widget"));
         settle(&mut app);
-        app.submit_command(owner.clone(), SemanticCommand::FocusGroupLast, CommandOrigin::programmatic())
-            .unwrap_or_else(|_| unreachable!("downstream routed event"));
+        app.submit_command(
+            owner.clone(),
+            SemanticCommand::FocusGroupLast,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("downstream routed event"));
         settle(&mut app);
-        let offset = app.index().node(&viewport).unwrap_or_else(|| unreachable!())
-            .interaction().scroll_offset().1;
+        let offset = app
+            .index()
+            .node(&viewport)
+            .unwrap_or_else(|| unreachable!())
+            .interaction()
+            .scroll_offset()
+            .1;
         assert_eq!(offset > 0.0, matches!(case, Case::Live), "{case:?}");
         assert_eq!(app.focus().focused_node(), Some(&owner), "{case:?}");
     }
@@ -320,11 +343,14 @@ fn initial_generic_reveal_respects_full_command_fifo_without_a_private_retry() {
         InitialMode::Enabled,
         RuntimeConfig::default().with_queue_capacity(2),
     );
+    let initial_work = app
+        .pump(PumpBudget::new(256, 256, 256, 256))
+        .unwrap_or_else(|error| unreachable!("initial work: {error:?}"));
     assert!(
-        app.pump(PumpBudget::new(256, 256, 256, 256))
-            .unwrap_or_else(|error| unreachable!("initial work: {error:?}"))
-            .report()
-            .is_quiescent()
+        initial_work.report().is_quiescent(),
+        "initial work must be quiescent before saturating FIFO; status={:?}, remaining={}",
+        app.status(),
+        initial_work.report().remaining_queued_envelopes(),
     );
     let authored = ElementId::new("initial.custom.owner").unwrap_or_else(|_| unreachable!());
     let owner = app
@@ -351,9 +377,16 @@ fn initial_generic_reveal_respects_full_command_fifo_without_a_private_retry() {
     let initial = app
         .publish_surface(&frame)
         .unwrap_or_else(|error| unreachable!("publication remains coherent: {error:?}"));
-    assert!(initial.semantic_publication().snapshot().nodes().iter().any(|node| {
-        node.role() == SemanticRole::ComboBox && node.state().expanded() == Some(true)
-    }));
+    assert!(
+        initial
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .any(|node| {
+                node.role() == SemanticRole::ComboBox && node.state().expanded() == Some(true)
+            })
+    );
     let list_authored = ElementId::new("initial.custom.list").unwrap_or_else(|_| unreachable!());
     let list = app
         .index()
