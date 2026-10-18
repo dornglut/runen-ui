@@ -7,12 +7,14 @@ use runenui_core::{
 use runenui_runtime::{AppRuntime, MountedNodeId, PumpBudget};
 struct State {
     open: bool,
+    enabled: bool,
     committed: u8,
     requests: Vec<ComboBoxRequest>,
 }
 enum Action {
     Popup(ComboBoxRequest),
     Other,
+    SetEnabled(bool),
 }
 struct App;
 impl UiApp for App {
@@ -32,6 +34,7 @@ impl UiApp for App {
             )
             .id("focus.combo.owner")
             .open(state.open)
+            .enabled(state.enabled)
             .into_element(),
             button("Next")
                 .id("focus.other")
@@ -40,9 +43,13 @@ impl UiApp for App {
         ])
     }
     fn update(state: &mut Self::State, action: Self::Action) {
-        if let Action::Popup(request) = action {
-            state.open = matches!(request, ComboBoxRequest::Open);
-            state.requests.push(request);
+        match action {
+            Action::Popup(request) => {
+                state.open = matches!(request, ComboBoxRequest::Open);
+                state.requests.push(request);
+            }
+            Action::SetEnabled(enabled) => state.enabled = enabled,
+            Action::Other => {}
         }
     }
 }
@@ -69,6 +76,7 @@ fn focus(runtime: &mut AppRuntime<App>, target: MountedNodeId) {
 fn leaving_combo_box_real_focus_closes_popup_only_via_application_fifo() {
     let mut runtime = AppRuntime::<App>::mount(State {
         open: true,
+        enabled: true,
         committed: 0,
         requests: Vec::new(),
     });
@@ -85,4 +93,83 @@ fn leaving_combo_box_real_focus_closes_popup_only_via_application_fifo() {
     assert_eq!(runtime.state().committed, 0);
     assert!(!runtime.index().nodes().iter()
         .any(|node| node.authored_id().is_some_and(|id| id.as_str() == "focus.combo.alpha")));
+}
+
+#[test]
+fn compatible_disable_closes_app_owned_popup_once_and_reenable_does_not_reopen() {
+    for initially_open in [false, true] {
+        let mut runtime = AppRuntime::<App>::mount(State {
+            open: initially_open,
+            enabled: true,
+            committed: 0,
+            requests: Vec::new(),
+        });
+        settle(&mut runtime);
+        let owner = id(&runtime, "focus.combo.owner");
+        focus(&mut runtime, owner.clone());
+
+        runtime
+            .submit_action(Action::SetEnabled(false))
+            .unwrap_or_else(|_| unreachable!("authoring change accepted"));
+        let report = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("disable action processed"))
+            .report()
+            .to_owned();
+        assert_eq!(report.processed_envelopes(), 1);
+        assert_eq!(id(&runtime, "focus.combo.owner"), owner);
+        assert!(!runtime.state().enabled);
+        assert_eq!(runtime.state().open, initially_open);
+        assert!(runtime.state().requests.is_empty());
+        assert_eq!(
+            report.remaining_queued_envelopes(),
+            usize::from(initially_open),
+            "only a previously effective-open popup may queue a Close request",
+        );
+
+        settle(&mut runtime);
+        assert_eq!(runtime.focus().focused_node(), None);
+        assert!(!runtime.state().open);
+        assert_eq!(
+            runtime.state().requests,
+            if initially_open {
+                vec![ComboBoxRequest::Close]
+            } else {
+                Vec::new()
+            },
+        );
+        assert!(!runtime.index().nodes().iter().any(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "focus.combo.alpha")
+        }));
+
+        runtime
+            .submit_action(Action::SetEnabled(true))
+            .unwrap_or_else(|_| unreachable!("reenable accepted"));
+        settle(&mut runtime);
+        assert!(runtime.state().enabled);
+        assert!(!runtime.state().open, "stale authored Open cannot resurrect popup");
+        assert!(!runtime.index().nodes().iter().any(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "focus.combo.alpha")
+        }));
+        assert_eq!(id(&runtime, "focus.combo.owner"), owner);
+    }
+}
+
+#[test]
+fn explicitly_closed_popup_does_not_emit_a_redundant_widget_close() {
+    let mut runtime = AppRuntime::<App>::mount(State {
+        open: true,
+        enabled: true,
+        committed: 0,
+        requests: Vec::new(),
+    });
+    settle(&mut runtime);
+    runtime
+        .submit_action(Action::Popup(ComboBoxRequest::Close))
+        .unwrap_or_else(|_| unreachable!("application Close action accepted"));
+    settle(&mut runtime);
+    assert!(!runtime.state().open);
+    assert_eq!(runtime.state().requests, [ComboBoxRequest::Close]);
 }
