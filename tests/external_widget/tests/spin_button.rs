@@ -93,8 +93,12 @@ impl UiApp for NumericApp {
         let range = SpinButtonRange::new(state.minimum, state.maximum, state.value(), 0.5)
             .unwrap_or_else(|_| unreachable!("app-owned finite validated range"));
         let input = spin_button(
-            "Amount", doc, state.text.clone(), TextSelection::collapsed(position),
-            range, |intent| Action::Edit(Box::new(intent)),
+            "Amount",
+            doc,
+            state.text.clone(),
+            TextSelection::collapsed(position),
+            range,
+            |intent| Action::Edit(Box::new(intent)),
         )
         .unwrap_or_else(|_| unreachable!("checked M10 text source"))
         .on_adjust(Action::Adjust)
@@ -103,30 +107,35 @@ impl UiApp for NumericApp {
         .id("form.amount")
         .into_element();
         if state.show_step_controls {
-            let mut increase = runenui_core::button("Increase").on_activate(|| {
-                Action::Adjust(SpinButtonRequest::AdjustBy(number(0.5)))
-            });
-            let mut decrease = runenui_core::button("Decrease").on_activate(|| {
-                Action::Adjust(SpinButtonRequest::AdjustBy(number(-0.5)))
-            });
+            let mut increase = runenui_core::button("Increase")
+                .on_activate(|| Action::Adjust(SpinButtonRequest::AdjustBy(number(0.5))));
+            let mut decrease = runenui_core::button("Decrease")
+                .on_activate(|| Action::Adjust(SpinButtonRequest::AdjustBy(number(-0.5))));
             if state.disabled || state.read_only {
                 increase = increase.disabled();
                 decrease = decrease.disabled();
             }
-            runenui_core::row(runenui_core::children![input, increase, decrease])
-                .into_element()
+            runenui_core::row(runenui_core::children![input, increase, decrease]).into_element()
         } else {
             input
         }
     }
 
-    fn update(state: &mut Self::State, action: Self::Action) -> impl IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+    fn update(
+        state: &mut Self::State,
+        action: Self::Action,
+    ) -> impl IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             Action::Edit(intent) => {
                 let span = intent.replacement();
-                state.text.replace_range(span.start()..span.end(), intent.replacement_text());
+                state
+                    .text
+                    .replace_range(span.start()..span.end(), intent.replacement_text());
                 state.revision += 1;
-                UpdateOutput::edit(EditResolution::accepted(intent.request().clone(), snapshot(state.revision)))
+                UpdateOutput::edit(EditResolution::accepted(
+                    intent.request().clone(),
+                    snapshot(state.revision),
+                ))
             }
             Action::Adjust(request) => {
                 state.apply_request(request);
@@ -157,23 +166,44 @@ impl UiApp for NumericApp {
     }
 }
 
-const FONT: &[u8] = include_bytes!("../../../crates/runenui_text/tests/fixtures/Cantarell-Regular.ttf");
+const FONT: &[u8] =
+    include_bytes!("../../../crates/runenui_text/tests/fixtures/Cantarell-Regular.ttf");
 
 fn runtime(text: &str) -> AppRuntime<NumericApp> {
     runtime_with_bounds(text, Some(-10.0), Some(100.0))
 }
 
-fn runtime_with_bounds(text: &str, minimum: Option<f64>, maximum: Option<f64>) -> AppRuntime<NumericApp> {
+fn runtime_with_bounds(
+    text: &str,
+    minimum: Option<f64>,
+    maximum: Option<f64>,
+) -> AppRuntime<NumericApp> {
     let mut runtime = AppRuntime::<NumericApp>::mount(State {
-        text: text.into(), revision: 1, read_only: false, disabled: false,
-        present: true, minimum, maximum, show_step_controls: false, requests: Vec::new(),
+        text: text.into(),
+        revision: 1,
+        read_only: false,
+        disabled: false,
+        present: true,
+        minimum,
+        maximum,
+        show_step_controls: false,
+        requests: Vec::new(),
     });
-    assert!(runtime.register_text_font_bytes(FONT.to_vec())
-        .unwrap_or_else(|_| unreachable!("fixture font registers")) > 0);
-    assert!(runtime.set_text_generic_family_mapping(
-        GenericFontFamily::SansSerif,
-        &[FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!("fixture family"))],
-    ).unwrap_or_else(|_| unreachable!("fixture font mapping")));
+    assert!(
+        runtime
+            .register_text_font_bytes(FONT.to_vec())
+            .unwrap_or_else(|_| unreachable!("fixture font registers"))
+            > 0
+    );
+    assert!(
+        runtime
+            .set_text_generic_family_mapping(
+                GenericFontFamily::SansSerif,
+                &[FontFamilyName::new("Cantarell")
+                    .unwrap_or_else(|_| unreachable!("fixture family"))],
+            )
+            .unwrap_or_else(|_| unreachable!("fixture font mapping"))
+    );
     settle(&mut runtime);
     runtime
 }
@@ -185,15 +215,22 @@ fn settle(runtime: &mut AppRuntime<NumericApp>) {
 }
 
 fn publish(runtime: &mut AppRuntime<NumericApp>) -> runenui_runtime::SurfacePublication {
-    runtime.publish_surface(&SurfaceBuildContext::new(
-        &StyleEnvironment::default(), LayoutConstraints::unbounded(),
-    )).unwrap_or_else(|_| unreachable!("single numeric editor publishes"))
+    runtime
+        .publish_surface(&SurfaceBuildContext::new(
+            &StyleEnvironment::default(),
+            LayoutConstraints::unbounded(),
+        ))
+        .unwrap_or_else(|_| unreachable!("single numeric editor publishes"))
 }
 
-fn semantic_target(publication: &runenui_runtime::SurfacePublication)
-    -> (runenui_core::SurfaceId, runenui_core::SemanticNodeId) {
+fn semantic_target(
+    publication: &runenui_runtime::SurfacePublication,
+) -> (runenui_core::SurfaceId, runenui_core::SemanticNodeId) {
     let snapshot = publication.semantic_publication().snapshot();
-    let node = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::SpinButton)
+    let node = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::SpinButton)
         .unwrap_or_else(|| unreachable!("typed SpinButton is published"));
     (snapshot.surface_id().clone(), node.id().clone())
 }
