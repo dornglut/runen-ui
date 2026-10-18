@@ -878,6 +878,93 @@ mod real_composition_focus_budget_probe {
             }
         }
     }
+    #[test]
+    fn default_limit_real_ime_focus_transfer_has_a_single_routed_preflight_boundary() {
+        // Normal focus transfer shares one R=1024 routed allowance between
+        // composition cancellation and the old FocusOut. It is distinct from
+        // #476's separate post-reconciliation compatible-disablement cleanup.
+        const CAPACITY: usize = 4096;
+        const ROUTED_OUTPUTS: usize = 1024;
+        for (followers, admitted) in [(2048, true), (2049, false)] {
+            let observed = Rc::new(RefCell::new(Vec::new()));
+            let mut runtime = AppRuntime::<App>::mount_with_config(
+                State {
+                    emitted_on_cancel: true,
+                    emitted_on_focus_out: true,
+                    observed: Rc::clone(&observed),
+                    processed: Vec::new(),
+                },
+                RuntimeConfig::default()
+                    .with_limits(
+                        RuntimeLimits::default()
+                            .with_waiting_envelopes(CAPACITY)
+                            .with_transaction_outputs(ROUTED_OUTPUTS),
+                    )
+                    .with_trace_config(runenui_runtime::TraceConfig::new(20_000)),
+            );
+            settle(&mut runtime);
+            let old = target(&runtime, "old-focus");
+            let new = target(&runtime, "new-focus");
+            runtime
+                .submit_command(
+                    old.clone(),
+                    SemanticCommand::RequestFocus,
+                    CommandOrigin::programmatic(),
+                )
+                .unwrap_or_else(|_| unreachable!("initial focus accepted"));
+            settle(&mut runtime);
+            runtime
+                .start_composition(None)
+                .unwrap_or_else(|_| unreachable!("composition owner accepted"));
+            settle(&mut runtime);
+            let trace_start = runtime.trace().len();
+            runtime
+                .submit_command(
+                    new.clone(),
+                    SemanticCommand::RequestFocus,
+                    CommandOrigin::programmatic(),
+                )
+                .unwrap_or_else(|_| unreachable!("transfer was accepted at ingress"));
+            for _ in 0..followers {
+                runtime
+                    .submit_action(Action::FocusCleanup)
+                    .unwrap_or_else(|_| unreachable!("bounded follower accepted"));
+            }
+
+            let report = runtime
+                .pump(PumpBudget::new(1, 0, 0, 0))
+                .unwrap_or_else(|_| unreachable!("one source command processed"))
+                .report()
+                .to_owned();
+            assert_eq!(report.processed_envelopes(), 1);
+            assert_eq!(runtime.status(), RuntimeStatus::Running);
+            assert!(runtime.state().processed.is_empty());
+
+            let rejected = runtime.trace().records().skip(trace_start).any(|record| {
+                matches!(
+                    record.kind(),
+                    runenui_runtime::TraceRecordKind::RoutedEventAdmissionRejected {
+                        capacity: runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
+                    }
+                )
+            });
+            if admitted {
+                assert!(!rejected);
+                assert_eq!(runtime.focus().focused_node(), Some(&new));
+                assert_eq!(
+                    &*observed.borrow(),
+                    &[Action::CompositionCleanup, Action::FocusCleanup],
+                );
+                assert_eq!(report.remaining_queued_envelopes(), followers + 2);
+            } else {
+                assert!(rejected);
+                assert_eq!(runtime.focus().focused_node(), Some(&old));
+                assert!(observed.borrow().is_empty());
+                assert_eq!(report.remaining_queued_envelopes(), followers);
+            }
+        }
+    }
+
 }
 
 
