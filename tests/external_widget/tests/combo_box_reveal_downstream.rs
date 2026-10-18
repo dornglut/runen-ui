@@ -113,7 +113,7 @@ fn settle(app: &mut AppRuntime<App>) {
     );
 }
 
-fn id(app: &AppRuntime<App>, requested: &str) -> MountedNodeId {
+fn id(app: &mut AppRuntime<App>, requested: &str) -> MountedNodeId {
     let authored = ElementId::new(requested).unwrap_or_else(|_| unreachable!());
     app.index()
         .nodes()
@@ -129,8 +129,8 @@ fn custom_child_bearing_widget_reveals_only_unique_enabled_exact_mounted_descend
     for case in [Case::Live, Case::Absent, Case::Disabled, Case::Duplicate] {
         let mut app = AppRuntime::<App>::mount(case);
         settle(&mut app);
-        let owner = id(&app, "downstream.owner");
-        let list = id(&app, "downstream.list");
+        let owner = id(&mut app, "downstream.owner");
+        let list = id(&mut app, "downstream.list");
         let viewport = app.index()
             .node(&list)
             .and_then(|node| node.parent())

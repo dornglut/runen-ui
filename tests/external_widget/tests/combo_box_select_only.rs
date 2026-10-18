@@ -1,8 +1,7 @@
 #![allow(refining_impl_trait)]
 //! Select-only ComboBox uses one focus owner and app-selected Option callbacks.
 use runenui_core::{
-    ComboBoxRequest, CommandOrigin, ElementId, LayoutDimension, LayoutStyle, LogicalLength,
-    LogicalPoint, NoHostProtocol, PointerButton,
+    ComboBoxRequest, CommandOrigin, ElementId, LogicalPoint, NoHostProtocol, PointerButton,
     PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
     SemanticCommand, SemanticRole, SemanticValue, UiApp, View, combo_box, option_item,
 };
@@ -25,19 +24,9 @@ impl UiApp for App {
             ElementId::new("choice.popup").unwrap_or_else(|_| unreachable!()),
             [
                 option_item("One", state.chosen == 1)
-                    .id("choice.one")
-                    .with_layout(
-                        LayoutStyle::default()
-                            .with_height(LayoutDimension::Length(LogicalLength::from(24_u8))),
-                    )
-                    .on_activate(|| Action::Choose(1)),
+                    .id("choice.one").on_activate(|| Action::Choose(1)),
                 option_item("Two", state.chosen == 2)
-                    .id("choice.two")
-                    .with_layout(
-                        LayoutStyle::default()
-                            .with_height(LayoutDimension::Length(LogicalLength::from(24_u8))),
-                    )
-                    .on_activate(|| Action::Choose(2)),
+                    .id("choice.two").on_activate(|| Action::Choose(2)),
             ],
             Action::Request,
         )
@@ -67,7 +56,7 @@ fn settle(app: &mut AppRuntime<App>) {
             .report()
             .is_quiescent());
 }
-fn id(app: &mut AppRuntime<App>, id: &str) -> MountedNodeId {
+fn id(app: &AppRuntime<App>, id: &str) -> MountedNodeId {
     let id = ElementId::new(id).unwrap_or_else(|_| unreachable!("valid test ID"));
     app.index().nodes().iter()
         .find(|node| node.authored_id() == Some(&id))
@@ -83,14 +72,14 @@ fn command(app: &mut AppRuntime<App>, target: MountedNodeId, cmd: SemanticComman
 fn select_only_keeps_real_focus_on_owner_while_selection_remains_application_owned() {
     let mut app = AppRuntime::<App>::mount(State::default());
     settle(&mut app);
-    let owner = id(&mut app, "choice.owner");
+    let owner = id(&app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     command(&mut app, owner.clone(), SemanticCommand::Activate);
     assert!(app.state().open);
     assert_eq!(app.state().log, [ComboBoxRequest::Open]);
     assert_eq!(app.focus().focused_node(), Some(&owner));
-    let one = id(&mut app, "choice.one");
-    let two = id(&mut app, "choice.two");
+    let one = id(&app, "choice.one");
+    let two = id(&app, "choice.two");
     assert!(!app.index().node(&one).is_some_and(|node| node.is_focusable()));
     assert!(!app.index().node(&two).is_some_and(|node| node.is_focusable()));
     let published = app.publish_surface(&SurfaceBuildContext::tight(
@@ -194,7 +183,7 @@ fn keyboard_ime_escape_and_enter_keep_focus_and_committed_value_separate() {
     use runenui_core::{KeyboardCompositionState as Composition, LogicalKey, PhysicalKey};
     let mut app = AppRuntime::<App>::mount(State::default());
     settle(&mut app);
-    let owner = id(&mut app, "choice.owner");
+    let owner = id(&app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     app.submit_keyboard(key(PhysicalKey::ArrowDown, LogicalKey::ArrowDown,
         Composition::Inactive)).unwrap_or_else(|_| unreachable!("arrow ingress"));
@@ -236,7 +225,7 @@ fn keyboard_ime_escape_and_enter_keep_focus_and_committed_value_separate() {
 fn semantic_expand_and_collapse_actions_follow_application_open_state() {
     let mut app = AppRuntime::<App>::mount(State::default());
     settle(&mut app);
-    let owner = id(&mut app, "choice.owner");
+    let owner = id(&app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     let published = app.publish_surface(&SurfaceBuildContext::tight(
         &runenui_core::StyleEnvironment::default(),
@@ -327,7 +316,7 @@ fn physical_option_click_uses_standard_option_activation_without_moving_owner_fo
         &[FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!())],
     ).unwrap_or_else(|_| unreachable!("known test font family"));
     settle(&mut app);
-    let owner = id(&mut app, "choice.owner");
+    let owner = id(&app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     command(&mut app, owner.clone(), SemanticCommand::Activate);
     assert!(app.state().open);
@@ -393,34 +382,21 @@ fn closed_combo_exposes_app_selected_option_as_neutral_semantic_text_value() {
             ..State::default()
         });
         settle(&mut app);
-        let publication = app
-            .publish_surface(&SurfaceBuildContext::tight(
-                &runenui_core::StyleEnvironment::default(),
-                LogicalSize::try_new(500.0, 240.0).unwrap_or_else(|_| unreachable!()),
-            ))
-            .unwrap_or_else(|error| unreachable!("closed semantic projection: {error:?}"));
+        let publication = app.publish_surface(&SurfaceBuildContext::tight(
+            &runenui_core::StyleEnvironment::default(),
+            LogicalSize::try_new(500.0, 240.0).unwrap_or_else(|_| unreachable!()),
+        )).unwrap_or_else(|error| unreachable!("closed semantic projection: {error:?}"));
         let snapshot = publication.semantic_publication().snapshot();
-        let combo = snapshot
-            .nodes()
-            .iter()
-            .find(|node| node.role() == SemanticRole::ComboBox)
+        let combo = snapshot.nodes().iter().find(|node| node.role() == SemanticRole::ComboBox)
             .unwrap_or_else(|| unreachable!("one ComboBox semantic owner"));
-        assert!(
-            snapshot
-                .nodes()
-                .iter()
-                .all(|node| node.role() != SemanticRole::Option),
-            "closed popup never retains semantic Option descendants"
-        );
+        assert!(snapshot.nodes().iter().all(|node| node.role() != SemanticRole::Option),
+            "closed popup never retains semantic Option descendants");
         let observed = match combo.value() {
             Some(SemanticValue::Text(value)) => Some(value.as_str()),
             None => None,
             Some(_) => unreachable!("ComboBox selected value is textual"),
         };
-        assert_eq!(
-            observed, expected,
-            "M5 projection follows the application-selected Option"
-        );
+        assert_eq!(observed, expected, "M5 projection follows the application-selected Option");
     }
 }
 
@@ -452,52 +428,25 @@ fn select_only_combo_claims_only_its_recognized_native_arrow_key() {
 
     for trace_capacity in [0, 1, 512] {
         for (phase, modifiers, composition, recognized) in [
-            (
-                KeyboardPhase::Down,
-                KeyModifiers::NONE,
-                KeyboardCompositionState::Inactive,
-                true,
-            ),
-            (
-                KeyboardPhase::Down,
-                KeyModifiers::CONTROL,
-                KeyboardCompositionState::Inactive,
-                false,
-            ),
-            (
-                KeyboardPhase::Up,
-                KeyModifiers::NONE,
-                KeyboardCompositionState::Inactive,
-                false,
-            ),
-            (
-                KeyboardPhase::Down,
-                KeyModifiers::NONE,
-                KeyboardCompositionState::Active,
-                false,
-            ),
+            (KeyboardPhase::Down, KeyModifiers::NONE, KeyboardCompositionState::Inactive, true),
+            (KeyboardPhase::Down, KeyModifiers::CONTROL, KeyboardCompositionState::Inactive, false),
+            (KeyboardPhase::Up, KeyModifiers::NONE, KeyboardCompositionState::Inactive, false),
+            (KeyboardPhase::Down, KeyModifiers::NONE, KeyboardCompositionState::Active, false),
         ] {
             let mut app = AppRuntime::<App>::mount_with_config(
-                State {
-                    open: true,
-                    chosen: 0,
-                    log: Vec::new(),
-                },
+                State { open: true, chosen: 0, log: Vec::new() },
                 RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
             );
             settle(&mut app);
-            let owner = id(&mut app, "choice.owner");
+            let owner = id(&app, "choice.owner");
             command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
-            let scope = app
-                .input_ownership()
+            let scope = app.input_ownership()
                 .unwrap_or_else(|_| unreachable!("live input scope"))
                 .scope()
                 .clone();
-            let receipt = app
-                .submit_keyboard(native_combo_arrow(phase, modifiers, composition))
+            let receipt = app.submit_keyboard(native_combo_arrow(phase, modifiers, composition))
                 .unwrap_or_else(|_| unreachable!("native ComboBox arrow admitted"));
-            let batch = app
-                .pump(PumpBudget::new(1, 0, 0, 0))
+            let batch = app.pump(PumpBudget::new(1, 0, 0, 0))
                 .unwrap_or_else(|error| unreachable!("observed input: {error:?}"));
             let [InputArbitrationRecord::InputSettled(settled)] = batch.ordered_records() else {
                 unreachable!("exactly one reached native keyboard event")
@@ -507,32 +456,21 @@ fn select_only_combo_claims_only_its_recognized_native_arrow_key() {
             let UiInputFinality::Committed(facts) = settled.finality() else {
                 unreachable!("nonterminal native event commits")
             };
-            assert_eq!(
-                facts.conflict(),
-                if recognized {
-                    UiInputConflict::ExclusiveUi
-                } else {
-                    UiInputConflict::ObservedNonexclusive
-                },
-                "phase={phase:?}, modifiers={modifiers:?}, composition={composition:?}, trace={trace_capacity}, reasons={:?}",
-                facts.reasons()
-            );
-            assert_eq!(
-                facts.reasons(),
-                if recognized {
-                    &[UiInputClaimReason::ExplicitWidgetClaim][..]
-                } else {
-                    &[]
-                }
-            );
-            assert_eq!(
-                facts.default_disposition(),
-                if recognized {
-                    UiDefaultDisposition::Prevented
-                } else {
-                    UiDefaultDisposition::None
-                }
-            );
+            assert_eq!(facts.conflict(), if recognized {
+                UiInputConflict::ExclusiveUi
+            } else {
+                UiInputConflict::ObservedNonexclusive
+            });
+            assert_eq!(facts.reasons(), if recognized {
+                &[UiInputClaimReason::ExplicitWidgetClaim][..]
+            } else {
+                &[]
+            });
+            assert_eq!(facts.default_disposition(), if recognized {
+                UiDefaultDisposition::Prevented
+            } else {
+                UiDefaultDisposition::None
+            });
             assert_eq!(app.state().chosen, 0);
             assert_eq!(app.focus().focused_node(), Some(&owner));
             assert_eq!(app.state().log, []);
