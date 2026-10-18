@@ -1,5 +1,5 @@
 #![allow(refining_impl_trait)]
-//! ComboBox negative conformance through ordinary public application contracts.
+//! `ComboBox` negative conformance through ordinary public application contracts.
 use runenui_core::{
     ComboBoxRequest, CommandOrigin, ElementId, NoHostProtocol, SemanticCommand,
     SemanticRelationshipKind, SemanticRole, UiApp, View, combo_box, option_item,
@@ -15,6 +15,10 @@ enum Mode {
     OwnerCollision,
     PopupOwnerCollision,
 }
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent authored option replacement, popup replacement, rekey and ordering facts"
+)]
 struct State {
     mode: Mode,
     replacement: bool,
@@ -25,6 +29,7 @@ struct State {
     actions: Vec<u8>,
 }
 enum Action {
+    #[expect(dead_code, reason = "request payload is intentionally opaque to this app-owned FIFO test")]
     Request(ComboBoxRequest),
     Choose(u8),
     Replace,
@@ -159,7 +164,7 @@ fn disabled_owner_blocks_option_activation_and_never_advertises_active_proxy() {
     assert!(
         !app.index()
             .node(&owner)
-            .is_some_and(|node| node.is_focusable())
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
     );
     assert!(
         app.index().nodes().iter().all(|node| node
@@ -169,12 +174,12 @@ fn disabled_owner_blocks_option_activation_and_never_advertises_active_proxy() {
     );
     // A disabled owner cannot activate or open the popup through the routed path.
     let _ = app.submit_command(
-        owner.clone(),
+        owner,
         SemanticCommand::Activate,
         CommandOrigin::programmatic(),
     );
     settle(&mut app);
-    assert!(app.state().actions.is_empty());
+    assert_eq!(app.state().actions.as_slice(), &[]);
     let published = publish(&mut app);
     let snapshot = published.semantic_publication().snapshot();
     let combo = snapshot
@@ -182,7 +187,7 @@ fn disabled_owner_blocks_option_activation_and_never_advertises_active_proxy() {
         .iter()
         .find(|n| n.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("disabled ComboBox semantically queryable"));
-    assert_eq!(combo.state().disabled(), true);
+    assert!(combo.state().disabled());
     assert_eq!(combo.state().expanded(), Some(false));
     assert!(!combo.relationships().iter().any(|rel| rel.kind()
         == SemanticRelationshipKind::ActiveDescendant
@@ -198,7 +203,7 @@ fn missing_authored_option_identity_fails_closed_before_mounted_popup_creation()
     assert!(
         !app.index()
             .node(&owner)
-            .is_some_and(|node| node.is_focusable())
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
     );
     let publication = publish(&mut app);
     assert!(
@@ -255,7 +260,7 @@ fn active_option_replacement_clears_proxy_without_committing_another_value() {
     .unwrap_or_else(|_| unreachable!());
     settle(&mut app);
     assert_eq!(app.state().chosen, 0);
-    assert!(app.state().actions.is_empty());
+    assert_eq!(app.state().actions.as_slice(), &[]);
 }
 
 #[test]
@@ -314,7 +319,7 @@ fn replacing_controlled_listbox_retires_old_transient_active_candidate() {
         "replacement must not carry old transient second-item navigation"
     );
     assert_eq!(app.state().chosen, 0);
-    assert!(app.state().actions.is_empty());
+    assert_eq!(app.state().actions.as_slice(), &[]);
     assert_eq!(app.focus().focused_node(), Some(&owner));
 }
 
@@ -325,7 +330,7 @@ fn option_id_equal_to_owner_id_fails_closed_without_ambiguous_semantic_identity(
     assert!(
         !app.index()
             .node(&owner)
-            .is_some_and(|node| node.is_focusable())
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
     );
     assert_eq!(
         app.index()
@@ -349,7 +354,7 @@ fn option_id_equal_to_owner_id_fails_closed_without_ambiguous_semantic_identity(
                 |node| node.role() != SemanticRole::ComboBox && node.role() != SemanticRole::Option
             )
     );
-    assert!(app.state().actions.is_empty());
+    assert_eq!(app.state().actions.as_slice(), &[]);
 }
 
 #[test]
@@ -359,7 +364,7 @@ fn popup_id_equal_to_owner_id_fails_closed_before_semantic_target_resolution() {
     assert!(
         !app.index()
             .node(&owner)
-            .is_some_and(|node| node.is_focusable())
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
     );
     let publication = publish(&mut app);
     assert!(
@@ -371,7 +376,7 @@ fn popup_id_equal_to_owner_id_fails_closed_before_semantic_target_resolution() {
             .all(|node| node.role() != SemanticRole::ComboBox
                 && node.role() != SemanticRole::ListBox)
     );
-    assert!(app.state().actions.is_empty());
+    assert_eq!(app.state().actions.as_slice(), &[]);
 }
 
 #[test]
@@ -499,7 +504,7 @@ fn same_key_option_move_keeps_active_candidate_and_m4_focus_without_reselection(
         Some("Second")
     );
     assert_eq!(app.state().chosen, 0);
-    assert!(app.state().actions.is_empty());
+    assert_eq!(app.state().actions.as_slice(), &[]);
     assert_eq!(app.focus().focused_node(), Some(&owner));
 
     app.submit_command(
@@ -521,7 +526,7 @@ fn duplicate_option_reconciliation_keys_fail_closed_before_mounting_popup_proxy(
     assert!(
         !app.index()
             .node(&owner)
-            .is_some_and(|node| node.is_focusable())
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
     );
     assert!(
         app.index().nodes().iter().all(|node| node
@@ -575,7 +580,7 @@ fn disabling_an_open_combo_unmounts_blocking_popup_and_reenabling_restores_app_a
     assert!(
         !app.index()
             .node(&owner)
-            .is_some_and(|node| node.is_focusable())
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
     );
     assert!(
         app.index()
@@ -590,7 +595,7 @@ fn disabling_an_open_combo_unmounts_blocking_popup_and_reenabling_restores_app_a
         .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("disabled owner remains semantic"));
-    assert_eq!(combo.state().disabled(), true);
+    assert!(combo.state().disabled());
     assert_eq!(combo.state().expanded(), Some(false));
     assert!(
         combo
@@ -601,7 +606,7 @@ fn disabling_an_open_combo_unmounts_blocking_popup_and_reenabling_restores_app_a
     );
     assert!(semantics.nodes().iter().all(|node|
         node.role() != SemanticRole::ListBox && node.role() != SemanticRole::Option));
-    assert!(app.state().actions.is_empty());
+    assert_eq!(app.state().actions.as_slice(), &[]);
     assert_eq!(app.state().chosen, 0);
 
     // App-owned open(true) remains authored: re-enabling restores a *fresh*
@@ -620,7 +625,7 @@ fn disabling_an_open_combo_unmounts_blocking_popup_and_reenabling_restores_app_a
         .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("re-enabled ComboBox"));
-    assert_eq!(combo.state().disabled(), false);
+    assert!(!combo.state().disabled());
     assert_eq!(combo.state().expanded(), Some(true));
     assert!(
         combo
