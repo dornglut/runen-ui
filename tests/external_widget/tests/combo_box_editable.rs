@@ -295,11 +295,13 @@ fn escape_dismisses_without_mutating_committed_value_or_real_focus() {
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
     cmd(&mut runtime, owner.clone(), SemanticCommand::FocusDown);
     assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
-    runtime.submit_keyboard(key(
-        LogicalKey::Escape,
-        PhysicalKey::Escape,
-        KeyboardCompositionState::Inactive,
-    )).unwrap_or_else(|_| unreachable!("escape ingress"));
+    runtime
+        .submit_keyboard(key(
+            LogicalKey::Escape,
+            PhysicalKey::Escape,
+            KeyboardCompositionState::Inactive,
+        ))
+        .unwrap_or_else(|_| unreachable!("escape ingress"));
     settle(&mut runtime);
     assert!(!runtime.state().open);
     assert_eq!(runtime.state().chosen, 0);
@@ -318,11 +320,13 @@ fn tab_uses_m4_real_focus_and_dismisses_without_accepting_the_active_option() {
     let owner = id(&mut runtime, "editable.owner");
     cmd(&mut runtime, owner, SemanticCommand::FocusDown);
     assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
-    runtime.submit_keyboard(key(
-        LogicalKey::Tab,
-        PhysicalKey::Tab,
-        KeyboardCompositionState::Inactive,
-    )).unwrap_or_else(|_| unreachable!("Tab ingress"));
+    runtime
+        .submit_keyboard(key(
+            LogicalKey::Tab,
+            PhysicalKey::Tab,
+            KeyboardCompositionState::Inactive,
+        ))
+        .unwrap_or_else(|_| unreachable!("Tab ingress"));
     settle(&mut runtime);
     assert_eq!(runtime.focus().focused_node(), Some(&next));
     assert!(!runtime.state().open);
@@ -337,12 +341,22 @@ fn replacing_exact_active_option_retires_proxy_without_sibling_retargeting() {
     cmd(&mut runtime, owner.clone(), SemanticCommand::FocusDown);
     assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
     let previous = id(&mut runtime, "editable.beta");
-    runtime.submit_action(Action::ReplaceOption)
+    runtime
+        .submit_action(Action::ReplaceOption)
         .unwrap_or_else(|_| unreachable!("application replaces authored Option"));
     settle(&mut runtime);
-    assert!(runtime.index().nodes().iter().all(|node| node.id() != &previous));
-    assert_eq!(active(&mut runtime), None,
-        "new Option at the same list position cannot impersonate removed identity");
+    assert!(
+        runtime
+            .index()
+            .nodes()
+            .iter()
+            .all(|node| node.id() != &previous)
+    );
+    assert_eq!(
+        active(&mut runtime),
+        None,
+        "new Option at the same list position cannot impersonate removed identity"
+    );
     cmd(&mut runtime, owner.clone(), SemanticCommand::Activate);
     assert_eq!(runtime.state().chosen, 0);
     assert_eq!(runtime.focus().focused_node(), Some(&owner));
@@ -355,14 +369,21 @@ fn open_editable_enter_accepts_only_option_action_and_does_not_submit_textfield(
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
     cmd(&mut runtime, owner.clone(), SemanticCommand::FocusDown);
     assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
-    runtime.submit_keyboard(key(
-        LogicalKey::Enter, PhysicalKey::Enter, KeyboardCompositionState::Inactive,
-    )).unwrap_or_else(|_| unreachable!("open ComboBox Enter is admitted"));
+    runtime
+        .submit_keyboard(key(
+            LogicalKey::Enter,
+            PhysicalKey::Enter,
+            KeyboardCompositionState::Inactive,
+        ))
+        .unwrap_or_else(|_| unreachable!("open ComboBox Enter is admitted"));
     settle(&mut runtime);
     assert_eq!(runtime.state().chosen, 2);
     assert!(!runtime.state().open);
-    assert_eq!(runtime.state().submitted, 0,
-        "the ComboBox Option acceptance must suppress the M10 TextField submit callback");
+    assert_eq!(
+        runtime.state().submitted,
+        0,
+        "the ComboBox Option acceptance must suppress the M10 TextField submit callback"
+    );
     assert_eq!(runtime.state().source, "q");
     assert_eq!(runtime.focus().focused_node(), Some(&owner));
 }
@@ -372,16 +393,24 @@ fn closed_editable_enter_reuses_existing_textfield_submit_once_without_option_co
     let mut runtime = runtime();
     let owner = id(&mut runtime, "editable.owner");
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
-    runtime.submit_action(Action::Choose(1))
+    runtime
+        .submit_action(Action::Choose(1))
         .unwrap_or_else(|_| unreachable!("app closes popup with one chosen Option"));
     settle(&mut runtime);
     assert!(!runtime.state().open);
-    runtime.submit_keyboard(key(
-        LogicalKey::Enter, PhysicalKey::Enter, KeyboardCompositionState::Inactive,
-    )).unwrap_or_else(|_| unreachable!("closed TextField Enter admitted"));
+    runtime
+        .submit_keyboard(key(
+            LogicalKey::Enter,
+            PhysicalKey::Enter,
+            KeyboardCompositionState::Inactive,
+        ))
+        .unwrap_or_else(|_| unreachable!("closed TextField Enter admitted"));
     settle(&mut runtime);
-    assert_eq!(runtime.state().submitted, 1,
-        "closed ComboBox leaves ordinary M10 TextField submit semantics intact");
+    assert_eq!(
+        runtime.state().submitted,
+        1,
+        "closed ComboBox leaves ordinary M10 TextField submit semantics intact"
+    );
     assert_eq!(runtime.state().chosen, 1);
     assert_eq!(runtime.state().source, "q");
     assert_eq!(runtime.focus().focused_node(), Some(&owner));
@@ -394,11 +423,15 @@ fn disabling_open_editable_combo_withdraws_popup_but_preserves_application_text_
     let old_option = id(&mut runtime, "editable.alpha");
     let old_popup = id(&mut runtime, "editable.list");
     cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
-    runtime.submit_action(Action::Disable)
+    runtime
+        .submit_action(Action::Disable)
         .unwrap_or_else(|_| unreachable!("application may disable its editor"));
     settle(&mut runtime);
 
-    assert!(runtime.state().open, "framework must not mutate app-owned popup intent");
+    assert!(
+        runtime.state().open,
+        "framework must not mutate app-owned popup intent"
+    );
     assert_eq!(runtime.state().source, "q");
     assert_eq!(runtime.state().revision, 1);
     assert_eq!(runtime.state().chosen, 0);
