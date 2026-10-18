@@ -1,6 +1,6 @@
 #![allow(refining_impl_trait)]
-//! One real M10 editor owns ComboBox focus while its bounded popup reveals
-//! an exact current Option using the standard #344 runtime scroll authority.
+//! One real M10 editor owns `ComboBox` focus while its bounded popup reveals
+//! an exact current `Option` using the standard #344 runtime scroll authority.
 
 use runenui_core::{
     CommandOrigin, ElementId, LogicalLength, NoHostProtocol, SemanticCommand, SemanticEditableMode, SemanticRelationshipKind,
@@ -75,7 +75,7 @@ fn settle(app: &mut AppRuntime<App>) {
         .is_quiescent());
 }
 
-fn id(app: &AppRuntime<App>, authored: &str) -> MountedNodeId {
+fn id(app: &mut AppRuntime<App>, authored: &str) -> MountedNodeId {
     let requested = ElementId::new(authored).unwrap_or_else(|_| unreachable!());
     app.index()
         .nodes()
@@ -117,9 +117,9 @@ fn configured(selected: u8) -> AppRuntime<App> {
 fn editable_initial_open_and_keyboard_navigation_reveal_without_focus_or_text_mutation() {
     for selected in [0_u8, 17] {
         let mut app = configured(selected);
-        let owner = id(&app, "editable.reveal.owner");
+        let owner = id(&mut app, "editable.reveal.owner");
         command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
-        let list = id(&app, "editable.reveal.list");
+        let list = id(&mut app, "editable.reveal.list");
         let viewport = app.index()
             .node(&list)
             .and_then(|node| node.parent())
