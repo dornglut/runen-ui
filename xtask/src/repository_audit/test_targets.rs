@@ -367,7 +367,7 @@ mod tests {
             "tests/external_widget/tests/input.rs",
             &mut findings,
         );
-        assert!(imports.is_empty());
+        assert_eq!(imports, Vec::<String>::new());
         assert_eq!(findings.len(), 1);
         assert!(findings[0].message.contains("lacks a checked sibling"));
     }
