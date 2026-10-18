@@ -1,7 +1,7 @@
 #![allow(refining_impl_trait)]
 
-//! A downstream Widget composes the M10 editor, ComboBox M5 proxy, M4 focus
-//! and ordinary OptionItem activation without private built-in recognition.
+//! A downstream Widget composes the M10 editor, `ComboBox` M5 proxy, M4 focus
+//! and ordinary `OptionItem` activation without private built-in recognition.
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, CommittedTextEvent, EditIntent, EditResolution,
     EditableContribution, EditingSessionPolicy, Effects, ElementId, EventContext, EventPhase,
@@ -21,7 +21,7 @@ use runenui_runtime::{
 const FONT: &[u8] =
     include_bytes!("../../../crates/runenui_text/tests/fixtures/Cantarell-Regular.ttf");
 
-fn doc(revision: u64) -> TextDocumentSnapshot {
+const fn doc(revision: u64) -> TextDocumentSnapshot {
     TextDocumentSnapshot::new(
         TextDocumentId::new(30331),
         TextDocumentRevision::new(revision),
