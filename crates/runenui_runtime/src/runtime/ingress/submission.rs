@@ -370,7 +370,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             semantic_target: None,
             focus_request_override: None,
             presentation_cancel_origin,
-            instant:
+            instant,
             trace: CommandTrace::Direct {
                 parent: causal_parent,
             },
