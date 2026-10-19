@@ -18,6 +18,9 @@ const ONE: PumpBudget = PumpBudget::new(1, 0, 0, 0);
 #[derive(Clone, Copy, Debug)]
 enum Action {
     ShowQ,
+    HideQ,
+    HideP,
+    ShowP,
     DismissP,
     DismissQ,
     Noop,
@@ -78,6 +81,9 @@ impl UiApp for App {
     fn update(state: &mut State, action: Action) {
         match action {
             Action::ShowQ => state.q_open = true,
+            Action::HideQ => state.q_open = false,
+            Action::HideP => state.p_open = false,
+            Action::ShowP => state.p_open = true,
             Action::DismissP => {
                 state.p_open = false;
                 state.p_dismissals += 1;
@@ -181,4 +187,216 @@ fn delayed_escape_from_p_must_not_dismiss_newly_published_q() {
         0,
         "Q must not receive a P-origin dismissal"
     );
+    assert_eq!(runtime.state().p_dismissals, 0);
+}
+
+
+// All tests below are external downstream consumers of the public runtime.
+// The application remains the only durable owner of visibility and dismissals.
+fn initial_state() -> State {
+    State {
+        p_open: true,
+        q_open: false,
+        p_dismissals: 0,
+        q_dismissals: 0,
+    }
+}
+
+fn escape_event(composition: KeyboardCompositionState) -> KeyboardEvent {
+    KeyboardEvent::new(
+        KeyboardPhase::Down,
+        PhysicalKey::Escape,
+        LogicalKey::Escape,
+        KeyModifiers::NONE,
+        false,
+        KeyLocation::Standard,
+        composition,
+        None,
+    )
+}
+
+fn authored_node(runtime: &AppRuntime<App>, authored: &str) -> runenui_core::MountedNodeId {
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == authored))
+        .unwrap_or_else(|| unreachable!("authored descendant must exist"))
+        .id()
+        .clone()
+}
+
+fn publish(runtime: &mut AppRuntime<App>, context: &SurfaceBuildContext<'_>) {
+    runtime
+        .publish_surface(context)
+        .unwrap_or_else(|_| unreachable!("surface publication"));
+}
+
+fn pump_one(runtime: &mut AppRuntime<App>) {
+    let batch = runtime
+        .pump(ONE)
+        .unwrap_or_else(|_| unreachable!("one envelope"));
+    assert_eq!(batch.report().processed_envelopes(), 1);
+}
+
+fn pump_full(runtime: &mut AppRuntime<App>) {
+    assert!(
+        runtime
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("bounded drain"))
+            .report()
+            .is_quiescent()
+    );
+}
+
+#[test]
+fn c2_stable_p_origin_dismisses_once_only_after_queued_action() {
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::new(320_u16.into(), 240_u16.into()),
+    );
+    let mut runtime = AppRuntime::<App>::mount(initial_state());
+    publish(&mut runtime, &context);
+    pump_full(&mut runtime);
+    runtime
+        .submit_keyboard(escape_event(KeyboardCompositionState::Inactive))
+        .unwrap_or_else(|_| unreachable!("P keyboard admission"));
+    assert!(runtime.state().p_open);
+    pump_one(&mut runtime);
+    assert!(runtime.state().p_open, "input only queues a later command");
+    pump_one(&mut runtime);
+    assert!(runtime.state().p_open, "command only queues a later dismissal");
+    pump_full(&mut runtime);
+    assert!(!runtime.state().p_open);
+    assert_eq!(runtime.state().p_dismissals, 1);
+    assert_eq!(runtime.state().q_dismissals, 0);
+}
+
+#[test]
+fn c3_retired_p_republished_before_delayed_command_never_dismisses_successor() {
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::new(320_u16.into(), 240_u16.into()),
+    );
+    let mut runtime = AppRuntime::<App>::mount(initial_state());
+    publish(&mut runtime, &context);
+    pump_full(&mut runtime);
+    runtime
+        .submit_keyboard(escape_event(KeyboardCompositionState::Inactive))
+        .unwrap_or_else(|_| unreachable!("P keyboard admission"));
+    runtime
+        .submit_action(Action::HideP)
+        .unwrap_or_else(|_| unreachable!("hide P"));
+    runtime
+        .submit_action(Action::ShowP)
+        .unwrap_or_else(|_| unreachable!("show successor P"));
+    pump_one(&mut runtime); // input -> command queued behind both actions
+    pump_one(&mut runtime); // retire P
+    publish(&mut runtime, &context);
+    pump_one(&mut runtime); // recreate P with the same authored IDs
+    publish(&mut runtime, &context);
+    pump_full(&mut runtime);
+    assert!(runtime.state().p_open);
+    assert_eq!(runtime.state().p_dismissals, 0);
+}
+
+#[test]
+fn c5_transient_q_no_longer_topmost_allows_retained_p_to_dismiss() {
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::new(320_u16.into(), 240_u16.into()),
+    );
+    let mut runtime = AppRuntime::<App>::mount(initial_state());
+    publish(&mut runtime, &context);
+    pump_full(&mut runtime);
+    runtime
+        .submit_keyboard(escape_event(KeyboardCompositionState::Inactive))
+        .unwrap_or_else(|_| unreachable!("P keyboard admission"));
+    runtime
+        .submit_action(Action::ShowQ)
+        .unwrap_or_else(|_| unreachable!("show Q"));
+    runtime
+        .submit_action(Action::HideQ)
+        .unwrap_or_else(|_| unreachable!("hide Q"));
+    pump_one(&mut runtime); // P's input emits delayed CancelOrBack
+    pump_one(&mut runtime); // Q appears
+    publish(&mut runtime, &context);
+    assert!(runtime.state().q_open);
+    pump_one(&mut runtime); // Q disappears before the delayed default
+    publish(&mut runtime, &context);
+    pump_full(&mut runtime);
+    assert_eq!(runtime.state().p_dismissals, 1);
+    assert!(!runtime.state().p_open);
+    assert_eq!(runtime.state().q_dismissals, 0);
+}
+
+#[test]
+fn c8_composing_keyboard_escape_does_not_derive_a_presentation_dismissal() {
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::new(320_u16.into(), 240_u16.into()),
+    );
+    let mut runtime = AppRuntime::<App>::mount(initial_state());
+    publish(&mut runtime, &context);
+    pump_full(&mut runtime);
+    runtime
+        .submit_keyboard(escape_event(KeyboardCompositionState::Active))
+        .unwrap_or_else(|_| unreachable!("composition-owned Escape"));
+    pump_full(&mut runtime);
+    assert!(runtime.state().p_open);
+    assert_eq!(runtime.state().p_dismissals, 0);
+}
+
+#[test]
+fn c9_direct_unbound_cancel_uses_current_topmost_and_no_presentation_fallback() {
+    use runenui_core::{CommandOrigin, SemanticCommand};
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::new(320_u16.into(), 240_u16.into()),
+    );
+    let mut state = initial_state();
+    state.q_open = true;
+    let mut runtime = AppRuntime::<App>::mount(state);
+    publish(&mut runtime, &context);
+    pump_full(&mut runtime);
+    let routing_target = authored_node(&runtime, "q-item");
+    runtime
+        .submit_command(
+            routing_target,
+            SemanticCommand::CancelOrBack,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("unbound direct CancelOrBack"));
+    pump_full(&mut runtime);
+    assert!(runtime.state().p_open);
+    assert!(!runtime.state().q_open);
+    assert_eq!(runtime.state().p_dismissals, 0);
+    assert_eq!(runtime.state().q_dismissals, 1);
+
+    // With no eligible presentation, the same direct command is not transformed
+    // into a dismissal. It still runs the existing routed semantic-default path.
+    let mut empty = AppRuntime::<App>::mount(State {
+        p_open: false,
+        q_open: false,
+        p_dismissals: 0,
+        q_dismissals: 0,
+    });
+    publish(&mut empty, &context);
+    pump_full(&mut empty);
+    let target = authored_node(&empty, "p-trigger");
+    empty
+        .submit_command(
+            target,
+            SemanticCommand::CancelOrBack,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("unbound command without presentation"));
+    pump_full(&mut empty);
+    assert_eq!(empty.state().p_dismissals, 0);
+    assert_eq!(empty.state().q_dismissals, 0);
 }
