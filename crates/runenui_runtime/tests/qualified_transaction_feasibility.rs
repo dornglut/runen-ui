@@ -542,7 +542,7 @@ impl CreditModel {
         self.used = total;
         Ok((action, Claim { prepaid }))
     }
-    fn release(&mut self, claim: Claim) {
+    fn release(&mut self, claim: &Claim) {
         self.used = self.used.minus(claim.prepaid);
     }
 }
@@ -585,7 +585,7 @@ fn qualified_credit_boundary_retains_exact_nonclone_payload() {
                 };
                 assert_eq!(old_ptr, new_ptr);
                 assert_eq!(ledger.used.fifo, waiting + 1 + 2 * r);
-                ledger.release(held);
+                ledger.release(&held);
             }
             Err(original) => {
                 let new_ptr = match &original {
@@ -614,7 +614,7 @@ fn complete_recursive_and_independent_route_guarantees_have_finite_limits() {
             )
             .unwrap_or_else(|_| unreachable!("exact capacity"));
         assert_eq!(ledger.used.fifo, count);
-        ledger.release(held);
+        ledger.release(&held);
         let larger = closed_binary_lineage(depth + 1).unwrap_or_else(|| unreachable!("bounded"));
         assert!(
             ledger
@@ -639,7 +639,7 @@ fn complete_recursive_and_independent_route_guarantees_have_finite_limits() {
         .admit(Action::Follower, Credits::of(10, 10, 10, 10, 10))
         .unwrap_or_else(|_| unreachable!("small closed budget"));
     assert_eq!(ledger.used.fifo, 11);
-    ledger.release(held);
+    ledger.release(&held);
     ledger.max.trace = 0;
     assert!(
         ledger
@@ -661,7 +661,7 @@ fn measure_test_only_credit_cost_without_conflating_live_pump_latency() {
             .admit(Action::Follower, Credits::of(8, 20, 4, 4, 8))
             .unwrap_or_else(|_| unreachable!("fits"));
         accept_ns.push(start.elapsed().as_nanos());
-        ledger.release(held);
+        ledger.release(&held);
 
         let mut full = CreditModel::new(16, 8);
         let start = Instant::now();
