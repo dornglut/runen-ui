@@ -423,3 +423,74 @@ fn c9_direct_unbound_cancel_uses_current_topmost_and_no_presentation_fallback() 
     assert_eq!(empty.state().p_dismissals, 0);
     assert_eq!(empty.state().q_dismissals, 0);
 }
+
+#[test]
+fn c11_causal_finality_survives_trace_disabled_and_zero_budget() {
+    use runenui_runtime::{RuntimeConfig, TraceConfig};
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::new(320_u16.into(), 240_u16.into()),
+    );
+    let mut runtime = AppRuntime::<App>::mount_with_config(
+        initial_state(),
+        RuntimeConfig::default().with_trace_config(TraceConfig::new(0)),
+    );
+    publish(&mut runtime, &context);
+    pump_full(&mut runtime);
+    let scope = runtime
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("input scope exists"))
+        .scope()
+        .clone();
+    let receipt = runtime
+        .submit_keyboard(escape_event(KeyboardCompositionState::Inactive))
+        .unwrap_or_else(|_| unreachable!("Escape admitted with trace disabled"));
+    runtime
+        .submit_action(Action::ShowQ)
+        .unwrap_or_else(|_| unreachable!("later Q action"));
+    let zero = runtime
+        .pump(PumpBudget::new(0, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("zero-budget checkpoint"));
+    assert_eq!(zero.report().processed_envelopes(), 0);
+    assert!(
+        !zero
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+    );
+    let keyboard = runtime
+        .pump(ONE)
+        .unwrap_or_else(|_| unreachable!("exact keyboard envelope"));
+    let settlements = keyboard
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::InputSettled(value) => Some(value),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(settlements.len(), 1);
+    assert_eq!(settlements[0].scope(), &scope);
+    assert_eq!(settlements[0].sequence(), receipt.sequence());
+    assert!(matches!(
+        settlements[0].finality(),
+        UiInputFinality::Committed(_)
+    ));
+    pump_one(&mut runtime);
+    publish(&mut runtime, &context);
+    let later = runtime
+        .pump(FULL)
+        .unwrap_or_else(|_| unreachable!("derived command and later work"));
+    assert!(later.report().is_quiescent());
+    assert!(
+        !later
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+    );
+    assert_eq!(runtime.trace().len(), 0);
+    assert!(runtime.state().q_open);
+    assert_eq!(runtime.state().p_dismissals, 0);
+    assert_eq!(runtime.state().q_dismissals, 0);
+}
