@@ -82,7 +82,7 @@ impl UiApp for NestedApp {
     }
 }
 
-fn escape() -> KeyboardEvent {
+const fn escape() -> KeyboardEvent {
     KeyboardEvent::new(
         KeyboardPhase::Down,
         PhysicalKey::Escape,

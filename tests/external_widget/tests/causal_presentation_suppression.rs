@@ -114,7 +114,7 @@ impl UiApp for App {
     }
 }
 
-fn escape() -> KeyboardEvent {
+const fn escape() -> KeyboardEvent {
     KeyboardEvent::new(
         KeyboardPhase::Down,
         PhysicalKey::Escape,
@@ -127,7 +127,7 @@ fn escape() -> KeyboardEvent {
     )
 }
 
-fn initial() -> Model {
+const fn initial() -> Model {
     Model {
         cancel_enabled: true,
         prevent_keyboard: false,

@@ -213,7 +213,7 @@ fn delayed_escape_from_p_must_not_dismiss_newly_published_q() {
 
 // All tests below are external downstream consumers of the public runtime.
 // The application remains the only durable owner of visibility and dismissals.
-fn initial_state() -> State {
+const fn initial_state() -> State {
     State {
         p_open: true,
         q_open: false,
@@ -222,7 +222,7 @@ fn initial_state() -> State {
     }
 }
 
-fn escape_event(composition: KeyboardCompositionState) -> KeyboardEvent {
+const fn escape_event(composition: KeyboardCompositionState) -> KeyboardEvent {
     KeyboardEvent::new(
         KeyboardPhase::Down,
         PhysicalKey::Escape,
