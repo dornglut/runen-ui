@@ -4,19 +4,14 @@
 // runtime admission path. The small pure stage below is the strongest useful
 // application-only preparation possible with the current public UiApp protocol;
 // the real TextField/mounted-widget test exposes its missing transaction scope.
-use std::{
-    cell::RefCell,
-    mem::size_of,
-    rc::Rc,
-    time::Instant,
-};
+use std::{cell::RefCell, mem::size_of, rc::Rc, time::Instant};
 
 use runenui_core::{
-    ChildBearingWidget, CommandOrigin, CompositionEvent, Element, ElementId, EventContext, EventPhase,
-    FocusEventKind, NoHostProtocol, SemanticCommand, SemanticEditableMode, TextAffinity,
-    TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextField, TextPosition,
-    TextSelection, UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetUpdateContext, column,
-    container,
+    ChildBearingWidget, CommandOrigin, CompositionEvent, Element, ElementId, EventContext,
+    EventPhase, FocusEventKind, NoHostProtocol, SemanticCommand, SemanticEditableMode,
+    TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextField,
+    TextPosition, TextSelection, UiApp, UiEvent, View, Widget, WidgetEventOutput,
+    WidgetUpdateContext, column, container,
 };
 use runenui_runtime::{
     AppRuntime, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus,
@@ -108,10 +103,8 @@ impl UiApp for App {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> impl View<Self::Action> {
-        let snapshot = TextDocumentSnapshot::new(
-            TextDocumentId::new(1),
-            TextDocumentRevision::new(1),
-        );
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(1), TextDocumentRevision::new(1));
         let selection = TextSelection::collapsed(
             TextPosition::new(snapshot, "", 0, TextAffinity::Downstream)
                 .unwrap_or_else(|_| unreachable!("valid empty document caret")),
@@ -186,7 +179,7 @@ fn state() -> State {
     }
 }
 
-fn target(runtime: &AppRuntime<App>, name: &str) -> MountedNodeId {
+fn target(runtime: &mut AppRuntime<App>, name: &str) -> MountedNodeId {
     let authored = ElementId::new(name).unwrap_or_else(|_| unreachable!("known test id"));
     runtime
         .index()
@@ -307,9 +300,10 @@ fn actual_textfield_ime_and_nonclone_mounted_update_escape_preview_scope() {
             ),
         );
         settle(&mut runtime);
+        let editor = target(&mut runtime, "editor");
         runtime
             .submit_command(
-                target(&runtime, "editor"),
+                editor,
                 SemanticCommand::RequestFocus,
                 CommandOrigin::programmatic(),
             )
@@ -375,7 +369,10 @@ fn actual_textfield_ime_and_nonclone_mounted_update_escape_preview_scope() {
                 .iter()
                 .position(|event| *event == "mounted")
                 .expect("compatible mounted update effect");
-            assert!(first_ancestor < mounted, "cleanup outputs precede update outputs");
+            assert!(
+                first_ancestor < mounted,
+                "cleanup outputs precede update outputs"
+            );
         }
     }
 }
