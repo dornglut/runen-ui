@@ -328,7 +328,9 @@ reconcile underneath the route.
 The route contains owned/cloned generational IDs, not borrowed arena positions.
 No authored ID or preorder integer participates in routing.
 
-### Focus-lifetime integrity for ordinary queued input (UI474-FIFO-FENCE-01)
+### Focus-lifetime integrity for ordinary queued input (UI474-FIFO-FENCE-01 — unaccepted experiment)
+
+> **NOT ACCEPTED.** This proposed universal cutoff fails the existing public presentation Escape dismissal contract when publication has enqueued an initial-focus request that has not yet executed. See [#474](https://github.com/dornglut/runen-ui/issues/474) and [draft #489](https://github.com/dornglut/runen-ui/pull/489). The paragraphs below describe the evaluated candidate, not a production rule. Do not promote these semantics without a new owner decision and executable conformance.
 
 Ordinary keyboard and committed-text input binds to the exact focused mounted recipient at ingress. The one non-reentrant runtime FIFO issues a unique, checked, nonwrapping `WorkSequence` for every accepted work envelope. The runtime retains the exact last **issued** sequence independently of the next-sequence allocator; issuing `u64::MAX` does not make the last issued value disappear.
 
