@@ -78,17 +78,27 @@ struct RetainedProbe {
     observed: Rc<RefCell<Vec<&'static str>>>,
 }
 
+// A retained widget state contains an owned, non-Clone receiver. Staging may
+// not duplicate, replay or restore this state through a generic Clone bound.
+struct NonCloneMountedState {
+    revision: Box<usize>,
+    _receiver: std::sync::mpsc::Receiver<()>,
+}
+
 impl Widget<Action> for RetainedProbe {
-    // The actual mounted state is deliberately not Clone.
-    type State = Box<usize>;
+    type State = NonCloneMountedState;
 
     fn create_state(&self) -> Self::State {
-        Box::new(self.revision)
+        let (_sender, receiver) = std::sync::mpsc::channel();
+        NonCloneMountedState {
+            revision: Box::new(self.revision),
+            _receiver: receiver,
+        }
     }
 
     fn update(&self, local: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
-        if **local != self.revision {
-            **local = self.revision;
+        if *local.revision != self.revision {
+            *local.revision = self.revision;
             self.observed.borrow_mut().push("mounted-update");
             context.emit(Action::MountedEffect);
         }
