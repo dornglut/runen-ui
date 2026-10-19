@@ -1,5 +1,7 @@
 #[path = "../causal_presentation_commands.rs"]
 mod causal_presentation_commands;
+#[path = "../causal_presentation_nested.rs"]
+mod causal_presentation_nested;
 #[path = "../element_presentation.rs"]
 mod element_presentation;
 #[path = "../invalidation.rs"]
