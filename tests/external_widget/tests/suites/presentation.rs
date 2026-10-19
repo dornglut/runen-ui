@@ -8,3 +8,5 @@ mod layout_publication;
 mod menu_controls;
 #[path = "../presentation_controls.rs"]
 mod presentation_controls;
+#[path = "../focus_handoff_discriminators.rs"]
+mod focus_handoff_discriminators;
