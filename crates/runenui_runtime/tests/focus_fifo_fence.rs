@@ -3,14 +3,14 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    CommandOrigin, CommittedTextEvent, Element, ElementId, EventContext, EventPhase,
-    InputDeviceId, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
-    KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey, SemanticCommand, UiApp,
-    UiEvent, Widget, WidgetActivation, WidgetEventOutput, WidgetTextInput, children, row,
+    CommandOrigin, CommittedTextEvent, Element, ElementId, EventContext, EventPhase, InputDeviceId,
+    KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
+    NoHostProtocol, PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
+    WidgetEventOutput, WidgetTextInput, children, row,
 };
 use runenui_runtime::{
-    AppRuntime, InputArbitrationRecord, InputPumpBatch, MountedNodeId, PumpBudget,
-    RuntimeConfig, RuntimeStatus, TraceConfig, UiInputFinality, UiInputProcessingRejection,
+    AppRuntime, InputArbitrationRecord, InputPumpBatch, MountedNodeId, PumpBudget, RuntimeConfig,
+    RuntimeStatus, TraceConfig, UiInputFinality, UiInputProcessingRejection,
 };
 
 const FULL: PumpBudget = PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX);
@@ -174,14 +174,24 @@ fn settlements(batch: &InputPumpBatch) -> Vec<&runenui_runtime::UiInputSettlemen
 fn focus_transfer_rejects_newer_waiting_input_once_and_never_delivers_to_b() {
     for trace in [0, 1024] {
         let mut runtime = focused_a(trace);
-        let initial_scope = runtime.input_ownership().unwrap_or_else(|_| unreachable!()).scope().clone();
+        let initial_scope = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!())
+            .scope()
+            .clone();
         request_focus(&mut runtime, "b");
-        let stale = runtime.submit_keyboard(keyboard(1)).unwrap_or_else(|_| unreachable!("accepted A"));
+        let stale = runtime
+            .submit_keyboard(keyboard(1))
+            .unwrap_or_else(|_| unreachable!("accepted A"));
         assert!(settlements(&runtime.pump(ZERO).unwrap_or_else(|_| unreachable!())).is_empty());
-        let transfer = runtime.pump(ONE).unwrap_or_else(|_| unreachable!("focus transition"));
+        let transfer = runtime
+            .pump(ONE)
+            .unwrap_or_else(|_| unreachable!("focus transition"));
         assert!(settlements(&transfer).is_empty());
         let revision = transfer.final_ownership().revision();
-        let settled = runtime.pump(ONE).unwrap_or_else(|_| unreachable!("stale input"));
+        let settled = runtime
+            .pump(ONE)
+            .unwrap_or_else(|_| unreachable!("stale input"));
         let entries = settlements(&settled);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].sequence(), stale.sequence());
@@ -224,7 +234,7 @@ fn same_mounted_a_b_a_reentry_rejects_old_keyboard_and_text_but_accepts_fresh() 
             .submit_keyboard(keyboard(1))
             .unwrap_or_else(|_| unreachable!());
         let old_text = runtime
-            .submit_text(CommittedTextEvent::new("secret", None))
+            .submit_text(CommittedTextEvent::new("secret", None).unwrap_or_else(|_| unreachable!("valid fixture text")))
             .unwrap_or_else(|_| unreachable!());
         runtime
             .pump(PumpBudget::new(2, 0, 0, 0))
@@ -235,7 +245,7 @@ fn same_mounted_a_b_a_reentry_rejects_old_keyboard_and_text_but_accepts_fresh() 
             .submit_keyboard(keyboard(2))
             .unwrap_or_else(|_| unreachable!());
         let new_text = runtime
-            .submit_text(CommittedTextEvent::new("fresh", None))
+            .submit_text(CommittedTextEvent::new("fresh", None).unwrap_or_else(|_| unreachable!("valid fixture text")))
             .unwrap_or_else(|_| unreachable!());
         let results = runtime
             .pump(FULL)
@@ -274,7 +284,7 @@ fn unchanged_focused_recipient_losing_text_capability_rejects_at_dispatch() {
             .submit_action(Action::RevokeText)
             .unwrap_or_else(|_| unreachable!());
         let text = runtime
-            .submit_text(CommittedTextEvent::new("private", None))
+            .submit_text(CommittedTextEvent::new("private", None).unwrap_or_else(|_| unreachable!("valid fixture text")))
             .unwrap_or_else(|_| unreachable!());
         let result = runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
         assert_eq!(runtime.focus().focused_node(), Some(&owner));
@@ -293,7 +303,7 @@ fn unchanged_focused_recipient_losing_text_capability_rejects_at_dispatch() {
             .unwrap_or_else(|_| unreachable!());
         runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
         let restored = runtime
-            .submit_text(CommittedTextEvent::new("valid", None))
+            .submit_text(CommittedTextEvent::new("valid", None).unwrap_or_else(|_| unreachable!("valid fixture text")))
             .unwrap_or_else(|_| unreachable!());
         let result = runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
         assert_eq!(settlements(&result).len(), 1);
