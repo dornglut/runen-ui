@@ -178,9 +178,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     /// Bind at keyboard-default derivation, never at delayed command execution.
-    pub(crate) fn cancel_origin_at_derivation(
-        &self,
-    ) -> Option<PresentationCancelOrigin> {
+    pub(crate) fn cancel_origin_at_derivation(&self) -> Option<PresentationCancelOrigin> {
         let root = self.topmost_cancel_presentation()?;
         let lifetime = self.presentation_lifecycle.lifetimes.get(&root)?;
         if !lifetime.published {
