@@ -683,10 +683,19 @@ fn c12_keyboard_escape_with_no_eligible_origin_does_not_dismiss_later_q() {
         "unclaimed keyboard cancel must retain the ordinary nonpresentation default"
     );
 
+    assert_direct_global_fallback_after_keyboard_nonclaim(&mut runtime, &q_root);
+}
+
+fn assert_direct_global_fallback_after_keyboard_nonclaim(
+    runtime: &mut AppRuntime<App>,
+    q_root: &runenui_core::MountedNodeId,
+) {
+    use runenui_core::{CommandOrigin, SemanticCommand};
+
     // The same Q is still eligible for a genuinely unbound *direct* global
     // command. This must continue to use execution-time topmost selection.
-    let direct_target = authored_node(&mut runtime, "q-item");
-    assert_eq!(authored_node(&mut runtime, "q-menu"), q_root);
+    let direct_target = authored_node(runtime, "q-item");
+    assert_eq!(&authored_node(runtime, "q-menu"), q_root);
     runtime
         .submit_command(
             direct_target,
@@ -694,9 +703,9 @@ fn c12_keyboard_escape_with_no_eligible_origin_does_not_dismiss_later_q() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("ordinary direct global command"));
-    pump_one(&mut runtime);
+    pump_one(runtime);
     assert_eq!(runtime.state().q_dismissals, 0);
-    pump_full(&mut runtime);
+    pump_full(runtime);
     assert!(!runtime.state().q_open);
     assert_eq!(runtime.state().q_dismissals, 1);
     assert_eq!(runtime.state().p_dismissals, 0);
