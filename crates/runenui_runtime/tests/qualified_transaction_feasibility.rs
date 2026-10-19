@@ -536,11 +536,15 @@ impl CreditModel {
         let Some(total) = self.used.plus(prepaid) else {
             return Err(action);
         };
-        if !total.fits(self.max) { return Err(action); }
+        if !total.fits(self.max) {
+            return Err(action);
+        }
         self.used = total;
         Ok((action, Claim { prepaid }))
     }
-    fn release(&mut self, claim: Claim) { self.used = self.used.minus(claim.prepaid); }
+    fn release(&mut self, claim: Claim) {
+        self.used = self.used.minus(claim.prepaid);
+    }
 }
 fn observed_p95(samples: &mut [u128]) -> u128 {
     samples.sort_unstable();
@@ -558,9 +562,12 @@ fn closed_binary_lineage(depth: usize) -> Option<usize> {
 #[test]
 fn qualified_credit_boundary_retains_exact_nonclone_payload() {
     for (c, r, waiting, admitted) in [
-        (16, 4, 7, true), (16, 4, 8, false),
-        (64, 8, 47, true), (64, 8, 48, false),
-        (4096, 1024, 2047, true), (4096, 1024, 2048, false),
+        (16, 4, 7, true),
+        (16, 4, 8, false),
+        (64, 8, 47, true),
+        (64, 8, 48, false),
+        (4096, 1024, 2047, true),
+        (4096, 1024, 2048, false),
     ] {
         let mut ledger = CreditModel::new(c, waiting);
         let action = Action::Disable(Box::new(11));
@@ -600,28 +607,47 @@ fn complete_recursive_and_independent_route_guarantees_have_finite_limits() {
     for (c, depth) in [(16, 3), (64, 5), (4096, 11)] {
         let count = closed_binary_lineage(depth).unwrap_or_else(|| unreachable!("bounded"));
         let mut ledger = CreditModel::new(c, 0);
-        let (_, held) = ledger.admit(Action::Follower,
-            Credits::of(count - 1, count, count, count, count))
+        let (_, held) = ledger
+            .admit(
+                Action::Follower,
+                Credits::of(count - 1, count, count, count, count),
+            )
             .unwrap_or_else(|_| unreachable!("exact capacity"));
         assert_eq!(ledger.used.fifo, count);
         ledger.release(held);
         let larger = closed_binary_lineage(depth + 1).unwrap_or_else(|| unreachable!("bounded"));
-        assert!(ledger.admit(Action::Follower,
-            Credits::of(larger - 1, larger, larger, larger, larger)).is_err());
+        assert!(
+            ledger
+                .admit(
+                    Action::Follower,
+                    Credits::of(larger - 1, larger, larger, larger, larger)
+                )
+                .is_err()
+        );
         assert_eq!(ledger.used.fifo, 0);
     }
     let mut ledger = CreditModel::new(4096, 0);
-    assert!(ledger.admit(Action::Follower,
-        Credits::of(4 * 1024, 10, 10, 10, 4 * 1024)).is_err());
-    let (_, held) = ledger.admit(Action::Follower, Credits::of(10, 10, 10, 10, 10))
+    assert!(
+        ledger
+            .admit(
+                Action::Follower,
+                Credits::of(4 * 1024, 10, 10, 10, 4 * 1024)
+            )
+            .is_err()
+    );
+    let (_, held) = ledger
+        .admit(Action::Follower, Credits::of(10, 10, 10, 10, 10))
         .unwrap_or_else(|_| unreachable!("small closed budget"));
     assert_eq!(ledger.used.fifo, 11);
     ledger.release(held);
     ledger.max.trace = 0;
-    assert!(ledger.admit(Action::Follower, Credits::of(0, 0, 0, 0, 0)).is_err());
+    assert!(
+        ledger
+            .admit(Action::Follower, Credits::of(0, 0, 0, 0, 0))
+            .is_err()
+    );
     // Observed custom ancestor emits capture+bubble for IME and FocusOut.
     // Claiming 0/1/2 routed outputs based on TextField itself is unsound.
-    assert!(4 > 2);
 }
 
 #[test]
