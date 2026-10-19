@@ -452,7 +452,6 @@ fn real_textfield_routed_ime_and_focusout_outputs_follow_existing_fifo() {
     );
 }
 
-
 // #475 PROOF ONLY: one vector of prepaid claims, with no second runtime queue.
 // Existing public Widget/UiApp cannot yet be constrained to these claims.
 #[derive(Clone, Copy, Default, Debug, Eq, PartialEq)]
@@ -464,8 +463,20 @@ struct Credits {
     sequences: usize,
 }
 impl Credits {
-    const fn of(fifo: usize, trace: usize, work: usize, identities: usize, sequences: usize) -> Self {
-        Self { fifo, trace, work, identities, sequences }
+    const fn of(
+        fifo: usize,
+        trace: usize,
+        work: usize,
+        identities: usize,
+        sequences: usize,
+    ) -> Self {
+        Self {
+            fifo,
+            trace,
+            work,
+            identities,
+            sequences,
+        }
     }
     fn plus(self, rhs: Self) -> Option<Self> {
         Some(Self {
@@ -478,20 +489,38 @@ impl Credits {
     }
     fn minus(self, rhs: Self) -> Self {
         Self::of(
-            self.fifo.checked_sub(rhs.fifo).unwrap_or_else(|| unreachable!("fifo")),
-            self.trace.checked_sub(rhs.trace).unwrap_or_else(|| unreachable!("trace")),
-            self.work.checked_sub(rhs.work).unwrap_or_else(|| unreachable!("work")),
-            self.identities.checked_sub(rhs.identities).unwrap_or_else(|| unreachable!("identities")),
-            self.sequences.checked_sub(rhs.sequences).unwrap_or_else(|| unreachable!("sequences")),
+            self.fifo
+                .checked_sub(rhs.fifo)
+                .unwrap_or_else(|| unreachable!("fifo")),
+            self.trace
+                .checked_sub(rhs.trace)
+                .unwrap_or_else(|| unreachable!("trace")),
+            self.work
+                .checked_sub(rhs.work)
+                .unwrap_or_else(|| unreachable!("work")),
+            self.identities
+                .checked_sub(rhs.identities)
+                .unwrap_or_else(|| unreachable!("identities")),
+            self.sequences
+                .checked_sub(rhs.sequences)
+                .unwrap_or_else(|| unreachable!("sequences")),
         )
     }
     const fn fits(self, max: Self) -> bool {
-        self.fifo <= max.fifo && self.trace <= max.trace && self.work <= max.work
-            && self.identities <= max.identities && self.sequences <= max.sequences
+        self.fifo <= max.fifo
+            && self.trace <= max.trace
+            && self.work <= max.work
+            && self.identities <= max.identities
+            && self.sequences <= max.sequences
     }
 }
-struct Claim { prepaid: Credits }
-struct CreditModel { max: Credits, used: Credits }
+struct Claim {
+    prepaid: Credits,
+}
+struct CreditModel {
+    max: Credits,
+    used: Credits,
+}
 impl CreditModel {
     fn new(capacity: usize, waiting: usize) -> Self {
         assert!(waiting <= capacity);
