@@ -9,7 +9,7 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, InputArbitrationRecord, LogicalSize, PumpBudget, SurfaceBuildContext,
-    UiInputFinality,
+    TraceRecordKind, UiInputFinality,
 };
 
 const FULL: PumpBudget = PumpBudget::new(128, 128, 128, 128);
@@ -129,6 +129,7 @@ fn delayed_escape_from_p_must_not_dismiss_newly_published_q() {
         .id()
         .clone();
     assert_eq!(runtime.focus().focused_node(), Some(&p_item));
+    let p_origin_root = authored_node(&mut runtime, "p-menu");
 
     let escape = KeyboardEvent::new(
         KeyboardPhase::Down,
@@ -170,6 +171,12 @@ fn delayed_escape_from_p_must_not_dismiss_newly_published_q() {
     runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("Q publication precedes delayed default"));
+    assert_eq!(
+        authored_node(&mut runtime, "p-menu"),
+        p_origin_root,
+        "C4 requires an unchanged, still-published P root, not a replaced P"
+    );
+    let _q_root = authored_node(&mut runtime, "q-menu");
 
     assert!(
         runtime
@@ -188,6 +195,19 @@ fn delayed_escape_from_p_must_not_dismiss_newly_published_q() {
         "Q must not receive a P-origin dismissal"
     );
     assert_eq!(runtime.state().p_dismissals, 0);
+    let decisions = runtime
+        .trace()
+        .records()
+        .filter_map(|record| match record.kind() {
+            TraceRecordKind::PresentationCancelOrBackDecision { claimed } => Some(*claimed),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        decisions,
+        [false],
+        "a stale P-bound default must not be falsely traced as a presentation claim"
+    );
 }
 
 // All tests below are external downstream consumers of the public runtime.
