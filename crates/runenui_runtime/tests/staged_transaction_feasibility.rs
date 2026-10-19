@@ -12,7 +12,7 @@ use std::{
 };
 
 use runenui_core::{
-    ChildBearingWidget, CommandOrigin, Element, ElementId, EventContext, EventPhase,
+    ChildBearingWidget, CommandOrigin, CompositionEvent, Element, ElementId, EventContext, EventPhase,
     FocusEventKind, NoHostProtocol, SemanticCommand, SemanticEditableMode, TextAffinity,
     TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextField, TextPosition,
     TextSelection, UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetUpdateContext, column,
@@ -36,6 +36,7 @@ struct State {
     token: Box<u64>,
     processed_followers: usize,
     processed_mounted: usize,
+    processed: Vec<&'static str>,
     observed: Rc<RefCell<Vec<&'static str>>>,
 }
 
@@ -61,6 +62,12 @@ impl Widget<Action> for Ancestor {
         {
             self.observed.borrow_mut().push("ancestor-focus-out");
             if context.phase() == EventPhase::Capture || context.phase() == EventPhase::Bubble {
+                context.emit(Action::AncestorEffect);
+            }
+        }
+        if matches!(event, UiEvent::Composition(CompositionEvent::Cancel(_))) {
+            self.observed.borrow_mut().push("ancestor-ime-cancel");
+            if matches!(context.phase(), EventPhase::Capture | EventPhase::Bubble) {
                 context.emit(Action::AncestorEffect);
             }
         }
@@ -117,6 +124,7 @@ impl UiApp for App {
             |_| Action::MountedEffect,
         )
         .unwrap_or_else(|_| unreachable!("valid TextField"))
+        .disabled(!state.enabled)
         .id("editor")
         .key("editor");
         column(vec![
@@ -125,7 +133,7 @@ impl UiApp for App {
                     observed: Rc::clone(&state.observed),
                 },
                 vec![
-                    field.into_element().focusable(state.enabled),
+                    field.into_element(),
                     Element::new(RetainedProbe {
                         revision: state.revision,
                         observed: Rc::clone(&state.observed),
@@ -153,9 +161,15 @@ impl UiApp for App {
                 *state.token += *payload;
                 state.observed.borrow_mut().push("application-update");
             }
-            Action::Follower => state.processed_followers += 1,
-            Action::MountedEffect => state.processed_mounted += 1,
-            Action::AncestorEffect => {}
+            Action::Follower => {
+                state.processed_followers += 1;
+                state.processed.push("follower");
+            }
+            Action::MountedEffect => {
+                state.processed_mounted += 1;
+                state.processed.push("mounted");
+            }
+            Action::AncestorEffect => state.processed.push("ancestor"),
         }
     }
 }
@@ -167,6 +181,7 @@ fn state() -> State {
         token: Box::new(7),
         processed_followers: 0,
         processed_mounted: 0,
+        processed: Vec::new(),
         observed: Rc::new(RefCell::new(Vec::new())),
     }
 }
@@ -276,13 +291,19 @@ fn actual_textfield_ime_and_nonclone_mounted_update_escape_preview_scope() {
     // Current accepted main, NOT the unmerged live-FocusOut correction #476.
     // This is an adversarial negative integration proof, not a claim that a
     // separate preview can intercept the runtime's accepted FIFO head.
-    for followers in [0, 15] {
+    for (capacity, allowance, followers, should_poison) in [
+        (16, 4, 0, false),
+        (16, 4, 4, false),
+        (16, 4, 15, true),
+        (4096, 1024, 0, false),
+        (4096, 1024, 2049, true),
+    ] {
         let mut runtime = AppRuntime::<App>::mount_with_config(
             state(),
             RuntimeConfig::default().with_limits(
                 RuntimeLimits::default()
-                    .with_waiting_envelopes(16)
-                    .with_transaction_outputs(4),
+                    .with_waiting_envelopes(capacity)
+                    .with_transaction_outputs(allowance),
             ),
         );
         settle(&mut runtime);
@@ -322,14 +343,17 @@ fn actual_textfield_ime_and_nonclone_mounted_update_escape_preview_scope() {
         assert!(seen.contains(&"mounted-update"));
         drop(seen);
         eprintln!(
-            "UI478 runtime: C=16 R=4 followers={} remaining={} status={:?} elapsed_ns={} state_header_bytes={}",
+            "UI478 runtime: C={} R={} followers={} remaining={} status={:?} elapsed_ns={} state_header_bytes={} queued_payload_lower_bound_bytes={}",
+            capacity,
+            allowance,
             followers,
             report.remaining_queued_envelopes(),
             runtime.status(),
             elapsed.as_nanos(),
             size_of::<State>(),
+            report.remaining_queued_envelopes() * size_of::<Action>(),
         );
-        if followers == 15 {
+        if should_poison {
             assert_eq!(
                 runtime.status(),
                 RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned),
@@ -340,6 +364,18 @@ fn actual_textfield_ime_and_nonclone_mounted_update_escape_preview_scope() {
             assert_eq!(runtime.state().processed_mounted, 0);
             settle(&mut runtime);
             assert_eq!(runtime.state().processed_mounted, 1);
+            assert_eq!(runtime.state().processed_followers, followers);
+            let processed = &runtime.state().processed;
+            assert_eq!(&processed[..followers], vec!["follower"; followers]);
+            let first_ancestor = processed
+                .iter()
+                .position(|event| *event == "ancestor")
+                .expect("IME cancel must route through ancestor");
+            let mounted = processed
+                .iter()
+                .position(|event| *event == "mounted")
+                .expect("compatible mounted update effect");
+            assert!(first_ancestor < mounted, "cleanup outputs precede update outputs");
         }
     }
 }
