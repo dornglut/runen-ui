@@ -2,6 +2,8 @@
 mod causal_presentation_commands;
 #[path = "../causal_presentation_nested.rs"]
 mod causal_presentation_nested;
+#[path = "../causal_presentation_suppression.rs"]
+mod causal_presentation_suppression;
 #[path = "../element_presentation.rs"]
 mod element_presentation;
 #[path = "../invalidation.rs"]
