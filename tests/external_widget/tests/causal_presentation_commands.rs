@@ -369,12 +369,26 @@ fn c8_composing_keyboard_escape_does_not_derive_a_presentation_dismissal() {
     let mut runtime = AppRuntime::<App>::mount(initial_state());
     publish(&mut runtime, &context);
     pump_full(&mut runtime);
+    let commands_before = runtime
+        .trace()
+        .records()
+        .filter(|record| matches!(record.kind(), TraceRecordKind::CommandSubmissionAccepted))
+        .count();
     runtime
         .submit_keyboard(escape_event(KeyboardCompositionState::Active))
         .unwrap_or_else(|_| unreachable!("composition-owned Escape"));
     pump_full(&mut runtime);
     assert!(runtime.state().p_open);
     assert_eq!(runtime.state().p_dismissals, 0);
+    assert_eq!(
+        runtime
+            .trace()
+            .records()
+            .filter(|record| matches!(record.kind(), TraceRecordKind::CommandSubmissionAccepted))
+            .count(),
+        commands_before,
+        "composition-owned Escape must not submit a delayed semantic command"
+    );
 }
 
 #[test]

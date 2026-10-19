@@ -9,7 +9,7 @@ use runenui_core::{
     SurfacePresentation, SurfacePresentationPlacement, SurfacePresentationSide, UiApp, UiEvent,
     View, Widget, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, column,
 };
-use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
+use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceRecordKind};
 
 const FULL: PumpBudget = PumpBudget::new(128, 128, 128, 128);
 const ONE: PumpBudget = PumpBudget::new(1, 0, 0, 0);
@@ -203,10 +203,31 @@ fn c8_keyboard_or_semantic_prevention_suppresses_presentation_dismissal() {
         published(&mut runtime, &context);
         drain(&mut runtime);
         assert!(runtime.focus().focused_node().is_some());
+        let commands_before = runtime
+            .trace()
+            .records()
+            .filter(|record| matches!(record.kind(), TraceRecordKind::CommandSubmissionAccepted))
+            .count();
         runtime
             .submit_keyboard(escape())
             .unwrap_or_else(|_| unreachable!("preventable Escape"));
         drain(&mut runtime);
         assert_eq!(runtime.state().dismissals, 0);
+        let commands_after = runtime
+            .trace()
+            .records()
+            .filter(|record| matches!(record.kind(), TraceRecordKind::CommandSubmissionAccepted))
+            .count();
+        if prevent_keyboard {
+            assert_eq!(
+                commands_after, commands_before,
+                "keyboard prevent_default must suppress command derivation"
+            );
+        } else {
+            assert!(
+                commands_after > commands_before,
+                "semantic prevent_default must suppress the routed command, not its derivation"
+            );
+        }
     }
 }
