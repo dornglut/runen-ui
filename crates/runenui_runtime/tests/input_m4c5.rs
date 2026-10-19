@@ -2860,44 +2860,7 @@ fn focusability_only_retirement_keeps_ime_and_focus_out_in_one_output_transactio
             && entry.input == ObservedInput::CompositionCancel(CompositionCancelReason::Disablement)
     }));
 
-    {
-        let records = runtime
-            .trace()
-            .records()
-            .skip(trace_start)
-            .collect::<Vec<_>>();
-        let cancelled = records.iter().position(|record| {
-            matches!(
-                record.kind(),
-                TraceRecordKind::CompositionCancelled {
-                    reason: CompositionCancelReason::Disablement
-                }
-            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
-        });
-        let focus_out = records.iter().position(|record| {
-            matches!(
-                record.kind(),
-                TraceRecordKind::FocusNotificationResolved {
-                    kind: runenui_runtime::FocusEventKind::Out
-                }
-            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
-        });
-        let accepted = records
-            .iter()
-            .position(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted));
-        assert!(
-            matches!((cancelled, focus_out, accepted), (Some(a), Some(b), Some(c)) if a < b && b < c),
-            "composition cancellation and FocusOut must finish before their shared callback output is committed"
-        );
-        assert_eq!(
-            records
-                .iter()
-                .filter(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted))
-                .count(),
-            1,
-            "one callback action is committed once"
-        );
-    }
+    assert_shared_focus_retirement_trace(&runtime, trace_start);
 
     // All accepted older actions precede the callback-produced tail action.
     let followers = runtime
@@ -2915,4 +2878,43 @@ fn focusability_only_retirement_keeps_ime_and_focus_out_in_one_output_transactio
     assert_eq!(callback_tail.processed_envelopes(), 1);
     assert_eq!(runtime.state().activations, 15);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+fn assert_shared_focus_retirement_trace(runtime: &AppRuntime<InputApp>, trace_start: usize) {
+    let records = runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .collect::<Vec<_>>();
+    let cancelled = records.iter().position(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::CompositionCancelled {
+                reason: CompositionCancelReason::Disablement
+            }
+        ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+    });
+    let focus_out = records.iter().position(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::FocusNotificationResolved {
+                kind: runenui_runtime::FocusEventKind::Out
+            }
+        ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+    });
+    let accepted = records
+        .iter()
+        .position(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted));
+    assert!(
+        matches!((cancelled, focus_out, accepted), (Some(a), Some(b), Some(c)) if a < b && b < c),
+        "composition cancellation and FocusOut must finish before their shared callback output is committed"
+    );
+    assert_eq!(
+        records
+            .iter()
+            .filter(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted))
+            .count(),
+        1,
+        "one callback action is committed once"
+    );
 }
