@@ -10,6 +10,8 @@ mod application_work;
 mod automation_rejection;
 #[path = "../public_consumer.rs"]
 mod public_consumer;
+#[path = "../staged_transaction_feasibility.rs"]
+mod staged_transaction_feasibility;
 #[path = "../routed_commands.rs"]
 mod routed_commands;
 #[path = "../transactional_cancellation.rs"]

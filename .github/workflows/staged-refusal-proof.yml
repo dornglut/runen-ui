@@ -30,4 +30,4 @@ jobs:
         run: rustup toolchain install stable --profile minimal
 
       - name: Execute bounded proof with visible measurements
-        run: cargo +stable test --locked -p runenui_runtime --test staged_transaction_feasibility -- --nocapture
+        run: cargo +stable test --locked -p runenui_runtime --test application_command staged_transaction_feasibility -- --nocapture
