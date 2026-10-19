@@ -2857,8 +2857,7 @@ fn focusability_only_retirement_keeps_ime_and_focus_out_in_one_output_transactio
     assert!(log.borrow().iter().any(|entry| {
         entry.node == "target"
             && entry.phase == Some(EventPhase::Target)
-            && entry.input
-                == ObservedInput::CompositionCancel(CompositionCancelReason::Disablement)
+            && entry.input == ObservedInput::CompositionCancel(CompositionCancelReason::Disablement)
     }));
 
     {
