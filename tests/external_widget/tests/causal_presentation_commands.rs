@@ -392,6 +392,69 @@ fn c8_composing_keyboard_escape_does_not_derive_a_presentation_dismissal() {
 }
 
 #[test]
+fn c10_pending_focus_entry_precedes_escape_and_restores_original_trigger() {
+    use runenui_core::{CommandOrigin, SemanticCommand};
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::new(320_u16.into(), 240_u16.into()),
+    );
+    let mut state = initial_state();
+    state.p_open = false;
+    let mut runtime = AppRuntime::<App>::mount(state);
+    publish(&mut runtime, &context);
+    pump_full(&mut runtime);
+    let trigger = authored_node(&mut runtime, "p-trigger");
+    runtime
+        .submit_command(
+            trigger.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus original trigger"));
+    pump_full(&mut runtime);
+    assert_eq!(runtime.focus().focused_node(), Some(&trigger));
+
+    runtime
+        .submit_action(Action::ShowP)
+        .unwrap_or_else(|_| unreachable!("open P through app action"));
+    pump_full(&mut runtime);
+    publish(&mut runtime, &context); // queue r, a known P-focus entry
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&trigger),
+        "published entry request must not force immediate focus"
+    );
+    let receipt = runtime
+        .submit_keyboard(escape_event(KeyboardCompositionState::Inactive))
+        .unwrap_or_else(|_| unreachable!("Escape e admitted behind pending entry r"));
+    pump_one(&mut runtime); // r commits before e is dispatched
+    let p_item = authored_node(&mut runtime, "p-item");
+    assert_eq!(runtime.focus().focused_node(), Some(&p_item));
+    let keyboard = runtime
+        .pump(ONE)
+        .unwrap_or_else(|_| unreachable!("keyboard after pending entry"));
+    assert_eq!(keyboard.report().processed_envelopes(), 1);
+    assert!(keyboard.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(settlement)
+            if settlement.sequence() == receipt.sequence()
+                && matches!(settlement.finality(), UiInputFinality::Committed(_))
+    )));
+
+    pump_full(&mut runtime);
+    assert!(!runtime.state().p_open);
+    assert_eq!(runtime.state().p_dismissals, 1);
+    publish(&mut runtime, &context);
+    pump_full(&mut runtime);
+    assert_eq!(
+        runtime.focus().focused_node(),
+        Some(&trigger),
+        "M11 EnterAndRestore must recover the exact original trigger"
+    );
+}
+
+#[test]
 fn c9_direct_unbound_cancel_uses_current_topmost_and_no_presentation_fallback() {
     use runenui_core::{CommandOrigin, SemanticCommand};
     let environment = StyleEnvironment::default();
