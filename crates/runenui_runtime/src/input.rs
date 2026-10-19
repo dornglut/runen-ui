@@ -985,7 +985,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .then_some(())
             .ok_or(SubmitTextErrorKind::FocusedTargetNotTextCapable)?;
         if self.editing.has_owner(&target) {
-            let reserved = self.queue.pending_committed_text_for(&target);
+            let reserved = self
+                .queue
+                .pending_committed_text_for(&target, self.retired_focused_input_through);
             self.editing
                 .can_prepare_after_reserved(&target, reserved)
                 .map_err(|error| match error {
@@ -1084,6 +1086,45 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             causal_parent,
             trace_reservation,
         );
+        // Binding remains the original ingress-selected mounted target. A focus
+        // commit invalidates every already issued ordinary keyboard/text receipt,
+        // including ABA transfers that restore precisely the same mounted ID.
+        // Preserve the more specific missing/stale/foreign routing diagnoses.
+        if matches!(
+            &payload,
+            InputEnvelopePayload::Keyboard(_) | InputEnvelopePayload::CommittedText(_)
+        ) && self.tree.target_status(&target) == TargetStatus::Live
+        {
+            let rejection = if self
+                .retired_focused_input_through
+                .is_some_and(|cutoff| sequence <= cutoff)
+            {
+                Some(crate::UiInputProcessingRejection::StaleFocusLifetime)
+            } else if matches!(&payload, InputEnvelopePayload::CommittedText(_))
+                && !self
+                    .tree
+                    .text_input_probe(&target)
+                    .is_ok_and(|capability| capability.accepts_committed_text())
+            {
+                Some(crate::UiInputProcessingRejection::CommittedTextRecipientUnavailable)
+            } else {
+                None
+            };
+            if let Some(reason) = rejection {
+                self.trace.record_reserved_event(
+                    trace_reservation,
+                    TraceRecordKind::FocusedInputProcessingRejected { reason },
+                    sequence,
+                    causal_parent,
+                    Some(self.tree.trace_target(&target)),
+                    instant,
+                    &target,
+                    None,
+                    origin,
+                );
+                return crate::UiInputFinality::ProcessingRejected(reason);
+            }
+        }
         let space_owner_before = matches!(
             &payload,
             InputEnvelopePayload::Keyboard(event)

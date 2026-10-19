@@ -689,6 +689,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    /// One issue-time fence derived from the canonical queue; no session allocator.
+    fn retire_previously_issued_focused_input(&mut self) {
+        self.retired_focused_input_through = self.queue.last_issued_sequence();
+    }
+
     pub(in crate::runtime) fn commit_focus_transition(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
@@ -740,6 +745,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             reason,
             next_visibility,
         );
+        self.retire_previously_issued_focused_input();
         self.reconcile_focus_group_type_ahead_state();
         if let Some(target) = new_target.as_ref() {
             for scope in new_route.iter().filter(|scope| {
@@ -999,7 +1005,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface,
         } = cleanup;
         let previous_visibility = self.focus.focus_visible();
+        let had_focus = self.focus.focused_node().is_some();
         self.focus.commit(None, Vec::new(), reason, false);
+        if had_focus {
+            self.retire_previously_issued_focused_input();
+        }
         self.reconcile_focus_group_type_ahead_state();
         let Some(trace_target) = trace_target else {
             return;
@@ -1088,6 +1098,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         });
         let previous_visibility = self.focus.focus_visible();
         self.focus.clear_all(FocusReason::Shutdown);
+        if old_target.is_some() {
+            self.retire_previously_issued_focused_input();
+        }
         let Some(_old_target) = old_target else {
             return causal_parent;
         };

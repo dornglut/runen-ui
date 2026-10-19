@@ -99,6 +99,8 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     pub(crate) trace_action_labeler: Option<fn(&Action) -> Option<&'static str>>,
     text_system: TextSystem,
     pub(crate) focus: FocusState,
+    /// Retires ordinary focused inputs issued before the last committed focus change.
+    pub(crate) retired_focused_input_through: Option<WorkSequence>,
     input_observation: input_arbitration::InputObservationState,
     pub(crate) focus_group_type_ahead: FocusGroupTypeAheadState,
     pub(crate) presentation_lifecycle: PresentationLifecycleState,

@@ -262,6 +262,8 @@ pub(crate) struct WorkQueue<Action> {
     capacity: usize,
     waiting: VecDeque<WorkEnvelope<Action>>,
     next_sequence: Option<NonZeroU64>,
+    /// Last successfully assigned FIFO identity, even after sequence exhaustion.
+    last_issued_sequence: Option<WorkSequence>,
 }
 
 impl<Action> WorkQueue<Action> {
@@ -270,6 +272,7 @@ impl<Action> WorkQueue<Action> {
             capacity,
             waiting: VecDeque::new(),
             next_sequence: NonZeroU64::new(1),
+            last_issued_sequence: None,
         }
     }
 
@@ -308,6 +311,10 @@ impl<Action> WorkQueue<Action> {
         self.next_sequence.map(WorkSequence::__runtime_new)
     }
 
+    pub(crate) const fn last_issued_sequence(&self) -> Option<WorkSequence> {
+        self.last_issued_sequence
+    }
+
     pub(crate) fn push_preflighted(
         &mut self,
         action: Action,
@@ -320,6 +327,7 @@ impl<Action> WorkQueue<Action> {
         };
         let sequence = WorkSequence::__runtime_new(next_sequence);
         self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
+        self.last_issued_sequence = Some(sequence);
         self.waiting
             .push_back(WorkEnvelope::ApplicationAction(ApplicationActionEnvelope {
                 sequence,
@@ -535,6 +543,7 @@ impl<Action> WorkQueue<Action> {
             .ok_or(QueueCommitError::SequenceExhausted)?;
         let sequence = WorkSequence::__runtime_new(next);
         self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
+        self.last_issued_sequence = Some(sequence);
         self.waiting.push_back(envelope(sequence));
         Ok(sequence)
     }
@@ -570,17 +579,22 @@ impl<Action> WorkQueue<Action> {
             .any(|envelope| matches!(envelope, WorkEnvelope::Pointer(_)))
     }
 
-    pub(crate) fn pending_committed_text_for(&self, owner: &MountedNodeId) -> usize {
+    pub(crate) fn pending_committed_text_for(
+        &self,
+        owner: &MountedNodeId,
+        retired_through: Option<WorkSequence>,
+    ) -> usize {
         self.waiting
             .iter()
             .filter(|envelope| {
                 matches!(
                     envelope,
                     WorkEnvelope::Input(InputEnvelope {
+                        sequence,
                         target,
                         payload: InputEnvelopePayload::CommittedText(_),
                         ..
-                    }) if target == owner
+                    }) if target == owner && retired_through.is_none_or(|cutoff| *sequence > cutoff)
                 )
             })
             .count()
@@ -625,8 +639,47 @@ impl<Action> WorkQueue<Action> {
         }
     }
 
-    #[cfg(feature = "internal-test-seams")]
+    #[cfg(any(test, feature = "internal-test-seams"))]
     pub(crate) const fn seed_next_sequence_for_test(&mut self, next: u64) {
         self.next_sequence = NonZeroU64::new(next);
+    }
+}
+
+#[cfg(test)]
+mod issued_sequence_tests {
+    use super::{ApplicationActionOrigin, WorkQueue};
+
+    #[test]
+    fn exact_last_issued_sequence_tracks_both_empty_and_exhausted_allocators() {
+        let mut queue = WorkQueue::<()>::new(8);
+        assert_eq!(queue.last_issued_sequence(), None);
+        queue.seed_next_sequence_for_test(u64::MAX - 1);
+        assert_eq!(queue.last_issued_sequence(), None);
+
+        let first = queue
+            .push_preflighted((), None, None, ApplicationActionOrigin::Ordinary)
+            .unwrap_or_else(|_| unreachable!("final two slots exist"));
+        assert_eq!(first.get(), u64::MAX - 1);
+        assert_eq!(queue.last_issued_sequence(), Some(first));
+        let last = queue
+            .push_preflighted((), None, None, ApplicationActionOrigin::Ordinary)
+            .unwrap_or_else(|_| unreachable!("MAX is issuable"));
+        assert_eq!(last.get(), u64::MAX);
+        assert_eq!(queue.last_issued_sequence(), Some(last));
+        assert_eq!(queue.next_sequence(), None);
+        assert!(queue
+            .push_preflighted((), None, None, ApplicationActionOrigin::Ordinary)
+            .is_err());
+        assert_eq!(queue.last_issued_sequence(), Some(last));
+
+        let _ = queue.pop();
+        let _ = queue.cancel_all();
+        assert_eq!(queue.last_issued_sequence(), Some(last));
+        assert_eq!(queue.next_sequence(), None);
+
+        let mut never_issued = WorkQueue::<()>::new(1);
+        never_issued.seed_next_sequence_for_test(0);
+        assert_eq!(never_issued.last_issued_sequence(), None);
+        assert_eq!(never_issued.next_sequence(), None);
     }
 }
