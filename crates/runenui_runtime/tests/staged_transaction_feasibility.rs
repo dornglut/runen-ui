@@ -239,17 +239,16 @@ fn pure_preview_can_refuse_the_same_nonclone_payload_without_state_mutation() {
     let mut live = state();
     let action = Action::Disable(Box::new(11));
     let original_payload_address = match &action {
-        Action::Disable(payload) => &**payload as *const u64,
+        Action::Disable(payload) => std::ptr::from_ref(payload.as_ref()),
         _ => unreachable!("disable action"),
     };
     let start = Instant::now();
-    let refused = match try_prepare(&live, action, 15, 16, 4) {
-        Ok(_) => panic!("no capacity for source plus complete declared slots"),
-        Err(action) => action,
-    };
+    let refused = try_prepare(&live, action, 15, 16, 4)
+        .err()
+        .unwrap_or_else(|| unreachable!("no capacity for source plus declared slots"));
     let elapsed = start.elapsed();
     let returned_payload_address = match &refused {
-        Action::Disable(payload) => &**payload as *const u64,
+        Action::Disable(payload) => std::ptr::from_ref(payload.as_ref()),
         _ => unreachable!("same payload variant"),
     };
     assert_eq!(original_payload_address, returned_payload_address);
@@ -258,10 +257,9 @@ fn pure_preview_can_refuse_the_same_nonclone_payload_without_state_mutation() {
     assert_eq!(live.revision, 0);
     assert!(live.observed.borrow().is_empty());
 
-    let prepared = match try_prepare(&live, refused, 0, 16, 4) {
-        Ok(prepared) => prepared,
-        Err(_) => panic!("available preview should admit"),
-    };
+    let prepared = try_prepare(&live, refused, 0, 16, 4)
+        .ok()
+        .unwrap_or_else(|| unreachable!("available preview should admit"));
     assert_eq!(prepared.required_slots, 4);
     assert_eq!(prepared.next_revision, 1);
     // Only application mutation is committed. This preview has not prepared
@@ -364,11 +362,11 @@ fn actual_textfield_ime_and_nonclone_mounted_update_escape_preview_scope() {
             let first_ancestor = processed
                 .iter()
                 .position(|event| *event == "ancestor")
-                .expect("IME cancel must route through ancestor");
+                .unwrap_or_else(|| unreachable!("IME cancel must route through ancestor"));
             let mounted = processed
                 .iter()
                 .position(|event| *event == "mounted")
-                .expect("compatible mounted update effect");
+                .unwrap_or_else(|| unreachable!("compatible mounted update effect"));
             assert!(
                 first_ancestor < mounted,
                 "cleanup outputs precede update outputs"
