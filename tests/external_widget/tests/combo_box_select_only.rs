@@ -2,7 +2,8 @@
 //! Select-only ComboBox uses one focus owner and app-selected Option callbacks.
 use runenui_core::{
     ComboBoxRequest, CommandOrigin, ElementId, LogicalPoint, NoHostProtocol, PointerButton,
-    PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
+    PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SceneShape,
+    SemanticAction,
     SemanticCommand, SemanticRole, SemanticValue, UiApp, View, combo_box, option_item,
 };
 use runenui_runtime::{
@@ -56,7 +57,7 @@ fn settle(app: &mut AppRuntime<App>) {
             .report()
             .is_quiescent());
 }
-fn id(app: &AppRuntime<App>, id: &str) -> MountedNodeId {
+fn id(app: &mut AppRuntime<App>, id: &str) -> MountedNodeId {
     let id = ElementId::new(id).unwrap_or_else(|_| unreachable!("valid test ID"));
     app.index().nodes().iter()
         .find(|node| node.authored_id() == Some(&id))
@@ -72,14 +73,14 @@ fn command(app: &mut AppRuntime<App>, target: MountedNodeId, cmd: SemanticComman
 fn select_only_keeps_real_focus_on_owner_while_selection_remains_application_owned() {
     let mut app = AppRuntime::<App>::mount(State::default());
     settle(&mut app);
-    let owner = id(&app, "choice.owner");
+    let owner = id(&mut app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     command(&mut app, owner.clone(), SemanticCommand::Activate);
     assert!(app.state().open);
     assert_eq!(app.state().log, [ComboBoxRequest::Open]);
     assert_eq!(app.focus().focused_node(), Some(&owner));
-    let one = id(&app, "choice.one");
-    let two = id(&app, "choice.two");
+    let one = id(&mut app, "choice.one");
+    let two = id(&mut app, "choice.two");
     assert!(!app.index().node(&one).is_some_and(|node| node.is_focusable()));
     assert!(!app.index().node(&two).is_some_and(|node| node.is_focusable()));
     let published = app.publish_surface(&SurfaceBuildContext::tight(
@@ -183,7 +184,7 @@ fn keyboard_ime_escape_and_enter_keep_focus_and_committed_value_separate() {
     use runenui_core::{KeyboardCompositionState as Composition, LogicalKey, PhysicalKey};
     let mut app = AppRuntime::<App>::mount(State::default());
     settle(&mut app);
-    let owner = id(&app, "choice.owner");
+    let owner = id(&mut app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     app.submit_keyboard(key(PhysicalKey::ArrowDown, LogicalKey::ArrowDown,
         Composition::Inactive)).unwrap_or_else(|_| unreachable!("arrow ingress"));
@@ -225,7 +226,7 @@ fn keyboard_ime_escape_and_enter_keep_focus_and_committed_value_separate() {
 fn semantic_expand_and_collapse_actions_follow_application_open_state() {
     let mut app = AppRuntime::<App>::mount(State::default());
     settle(&mut app);
-    let owner = id(&app, "choice.owner");
+    let owner = id(&mut app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     let published = app.publish_surface(&SurfaceBuildContext::tight(
         &runenui_core::StyleEnvironment::default(),
@@ -306,6 +307,31 @@ fn closed_select_only_displays_app_selected_option_using_retained_m8_text_not_st
         "changing only app-authored selected Option changes retained text glyphs");
 }
 
+// Physical pointer tests use projected displayed hit geometry, not retained
+// layout/debug frame bounds. The target must resolve to this exact mounted Option.
+fn displayed_option_center(
+    publication: &runenui_runtime::SurfacePublication,
+    option: &MountedNodeId,
+) -> LogicalPoint {
+    let scene = publication.hit_test_scene();
+    let region = scene.regions().iter()
+        .find(|region| region.target() == option && matches!(region.shape(), SceneShape::Rect(_)))
+        .unwrap_or_else(|| unreachable!("current Option has a rectangular projected hit region"));
+    let SceneShape::Rect(bounds) = region.shape() else {
+        unreachable!("selected a projected rectangle")
+    };
+    assert!(bounds.width() > 0.0 && bounds.height() > 0.0);
+    let local = LogicalPoint::new(
+        bounds.width().mul_add(0.5, bounds.x()),
+        bounds.height().mul_add(0.5, bounds.y()),
+    ).unwrap_or_else(|_| unreachable!("finite current Option region center"));
+    let point = region.local_to_surface().transform_point(local)
+        .unwrap_or_else(|| unreachable!("non-singular current Option projection"));
+    assert_eq!(scene.target_at(point), Some(option),
+        "the correlated displayed hit scene must target the exact Option");
+    point
+}
+
 #[test]
 fn physical_option_click_uses_standard_option_activation_without_moving_owner_focus() {
     let mut app = AppRuntime::<App>::mount(State::default());
@@ -316,7 +342,7 @@ fn physical_option_click_uses_standard_option_activation_without_moving_owner_fo
         &[FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!())],
     ).unwrap_or_else(|_| unreachable!("known test font family"));
     settle(&mut app);
-    let owner = id(&app, "choice.owner");
+    let owner = id(&mut app, "choice.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
     command(&mut app, owner.clone(), SemanticCommand::Activate);
     assert!(app.state().open);
@@ -328,16 +354,9 @@ fn physical_option_click_uses_standard_option_activation_without_moving_owner_fo
         ))
         .unwrap_or_else(|error| unreachable!("current popup published: {error:?}"));
 
+    let option = id(&mut app, "choice.two");
     let frame = publish(&mut app);
-    let option = frame.frame().nodes().iter()
-        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "choice.two"))
-        .unwrap_or_else(|| unreachable!("visible current proxy Option"));
-    let bounds = option.bounds();
-    assert!(bounds.width() > 0.0 && bounds.height() > 0.0);
-    let point = LogicalPoint::new(
-        bounds.width().mul_add(0.5, bounds.x()),
-        bounds.height().mul_add(0.5, bounds.y()),
-    ).unwrap_or_else(|_| unreachable!("finite current Option geometry"));
+    let point = displayed_option_center(&frame, &option);
     let pointer = PointerId::new(331).unwrap_or_else(|| unreachable!("nonzero pointer id"));
 
     app.submit_pointer(PointerEvent::new(
@@ -349,10 +368,11 @@ fn physical_option_click_uses_standard_option_activation_without_moving_owner_fo
     )).unwrap_or_else(|_| unreachable!("current hover admitted"));
     settle(&mut app);
     let hover = publish(&mut app);
+    let down_point = displayed_option_center(&hover, &option);
     app.submit_pointer(
         PointerEvent::new(
             pointer, PointerDeviceKind::Mouse, PointerPhase::Down,
-            point, hover.input_context().clone(),
+            down_point, hover.input_context().clone(),
         )
         .with_buttons(PointerButtons::new([PointerButton::Primary]))
         .with_changed_button(PointerButton::Primary),
@@ -360,10 +380,11 @@ fn physical_option_click_uses_standard_option_activation_without_moving_owner_fo
     settle(&mut app);
     assert_eq!(app.state().chosen, 0, "Down must not commit selection");
     let down = publish(&mut app);
+    let up_point = displayed_option_center(&down, &option);
     app.submit_pointer(
         PointerEvent::new(
             pointer, PointerDeviceKind::Mouse, PointerPhase::Up,
-            point, down.input_context().clone(),
+            up_point, down.input_context().clone(),
         )
         .with_changed_button(PointerButton::Primary),
     ).unwrap_or_else(|_| unreachable!("matching primary Up admitted"));
@@ -438,7 +459,7 @@ fn select_only_combo_claims_only_its_recognized_native_arrow_key() {
                 RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
             );
             settle(&mut app);
-            let owner = id(&app, "choice.owner");
+            let owner = id(&mut app, "choice.owner");
             command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
             let scope = app.input_ownership()
                 .unwrap_or_else(|_| unreachable!("live input scope"))

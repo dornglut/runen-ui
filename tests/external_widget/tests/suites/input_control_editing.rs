@@ -1,3 +1,5 @@
+#[path = "../combo_box_editable_parity.rs"]
+mod combo_box_editable_parity;
 #[path = "../focus.rs"]
 mod focus;
 #[path = "../input.rs"]

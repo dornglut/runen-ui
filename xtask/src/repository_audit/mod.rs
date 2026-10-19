@@ -3,6 +3,7 @@
 mod context;
 mod matrix;
 mod source;
+mod test_targets;
 mod workspace;
 
 use std::{
@@ -272,6 +273,11 @@ fn build_report(root: &Path) -> Result<AuditReport, String> {
     }
 
     audit_repository_governance(root, &mut report.findings)?;
+    // Synthetic audit fixtures omit this independently-owned downstream package.
+    // If a declared workspace member disappears, workspace::audit reports it.
+    if root.join("tests/external_widget").is_dir() {
+        test_targets::audit(root, &mut report.findings)?;
+    }
     audit_documentation_authority(root, &mut report.findings)?;
     context::audit(root, &mut report.findings)?;
     report.metrics.matrix = matrix::audit(root, &mut report.findings)?;
