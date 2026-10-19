@@ -40,6 +40,12 @@ pub(crate) enum CollectedRoutedOutput<Action> {
         origin: CommandOrigin,
         causal_parent: Option<TraceSequence>,
     },
+    /// Keyboard-derived CancelOrBack retaining a published presentation origin.
+    BoundPresentationCancel {
+        target: MountedNodeId,
+        presentation_origin: super::presentation::PresentationCancelOrigin,
+        causal_parent: Option<TraceSequence>,
+    },
     ApplicationCommand {
         target: MountedNodeId,
         command: ApplicationCommandId,

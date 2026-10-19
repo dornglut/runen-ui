@@ -47,6 +47,7 @@ struct PreflightedCommand<'a> {
     origin: CommandOrigin,
     semantic_target: Option<SemanticActionTarget>,
     focus_request_override: Option<FocusRequestOverride>,
+    presentation_cancel_origin: Option<super::super::presentation::PresentationCancelOrigin>,
     instant: MonotonicInstant,
     trace: CommandTrace,
 }
@@ -309,6 +310,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             origin: CommandOrigin::accessibility(),
             semantic_target: Some(semantic_target),
             focus_request_override: None,
+            presentation_cancel_origin: None,
             instant: self.now(),
             trace: CommandTrace::Direct { parent: None },
         })
@@ -328,6 +330,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             origin,
             semantic_target: None,
             focus_request_override: None,
+            presentation_cancel_origin: None,
             instant: self.now(),
             trace,
         })
@@ -357,6 +360,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         origin: CommandOrigin,
         causal_parent: Option<TraceSequence>,
         instant: MonotonicInstant,
+        presentation_cancel_origin: Option<super::super::presentation::PresentationCancelOrigin>,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         self.command_preflight(target)?;
         self.commit_preflighted_command(PreflightedCommand {
@@ -365,7 +369,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             origin,
             semantic_target: None,
             focus_request_override: None,
-            instant,
+            presentation_cancel_origin,
+            instant:
             trace: CommandTrace::Direct {
                 parent: causal_parent,
             },
@@ -389,6 +394,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     target: focus_target,
                     reason,
                 }),
+                presentation_cancel_origin: None,
                 instant: self.now(),
                 trace: CommandTrace::Direct {
                     parent: causal_parent,
@@ -414,6 +420,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 origin: CommandOrigin::__runtime_semantic_default(EventSource::Programmatic),
                 semantic_target: None,
                 focus_request_override: None,
+                presentation_cancel_origin: None,
                 instant: self.now(),
                 trace: CommandTrace::Direct {
                     parent: causal_parent,
@@ -505,6 +512,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             origin,
             semantic_target,
             focus_request_override,
+            presentation_cancel_origin,
             instant,
             trace: _,
         } = command;
@@ -518,6 +526,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 command,
                 origin,
                 focus_request_override,
+                presentation_cancel_origin,
                 instant,
                 causal_parent,
                 trace_reservation,

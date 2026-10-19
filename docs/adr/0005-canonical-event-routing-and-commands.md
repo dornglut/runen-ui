@@ -96,6 +96,8 @@ ingress envelope
   -> append mounted-owned work
 ```
 
+For the M11 presentation default, a keyboard-derived `CancelOrBack` with an eligible interaction-published origin captures its exact activation lifetime when derived; delayed processing may dismiss only that same still-valid, topmost-eligible lifetime. Stale bound commands do not select a new presentation. This narrow M11CTRL-45 qualification preserves ordinary global commands and existing routing, `prevent_default`, FIFO and commit boundaries without adding another queue.
+
 Widget callbacks never call application `update`, reconcile the mounted tree,
 or recursively execute another event. Events, commands, and actions submitted
 while a transaction is active are provisional outputs. They are appended to the
