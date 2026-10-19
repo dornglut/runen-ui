@@ -374,3 +374,67 @@ fn actual_textfield_ime_and_nonclone_mounted_update_escape_preview_scope() {
         }
     }
 }
+
+#[test]
+fn real_textfield_routed_ime_and_focusout_outputs_follow_existing_fifo() {
+    // Normal focus transfer has a live old route on accepted main. This is
+    // distinct from the compatible-disablement FocusOut still blocked in #475.
+    let mut runtime = AppRuntime::<App>::mount_with_config(
+        state(),
+        RuntimeConfig::default().with_limits(
+            RuntimeLimits::default()
+                .with_waiting_envelopes(16)
+                .with_transaction_outputs(4),
+        ),
+    );
+    settle(&mut runtime);
+    let editor = target(&mut runtime, "editor");
+    let next = target(&mut runtime, "other");
+    runtime
+        .submit_command(
+            editor,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("editor focused"));
+    settle(&mut runtime);
+    runtime
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("active IME"));
+    settle(&mut runtime);
+
+    runtime
+        .submit_command(
+            next,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("transfer accepted"));
+    for _ in 0..2 {
+        runtime
+            .submit_action(Action::Follower)
+            .unwrap_or_else(|_| unreachable!("older FIFO follower"));
+    }
+    let report = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("single routed transition"))
+        .report()
+        .to_owned();
+    assert_eq!(report.processed_envelopes(), 1);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.state().processed.len(), 0);
+    assert_eq!(
+        &*runtime.state().observed.borrow(),
+        &[
+            "ancestor-ime-cancel",
+            "ancestor-ime-cancel",
+            "ancestor-focus-out",
+            "ancestor-focus-out",
+        ],
+    );
+    assert_eq!(report.remaining_queued_envelopes(), 6);
+    settle(&mut runtime);
+    assert_eq!(runtime.state().processed, vec![
+        "follower", "follower", "ancestor", "ancestor", "ancestor", "ancestor",
+    ]);
+}
