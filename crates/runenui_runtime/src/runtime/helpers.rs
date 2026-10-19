@@ -104,6 +104,15 @@ pub(in crate::runtime) fn with_routed_parent<Action>(
             origin,
             causal_parent,
         },
+        CollectedRoutedOutput::BoundPresentationCancel {
+            target,
+            presentation_origin,
+            ..
+        } => CollectedRoutedOutput::BoundPresentationCancel {
+            target,
+            presentation_origin,
+            causal_parent,
+        },
         CollectedRoutedOutput::ApplicationCommand {
             target,
             command,

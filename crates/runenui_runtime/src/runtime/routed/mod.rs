@@ -99,6 +99,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             origin,
             semantic_target,
             focus_request_override,
+            presentation_cancel_origin,
             instant,
             causal_parent,
             trace_reservation,
@@ -122,6 +123,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             origin,
             semantic_target,
             focus_request_override,
+            presentation_cancel_origin,
             instant,
             causal_parent,
             trace_reservation,
@@ -178,6 +180,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         origin: runenui_core::CommandOrigin,
         semantic_target: Option<runenui_core::SemanticActionTarget>,
         focus_request_override: Option<crate::queue::FocusRequestOverride>,
+        presentation_cancel_origin: Option<super::presentation::PresentationCancelOrigin>,
         instant: MonotonicInstant,
         causal_parent: Option<TraceSequence>,
         trace_reservation: crate::trace::TraceReservation,
@@ -228,6 +231,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }) else {
             return;
         };
+        transaction.presentation_cancel_origin = presentation_cancel_origin;
         let event = UiEvent::SemanticCommand(transaction.semantic_target.as_ref().map_or_else(
             || SemanticCommandEvent::__runtime_new(command, origin),
             |semantic_target| {
@@ -383,6 +387,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             origin: facts.origin,
             semantic_target: facts.semantic_target,
             focus_request_override: facts.focus_request_override,
+            presentation_cancel_origin: None,
             instant: facts.instant,
             route,
             pointer_callback_targets,

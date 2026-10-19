@@ -115,7 +115,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Ok(());
         }
         if command == SemanticCommand::CancelOrBack {
-            let presentation = self.topmost_cancel_presentation();
+            let presentation = transaction.presentation_cancel_origin.as_ref().map_or_else(
+                || self.topmost_cancel_presentation(),
+                |origin| self.topmost_matching_cancel_origin(origin),
+            );
             let trace_target = presentation.as_ref().map_or_else(
                 || transaction.target_trace.clone(),
                 |root| self.tree.trace_target(root),

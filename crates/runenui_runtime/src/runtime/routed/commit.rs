@@ -322,6 +322,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         origin,
                         causal_parent,
                         instant,
+                        None,
+                    )
+                    .map_err(|_| ())?;
+                }
+                CollectedRoutedOutput::BoundPresentationCancel {
+                    target,
+                    presentation_origin,
+                    causal_parent,
+                } => {
+                    self.commit_preflighted_routed_command(
+                        &target,
+                        runenui_core::SemanticCommand::CancelOrBack,
+                        runenui_core::CommandOrigin::__runtime_keyboard_default(),
+                        causal_parent,
+                        instant,
+                        Some(presentation_origin),
                     )
                     .map_err(|_| ())?;
                 }

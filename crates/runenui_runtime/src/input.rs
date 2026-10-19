@@ -1837,7 +1837,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                             Some(&target),
                             transaction.origin,
                         );
-                        Self::collect_keyboard_default_command(
+                        self.collect_keyboard_default_command(
                             transaction,
                             target,
                             SemanticCommand::Activate,
@@ -1862,7 +1862,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Ok(());
         }
         if let Some(command) = self.editor_owned_keyboard_default(event, &target) {
-            Self::collect_keyboard_default_command(transaction, target, command)?;
+            self.collect_keyboard_default_command(transaction, target, command)?;
             transaction.keyboard_default_claim = Some(crate::UiInputClaimReason::TextOwner);
             return Ok(());
         }
@@ -1896,7 +1896,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
         }
         if let Some(command) = command {
-            Self::collect_keyboard_default_command(transaction, target, command)?;
+            self.collect_keyboard_default_command(transaction, target, command)?;
             transaction.keyboard_default_claim = match command {
                 SemanticCommand::Activate => Some(crate::UiInputClaimReason::ActivationDefault),
                 SemanticCommand::FocusNext
@@ -2000,6 +2000,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     fn collect_keyboard_default_command(
+        &self,
         transaction: &mut crate::runtime::RoutedTransaction<Action>,
         target: crate::MountedNodeId,
         command: SemanticCommand,
@@ -2008,14 +2009,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             transaction.failure_current_target = Some(target);
             return Err(failure);
         }
-        transaction
-            .default_outputs
-            .push(crate::runtime::CollectedRoutedOutput::Command {
+        let output = if command == SemanticCommand::CancelOrBack {
+            crate::runtime::CollectedRoutedOutput::BoundPresentationCancel {
+                target,
+                presentation_origin: self.cancel_origin_at_derivation(),
+                causal_parent: transaction.parent,
+            }
+        } else {
+            crate::runtime::CollectedRoutedOutput::Command {
                 target,
                 command,
                 origin: CommandOrigin::__runtime_keyboard_default(),
                 causal_parent: transaction.parent,
-            });
+            }
+        };
+        transaction.default_outputs.push(output);
         Ok(())
     }
 

@@ -12,7 +12,7 @@ mod input_arbitration;
 mod lifecycle;
 mod mount;
 mod pointer;
-pub(in crate::runtime) mod presentation;
+pub(crate) mod presentation;
 mod routed;
 mod scheduler;
 mod surface_publication;

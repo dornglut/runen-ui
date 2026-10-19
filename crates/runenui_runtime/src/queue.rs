@@ -132,6 +132,8 @@ pub(crate) struct SemanticCommandEnvelope {
     pub(crate) origin: CommandOrigin,
     pub(crate) semantic_target: Option<SemanticActionTarget>,
     pub(crate) focus_request_override: Option<FocusRequestOverride>,
+    pub(crate) presentation_cancel_origin:
+        Option<crate::runtime::presentation::PresentationCancelOrigin>,
     pub(crate) instant: MonotonicInstant,
     pub(crate) causal_parent: Option<TraceSequence>,
     pub(crate) trace_reservation: TraceReservation,
@@ -142,6 +144,8 @@ pub(crate) struct SemanticCommandQueuePayload {
     pub(crate) command: SemanticCommand,
     pub(crate) origin: CommandOrigin,
     pub(crate) focus_request_override: Option<FocusRequestOverride>,
+    pub(crate) presentation_cancel_origin:
+        Option<crate::runtime::presentation::PresentationCancelOrigin>,
     pub(crate) instant: MonotonicInstant,
     pub(crate) causal_parent: Option<TraceSequence>,
     pub(crate) trace_reservation: TraceReservation,
@@ -352,6 +356,7 @@ impl<Action> WorkQueue<Action> {
             command,
             origin,
             focus_request_override,
+            presentation_cancel_origin,
             instant,
             causal_parent,
             trace_reservation,
@@ -368,6 +373,7 @@ impl<Action> WorkQueue<Action> {
                 origin,
                 semantic_target,
                 focus_request_override,
+                presentation_cancel_origin,
                 instant,
                 causal_parent,
                 trace_reservation,

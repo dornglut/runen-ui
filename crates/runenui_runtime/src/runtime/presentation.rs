@@ -34,6 +34,16 @@ pub(in crate::runtime) struct PresentationPointerResolution {
     pub(in crate::runtime) observations: Vec<PresentationPointerObservation>,
 }
 
+/// Causal keyboard presentation selection; absence is bound, not a global command.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum PresentationCancelOrigin {
+    NoneEligible,
+    Published {
+        root: MountedNodeId,
+        activation_generation: u64,
+    },
+}
+
 #[derive(Clone, Debug)]
 struct PresentationLifetime {
     owner: Option<MountedNodeId>,
@@ -41,6 +51,7 @@ struct PresentationLifetime {
     restoration_target: Option<MountedNodeId>,
     restoration_scopes: Vec<MountedNodeId>,
     published: bool,
+    activation_generation: Option<u64>,
     anchor_unavailable_requested: bool,
     ambiguous_preferred_focus: bool,
 }
@@ -167,6 +178,48 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     .dismisses_on_cancel_or_back()
                     .then_some(candidate.root)
             })
+    }
+
+    /// Bind either an exact eligible lifetime or its absence at keyboard derivation.
+    pub(crate) fn cancel_origin_at_derivation(&self) -> PresentationCancelOrigin {
+        let Some(root) = self.topmost_cancel_presentation() else {
+            return PresentationCancelOrigin::NoneEligible;
+        };
+        let Some(lifetime) = self.presentation_lifecycle.lifetimes.get(&root) else {
+            return PresentationCancelOrigin::NoneEligible;
+        };
+        if !lifetime.published {
+            return PresentationCancelOrigin::NoneEligible;
+        }
+        let Some(activation_generation) = lifetime.activation_generation else {
+            return PresentationCancelOrigin::NoneEligible;
+        };
+        PresentationCancelOrigin::Published {
+            root,
+            activation_generation,
+        }
+    }
+
+    /// A temporary overlay does not retire P; reactivation after actual
+    /// unpublication necessarily uses a new checked publication generation.
+    pub(crate) fn topmost_matching_cancel_origin(
+        &self,
+        origin: &PresentationCancelOrigin,
+    ) -> Option<MountedNodeId> {
+        let PresentationCancelOrigin::Published {
+            root: bound_root,
+            activation_generation,
+        } = origin
+        else {
+            // An empty keyboard-derived selection can never acquire later Q.
+            return None;
+        };
+        let root = self.topmost_cancel_presentation()?;
+        let lifetime = self.presentation_lifecycle.lifetimes.get(&root)?;
+        (&root == bound_root
+            && lifetime.published
+            && lifetime.activation_generation == Some(*activation_generation))
+        .then_some(root)
     }
 
     pub(in crate::runtime) fn presentation_focus_membership(
@@ -300,6 +353,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         causal_parent: Option<crate::TraceSequence>,
     ) -> bool {
         let mut prospective_focus = self.focus.focused_node().cloned();
+        let publication_generation = self
+            .surface_publication
+            .current_surface_input_context()
+            .unwrap_or_else(|| unreachable!("published presentations have retained context"))
+            .hit_test_generation();
         for candidate in published.into_iter().rev() {
             let previous_policy = lifecycle
                 .lifetimes
@@ -372,6 +430,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     restoration_target: None,
                     restoration_scopes: Vec::new(),
                     published: false,
+                    activation_generation: None,
                     anchor_unavailable_requested: false,
                     ambiguous_preferred_focus: false,
                 });
@@ -387,6 +446,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 lifetime.ambiguous_preferred_focus = false;
             }
             lifetime.focus_policy = candidate.presentation.focus_policy();
+            if newly_active {
+                lifetime.activation_generation = Some(publication_generation);
+            }
             lifetime.published = true;
         }
         true
@@ -413,6 +475,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         restoration_target: None,
                         restoration_scopes: Vec::new(),
                         published: false,
+                        activation_generation: None,
                         anchor_unavailable_requested: false,
                         ambiguous_preferred_focus: false,
                     });
@@ -428,6 +491,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             lifetime.owner = owner;
             lifetime.focus_policy = presentation.focus_policy();
             lifetime.published = false;
+            lifetime.activation_generation = None;
             lifetime.restoration_target = None;
             lifetime.restoration_scopes.clear();
 

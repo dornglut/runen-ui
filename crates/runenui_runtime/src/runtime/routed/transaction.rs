@@ -117,6 +117,8 @@ pub(crate) struct RoutedTransaction<Action> {
     pub(crate) origin: CommandOrigin,
     pub(crate) semantic_target: Option<SemanticActionTarget>,
     pub(crate) focus_request_override: Option<FocusRequestOverride>,
+    pub(crate) presentation_cancel_origin:
+        Option<crate::runtime::presentation::PresentationCancelOrigin>,
     pub(crate) instant: MonotonicInstant,
     pub(in crate::runtime) route: Vec<MountedNodeId>,
     pub(in crate::runtime) pointer_callback_targets: Vec<MountedNodeId>,
