@@ -193,11 +193,18 @@ fn focus_transfer_rejects_newer_waiting_input_once_and_never_delivers_to_b() {
         );
         assert!(runtime.state().log.borrow().is_empty());
         assert_eq!(runtime.status(), RuntimeStatus::Running);
-        let fresh = runtime.submit_keyboard(keyboard(2)).unwrap_or_else(|_| unreachable!("fresh B"));
-        let result = runtime.pump(FULL).unwrap_or_else(|_| unreachable!("fresh B dispatch"));
+        let fresh = runtime
+            .submit_keyboard(keyboard(2))
+            .unwrap_or_else(|_| unreachable!("fresh B"));
+        let result = runtime
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("fresh B dispatch"));
         assert_eq!(settlements(&result).len(), 1);
         assert_eq!(settlements(&result)[0].sequence(), fresh.sequence());
-        assert!(matches!(settlements(&result)[0].finality(), UiInputFinality::Committed(_)));
+        assert!(matches!(
+            settlements(&result)[0].finality(),
+            UiInputFinality::Committed(_)
+        ));
         assert_eq!(&*runtime.state().log.borrow(), &[("b", "key")]);
         assert!(settlements(&runtime.pump(FULL).unwrap_or_else(|_| unreachable!())).is_empty());
         if trace == 0 {
@@ -213,30 +220,48 @@ fn same_mounted_a_b_a_reentry_rejects_old_keyboard_and_text_but_accepts_fresh() 
         let original = id(&mut runtime, "a");
         request_focus(&mut runtime, "b");
         request_focus(&mut runtime, "a");
-        let old_key = runtime.submit_keyboard(keyboard(1)).unwrap_or_else(|_| unreachable!());
+        let old_key = runtime
+            .submit_keyboard(keyboard(1))
+            .unwrap_or_else(|_| unreachable!());
         let old_text = runtime
             .submit_text(CommittedTextEvent::new("secret", None))
             .unwrap_or_else(|_| unreachable!());
-        runtime.pump(PumpBudget::new(2, 0, 0, 0)).unwrap_or_else(|_| unreachable!("two transfers"));
+        runtime
+            .pump(PumpBudget::new(2, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("two transfers"));
         assert_eq!(runtime.focus().focused_node(), Some(&original));
         assert_eq!(id(&mut runtime, "a"), original);
-        let new_key = runtime.submit_keyboard(keyboard(2)).unwrap_or_else(|_| unreachable!());
+        let new_key = runtime
+            .submit_keyboard(keyboard(2))
+            .unwrap_or_else(|_| unreachable!());
         let new_text = runtime
             .submit_text(CommittedTextEvent::new("fresh", None))
             .unwrap_or_else(|_| unreachable!());
-        let results = runtime.pump(FULL).unwrap_or_else(|_| unreachable!("input dispatch"));
+        let results = runtime
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("input dispatch"));
         let entries = settlements(&results);
         assert_eq!(entries.len(), 4);
         for (index, sequence) in [old_key.sequence(), old_text.sequence()].iter().enumerate() {
             assert_eq!(entries[index].sequence(), *sequence);
-            assert_eq!(entries[index].finality(),
-                &UiInputFinality::ProcessingRejected(UiInputProcessingRejection::StaleFocusLifetime));
+            assert_eq!(
+                entries[index].finality(),
+                &UiInputFinality::ProcessingRejected(
+                    UiInputProcessingRejection::StaleFocusLifetime
+                )
+            );
         }
         for (index, sequence) in [new_key.sequence(), new_text.sequence()].iter().enumerate() {
             assert_eq!(entries[index + 2].sequence(), *sequence);
-            assert!(matches!(entries[index + 2].finality(), UiInputFinality::Committed(_)));
+            assert!(matches!(
+                entries[index + 2].finality(),
+                UiInputFinality::Committed(_)
+            ));
         }
-        assert_eq!(&*runtime.state().log.borrow(), &[("a", "key"), ("a", "text")]);
+        assert_eq!(
+            &*runtime.state().log.borrow(),
+            &[("a", "key"), ("a", "text")]
+        );
     }
 }
 
@@ -245,7 +270,9 @@ fn unchanged_focused_recipient_losing_text_capability_rejects_at_dispatch() {
     for trace in [0, 1024] {
         let mut runtime = focused_a(trace);
         let owner = id(&mut runtime, "a");
-        runtime.submit_action(Action::RevokeText).unwrap_or_else(|_| unreachable!());
+        runtime
+            .submit_action(Action::RevokeText)
+            .unwrap_or_else(|_| unreachable!());
         let text = runtime
             .submit_text(CommittedTextEvent::new("private", None))
             .unwrap_or_else(|_| unreachable!());
@@ -254,17 +281,27 @@ fn unchanged_focused_recipient_losing_text_capability_rejects_at_dispatch() {
         let entries = settlements(&result);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].sequence(), text.sequence());
-        assert_eq!(entries[0].finality(),
-            &UiInputFinality::ProcessingRejected(UiInputProcessingRejection::CommittedTextRecipientUnavailable));
+        assert_eq!(
+            entries[0].finality(),
+            &UiInputFinality::ProcessingRejected(
+                UiInputProcessingRejection::CommittedTextRecipientUnavailable
+            )
+        );
         assert!(runtime.state().log.borrow().is_empty());
-        runtime.submit_action(Action::RestoreText).unwrap_or_else(|_| unreachable!());
+        runtime
+            .submit_action(Action::RestoreText)
+            .unwrap_or_else(|_| unreachable!());
         runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
-        let restored = runtime.submit_text(CommittedTextEvent::new("valid", None))
+        let restored = runtime
+            .submit_text(CommittedTextEvent::new("valid", None))
             .unwrap_or_else(|_| unreachable!());
         let result = runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
         assert_eq!(settlements(&result).len(), 1);
         assert_eq!(settlements(&result)[0].sequence(), restored.sequence());
-        assert!(matches!(settlements(&result)[0].finality(), UiInputFinality::Committed(_)));
+        assert!(matches!(
+            settlements(&result)[0].finality(),
+            UiInputFinality::Committed(_)
+        ));
         assert_eq!(&*runtime.state().log.borrow(), &[("a", "text")]);
     }
 }
@@ -273,10 +310,15 @@ fn unchanged_focused_recipient_losing_text_capability_rejects_at_dispatch() {
 fn same_owner_noop_focus_request_does_not_invalidate_following_keyboard() {
     let mut runtime = focused_a(0);
     request_focus(&mut runtime, "a");
-    let receipt = runtime.submit_keyboard(keyboard(1)).unwrap_or_else(|_| unreachable!());
+    let receipt = runtime
+        .submit_keyboard(keyboard(1))
+        .unwrap_or_else(|_| unreachable!());
     let result = runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
     assert_eq!(settlements(&result).len(), 1);
     assert_eq!(settlements(&result)[0].sequence(), receipt.sequence());
-    assert!(matches!(settlements(&result)[0].finality(), UiInputFinality::Committed(_)));
+    assert!(matches!(
+        settlements(&result)[0].finality(),
+        UiInputFinality::Committed(_)
+    ));
     assert_eq!(&*runtime.state().log.borrow(), &[("a", "key")]);
 }

@@ -667,9 +667,11 @@ mod issued_sequence_tests {
         assert_eq!(last.get(), u64::MAX);
         assert_eq!(queue.last_issued_sequence(), Some(last));
         assert_eq!(queue.next_sequence(), None);
-        assert!(queue
-            .push_preflighted((), None, None, ApplicationActionOrigin::Ordinary)
-            .is_err());
+        assert!(
+            queue
+                .push_preflighted((), None, None, ApplicationActionOrigin::Ordinary)
+                .is_err()
+        );
         assert_eq!(queue.last_issued_sequence(), Some(last));
 
         let _ = queue.pop();

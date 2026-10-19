@@ -30,6 +30,9 @@ macro_rules! trace_kind_name {
             TraceRecordKind::KeyboardSubmissionAccepted => "keyboard_submission_accepted",
             TraceRecordKind::KeyboardSubmissionRejected => "keyboard_submission_rejected",
             TraceRecordKind::KeyboardProcessingValidated => "keyboard_processing_validated",
+            TraceRecordKind::FocusedInputProcessingRejected { .. } => {
+                "focused_input_processing_rejected"
+            }
             TraceRecordKind::KeyboardDefaultPrevented => "keyboard_default_prevented",
             TraceRecordKind::KeyboardShortcutMatched => "keyboard_shortcut_matched",
             TraceRecordKind::KeyboardShortcutRepeatSuppressed => {
@@ -625,6 +628,16 @@ fn encode_semantic_data(
 
 fn encode_input_data(output: &mut String, kind: &TraceRecordKind) -> bool {
     match kind {
+        TraceRecordKind::FocusedInputProcessingRejected { reason } => {
+            let reason = match reason {
+                crate::UiInputProcessingRejection::StaleFocusLifetime => "stale_focus_lifetime",
+                crate::UiInputProcessingRejection::CommittedTextRecipientUnavailable => {
+                    "committed_text_recipient_unavailable"
+                }
+                _ => "other_processing_rejection",
+            };
+            field_str(output, "reason", reason);
+        }
         TraceRecordKind::KeyboardSpaceReleaseMatched { matched } => {
             field_bool(output, "matched", *matched);
         }
