@@ -195,6 +195,10 @@ fn delayed_escape_from_p_must_not_dismiss_newly_published_q() {
         "Q must not receive a P-origin dismissal"
     );
     assert_eq!(runtime.state().p_dismissals, 0);
+    assert_unclaimed_cancel_trace(&runtime);
+}
+
+fn assert_unclaimed_cancel_trace(runtime: &AppRuntime<App>) {
     let decisions = runtime
         .trace()
         .records()
