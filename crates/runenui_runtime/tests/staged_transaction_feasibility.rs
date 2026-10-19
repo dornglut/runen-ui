@@ -434,7 +434,10 @@ fn real_textfield_routed_ime_and_focusout_outputs_follow_existing_fifo() {
     );
     assert_eq!(report.remaining_queued_envelopes(), 6);
     settle(&mut runtime);
-    assert_eq!(runtime.state().processed, vec![
-        "follower", "follower", "ancestor", "ancestor", "ancestor", "ancestor",
-    ]);
+    assert_eq!(
+        runtime.state().processed,
+        vec![
+            "follower", "follower", "ancestor", "ancestor", "ancestor", "ancestor",
+        ]
+    );
 }
