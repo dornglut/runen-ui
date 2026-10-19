@@ -1589,6 +1589,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 CollectedRoutedOutput::Action { causal_parent, .. }
                 | CollectedRoutedOutput::EditAction { causal_parent, .. }
                 | CollectedRoutedOutput::Command { causal_parent, .. }
+                | CollectedRoutedOutput::BoundPresentationCancel { causal_parent, .. }
                 | CollectedRoutedOutput::ApplicationCommand { causal_parent, .. } => {
                     *causal_parent = transaction.parent;
                 }

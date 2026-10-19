@@ -1,7 +1,7 @@
-#[path = "../element_presentation.rs"]
-mod element_presentation;
 #[path = "../causal_presentation_commands.rs"]
 mod causal_presentation_commands;
+#[path = "../element_presentation.rs"]
+mod element_presentation;
 #[path = "../invalidation.rs"]
 mod invalidation;
 #[path = "../layout_publication.rs"]

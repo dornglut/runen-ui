@@ -2010,13 +2010,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(failure);
         }
         let bound = if command == SemanticCommand::CancelOrBack {
-            self.cancel_origin_at_derivation().map(|presentation_origin| {
-                crate::runtime::CollectedRoutedOutput::BoundPresentationCancel {
-                    target: target.clone(),
-                    presentation_origin,
-                    causal_parent: transaction.parent,
-                }
-            })
+            self.cancel_origin_at_derivation()
+                .map(|presentation_origin| {
+                    crate::runtime::CollectedRoutedOutput::BoundPresentationCancel {
+                        target: target.clone(),
+                        presentation_origin,
+                        causal_parent: transaction.parent,
+                    }
+                })
         } else {
             None
         };

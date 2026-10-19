@@ -178,7 +178,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     /// Bind at keyboard-default derivation, never at delayed command execution.
-    pub(in crate::runtime) fn cancel_origin_at_derivation(&self) -> Option<PresentationCancelOrigin> {
+    pub(crate) fn cancel_origin_at_derivation(
+        &self,
+    ) -> Option<PresentationCancelOrigin> {
         let root = self.topmost_cancel_presentation()?;
         let lifetime = self.presentation_lifecycle.lifetimes.get(&root)?;
         if !lifetime.published {
@@ -192,7 +194,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     /// A temporary overlay does not retire P; reactivation after actual
     /// unpublication necessarily uses a new checked publication generation.
-    pub(in crate::runtime) fn topmost_matching_cancel_origin(
+    pub(crate) fn topmost_matching_cancel_origin(
         &self,
         origin: &PresentationCancelOrigin,
     ) -> Option<MountedNodeId> {
