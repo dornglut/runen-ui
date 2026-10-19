@@ -5,9 +5,9 @@
 use runenui_core::{
     EventContext, EventPhase, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
     KeyboardPhase, LogicalKey, Menu, MenuButton, NoHostProtocol, PhysicalKey,
-    PresentationFocusPolicy, PresentationOutsidePointerPolicy, SemanticCommand,
-    StyleEnvironment, SurfacePresentation, SurfacePresentationPlacement, SurfacePresentationSide,
-    UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, column,
+    PresentationFocusPolicy, PresentationOutsidePointerPolicy, SemanticCommand, StyleEnvironment,
+    SurfacePresentation, SurfacePresentationPlacement, SurfacePresentationSide, UiApp, UiEvent,
+    View, Widget, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, column,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
 
@@ -28,6 +28,7 @@ struct Model {
     dismissals: usize,
 }
 
+#[derive(Debug)]
 struct Probe {
     prevent_keyboard: bool,
     prevent_semantic: bool,
@@ -48,7 +49,7 @@ impl Widget<Action> for Probe {
             if self.prevent_keyboard
                 && event
                     .as_keyboard()
-                    .is_some_and(|keyboard| keyboard.logical_key() == LogicalKey::Escape)
+                    .is_some_and(|keyboard| keyboard.logical_key() == &LogicalKey::Escape)
             {
                 context.prevent_default();
             }
@@ -79,9 +80,9 @@ impl UiApp for App {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &Model) -> impl View<Action> {
-        let presentation = SurfacePresentation::new(
-            SurfacePresentationPlacement::new(SurfacePresentationSide::Bottom),
-        )
+        let presentation = SurfacePresentation::new(SurfacePresentationPlacement::new(
+            SurfacePresentationSide::Bottom,
+        ))
         .with_outside_pointer(PresentationOutsidePointerPolicy::DismissAndBlock)
         .dismiss_on_cancel_or_back(state.cancel_enabled)
         .with_focus_policy(PresentationFocusPolicy::EnterAndRestore);
