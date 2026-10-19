@@ -77,6 +77,8 @@ impl UiApp for App {
                     .on_activate(|| Action::Choose(1)),
                 option_item("Beta", state.chosen == 2)
                     .id(if state.replace_option { "editable.replacement" } else { "editable.beta" })
+                    // Authored ElementId does not replace the mounted reconciliation lifetime.
+                    .key(if state.replace_option { "editable.replacement" } else { "editable.beta" })
                     .on_activate(|| Action::Choose(2)),
             ],
             Action::Popup,
