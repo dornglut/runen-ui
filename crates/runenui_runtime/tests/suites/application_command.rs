@@ -12,5 +12,7 @@ mod automation_rejection;
 mod public_consumer;
 #[path = "../routed_commands.rs"]
 mod routed_commands;
+#[path = "../qualified_transaction_feasibility.rs"]
+mod qualified_transaction_feasibility;
 #[path = "../transactional_cancellation.rs"]
 mod transactional_cancellation;
