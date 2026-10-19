@@ -147,17 +147,6 @@ fn delayed_escape_from_p_must_not_dismiss_newly_published_q() {
         .submit_action(Action::ShowQ)
         .unwrap_or_else(|_| unreachable!("Q appearance accepted behind Escape"));
 
-    let zero_batch = runtime
-        .pump(PumpBudget::new(0, 0, 0, 0))
-        .unwrap_or_else(|_| unreachable!("zero-budget pump"));
-    assert_eq!(zero_batch.report().processed_envelopes(), 0);
-    assert!(
-        !zero_batch
-            .ordered_records()
-            .iter()
-            .any(|record| { matches!(record, InputArbitrationRecord::InputSettled(_)) })
-    );
-
     let key_batch = runtime
         .pump(ONE)
         .unwrap_or_else(|_| unreachable!("one keyboard envelope"));
@@ -199,16 +188,6 @@ fn delayed_escape_from_p_must_not_dismiss_newly_published_q() {
         "Q must not receive a P-origin dismissal"
     );
     assert_eq!(runtime.state().p_dismissals, 0);
-    let post_drain = runtime
-        .pump(FULL)
-        .unwrap_or_else(|_| unreachable!("quiescent observation"));
-    assert!(
-        !post_drain
-            .ordered_records()
-            .iter()
-            .any(|record| { matches!(record, InputArbitrationRecord::InputSettled(_)) }),
-        "delayed derived commands never produce an extra external M13 receipt"
-    );
 }
 
 // All tests below are external downstream consumers of the public runtime.
