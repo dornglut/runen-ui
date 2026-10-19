@@ -574,3 +574,127 @@ fn c11_causal_finality_survives_trace_disabled_and_zero_budget() {
     assert_eq!(runtime.state().p_dismissals, 0);
     assert_eq!(runtime.state().q_dismissals, 0);
 }
+
+#[test]
+fn c12_keyboard_escape_with_no_eligible_origin_does_not_dismiss_later_q() {
+    use runenui_core::{CommandOrigin, SemanticCommand};
+
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::new(320_u16.into(), 240_u16.into()),
+    );
+    let mut runtime = AppRuntime::<App>::mount(State {
+        p_open: false,
+        q_open: false,
+        p_dismissals: 0,
+        q_dismissals: 0,
+    });
+    publish(&mut runtime, &context);
+    pump_full(&mut runtime);
+
+    // A real focused keyboard recipient exists, but no presentation is eligible
+    // to own the forthcoming Escape at its actual default-derivation boundary.
+    let trigger = authored_node(&mut runtime, "p-trigger");
+    runtime
+        .submit_command(
+            trigger.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus ordinary trigger"));
+    pump_full(&mut runtime);
+    assert_eq!(runtime.focus().focused_node(), Some(&trigger));
+
+    let scope = runtime
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("input scope"))
+        .scope()
+        .clone();
+    let receipt = runtime
+        .submit_keyboard(escape_event(KeyboardCompositionState::Inactive))
+        .unwrap_or_else(|_| unreachable!("focused Escape admission"));
+    runtime
+        .submit_action(Action::ShowQ)
+        .unwrap_or_else(|_| unreachable!("Q action admitted after Escape"));
+
+    let keyboard = runtime
+        .pump(ONE)
+        .unwrap_or_else(|_| unreachable!("one keyboard envelope"));
+    assert_eq!(keyboard.report().processed_envelopes(), 1);
+    let settled = keyboard
+        .ordered_records()
+        .iter()
+        .filter_map(|record| match record {
+            InputArbitrationRecord::InputSettled(settlement) => Some(settlement),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(settled.len(), 1);
+    assert_eq!(settled[0].scope(), &scope);
+    assert_eq!(settled[0].sequence(), receipt.sequence());
+    assert!(matches!(
+        settled[0].finality(),
+        UiInputFinality::Committed(_)
+    ));
+    assert!(!runtime.state().q_open);
+
+    let action = runtime
+        .pump(ONE)
+        .unwrap_or_else(|_| unreachable!("one later Q action"));
+    assert_eq!(action.report().processed_envelopes(), 1);
+    assert!(runtime.state().q_open);
+    assert!(!runtime.state().p_open);
+    publish(&mut runtime, &context);
+    let q_root = authored_node(&mut runtime, "q-menu");
+    assert_eq!(runtime.state().q_dismissals, 0);
+
+    let command = runtime
+        .pump(ONE)
+        .unwrap_or_else(|_| unreachable!("one delayed keyboard-derived command"));
+    assert_eq!(command.report().processed_envelopes(), 1);
+    assert!(!command
+        .ordered_records()
+        .iter()
+        .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))));
+    let rest = runtime
+        .pump(FULL)
+        .unwrap_or_else(|_| unreachable!("drain noncausal work"));
+    assert!(rest.report().is_quiescent());
+    assert!(!rest
+        .ordered_records()
+        .iter()
+        .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))));
+    assert!(runtime.state().q_open);
+    assert!(!runtime.state().p_open);
+    assert_eq!(runtime.state().q_dismissals, 0);
+    assert_eq!(runtime.state().p_dismissals, 0);
+    assert_unclaimed_cancel_trace(&runtime);
+
+    // The same Q is still eligible for a genuinely unbound *direct* global
+    // command. This must continue to use execution-time topmost selection.
+    let direct_target = authored_node(&mut runtime, "q-item");
+    assert_eq!(authored_node(&mut runtime, "q-menu"), q_root);
+    runtime
+        .submit_command(
+            direct_target,
+            SemanticCommand::CancelOrBack,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("ordinary direct global command"));
+    pump_one(&mut runtime);
+    assert_eq!(runtime.state().q_dismissals, 0);
+    pump_full(&mut runtime);
+    assert!(!runtime.state().q_open);
+    assert_eq!(runtime.state().q_dismissals, 1);
+    assert_eq!(runtime.state().p_dismissals, 0);
+    let decisions = runtime
+        .trace()
+        .records()
+        .filter_map(|record| match record.kind() {
+            TraceRecordKind::PresentationCancelOrBackDecision { claimed } => Some(*claimed),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(decisions, [false, true]);
+}
