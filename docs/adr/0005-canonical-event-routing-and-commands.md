@@ -96,7 +96,7 @@ ingress envelope
   -> append mounted-owned work
 ```
 
-For the M11 presentation default, a keyboard-derived `CancelOrBack` with an eligible interaction-published origin captures its exact activation lifetime when derived; delayed processing may dismiss only that same still-valid, topmost-eligible lifetime. Stale bound commands do not select a new presentation. This narrow M11CTRL-45 qualification preserves ordinary global commands and existing routing, `prevent_default`, FIFO and commit boundaries without adding another queue.
+For the M11 presentation default, every keyboard-derived `CancelOrBack` captures a causal presentation selection at derivation: either its exact eligible interaction-published activation lifetime or an explicit empty selection. Delayed processing may dismiss only that same still-valid, topmost-eligible lifetime; a stale lifetime or empty selection never selects a later presentation. Both continue ordinary nonpresentation routed-default processing when no dismissal is claimed. Only genuinely unbound direct/programmatic global `CancelOrBack` retains execution-time topmost selection and its ordinary no-presentation fallback. This narrow M11CTRL-45 qualification preserves routing, `prevent_default`, FIFO and commit boundaries without another queue, host policy or M13 input identity.
 
 Widget callbacks never call application `update`, reconcile the mounted tree,
 or recursively execute another event. Events, commands, and actions submitted

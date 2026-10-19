@@ -653,23 +653,35 @@ fn c12_keyboard_escape_with_no_eligible_origin_does_not_dismiss_later_q() {
         .pump(ONE)
         .unwrap_or_else(|_| unreachable!("one delayed keyboard-derived command"));
     assert_eq!(command.report().processed_envelopes(), 1);
-    assert!(!command
-        .ordered_records()
-        .iter()
-        .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))));
+    assert!(
+        !command
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+    );
     let rest = runtime
         .pump(FULL)
         .unwrap_or_else(|_| unreachable!("drain noncausal work"));
     assert!(rest.report().is_quiescent());
-    assert!(!rest
-        .ordered_records()
-        .iter()
-        .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_))));
+    assert!(
+        !rest
+            .ordered_records()
+            .iter()
+            .any(|record| matches!(record, InputArbitrationRecord::InputSettled(_)))
+    );
     assert!(runtime.state().q_open);
     assert!(!runtime.state().p_open);
     assert_eq!(runtime.state().q_dismissals, 0);
     assert_eq!(runtime.state().p_dismissals, 0);
     assert_unclaimed_cancel_trace(&runtime);
+    assert!(
+        runtime.trace().records().any(|record| matches!(
+            record.kind(),
+            TraceRecordKind::SemanticDefaultApplied { command }
+                if *command == SemanticCommand::CancelOrBack
+        )),
+        "unclaimed keyboard cancel must retain the ordinary nonpresentation default"
+    );
 
     // The same Q is still eligible for a genuinely unbound *direct* global
     // command. This must continue to use execution-time topmost selection.

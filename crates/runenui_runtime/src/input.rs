@@ -2009,26 +2009,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             transaction.failure_current_target = Some(target);
             return Err(failure);
         }
-        let bound = if command == SemanticCommand::CancelOrBack {
-            self.cancel_origin_at_derivation()
-                .map(|presentation_origin| {
-                    crate::runtime::CollectedRoutedOutput::BoundPresentationCancel {
-                        target: target.clone(),
-                        presentation_origin,
-                        causal_parent: transaction.parent,
-                    }
-                })
+        let output = if command == SemanticCommand::CancelOrBack {
+            crate::runtime::CollectedRoutedOutput::BoundPresentationCancel {
+                target,
+                presentation_origin: self.cancel_origin_at_derivation(),
+                causal_parent: transaction.parent,
+            }
         } else {
-            None
-        };
-        transaction.default_outputs.push(bound.unwrap_or_else(|| {
             crate::runtime::CollectedRoutedOutput::Command {
                 target,
                 command,
                 origin: CommandOrigin::__runtime_keyboard_default(),
                 causal_parent: transaction.parent,
             }
-        }));
+        };
+        transaction.default_outputs.push(output);
         Ok(())
     }
 

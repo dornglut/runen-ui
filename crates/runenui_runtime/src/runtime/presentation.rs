@@ -34,11 +34,14 @@ pub(in crate::runtime) struct PresentationPointerResolution {
     pub(in crate::runtime) observations: Vec<PresentationPointerObservation>,
 }
 
-/// Exact activation witness for a continuously interaction-published presentation.
+/// Causal keyboard presentation selection; absence is bound, not a global command.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct PresentationCancelOrigin {
-    root: MountedNodeId,
-    activation_generation: u64,
+pub(crate) enum PresentationCancelOrigin {
+    NoneEligible,
+    Published {
+        root: MountedNodeId,
+        activation_generation: u64,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -177,17 +180,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             })
     }
 
-    /// Bind at keyboard-default derivation, never at delayed command execution.
-    pub(crate) fn cancel_origin_at_derivation(&self) -> Option<PresentationCancelOrigin> {
-        let root = self.topmost_cancel_presentation()?;
-        let lifetime = self.presentation_lifecycle.lifetimes.get(&root)?;
+    /// Bind either an exact eligible lifetime or its absence at keyboard derivation.
+    pub(crate) fn cancel_origin_at_derivation(&self) -> PresentationCancelOrigin {
+        let Some(root) = self.topmost_cancel_presentation() else {
+            return PresentationCancelOrigin::NoneEligible;
+        };
+        let Some(lifetime) = self.presentation_lifecycle.lifetimes.get(&root) else {
+            return PresentationCancelOrigin::NoneEligible;
+        };
         if !lifetime.published {
-            return None;
+            return PresentationCancelOrigin::NoneEligible;
         }
-        Some(PresentationCancelOrigin {
+        let Some(activation_generation) = lifetime.activation_generation else {
+            return PresentationCancelOrigin::NoneEligible;
+        };
+        PresentationCancelOrigin::Published {
             root,
-            activation_generation: lifetime.activation_generation?,
-        })
+            activation_generation,
+        }
     }
 
     /// A temporary overlay does not retire P; reactivation after actual
@@ -196,12 +206,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &self,
         origin: &PresentationCancelOrigin,
     ) -> Option<MountedNodeId> {
+        let PresentationCancelOrigin::Published {
+            root: bound_root,
+            activation_generation,
+        } = origin else {
+            // An empty keyboard-derived selection can never acquire later Q.
+            return None;
+        };
         let root = self.topmost_cancel_presentation()?;
         let lifetime = self.presentation_lifecycle.lifetimes.get(&root)?;
-        (root == origin.root
+        (&root == bound_root
             && lifetime.published
-            && lifetime.activation_generation == Some(origin.activation_generation))
-        .then_some(root)
+            && lifetime.activation_generation == Some(*activation_generation))
+            .then_some(root)
     }
 
     pub(in crate::runtime) fn presentation_focus_membership(
