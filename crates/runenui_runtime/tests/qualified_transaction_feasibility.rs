@@ -657,44 +657,68 @@ fn measure_test_only_credit_cost_without_conflating_live_pump_latency() {
     for _ in 0..2_000 {
         let mut ledger = CreditModel::new(16, 0);
         let start = Instant::now();
-        let (_, held) = ledger.admit(Action::Follower, Credits::of(8, 20, 4, 4, 8))
+        let (_, held) = ledger
+            .admit(Action::Follower, Credits::of(8, 20, 4, 4, 8))
             .unwrap_or_else(|_| unreachable!("fits"));
         accept_ns.push(start.elapsed().as_nanos());
         ledger.release(held);
 
         let mut full = CreditModel::new(16, 8);
         let start = Instant::now();
-        assert!(full.admit(Action::Follower, Credits::of(8, 20, 4, 4, 8)).is_err());
+        assert!(
+            full.admit(Action::Follower, Credits::of(8, 20, 4, 4, 8))
+                .is_err()
+        );
         reject_ns.push(start.elapsed().as_nanos());
     }
     let mut real_ns = Vec::new();
     for _ in 0..20 {
-        let mut runtime = AppRuntime::<App>::mount_with_config(state(),
-            RuntimeConfig::default().with_limits(RuntimeLimits::default()
-                .with_waiting_envelopes(16).with_transaction_outputs(4)));
+        let mut runtime = AppRuntime::<App>::mount_with_config(
+            state(),
+            RuntimeConfig::default().with_limits(
+                RuntimeLimits::default()
+                    .with_waiting_envelopes(16)
+                    .with_transaction_outputs(4),
+            ),
+        );
         settle(&mut runtime);
         let editor = target(&mut runtime, "editor");
-        runtime.submit_command(editor, SemanticCommand::RequestFocus,
-            CommandOrigin::programmatic()).unwrap_or_else(|_| unreachable!("focus"));
+        runtime
+            .submit_command(
+                editor,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("focus"));
         settle(&mut runtime);
-        runtime.start_composition(None).unwrap_or_else(|_| unreachable!("IME"));
+        runtime
+            .start_composition(None)
+            .unwrap_or_else(|_| unreachable!("IME"));
         settle(&mut runtime);
-        runtime.submit_action(Action::Disable(Box::new(11)))
+        runtime
+            .submit_action(Action::Disable(Box::new(11)))
             .unwrap_or_else(|_| unreachable!("accepted"));
         for _ in 0..4 {
-            runtime.submit_action(Action::Follower)
+            runtime
+                .submit_action(Action::Follower)
                 .unwrap_or_else(|_| unreachable!("follower"));
         }
         let start = Instant::now();
-        let report = runtime.pump(PumpBudget::new(1, 0, 0, 0))
-            .unwrap_or_else(|_| unreachable!("pump")).report().to_owned();
+        let report = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("pump"))
+            .report()
+            .to_owned();
         real_ns.push(start.elapsed().as_nanos());
         assert_eq!(report.processed_envelopes(), 1);
         assert_eq!(runtime.status(), RuntimeStatus::Running);
     }
     eprintln!(
         "UI475 measurements debug-hosted: 2000 checks / 20 real pumps, p95_accept_ns={} p95_reject_ns={} p95_mutating_ime_pump_ns={} credit_header_bytes={} claim_bytes={}; accounting NOT wired to runtime",
-        observed_p95(&mut accept_ns), observed_p95(&mut reject_ns),
-        observed_p95(&mut real_ns), size_of::<CreditModel>(), size_of::<Claim>()
+        observed_p95(&mut accept_ns),
+        observed_p95(&mut reject_ns),
+        observed_p95(&mut real_ns),
+        size_of::<CreditModel>(),
+        size_of::<Claim>()
     );
 }

@@ -10,9 +10,9 @@ mod application_work;
 mod automation_rejection;
 #[path = "../public_consumer.rs"]
 mod public_consumer;
-#[path = "../routed_commands.rs"]
-mod routed_commands;
 #[path = "../qualified_transaction_feasibility.rs"]
 mod qualified_transaction_feasibility;
+#[path = "../routed_commands.rs"]
+mod routed_commands;
 #[path = "../transactional_cancellation.rs"]
 mod transactional_cancellation;
