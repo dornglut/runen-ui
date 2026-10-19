@@ -151,9 +151,12 @@ fn delayed_escape_from_p_must_not_dismiss_newly_published_q() {
         .pump(PumpBudget::new(0, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("zero-budget pump"));
     assert_eq!(zero_batch.report().processed_envelopes(), 0);
-    assert!(!zero_batch.ordered_records().iter().any(|record| {
-        matches!(record, InputArbitrationRecord::InputSettled(_))
-    }));
+    assert!(
+        !zero_batch
+            .ordered_records()
+            .iter()
+            .any(|record| { matches!(record, InputArbitrationRecord::InputSettled(_)) })
+    );
 
     let key_batch = runtime
         .pump(ONE)
@@ -199,11 +202,14 @@ fn delayed_escape_from_p_must_not_dismiss_newly_published_q() {
     let post_drain = runtime
         .pump(FULL)
         .unwrap_or_else(|_| unreachable!("quiescent observation"));
-    assert!(!post_drain.ordered_records().iter().any(|record| {
-        matches!(record, InputArbitrationRecord::InputSettled(_))
-    }), "delayed derived commands never produce an extra external M13 receipt");
+    assert!(
+        !post_drain
+            .ordered_records()
+            .iter()
+            .any(|record| { matches!(record, InputArbitrationRecord::InputSettled(_)) }),
+        "delayed derived commands never produce an extra external M13 receipt"
+    );
 }
-
 
 // All tests below are external downstream consumers of the public runtime.
 // The application remains the only durable owner of visibility and dismissals.
@@ -229,7 +235,7 @@ fn escape_event(composition: KeyboardCompositionState) -> KeyboardEvent {
     )
 }
 
-fn authored_node(runtime: &AppRuntime<App>, authored: &str) -> runenui_core::MountedNodeId {
+fn authored_node(runtime: &mut AppRuntime<App>, authored: &str) -> runenui_core::MountedNodeId {
     runtime
         .index()
         .nodes()
@@ -280,7 +286,10 @@ fn c2_stable_p_origin_dismisses_once_only_after_queued_action() {
     pump_one(&mut runtime);
     assert!(runtime.state().p_open, "input only queues a later command");
     pump_one(&mut runtime);
-    assert!(runtime.state().p_open, "command only queues a later dismissal");
+    assert!(
+        runtime.state().p_open,
+        "command only queues a later dismissal"
+    );
     pump_full(&mut runtime);
     assert!(!runtime.state().p_open);
     assert_eq!(runtime.state().p_dismissals, 1);
@@ -378,7 +387,7 @@ fn c9_direct_unbound_cancel_uses_current_topmost_and_no_presentation_fallback() 
     let mut runtime = AppRuntime::<App>::mount(state);
     publish(&mut runtime, &context);
     pump_full(&mut runtime);
-    let routing_target = authored_node(&runtime, "q-item");
+    let routing_target = authored_node(&mut runtime, "q-item");
     runtime
         .submit_command(
             routing_target,
@@ -402,7 +411,7 @@ fn c9_direct_unbound_cancel_uses_current_topmost_and_no_presentation_fallback() 
     });
     publish(&mut empty, &context);
     pump_full(&mut empty);
-    let target = authored_node(&empty, "p-trigger");
+    let target = authored_node(&mut empty, "p-trigger");
     empty
         .submit_command(
             target,
