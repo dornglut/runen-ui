@@ -209,7 +209,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let PresentationCancelOrigin::Published {
             root: bound_root,
             activation_generation,
-        } = origin else {
+        } = origin
+        else {
             // An empty keyboard-derived selection can never acquire later Q.
             return None;
         };
@@ -218,7 +219,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         (&root == bound_root
             && lifetime.published
             && lifetime.activation_generation == Some(*activation_generation))
-            .then_some(root)
+        .then_some(root)
     }
 
     pub(in crate::runtime) fn presentation_focus_membership(
