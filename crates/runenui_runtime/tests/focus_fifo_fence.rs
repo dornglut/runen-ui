@@ -234,7 +234,10 @@ fn same_mounted_a_b_a_reentry_rejects_old_keyboard_and_text_but_accepts_fresh() 
             .submit_keyboard(keyboard(1))
             .unwrap_or_else(|_| unreachable!());
         let old_text = runtime
-            .submit_text(CommittedTextEvent::new("secret", None).unwrap_or_else(|_| unreachable!("valid fixture text")))
+            .submit_text(
+                CommittedTextEvent::new("secret", None)
+                    .unwrap_or_else(|_| unreachable!("valid fixture text")),
+            )
             .unwrap_or_else(|_| unreachable!());
         runtime
             .pump(PumpBudget::new(2, 0, 0, 0))
@@ -245,7 +248,10 @@ fn same_mounted_a_b_a_reentry_rejects_old_keyboard_and_text_but_accepts_fresh() 
             .submit_keyboard(keyboard(2))
             .unwrap_or_else(|_| unreachable!());
         let new_text = runtime
-            .submit_text(CommittedTextEvent::new("fresh", None).unwrap_or_else(|_| unreachable!("valid fixture text")))
+            .submit_text(
+                CommittedTextEvent::new("fresh", None)
+                    .unwrap_or_else(|_| unreachable!("valid fixture text")),
+            )
             .unwrap_or_else(|_| unreachable!());
         let results = runtime
             .pump(FULL)
@@ -284,7 +290,10 @@ fn unchanged_focused_recipient_losing_text_capability_rejects_at_dispatch() {
             .submit_action(Action::RevokeText)
             .unwrap_or_else(|_| unreachable!());
         let text = runtime
-            .submit_text(CommittedTextEvent::new("private", None).unwrap_or_else(|_| unreachable!("valid fixture text")))
+            .submit_text(
+                CommittedTextEvent::new("private", None)
+                    .unwrap_or_else(|_| unreachable!("valid fixture text")),
+            )
             .unwrap_or_else(|_| unreachable!());
         let result = runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
         assert_eq!(runtime.focus().focused_node(), Some(&owner));
@@ -303,7 +312,10 @@ fn unchanged_focused_recipient_losing_text_capability_rejects_at_dispatch() {
             .unwrap_or_else(|_| unreachable!());
         runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
         let restored = runtime
-            .submit_text(CommittedTextEvent::new("valid", None).unwrap_or_else(|_| unreachable!("valid fixture text")))
+            .submit_text(
+                CommittedTextEvent::new("valid", None)
+                    .unwrap_or_else(|_| unreachable!("valid fixture text")),
+            )
             .unwrap_or_else(|_| unreachable!());
         let result = runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
         assert_eq!(settlements(&result).len(), 1);
