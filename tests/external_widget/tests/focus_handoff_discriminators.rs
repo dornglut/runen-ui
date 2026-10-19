@@ -1,5 +1,7 @@
+#![allow(refining_impl_trait)]
+
 //! Public temporal discriminator for #474: an Escape-owned presentation must not
-//! redirect its delayed CancelOrBack to an unrelated later presentation.
+//! redirect its delayed `CancelOrBack` to an unrelated later presentation.
 
 use runenui_core::{
     KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
