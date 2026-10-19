@@ -690,8 +690,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     /// One issue-time fence derived from the canonical queue; no session allocator.
-    fn retire_previously_issued_focused_input(&mut self) {
+    const fn retire_previously_issued_focused_input(&mut self) {
         self.retired_focused_input_through = self.queue.last_issued_sequence();
+    }
+
+    /// Commit the one canonical focus authority and retire its preissued inputs.
+    fn commit_focus_and_retire(
+        &mut self,
+        new_target: Option<MountedNodeId>,
+        new_route: Vec<MountedNodeId>,
+        reason: FocusReason,
+        focus_visible: bool,
+    ) {
+        self.focus.commit(new_target, new_route, reason, focus_visible);
+        self.retire_previously_issued_focused_input();
     }
 
     pub(in crate::runtime) fn commit_focus_transition(
@@ -739,13 +751,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let left = old_route.len().saturating_sub(common);
         let entered = new_route.len().saturating_sub(common);
 
-        self.focus.commit(
-            new_target.clone(),
-            new_route.clone(),
-            reason,
-            next_visibility,
-        );
-        self.retire_previously_issued_focused_input();
+        self.commit_focus_and_retire(new_target.clone(), new_route.clone(), reason, next_visibility);
         self.reconcile_focus_group_type_ahead_state();
         if let Some(target) = new_target.as_ref() {
             for scope in new_route.iter().filter(|scope| {

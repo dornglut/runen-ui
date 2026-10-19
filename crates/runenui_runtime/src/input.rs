@@ -1104,7 +1104,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 && !self
                     .tree
                     .text_input_probe(&target)
-                    .is_ok_and(|capability| capability.accepts_committed_text())
+                    .is_ok_and(runenui_core::WidgetTextInput::accepts_committed_text)
             {
                 Some(crate::UiInputProcessingRejection::CommittedTextRecipientUnavailable)
             } else {
