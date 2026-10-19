@@ -183,7 +183,10 @@ fn focus_transfer_rejects_newer_waiting_input_once_and_never_delivers_to_b() {
         let stale = runtime
             .submit_keyboard(keyboard(1))
             .unwrap_or_else(|_| unreachable!("accepted A"));
-        assert_eq!(settlements(&runtime.pump(ZERO).unwrap_or_else(|_| unreachable!())).len(), 0);
+        assert_eq!(
+            settlements(&runtime.pump(ZERO).unwrap_or_else(|_| unreachable!())).len(),
+            0
+        );
         let transfer = runtime
             .pump(ONE)
             .unwrap_or_else(|_| unreachable!("focus transition"));
@@ -216,7 +219,10 @@ fn focus_transfer_rejects_newer_waiting_input_once_and_never_delivers_to_b() {
             UiInputFinality::Committed(_)
         ));
         assert_eq!(&*runtime.state().log.borrow(), &[("b", "key")]);
-        assert_eq!(settlements(&runtime.pump(FULL).unwrap_or_else(|_| unreachable!())).len(), 0);
+        assert_eq!(
+            settlements(&runtime.pump(FULL).unwrap_or_else(|_| unreachable!())).len(),
+            0
+        );
         if trace == 0 {
             assert_eq!(runtime.trace().len(), 0);
         }
