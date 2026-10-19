@@ -2799,3 +2799,121 @@ fn composition_output_can_exhaust_the_following_required_focus_out_reservation()
         }
     }
 }
+
+#[test]
+fn focusability_only_retirement_keeps_ime_and_focus_out_in_one_output_transaction() {
+    // Unlike capability-loss cleanup, focusability-only retirement preserves
+    // composition eligibility until the live old-route focus transition.
+    // Its cancellation and FocusOut must share one conservative routed
+    // admission and output allowance, including at the exact FIFO boundary.
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut state = InputState::standard(Rc::clone(&log));
+    state.emit_composition_cancel_action = true;
+    let mut runtime = mounted_with_config(
+        state,
+        RuntimeConfig::default().with_limits(
+            RuntimeLimits::default()
+                .with_waiting_envelopes(16)
+                .with_transaction_outputs(1),
+        ),
+    );
+    focus(&mut runtime, "target");
+    let original = target(&mut runtime, "target");
+    runtime
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("live focus owner accepts composition"));
+    settle(&mut runtime);
+    clear_log(&runtime);
+
+    runtime
+        .submit_action(InputAction::RetireFocusability)
+        .unwrap_or_else(|_| unreachable!("retirement action accepted"));
+    for _ in 0..14 {
+        runtime
+            .submit_action(InputAction::Activated)
+            .unwrap_or_else(|_| unreachable!("filler action accepted"));
+    }
+    // After the first pop, q=14 and C=16: exactly 2*R free slots.
+    // The composition callback emits one action; no second reservation may
+    // be demanded for the FocusOut within this SAME routed transaction.
+    let trace_start = runtime.trace().len();
+    let first = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("one action processed"))
+        .report()
+        .to_owned();
+    assert_eq!(first.processed_envelopes(), 1);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert!(!runtime.state().focus_eligible);
+    assert_eq!(runtime.focus().focused_node(), None);
+    assert_eq!(
+        runtime
+            .index()
+            .node(&original)
+            .map(runenui_runtime::MountedNodeRef::id),
+        Some(&original),
+        "the original mounted widget remains live"
+    );
+    assert!(log.borrow().iter().any(|entry| {
+        entry.node == "target"
+            && entry.phase == Some(EventPhase::Target)
+            && entry.input
+                == ObservedInput::CompositionCancel(CompositionCancelReason::Disablement)
+    }));
+
+    {
+        let records = runtime
+            .trace()
+            .records()
+            .skip(trace_start)
+            .collect::<Vec<_>>();
+        let cancelled = records.iter().position(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::CompositionCancelled {
+                    reason: CompositionCancelReason::Disablement
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        });
+        let focus_out = records.iter().position(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: runenui_runtime::FocusEventKind::Out
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        });
+        let accepted = records
+            .iter()
+            .position(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted));
+        assert!(
+            matches!((cancelled, focus_out, accepted), (Some(a), Some(b), Some(c)) if a < b && b < c),
+            "composition cancellation and FocusOut must finish before their shared callback output is committed"
+        );
+        assert_eq!(
+            records
+                .iter()
+                .filter(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted))
+                .count(),
+            1,
+            "one callback action is committed once"
+        );
+    }
+
+    // All accepted older actions precede the callback-produced tail action.
+    let followers = runtime
+        .pump(PumpBudget::new(14, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("older admitted actions process"))
+        .report()
+        .to_owned();
+    assert_eq!(followers.processed_envelopes(), 14);
+    assert_eq!(runtime.state().activations, 14);
+    let callback_tail = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("callback action processes at FIFO tail"))
+        .report()
+        .to_owned();
+    assert_eq!(callback_tail.processed_envelopes(), 1);
+    assert_eq!(runtime.state().activations, 15);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
