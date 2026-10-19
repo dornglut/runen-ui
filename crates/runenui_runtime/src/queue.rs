@@ -658,12 +658,12 @@ mod issued_sequence_tests {
 
         let first = queue
             .push_preflighted((), None, None, ApplicationActionOrigin::Ordinary)
-            .unwrap_or_else(|_| unreachable!("final two slots exist"));
+            .unwrap_or_else(|()| unreachable!("final two slots exist"));
         assert_eq!(first.get(), u64::MAX - 1);
         assert_eq!(queue.last_issued_sequence(), Some(first));
         let last = queue
             .push_preflighted((), None, None, ApplicationActionOrigin::Ordinary)
-            .unwrap_or_else(|_| unreachable!("MAX is issuable"));
+            .unwrap_or_else(|()| unreachable!("MAX is issuable"));
         assert_eq!(last.get(), u64::MAX);
         assert_eq!(queue.last_issued_sequence(), Some(last));
         assert_eq!(queue.next_sequence(), None);
