@@ -18,7 +18,6 @@ pub(crate) struct FocusSession {
     step: u64,
 }
 
-
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FocusEligibilityProjection {
     scrollable_controls: HashSet<MountedNodeId>,

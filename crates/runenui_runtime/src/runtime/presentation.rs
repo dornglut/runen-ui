@@ -224,7 +224,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     pub(crate) fn certified_pending_keyboard_focus_entry(
         &self,
-    ) -> Option<(crate::WorkSequence, MountedNodeId, crate::queue::PresentationFocusEntry)> {
+    ) -> Option<(
+        crate::WorkSequence,
+        MountedNodeId,
+        crate::queue::PresentationFocusEntry,
+    )> {
         let (count, pending) = self.queue.pending_presentation_entry();
         if count != 1 {
             return None;
