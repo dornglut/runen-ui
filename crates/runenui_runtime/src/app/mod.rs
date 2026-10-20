@@ -107,7 +107,7 @@ impl<App: UiApp> AppRuntime<App> {
     }
 
     #[cfg(feature = "controlled-transaction-prototype")]
-    pub fn experiment_reject_after_mounted_stage(&mut self) {
+    pub const fn experiment_reject_after_mounted_stage(&mut self) {
         self.runtime.controlled_fail_after_stage = true;
     }
 

@@ -71,13 +71,12 @@ impl<Action> ReconciliationPlan<Action> {
                     if !removals.is_empty() {
                         return None;
                     }
-                    let mut total = 0usize;
-                    if let Some(c) = controlled {
-                        if tree.node(id)?.state.controlled_revision().is_none() {
-                            return None;
-                        }
-                        total = c.update_actions.len().checked_add(c.notices.len())?;
-                    }
+                    let mut total = if let Some(c) = controlled {
+                        tree.node(id)?.state.controlled_revision()?;
+                        c.update_actions.len().checked_add(c.notices.len())?
+                    } else {
+                        0usize
+                    };
                     for child in children {
                         total = total.checked_add(visit(child, tree)?)?;
                     }
