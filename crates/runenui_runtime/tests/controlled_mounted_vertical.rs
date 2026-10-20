@@ -8,7 +8,7 @@ use std::{
 };
 
 use runenui_core::{
-    CommandOrigin, ControlledDeclarativeWidget, ControlledNoticeKind, Element, ElementId,
+    CommandOrigin, ControlledDeclarativeWidget, ControlledNoticeKind, ElementId,
     EventPhase, NoHostProtocol, SemanticCommand, SemanticEditableMode, TextAffinity,
     TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextField, TextPosition,
     TextSelection, UiApp, View, column, container,
@@ -294,7 +294,7 @@ fn injected_failure_after_mounted_script_preparation_has_no_effects() {
     assert!(runtime.state().enabled);
     assert_eq!(runtime.state().revision, 0);
     assert_eq!(*runtime.state().token, 7);
-    assert!(runtime.state().processed.is_empty());
+    assert_eq!(runtime.state().processed, Vec::<&'static str>::new());
     assert_eq!(runtime.experiment_retained_revision(&ancestor), Some(0));
     assert_eq!(created.get(), 1);
     assert_eq!(resource(&runtime, &ancestor).try_recv().ok(), Some(77));
