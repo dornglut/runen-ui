@@ -92,13 +92,17 @@ mod tests {
     fn checked_retirement_blocks_stale_removal_after_reincarnation() {
         let native = DeviceId::dummy();
         let mut map = DeviceIdentityMap::default();
-        let old = map.resolve(native).unwrap_or_else(|_| unreachable!("first device"));
+        let old = map
+            .resolve(native)
+            .unwrap_or_else(|_| unreachable!("first device"));
         assert_eq!(map.known(native), Some(old));
         assert!(map.retire_exact(native, old));
         assert_eq!(map.known(native), None);
         assert!(!map.retire_exact(native, old));
 
-        let fresh = map.resolve(native).unwrap_or_else(|_| unreachable!("new incarnation"));
+        let fresh = map
+            .resolve(native)
+            .unwrap_or_else(|_| unreachable!("new incarnation"));
         assert_ne!(fresh, old);
         assert_eq!(fresh.get(), 2);
         assert!(!map.retire_exact(native, old));
