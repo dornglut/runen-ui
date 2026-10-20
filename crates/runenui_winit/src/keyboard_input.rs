@@ -929,16 +929,10 @@ mod tests {
             right_window.resolve_down_admission(right, KeyboardDownDecision::Queued),
             Ok(())
         );
-        assert!(
-            left_window
-                .cancel_device(
-                    device,
-                    KeyModifiers::NONE,
-                    KeyboardCompositionState::Inactive
-                )
-                .unwrap_or_else(|error| unreachable!("left original is rejected: {error:?}"))
-                .is_empty()
-        );
+        let left_cancels = left_window
+            .cancel_device(device, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
+            .unwrap_or_else(|error| unreachable!("left original is rejected: {error:?}"));
+        assert_eq!(left_cancels.len(), 0);
         assert_eq!(left_window.pressed_len(), 0);
         let physical_up = submitted(right_window.key_input(
             device,
@@ -962,18 +956,16 @@ mod tests {
         keyboard
             .resolve_down_admission(old, KeyboardDownDecision::RejectedBeforeQueue)
             .unwrap_or_else(|error| unreachable!("old original was rejected: {error:?}"));
-        assert!(
-            keyboard
-                .cancel_device(
-                    old_device,
-                    KeyModifiers::NONE,
-                    KeyboardCompositionState::Inactive,
-                )
-                .unwrap_or_else(|error| unreachable!(
-                    "old rejected tombstone can retire: {error:?}"
-                ))
-                .is_empty()
-        );
+        let old_cancels = keyboard
+            .cancel_device(
+                old_device,
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            )
+            .unwrap_or_else(|error| {
+                unreachable!("old rejected tombstone can retire: {error:?}")
+            });
+        assert_eq!(old_cancels.len(), 0);
 
         let fresh = pending_down(&mut keyboard, reincarnated, physical, &logical);
         assert_ne!(old, fresh);
@@ -985,16 +977,14 @@ mod tests {
             keyboard.resolve_down_admission(fresh, KeyboardDownDecision::Queued),
             Ok(())
         );
-        assert!(
-            keyboard
-                .cancel_device(
-                    old_device,
-                    KeyModifiers::NONE,
-                    KeyboardCompositionState::Inactive,
-                )
-                .unwrap_or_else(|error| unreachable!("old device is absent: {error:?}"))
-                .is_empty()
-        );
+        let repeated_old_cancels = keyboard
+            .cancel_device(
+                old_device,
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            )
+            .unwrap_or_else(|error| unreachable!("old device is absent: {error:?}"));
+        assert_eq!(repeated_old_cancels.len(), 0);
         let cancelled = keyboard
             .cancel_device(
                 reincarnated,
