@@ -4,6 +4,8 @@ mod causal_presentation_commands;
 mod causal_presentation_nested;
 #[path = "../causal_presentation_suppression.rs"]
 mod causal_presentation_suppression;
+#[path = "../focus_session_handoff.rs"]
+mod focus_session_handoff;
 #[path = "../element_presentation.rs"]
 mod element_presentation;
 #[path = "../invalidation.rs"]
