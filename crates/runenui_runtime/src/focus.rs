@@ -157,6 +157,11 @@ impl FocusState {
             .is_some()
     }
 
+    #[cfg(test)]
+    pub(crate) fn exhaust_for_test(&mut self) {
+        self.last_session = Some(FocusSession(u64::MAX));
+    }
+
     pub(crate) fn entry_matches(&self, request: WorkSequence) -> bool {
         self.completed_entry
             .is_some_and(|(sequence, witness)| sequence == request && self.session == Some(witness))
