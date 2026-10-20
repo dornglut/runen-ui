@@ -1,6 +1,6 @@
 #![allow(refining_impl_trait)]
 
-//! TreeView reveal must use only M4 focus and the standard #344 scroll container.
+//! `TreeView` reveal must use only M4 focus and the standard #344 scroll container.
 use runenui_core::{
     CommandOrigin, FlexContainerStyle, FlexDirection, LayoutContainer, LayoutDimension,
     LayoutStyle, LogicalLength, NoHostProtocol, OverflowPolicy, OverflowStyle, SemanticCommand,
@@ -14,7 +14,7 @@ impl UiApp for ScrollTreeApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root(&(): &Self::State) -> impl View<Self::Action> {
         let item_layout = || {
             LayoutStyle::default()
                 .with_container(LayoutContainer::Flex(
@@ -25,12 +25,16 @@ impl UiApp for ScrollTreeApp {
         };
         let tree = tree_view([
             tree_item("alpha", "Alpha", Vec::new())
-                .id("tree.reveal.alpha").with_layout(item_layout()),
+                .id("tree.reveal.alpha")
+                .with_layout(item_layout()),
             tree_item("bravo", "Bravo", Vec::new())
-                .id("tree.reveal.bravo").with_layout(item_layout()),
+                .id("tree.reveal.bravo")
+                .with_layout(item_layout()),
             tree_item("charlie", "Charlie", Vec::new())
-                .id("tree.reveal.charlie").with_layout(item_layout()),
-        ]).id("tree.reveal.root");
+                .id("tree.reveal.charlie")
+                .with_layout(item_layout()),
+        ])
+        .id("tree.reveal.root");
         let overflow = OverflowStyle::all(OverflowPolicy::Scroll);
         scroll_container(tree, overflow)
             .id("tree.reveal.viewport")
@@ -42,7 +46,7 @@ impl UiApp for ScrollTreeApp {
                     .with_overflow(overflow),
             )
     }
-    fn update(_: &mut Self::State, (): Self::Action) {}
+    fn update(&mut (): &mut Self::State, (): Self::Action) {}
 }
 fn settle(runtime: &mut AppRuntime<ScrollTreeApp>) {
     let batch = runtime
@@ -55,16 +59,24 @@ fn settle(runtime: &mut AppRuntime<ScrollTreeApp>) {
         .unwrap_or_else(|_| unreachable!("TreeView pump observation"));
     assert!(batch.report().is_quiescent());
 }
-fn id(runtime: &AppRuntime<ScrollTreeApp>, value: &str) -> MountedNodeId {
+fn id(runtime: &mut AppRuntime<ScrollTreeApp>, value: &str) -> MountedNodeId {
     let authored = runenui_core::ElementId::new(value).unwrap_or_else(|_| unreachable!());
-    runtime.index().nodes().iter()
+    runtime
+        .index()
+        .nodes()
+        .iter()
         .find(|node| node.authored_id() == Some(&authored))
         .unwrap_or_else(|| unreachable!("TreeView fixture node exists"))
-        .id().clone()
+        .id()
+        .clone()
 }
-fn command(runtime: &mut AppRuntime<ScrollTreeApp>, target: MountedNodeId,
-    request: SemanticCommand) {
-    runtime.submit_command(target, request, CommandOrigin::programmatic())
+fn command(
+    runtime: &mut AppRuntime<ScrollTreeApp>,
+    target: MountedNodeId,
+    request: SemanticCommand,
+) {
+    runtime
+        .submit_command(target, request, CommandOrigin::programmatic())
         .unwrap_or_else(|_| unreachable!("public focus command admitted"));
     settle(runtime);
 }
@@ -72,22 +84,27 @@ fn command(runtime: &mut AppRuntime<ScrollTreeApp>, target: MountedNodeId,
 fn tree_view_focus_navigation_reveals_from_generic_scroll_container() {
     let mut runtime = AppRuntime::<ScrollTreeApp>::mount(());
     settle(&mut runtime);
-    runtime.publish_surface(&SurfaceBuildContext::tight(
-        &runenui_core::StyleEnvironment::default(),
-        LogicalSize::try_new(120.0, 20.0)
-            .unwrap_or_else(|_| unreachable!("finite reveal surface")),
-    )).unwrap_or_else(|error| unreachable!("TreeView publishes: {error:?}"));
-    let one = id(&runtime, "tree.reveal.alpha");
-    let two = id(&runtime, "tree.reveal.bravo");
-    let three = id(&runtime, "tree.reveal.charlie");
-    let viewport = id(&runtime, "tree.reveal.viewport");
+    runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &runenui_core::StyleEnvironment::default(),
+            LogicalSize::try_new(120.0, 20.0)
+                .unwrap_or_else(|_| unreachable!("finite reveal surface")),
+        ))
+        .unwrap_or_else(|error| unreachable!("TreeView publishes: {error:?}"));
+    let one = id(&mut runtime, "tree.reveal.alpha");
+    let two = id(&mut runtime, "tree.reveal.bravo");
+    let three = id(&mut runtime, "tree.reveal.charlie");
+    let viewport = id(&mut runtime, "tree.reveal.viewport");
     command(&mut runtime, one.clone(), SemanticCommand::RequestFocus);
     command(&mut runtime, one, SemanticCommand::FocusDown);
     assert_eq!(runtime.focus().focused_node(), Some(&two));
     command(&mut runtime, two, SemanticCommand::FocusDown);
     assert_eq!(runtime.focus().focused_node(), Some(&three));
-    let offset = runtime.index().node(&viewport)
+    let offset = runtime
+        .index()
+        .node(&viewport)
         .unwrap_or_else(|| unreachable!("viewport still mounted"))
-        .interaction().scroll_offset();
+        .interaction()
+        .scroll_offset();
     assert_eq!(offset, (0.0, 40.0));
 }
