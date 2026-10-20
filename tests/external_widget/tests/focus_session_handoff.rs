@@ -210,7 +210,8 @@ fn pending_entry_never_transfers_ambiguous_committed_text() {
         .unwrap_or_else(|_| unreachable!());
     let error = runtime
         .submit_text(CommittedTextEvent::new("secret", None).unwrap_or_else(|_| unreachable!()))
-        .err().unwrap_or_else(|| unreachable!("an ambiguous pending recipient must reject before queueing"));
+        .err()
+        .unwrap_or_else(|| unreachable!("an ambiguous pending recipient must reject before queueing"));
     assert_eq!(error.kind(), SubmitTextErrorKind::PendingFocusHandoff);
     let original = id(&mut runtime, "text");
     assert_eq!(runtime.focus().focused_node(), Some(&original));
