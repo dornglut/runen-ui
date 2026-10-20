@@ -930,7 +930,11 @@ mod tests {
             Ok(())
         );
         let left_cancels = left_window
-            .cancel_device(device, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
+            .cancel_device(
+                device,
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            )
             .unwrap_or_else(|error| unreachable!("left original is rejected: {error:?}"));
         assert_eq!(left_cancels.len(), 0);
         assert_eq!(left_window.pressed_len(), 0);
@@ -962,9 +966,7 @@ mod tests {
                 KeyModifiers::NONE,
                 KeyboardCompositionState::Inactive,
             )
-            .unwrap_or_else(|error| {
-                unreachable!("old rejected tombstone can retire: {error:?}")
-            });
+            .unwrap_or_else(|error| unreachable!("old rejected tombstone can retire: {error:?}"));
         assert_eq!(old_cancels.len(), 0);
 
         let fresh = pending_down(&mut keyboard, reincarnated, physical, &logical);
