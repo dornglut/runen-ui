@@ -37,25 +37,24 @@ pub(crate) fn process_application_action<App: UiApp>(
     // FIFO, after pop, but before recording commit trace or invoking a live
     // application/widget mutation. The retained action stays owned for refusal.
     #[cfg(feature = "controlled-transaction-prototype")]
-    let controlled = if let Some(prepared_state) =
-        App::controlled_prepare(runtime.state(), &action)
-    {
-        // Build the candidate structural tree without touching the committed
-        // arena or non-Clone retained resource. The constrained authoring
-        // contract forbids ambient effects during this evaluation.
-        let candidate = App::root(&prepared_state).into_element();
-        let candidate_plan = runtime
-            .tree
-            .plan_reconciliation(candidate, runtime.mounted_public_slot_limit);
-        let mandatory_slots = if runtime.focus.focused_node().is_some() {
-            runtime.limits.transaction_outputs().checked_mul(2)
-        } else {
-            Some(0)
-        };
-        let capacity_ok = mandatory_slots
-            .is_some_and(|slots| runtime.queue.preflight_commit(slots).is_ok());
-        if !capacity_ok || candidate_plan.is_err() {
-            runtime.controlled_refusals.push(super::super::ControlledProcessingRefusal {
+    let controlled =
+        if let Some(prepared_state) = App::controlled_prepare(runtime.state(), &action) {
+            // Build the candidate structural tree without touching the committed
+            // arena or non-Clone retained resource. The constrained authoring
+            // contract forbids ambient effects during this evaluation.
+            let candidate = App::root(&prepared_state).into_element();
+            let candidate_plan = runtime
+                .tree
+                .plan_reconciliation(candidate, runtime.mounted_public_slot_limit);
+            let mandatory_slots = if runtime.focus.focused_node().is_some() {
+                runtime.limits.transaction_outputs().checked_mul(2)
+            } else {
+                Some(0)
+            };
+            let capacity_ok =
+                mandatory_slots.is_some_and(|slots| runtime.queue.preflight_commit(slots).is_ok());
+            if !capacity_ok || candidate_plan.is_err() {
+                runtime.controlled_refusals.push(super::super::ControlledProcessingRefusal {
                 sequence,
                 reason: if !capacity_ok {
                     super::super::ControlledProcessingRefusalReason::OrdinaryQueuePressure
@@ -64,12 +63,15 @@ pub(crate) fn process_application_action<App: UiApp>(
                 },
                 original: action,
             });
-            return ProcessApplicationActionOutcome::Completed;
-        }
-        Some((prepared_state, candidate_plan.unwrap_or_else(|_| unreachable!("checked"))))
-    } else {
-        None
-    };
+                return ProcessApplicationActionOutcome::Completed;
+            }
+            Some((
+                prepared_state,
+                candidate_plan.unwrap_or_else(|_| unreachable!("checked")),
+            ))
+        } else {
+            None
+        };
 
     let before = ReconciliationGeneration(runtime.generation);
     let Some(next) = runtime.next_generation() else {
@@ -122,11 +124,18 @@ pub(crate) fn process_application_action<App: UiApp>(
         *app_state = prepared_state;
         ().into_update_output().__runtime_into_parts()
     } else {
-        App::update(app_state, action).into_update_output().__runtime_into_parts()
+        App::update(app_state, action)
+            .into_update_output()
+            .__runtime_into_parts()
     };
     #[cfg(not(feature = "controlled-transaction-prototype"))]
-    let (effects, edit_resolution) =
-        App::update(app_state, action).into_update_output().__runtime_into_parts();
+    let (effects, edit_resolution) = App::update(app_state, action)
+        .into_update_output()
+        .__runtime_into_parts();
+    #[cfg(feature = "controlled-transaction-prototype")]
+    let legacy_transient = controlled_plan
+        .is_none()
+        .then(|| App::root(app_state).into_element());
     mutation_phase = MutationPhase::Mutated;
     let resolution_cardinality_valid = match &origin {
         ApplicationActionOrigin::Ordinary => edit_resolution.is_none(),
@@ -182,7 +191,7 @@ pub(crate) fn process_application_action<App: UiApp>(
         Ok(plan)
     } else {
         runtime.tree.plan_reconciliation(
-            App::root(app_state).into_element(),
+            legacy_transient.unwrap_or_else(|| unreachable!("legacy authoring prepared")),
             mounted_public_slot_limit,
         )
     };

@@ -24,10 +24,7 @@ pub trait UiApp {
     /// resources represented by stable handles rather than copied receivers.
     /// No existing callback is allowed to execute through this method.
     #[cfg(feature = "controlled-transaction-prototype")]
-    fn controlled_prepare(
-        _state: &Self::State,
-        _action: &Self::Action,
-    ) -> Option<Self::State> {
+    fn controlled_prepare(_state: &Self::State, _action: &Self::Action) -> Option<Self::State> {
         None
     }
 

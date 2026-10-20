@@ -221,8 +221,6 @@ mod wake;
 mod work;
 
 pub use app::AppRuntime;
-#[cfg(feature = "controlled-transaction-prototype")]
-pub use runtime::{ControlledProcessingRefusal, ControlledProcessingRefusalReason};
 pub use clock::{ManualClock, MonotonicClock, MonotonicInstant, MonotonicTimeError};
 pub use command::{
     CommandSubmission, SubmitCommandError, SubmitCommandErrorKind, UnacceptedCommand,
@@ -279,6 +277,8 @@ pub use runenui_text::{
     FontRegistrationError, FontSourcePolicy, FontSourceSnapshot, GenericFamilyMappingError,
     TextConstraints, TextLayoutDecision, TextLayoutError,
 };
+#[cfg(feature = "controlled-transaction-prototype")]
+pub use runtime::{ControlledProcessingRefusal, ControlledProcessingRefusalReason};
 pub use runtime::{
     FrameworkServiceCancelError, FrameworkServiceResponseError, HostRequestCancelError,
     HostResponseError, PublishSurfaceError, ReconciliationDiagnostic, ReconciliationGeneration,
