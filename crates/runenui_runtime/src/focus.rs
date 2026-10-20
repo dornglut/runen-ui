@@ -10,8 +10,8 @@ use runenui_core::{
 
 use crate::{LogicalRect, MountedNodeId, WorkSequence, mounted::MountedTree};
 
-/// Exact, non-reusable committed-focus lifetime, allocated solely by FocusState.
-/// WorkSequence is causal identity and can be reused for deferred cleanup;
+/// Exact, non-reusable committed-focus lifetime, allocated solely by `FocusState`.
+/// `WorkSequence` is causal identity and can be reused for deferred cleanup;
 /// it must never serve as a focus lifetime generation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FocusSession(u64);
@@ -149,7 +149,7 @@ impl FocusState {
         self.session
     }
 
-    /// Checked preflight before any irreversible callbacks or App::update.
+    /// Checked preflight before any irreversible callbacks or `App::update`.
     /// One lifetime counter, independent of causal work identity or queue order.
     pub(crate) fn can_reserve_steps(&self, steps: u64) -> bool {
         self.last_session
