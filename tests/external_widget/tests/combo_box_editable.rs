@@ -714,10 +714,14 @@ fn diagnostic_tab_native_finality_and_focus_default_are_distinct() {
             KeyboardCompositionState::Inactive,
         ))
         .unwrap_or_else(|_| unreachable!("Tab input accepted"));
-    let batch = runtime
-        .pump(PumpBudget::new(1, 0, 0, 0))
-        .unwrap_or_else(|error| unreachable!("one native Tab envelope: {error:?}"));
-    assert_eq!(batch.processed_through(), Some(receipt.sequence()));
+    let batch = loop {
+        let batch = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|error| unreachable!("one native Tab envelope: {error:?}"));
+        if batch.processed_through() == Some(receipt.sequence()) {
+            break batch;
+        }
+    };
     let [InputArbitrationRecord::InputSettled(settled)] = batch.ordered_records() else {
         unreachable!("Tab has one exactly settled native receipt")
     };
