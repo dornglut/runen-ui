@@ -56,10 +56,10 @@ pub(crate) fn process_application_action<App: UiApp>(
             if !capacity_ok || candidate_plan.is_err() {
                 runtime.controlled_refusals.push(super::super::ControlledProcessingRefusal {
                 sequence,
-                reason: if !capacity_ok {
-                    super::super::ControlledProcessingRefusalReason::OrdinaryQueuePressure
-                } else {
+                reason: if capacity_ok {
                     super::super::ControlledProcessingRefusalReason::UnsupportedReconciliation
+                } else {
+                    super::super::ControlledProcessingRefusalReason::OrdinaryQueuePressure
                 },
                 original: action,
             });
