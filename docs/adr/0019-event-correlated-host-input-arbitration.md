@@ -40,6 +40,14 @@ An **unavailable-context pointer Up/Cancel is not automatically rejected**: acce
 
 The queue's existing terminal `cancel_all` erases queued envelopes and retains counts, not individual input identities. Therefore exactly one `ScopeRetired` fact for the exact runtime lifetime invalidates **all not-yet-settled host receipt correlations in that scope**; do not attempt after-the-fact per-receipt queue-cancellation reporting or add a second ledger. Host processes already emitted individual settlements once and discards all still-pending associations on retirement. `Drop` cannot emit a Rust return value: owner of the runtime slot MUST invalidate its scope and matching held actions synchronously when disposing it.
 
+### Reached focused-input processing rejection (unaccepted UI474 experiment)
+
+> **DRAFT / NOT RATIFIED FOR PRODUCTION.** The proposal below is contradicted by unchanged public menu Escape behavior: delayed presentation initial focus commits after Escape admission and the universal cutoff incorrectly rejects it. [#474](https://github.com/dornglut/runen-ui/issues/474) owns the next semantic decision. The existing accepted M13ARB input finality remains normative; no new processing-rejection variant may be treated as production-accepted from this draft.
+
+The canonical last-issued `WorkSequence` high-water focus cutoff in ADR 0005 rejects stale **ordinary keyboard and committed text** only at the reached FIFO processing boundary; it does not convert successful ingress into rejected ingress. A live but focus-retired target yields `ProcessingRejected(StaleFocusLifetime)`; an unchanged still-focused target that no longer accepts ordinary committed text yields `ProcessingRejected(CommittedTextRecipientUnavailable)`. No callback, shortcut, editing default or UI conflict claim may precede either rejection. Missing/stale/foreign target classification and independent IME generation checks remain unchanged.
+
+Each reached rejection produces exactly one original-scope-and-sequence `InputSettled` at the post-operation ownership revision, with any preceding committed ownership transition ordered first. The trace records a reserved processing-rejection fact without text payload, when enabled; trace-disabled correctness is identical. A zero/partial pump cannot invent finality. Queue-full/exhausted admission creates no receipt. Terminal and shutdown cancel still-pending receipts through existing `ScopeRetired` semantics; a processing rejection never implies gameplay permission.
+
 ## Certified UI conflict versus host gameplay
 
 The immutable committed `UiInputRoutingFacts` exposes `UiInputConflict` with four mutually distinct classifications: `Unclaimed`, `ObservedNonexclusive`, `ExclusiveUi` and `Undetermined`. Nonexclusive hover/hit/callback routing is *not* a conflict claim. The host may make a stricter game-input policy, but cannot reinterpret RunenUI's private widget semantics.
@@ -133,7 +141,7 @@ These names, distinctions, field privacy and semantic accessor types are **norma
 | `UiInputConflict` | `Unclaimed`, `ObservedNonexclusive`, `ExclusiveUi`, `Undetermined` |
 | `UiInputClaimReason` | `TextOwner`, `CompositionOwner`, `FocusNavigation`, `ActivationDefault`, `ApplicationShortcut`, `PointerPress`, `PointerCapture`, `PointerSelection`, `TouchGesture`, `ModalBarrier`, `PresentationDismissal`, `ExplicitWidgetClaim` |
 | `UiDefaultDisposition` | `None`, `Prevented`, `Applied`, `Queued`; the latter two distinguish committed UI default from queued follow-up, neither certifies later application action completion |
-| `UiInputProcessingRejection` | `MissingTarget`, `StaleTarget`, `ForeignTarget`, `InvalidDisplayedSnapshot`, `MissingDisplayedSnapshot`, `InvalidPointerStream`, `StaleCompositionGeneration`, `InsufficientTransactionCapacity` (names classify the exact **rejected** route, not an accepted integrity-only pointer release) |
+| `UiInputProcessingRejection` | `MissingTarget`, `StaleTarget`, `ForeignTarget`, `InvalidDisplayedSnapshot`, `MissingDisplayedSnapshot`, `InvalidPointerStream`, `StaleCompositionGeneration`, `StaleFocusLifetime`, `CommittedTextRecipientUnavailable`, `InsufficientTransactionCapacity` (names classify the exact **rejected** route, not an accepted integrity-only pointer release) |
 | `UiInputAbortReason` | `RuntimeIntegrity`, `TraceOrSequenceExhausted`, `Terminal(RuntimeTerminalReason)` |
 | `UiInputFinality` | `Committed(UiInputRoutingFacts)`, `ProcessingRejected(UiInputProcessingRejection)`, `Aborted(UiInputAbortReason)` |
 | `InputArbitrationRecord` | `InputSettled(UiInputSettlement)`, `OwnershipChanged(InputOwnershipTransition)`, `ScopeRetired(InputScopeRetirement)` |

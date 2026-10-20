@@ -227,6 +227,10 @@ pub enum TraceRecordKind {
     KeyboardSubmissionAccepted,
     KeyboardSubmissionRejected,
     KeyboardProcessingValidated,
+    /// A reached focused-input FIFO receipt was rejected before routing or defaults.
+    FocusedInputProcessingRejected {
+        reason: crate::UiInputProcessingRejection,
+    },
     KeyboardDefaultPrevented,
     KeyboardShortcutMatched,
     KeyboardShortcutRepeatSuppressed,

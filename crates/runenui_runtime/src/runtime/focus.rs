@@ -689,6 +689,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    /// One issue-time fence derived from the canonical queue; no session allocator.
+    const fn retire_previously_issued_focused_input(&mut self) {
+        self.retired_focused_input_through = self.queue.last_issued_sequence();
+    }
+
+    /// Commit the one canonical focus authority and retire its preissued inputs.
+    fn commit_focus_and_retire(
+        &mut self,
+        new_target: Option<MountedNodeId>,
+        new_route: Vec<MountedNodeId>,
+        reason: FocusReason,
+        focus_visible: bool,
+    ) {
+        self.focus
+            .commit(new_target, new_route, reason, focus_visible);
+        self.retire_previously_issued_focused_input();
+    }
+
     pub(in crate::runtime) fn commit_focus_transition(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
@@ -734,7 +752,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let left = old_route.len().saturating_sub(common);
         let entered = new_route.len().saturating_sub(common);
 
-        self.focus.commit(
+        self.commit_focus_and_retire(
             new_target.clone(),
             new_route.clone(),
             reason,
@@ -999,7 +1017,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface,
         } = cleanup;
         let previous_visibility = self.focus.focus_visible();
+        let had_focus = self.focus.focused_node().is_some();
         self.focus.commit(None, Vec::new(), reason, false);
+        if had_focus {
+            self.retire_previously_issued_focused_input();
+        }
         self.reconcile_focus_group_type_ahead_state();
         let Some(trace_target) = trace_target else {
             return;
@@ -1088,6 +1110,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         });
         let previous_visibility = self.focus.focus_visible();
         self.focus.clear_all(FocusReason::Shutdown);
+        if old_target.is_some() {
+            self.retire_previously_issued_focused_input();
+        }
         let Some(_old_target) = old_target else {
             return causal_parent;
         };

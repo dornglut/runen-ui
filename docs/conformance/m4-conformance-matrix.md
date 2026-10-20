@@ -196,6 +196,10 @@ rows, and `cargo validate` must pass at the exact reviewed head.
 | DF-19 | All candidates outside the half-plane return `None`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | owner-accepted | Required |
 | DF-20 | Zero-gap edge-touching `A` wins. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | owner-accepted | Required |
 
+## UI474 proposed focused-input follow-up — not an accepted M4 row
+
+The separately authorized #474 / [draft PR #489](https://github.com/dornglut/runen-ui/pull/489) proposes a canonical FIFO focus-retirement cutoff (keyboard/text) and dispatch-time committed-text capability recheck. The specific public KEY-05/TEXT-02 concepts have **not** been assigned normative M4 rows or gate/status values because the universal cutoff fails existing public menu-dismissal conformance: a queued presentation initial-focus request can execute after Escape admission and retire that valid Escape before processing. Keep the original accepted KEY-01..KEY-04 / TEXT-01 / IME rows and their counts unchanged. Proposed case coverage, rejected design and future owner decision belong to [#474](https://github.com/dornglut/runen-ui/issues/474), not an invented accepted delivery slice.
+
 ## M4C5 — keyboard, committed text, IME, automation, and M4C closure
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Trace proof owner | Delivery slice | Status | M4 gate |

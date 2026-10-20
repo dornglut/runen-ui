@@ -330,6 +330,18 @@ reconcile underneath the route.
 The route contains owned/cloned generational IDs, not borrowed arena positions.
 No authored ID or preorder integer participates in routing.
 
+### Focus-lifetime integrity for ordinary queued input (UI474-FIFO-FENCE-01 — unaccepted experiment)
+
+> **NOT ACCEPTED.** This proposed universal cutoff fails the existing public presentation Escape dismissal contract when publication has enqueued an initial-focus request that has not yet executed. See [#474](https://github.com/dornglut/runen-ui/issues/474) and [draft #489](https://github.com/dornglut/runen-ui/pull/489). The paragraphs below describe the evaluated candidate, not a production rule. Do not promote these semantics without a new owner decision and executable conformance.
+
+Ordinary keyboard and committed-text input binds to the exact focused mounted recipient at ingress. The one non-reentrant runtime FIFO issues a unique, checked, nonwrapping `WorkSequence` for every accepted work envelope. The runtime retains the exact last **issued** sequence independently of the next-sequence allocator; issuing `u64::MAX` does not make the last issued value disappear.
+
+Each **effective committed focus transition** retires all already-issued ordinary focused input through that high-water mark. Commit of A→B, B→A, A→none and compatible reconciliation retirement advances the same private cutoff; a no-op focus request, modality or visibility change, rejected preflight, or unrelated ownership revision does not. Multiple focus changes within one work transaction still use the latest *issued* cutoff, not the causing envelope's sequence. No per-focus generation or per-physical-key ledger is created.
+
+At FIFO dispatch, after mounted target status classification and before keyboard shortcut/type-ahead probes, routed callbacks, defaults or claims, a still-live ordinary keyboard/text envelope whose sequence is at or below the cutoff is rejected with `ProcessingRejected(StaleFocusLifetime)`. The original A-origin input is never retargeted to B, and same-mounted-ID A→B→A does not revive old receipts. Fresh work issued after the last focus commit has a higher sequence. Actual physical Up/repeat remains bound at **its own** admission; this is not native key provenance or held-key retirement.
+
+A still-focused and mounted recipient of ordinary committed text additionally must **currently** accept `WidgetTextInput::accepts_committed_text()` at dispatch, or the receipt rejects with `CommittedTextRecipientUnavailable`. Target missing/stale/foreign retains its more specific diagnosis; stale focus lifetime takes precedence over lost text capability on a live target. IME composition retains independent exact-generation ownership and cancellation. The focus cutoff is runtime-private derived FIFO/focus state, not an independent focus authority.
+
 ### Widget participation
 
 The open widget protocol gains one state-aware event capability used by

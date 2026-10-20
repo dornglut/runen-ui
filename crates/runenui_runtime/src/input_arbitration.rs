@@ -378,6 +378,10 @@ pub enum UiInputProcessingRejection {
     MissingDisplayedSnapshot,
     InvalidPointerStream,
     StaleCompositionGeneration,
+    /// An ordinary keyboard/text receipt predates a committed focus transition.
+    StaleFocusLifetime,
+    /// The unchanged focused recipient no longer accepts ordinary committed text.
+    CommittedTextRecipientUnavailable,
     InsufficientTransactionCapacity,
 }
 

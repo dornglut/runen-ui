@@ -105,6 +105,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             trace_action_labeler: None,
             text_system,
             focus: FocusState::new(),
+            retired_focused_input_through: None,
             input_observation,
             focus_group_type_ahead: crate::input::FocusGroupTypeAheadState::new(),
             presentation_lifecycle: super::presentation::PresentationLifecycleState::new(),
