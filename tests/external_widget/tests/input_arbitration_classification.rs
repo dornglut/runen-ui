@@ -85,7 +85,16 @@ impl UiApp for App {
                 true,
             ),
         );
-        shortcut_scope([shortcut], [group])
+        let modified_arrow = ShortcutBinding::new(
+            ShortcutChord::logical(LogicalKey::ArrowUp, KeyModifiers::CONTROL),
+            ShortcutRepeatPolicy::IgnoreRepeat,
+            ApplicationCommand::new(
+                ApplicationCommandId::from_static("fixture.modified-arrow")
+                    .unwrap_or_else(|_| unreachable!("valid shortcut command")),
+                true,
+            ),
+        );
+        shortcut_scope([shortcut, modified_arrow], [group])
     }
 
     fn update(replaced: &mut bool, (): ()) {
@@ -203,7 +212,7 @@ fn public_type_ahead_focus_default_is_claimed_before_its_exact_settlement() {
 }
 
 #[test]
-fn public_composition_suppressed_shortcut_cannot_claim_the_fallback_activation() {
+fn public_composition_suppresses_shortcut_and_generic_activation_without_claim() {
     for trace_capacity in [0, 512] {
         let mut runtime = runtime(trace_capacity, "alpha");
         let receipt = runtime
@@ -220,29 +229,28 @@ fn public_composition_suppressed_shortcut_cannot_claim_the_fallback_activation()
         let UiInputFinality::Committed(facts) = settled.finality() else {
             unreachable!("committed activation default")
         };
-        assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
-        assert_eq!(facts.reasons(), [UiInputClaimReason::ActivationDefault]);
-        assert_eq!(facts.default_disposition(), UiDefaultDisposition::Queued);
+        assert_eq!(facts.conflict(), UiInputConflict::ObservedNonexclusive);
+        assert_eq!(facts.reasons(), []);
+        assert_eq!(facts.default_disposition(), UiDefaultDisposition::None);
         assert_eq!(runtime.state(), &false);
         runtime
             .pump(FULL)
-            .unwrap_or_else(|_| unreachable!("derived activation"));
-        assert_eq!(runtime.state(), &true);
+            .unwrap_or_else(|_| unreachable!("no default activation"));
+        assert_eq!(runtime.state(), &false);
         if trace_capacity == 0 {
             assert_eq!(runtime.trace().len(), 0);
         } else {
-            for kind in [
-                TraceRecordKind::KeyboardShortcutCompositionSuppressed,
-                TraceRecordKind::KeyboardEnterActivationDerived,
-            ] {
-                assert!(
-                    runtime
-                        .trace()
-                        .records()
-                        .any(|record| record.work_sequence() == Some(receipt.sequence())
-                            && record.kind() == &kind)
-                );
-            }
+            assert!(runtime.trace().records().any(|record| {
+                record.work_sequence() == Some(receipt.sequence())
+                    && record.kind() == &TraceRecordKind::KeyboardShortcutCompositionSuppressed
+            }));
+            assert!(!runtime.trace().records().any(|record| {
+                record.work_sequence() == Some(receipt.sequence())
+                    && matches!(
+                        record.kind(),
+                        TraceRecordKind::KeyboardEnterActivationDerived
+                    )
+            }));
             assert!(
                 !runtime
                     .trace()
@@ -412,4 +420,168 @@ fn public_same_owner_search_claims_its_default_without_a_phantom_revision() {
         [InputArbitrationRecord::InputSettled(_)]
     ));
     assert_eq!(runtime.trace().len(), 0);
+}
+
+#[test]
+fn approved_a1_b1_generic_navigation_and_activation_preserve_exact_nonclaim_finality() {
+    for trace_capacity in [0, 1, 512] {
+        for (logical, physical, modifiers, composition) in [
+            (
+                LogicalKey::ArrowDown,
+                PhysicalKey::ArrowDown,
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Active,
+            ),
+            (
+                LogicalKey::Enter,
+                PhysicalKey::Enter,
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Active,
+            ),
+            (
+                LogicalKey::Tab,
+                PhysicalKey::Tab,
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Active,
+            ),
+            (
+                LogicalKey::ArrowDown,
+                PhysicalKey::ArrowDown,
+                KeyModifiers::NONE.with_control(),
+                KeyboardCompositionState::Inactive,
+            ),
+            (
+                LogicalKey::ArrowDown,
+                PhysicalKey::ArrowDown,
+                KeyModifiers::NONE.with_shift(),
+                KeyboardCompositionState::Inactive,
+            ),
+            (
+                LogicalKey::ArrowDown,
+                PhysicalKey::ArrowDown,
+                KeyModifiers::NONE.with_alt(),
+                KeyboardCompositionState::Inactive,
+            ),
+        ] {
+            let mut runtime = runtime(trace_capacity, "alpha");
+            let focused = target(&mut runtime, "alpha");
+            let ownership = runtime.input_ownership().unwrap_or_else(|_| unreachable!());
+            let receipt = runtime
+                .submit_keyboard(KeyboardEvent::new(
+                    KeyboardPhase::Down,
+                    physical,
+                    logical,
+                    modifiers,
+                    false,
+                    KeyLocation::Standard,
+                    composition,
+                    None,
+                ))
+                .unwrap_or_else(|_| unreachable!("A1/B1 key admitted"));
+            let batch = runtime
+                .pump(ONE)
+                .unwrap_or_else(|_| unreachable!("one native envelope"));
+            let settled = settlement(&batch);
+            assert_eq!(settled.sequence(), receipt.sequence());
+            assert_eq!(settled.scope(), ownership.scope());
+            let UiInputFinality::Committed(facts) = settled.finality() else {
+                unreachable!("approved unclaimed key committed")
+            };
+            assert_eq!(facts.conflict(), UiInputConflict::ObservedNonexclusive);
+            assert_eq!(facts.reasons(), []);
+            assert_eq!(facts.default_disposition(), UiDefaultDisposition::None);
+            assert_eq!(batch.final_ownership(), &ownership);
+            runtime
+                .pump(FULL)
+                .unwrap_or_else(|_| unreachable!("settle no defaults"));
+            assert_eq!(runtime.focus().focused_node(), Some(&focused));
+            assert_eq!(runtime.state(), &false);
+        }
+    }
+}
+
+#[test]
+fn approved_b1_unmodified_direction_and_shift_tab_still_reserve_m4_navigation() {
+    for trace_capacity in [0, 1, 512] {
+        for (physical, logical, modifiers) in [
+            (
+                PhysicalKey::ArrowDown,
+                LogicalKey::ArrowDown,
+                KeyModifiers::NONE,
+            ),
+            (
+                PhysicalKey::Tab,
+                LogicalKey::Tab,
+                KeyModifiers::NONE.with_shift(),
+            ),
+        ] {
+            let mut runtime = runtime(trace_capacity, "alpha");
+            let receipt = runtime
+                .submit_keyboard(KeyboardEvent::new(
+                    KeyboardPhase::Down,
+                    physical,
+                    logical,
+                    modifiers,
+                    false,
+                    KeyLocation::Standard,
+                    KeyboardCompositionState::Inactive,
+                    None,
+                ))
+                .unwrap_or_else(|_| unreachable!("ordinary navigation admitted"));
+            let batch = runtime
+                .pump(ONE)
+                .unwrap_or_else(|_| unreachable!("one native envelope"));
+            let settled = settlement(&batch);
+            assert_eq!(settled.sequence(), receipt.sequence());
+            let UiInputFinality::Committed(facts) = settled.finality() else {
+                unreachable!("ordinary M4 focus default accepted")
+            };
+            assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
+            assert_eq!(facts.reasons(), [UiInputClaimReason::FocusNavigation]);
+            assert_eq!(facts.default_disposition(), UiDefaultDisposition::Queued);
+            runtime
+                .pump(FULL)
+                .unwrap_or_else(|_| unreachable!("focus default eventually executes"));
+            assert_eq!(runtime.status(), RuntimeStatus::Running);
+        }
+    }
+}
+#[test]
+fn approved_b1_explicit_modified_arrow_application_shortcut_remains_exclusive() {
+    for trace_capacity in [0, 1, 512] {
+        let mut runtime = runtime(trace_capacity, "alpha");
+        let receipt = runtime
+            .submit_keyboard(KeyboardEvent::new(
+                KeyboardPhase::Down,
+                PhysicalKey::ArrowUp,
+                LogicalKey::ArrowUp,
+                KeyModifiers::CONTROL,
+                false,
+                KeyLocation::Standard,
+                KeyboardCompositionState::Inactive,
+                None,
+            ))
+            .unwrap_or_else(|_| unreachable!("modified application shortcut admitted"));
+        let batch = runtime
+            .pump(ONE)
+            .unwrap_or_else(|_| unreachable!("exact modified-shortcut input"));
+        let settled = settlement(&batch);
+        assert_eq!(settled.sequence(), receipt.sequence());
+        let UiInputFinality::Committed(facts) = settled.finality() else {
+            unreachable!("approved application shortcut committed")
+        };
+        assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
+        assert_eq!(facts.reasons(), [UiInputClaimReason::ApplicationShortcut]);
+        assert_eq!(facts.default_disposition(), UiDefaultDisposition::Queued);
+        runtime
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("application shortcut follow-up"));
+        assert_eq!(runtime.status(), RuntimeStatus::Running);
+        if trace_capacity == 512 {
+            assert!(runtime.trace().records().any(|record| {
+                record.work_sequence() == Some(receipt.sequence())
+                    && matches!(record.kind(), TraceRecordKind::KeyboardShortcutMatched)
+            }));
+        }
+    }
 }

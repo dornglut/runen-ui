@@ -512,7 +512,7 @@ fn repeat_policy_suppresses_or_allows_without_outer_fallback() {
 }
 
 #[test]
-fn composition_suppresses_accelerators_before_conflicts_and_preserves_ordinary_defaults() {
+fn composition_suppresses_accelerators_and_generic_activation_defaults() {
     let control = KeyModifiers::NONE.with_control();
 
     let mut composing = AppRuntime::<App>::mount(State::new(Mode::Unique));
@@ -580,7 +580,7 @@ fn composition_suppresses_accelerators_before_conflicts_and_preserves_ordinary_d
         kind,
         TraceRecordKind::KeyboardShortcutCompositionSuppressed
     )));
-    assert!(has_trace(&composing_enter, |kind| matches!(
+    assert!(!has_trace(&composing_enter, |kind| matches!(
         kind,
         TraceRecordKind::KeyboardEnterActivationDerived
     )));

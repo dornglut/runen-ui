@@ -202,8 +202,8 @@ rows, and `cargo validate` must pass at the exact reviewed head.
 |---|---|---|---|---|---|---|---|
 | KEY-01 | Keyboard down routes C/T/B with physical/logical identity, modifiers, repeat, location, composition state, and cancelable defaults. | Runtime + downstream keyboard proof | Rejected target and prevention proof | M4C5 keyboard-down trace | M4C5 | owner-accepted | Required |
 | KEY-02 | Keyboard up routes C/T/B and completes only matching Space ownership on the same live eligible focus target. | Runtime + Counter keyboard proof | Focus/lifetime/eligibility loss and unmatched-up proof | M4C5 keyboard-up trace | M4C5 | owner-accepted | Required |
-| KEY-03 | Enter enqueues `Activate` on accepted non-repeated key down; repeated down does not duplicate activation. | Counter keyboard proof | Repeat/focus/disabled/stale proof | M4C5 Enter-to-command trace | M4C5 | owner-accepted | Required |
-| KEY-04 | Space down establishes pressed ownership and matching key up enqueues `Activate`; cleanup occurs on cancellation or focus/lifetime loss. | Counter + runtime Space proof | Unmatched/lost-owner and direct-activation proof | M4C5 Space lifecycle trace | M4C5 | owner-accepted | Required |
+| KEY-03 | Enter enqueues generic `Activate` only on accepted, non-repeated, composition-inactive key down when no earlier eligible owner handles it; active IME and repeated down never derive generic activation. | Counter keyboard proof | Repeat/focus/disabled/stale proof | M4C5 Enter-to-command trace | M4C5 | owner-accepted | Required |
+| KEY-04 | Composition-inactive Space down establishes pressed ownership and matching non-composing key up enqueues `Activate`; composition-active key events never derive generic Space activation, and active releases retire any matching prior ownership without activation. Cleanup also occurs on cancellation or focus/lifetime loss. | Counter + runtime Space proof | Unmatched/lost-owner and direct-activation proof | M4C5 Space lifecycle trace | M4C5 | owner-accepted | Required |
 | TEXT-01 | Committed Unicode text routes C/T/B to the focused text-capable node, is cancelable, and claims no editable-text default in M4. | Downstream text-event proof | Keyboard-character synthesis and non-text target proof | M4C5 redacted text trace | M4C5 | owner-accepted | Required |
 | IME-01 | Composition start routes C/T/B and binds a session to the exact focused mounted generation that accepts it. | Runtime + downstream IME proof | No-focus/ineligible/stale-owner proof | M4C5 composition-start trace | M4C5 | owner-accepted | Required |
 | IME-02 | Composition update routes to the exact live owner and maintains supplied preedit/range bookkeeping without editable-text behavior. | Runtime + downstream IME proof | Mismatched generation and retarget proof | M4C5 redacted composition-update trace | M4C5 | owner-accepted | Required |
@@ -216,6 +216,26 @@ rows, and `cargo validate` must pass at the exact reviewed head.
 | AUTOMATION-04 | A resolved target that becomes stale is rejected without retargeting to a replacement. | Public/runtime automation proof | Generation-reuse proof | M4C5 stale-target trace | M4C5 | owner-accepted | Required |
 | ACCESS-01 | A unique live semantic identity resolves to its exact mounted target and submits the canonical semantic command without direct activation. | M5 semantic/accessibility conformance | Direct-activation bypass, foreign identity, and wrong-target proof | M5 resolution-to-command trace | M5 | owner-accepted | M5 gate |
 | ACCESS-02 | Missing, stale, foreign, or ambiguous semantic identity returns a structured outcome, submits no command, and never retargets a replacement. | M5 semantic/accessibility rejection conformance | Replacement-generation and first/last-match rejection proof | M5 semantic-rejection trace | M5 | owner-accepted | M5 gate |
+
+**Approved #485 keyboard-default qualification (2026-10-20, A1/B1).** After
+M10 editor-owned and routed widget/application-shortcut handling, the single M4
+generic keyboard fallback MUST NOT reserve, claim, or emit focus-navigation or
+activation commands for `KeyboardCompositionState::Active` events, regardless of
+widget type. This includes non-editor Tab/directional arrows/Enter and derived
+Space activation; accepted M10 editing, composition lifetime, and explicit
+routed handling remain under their existing owners. The generic directional
+arrow fallback MUST require `KeyModifiers::NONE`; otherwise the modified
+arrow remains available to an eligible editor, widget, or application shortcut,
+and unclaimed input remains nonexclusive. Ordinary unmodified arrows,
+composition-inactive Enter, and Shift+Tab retain their established semantics.
+Prediction/admission and the actual default collector MUST make the same
+decision and report accurate M13 settlement/finality. Required executable
+positive/negative proof: restored #483 ComboBox originals,
+`input_arbitration_classification` public claim cases, runtime Space lifetime,
+and existing M10/shortcut/M4 focus regression suites. See [owner decision
+#485](https://github.com/dornglut/runen-ui/issues/485#issuecomment-6287687933).
+This is a qualification of KEY-01/03/04 and does not change the 245-row
+historical M4 acceptance inventory.
 
 ## M4B — accepted application work and deterministic scheduler
 
