@@ -8,8 +8,8 @@ use runenui_core::{
     CommandOrigin, CommittedTextEvent, CompositionCancel, CompositionCancelReason, CompositionEnd,
     CompositionEvent, CompositionGeneration, CompositionRange, CompositionStart, CompositionUpdate,
     ElementId, FocusGroupActivationPolicy, HostProtocol, InputDeviceId, KeyModifiers,
-    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, MonotonicInstant, PhysicalKey, SemanticCommand,
-    ShortcutBinding, UiEvent, WorkSequence,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, MonotonicInstant,
+    PhysicalKey, SemanticCommand, ShortcutBinding, UiEvent, WorkSequence,
 };
 
 use crate::{
@@ -1254,7 +1254,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         // A committed text-edit default is already owned by the editor.
         // Ordinary outputs and callback invocation alone cannot claim gameplay.
-        let space_active = space_owner_before
+        // Composition-active Space can retire an existing press, but does not
+        // own a generic activation claim or default output.
+        let space_active = !matches!(
+            &payload,
+            InputEnvelopePayload::Keyboard(event)
+                if event.composition_state() == KeyboardCompositionState::Active
+        ) && (space_owner_before
             || matches!(
                 &payload,
                 InputEnvelopePayload::Keyboard(event)
@@ -1262,7 +1268,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         && self.space_ownership.as_ref().is_some_and(|owner| {
                             owner.target == target && owner.device_id == event.device_id()
                         })
-            );
+            ));
         if space_active {
             reasons.push(crate::UiInputClaimReason::ActivationDefault);
         }
