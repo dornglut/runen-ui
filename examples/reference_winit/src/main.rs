@@ -25,7 +25,8 @@ use accessibility::{AccessibilityEvent, SemanticAdapter};
 use device_identity::{DeviceIdentityError, DeviceIdentityMap};
 use framework_services::NativeFrameworkServices;
 use keyboard_input::{
-    KeyboardIngressDiagnostic, KeyboardInputOutcome, KeyboardInputState, NativeKeyTransition,
+    KeyboardDownDecision, KeyboardIngressDiagnostic, KeyboardInputOutcome, KeyboardInputState,
+    NativeKeyTransition,
 };
 use mouse_input::{
     MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
@@ -1425,27 +1426,33 @@ impl ReferenceHost {
         self.request_pending_redraw();
     }
 
+    /// Queue admission is not M13 processing/finality. Return the exact
+    /// pre-queue disposition to the adapter only for the original Down.
     fn submit_keyboard_event(
         &mut self,
         event_loop: &ActiveEventLoop,
         event: KeyboardEvent,
         stage: &str,
-    ) -> bool {
+    ) -> Option<KeyboardDownDecision> {
         proof!("stage=keyboard_translated source={stage:?} event={event:?}");
         match self.runtime.submit_keyboard(event) {
-            Ok(_) => true,
-            Err(error) if error.kind() == SubmitKeyboardErrorKind::NoFocusedTarget => {
+            Ok(_) => Some(KeyboardDownDecision::Queued),
+            Err(error)
+                if error.kind() == SubmitKeyboardErrorKind::NoFocusedTarget
+                    && error.event().phase() == runenui_core::KeyboardPhase::Down
+                    && !error.event().is_repeat() =>
+            {
                 self.note_keyboard_ingress_diagnostic(
                     KeyboardIngressDiagnostic::NoFocusedRuntimeTarget,
                 );
-                true
+                Some(KeyboardDownDecision::RejectedBeforeQueue)
             }
             Err(error) => {
                 self.fail(
                     event_loop,
                     &format!("{stage} could not enter runtime input: {error}"),
                 );
-                false
+                None
             }
         }
     }
@@ -1946,15 +1953,28 @@ impl ReferenceHost {
     }
 
     fn cancel_keyboard_authority(&mut self, event_loop: &ActiveEventLoop, reason: &str) -> bool {
-        let events = self
+        let events = match self
             .keyboard
-            .cancel_all(self.modifiers, self.text_input.keyboard_composition_state());
+            .cancel_all(self.modifiers, self.text_input.keyboard_composition_state())
+        {
+            Ok(events) => events,
+            Err(error) => {
+                self.fail(
+                    event_loop,
+                    &format!("unresolved native key admission at {reason}: {error:?}"),
+                );
+                return false;
+            }
+        };
         if events.is_empty() {
             return true;
         }
         eprintln!("reference_winit keyboard lifetimes cancelled: {reason}");
         for event in events {
-            if !self.submit_keyboard_event(event_loop, event, "native keyboard cancellation") {
+            if self
+                .submit_keyboard_event(event_loop, event, "native keyboard cancellation")
+                .is_none()
+            {
                 return false;
             }
         }
@@ -2206,6 +2226,10 @@ impl ReferenceHost {
         true
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one native callback must keep original admission, held-repeat, text, and failure ordering correlated"
+    )]
     fn handle_keyboard_input(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -2247,7 +2271,13 @@ impl ReferenceHost {
         let Some(device_id) = self.resolve_native_device_id(event_loop, native_device_id) else {
             return;
         };
-        if matches!(event.state, ElementState::Pressed)
+        // No new UI work is required for a repeat when the native reference
+        // host has no focused target. Preserve the adapter's original key
+        // lifetime; a later Up/device loss still owns its terminal path.
+        // Original nonrepeat Down MUST enter the adapter and canonical runtime
+        // so a genuine NoFocusedTarget rejection is explicitly acknowledged.
+        if event.repeat
+            && matches!(event.state, ElementState::Pressed)
             && !is_synthetic
             && self.runtime.focus().focused_node().is_none()
         {
@@ -2263,7 +2293,10 @@ impl ReferenceHost {
             .keyboard
             .key_input(device_id, &transition, self.modifiers, composition);
         match outcome {
-            KeyboardInputOutcome::Submit(keyboard_event) => {
+            KeyboardInputOutcome::Submit {
+                event: keyboard_event,
+                down_admission,
+            } => {
                 let committed_text = keyboard_committed_text_candidate(
                     event.state,
                     is_synthetic,
@@ -2274,11 +2307,20 @@ impl ReferenceHost {
                 )
                 .map(str::to_owned);
                 self.last_keyboard_ingress_diagnostic = None;
-                if !self.submit_keyboard_event(
+                let Some(decision) = self.submit_keyboard_event(
                     event_loop,
                     keyboard_event,
                     "native keyboard translation",
-                ) {
+                ) else {
+                    return;
+                };
+                if let Some(admission) = down_admission
+                    && let Err(error) = self.keyboard.resolve_down_admission(admission, decision)
+                {
+                    self.fail(
+                        event_loop,
+                        &format!("original keyboard admission lifetime changed: {error:?}"),
+                    );
                     return;
                 }
                 if let Some(text) = committed_text
@@ -2294,6 +2336,13 @@ impl ReferenceHost {
             }
             KeyboardInputOutcome::Suppressed(diagnostic) => {
                 self.note_keyboard_ingress_diagnostic(diagnostic);
+                return;
+            }
+            KeyboardInputOutcome::Failed(failure) => {
+                self.fail(
+                    event_loop,
+                    &format!("native keyboard ingress failed closed: {failure:?}"),
+                );
                 return;
             }
         }
