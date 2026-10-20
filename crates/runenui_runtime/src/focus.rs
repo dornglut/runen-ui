@@ -1144,23 +1144,24 @@ mod focus_session_allocation_tests {
 
     #[test]
     fn exact_focus_step_exhaustion_rejects_before_canonical_focus_mutation() {
-        let max_sequence =
-            WorkSequence::__runtime_new(NonZeroU64::new(u64::MAX).unwrap_or_else(|| unreachable!()));
+        let prior_sequence = WorkSequence::__runtime_new(
+            NonZeroU64::new(u64::MAX - 1).unwrap_or_else(|| unreachable!()),
+        );
         let mut focus = FocusState::new();
         focus.last_session = Some(FocusSession {
-            sequence: max_sequence,
+            sequence: prior_sequence,
             step: u64::MAX - 1,
         });
         let unchanged = focus.clone();
-        assert!(focus.can_reserve_steps(max_sequence, 1));
-        assert!(!focus.can_reserve_steps(max_sequence, 2));
+        assert!(focus.can_reserve_steps(prior_sequence, 1));
+        assert!(!focus.can_reserve_steps(prior_sequence, 2));
         assert_eq!(focus, unchanged, "capacity refusal may not mutate focus");
-        // Last canonical work ID is a valid committed lifetime: the
-        // queue's own checked exhaustion, not an invented wrap to 1, retires it.
-        let fresh = WorkSequence::__runtime_new(
-            NonZeroU64::new(u64::MAX - 1).unwrap_or_else(|| unreachable!()),
+        // Reaching the last work sequence starts a new exact lifetime without
+        // wrapping the ordinal of the prior canonical work item.
+        let max_sequence = WorkSequence::__runtime_new(
+            NonZeroU64::new(u64::MAX).unwrap_or_else(|| unreachable!()),
         );
-        assert!(focus.can_reserve_steps(fresh, 2));
+        assert!(focus.can_reserve_steps(max_sequence, 2));
         assert_eq!(focus.session(), None);
     }
 }
