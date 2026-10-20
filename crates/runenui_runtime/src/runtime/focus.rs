@@ -980,7 +980,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Some(focused) = self.focus.focused_node().cloned() else {
             return;
         };
-        let available = self.tree.text_input_probe(&focused)
+        let available = self
+            .tree
+            .text_input_probe(&focused)
             .is_ok_and(|capability| capability.accepts_committed_text());
         if self.focus.observe_text_capability(available) {
             self.queue.invalidate_queued_text_for(&focused);

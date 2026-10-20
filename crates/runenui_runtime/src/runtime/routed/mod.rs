@@ -186,7 +186,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         trace_reservation: crate::trace::TraceReservation,
     ) {
         let entry_proof = focus_request_override.as_ref().and_then(|override_focus| {
-            override_focus.presentation_entry.clone().zip(override_focus.target.clone())
+            override_focus
+                .presentation_entry
+                .clone()
+                .zip(override_focus.target.clone())
         });
         let focus_before = self.focus.session();
         let mut facts = RoutedIngressFacts::new(

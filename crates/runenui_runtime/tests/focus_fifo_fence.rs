@@ -202,7 +202,9 @@ fn focus_transfer_rejects_newer_waiting_input_once_and_never_delivers_to_b() {
         assert_eq!(entries[0].ownership_revision(), revision);
         assert_eq!(
             entries[0].finality(),
-            &UiInputFinality::ProcessingRejected(UiInputProcessingRejection::FocusBindingInvalidated)
+            &UiInputFinality::ProcessingRejected(
+                UiInputProcessingRejection::FocusBindingInvalidated
+            )
         );
         assert_eq!(runtime.state().log.borrow().len(), 0);
         assert_eq!(runtime.status(), RuntimeStatus::Running);
@@ -268,7 +270,9 @@ fn same_mounted_a_b_a_reentry_rejects_old_keyboard_and_text_but_accepts_fresh() 
             assert_eq!(entries[index].sequence(), *sequence);
             assert_eq!(
                 entries[index].finality(),
-                &UiInputFinality::ProcessingRejected(UiInputProcessingRejection::FocusBindingInvalidated)
+                &UiInputFinality::ProcessingRejected(
+                    UiInputProcessingRejection::FocusBindingInvalidated
+                )
             );
         }
         for (index, sequence) in [new_key.sequence(), new_text.sequence()].iter().enumerate() {
@@ -306,7 +310,9 @@ fn unchanged_focused_recipient_losing_text_capability_rejects_at_dispatch() {
         assert_eq!(entries[0].sequence(), text.sequence());
         assert_eq!(
             entries[0].finality(),
-            &UiInputFinality::ProcessingRejected(UiInputProcessingRejection::CommittedTextRecipientUnavailable)
+            &UiInputFinality::ProcessingRejected(
+                UiInputProcessingRejection::CommittedTextRecipientUnavailable
+            )
         );
         assert_eq!(runtime.state().log.borrow().len(), 0);
         runtime

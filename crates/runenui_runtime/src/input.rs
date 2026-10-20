@@ -721,6 +721,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .push_input_preflighted(
                 target,
                 InputEnvelopePayload::Composition(event),
+                None,
                 instant,
                 pending_bound,
                 reservation,
@@ -891,6 +892,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .push_input_preflighted(
                 owner,
                 InputEnvelopePayload::Composition(event),
+                None,
                 instant,
                 parent,
                 reservation,
@@ -1116,25 +1118,36 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // No callback, default or editor is allowed before ownership proof.
         if !matches!(&payload, InputEnvelopePayload::Composition(_)) {
             let rejection = match self.tree.target_status(&target) {
-                crate::mounted::TargetStatus::Missing =>
-                    Some(crate::UiInputProcessingRejection::MissingTarget),
-                crate::mounted::TargetStatus::Stale =>
-                    Some(crate::UiInputProcessingRejection::StaleTarget),
-                crate::mounted::TargetStatus::Foreign =>
-                    Some(crate::UiInputProcessingRejection::ForeignTarget),
+                crate::mounted::TargetStatus::Missing => {
+                    Some(crate::UiInputProcessingRejection::MissingTarget)
+                }
+                crate::mounted::TargetStatus::Stale => {
+                    Some(crate::UiInputProcessingRejection::StaleTarget)
+                }
+                crate::mounted::TargetStatus::Foreign => {
+                    Some(crate::UiInputProcessingRejection::ForeignTarget)
+                }
                 crate::mounted::TargetStatus::Live => {
                     let valid = match focus_binding.as_ref() {
-                        Some(crate::queue::FocusInputBinding::Committed(session)) =>
-                            self.focus.focused_node() == Some(&target) && self.focus.session() == Some(*session),
-                        Some(crate::queue::FocusInputBinding::PendingEntry { request }) =>
-                            self.focus.focused_node() == Some(&target) && self.focus.entry_matches(*request),
+                        Some(crate::queue::FocusInputBinding::Committed(session)) => {
+                            self.focus.focused_node() == Some(&target)
+                                && self.focus.session() == Some(*session)
+                        }
+                        Some(crate::queue::FocusInputBinding::PendingEntry { request }) => {
+                            self.focus.focused_node() == Some(&target)
+                                && self.focus.entry_matches(*request)
+                        }
                         Some(crate::queue::FocusInputBinding::Uncertified) | None => false,
                     };
                     if !valid {
                         Some(crate::UiInputProcessingRejection::FocusBindingInvalidated)
                     } else if matches!(&payload, InputEnvelopePayload::CommittedText(_))
-                        && (text_revoked || !self.tree.text_input_probe(&target)
-                            .is_ok_and(|cap| cap.accepts_committed_text())) {
+                        && (text_revoked
+                            || !self
+                                .tree
+                                .text_input_probe(&target)
+                                .is_ok_and(|cap| cap.accepts_committed_text()))
+                    {
                         Some(crate::UiInputProcessingRejection::CommittedTextRecipientUnavailable)
                     } else {
                         None

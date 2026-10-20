@@ -609,7 +609,10 @@ impl<Action> WorkQueue<Action> {
 
     pub(crate) fn pending_presentation_entry(
         &self,
-    ) -> (usize, Option<(WorkSequence, MountedNodeId, PresentationFocusEntry)>) {
+    ) -> (
+        usize,
+        Option<(WorkSequence, MountedNodeId, PresentationFocusEntry)>,
+    ) {
         let mut count = 0;
         let mut candidate = None;
         for envelope in &self.waiting {
@@ -627,7 +630,11 @@ impl<Action> WorkQueue<Action> {
         (count, candidate)
     }
 
-    pub(crate) fn pending_committed_text_for(&self, owner: &MountedNodeId, session: Option<FocusSession>) -> usize {
+    pub(crate) fn pending_committed_text_for(
+        &self,
+        owner: &MountedNodeId,
+        session: Option<FocusSession>,
+    ) -> usize {
         self.waiting
             .iter()
             .filter(|envelope| {
