@@ -221,6 +221,8 @@ mod wake;
 mod work;
 
 pub use app::AppRuntime;
+#[cfg(feature = "controlled-transaction-prototype")]
+pub use runtime::{ControlledProcessingRefusal, ControlledProcessingRefusalReason};
 pub use clock::{ManualClock, MonotonicClock, MonotonicInstant, MonotonicTimeError};
 pub use command::{
     CommandSubmission, SubmitCommandError, SubmitCommandErrorKind, UnacceptedCommand,

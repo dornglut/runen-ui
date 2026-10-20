@@ -110,15 +110,16 @@ pub(crate) fn process_application_action<App: UiApp>(
         .as_mut()
         .unwrap_or_else(|| unreachable!("live runtime retains application state"));
     #[cfg(feature = "controlled-transaction-prototype")]
-    let (effects, edit_resolution) = if let Some((prepared_state, _)) = controlled.as_ref() {
+    let mut controlled_plan = None;
+    #[cfg(feature = "controlled-transaction-prototype")]
+    let (effects, edit_resolution) = if let Some((prepared_state, plan)) = controlled {
         // The already-owned prepared application value is published only after
         // structural and routed-output capacity checks. No second update call.
         // This is still a LIMITED proof: other post-mutation failure classes
         // require a complete controlled mounted/route staging cutover.
         let _ = action;
-        let _ = prepared_state;
-        let (next_state, _) = controlled.unwrap_or_else(|| unreachable!("present"));
-        *app_state = next_state;
+        controlled_plan = Some(plan);
+        *app_state = prepared_state;
         ().into_update_output().__runtime_into_parts()
     } else {
         App::update(app_state, action).into_update_output().__runtime_into_parts()
@@ -155,6 +156,7 @@ pub(crate) fn process_application_action<App: UiApp>(
             .with_reconciliation(Some(before), None)
             .with_target(target.clone()),
     );
+    #[cfg(not(feature = "controlled-transaction-prototype"))]
     let transient = App::root(app_state).into_element();
     let previous_focus = runtime.focus.focused_node().cloned();
     let presentation_focus_membership =
@@ -175,10 +177,20 @@ pub(crate) fn process_application_action<App: UiApp>(
     let mut lifecycle_invalidated = Vec::new();
     let mut lifecycle_invalidated_identities = Vec::new();
     let mounted_public_slot_limit = runtime.mounted_public_slot_limit;
-    let Ok(reconciliation_plan) = runtime
+    #[cfg(feature = "controlled-transaction-prototype")]
+    let result = if let Some(plan) = controlled_plan {
+        Ok(plan)
+    } else {
+        runtime.tree.plan_reconciliation(
+            App::root(app_state).into_element(),
+            mounted_public_slot_limit,
+        )
+    };
+    #[cfg(not(feature = "controlled-transaction-prototype"))]
+    let result = runtime
         .tree
-        .plan_reconciliation(transient, mounted_public_slot_limit)
-    else {
+        .plan_reconciliation(transient, mounted_public_slot_limit);
+    let Ok(reconciliation_plan) = result else {
         let reason =
             mutation_phase.terminal_reason(RuntimeTerminalReason::MountedIdentityExhausted);
         let cancelled = runtime.enter_terminal(reason, 0);

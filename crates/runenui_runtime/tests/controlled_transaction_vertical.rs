@@ -159,7 +159,7 @@ impl UiApp for App {
         };
         // This opt-in closed authoring contract allocates a DISTINCT state.
         // The committed state and retained non-Clone receiver are untouched.
-        Some(Self::State {
+        Some(State {
             enabled: false,
             revision: state.revision + 1,
             token: Box::new(*state.token + **payload),
@@ -172,7 +172,9 @@ impl UiApp for App {
 
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
-            Action::Disable(_) => panic!("controlled disablement MUST NOT execute unrestricted updater"),
+            Action::Disable(_) => {
+                panic!("controlled disablement MUST NOT execute unrestricted updater")
+            }
             Action::Follower => {
                 state.processed_followers += 1;
                 state.processed.push("follower");
@@ -219,7 +221,6 @@ fn settle(runtime: &mut AppRuntime<App>) {
     assert!(report.is_quiescent());
 }
 
-
 #[test]
 fn accepted_nonclone_action_refuses_without_mutation_and_retries_in_fifo() {
     for (capacity, followers) in [(16, 9), (4096, 2049)] {
@@ -233,43 +234,66 @@ fn accepted_nonclone_action_refuses_without_mutation_and_retries_in_fifo() {
         );
         settle(&mut runtime);
         let editor = target(&mut runtime, "editor");
-        runtime.submit_command(
-            editor,
-            SemanticCommand::RequestFocus,
-            CommandOrigin::programmatic(),
-        ).unwrap_or_else(|_| unreachable!("focus"));
+        runtime
+            .submit_command(
+                editor,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("focus"));
         settle(&mut runtime);
-        runtime.start_composition(None).unwrap_or_else(|_| unreachable!("start active IME"));
+        runtime
+            .start_composition(None)
+            .unwrap_or_else(|_| unreachable!("start active IME"));
         settle(&mut runtime);
         let first = Box::new(11);
         let original_ptr = std::ptr::from_ref(first.as_ref());
-        let original_sequence = runtime.submit_action(Action::Disable(first))
+        let original_sequence = runtime
+            .submit_action(Action::Disable(first))
             .unwrap_or_else(|_| unreachable!("admitted original"));
         for _ in 0..followers {
-            runtime.submit_action(Action::Follower)
+            runtime
+                .submit_action(Action::Follower)
                 .unwrap_or_else(|_| unreachable!("accepted FIFO predecessor"));
         }
-        let result = runtime.pump(PumpBudget::new(1, 0, 0, 0))
-            .unwrap_or_else(|_| unreachable!("pump one")).report().to_owned();
+        let result = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("pump one"))
+            .report()
+            .to_owned();
         assert_eq!(result.processed_envelopes(), 1);
         assert_eq!(runtime.status(), RuntimeStatus::Running);
         assert!(runtime.state().enabled);
         assert_eq!(runtime.state().revision, 0);
         assert_eq!(*runtime.state().token, 7);
-        assert!(runtime.state().observed.borrow().is_empty(),
-            "no application/mounted callback or FocusOut can leak at refusal");
-        assert!(runtime.focused_text_input_capability().accepts_composition());
+        assert!(
+            runtime.state().observed.borrow().is_empty(),
+            "no application/mounted callback or FocusOut can leak at refusal"
+        );
+        assert!(
+            runtime
+                .focused_text_input_capability()
+                .accepts_composition()
+        );
         let mut failures = runtime.take_controlled_processing_refusals();
         assert_eq!(failures.len(), 1);
-        let failure = failures.pop().unwrap_or_else(|| unreachable!("one failure"));
+        let failure = failures
+            .pop()
+            .unwrap_or_else(|| unreachable!("one failure"));
         assert_eq!(failure.sequence, original_sequence);
-        assert_eq!(failure.reason, ControlledProcessingRefusalReason::OrdinaryQueuePressure);
+        assert_eq!(
+            failure.reason,
+            ControlledProcessingRefusalReason::OrdinaryQueuePressure
+        );
         let original = match failure.original {
             Action::Disable(value) => value,
             _ => unreachable!("returned original owned action"),
         };
-        assert_eq!(std::ptr::from_ref(original.as_ref()), original_ptr,
-            "non-Clone original identity is returned, not reconstructed");
+        assert_eq!(
+            std::ptr::from_ref(original.as_ref()),
+            original_ptr,
+            "non-Clone original identity is returned, not reconstructed"
+        );
         assert_eq!(*original, 11);
 
         // Every earlier already accepted FIFO follower processes as before;
@@ -278,20 +302,42 @@ fn accepted_nonclone_action_refuses_without_mutation_and_retries_in_fifo() {
         assert_eq!(runtime.state().processed_followers, followers);
         assert_eq!(runtime.state().processed, vec!["follower"; followers]);
         assert!(runtime.state().observed.borrow().is_empty());
-        runtime.submit_action(Action::Disable(original))
+        runtime
+            .submit_action(Action::Disable(original))
             .unwrap_or_else(|_| unreachable!("accepted retry"));
-        let result = runtime.pump(PumpBudget::new(1, 0, 0, 0))
-            .unwrap_or_else(|_| unreachable!("one retry")).report().to_owned();
+        let result = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("one retry"))
+            .report()
+            .to_owned();
         assert_eq!(result.processed_envelopes(), 1);
         assert_eq!(runtime.status(), RuntimeStatus::Running);
         assert!(!runtime.state().enabled);
         assert_eq!(runtime.state().revision, 1);
         assert_eq!(*runtime.state().token, 18);
         let observed = runtime.state().observed.borrow();
-        assert!(observed.contains(&"mounted-update"), "real retained update at commit");
-        assert_eq!(observed.iter().filter(|event| **event == "ancestor-ime-cancel").count(), 2);
-        assert_eq!(observed.iter().filter(|event| **event == "ancestor-focus-out").count(), 2);
-        assert!(!observed.contains(&"application-update"), "legacy update was never invoked");
+        assert!(
+            observed.contains(&"mounted-update"),
+            "real retained update at commit"
+        );
+        assert_eq!(
+            observed
+                .iter()
+                .filter(|event| **event == "ancestor-ime-cancel")
+                .count(),
+            2
+        );
+        assert_eq!(
+            observed
+                .iter()
+                .filter(|event| **event == "ancestor-focus-out")
+                .count(),
+            2
+        );
+        assert!(
+            !observed.contains(&"application-update"),
+            "legacy update was never invoked"
+        );
         drop(observed);
         settle(&mut runtime);
         assert_eq!(runtime.state().processed_mounted, 1);
