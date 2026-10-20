@@ -1728,16 +1728,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         match event.logical_key() {
             LogicalKey::Tab if event.modifiers().shift() => Some(SemanticCommand::FocusPrevious),
             LogicalKey::Tab => Some(SemanticCommand::FocusNext),
-            LogicalKey::ArrowLeft if event.modifiers() == KeyModifiers::NONE => {
+            LogicalKey::ArrowLeft if event.modifiers().bits() == KeyModifiers::NONE.bits() => {
                 Some(SemanticCommand::FocusLeft)
             }
-            LogicalKey::ArrowRight if event.modifiers() == KeyModifiers::NONE => {
+            LogicalKey::ArrowRight if event.modifiers().bits() == KeyModifiers::NONE.bits() => {
                 Some(SemanticCommand::FocusRight)
             }
-            LogicalKey::ArrowUp if event.modifiers() == KeyModifiers::NONE => {
+            LogicalKey::ArrowUp if event.modifiers().bits() == KeyModifiers::NONE.bits() => {
                 Some(SemanticCommand::FocusUp)
             }
-            LogicalKey::ArrowDown if event.modifiers() == KeyModifiers::NONE => {
+            LogicalKey::ArrowDown if event.modifiers().bits() == KeyModifiers::NONE.bits() => {
                 Some(SemanticCommand::FocusDown)
             }
             LogicalKey::Escape => Some(SemanticCommand::CancelOrBack),
