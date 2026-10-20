@@ -268,9 +268,7 @@ fn same_mounted_a_b_a_reentry_rejects_old_keyboard_and_text_but_accepts_fresh() 
             assert_eq!(entries[index].sequence(), *sequence);
             assert_eq!(
                 entries[index].finality(),
-                &UiInputFinality::ProcessingRejected(
-                    UiInputProcessingRejection::StaleTarget
-                )
+                &UiInputFinality::ProcessingRejected(UiInputProcessingRejection::StaleTarget)
             );
         }
         for (index, sequence) in [new_key.sequence(), new_text.sequence()].iter().enumerate() {
@@ -308,9 +306,7 @@ fn unchanged_focused_recipient_losing_text_capability_rejects_at_dispatch() {
         assert_eq!(entries[0].sequence(), text.sequence());
         assert_eq!(
             entries[0].finality(),
-            &UiInputFinality::ProcessingRejected(
-                UiInputProcessingRejection::StaleTarget
-            )
+            &UiInputFinality::ProcessingRejected(UiInputProcessingRejection::StaleTarget)
         );
         assert_eq!(runtime.state().log.borrow().len(), 0);
         runtime
@@ -354,10 +350,29 @@ fn same_owner_noop_focus_request_does_not_invalidate_following_keyboard() {
 #[test]
 fn revoked_then_restored_capability_never_revives_a_queued_text() {
     let mut runtime = focused_a(0);
-    runtime.submit_action(Action::RevokeText).unwrap_or_else(|_| unreachable!());
-    runtime.submit_action(Action::RestoreText).unwrap_or_else(|_| unreachable!());
-    let old = runtime.submit_text(CommittedTextEvent::new("sensitive", None).unwrap_or_else(|_| unreachable!())).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_action(Action::RevokeText)
+        .unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_action(Action::RestoreText)
+        .unwrap_or_else(|_| unreachable!());
+    let old = runtime
+        .submit_text(CommittedTextEvent::new("sensitive", None).unwrap_or_else(|_| unreachable!()))
+        .unwrap_or_else(|_| unreachable!());
     let result = runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
-    assert!(matches!(settlements(&result).iter().find(|s| s.sequence()==old.sequence()).unwrap_or_else(|| unreachable!()).finality(), UiInputFinality::ProcessingRejected(_)), "queued text must not revive after revoke and restore");
-    assert!(runtime.state().log.borrow().is_empty(), "revoked text cannot reach callbacks");
+    assert!(
+        matches!(
+            settlements(&result)
+                .iter()
+                .find(|s| s.sequence() == old.sequence())
+                .unwrap_or_else(|| unreachable!())
+                .finality(),
+            UiInputFinality::ProcessingRejected(_)
+        ),
+        "queued text must not revive after revoke and restore"
+    );
+    assert!(
+        runtime.state().log.borrow().is_empty(),
+        "revoked text cannot reach callbacks"
+    );
 }
