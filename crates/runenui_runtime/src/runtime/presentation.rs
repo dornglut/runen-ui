@@ -376,6 +376,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .collect()
     }
 
+    #[allow(clippy::too_many_lines, reason = "one published presentation lifecycle owns exact entry and restoration synchronization")]
     fn synchronize_published_presentation_lifetimes(
         &mut self,
         lifecycle: &mut PresentationLifecycleState,

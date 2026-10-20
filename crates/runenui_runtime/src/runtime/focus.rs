@@ -689,6 +689,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    #[allow(clippy::too_many_lines, reason = "one routed focus transition must preserve original notification sequencing")]
     pub(in crate::runtime) fn commit_focus_transition(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
@@ -986,7 +987,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let available = self
             .tree
             .text_input_probe(&focused)
-            .is_ok_and(|capability| capability.accepts_committed_text());
+            .is_ok_and(WidgetTextInput::accepts_committed_text);
         if self.focus.observe_text_capability(available) {
             self.queue.invalidate_queued_text_for(&focused);
         }

@@ -13,7 +13,7 @@ use crate::{LogicalRect, MountedNodeId, WorkSequence, mounted::MountedTree};
 /// Exact focus occurrence: a non-reused canonical work identity plus a
 /// checked within-turn ordinal. No unrelated focus or revision authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct FocusSession {
+pub struct FocusSession {
     sequence: WorkSequence,
     step: u64,
 }
@@ -171,7 +171,7 @@ impl FocusState {
         self.completed_entry = self.session.map(|session| (request, session));
     }
 
-    pub(crate) fn observe_text_capability(&mut self, available: bool) -> bool {
+    pub(crate) const fn observe_text_capability(&mut self, available: bool) -> bool {
         let revoked = self.committed_text_capable && !available;
         self.committed_text_capable = available;
         revoked
@@ -189,7 +189,7 @@ impl FocusState {
             .last_session
             .filter(|last| last.sequence == sequence)
             .map_or(Some(0), |last| last.step.checked_add(1))
-            .expect("a canonical work turn has a finite focus-transition bound");
+            .unwrap_or_else(|| unreachable!("canonical focus steps were checked before mutation"));
         let next = FocusSession { sequence, step };
         self.last_session = Some(next);
         self.session = target.as_ref().map(|_| next);

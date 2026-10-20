@@ -562,23 +562,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Err(SubmitKeyboardErrorKind::NoFocusedTarget) => None,
                 Err(kind) => return Err(SubmitKeyboardError::new(kind, event)),
             };
-            match self.certified_pending_keyboard_focus_entry() {
-                Some((request, destination, presentation)) => (
+            if let Some((request, destination, presentation)) =
+                self.certified_pending_keyboard_focus_entry()
+            {
+                (
                     destination,
                     crate::queue::FocusInputBinding::PendingEntry {
                         request,
                         presentation,
                     },
-                ),
-                None => {
-                    let target = target.ok_or_else(|| {
-                        SubmitKeyboardError::new(
-                            SubmitKeyboardErrorKind::NoFocusedTarget,
-                            event.clone(),
-                        )
-                    })?;
-                    (target, crate::queue::FocusInputBinding::Uncertified)
-                }
+                )
+            } else {
+                let target = target.ok_or_else(|| {
+                    SubmitKeyboardError::new(
+                        SubmitKeyboardErrorKind::NoFocusedTarget,
+                        event.clone(),
+                    )
+                })?;
+                (target, crate::queue::FocusInputBinding::Uncertified)
             }
         } else {
             let target = current.map_err(|kind| SubmitKeyboardError::new(kind, event.clone()))?;
@@ -1166,7 +1167,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                             || !self
                                 .tree
                                 .text_input_probe(&target)
-                                .is_ok_and(|cap| cap.accepts_committed_text()))
+                                .is_ok_and(runenui_core::WidgetTextInput::accepts_committed_text))
                     {
                         Some(crate::UiInputProcessingRejection::CommittedTextRecipientUnavailable)
                     } else {

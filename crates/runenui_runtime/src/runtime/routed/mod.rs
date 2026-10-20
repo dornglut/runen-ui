@@ -268,16 +268,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 TraceRoutedIntegrityFailure::CommitInvariantFailure,
                 None,
             );
-        } else if let Some((entry, recipient)) = entry_proof {
-            if self.focus.focused_node() == Some(&recipient)
-                && self.focus.session().is_some()
-                && (self.focus.session() != focus_before
-                    || (entry.focused_session_at_request.is_some()
-                        && entry.focused_session_at_request == focus_before))
-                && self.presentation_entry_still_published(&entry)
-            {
-                self.focus.certify_entry(sequence);
-            }
+        } else if let Some((entry, recipient)) = entry_proof
+            && self.focus.focused_node() == Some(&recipient)
+            && self.focus.session().is_some()
+            && (self.focus.session() != focus_before
+                || (entry.focused_session_at_request.is_some()
+                    && entry.focused_session_at_request == focus_before))
+            && self.presentation_entry_still_published(&entry)
+        {
+            self.focus.certify_entry(sequence);
         }
     }
 

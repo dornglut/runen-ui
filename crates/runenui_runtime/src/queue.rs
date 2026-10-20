@@ -601,12 +601,11 @@ impl<Action> WorkQueue<Action> {
 
     pub(crate) fn invalidate_queued_text_for(&mut self, owner: &MountedNodeId) {
         for item in &mut self.waiting {
-            if let WorkEnvelope::Input(envelope) = item {
-                if envelope.target == *owner
-                    && matches!(envelope.payload, InputEnvelopePayload::CommittedText(_))
-                {
-                    envelope.text_revoked = true;
-                }
+            if let WorkEnvelope::Input(envelope) = item
+                && envelope.target == *owner
+                && matches!(envelope.payload, InputEnvelopePayload::CommittedText(_))
+            {
+                envelope.text_revoked = true;
             }
         }
     }
@@ -620,15 +619,13 @@ impl<Action> WorkQueue<Action> {
         let mut count = 0;
         let mut candidate = None;
         for envelope in &self.waiting {
-            if let WorkEnvelope::SemanticCommand(command) = envelope {
-                if let Some(override_focus) = command.focus_request_override.as_ref() {
-                    if let (Some(target), Some(entry)) =
-                        (&override_focus.target, &override_focus.presentation_entry)
-                    {
-                        count += 1;
-                        candidate = Some((command.sequence, target.clone(), entry.clone()));
-                    }
-                }
+            if let WorkEnvelope::SemanticCommand(command) = envelope
+                && let Some(override_focus) = command.focus_request_override.as_ref()
+                && let (Some(target), Some(entry)) =
+                    (&override_focus.target, &override_focus.presentation_entry)
+            {
+                count += 1;
+                candidate = Some((command.sequence, target.clone(), entry.clone()));
             }
         }
         (count, candidate)
