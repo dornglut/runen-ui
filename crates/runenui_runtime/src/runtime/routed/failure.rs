@@ -89,7 +89,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         RoutedFailureLineage::new(failure_parent)
     }
 
-    pub(super) fn poison_routed_facts(
+    pub(in crate::runtime) fn poison_routed_facts(
         &mut self,
         facts: &RoutedIngressFacts,
         failure: TraceRoutedIntegrityFailure,

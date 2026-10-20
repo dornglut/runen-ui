@@ -65,6 +65,7 @@ taffy = { version = "=0.14.0", default-features = false, features = ["flexbox", 
 
 [features]
 internal-test-seams = ["runenui_core/internal-test-seams", "runenui_text/internal-test-seams"]
+controlled-transaction-prototype = ["runenui_core/controlled-transaction-prototype"]
 
 [lints]
 workspace = true

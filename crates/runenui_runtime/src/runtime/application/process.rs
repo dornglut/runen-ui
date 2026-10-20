@@ -33,6 +33,44 @@ pub(crate) fn process_application_action<App: UiApp>(
         target,
         origin,
     } = envelope;
+    // #475 EXPERIMENT ONLY. This branch is entered from the actual canonical
+    // FIFO, after pop, but before recording commit trace or invoking a live
+    // application/widget mutation. The retained action stays owned for refusal.
+    #[cfg(feature = "controlled-transaction-prototype")]
+    let controlled = if let Some(prepared_state) =
+        App::controlled_prepare(runtime.state(), &action)
+    {
+        // Build the candidate structural tree without touching the committed
+        // arena or non-Clone retained resource. The constrained authoring
+        // contract forbids ambient effects during this evaluation.
+        let candidate = App::root(&prepared_state).into_element();
+        let candidate_plan = runtime
+            .tree
+            .plan_reconciliation(candidate, runtime.mounted_public_slot_limit);
+        let mandatory_slots = if runtime.focus.focused_node().is_some() {
+            runtime.limits.transaction_outputs().checked_mul(2)
+        } else {
+            Some(0)
+        };
+        let capacity_ok = mandatory_slots
+            .is_some_and(|slots| runtime.queue.preflight_commit(slots).is_ok());
+        if !capacity_ok || candidate_plan.is_err() {
+            runtime.controlled_refusals.push(super::super::ControlledProcessingRefusal {
+                sequence,
+                reason: if !capacity_ok {
+                    super::super::ControlledProcessingRefusalReason::OrdinaryQueuePressure
+                } else {
+                    super::super::ControlledProcessingRefusalReason::UnsupportedReconciliation
+                },
+                original: action,
+            });
+            return ProcessApplicationActionOutcome::Completed;
+        }
+        Some((prepared_state, candidate_plan.unwrap_or_else(|_| unreachable!("checked"))))
+    } else {
+        None
+    };
+
     let before = ReconciliationGeneration(runtime.generation);
     let Some(next) = runtime.next_generation() else {
         let reason = RuntimeTerminalReason::ReconciliationGenerationExhausted;
@@ -71,8 +109,23 @@ pub(crate) fn process_application_action<App: UiApp>(
         .state
         .as_mut()
         .unwrap_or_else(|| unreachable!("live runtime retains application state"));
-    let update_output = App::update(app_state, action).into_update_output();
-    let (effects, edit_resolution) = update_output.__runtime_into_parts();
+    #[cfg(feature = "controlled-transaction-prototype")]
+    let (effects, edit_resolution) = if let Some((prepared_state, _)) = controlled.as_ref() {
+        // The already-owned prepared application value is published only after
+        // structural and routed-output capacity checks. No second update call.
+        // This is still a LIMITED proof: other post-mutation failure classes
+        // require a complete controlled mounted/route staging cutover.
+        let _ = action;
+        let _ = prepared_state;
+        let (next_state, _) = controlled.unwrap_or_else(|| unreachable!("present"));
+        *app_state = next_state;
+        ().into_update_output().__runtime_into_parts()
+    } else {
+        App::update(app_state, action).into_update_output().__runtime_into_parts()
+    };
+    #[cfg(not(feature = "controlled-transaction-prototype"))]
+    let (effects, edit_resolution) =
+        App::update(app_state, action).into_update_output().__runtime_into_parts();
     mutation_phase = MutationPhase::Mutated;
     let resolution_cardinality_valid = match &origin {
         ApplicationActionOrigin::Ordinary => edit_resolution.is_none(),
@@ -270,19 +323,48 @@ pub(crate) fn process_application_action<App: UiApp>(
         } else {
             runenui_core::FocusReason::Removal
         };
-        let (trace_target, old_route, surface) =
-            previous_focus_trace.unwrap_or_else(|| (None, Vec::new(), None));
-        runtime.commit_reconciled_focus_cleanup(super::super::focus::ReconciledFocusCleanup {
-            old_route,
-            reason,
-            sequence,
-            causal_parent: transaction_parent,
-            instant: trace_transaction.logical_time(),
-            before,
-            after,
-            trace_target,
-            surface,
-        });
+        let routed = if reason == FocusReason::Disablement {
+            let cause = super::super::focus::InputLifetimeCleanupCause::new(
+                Some(sequence),
+                transaction_parent,
+                trace_transaction.logical_time(),
+                CommandOrigin::programmatic(),
+            );
+            match runtime.commit_live_reconciled_focus_out(cause) {
+                Ok(delivered) => delivered,
+                Err(failure) => {
+                    // Routed capacity exhaustion may already terminalize the runtime
+                    // with its exact reason. The outer application transaction
+                    // must report that same terminal reason to the pump.
+                    let reason = match runtime.status {
+                        RuntimeStatus::Terminal(reason) => reason,
+                        RuntimeStatus::Running | RuntimeStatus::Closed => {
+                            mutation_phase.terminal_reason(RuntimeTerminalReason::Poisoned)
+                        }
+                    };
+                    let cancelled =
+                        runtime.enter_terminal_with_parent(reason, 0, failure.causal_parent());
+                    return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+                }
+            }
+        } else {
+            false
+        };
+        if !routed {
+            let (trace_target, old_route, surface) =
+                previous_focus_trace.unwrap_or_else(|| (None, Vec::new(), None));
+            runtime.commit_reconciled_focus_cleanup(super::super::focus::ReconciledFocusCleanup {
+                old_route,
+                reason,
+                sequence,
+                causal_parent: transaction_parent,
+                instant: trace_transaction.logical_time(),
+                before,
+                after,
+                trace_target,
+                surface,
+            });
+        }
     } else if retained_focus {
         runtime.trace.record_draft(
             trace_transaction

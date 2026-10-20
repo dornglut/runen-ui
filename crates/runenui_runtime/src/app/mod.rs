@@ -96,6 +96,16 @@ impl<App: UiApp> AppRuntime<App> {
             .submit_action(action, TraceActionCategory::DirectSubmission, None, None)
     }
 
+    /// #475 EXPERIMENT ONLY: return the exact action and original accepted
+    /// work sequence for a nonterminal processing refusal. Not an ingress
+    /// rejection and not a native M13 input settlement.
+    #[cfg(feature = "controlled-transaction-prototype")]
+    pub fn take_controlled_processing_refusals(
+        &mut self,
+    ) -> Vec<crate::runtime::ControlledProcessingRefusal<App::Action>> {
+        core::mem::take(&mut self.runtime.controlled_refusals)
+    }
+
     /// Appends one exact-target semantic command to the canonical FIFO.
     ///
     /// # Errors

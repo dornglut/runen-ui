@@ -19,6 +19,20 @@ mod surface_publication;
 
 pub(crate) use application::process_application_action;
 
+#[cfg(feature = "controlled-transaction-prototype")]
+pub struct ControlledProcessingRefusal<Action> {
+    pub sequence: WorkSequence,
+    pub reason: ControlledProcessingRefusalReason,
+    pub original: Action,
+}
+
+#[cfg(feature = "controlled-transaction-prototype")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ControlledProcessingRefusalReason {
+    OrdinaryQueuePressure,
+    UnsupportedReconciliation,
+}
+
 use core::fmt;
 use std::{
     collections::{HashMap, HashSet},
@@ -93,6 +107,9 @@ use surface_publication::SurfacePublicationState;
 
 pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol> {
     state: Option<State>,
+    #[cfg(feature = "controlled-transaction-prototype")]
+    pub(crate) controlled_refusals: Vec<ControlledProcessingRefusal<Action>>,
+
     pub(crate) tree: MountedTree<Action>,
     pub(crate) queue: WorkQueue<Action>,
     pub(crate) trace: Trace,

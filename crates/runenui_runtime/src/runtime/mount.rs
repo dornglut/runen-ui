@@ -99,6 +99,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             super::input_arbitration::InputObservationState::new(tree.runtime_namespace());
         let mut runtime = Self {
             state: Some(state),
+            #[cfg(feature = "controlled-transaction-prototype")]
+            controlled_refusals: Vec::new(),
             tree,
             queue,
             trace,

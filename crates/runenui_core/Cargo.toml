@@ -25,6 +25,7 @@ path = "tests/suites/style_resolution.rs"
 
 [features]
 internal-test-seams = []
+controlled-transaction-prototype = []
 
 [lints]
 workspace = true

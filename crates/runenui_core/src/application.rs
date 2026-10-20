@@ -19,6 +19,18 @@ pub trait UiApp {
         action: Self::Action,
     ) -> impl IntoUpdateOutput<Self::Action, Self::HostProtocol>;
 
+    /// #475 EXPERIMENT ONLY. Controlled authoring MUST be side-effect free.
+    /// The candidate owns its complete application value, with non-Clone
+    /// resources represented by stable handles rather than copied receivers.
+    /// No existing callback is allowed to execute through this method.
+    #[cfg(feature = "controlled-transaction-prototype")]
+    fn controlled_prepare(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> Option<Self::State> {
+        None
+    }
+
     fn subscriptions(_state: &Self::State, _subscriptions: &mut SubscriptionSet<Self::Action>) {}
 
     /// Returns an optional low-cardinality diagnostic label for one action.
