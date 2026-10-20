@@ -66,3 +66,13 @@ settles exactly once as `ProcessingRejected` when its source focus lifetime
 retired before processing. Do not manufacture a later derived-command receipt
 or trace on this path. The already-derived command remains ordinary canonical
 FIFO work and is neither prematurely cancelled nor retrospectively retargeted.
+
+
+### #474 focus allocator exhaustion and host finality
+
+`RuntimeTerminalReason::FocusSessionExhausted` is distinct from
+`WorkSequenceExhausted`; refusal at action preflight occurs before
+`UiApp::update` and retires pending input scope under ordinary terminal
+`ScopeRetired` semantics. No invented `InputSettled` receipt, native
+device cancellation, second focused-input ownership or false gameplay
+permission follows the terminal transition.

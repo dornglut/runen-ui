@@ -768,3 +768,14 @@ its existing immutable command target and stale-command processing policy.
 This distinction supersedes historical accelerator tests that executed an
 A-owned shortcut after A's focus had already retired; no accelerator key
 exception, input retargeting or secondary command path exists.
+
+
+### #474 focus-lifetime exhaustion classification
+
+The private checked monotonic `FocusSession` allocator is not the canonical
+`WorkSequence` allocator. If the focus generation cannot reserve its required
+bounded transitions, routed preflight refuses before widget callback mutation.
+Application-action preflight similarly refuses before `UiApp::update`,
+terminalizes with `RuntimeTerminalReason::FocusSessionExhausted`, and never
+claims `WorkSequenceExhausted` while FIFO sequence capacity remains available.
+Terminal retirement retains the pre-existing input-scope/M13 finality rules.

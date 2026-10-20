@@ -42,7 +42,7 @@ pub(crate) fn process_application_action<App: UiApp>(
     // Compatible reconciliation may retire focus once after UiApp::update.
     // Check the exact witness before that irreversible application mutation.
     if !runtime.focus.can_reserve_steps(1) {
-        let reason = RuntimeTerminalReason::WorkSequenceExhausted;
+        let reason = RuntimeTerminalReason::FocusSessionExhausted;
         let cancelled = runtime.enter_terminal(reason, 1);
         return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
     }
@@ -484,7 +484,7 @@ pub(crate) fn process_application_action<App: UiApp>(
 
 #[cfg(test)]
 mod focus_session_exhaustion_tests {
-    use super::{process_application_action, ProcessApplicationActionOutcome, Runtime};
+    use super::{ProcessApplicationActionOutcome, Runtime, process_application_action};
     use crate::{
         RuntimeConfig, RuntimeStatus, RuntimeTerminalReason,
         queue::{ApplicationActionOrigin, WorkEnvelope},
@@ -538,10 +538,15 @@ mod focus_session_exhaustion_tests {
         let ProcessApplicationActionOutcome::Terminal { reason, .. } = outcome else {
             unreachable!("allocator exhaustion must stop pre-mutation")
         };
+        assert_eq!(reason, RuntimeTerminalReason::FocusSessionExhausted);
         assert_eq!(reason.to_string(), "focus session exhausted");
         assert_eq!(runtime.status, RuntimeStatus::Terminal(reason));
         assert_eq!(
-            runtime.state.as_ref().unwrap_or_else(|| unreachable!()).updates,
+            runtime
+                .state
+                .as_ref()
+                .unwrap_or_else(|| unreachable!())
+                .updates,
             0,
             "the application updater must not run after exhausted focus admission"
         );

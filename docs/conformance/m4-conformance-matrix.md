@@ -401,3 +401,14 @@ settles with the existing `StaleTarget` reason, before any shortcut action.
 An *already derived* shortcut command remains governed by accepted routed
 command targeting/rejection rules. The normal in-focus accelerator corpus,
 composition, prevention, repeat and retained-command cases remain mandatory.
+
+
+### #474 checked focus-session allocator terminal proof
+
+The registered `runenui_runtime::runtime::application::process::focus_session_exhaustion_tests`
+verifies that a distinct exhausted canonical focus lifetime produces
+`RuntimeTerminalReason::FocusSessionExhausted` before any application
+update or mounted reconciliation, **even when `WorkSequence` still has capacity**.
+The private unit tests in `focus_session_allocation_tests` prove a non-reusable
+checked near-MAX witness and no mutation when preflight refuses it. The
+ordinary FIFO sequence-exhaustion reason remains separate.
