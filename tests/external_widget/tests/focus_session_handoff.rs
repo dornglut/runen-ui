@@ -142,7 +142,12 @@ fn pending_published_entry_binds_non_escape_to_exact_recipient_with_one_m13_sett
             if matches!(facts.route(), UiInputRoute::Routed { target } if target == &new)
     ));
     let tail = runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
-    assert!(!tail.ordered_records().iter().any(|r| matches!(r, InputArbitrationRecord::InputSettled(_))));
+    assert!(
+        !tail
+            .ordered_records()
+            .iter()
+            .any(|r| matches!(r, InputArbitrationRecord::InputSettled(_)))
+    );
     assert!(runtime.state().p_open);
 }
 
@@ -151,20 +156,31 @@ fn pending_entry_never_transfers_ambiguous_committed_text() {
     let (env, size) = environment();
     let context = SurfaceBuildContext::tight(&env, size);
     let mut runtime = AppRuntime::<App>::mount(State { p_open: false });
-    runtime.publish_surface(&context).unwrap_or_else(|_| unreachable!());
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!());
     runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
     focus(&mut runtime, "text");
-    runtime.submit_action(Action::ShowP).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_action(Action::ShowP)
+        .unwrap_or_else(|_| unreachable!());
     runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
-    runtime.publish_surface(&context).unwrap_or_else(|_| unreachable!());
-    let error = runtime.submit_text(
-        CommittedTextEvent::new("secret", None).unwrap_or_else(|_| unreachable!())
-    ).expect_err("a pending different text recipient cannot be inferred");
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!());
+    let error = runtime
+        .submit_text(CommittedTextEvent::new("secret", None).unwrap_or_else(|_| unreachable!()))
+        .expect_err("a pending different text recipient cannot be inferred");
     assert_eq!(error.kind(), SubmitTextErrorKind::PendingFocusHandoff);
     let original = id(&mut runtime, "text");
     assert_eq!(runtime.focus().focused_node(), Some(&original));
     let entry = runtime.pump(ONE).unwrap_or_else(|_| unreachable!());
-    assert!(!entry.ordered_records().iter().any(|r| matches!(r, InputArbitrationRecord::InputSettled(_))));
+    assert!(
+        !entry
+            .ordered_records()
+            .iter()
+            .any(|r| matches!(r, InputArbitrationRecord::InputSettled(_)))
+    );
 }
 
 #[test]
@@ -172,18 +188,36 @@ fn retired_pending_presentation_entry_rejects_without_retarged_keyboard() {
     let (env, size) = environment();
     let context = SurfaceBuildContext::tight(&env, size);
     let mut runtime = AppRuntime::<App>::mount(State { p_open: false });
-    runtime.publish_surface(&context).unwrap_or_else(|_| unreachable!());
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!());
     runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
     focus(&mut runtime, "p-trigger");
-    runtime.submit_action(Action::ShowP).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_action(Action::ShowP)
+        .unwrap_or_else(|_| unreachable!());
     runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
-    runtime.submit_action(Action::HideP).unwrap_or_else(|_| unreachable!());
-    runtime.publish_surface(&context).unwrap_or_else(|_| unreachable!());
-    let receipt = runtime.submit_keyboard(key()).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_action(Action::HideP)
+        .unwrap_or_else(|_| unreachable!());
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!());
+    let receipt = runtime
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!());
     let results = runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
-    let settled: Vec<_> = results.ordered_records().iter().filter_map(|r| {
-        if let InputArbitrationRecord::InputSettled(v) = r { Some(v) } else { None }
-    }).collect();
+    let settled: Vec<_> = results
+        .ordered_records()
+        .iter()
+        .filter_map(|r| {
+            if let InputArbitrationRecord::InputSettled(v) = r {
+                Some(v)
+            } else {
+                None
+            }
+        })
+        .collect();
     assert_eq!(settled.len(), 1);
     assert_eq!(settled[0].sequence(), receipt.sequence());
     assert!(matches!(
