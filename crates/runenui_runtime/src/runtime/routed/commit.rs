@@ -61,7 +61,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.cancel_stale_framework_services();
         self.stage_committed_framework_services(&mut transaction);
         let plan = self.plan_routed_outputs(&mut transaction)?;
-        self.commit_routed_plan(transaction, plan, pointer_style_changed)
+        let result = self.commit_routed_plan(transaction, plan, pointer_style_changed);
+        if result.is_ok() {
+            self.refresh_focused_text_capability();
+        }
+        result
     }
 
     fn plan_routed_outputs(

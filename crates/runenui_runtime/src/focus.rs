@@ -8,7 +8,16 @@ use runenui_core::{
     FocusScopePolicy, Focusability, InputModality, WidgetActivation,
 };
 
-use crate::{LogicalRect, MountedNodeId, mounted::MountedTree};
+use crate::{LogicalRect, MountedNodeId, WorkSequence, mounted::MountedTree};
+
+/// Exact focus occurrence: a non-reused canonical work identity plus a
+/// checked within-turn ordinal. No unrelated focus or revision authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct FocusSession {
+    sequence: WorkSequence,
+    step: u64,
+}
+
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FocusEligibilityProjection {
@@ -71,6 +80,10 @@ pub struct FocusState {
     modality: Option<InputModality>,
     focus_visible: bool,
     reason: Option<FocusReason>,
+    session: Option<FocusSession>,
+    last_session: Option<FocusSession>,
+    completed_entry: Option<(WorkSequence, FocusSession)>,
+    committed_text_capable: bool,
 }
 
 impl FocusState {
@@ -135,13 +148,42 @@ impl FocusState {
         false
     }
 
+    pub(crate) const fn session(&self) -> Option<FocusSession> {
+        self.session
+    }
+
+    pub(crate) fn entry_matches(&self, request: WorkSequence) -> bool {
+        self.completed_entry.is_some_and(|(sequence, witness)| {
+            sequence == request && self.session == Some(witness)
+        })
+    }
+
+    pub(crate) fn certify_entry(&mut self, request: WorkSequence) {
+        self.completed_entry = self.session.map(|session| (request, session));
+    }
+
+    pub(crate) fn observe_text_capability(&mut self, available: bool) -> bool {
+        let revoked = self.committed_text_capable && !available;
+        self.committed_text_capable = available;
+        revoked
+    }
+
     pub(crate) fn commit(
         &mut self,
         target: Option<MountedNodeId>,
         route: Vec<MountedNodeId>,
         reason: FocusReason,
         focus_visible: bool,
+        sequence: WorkSequence,
     ) {
+        let step = self.last_session.filter(|last| last.sequence == sequence)
+            .map_or(Some(0), |last| last.step.checked_add(1))
+            .expect("a canonical work turn has a finite focus-transition bound");
+        let next = FocusSession { sequence, step };
+        self.last_session = Some(next);
+        self.session = target.as_ref().map(|_| next);
+        self.completed_entry = None;
+        self.committed_text_capable = false;
         self.focus_visible = target.is_some() && focus_visible;
         self.focused_node_id = target;
         self.focused_route = route;
@@ -164,6 +206,9 @@ impl FocusState {
     }
 
     pub(crate) fn clear_all(&mut self, reason: FocusReason) {
+        self.session = None;
+        self.completed_entry = None;
+        self.committed_text_capable = false;
         self.focused_node_id = None;
         self.focus_visible = false;
         self.focused_route.clear();

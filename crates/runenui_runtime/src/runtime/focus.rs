@@ -739,7 +739,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             new_route.clone(),
             reason,
             next_visibility,
+            transaction.sequence,
         );
+        self.refresh_focused_text_capability();
         self.reconcile_focus_group_type_ahead_state();
         if let Some(target) = new_target.as_ref() {
             for scope in new_route.iter().filter(|scope| {
@@ -974,6 +976,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(())
     }
 
+    pub(in crate::runtime) fn refresh_focused_text_capability(&mut self) {
+        let Some(focused) = self.focus.focused_node().cloned() else {
+            return;
+        };
+        let available = self.tree.text_input_probe(&focused)
+            .is_ok_and(|capability| capability.accepts_committed_text());
+        if self.focus.observe_text_capability(available) {
+            self.queue.invalidate_queued_text_for(&focused);
+        }
+    }
+
     pub(in crate::runtime) fn prune_focus_memory(&mut self) {
         let tree = &self.tree;
         self.focus.retain_remembered(|scope, target| {
@@ -999,7 +1012,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface,
         } = cleanup;
         let previous_visibility = self.focus.focus_visible();
-        self.focus.commit(None, Vec::new(), reason, false);
+        self.focus.commit(None, Vec::new(), reason, false, sequence);
         self.reconcile_focus_group_type_ahead_state();
         let Some(trace_target) = trace_target else {
             return;

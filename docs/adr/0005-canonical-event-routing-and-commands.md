@@ -468,6 +468,36 @@ a prevented wheel emits none. The emitted command then follows the same
 route-only contract, so an unconsumed command performs no production scrolling.
 M4 does not hard-code application navigation, menus, or scrolling mutation.
 
+
+
+### #474 focus-session integrity for queued focused input
+
+Queued keyboard and ordinary committed-text envelopes bind their original recipient to
+the exact **effective committed-focus lifetime**, not merely an unchanged mounted ID.
+The runtime represents this private lifetime with the checked non-reusable canonical
+work sequence and a bounded ordinal for multiple effective transitions in one turn.
+No-op focus requests and modality/visibility/ownership-snapshot revision changes do not
+retire it. A→B→A never revalidates previously admitted A work. Focus identity and
+routing remain runtime-owned; no host-visible focus-session token exists.
+
+The only provisional keyboard binding is to an already accepted FIFO
+`EnterAndRestore` presentation focus request naming one known exact recipient and
+published activation lifetime. The existing focus request must actually commit that
+target before the keyboard input reaches the queue front. A failed, prevented, retired,
+superseded, incompatible or uncertified request is not a focus prediction and cannot
+redirect to another target. Committed text **does not** transfer through this handoff:
+ambiguous ingress fails before queue admission.
+
+A queued focused keyboard/text event checks exact focus/recipient binding before
+callbacks, keyboard shortcuts, type-ahead, Space, or editing. An ordinary committed-text
+event additionally checks current `accepts_committed_text()`; observed loss of that
+capability permanently invalidates previously queued text even if capability is restored
+before dispatch. Invalidated input remains in the single FIFO and produces its original
+one-time M13 `ProcessingRejected` result, not an alternate route or application action.
+Composition retains its separate original generation and owner rules. No literal secret
+text is emitted to trace or host arbitration. #475 continues to own compatible live
+FocusOut delivery and ordinary-pressure recovery; #472 owns native device cancellation.
+
 Keyboard and text remain separate. Keyboard policy may produce commands;
 committed text and composition events use dedicated streams. M4 defines routing
 and lifetime, not editable text behavior, which remains M8 work.

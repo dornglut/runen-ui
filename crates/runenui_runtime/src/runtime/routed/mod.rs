@@ -185,6 +185,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         causal_parent: Option<TraceSequence>,
         trace_reservation: crate::trace::TraceReservation,
     ) {
+        let entry_proof = focus_request_override.as_ref().and_then(|override_focus| {
+            override_focus.presentation_entry.clone().zip(override_focus.target.clone())
+        });
+        let focus_before = self.focus.session();
         let mut facts = RoutedIngressFacts::new(
             sequence,
             target,
@@ -261,6 +265,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 TraceRoutedIntegrityFailure::CommitInvariantFailure,
                 None,
             );
+        } else if let Some((entry, recipient)) = entry_proof {
+            if self.focus.focused_node() == Some(&recipient)
+                && self.focus.session().is_some()
+                && self.focus.session() != focus_before
+                && self.presentation_entry_still_published(&entry)
+            {
+                self.focus.certify_entry(sequence);
+            }
         }
     }
 

@@ -240,6 +240,7 @@ pub(crate) fn process_application_action<App: UiApp>(
         );
     }
     runtime.cleanup_lost_input_capabilities(input_cleanup_cause);
+    runtime.refresh_focused_text_capability();
     if let RuntimeStatus::Terminal(reason) = runtime.status {
         return ProcessApplicationActionOutcome::Terminal {
             reason,
@@ -349,6 +350,7 @@ pub(crate) fn process_application_action<App: UiApp>(
                 restoration.focus_target,
                 FocusReason::PresentationRestoration,
                 tree_reconciled,
+                None,
             )
             .is_err()
         {

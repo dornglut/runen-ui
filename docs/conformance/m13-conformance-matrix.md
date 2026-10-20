@@ -45,3 +45,15 @@ The accepted RunenUI runtime/API slice qualifies `M13ARB-01`–`M13ARB-07`; `M13
 The public-only [input fixtures](../../tests/external_widget/tests/input.rs), [pointer fixtures](../../tests/external_widget/tests/pointer.rs) and [external host consumer](../../tests/external_host/src/lib.rs) exercise the ordinary core/runtime contracts. [Two unrelated runtime slots](../../tests/external_widget/tests/input_arbitration_slot_families.rs) correlate all four native families; [causal finality](../../tests/external_widget/tests/input_arbitration_finality.rs), [capture transfer](../../tests/external_widget/tests/input_arbitration_pointer_route.rs) and [text capability withdrawal](../../tests/external_widget/tests/input_arbitration_text_boundary.rs) distinguish event-time settlement from subsequent work and effective ownership.
 
 [Classification](../../tests/external_widget/tests/input_arbitration_classification.rs), [focus-group controls](../../tests/external_widget/tests/input_arbitration_menu.rs) and [range/scroll controls](../../tests/external_widget/tests/input_arbitration_controls.rs) establish supported claims and nonclaims with disabled, truncated and full trace. The [runtime arbitration fault tests](../../crates/runenui_runtime/src/app/input_arbitration_tests.rs) and [terminal integrity tests](../../crates/runenui_runtime/tests/terminal_integrity.rs) supply bounded reservation, revision and zero-envelope readiness-retirement evidence. Private fault seams remain excluded from public-consumer compilation.
+
+
+## #474 — exact focus/text processing-finality qualification (candidate)
+
+`UiInputProcessingRejection::FocusBindingInvalidated` and
+`CommittedTextRecipientUnavailable` are distinct typed processing outcomes,
+never positive game-input permission. A pending ambiguous text recipient is rejected
+at admission with `SubmitTextErrorKind::PendingFocusHandoff` and receives no
+settlement. Reached input retains its exact original scope/sequence; one ordered
+M13 `InputSettled` is reported after the FIFO processing boundary even with
+zero trace retention or partial pumps. No derived focus action creates an input
+receipt. The registered #474 `focus_fifo_fence` suite is additive to M13ARB-01/02/05.

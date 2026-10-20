@@ -222,6 +222,29 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         .then_some(root)
     }
 
+    pub(crate) fn certified_pending_keyboard_focus_entry(
+        &self,
+    ) -> Option<(crate::WorkSequence, MountedNodeId)> {
+        let (count, pending) = self.queue.pending_presentation_entry();
+        if count != 1 {
+            return None;
+        }
+        let (sequence, target, entry) = pending?;
+        self.presentation_entry_still_published(&entry)
+            .then_some((sequence, target))
+    }
+
+    pub(crate) fn presentation_entry_still_published(
+        &self,
+        entry: &crate::queue::PresentationFocusEntry,
+    ) -> bool {
+        self.presentation_lifecycle.lifetimes.get(&entry.root).is_some_and(|lifetime| {
+            lifetime.published
+                && lifetime.activation_generation == Some(entry.activation_generation)
+                && lifetime.focus_policy == PresentationFocusPolicy::EnterAndRestore
+        })
+    }
+
     pub(in crate::runtime) fn presentation_focus_membership(
         &self,
         focused: Option<&MountedNodeId>,
@@ -408,6 +431,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                                 Some(target.clone()),
                                 FocusReason::ProgrammaticRequest,
                                 causal_parent,
+                                Some(crate::queue::PresentationFocusEntry {
+                                    root: candidate.root.clone(),
+                                    activation_generation: publication_generation,
+                                }),
                             )
                             .is_err()
                         {
