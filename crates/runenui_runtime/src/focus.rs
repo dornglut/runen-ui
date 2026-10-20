@@ -151,6 +151,17 @@ impl FocusState {
         self.session
     }
 
+    /// Conservative checked preflight for all effective changes that a single
+    /// canonical work turn can perform. No focus nonce wraps or revives.
+    pub(crate) fn can_reserve_steps(&self, sequence: WorkSequence, steps: u64) -> bool {
+        if steps == 0 {
+            return true;
+        }
+        self.last_session
+            .filter(|last| last.sequence == sequence)
+            .is_none_or(|last| last.step.checked_add(steps).is_some())
+    }
+
     pub(crate) fn entry_matches(&self, request: WorkSequence) -> bool {
         self.completed_entry
             .is_some_and(|(sequence, witness)| sequence == request && self.session == Some(witness))
@@ -1121,5 +1132,35 @@ impl Ord for OrderedF32 {
         self.0
             .partial_cmp(&other.0)
             .unwrap_or(core::cmp::Ordering::Equal)
+    }
+}
+
+#[cfg(test)]
+mod focus_session_allocation_tests {
+    use core::num::NonZeroU64;
+
+    use super::{FocusSession, FocusState};
+    use crate::WorkSequence;
+
+    #[test]
+    fn exact_focus_step_exhaustion_rejects_before_canonical_focus_mutation() {
+        let max_sequence =
+            WorkSequence::__runtime_new(NonZeroU64::new(u64::MAX).unwrap_or_else(|| unreachable!()));
+        let mut focus = FocusState::new();
+        focus.last_session = Some(FocusSession {
+            sequence: max_sequence,
+            step: u64::MAX - 1,
+        });
+        let unchanged = focus.clone();
+        assert!(focus.can_reserve_steps(max_sequence, 1));
+        assert!(!focus.can_reserve_steps(max_sequence, 2));
+        assert_eq!(focus, unchanged, "capacity refusal may not mutate focus");
+        // Last canonical work ID is a valid committed lifetime: the
+        // queue's own checked exhaustion, not an invented wrap to 1, retires it.
+        let fresh = WorkSequence::__runtime_new(
+            NonZeroU64::new(u64::MAX - 1).unwrap_or_else(|| unreachable!()),
+        );
+        assert!(focus.can_reserve_steps(fresh, 2));
+        assert_eq!(focus.session(), None);
     }
 }

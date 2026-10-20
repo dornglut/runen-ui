@@ -699,6 +699,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if old_target == new_target {
             return Ok(());
         }
+        if !self.focus.can_reserve_steps(transaction.sequence, 1) {
+            return Err(TraceRoutedIntegrityFailure::CommitInvariantFailure);
+        }
         let previous_visibility = self.focus.focus_visible();
         let next_visibility = new_target.as_ref().is_some_and(|target| {
             self.focus_visibility_on_transfer(
