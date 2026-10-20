@@ -368,3 +368,16 @@ delivery, no-op preservation, capability revocation and revoke→restore, once-o
 original M13 settlement, partial/zero budgets and trace-off behavior. A pending
 published EnterAndRestore handoff is certified only by the original FIFO RequestFocus;
 unproven focus is never guessed. FocusOut-on-compatible-retirement remains #475.
+
+
+### #474 accelerator-input boundary qualification
+
+Registered `crates/runenui_runtime/tests/suites/focus_keyboard_input.rs::keyboard_accelerators`
+proves the original focus-session check takes precedence over deriving a
+keyboard shortcut, type-ahead, Space or application command. A queued A input
+after a preceding A→B focus change settles with
+`UiInputProcessingRejection::FocusBindingInvalidated`; a replaced mounted A
+settles with the existing `StaleTarget` reason, before any shortcut action.
+An *already derived* shortcut command remains governed by accepted routed
+command targeting/rejection rules. The normal in-focus accelerator corpus,
+composition, prevention, repeat and retained-command cases remain mandatory.

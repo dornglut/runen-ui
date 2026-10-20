@@ -752,3 +752,17 @@ The design intentionally adapts rather than copies these primary sources:
 - [AccessKit action requests](https://docs.rs/accesskit/latest/accesskit/struct.ActionRequest.html)
   for future semantic-action source/data convergence without making
   accessibility a physical-input path.
+
+
+### #474 queued accelerator ingress qualification
+
+An unprocessed focused keyboard event, including a potential accelerator chord,
+may only route or derive a command while its exact committed focus session (or
+independently certified queued presentation handoff) remains valid. After a
+focus transfer, A→B→A or replacement, reject the *original* reached keyboard
+input before shortcut resolution, with one original-scope M13 settlement.
+A queued shortcut **already derived while original input was valid** retains
+its existing immutable command target and stale-command processing policy.
+This distinction supersedes historical accelerator tests that executed an
+A-owned shortcut after A's focus had already retired; no accelerator key
+exception, input retargeting or secondary command path exists.

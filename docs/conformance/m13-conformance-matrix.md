@@ -57,3 +57,12 @@ settlement. Reached input retains its exact original scope/sequence; one ordered
 M13 `InputSettled` is reported after the FIFO processing boundary even with
 zero trace retention or partial pumps. No derived focus action creates an input
 receipt. The registered #474 `focus_fifo_fence` suite is additive to M13ARB-01/02/05.
+
+
+### #474 accelerator original-input finality distinction
+
+The keyboard event's original `(InputArbitrationScope, WorkSequence)`
+settles exactly once as `ProcessingRejected` when its source focus lifetime
+retired before processing. Do not manufacture a later derived-command receipt
+or trace on this path. The already-derived command remains ordinary canonical
+FIFO work and is neither prematurely cancelled nor retrospectively retargeted.

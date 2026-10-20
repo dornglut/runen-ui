@@ -16,7 +16,7 @@ use runenui_runtime::{
     AppRuntime, InputArbitrationRecord, LayoutConstraints, PumpBudget, RuntimeConfig,
     RuntimeLimits, RuntimeStatus, SurfaceBuildContext, TraceApplicationCommandOutcome,
     TraceRecordKind, TraceRoutedAdmissionRejection, TraceTargetRejection, UiDefaultDisposition,
-    UiInputClaimReason, UiInputConflict, UiInputFinality,
+    UiInputClaimReason, UiInputConflict, UiInputFinality, UiInputProcessingRejection,
 };
 
 const SHORTCUT_DIAGNOSTIC: &str = "runenui.shortcut-scope.duplicate-chord";
@@ -763,7 +763,7 @@ fn accelerator_emits_existing_application_command_non_reentrantly() {
 }
 
 #[test]
-fn queued_target_is_not_retargeted_after_focus_transfer() {
+fn queued_focus_transfer_rejects_original_keyboard_before_shortcut_derivation() {
     let control = KeyModifiers::NONE.with_control();
     let mut runtime = AppRuntime::<App>::mount(State::new(Mode::Unique));
     settle(&mut runtime);
@@ -777,7 +777,7 @@ fn queued_target_is_not_retargeted_after_focus_transfer() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("focus transfer is admitted"));
-    submit_shortcut(
+    let accepted = submit_shortcut(
         &mut runtime,
         key(
             "s",
@@ -788,18 +788,43 @@ fn queued_target_is_not_retargeted_after_focus_transfer() {
         ),
     );
 
-    settle(&mut runtime);
-
+    let result = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("focus then reached input"));
     assert_eq!(runtime.focus().focused_node(), Some(&other));
     assert_eq!(
         runtime.state().fired,
-        ["inner"],
-        "queued accelerator command must still resolve through target A"
+        [] as [&str; 0],
+        "retired A focus must not execute an A-owned accelerator"
     );
+    assert!(result.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(settled)
+            if settled.sequence() == accepted
+                && matches!(
+                    settled.finality(),
+                    UiInputFinality::ProcessingRejected(
+                        UiInputProcessingRejection::FocusBindingInvalidated
+                    )
+                )
+    )));
+    assert!(has_trace(&runtime, |kind| matches!(
+        kind,
+        TraceRecordKind::FocusedInputProcessingRejected
+    )));
+    assert!(!has_trace(&runtime, |kind| matches!(
+        kind,
+        TraceRecordKind::KeyboardShortcutMatched
+            | TraceRecordKind::ApplicationCommandSubmissionAccepted { .. }
+    )));
 }
-
 #[test]
-fn accepted_keyboard_target_replacement_before_processing_rejects_without_retargeting() {
+fn accepted_keyboard_target_replacement_rejects_original_input_before_shortcut_derivation() {
     let control = KeyModifiers::NONE.with_control();
     let mut runtime = AppRuntime::<App>::mount(State::new(Mode::Unique));
     settle(&mut runtime);
@@ -809,7 +834,7 @@ fn accepted_keyboard_target_replacement_before_processing_rejects_without_retarg
     runtime
         .submit_action(Action::Replace)
         .unwrap_or_else(|_| unreachable!("replacement action is admitted"));
-    submit_shortcut(
+    let accepted = submit_shortcut(
         &mut runtime,
         key(
             "s",
@@ -820,23 +845,36 @@ fn accepted_keyboard_target_replacement_before_processing_rejects_without_retarg
         ),
     );
 
-    settle(&mut runtime);
-
+    let result = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("replacement then original keyboard"));
     assert_eq!(runtime.state().callback_calls.get(), 0);
     assert_eq!(runtime.state().fired, [] as [&str; 0]);
-    assert!(runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::CommandProcessingRejected {
-            outcome: TraceTargetRejection::Stale
-        }
+    assert!(result.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(settled)
+            if settled.sequence() == accepted
+                && matches!(
+                    settled.finality(),
+                    UiInputFinality::ProcessingRejected(UiInputProcessingRejection::StaleTarget)
+                )
     )));
-    assert!(!runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::KeyboardShortcutMatched
+    assert!(has_trace(&runtime, |kind| matches!(
+        kind,
+        TraceRecordKind::FocusedInputProcessingRejected
+    )));
+    assert!(!has_trace(&runtime, |kind| matches!(
+        kind,
+        TraceRecordKind::CommandProcessingRejected { .. }
+            | TraceRecordKind::KeyboardShortcutMatched
             | TraceRecordKind::ApplicationCommandSubmissionAccepted { .. }
     )));
 }
-
 #[test]
 fn replacement_after_keyboard_processing_makes_queued_command_stale_without_retargeting() {
     let control = KeyModifiers::NONE.with_control();
