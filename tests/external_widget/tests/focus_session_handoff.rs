@@ -3,9 +3,9 @@
 //! Independent public #474 discriminators for the existing queued presentation entry.
 use runenui_core::{
     CommandOrigin, CommittedTextEvent, Element, KeyLocation, KeyModifiers,
-    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, Menu, MenuButton,
-    MenuItem, NoHostProtocol, PhysicalKey, SemanticCommand, StyleEnvironment, UiApp,
-    View, Widget, WidgetTextInput, column,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, Menu, MenuButton, MenuItem,
+    NoHostProtocol, PhysicalKey, SemanticCommand, StyleEnvironment, UiApp, View, Widget,
+    WidgetTextInput, column,
 };
 use runenui_runtime::{
     AppRuntime, InputArbitrationRecord, LogicalSize, PumpBudget, SubmitTextErrorKind,
@@ -59,9 +59,7 @@ impl UiApp for App {
             );
         }
         column(vec![
-            Element::new(TextProbe)
-                .id("text")
-                .focusable(true),
+            Element::new(TextProbe).id("text").focusable(true),
             trigger.into_element(),
         ])
     }
@@ -76,24 +74,35 @@ impl UiApp for App {
 }
 
 fn environment() -> (StyleEnvironment, LogicalSize) {
-    (StyleEnvironment::default(), LogicalSize::new(320_u16.into(), 240_u16.into()))
+    (
+        StyleEnvironment::default(),
+        LogicalSize::new(320_u16.into(), 240_u16.into()),
+    )
 }
 
 fn id(runtime: &mut AppRuntime<App>, name: &str) -> runenui_runtime::MountedNodeId {
-    runtime.index().nodes().iter()
+    runtime
+        .index()
+        .nodes()
+        .iter()
         .find(|node| node.authored_id().is_some_and(|id| id.as_str() == name))
         .unwrap_or_else(|| unreachable!("mounted fixture recipient"))
-        .id().clone()
+        .id()
+        .clone()
 }
 
 fn focus(runtime: &mut AppRuntime<App>, name: &str) {
     let target = id(runtime, name);
-    runtime.submit_command(
-        target,
-        SemanticCommand::RequestFocus,
-        CommandOrigin::programmatic(),
-    ).unwrap_or_else(|_| unreachable!("focus request"));
-    runtime.pump(FULL).unwrap_or_else(|_| unreachable!("focus processed"));
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus request"));
+    runtime
+        .pump(FULL)
+        .unwrap_or_else(|_| unreachable!("focus processed"));
 }
 
 fn key() -> KeyboardEvent {
@@ -114,25 +123,56 @@ fn pending_published_entry_binds_non_escape_to_exact_recipient_with_one_m13_sett
     let (env, size) = environment();
     let context = SurfaceBuildContext::tight(&env, size);
     let mut runtime = AppRuntime::<App>::mount(State { p_open: false });
-    runtime.publish_surface(&context).unwrap_or_else(|_| unreachable!());
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!());
     runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
     focus(&mut runtime, "p-trigger");
-    runtime.submit_action(Action::ShowP).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_action(Action::ShowP)
+        .unwrap_or_else(|_| unreachable!());
     runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
-    runtime.publish_surface(&context).unwrap_or_else(|_| unreachable!("entry publication"));
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("entry publication"));
     let old = id(&mut runtime, "p-trigger");
     let new = id(&mut runtime, "p-item");
     assert_eq!(runtime.focus().focused_node(), Some(&old));
-    let receipt = runtime.submit_keyboard(key()).unwrap_or_else(|_| unreachable!("input admitted"));
-    let scope = runtime.input_ownership().unwrap_or_else(|_| unreachable!()).scope().clone();
-    let zero = runtime.pump(PumpBudget::new(0, 0, 0, 0)).unwrap_or_else(|_| unreachable!());
-    assert!(!zero.ordered_records().iter().any(|r| matches!(r, InputArbitrationRecord::InputSettled(_))));
-    runtime.pump(ONE).unwrap_or_else(|_| unreachable!("queued focus entry"));
+    let receipt = runtime
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("input admitted"));
+    let scope = runtime
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!())
+        .scope()
+        .clone();
+    let zero = runtime
+        .pump(PumpBudget::new(0, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!());
+    assert!(
+        !zero
+            .ordered_records()
+            .iter()
+            .any(|r| matches!(r, InputArbitrationRecord::InputSettled(_)))
+    );
+    runtime
+        .pump(ONE)
+        .unwrap_or_else(|_| unreachable!("queued focus entry"));
     assert_eq!(runtime.focus().focused_node(), Some(&new));
-    let reached = runtime.pump(ONE).unwrap_or_else(|_| unreachable!("keyboard"));
-    let entries: Vec<_> = reached.ordered_records().iter().filter_map(|record| {
-        if let InputArbitrationRecord::InputSettled(settled) = record { Some(settled) } else { None }
-    }).collect();
+    let reached = runtime
+        .pump(ONE)
+        .unwrap_or_else(|_| unreachable!("keyboard"));
+    let entries: Vec<_> = reached
+        .ordered_records()
+        .iter()
+        .filter_map(|record| {
+            if let InputArbitrationRecord::InputSettled(settled) = record {
+                Some(settled)
+            } else {
+                None
+            }
+        })
+        .collect();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].sequence(), receipt.sequence());
     assert_eq!(entries[0].scope(), &scope);
