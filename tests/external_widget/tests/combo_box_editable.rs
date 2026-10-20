@@ -1,25 +1,27 @@
 #![allow(refining_impl_trait)]
 //! Editable ComboBox must be one M10 TextField / M5 ComboBox semantic owner.
 use runenui_core::{
-    ComboBoxRequest, CommandOrigin, CommittedTextEvent, EditIntent, EditResolution,
-    Effects, ElementId, IntoUpdateOutput, KeyboardCompositionState, KeyboardEvent,
-    KeyboardPhase, KeyLocation, KeyModifiers, LogicalKey, NoHostProtocol,
-    PhysicalKey, SemanticAutocomplete, SemanticEditableMode,
-    SemanticRelationshipKind, SemanticRole, SemanticCommand, StyleEnvironment,
-    TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
-    TextPosition, TextSelection, UiApp, UpdateOutput, View,
-    button, editable_combo_box, option_item, row, text_field,
+    ComboBoxRequest, CommandOrigin, CommittedTextEvent, EditIntent, EditResolution, Effects,
+    ElementId, IntoUpdateOutput, KeyLocation, KeyModifiers, KeyboardCompositionState,
+    KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey, SemanticAutocomplete,
+    SemanticCommand, SemanticEditableMode, SemanticRelationshipKind, SemanticRole,
+    StyleEnvironment, TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
+    TextPosition, TextSelection, UiApp, UpdateOutput, View, button, editable_combo_box,
+    option_item, row, text_field,
 };
 use runenui_runtime::{
-    AppRuntime, FontFamilyName, GenericFontFamily, LogicalSize, MountedNodeId,
-    PumpBudget, SurfaceBuildContext,
+    AppRuntime, FontFamilyName, GenericFontFamily, LogicalSize, MountedNodeId, PumpBudget,
+    SurfaceBuildContext,
 };
 
 const FONT: &[u8] =
     include_bytes!("../../../crates/runenui_text/tests/fixtures/Cantarell-Regular.ttf");
 
 fn doc(revision: u64) -> TextDocumentSnapshot {
-    TextDocumentSnapshot::new(TextDocumentId::new(331), TextDocumentRevision::new(revision))
+    TextDocumentSnapshot::new(
+        TextDocumentId::new(331),
+        TextDocumentRevision::new(revision),
+    )
 }
 
 enum Action {
@@ -56,17 +58,19 @@ impl UiApp for App {
             &state.source,
             state.source.len(),
             TextAffinity::Upstream,
-        ).unwrap_or_else(|_| unreachable!("valid authored UTF-8 caret"));
+        )
+        .unwrap_or_else(|_| unreachable!("valid authored UTF-8 caret"));
         let editor = text_field(
             snapshot,
             state.source.clone(),
             TextSelection::collapsed(caret),
             SemanticEditableMode::SingleLine,
             |intent| Action::Edit(Box::new(intent)),
-        ).unwrap_or_else(|_| unreachable!("one checked M10 source"))
-            .id("editable.owner")
-            .on_submit(|| Action::Submit)
-            .disabled(state.disabled);
+        )
+        .unwrap_or_else(|_| unreachable!("one checked M10 source"))
+        .id("editable.owner")
+        .on_submit(|| Action::Submit)
+        .disabled(state.disabled);
         let combo = editable_combo_box(
             editor,
             "Search suggestions",
@@ -76,15 +80,24 @@ impl UiApp for App {
                     .id("editable.alpha")
                     .on_activate(|| Action::Choose(1)),
                 option_item("Beta", state.chosen == 2)
-                    .id(if state.replace_option { "editable.replacement" } else { "editable.beta" })
+                    .id(if state.replace_option {
+                        "editable.replacement"
+                    } else {
+                        "editable.beta"
+                    })
                     // Public element ID is not the reconciliation lifetime key.
-                    .key(if state.replace_option { "editable.replacement" } else { "editable.beta" })
+                    .key(if state.replace_option {
+                        "editable.replacement"
+                    } else {
+                        "editable.beta"
+                    })
                     .on_activate(|| Action::Choose(2)),
             ],
             Action::Popup,
-        ).unwrap_or_else(|_| unreachable!("public single-line editor"))
-            .open(state.open)
-            .autocomplete(SemanticAutocomplete::List);
+        )
+        .unwrap_or_else(|_| unreachable!("public single-line editor"))
+        .open(state.open)
+        .autocomplete(SemanticAutocomplete::List);
         row(vec![
             combo.into_element(),
             button("Next").id("editable.next").into_element(),
@@ -104,7 +117,8 @@ impl UiApp for App {
                 );
                 state.revision += 1;
                 UpdateOutput::edit(EditResolution::accepted(
-                    intent.request().clone(), doc(state.revision),
+                    intent.request().clone(),
+                    doc(state.revision),
                 ))
             }
             Action::Popup(request) => {
