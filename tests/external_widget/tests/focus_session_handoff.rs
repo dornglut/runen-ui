@@ -211,7 +211,9 @@ fn pending_entry_never_transfers_ambiguous_committed_text() {
     let error = runtime
         .submit_text(CommittedTextEvent::new("secret", None).unwrap_or_else(|_| unreachable!()))
         .err()
-        .unwrap_or_else(|| unreachable!("an ambiguous pending recipient must reject before queueing"));
+        .unwrap_or_else(|| {
+            unreachable!("an ambiguous pending recipient must reject before queueing")
+        });
     assert_eq!(error.kind(), SubmitTextErrorKind::PendingFocusHandoff);
     let original = id(&mut runtime, "text");
     assert_eq!(runtime.focus().focused_node(), Some(&original));
@@ -288,9 +290,13 @@ fn exact_noop_presentation_entry_certifies_the_unchanged_focused_recipient() {
     let receipt = runtime
         .submit_keyboard(key())
         .unwrap_or_else(|_| unreachable!("certified pending no-op ingress"));
-    runtime.pump(ONE).unwrap_or_else(|_| unreachable!("queued no-op entry"));
+    runtime
+        .pump(ONE)
+        .unwrap_or_else(|_| unreachable!("queued no-op entry"));
     assert_eq!(runtime.focus().focused_node(), Some(&original));
-    let reached = runtime.pump(ONE).unwrap_or_else(|_| unreachable!("no-op-bound keyboard"));
+    let reached = runtime
+        .pump(ONE)
+        .unwrap_or_else(|_| unreachable!("no-op-bound keyboard"));
     let records: Vec<_> = reached
         .ordered_records()
         .iter()
