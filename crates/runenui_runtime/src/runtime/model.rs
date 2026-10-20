@@ -87,6 +87,8 @@ pub enum SurfacePublicationCounter {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum RuntimeTerminalReason {
     WorkSequenceExhausted,
+    /// Checked canonical focus lifetime allocation exhausted independently of FIFO sequence.
+    FocusSessionExhausted,
     WorkGenerationExhausted,
     ReconciliationGenerationExhausted,
     MountedIdentityExhausted,
@@ -99,6 +101,7 @@ impl fmt::Display for RuntimeTerminalReason {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::WorkSequenceExhausted => formatter.write_str("work sequence exhausted"),
+            Self::FocusSessionExhausted => formatter.write_str("focus session exhausted"),
             Self::WorkGenerationExhausted => formatter.write_str("work generation exhausted"),
             Self::ReconciliationGenerationExhausted => {
                 formatter.write_str("reconciliation generation exhausted")

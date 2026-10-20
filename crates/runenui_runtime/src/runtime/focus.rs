@@ -689,6 +689,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one routed focus transition must preserve original notification sequencing"
+    )]
     pub(in crate::runtime) fn commit_focus_transition(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
@@ -698,6 +702,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let old_target = self.focus.focused_node().cloned();
         if old_target == new_target {
             return Ok(());
+        }
+        if !self.focus.can_reserve_steps(1) {
+            return Err(TraceRoutedIntegrityFailure::CommitInvariantFailure);
         }
         let previous_visibility = self.focus.focus_visible();
         let next_visibility = new_target.as_ref().is_some_and(|target| {
@@ -740,6 +747,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             reason,
             next_visibility,
         );
+        self.refresh_focused_text_capability();
         self.reconcile_focus_group_type_ahead_state();
         if let Some(target) = new_target.as_ref() {
             for scope in new_route.iter().filter(|scope| {
@@ -972,6 +980,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
         }
         Ok(())
+    }
+
+    pub(in crate::runtime) fn refresh_focused_text_capability(&mut self) {
+        let Some(focused) = self.focus.focused_node().cloned() else {
+            return;
+        };
+        let available = self
+            .tree
+            .text_input_probe(&focused)
+            .is_ok_and(WidgetTextInput::accepts_committed_text);
+        if self.focus.observe_text_capability(available) {
+            self.queue.invalidate_queued_text_for(&focused);
+        }
     }
 
     pub(in crate::runtime) fn prune_focus_memory(&mut self) {

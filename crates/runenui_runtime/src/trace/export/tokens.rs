@@ -176,6 +176,7 @@ pub(super) const fn composition_cancel_reason(value: CompositionCancelReason) ->
 pub(super) const fn runtime_terminal_reason(value: RuntimeTerminalReason) -> &'static str {
     match value {
         RuntimeTerminalReason::WorkSequenceExhausted => "work_sequence_exhausted",
+        RuntimeTerminalReason::FocusSessionExhausted => "focus_session_exhausted",
         RuntimeTerminalReason::WorkGenerationExhausted => "work_generation_exhausted",
         RuntimeTerminalReason::ReconciliationGenerationExhausted => {
             "reconciliation_generation_exhausted"
@@ -549,6 +550,24 @@ mod tests {
         assert_eq!(
             focus_reason(FocusReason::GroupNavigation),
             "group_navigation"
+        );
+    }
+}
+
+#[cfg(test)]
+mod focus_session_terminal_token_tests {
+    use super::runtime_terminal_reason;
+    use crate::RuntimeTerminalReason;
+
+    #[test]
+    fn exhausted_focus_session_has_distinct_stable_redacted_terminal_token() {
+        assert_eq!(
+            runtime_terminal_reason(RuntimeTerminalReason::FocusSessionExhausted),
+            "focus_session_exhausted"
+        );
+        assert_ne!(
+            runtime_terminal_reason(RuntimeTerminalReason::FocusSessionExhausted),
+            runtime_terminal_reason(RuntimeTerminalReason::WorkSequenceExhausted)
         );
     }
 }

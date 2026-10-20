@@ -468,6 +468,38 @@ a prevented wheel emits none. The emitted command then follows the same
 route-only contract, so an unconsumed command performs no production scrolling.
 M4 does not hard-code application navigation, menus, or scrolling mutation.
 
+
+
+### #474 focus-session integrity for queued focused input
+
+Queued keyboard and ordinary committed-text envelopes bind their original recipient to
+the exact **effective committed-focus lifetime**, not merely an unchanged mounted ID.
+The runtime represents this private lifetime with one checked, nonwrapping
+monotonic generation owned exclusively by canonical FocusState. A WorkSequence
+may also identify deferred causal cleanup and is therefore not suitable for
+focus-session allocation.
+No-op focus requests and modality/visibility/ownership-snapshot revision changes do not
+retire it. A→B→A never revalidates previously admitted A work. Focus identity and
+routing remain runtime-owned; no host-visible focus-session token exists.
+
+The only provisional keyboard binding is to an already accepted FIFO
+`EnterAndRestore` presentation focus request naming one known exact recipient and
+published activation lifetime. The existing focus request must actually commit that
+target before the keyboard input reaches the queue front. A failed, prevented, retired,
+superseded, incompatible or uncertified request is not a focus prediction and cannot
+redirect to another target. Committed text **does not** transfer through this handoff:
+ambiguous ingress fails before queue admission.
+
+A queued focused keyboard/text event checks exact focus/recipient binding before
+callbacks, keyboard shortcuts, type-ahead, Space, or editing. An ordinary committed-text
+event additionally checks current `accepts_committed_text()`; observed loss of that
+capability permanently invalidates previously queued text even if capability is restored
+before dispatch. Invalidated input remains in the single FIFO and produces its original
+one-time M13 `ProcessingRejected` result, not an alternate route or application action.
+Composition retains its separate original generation and owner rules. No literal secret
+text is emitted to trace or host arbitration. #475 continues to own compatible live
+FocusOut delivery and ordinary-pressure recovery; #472 owns native device cancellation.
+
 Keyboard and text remain separate. Keyboard policy may produce commands;
 committed text and composition events use dedicated streams. M4 defines routing
 and lifetime, not editable text behavior, which remains M8 work.
@@ -722,3 +754,28 @@ The design intentionally adapts rather than copies these primary sources:
 - [AccessKit action requests](https://docs.rs/accesskit/latest/accesskit/struct.ActionRequest.html)
   for future semantic-action source/data convergence without making
   accessibility a physical-input path.
+
+
+### #474 queued accelerator ingress qualification
+
+An unprocessed focused keyboard event, including a potential accelerator chord,
+may only route or derive a command while its exact committed focus session (or
+independently certified queued presentation handoff) remains valid. After a
+focus transfer, A→B→A or replacement, reject the *original* reached keyboard
+input before shortcut resolution, with one original-scope M13 settlement.
+A queued shortcut **already derived while original input was valid** retains
+its existing immutable command target and stale-command processing policy.
+This distinction supersedes historical accelerator tests that executed an
+A-owned shortcut after A's focus had already retired; no accelerator key
+exception, input retargeting or secondary command path exists.
+
+
+### #474 focus-lifetime exhaustion classification
+
+The private checked monotonic `FocusSession` allocator is not the canonical
+`WorkSequence` allocator. If the focus generation cannot reserve its required
+bounded transitions, routed preflight refuses before widget callback mutation.
+Application-action preflight similarly refuses before `UiApp::update`,
+terminalizes with `RuntimeTerminalReason::FocusSessionExhausted`, and never
+claims `WorkSequenceExhausted` while FIFO sequence capacity remains available.
+Terminal retirement retains the pre-existing input-scope/M13 finality rules.

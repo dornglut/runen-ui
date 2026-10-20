@@ -227,6 +227,7 @@ pub enum TraceRecordKind {
     KeyboardSubmissionAccepted,
     KeyboardSubmissionRejected,
     KeyboardProcessingValidated,
+    FocusedInputProcessingRejected,
     KeyboardDefaultPrevented,
     KeyboardShortcutMatched,
     KeyboardShortcutRepeatSuppressed,

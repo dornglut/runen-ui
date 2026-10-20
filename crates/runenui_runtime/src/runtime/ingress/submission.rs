@@ -383,6 +383,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         focus_target: Option<MountedNodeId>,
         reason: FocusReason,
         causal_parent: Option<TraceSequence>,
+        entry: Option<crate::queue::PresentationFocusEntry>,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         let result = self.command_preflight(routing_target).and_then(|()| {
             self.commit_preflighted_command(PreflightedCommand {
@@ -393,6 +394,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 focus_request_override: Some(FocusRequestOverride {
                     target: focus_target,
                     reason,
+                    presentation_entry: entry,
                 }),
                 presentation_cancel_origin: None,
                 instant: self.now(),

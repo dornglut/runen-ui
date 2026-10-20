@@ -350,6 +350,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         additional_trace: MandatoryTracePlan,
         mandatory_default_outputs: usize,
     ) -> Result<RoutedTransactionAdmissionPlan, RoutedFailureLineage> {
+        // At most one accepted focus default plus one interaction-invalidation
+        // retirement can commit in a routed transaction. Reserve both before
+        // any widget callback mutates state or queues a derived command.
+        if !self.focus.can_reserve_steps(2) {
+            return Err(self.handle_routed_admission_rejection(
+                TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
+                facts,
+            ));
+        }
         let admission = RoutedTransactionAdmissionPlan::checked(
             route_invocations,
             admitted_invocations,

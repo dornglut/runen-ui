@@ -12,7 +12,7 @@ use runenui_core::{
 };
 
 use crate::trace::TraceReservation;
-use crate::{MonotonicInstant, MountedNodeId, work::WorkGeneration};
+use crate::{MonotonicInstant, MountedNodeId, focus::FocusSession, work::WorkGeneration};
 use crate::{RuntimeTerminalReason, TraceSequence, TraceTarget, TraceWorkIdentity};
 pub use runenui_core::WorkSequence;
 
@@ -123,6 +123,14 @@ pub(crate) struct ApplicationCommandEnvelope {
 pub(crate) struct FocusRequestOverride {
     pub(crate) target: Option<MountedNodeId>,
     pub(crate) reason: FocusReason,
+    pub(crate) presentation_entry: Option<PresentationFocusEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PresentationFocusEntry {
+    pub(crate) root: MountedNodeId,
+    pub(crate) activation_generation: u64,
+    pub(crate) focused_session_at_request: Option<FocusSession>,
 }
 
 pub(crate) struct SemanticCommandEnvelope {
@@ -164,6 +172,16 @@ pub(crate) struct PointerEnvelope {
     pub(crate) trace_reservation: TraceReservation,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum FocusInputBinding {
+    Committed(FocusSession),
+    PendingEntry {
+        request: WorkSequence,
+        presentation: PresentationFocusEntry,
+    },
+    Uncertified,
+}
+
 pub(crate) enum InputEnvelopePayload {
     Keyboard(KeyboardEvent),
     CommittedText(CommittedTextEvent),
@@ -173,6 +191,8 @@ pub(crate) enum InputEnvelopePayload {
 pub(crate) struct InputEnvelope {
     pub(crate) sequence: WorkSequence,
     pub(crate) target: MountedNodeId,
+    pub(crate) focus_binding: Option<FocusInputBinding>,
+    pub(crate) text_revoked: bool,
     pub(crate) payload: InputEnvelopePayload,
     pub(crate) instant: MonotonicInstant,
     pub(crate) causal_parent: Option<TraceSequence>,
@@ -455,6 +475,7 @@ impl<Action> WorkQueue<Action> {
         &mut self,
         target: MountedNodeId,
         payload: InputEnvelopePayload,
+        focus_binding: Option<FocusInputBinding>,
         instant: MonotonicInstant,
         causal_parent: Option<TraceSequence>,
         trace_reservation: TraceReservation,
@@ -463,6 +484,8 @@ impl<Action> WorkQueue<Action> {
             WorkEnvelope::Input(InputEnvelope {
                 sequence,
                 target,
+                focus_binding,
+                text_revoked: false,
                 payload,
                 instant,
                 causal_parent,
@@ -576,7 +599,43 @@ impl<Action> WorkQueue<Action> {
             .any(|envelope| matches!(envelope, WorkEnvelope::Pointer(_)))
     }
 
-    pub(crate) fn pending_committed_text_for(&self, owner: &MountedNodeId) -> usize {
+    pub(crate) fn invalidate_queued_text_for(&mut self, owner: &MountedNodeId) {
+        for item in &mut self.waiting {
+            if let WorkEnvelope::Input(envelope) = item
+                && envelope.target == *owner
+                && matches!(envelope.payload, InputEnvelopePayload::CommittedText(_))
+            {
+                envelope.text_revoked = true;
+            }
+        }
+    }
+
+    pub(crate) fn pending_presentation_entry(
+        &self,
+    ) -> (
+        usize,
+        Option<(WorkSequence, MountedNodeId, PresentationFocusEntry)>,
+    ) {
+        let mut count = 0;
+        let mut candidate = None;
+        for envelope in &self.waiting {
+            if let WorkEnvelope::SemanticCommand(command) = envelope
+                && let Some(override_focus) = command.focus_request_override.as_ref()
+                && let (Some(target), Some(entry)) =
+                    (&override_focus.target, &override_focus.presentation_entry)
+            {
+                count += 1;
+                candidate = Some((command.sequence, target.clone(), entry.clone()));
+            }
+        }
+        (count, candidate)
+    }
+
+    pub(crate) fn pending_committed_text_for(
+        &self,
+        owner: &MountedNodeId,
+        session: Option<FocusSession>,
+    ) -> usize {
         self.waiting
             .iter()
             .filter(|envelope| {
@@ -584,9 +643,11 @@ impl<Action> WorkQueue<Action> {
                     envelope,
                     WorkEnvelope::Input(InputEnvelope {
                         target,
+                        focus_binding: Some(FocusInputBinding::Committed(bound)),
+                        text_revoked: false,
                         payload: InputEnvelopePayload::CommittedText(_),
                         ..
-                    }) if target == owner
+                    }) if target == owner && Some(*bound) == session
                 )
             })
             .count()

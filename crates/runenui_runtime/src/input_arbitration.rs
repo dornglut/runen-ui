@@ -371,6 +371,8 @@ impl UiInputRoutingFacts {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UiInputProcessingRejection {
+    FocusBindingInvalidated,
+    CommittedTextRecipientUnavailable,
     MissingTarget,
     StaleTarget,
     ForeignTarget,

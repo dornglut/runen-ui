@@ -30,6 +30,7 @@ macro_rules! trace_kind_name {
             TraceRecordKind::KeyboardSubmissionAccepted => "keyboard_submission_accepted",
             TraceRecordKind::KeyboardSubmissionRejected => "keyboard_submission_rejected",
             TraceRecordKind::KeyboardProcessingValidated => "keyboard_processing_validated",
+            TraceRecordKind::FocusedInputProcessingRejected => "focused_input_processing_rejected",
             TraceRecordKind::KeyboardDefaultPrevented => "keyboard_default_prevented",
             TraceRecordKind::KeyboardShortcutMatched => "keyboard_shortcut_matched",
             TraceRecordKind::KeyboardShortcutRepeatSuppressed => {

@@ -26,6 +26,24 @@ Accept one **runtime-authored, event-correlated arbitration contract** over the 
 - Host/Runenwerk correlates `(InputArbitrationScope, WorkSequence)` to exact native window/source/physical occurrence, chooses which UI slot gets that occurrence, maps selected **completed Present** to displayed hit context, determines conflicting gameplay eligibility and owns its source-qualified held-key reducer. No global `ui_consumed` or source-erased `physical_key_down_anywhere` game-state projection.
 - #353 independently owns future multiple surfaces/roots/focus; #307/#424 own relative/confined native pointer modes. This decision must not pretend those are implemented by arbitration.
 
+
+
+### #474 queued focus/text failure classification
+
+An admitted keyboard/text event is one pending input receipt with the original
+`(InputArbitrationScope, WorkSequence)`. Before any route/default or claim, a
+retired exact focus binding, failed pending presentation-entry certification, or
+focus ABA settles as `ProcessingRejected(FocusBindingInvalidated)`. If the mounted
+target itself vanished, the pre-existing `MissingTarget`/`StaleTarget`/`ForeignTarget`
+diagnosis has precedence. A still-focused live recipient that revoked committed-text
+capability (including temporary revocation before a later restoration) settles as
+`ProcessingRejected(CommittedTextRecipientUnavailable)`. Such processing rejections
+never mean host/gameplay permission. There is no second input settlement or cancellation
+of a previously settled receipt. Rejected ambiguous committed-text ingress reports
+`SubmitTextErrorKind::PendingFocusHandoff` without creating a receipt. M13 ordered
+records, observation-capacity pauses, trace-independent settlement, redaction, and
+scope retirement remain unchanged.
+
 ## Input admission, processing and finality
 
 Existing typed `submit_keyboard`, `submit_pointer`, `submit_text` and composition ingress keep their accepted receipts and rejection errors. A successful receipt carries the existing nonwrapping `WorkSequence`. An input is **Pending** until its exact sequence settles or its runtime scope is retired. Rejected admission produces **no** fabricated processing settlement; rejection or missing focus is not evidence that gameplay is permitted.

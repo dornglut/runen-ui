@@ -39,6 +39,13 @@ pub(crate) fn process_application_action<App: UiApp>(
         let cancelled = runtime.enter_terminal(reason, 1);
         return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
     };
+    // Compatible reconciliation may retire focus once after UiApp::update.
+    // Check the exact witness before that irreversible application mutation.
+    if !runtime.focus.can_reserve_steps(1) {
+        let reason = RuntimeTerminalReason::FocusSessionExhausted;
+        let cancelled = runtime.enter_terminal(reason, 1);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
     let mut mutation_phase = MutationPhase::PreMutation;
     if !runtime
         .trace
@@ -240,6 +247,7 @@ pub(crate) fn process_application_action<App: UiApp>(
         );
     }
     runtime.cleanup_lost_input_capabilities(input_cleanup_cause);
+    runtime.refresh_focused_text_capability();
     if let RuntimeStatus::Terminal(reason) = runtime.status {
         return ProcessApplicationActionOutcome::Terminal {
             reason,
@@ -349,6 +357,7 @@ pub(crate) fn process_application_action<App: UiApp>(
                 restoration.focus_target,
                 FocusReason::PresentationRestoration,
                 tree_reconciled,
+                None,
             )
             .is_err()
         {
@@ -471,4 +480,75 @@ pub(crate) fn process_application_action<App: UiApp>(
         };
     }
     ProcessApplicationActionOutcome::Completed
+}
+
+#[cfg(test)]
+mod focus_session_exhaustion_tests {
+    use super::{ProcessApplicationActionOutcome, Runtime, process_application_action};
+    use crate::{
+        RuntimeConfig, RuntimeStatus, RuntimeTerminalReason,
+        queue::{ApplicationActionOrigin, WorkEnvelope},
+    };
+    use runenui_core::{Element, NoHostProtocol, UiApp, View};
+
+    #[derive(Debug)]
+    struct State {
+        updates: usize,
+    }
+
+    #[derive(Debug)]
+    enum Action {
+        Tick,
+    }
+
+    struct TestApp;
+
+    #[allow(refining_impl_trait)]
+    impl UiApp for TestApp {
+        type State = State;
+        type Action = Action;
+        type HostProtocol = NoHostProtocol;
+
+        fn root(_state: &State) -> impl View<Action> {
+            runenui_core::row(Vec::<Element<Action>>::new())
+        }
+
+        fn update(state: &mut State, _: Action) {
+            state.updates += 1;
+        }
+    }
+
+    #[test]
+    fn exhausted_focus_lifetime_does_not_claim_work_sequence_exhaustion_or_mutate_app() {
+        let mut runtime = Runtime::<State, Action, NoHostProtocol>::mount(
+            State { updates: 0 },
+            |state| TestApp::root(state).into_element(),
+            RuntimeConfig::default(),
+        );
+        runtime.focus.exhaust_for_test();
+        assert!(runtime.queue.next_sequence().is_some());
+        runtime
+            .queue
+            .push_preflighted(Action::Tick, None, None, ApplicationActionOrigin::Ordinary)
+            .unwrap_or_else(|_| unreachable!("test queue has available work sequence"));
+        let Some(WorkEnvelope::ApplicationAction(envelope)) = runtime.queue.pop() else {
+            unreachable!("one admitted app action")
+        };
+        let outcome = process_application_action::<TestApp>(&mut runtime, envelope);
+        let ProcessApplicationActionOutcome::Terminal { reason, .. } = outcome else {
+            unreachable!("allocator exhaustion must stop pre-mutation")
+        };
+        assert_eq!(reason, RuntimeTerminalReason::FocusSessionExhausted);
+        assert_eq!(reason.to_string(), "focus session exhausted");
+        assert_eq!(runtime.status, RuntimeStatus::Terminal(reason));
+        assert_eq!(
+            runtime
+                .state
+                .as_ref()
+                .unwrap_or_else(|| unreachable!())
+                .updates,
+            0,
+            "the application updater must not run after exhausted focus admission"
+        );
+    }
 }

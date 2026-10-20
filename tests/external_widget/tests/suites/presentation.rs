@@ -12,6 +12,8 @@ mod combo_box_reveal_editable;
 mod combo_box_scroll_viewport;
 #[path = "../element_presentation.rs"]
 mod element_presentation;
+#[path = "../focus_session_handoff.rs"]
+mod focus_session_handoff;
 #[path = "../invalidation.rs"]
 mod invalidation;
 #[path = "../layout_publication.rs"]

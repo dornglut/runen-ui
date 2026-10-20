@@ -377,3 +377,38 @@ not imply routed-event or M4D support.
 | M4-CLOSE-04 | Exact-head GitHub CI passes, current API/status/support documents are truthful, and M4 is explicitly owner-accepted and merged. | CI and owner review | Stale claim/link/diff audit | Exact-head CI artifacts | M4D3 | owner-accepted | Required |
 | M4-CLOSE-05 | Only after M4 closure may M5 implementation become unblocked; M5 ordering and scope remain unchanged. | Roadmap/status audit | Premature M5 work proof | Milestone acceptance record | M4D3 | owner-accepted | Required |
 | CMD-15 | M11S2 Increment/Decrement/SetValue/Expand/Collapse remain ordinary canonical SemanticCommands: semantic-origin work routes through the existing capture/target/bubble transaction, SetValue keeps its checked finite payload in the command, widgets may emit ordinary application actions, and unhandled commands have no runtime-owned value/expanded default or second queue. | `tests/external_widget/tests/m11_semantic_actions.rs::set_value_routes_exact_payload_before_application_update_and_direct_command_converges`; `unhandled_increment_has_no_runtime_or_application_default_mutation` | Processing-time target/payload integrity rejection and existing routed cancellation/capacity/no-partial-commit corpus | Stable command trace tokens plus exact SetValue numeric trace value and ordinary routed/application causal lineage | M11S2 | owner-accepted | Required |
+
+
+## #474 — queued focused-input lifetime conformance (candidate qualification)
+
+This is a narrow qualification of accepted KEY-01, TEXT-01 and FOCUS-07/10.
+Registered `crates/runenui_runtime/tests/suites/focus_keyboard_input.rs::focus_fifo_fence`
+proves exact A→B and A→B→A stale keyboard/text rejection, fresh new-session
+delivery, no-op preservation, capability revocation and revoke→restore, once-only
+original M13 settlement, partial/zero budgets and trace-off behavior. A pending
+published EnterAndRestore handoff is certified only by the original FIFO RequestFocus;
+unproven focus is never guessed. FocusOut-on-compatible-retirement remains #475.
+
+
+### #474 accelerator-input boundary qualification
+
+Registered `crates/runenui_runtime/tests/suites/focus_keyboard_input.rs::keyboard_accelerators`
+proves the original focus-session check takes precedence over deriving a
+keyboard shortcut, type-ahead, Space or application command. A queued A input
+after a preceding A→B focus change settles with
+`UiInputProcessingRejection::FocusBindingInvalidated`; a replaced mounted A
+settles with the existing `StaleTarget` reason, before any shortcut action.
+An *already derived* shortcut command remains governed by accepted routed
+command targeting/rejection rules. The normal in-focus accelerator corpus,
+composition, prevention, repeat and retained-command cases remain mandatory.
+
+
+### #474 checked focus-session allocator terminal proof
+
+The registered `runenui_runtime::runtime::application::process::focus_session_exhaustion_tests`
+verifies that a distinct exhausted canonical focus lifetime produces
+`RuntimeTerminalReason::FocusSessionExhausted` before any application
+update or mounted reconciliation, **even when `WorkSequence` still has capacity**.
+The private unit tests in `focus_session_allocation_tests` prove a non-reusable
+checked near-MAX witness and no mutation when preflight refuses it. The
+ordinary FIFO sequence-exhaustion reason remains separate.
