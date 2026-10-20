@@ -503,6 +503,7 @@ mod focus_session_exhaustion_tests {
 
     struct TestApp;
 
+    #[allow(refining_impl_trait)]
     impl UiApp for TestApp {
         type State = State;
         type Action = Action;
@@ -530,9 +531,8 @@ mod focus_session_exhaustion_tests {
             .queue
             .push_preflighted(Action::Tick, None, None, ApplicationActionOrigin::Ordinary)
             .unwrap_or_else(|_| unreachable!("test queue has available work sequence"));
-        let envelope = match runtime.queue.pop() {
-            Some(WorkEnvelope::ApplicationAction(envelope)) => envelope,
-            _ => unreachable!("one admitted app action"),
+        let Some(WorkEnvelope::ApplicationAction(envelope)) = runtime.queue.pop() else {
+            unreachable!("one admitted app action")
         };
         let outcome = process_application_action::<TestApp>(&mut runtime, envelope);
         let ProcessApplicationActionOutcome::Terminal { reason, .. } = outcome else {

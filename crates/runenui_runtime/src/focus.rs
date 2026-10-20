@@ -158,7 +158,7 @@ impl FocusState {
     }
 
     #[cfg(test)]
-    pub(crate) fn exhaust_for_test(&mut self) {
+    pub(crate) const fn exhaust_for_test(&mut self) {
         self.last_session = Some(FocusSession(u64::MAX));
     }
 
