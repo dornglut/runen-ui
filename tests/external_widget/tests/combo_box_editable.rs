@@ -681,3 +681,55 @@ fn editable_combo_native_enter_escape_claims_are_event_local_and_ime_safe() {
         assert_eq!(runtime.state().submitted, 0);
     }
 }
+
+#[test]
+fn diagnostic_tab_native_finality_and_focus_default_are_distinct() {
+    use runenui_runtime::{
+        InputArbitrationRecord, UiInputFinality,
+    };
+
+    let mut runtime = runtime();
+    let owner = id(&mut runtime, "editable.owner");
+    cmd(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+    cmd(&mut runtime, owner.clone(), SemanticCommand::FocusDown);
+    assert_eq!(active(&mut runtime).as_deref(), Some("Beta"));
+    let receipt = runtime
+        .submit_keyboard(key(
+            LogicalKey::Tab,
+            PhysicalKey::Tab,
+            KeyboardCompositionState::Inactive,
+        ))
+        .unwrap_or_else(|_| unreachable!("Tab input accepted"));
+    let batch = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|error| unreachable!("one native Tab envelope: {error:?}"));
+    assert_eq!(batch.processed_through(), Some(receipt.sequence()));
+    let [InputArbitrationRecord::InputSettled(settled)] = batch.ordered_records() else {
+        unreachable!("Tab has one exactly settled native receipt")
+    };
+    let UiInputFinality::Committed(facts) = settled.finality() else {
+        unreachable!("native Tab was unexpectedly rejected")
+    };
+    eprintln!(
+        "UI486-TAB NATIVE: conflict={:?} reasons={:?} default={:?} focus_after_input={:?}",
+        facts.conflict(),
+        facts.reasons(),
+        facts.default_disposition(),
+        runtime.focus().reason()
+    );
+    settle(&mut runtime);
+    let final_focus = runtime.focus().focused_node().cloned();
+    let authored = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| Some(node.id()) == final_focus.as_ref())
+        .and_then(|node| node.authored_id())
+        .map(|id| id.as_str().to_owned());
+    eprintln!(
+        "UI486-TAB SETTLED: focus={authored:?} reason={:?} chosen={} open={}",
+        runtime.focus().reason(),
+        runtime.state().chosen,
+        runtime.state().open
+    );
+}
