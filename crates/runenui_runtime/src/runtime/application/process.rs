@@ -41,7 +41,7 @@ pub(crate) fn process_application_action<App: UiApp>(
     };
     // Compatible reconciliation may retire focus once after UiApp::update.
     // Check the exact witness before that irreversible application mutation.
-    if !runtime.focus.can_reserve_steps(sequence, 1) {
+    if !runtime.focus.can_reserve_steps(1) {
         let reason = RuntimeTerminalReason::WorkSequenceExhausted;
         let cancelled = runtime.enter_terminal(reason, 1);
         return ProcessApplicationActionOutcome::Terminal { reason, cancelled };

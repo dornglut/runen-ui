@@ -703,7 +703,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if old_target == new_target {
             return Ok(());
         }
-        if !self.focus.can_reserve_steps(transaction.sequence, 1) {
+        if !self.focus.can_reserve_steps(1) {
             return Err(TraceRoutedIntegrityFailure::CommitInvariantFailure);
         }
         let previous_visibility = self.focus.focus_visible();
@@ -746,7 +746,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             new_route.clone(),
             reason,
             next_visibility,
-            transaction.sequence,
         );
         self.refresh_focused_text_capability();
         self.reconcile_focus_group_type_ahead_state();
@@ -1021,7 +1020,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface,
         } = cleanup;
         let previous_visibility = self.focus.focus_visible();
-        self.focus.commit(None, Vec::new(), reason, false, sequence);
+        self.focus.commit(None, Vec::new(), reason, false);
         self.reconcile_focus_group_type_ahead_state();
         let Some(trace_target) = trace_target else {
             return;

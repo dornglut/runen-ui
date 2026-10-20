@@ -474,8 +474,10 @@ M4 does not hard-code application navigation, menus, or scrolling mutation.
 
 Queued keyboard and ordinary committed-text envelopes bind their original recipient to
 the exact **effective committed-focus lifetime**, not merely an unchanged mounted ID.
-The runtime represents this private lifetime with the checked non-reusable canonical
-work sequence and a bounded ordinal for multiple effective transitions in one turn.
+The runtime represents this private lifetime with one checked, nonwrapping
+monotonic generation owned exclusively by canonical FocusState. A WorkSequence
+may also identify deferred causal cleanup and is therefore not suitable for
+focus-session allocation.
 No-op focus requests and modality/visibility/ownership-snapshot revision changes do not
 retire it. A→B→A never revalidates previously admitted A work. Focus identity and
 routing remain runtime-owned; no host-visible focus-session token exists.

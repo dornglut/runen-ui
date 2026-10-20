@@ -10,13 +10,11 @@ use runenui_core::{
 
 use crate::{LogicalRect, MountedNodeId, WorkSequence, mounted::MountedTree};
 
-/// Exact focus occurrence: a non-reused canonical work identity plus a
-/// checked within-turn ordinal. No unrelated focus or revision authority.
+/// Exact, non-reusable committed-focus lifetime, allocated solely by FocusState.
+/// WorkSequence is causal identity and can be reused for deferred cleanup;
+/// it must never serve as a focus lifetime generation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct FocusSession {
-    sequence: WorkSequence,
-    step: u64,
-}
+pub struct FocusSession(u64);
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FocusEligibilityProjection {
@@ -151,15 +149,12 @@ impl FocusState {
         self.session
     }
 
-    /// Conservative checked preflight for all effective changes that a single
-    /// canonical work turn can perform. No focus nonce wraps or revives.
-    pub(crate) fn can_reserve_steps(&self, sequence: WorkSequence, steps: u64) -> bool {
-        if steps == 0 {
-            return true;
-        }
+    /// Checked preflight before any irreversible callbacks or App::update.
+    /// One lifetime counter, independent of causal work identity or queue order.
+    pub(crate) fn can_reserve_steps(&self, steps: u64) -> bool {
         self.last_session
-            .filter(|last| last.sequence == sequence)
-            .is_none_or(|last| last.step.checked_add(steps).is_some())
+            .map_or(Some(steps), |last| last.0.checked_add(steps))
+            .is_some()
     }
 
     pub(crate) fn entry_matches(&self, request: WorkSequence) -> bool {
@@ -183,14 +178,12 @@ impl FocusState {
         route: Vec<MountedNodeId>,
         reason: FocusReason,
         focus_visible: bool,
-        sequence: WorkSequence,
     ) {
-        let step = self
-            .last_session
-            .filter(|last| last.sequence == sequence)
-            .map_or(Some(0), |last| last.step.checked_add(1))
-            .unwrap_or_else(|| unreachable!("canonical focus steps were checked before mutation"));
-        let next = FocusSession { sequence, step };
+        let next = FocusSession(
+            self.last_session
+                .map_or(Some(1), |last| last.0.checked_add(1))
+                .unwrap_or_else(|| unreachable!("focus lifetime capacity was preflighted")),
+        );
         self.last_session = Some(next);
         self.session = target.as_ref().map(|_| next);
         self.completed_entry = None;
@@ -1137,31 +1130,38 @@ impl Ord for OrderedF32 {
 
 #[cfg(test)]
 mod focus_session_allocation_tests {
-    use core::num::NonZeroU64;
-
     use super::{FocusSession, FocusState};
-    use crate::WorkSequence;
+    use runenui_core::FocusReason;
 
     #[test]
-    fn exact_focus_step_exhaustion_rejects_before_canonical_focus_mutation() {
-        let prior_sequence = WorkSequence::__runtime_new(
-            NonZeroU64::new(u64::MAX - 1).unwrap_or_else(|| unreachable!()),
-        );
+    fn exact_focus_lifetime_exhaustion_rejects_before_mutation_without_reuse() {
         let mut focus = FocusState::new();
-        focus.last_session = Some(FocusSession {
-            sequence: prior_sequence,
-            step: u64::MAX - 1,
-        });
+        focus.last_session = Some(FocusSession(u64::MAX - 1));
         let unchanged = focus.clone();
-        assert!(focus.can_reserve_steps(prior_sequence, 1));
-        assert!(!focus.can_reserve_steps(prior_sequence, 2));
+        assert!(focus.can_reserve_steps(1));
+        assert!(!focus.can_reserve_steps(2));
         assert_eq!(focus, unchanged, "capacity refusal may not mutate focus");
-        // Reaching the last work sequence starts a new exact lifetime without
-        // wrapping the ordinal of the prior canonical work item.
-        let max_sequence = WorkSequence::__runtime_new(
-            NonZeroU64::new(u64::MAX).unwrap_or_else(|| unreachable!()),
-        );
-        assert!(focus.can_reserve_steps(max_sequence, 2));
+        focus.commit(None, Vec::new(), FocusReason::ProgrammaticRequest, false);
+        assert_eq!(focus.last_session, Some(FocusSession(u64::MAX)));
+        assert!(!focus.can_reserve_steps(1));
         assert_eq!(focus.session(), None);
+    }
+
+    #[test]
+    fn distinct_commits_never_reuse_lifetime_even_with_repeated_causal_work_identity() {
+        // The focus allocator does not accept a WorkSequence as input.
+        // Deferred composition cleanup may reuse the original causal identity
+        // after an unrelated focus change; a single monotonic session still
+        // cannot reincarnate its earlier committed-focus witness.
+        let mut focus = FocusState::new();
+        focus.commit(None, Vec::new(), FocusReason::ProgrammaticRequest, false);
+        let first = focus.last_session;
+        focus.commit(None, Vec::new(), FocusReason::ProgrammaticRequest, false);
+        let second = focus.last_session;
+        focus.commit(None, Vec::new(), FocusReason::ProgrammaticRequest, false);
+        assert_eq!(first, Some(FocusSession(1)));
+        assert_eq!(second, Some(FocusSession(2)));
+        assert_eq!(focus.last_session, Some(FocusSession(3)));
+        assert_ne!(first, focus.last_session);
     }
 }

@@ -353,7 +353,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // At most one accepted focus default plus one interaction-invalidation
         // retirement can commit in a routed transaction. Reserve both before
         // any widget callback mutates state or queues a derived command.
-        if !self.focus.can_reserve_steps(facts.sequence, 2) {
+        if !self.focus.can_reserve_steps(2) {
             return Err(self.handle_routed_admission_rejection(
                 TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
                 facts,
