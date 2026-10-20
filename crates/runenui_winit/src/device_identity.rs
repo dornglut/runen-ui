@@ -46,11 +46,103 @@ impl DeviceIdentityMap {
         self.identities.insert(native, identity);
         Ok(identity)
     }
+
+    /// Returns a previously allocated window-event device identity without
+    /// creating another neutral source lifetime. A raw `DeviceEvent` ID is
+    /// not guaranteed to match the window keyboard event's `DeviceId`.
+    #[must_use]
+    pub fn known(&self, native: DeviceId) -> Option<InputDeviceId> {
+        self.identities.get(&native).copied()
+    }
+
+    /// Forgets only the expected live mapping after the host has separately
+    /// retired its original keyboard, pointer, touch, and gameplay sources.
+    /// An old removal cannot erase a newer incarnation with the same native ID.
+    #[must_use]
+    pub fn retire_exact(&mut self, native: DeviceId, expected: InputDeviceId) -> bool {
+        if self.known(native) != Some(expected) {
+            return false;
+        }
+        self.identities.remove(&native);
+        true
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{DeviceId, DeviceIdentityMap};
+    use super::{DeviceId, DeviceIdentityError, DeviceIdentityMap};
+
+    #[test]
+    fn unknown_removal_does_not_allocate_a_neutral_identity() {
+        let native = DeviceId::dummy();
+        let mut map = DeviceIdentityMap::default();
+        let unrelated = runenui_core::InputDeviceId::new(42)
+            .unwrap_or_else(|| unreachable!("checked nonzero neutral ID"));
+        assert_eq!(map.known(native), None);
+        assert!(!map.retire_exact(native, unrelated));
+        assert_eq!(
+            map.resolve(native)
+                .unwrap_or_else(|_| unreachable!("first allocation remains available"))
+                .get(),
+            1
+        );
+    }
+
+    #[test]
+    fn checked_retirement_blocks_stale_removal_after_reincarnation() {
+        let native = DeviceId::dummy();
+        let mut map = DeviceIdentityMap::default();
+        let old = map
+            .resolve(native)
+            .unwrap_or_else(|_| unreachable!("first device"));
+        assert_eq!(map.known(native), Some(old));
+        assert!(map.retire_exact(native, old));
+        assert_eq!(map.known(native), None);
+        assert!(!map.retire_exact(native, old));
+
+        let fresh = map
+            .resolve(native)
+            .unwrap_or_else(|_| unreachable!("new incarnation"));
+        assert_ne!(fresh, old);
+        assert_eq!(fresh.get(), 2);
+        assert!(!map.retire_exact(native, old));
+        assert_eq!(map.known(native), Some(fresh));
+        assert_eq!(
+            map.resolve(native)
+                .unwrap_or_else(|_| unreachable!("stable present incarnation")),
+            fresh
+        );
+        assert!(map.retire_exact(native, fresh));
+        assert_eq!(
+            map.resolve(native)
+                .unwrap_or_else(|_| unreachable!("third incarnation"))
+                .get(),
+            3
+        );
+    }
+
+    #[test]
+    fn exhausted_allocator_preserves_existing_mapping_without_reusing_retired_identity() {
+        let native = DeviceId::dummy();
+        let mut map = DeviceIdentityMap {
+            next_input_device_id: Some(u64::MAX),
+            ..DeviceIdentityMap::default()
+        };
+
+        let last = map
+            .resolve(native)
+            .unwrap_or_else(|_| unreachable!("last representable neutral identity"));
+        assert_eq!(last.get(), u64::MAX);
+        assert_eq!(map.next_input_device_id, None);
+        assert_eq!(map.resolve(native), Ok(last));
+        assert_eq!(map.known(native), Some(last));
+
+        assert!(map.retire_exact(native, last));
+        assert_eq!(map.known(native), None);
+        assert_eq!(map.resolve(native), Err(DeviceIdentityError::Exhausted));
+        assert_eq!(map.known(native), None);
+        assert!(!map.retire_exact(native, last));
+    }
 
     #[test]
     fn repeated_native_identity_resolves_to_one_host_session_identity() {
