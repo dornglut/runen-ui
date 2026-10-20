@@ -210,7 +210,7 @@ fn pending_entry_never_transfers_ambiguous_committed_text() {
         .unwrap_or_else(|_| unreachable!());
     let error = runtime
         .submit_text(CommittedTextEvent::new("secret", None).unwrap_or_else(|_| unreachable!()))
-        .expect_err("a pending different text recipient cannot be inferred");
+        .err().unwrap_or_else(|| unreachable!("an ambiguous pending recipient must reject before queueing"));
     assert_eq!(error.kind(), SubmitTextErrorKind::PendingFocusHandoff);
     let original = id(&mut runtime, "text");
     assert_eq!(runtime.focus().focused_node(), Some(&original));
@@ -269,4 +269,44 @@ fn retired_pending_presentation_entry_rejects_without_retarged_keyboard() {
         )
     ));
     assert!(!runtime.state().p_open);
+}
+
+#[test]
+fn exact_noop_presentation_entry_certifies_the_unchanged_focused_recipient() {
+    let (env, size) = environment();
+    let context = SurfaceBuildContext::tight(&env, size);
+    let mut runtime = AppRuntime::<App>::mount(State { p_open: true });
+    // An eligible mounted recipient can already hold focus before the
+    // first interaction publication schedules EnterAndRestore for it.
+    focus(&mut runtime, "p-item");
+    let original = id(&mut runtime, "p-item");
+    assert_eq!(runtime.focus().focused_node(), Some(&original));
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("known P publication"));
+    let receipt = runtime
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("certified pending no-op ingress"));
+    runtime.pump(ONE).unwrap_or_else(|_| unreachable!("queued no-op entry"));
+    assert_eq!(runtime.focus().focused_node(), Some(&original));
+    let reached = runtime.pump(ONE).unwrap_or_else(|_| unreachable!("no-op-bound keyboard"));
+    let records: Vec<_> = reached
+        .ordered_records()
+        .iter()
+        .filter_map(|record| {
+            if let InputArbitrationRecord::InputSettled(value) = record {
+                Some(value)
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].sequence(), receipt.sequence());
+    assert!(matches!(
+        records[0].finality(),
+        UiInputFinality::Committed(facts)
+            if matches!(facts.route(), UiInputRoute::Routed { target } if target == &original)
+    ));
+    assert!(runtime.state().p_open);
 }
