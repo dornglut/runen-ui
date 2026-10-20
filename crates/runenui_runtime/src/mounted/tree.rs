@@ -114,6 +114,8 @@ pub(crate) struct MountedTree<Action> {
     pub(super) semantic_store: SemanticStore,
     pub(super) root: Option<MountedNodeId>,
     pub(super) shutdown: bool,
+    #[cfg(feature = "controlled-transaction-prototype")]
+    pub(super) controlled_pending: Vec<super::reconcile::ControlledPreparedNotice<Action>>,
 }
 
 impl<Action> MountedTree<Action> {
@@ -124,6 +126,8 @@ impl<Action> MountedTree<Action> {
             semantic_store: SemanticStore::new(),
             root: None,
             shutdown: false,
+            #[cfg(feature = "controlled-transaction-prototype")]
+            controlled_pending: Vec::new(),
         }
     }
 
@@ -250,6 +254,11 @@ impl<Action> MountedTree<Action> {
             .ok_or(WidgetBridgeError::StatePayloadMismatch)?;
         node.widget.subscriptions(&node.state, subscriptions)
     }
+    #[cfg(feature = "controlled-transaction-prototype")]
+    pub(crate) fn clear_controlled_pending(&mut self) {
+        self.controlled_pending.clear();
+    }
+
     pub(crate) fn node_mut(&mut self, id: &MountedNodeId) -> Option<&mut MountedNode<Action>> {
         let (slot, generation) = self.runtime.__runtime_mounted_parts(id)?;
         self.arena.get_mut(slot as usize, generation)

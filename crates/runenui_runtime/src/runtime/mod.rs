@@ -31,6 +31,7 @@ pub struct ControlledProcessingRefusal<Action> {
 pub enum ControlledProcessingRefusalReason {
     OrdinaryQueuePressure,
     UnsupportedReconciliation,
+    AfterWidgetStaging,
 }
 
 use core::fmt;
@@ -109,6 +110,8 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     state: Option<State>,
     #[cfg(feature = "controlled-transaction-prototype")]
     pub(crate) controlled_refusals: Vec<ControlledProcessingRefusal<Action>>,
+    #[cfg(feature = "controlled-transaction-prototype")]
+    pub(crate) controlled_fail_after_stage: bool,
 
     pub(crate) tree: MountedTree<Action>,
     pub(crate) queue: WorkQueue<Action>,

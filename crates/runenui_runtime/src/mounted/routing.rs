@@ -23,6 +23,32 @@ pub(crate) struct EventInvocation<Action> {
 }
 
 impl<Action> MountedTree<Action> {
+    #[cfg(feature = "controlled-transaction-prototype")]
+    fn take_controlled_invocation(
+        &mut self,
+        current: &MountedNodeId,
+        phase: EventPhase,
+        event: &UiEvent,
+        allowance: usize,
+    ) -> Option<EventInvocation<Action>> {
+        use runenui_core::{CompositionEvent, ControlledNoticeKind, FocusEventKind};
+        let kind = if event.as_focus().is_some_and(|f| f.kind() == FocusEventKind::Out) {
+            ControlledNoticeKind::FocusOut
+        } else if matches!(event, UiEvent::Composition(CompositionEvent::Cancel(_))) {
+            ControlledNoticeKind::CompositionCancel
+        } else {
+            return None;
+        };
+        let index = self.controlled_pending.iter().position(|item| {
+            &item.owner == current && item.phase == phase && item.kind == kind
+        })?;
+        let action = self.controlled_pending.remove(index).action;
+        Some(EventInvocation {
+            widget: WidgetEventOutput::none(),
+            output: EventContextOutput::__controlled_staged_action(action, allowance),
+        })
+    }
+
     pub(crate) fn event_route(
         &self,
         target: &MountedNodeId,
@@ -84,6 +110,10 @@ impl<Action> MountedTree<Action> {
         propagation_stopped: bool,
         output_allowance: usize,
     ) -> Result<EventInvocation<Action>, WidgetBridgeError> {
+        #[cfg(feature = "controlled-transaction-prototype")]
+        if let Some(output) = self.take_controlled_invocation(current, phase, event, output_allowance) {
+            return Ok(output);
+        }
         let node = self
             .node_mut(current)
             .ok_or(WidgetBridgeError::StatePayloadMismatch)?;
@@ -125,6 +155,10 @@ impl<Action> MountedTree<Action> {
         propagation_stopped: bool,
         output_allowance: usize,
     ) -> Result<EventInvocation<Action>, WidgetBridgeError> {
+        #[cfg(feature = "controlled-transaction-prototype")]
+        if let Some(output) = self.take_controlled_invocation(current, phase, event, output_allowance) {
+            return Ok(output);
+        }
         let node = self
             .node_mut(current)
             .ok_or(WidgetBridgeError::StatePayloadMismatch)?;

@@ -225,6 +225,8 @@ mod application;
 mod application_command;
 mod builtins;
 mod combo_box;
+#[cfg(feature = "controlled-transaction-prototype")]
+mod controlled_widget;
 mod computed_style;
 mod editing;
 mod effects;
@@ -286,6 +288,11 @@ include!("element_macros.rs");
 include!("identity_macros.rs");
 include!("token_macros.rs");
 
+#[cfg(feature = "controlled-transaction-prototype")]
+pub use controlled_widget::{
+    ControlledDeclarativeWidget, ControlledMountedPlan, ControlledNotice,
+    ControlledNoticeKind, ControlledRetainedState,
+};
 pub use application::{
     HostProtocol, NoHostCommand, NoHostProtocol, NoHostResponse, NoHostResponseKind, UiApp,
 };

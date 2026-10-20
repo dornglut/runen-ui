@@ -56,6 +56,28 @@ impl<Action> ReconciliationPlan<Action> {
     pub(crate) const fn invalidated_lifetimes(&self) -> &[PlannedInvalidation] {
         self.invalidated.as_slice()
     }
+
+    #[cfg(feature = "controlled-transaction-prototype")]
+    pub(crate) fn validate_controlled(&self, tree: &MountedTree<Action>) -> Option<usize> {
+        fn visit<Action>(plan: &PlannedNode<Action>, tree: &MountedTree<Action>) -> Option<usize> {
+            match plan {
+                PlannedNode::Retain {
+                    id, controlled, removals, children, ..
+                } => {
+                    if !removals.is_empty() { return None; }
+                    let mut total = 0usize;
+                    if let Some(c) = controlled {
+                        if tree.node(id)?.state.controlled_revision().is_none() { return None; }
+                        total = c.update_actions.len().checked_add(c.notices.len())?;
+                    }
+                    for child in children { total = total.checked_add(visit(child, tree)?)?; }
+                    Some(total)
+                }
+                PlannedNode::Mount { .. } | PlannedNode::Replace { .. } => None,
+            }
+        }
+        visit(&self.root, tree)
+    }
 }
 
 /// A checked bridge failure after planning has verified compatibility. This is
@@ -138,11 +160,21 @@ impl<Action> IncomingNode<Action> {
     }
 }
 
+#[cfg(feature = "controlled-transaction-prototype")]
+pub(crate) struct ControlledPreparedNotice<Action> {
+    pub owner: MountedNodeId,
+    pub kind: runenui_core::ControlledNoticeKind,
+    pub phase: runenui_core::EventPhase,
+    pub action: Action,
+}
+
 enum PlannedNode<Action> {
     Retain {
         id: MountedNodeId,
         path: String,
         incoming: IncomingNode<Action>,
+        #[cfg(feature = "controlled-transaction-prototype")]
+        controlled: Option<runenui_core::ControlledMountedPlan<Action>>,
         old_children: Vec<MountedNodeId>,
         removals: Vec<PlannedRemoval>,
         children: Vec<Self>,
@@ -403,9 +435,15 @@ impl<Action> MountedTree<Action> {
         } = incoming;
         let (removals, children) =
             self.plan_children(existing, &old_children, children, &path, planning);
+        #[cfg(feature = "controlled-transaction-prototype")]
+        let mut widget = widget;
+        #[cfg(feature = "controlled-transaction-prototype")]
+        let controlled = widget.controlled_take_plan();
         PlannedNode::Retain {
             id: existing.clone(),
             path,
+            #[cfg(feature = "controlled-transaction-prototype")]
+            controlled,
             incoming: IncomingNode {
                 authored_id,
                 key,
@@ -609,11 +647,17 @@ impl<Action> MountedTree<Action> {
                 id,
                 path,
                 incoming,
+                #[cfg(feature = "controlled-transaction-prototype")]
+                controlled,
                 old_children,
                 removals,
                 children,
             } => {
-                self.update_retained_node(&id, incoming, &path, stats)?;
+                self.update_retained_node(
+                    &id, incoming, &path, stats,
+                    #[cfg(feature = "controlled-transaction-prototype")]
+                    controlled,
+                )?;
                 for removal in removals {
                     self.unmount_subtree(
                         &removal.id,
@@ -674,7 +718,29 @@ impl<Action> MountedTree<Action> {
         incoming: IncomingNode<Action>,
         path: &str,
         stats: &mut ReconcileStats<Action>,
+        #[cfg(feature = "controlled-transaction-prototype")]
+        controlled: Option<runenui_core::ControlledMountedPlan<Action>>,
     ) -> Result<(), ReconciliationApplyError> {
+        #[cfg(feature = "controlled-transaction-prototype")]
+        let controlled_changed = controlled.as_ref().is_some_and(|plan| {
+            self.node(id).and_then(|node| node.state.controlled_revision())
+                .is_some_and(|revision| revision != plan.revision)
+        });
+        #[cfg(feature = "controlled-transaction-prototype")]
+        let mut update_context = if let Some(ref prepared) = controlled {
+            let mut ctx = WidgetUpdateContext::__runtime_new();
+            let node = self.node_mut(id).ok_or(ReconciliationApplyError)?;
+            if !node.state.controlled_set_revision(prepared.revision) {
+                return Err(ReconciliationApplyError);
+            }
+            if controlled_changed {
+                ctx.invalidate(WidgetInvalidation::ALL);
+            }
+            ctx
+        } else {
+            self.prepare_retained_widget_update(id, &incoming.widget, path, stats)?
+        };
+        #[cfg(not(feature = "controlled-transaction-prototype"))]
         let mut update_context =
             self.prepare_retained_widget_update(id, &incoming.widget, path, stats)?;
         let widget_invalidation = update_context.__runtime_take_invalidation();
@@ -685,7 +751,21 @@ impl<Action> MountedTree<Action> {
         if update_context.__runtime_take_subscription_invalidation() {
             stats.subscription_invalidated.push(id.clone());
         }
-        let outputs = update_context.__runtime_take_outputs();
+        let mut outputs = update_context.__runtime_take_outputs();
+        #[cfg(feature = "controlled-transaction-prototype")]
+        if let Some(prepared) = controlled {
+            if controlled_changed {
+                outputs.extend(prepared.update_actions.into_iter().map(runenui_core::__runtime::MountedEffect::Action));
+            }
+            self.controlled_pending.extend(prepared.notices.into_iter().map(|notice| {
+                ControlledPreparedNotice {
+                    owner: id.clone(),
+                    kind: notice.kind,
+                    phase: notice.phase,
+                    action: notice.action,
+                }
+            }));
+        }
         if !outputs.is_empty() {
             stats.mounted_outputs.push((id.clone(), outputs));
         }

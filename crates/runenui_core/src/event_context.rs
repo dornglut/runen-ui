@@ -68,6 +68,27 @@ pub struct EventContextOutput<Action> {
     pub remaining_outputs: usize,
 }
 
+#[cfg(feature = "controlled-transaction-prototype")]
+impl<Action> EventContextOutput<Action> {
+    #[doc(hidden)]
+    pub fn __controlled_staged_action(action: Action, allowance: usize) -> Self {
+        Self {
+            ordered: vec![RoutedEventOutput::Action(action)],
+            application_command_disposition: None,
+            invalidation: WidgetInvalidation::NONE,
+            subscription_invalidation: false,
+            mounted_work: Vec::new(),
+            pointer_capture: Vec::new(),
+            propagation_stopped: false,
+            default_prevented: false,
+            host_input_claimed: false,
+            accepted_drag_drop: false,
+            overflowed: allowance == 0,
+            remaining_outputs: allowance.saturating_sub(1),
+        }
+    }
+}
+
 /// Borrowed facts and provisional output surface for one routed callback.
 #[allow(
     clippy::struct_excessive_bools,

@@ -403,6 +403,13 @@ pub(crate) fn pump_recorded<App: UiApp>(
         if !observed.admit(runtime)? {
             return Ok(observed.finish(runtime, budget, processed, cancelled, totals, true));
         }
+        // One owned processing-refusal outcome is retained until consumed by
+        // the host; do not pop any further accepted FIFO envelope while full.
+        // No second work scheduler and no dropped original action.
+        #[cfg(feature = "controlled-transaction-prototype")]
+        if !runtime.controlled_refusals.is_empty() {
+            return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
+        }
         let Some(envelope) = runtime.pop_work() else {
             // A canonical pop can be empty after its preflight; no envelope
             // was consumed. The previously reserved boundary is sufficient.

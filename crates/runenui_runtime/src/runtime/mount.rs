@@ -101,6 +101,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             state: Some(state),
             #[cfg(feature = "controlled-transaction-prototype")]
             controlled_refusals: Vec::new(),
+            #[cfg(feature = "controlled-transaction-prototype")]
+            controlled_fail_after_stage: false,
             tree,
             queue,
             trace,

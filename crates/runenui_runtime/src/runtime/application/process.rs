@@ -33,45 +33,49 @@ pub(crate) fn process_application_action<App: UiApp>(
         target,
         origin,
     } = envelope;
-    // #475 EXPERIMENT ONLY. This branch is entered from the actual canonical
-    // FIFO, after pop, but before recording commit trace or invoking a live
-    // application/widget mutation. The retained action stays owned for refusal.
+    // #475 EXPERIMENT ONLY. All authored action and widget scripts are
+    // owned by this candidate; no retained widget callback is invoked here.
     #[cfg(feature = "controlled-transaction-prototype")]
-    let controlled =
-        if let Some(prepared_state) = App::controlled_prepare(runtime.state(), &action) {
-            // Build the candidate structural tree without touching the committed
-            // arena or non-Clone retained resource. The constrained authoring
-            // contract forbids ambient effects during this evaluation.
-            let candidate = App::root(&prepared_state).into_element();
-            let candidate_plan = runtime
-                .tree
-                .plan_reconciliation(candidate, runtime.mounted_public_slot_limit);
-            let mandatory_slots = if runtime.focus.focused_node().is_some() {
-                runtime.limits.transaction_outputs().checked_mul(2)
-            } else {
-                Some(0)
-            };
-            let capacity_ok =
-                mandatory_slots.is_some_and(|slots| runtime.queue.preflight_commit(slots).is_ok());
-            if !capacity_ok || candidate_plan.is_err() {
-                runtime.controlled_refusals.push(super::super::ControlledProcessingRefusal {
+    let controlled = if let Some(prepared_state) =
+        App::controlled_prepare(runtime.state(), &action)
+    {
+        let candidate = App::root(&prepared_state).into_element();
+        let candidate_plan = runtime.tree.plan_reconciliation(
+            candidate,
+            runtime.mounted_public_slot_limit,
+        );
+        // This is a LATE admission gate, after the controlled mounted-node
+        // state instructions and exact authored C/T/B outputs were staged.
+        let controlled_count = candidate_plan.as_ref().ok()
+            .and_then(|plan| plan.validate_controlled(&runtime.tree));
+        let stage_valid = controlled_count.is_some();
+        let capacity_ok = controlled_count
+            .and_then(|staged| runtime.limits.transaction_outputs().checked_mul(2)
+                .and_then(|routed| routed.checked_add(staged))
+            )
+            .is_some_and(|slots| runtime.queue.preflight_commit(slots).is_ok());
+        let injected = core::mem::take(&mut runtime.controlled_fail_after_stage);
+        if !stage_valid || !capacity_ok || injected {
+            runtime.controlled_refusals.push(super::super::ControlledProcessingRefusal {
                 sequence,
-                reason: if capacity_ok {
+                reason: if !stage_valid {
                     super::super::ControlledProcessingRefusalReason::UnsupportedReconciliation
-                } else {
+                } else if !capacity_ok {
                     super::super::ControlledProcessingRefusalReason::OrdinaryQueuePressure
+                } else {
+                    super::super::ControlledProcessingRefusalReason::AfterWidgetStaging
                 },
                 original: action,
             });
-                return ProcessApplicationActionOutcome::Completed;
-            }
-            Some((
-                prepared_state,
-                candidate_plan.unwrap_or_else(|_| unreachable!("checked")),
-            ))
-        } else {
-            None
-        };
+            return ProcessApplicationActionOutcome::Completed;
+        }
+        Some((
+            prepared_state,
+            candidate_plan.unwrap_or_else(|_| unreachable!("validated candidate")),
+        ))
+    } else {
+        None
+    };
 
     let before = ReconciliationGeneration(runtime.generation);
     let Some(next) = runtime.next_generation() else {
@@ -582,6 +586,8 @@ pub(crate) fn process_application_action<App: UiApp>(
             cancelled: 0,
         };
     }
+    #[cfg(feature = "controlled-transaction-prototype")]
+    runtime.tree.clear_controlled_pending();
     ProcessApplicationActionOutcome::Completed
 }
 

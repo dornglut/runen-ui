@@ -498,6 +498,11 @@ pub trait Widget<Action>: fmt::Debug {
         context.invalidate(WidgetInvalidation::ALL);
     }
 
+    #[cfg(feature = "controlled-transaction-prototype")]
+    fn controlled_take_plan(&mut self) -> Option<crate::ControlledMountedPlan<Action>> {
+        None
+    }
+
     fn unmount(&self, _state: &mut Self::State, _context: &mut WidgetUnmountContext) {}
 
     /// Declares the complete desired subscription set for this mounted state.

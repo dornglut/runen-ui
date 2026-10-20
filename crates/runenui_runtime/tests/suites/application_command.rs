@@ -11,6 +11,9 @@ mod automation_rejection;
 #[cfg(feature = "controlled-transaction-prototype")]
 #[path = "../controlled_transaction_vertical.rs"]
 mod controlled_transaction_vertical;
+#[cfg(feature = "controlled-transaction-prototype")]
+#[path = "../controlled_mounted_vertical.rs"]
+mod controlled_mounted_vertical;
 #[path = "../public_consumer.rs"]
 mod public_consumer;
 #[path = "../routed_commands.rs"]

@@ -16,6 +16,8 @@ use crate::{
 use core::{any::Any, fmt};
 
 pub trait ErasedWidget<Action>: fmt::Debug {
+    #[cfg(feature = "controlled-transaction-prototype")]
+    fn controlled_take_plan(&mut self) -> Option<crate::ControlledMountedPlan<Action>>;
     fn widget_type_id(&self) -> WidgetTypeId;
     fn widget_type_name(&self) -> &'static str;
     fn state_type_id(&self) -> WidgetStateTypeId;
@@ -89,6 +91,10 @@ impl<Action, Implementation> ErasedWidget<Action> for WidgetAdapter<Implementati
 where
     Implementation: Widget<Action> + 'static,
 {
+    #[cfg(feature = "controlled-transaction-prototype")]
+    fn controlled_take_plan(&mut self) -> Option<crate::ControlledMountedPlan<Action>> {
+        self.0.controlled_take_plan()
+    }
     fn widget_type_id(&self) -> WidgetTypeId {
         WidgetTypeId::of::<Implementation>()
     }
@@ -253,6 +259,22 @@ pub struct MountedWidgetState {
     value: Box<dyn Any>,
 }
 
+#[cfg(feature = "controlled-transaction-prototype")]
+impl MountedWidgetState {
+    pub fn controlled_revision(&self) -> Option<u64> {
+        self.value.downcast_ref::<crate::ControlledRetainedState>().map(crate::ControlledRetainedState::revision)
+    }
+    pub fn controlled_set_revision(&mut self, revision: u64) -> bool {
+        let Some(state) = self.value.downcast_mut::<crate::ControlledRetainedState>() else { return false };
+        state.__runtime_set_revision(revision);
+        true
+    }
+    pub fn controlled_resource(&self) -> Option<&dyn Any> {
+        self.value.downcast_ref::<crate::ControlledRetainedState>()
+            .map(crate::ControlledRetainedState::resource)
+    }
+}
+
 impl fmt::Debug for MountedWidgetState {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("MountedWidgetState(..)")
@@ -289,6 +311,15 @@ impl<Action> MountedWidget<Action> {
         self.inner.state_type_id()
     }
     #[must_use]
+    #[cfg(feature = "controlled-transaction-prototype")]
+    pub fn controlled_take_plan(&mut self) -> Option<crate::ControlledMountedPlan<Action>> {
+        // Fail closed: no external widget is trusted to participate in the
+        // speculative interpreter by implementing a similarly named method.
+        if self.widget_type_name() != core::any::type_name::<crate::ControlledDeclarativeWidget<Action>>() {
+            return None;
+        }
+        self.inner.controlled_take_plan()
+    }
     pub fn create_state(&self) -> MountedWidgetState {
         MountedWidgetState {
             value: self.inner.create_state(),

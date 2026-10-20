@@ -106,6 +106,24 @@ impl<App: UiApp> AppRuntime<App> {
         core::mem::take(&mut self.runtime.controlled_refusals)
     }
 
+    #[cfg(feature = "controlled-transaction-prototype")]
+    pub fn experiment_reject_after_mounted_stage(&mut self) {
+        self.runtime.controlled_fail_after_stage = true;
+    }
+
+    #[cfg(feature = "controlled-transaction-prototype")]
+    pub fn experiment_retained_resource(
+        &self,
+        id: &MountedNodeId,
+    ) -> Option<&dyn core::any::Any> {
+        self.runtime.tree.node(id)?.state.controlled_resource()
+    }
+
+    #[cfg(feature = "controlled-transaction-prototype")]
+    pub fn experiment_retained_revision(&self, id: &MountedNodeId) -> Option<u64> {
+        self.runtime.tree.node(id)?.state.controlled_revision()
+    }
+
     /// Appends one exact-target semantic command to the canonical FIFO.
     ///
     /// # Errors
