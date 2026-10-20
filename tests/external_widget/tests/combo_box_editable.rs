@@ -418,6 +418,23 @@ fn tab_uses_m4_real_focus_and_dismisses_without_accepting_the_active_option() {
         ))
         .unwrap_or_else(|_| unreachable!("Tab ingress"));
     settle(&mut runtime);
+    let focus_observed = runtime.focus().focused_node().cloned();
+    let focus_authored = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| Some(node.id()) == focus_observed.as_ref())
+        .and_then(|node| node.authored_id())
+        .map(|authored| authored.as_str().to_owned());
+    let next_after = id(&mut runtime, "editable.next");
+    eprintln!(
+        "UI486-TAB after settling: authored={focus_authored:?} target_is_original_next={} target_is_current_next={} focus_reason={:?} app_open={} chosen={}",
+        focus_observed.as_ref() == Some(&next),
+        focus_observed.as_ref() == Some(&next_after),
+        runtime.focus().reason(),
+        runtime.state().open,
+        runtime.state().chosen
+    );
     assert_eq!(runtime.focus().focused_node(), Some(&next));
     assert!(!runtime.state().open);
     assert_eq!(runtime.state().chosen, 0);

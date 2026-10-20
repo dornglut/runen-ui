@@ -477,6 +477,7 @@ fn select_only_combo_claims_only_its_recognized_native_arrow_key() {
             let UiInputFinality::Committed(facts) = settled.finality() else {
                 unreachable!("nonterminal native event commits")
             };
+            eprintln!("UI485-CLAIM phase={phase:?} modifiers={modifiers:?} composition={composition:?} recognized={recognized} conflict={:?} reasons={:?} default={:?}", facts.conflict(), facts.reasons(), facts.default_disposition());
             assert_eq!(facts.conflict(), if recognized {
                 UiInputConflict::ExclusiveUi
             } else {
