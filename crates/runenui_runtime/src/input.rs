@@ -563,17 +563,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Err(kind) => return Err(SubmitKeyboardError::new(kind, event)),
             };
             match self.certified_pending_keyboard_focus_entry() {
-                Some((request, destination)) if target.as_ref() != Some(&destination) =>
-                    (destination, crate::queue::FocusInputBinding::PendingEntry { request }),
-                Some((_, destination)) =>
-                    (destination, self.focus.session().map_or(
+                Some((request, destination)) if target.as_ref() != Some(&destination) => (
+                    destination,
+                    crate::queue::FocusInputBinding::PendingEntry { request },
+                ),
+                Some((_, destination)) => (
+                    destination,
+                    self.focus.session().map_or(
                         crate::queue::FocusInputBinding::Uncertified,
                         crate::queue::FocusInputBinding::Committed,
-                    )),
+                    ),
+                ),
                 None => {
-                    let target = target.ok_or_else(|| SubmitKeyboardError::new(
-                        SubmitKeyboardErrorKind::NoFocusedTarget, event.clone()
-                    ))?;
+                    let target = target.ok_or_else(|| {
+                        SubmitKeyboardError::new(
+                            SubmitKeyboardErrorKind::NoFocusedTarget,
+                            event.clone(),
+                        )
+                    })?;
                     (target, crate::queue::FocusInputBinding::Uncertified)
                 }
             }
@@ -606,32 +613,36 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             crate::queue::FocusInputBinding::Uncertified,
             crate::queue::FocusInputBinding::Committed,
         );
-        self.commit_input(target, InputEnvelopePayload::CommittedText(event), Some(witness))
-            .map(TextSubmission::new)
-            .map_err(|(kind, event)| {
-                let InputEnvelopePayload::CommittedText(event) = event else {
-                    unreachable!()
-                };
-                SubmitTextError::new(
-                    match kind {
-                        SubmitKeyboardErrorKind::Full => SubmitTextErrorKind::Full,
-                        SubmitKeyboardErrorKind::Closed => SubmitTextErrorKind::Closed,
-                        SubmitKeyboardErrorKind::Terminal(reason) => {
-                            SubmitTextErrorKind::Terminal(reason)
-                        }
-                        SubmitKeyboardErrorKind::NoFocusedTarget => {
-                            SubmitTextErrorKind::NoFocusedTarget
-                        }
-                        SubmitKeyboardErrorKind::WorkSequenceExhausted => {
-                            SubmitTextErrorKind::WorkSequenceExhausted
-                        }
-                        SubmitKeyboardErrorKind::TraceSequenceExhausted => {
-                            SubmitTextErrorKind::TraceSequenceExhausted
-                        }
-                    },
-                    event,
-                )
-            })
+        self.commit_input(
+            target,
+            InputEnvelopePayload::CommittedText(event),
+            Some(witness),
+        )
+        .map(TextSubmission::new)
+        .map_err(|(kind, event)| {
+            let InputEnvelopePayload::CommittedText(event) = event else {
+                unreachable!()
+            };
+            SubmitTextError::new(
+                match kind {
+                    SubmitKeyboardErrorKind::Full => SubmitTextErrorKind::Full,
+                    SubmitKeyboardErrorKind::Closed => SubmitTextErrorKind::Closed,
+                    SubmitKeyboardErrorKind::Terminal(reason) => {
+                        SubmitTextErrorKind::Terminal(reason)
+                    }
+                    SubmitKeyboardErrorKind::NoFocusedTarget => {
+                        SubmitTextErrorKind::NoFocusedTarget
+                    }
+                    SubmitKeyboardErrorKind::WorkSequenceExhausted => {
+                        SubmitTextErrorKind::WorkSequenceExhausted
+                    }
+                    SubmitKeyboardErrorKind::TraceSequenceExhausted => {
+                        SubmitTextErrorKind::TraceSequenceExhausted
+                    }
+                },
+                event,
+            )
+        })
     }
 
     pub(crate) fn start_composition(
@@ -1024,7 +1035,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .then_some(())
             .ok_or(SubmitTextErrorKind::FocusedTargetNotTextCapable)?;
         if self.editing.has_owner(&target) {
-            let reserved = self.queue.pending_committed_text_for(&target, self.focus.session());
+            let reserved = self
+                .queue
+                .pending_committed_text_for(&target, self.focus.session());
             self.editing
                 .can_prepare_after_reserved(&target, reserved)
                 .map_err(|error| match error {
@@ -1094,7 +1107,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         let committed = self
             .queue
-            .push_input_preflighted(target, payload, focus_binding, instant, accepted, reservation)
+            .push_input_preflighted(
+                target,
+                payload,
+                focus_binding,
+                instant,
+                accepted,
+                reservation,
+            )
             .unwrap_or_else(|_| unreachable!("input queue was preflighted"));
         self.external_queue_commit_accepted();
         Ok(committed)

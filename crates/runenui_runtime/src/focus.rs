@@ -153,9 +153,8 @@ impl FocusState {
     }
 
     pub(crate) fn entry_matches(&self, request: WorkSequence) -> bool {
-        self.completed_entry.is_some_and(|(sequence, witness)| {
-            sequence == request && self.session == Some(witness)
-        })
+        self.completed_entry
+            .is_some_and(|(sequence, witness)| sequence == request && self.session == Some(witness))
     }
 
     pub(crate) fn certify_entry(&mut self, request: WorkSequence) {
@@ -176,7 +175,9 @@ impl FocusState {
         focus_visible: bool,
         sequence: WorkSequence,
     ) {
-        let step = self.last_session.filter(|last| last.sequence == sequence)
+        let step = self
+            .last_session
+            .filter(|last| last.sequence == sequence)
             .map_or(Some(0), |last| last.step.checked_add(1))
             .expect("a canonical work turn has a finite focus-transition bound");
         let next = FocusSession { sequence, step };
