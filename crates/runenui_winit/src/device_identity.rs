@@ -70,7 +70,7 @@ impl DeviceIdentityMap {
 
 #[cfg(test)]
 mod tests {
-    use super::{DeviceId, DeviceIdentityMap};
+    use super::{DeviceId, DeviceIdentityError, DeviceIdentityMap};
 
     #[test]
     fn unknown_removal_does_not_allocate_a_neutral_identity() {
@@ -119,6 +119,27 @@ mod tests {
                 .get(),
             3
         );
+    }
+
+    #[test]
+    fn exhausted_allocator_preserves_existing_mapping_without_reusing_retired_identity() {
+        let native = DeviceId::dummy();
+        let mut map = DeviceIdentityMap::default();
+        map.next_input_device_id = Some(u64::MAX);
+
+        let last = map
+            .resolve(native)
+            .unwrap_or_else(|_| unreachable!("last representable neutral identity"));
+        assert_eq!(last.get(), u64::MAX);
+        assert_eq!(map.next_input_device_id, None);
+        assert_eq!(map.resolve(native), Ok(last));
+        assert_eq!(map.known(native), Some(last));
+
+        assert!(map.retire_exact(native, last));
+        assert_eq!(map.known(native), None);
+        assert_eq!(map.resolve(native), Err(DeviceIdentityError::Exhausted));
+        assert_eq!(map.known(native), None);
+        assert!(!map.retire_exact(native, last));
     }
 
     #[test]
