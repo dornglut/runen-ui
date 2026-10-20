@@ -224,14 +224,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     pub(crate) fn certified_pending_keyboard_focus_entry(
         &self,
-    ) -> Option<(crate::WorkSequence, MountedNodeId)> {
+    ) -> Option<(crate::WorkSequence, MountedNodeId, crate::queue::PresentationFocusEntry)> {
         let (count, pending) = self.queue.pending_presentation_entry();
         if count != 1 {
             return None;
         }
         let (sequence, target, entry) = pending?;
         self.presentation_entry_still_published(&entry)
-            .then_some((sequence, target))
+            .then_some((sequence, target, entry))
     }
 
     pub(crate) fn presentation_entry_still_published(
@@ -437,6 +437,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                                 Some(crate::queue::PresentationFocusEntry {
                                     root: candidate.root.clone(),
                                     activation_generation: publication_generation,
+                                    focused_session_at_request: self.focus.session(),
                                 }),
                             )
                             .is_err()

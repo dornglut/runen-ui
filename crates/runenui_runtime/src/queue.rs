@@ -130,6 +130,7 @@ pub(crate) struct FocusRequestOverride {
 pub(crate) struct PresentationFocusEntry {
     pub(crate) root: MountedNodeId,
     pub(crate) activation_generation: u64,
+    pub(crate) focused_session_at_request: Option<FocusSession>,
 }
 
 pub(crate) struct SemanticCommandEnvelope {
@@ -174,7 +175,10 @@ pub(crate) struct PointerEnvelope {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum FocusInputBinding {
     Committed(FocusSession),
-    PendingEntry { request: WorkSequence },
+    PendingEntry {
+        request: WorkSequence,
+        presentation: PresentationFocusEntry,
+    },
     Uncertified,
 }
 

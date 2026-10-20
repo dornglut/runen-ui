@@ -563,16 +563,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Err(kind) => return Err(SubmitKeyboardError::new(kind, event)),
             };
             match self.certified_pending_keyboard_focus_entry() {
-                Some((request, destination)) if target.as_ref() != Some(&destination) => (
+                Some((request, destination, presentation)) => (
                     destination,
-                    crate::queue::FocusInputBinding::PendingEntry { request },
-                ),
-                Some((_, destination)) => (
-                    destination,
-                    self.focus.session().map_or(
-                        crate::queue::FocusInputBinding::Uncertified,
-                        crate::queue::FocusInputBinding::Committed,
-                    ),
+                    crate::queue::FocusInputBinding::PendingEntry {
+                        request,
+                        presentation,
+                    },
                 ),
                 None => {
                     let target = target.ok_or_else(|| {
@@ -1153,9 +1149,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                             self.focus.focused_node() == Some(&target)
                                 && self.focus.session() == Some(*session)
                         }
-                        Some(crate::queue::FocusInputBinding::PendingEntry { request }) => {
+                        Some(crate::queue::FocusInputBinding::PendingEntry {
+                            request,
+                            presentation,
+                        }) => {
                             self.focus.focused_node() == Some(&target)
                                 && self.focus.entry_matches(*request)
+                                && self.presentation_entry_still_published(presentation)
                         }
                         Some(crate::queue::FocusInputBinding::Uncertified) | None => false,
                     };
