@@ -14,3 +14,5 @@ mod public_consumer;
 mod routed_commands;
 #[path = "../transactional_cancellation.rs"]
 mod transactional_cancellation;
+#[path = "../hybrid_transaction_feasibility.rs"]
+mod hybrid_transaction_feasibility;
