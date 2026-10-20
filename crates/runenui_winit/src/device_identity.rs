@@ -124,8 +124,10 @@ mod tests {
     #[test]
     fn exhausted_allocator_preserves_existing_mapping_without_reusing_retired_identity() {
         let native = DeviceId::dummy();
-        let mut map = DeviceIdentityMap::default();
-        map.next_input_device_id = Some(u64::MAX);
+        let mut map = DeviceIdentityMap {
+            next_input_device_id: Some(u64::MAX),
+            ..DeviceIdentityMap::default()
+        };
 
         let last = map
             .resolve(native)
