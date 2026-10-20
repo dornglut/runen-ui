@@ -329,6 +329,7 @@ impl<Action> MountedWidget<Action> {
         }
         self.inner.controlled_take_plan()
     }
+    #[must_use]
     pub fn create_state(&self) -> MountedWidgetState {
         MountedWidgetState {
             value: self.inner.create_state(),

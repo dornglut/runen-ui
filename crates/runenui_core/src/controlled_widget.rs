@@ -30,13 +30,15 @@ pub struct ControlledRetainedState {
     resource: Box<dyn Any>,
 }
 impl ControlledRetainedState {
-    pub fn revision(&self) -> u64 {
+    #[must_use]
+    pub const fn revision(&self) -> u64 {
         self.revision
     }
     #[doc(hidden)]
-    pub fn __runtime_set_revision(&mut self, revision: u64) {
+    pub const fn __runtime_set_revision(&mut self, revision: u64) {
         self.revision = revision;
     }
+    #[must_use]
     pub fn resource(&self) -> &dyn Any {
         self.resource.as_ref()
     }
