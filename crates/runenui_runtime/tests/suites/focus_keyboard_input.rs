@@ -2,6 +2,8 @@
 mod collection_focus;
 #[path = "../focus_and_input.rs"]
 mod focus_and_input;
+#[path = "../focus_fifo_fence.rs"]
+mod focus_fifo_fence;
 #[path = "../focus_group_type_ahead.rs"]
 mod focus_group_type_ahead;
 #[path = "../focus_groups.rs"]
