@@ -183,7 +183,7 @@ fn focused(
     settle(&mut runtime);
     (runtime, ancestor, tx, created)
 }
-fn resource(runtime: &AppRuntime<App>, ancestor: &MountedNodeId) -> &Receiver<u64> {
+fn resource<'a>(runtime: &'a AppRuntime<App>, ancestor: &MountedNodeId) -> &'a Receiver<u64> {
     runtime
         .experiment_retained_resource(ancestor)
         .and_then(|resource| resource.downcast_ref::<Receiver<u64>>())
