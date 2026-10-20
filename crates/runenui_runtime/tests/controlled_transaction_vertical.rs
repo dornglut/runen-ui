@@ -173,7 +173,7 @@ impl UiApp for App {
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
             Action::Disable(_) => {
-                panic!("controlled disablement MUST NOT execute unrestricted updater")
+                unreachable!("controlled disablement MUST NOT execute unrestricted updater")
             }
             Action::Follower => {
                 state.processed_followers += 1;
@@ -222,6 +222,7 @@ fn settle(runtime: &mut AppRuntime<App>) {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn accepted_nonclone_action_refuses_without_mutation_and_retries_in_fifo() {
     for (capacity, followers) in [(16, 9), (4096, 2049)] {
         let mut runtime = AppRuntime::<App>::mount_with_config(
@@ -285,9 +286,8 @@ fn accepted_nonclone_action_refuses_without_mutation_and_retries_in_fifo() {
             failure.reason,
             ControlledProcessingRefusalReason::OrdinaryQueuePressure
         );
-        let original = match failure.original {
-            Action::Disable(value) => value,
-            _ => unreachable!("returned original owned action"),
+        let Action::Disable(original) = failure.original else {
+            unreachable!("returned original owned action");
         };
         assert_eq!(
             std::ptr::from_ref(original.as_ref()),
