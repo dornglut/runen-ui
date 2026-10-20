@@ -2044,9 +2044,14 @@ fn a1_composition_active_space_release_retires_ownership_without_activating() {
             .unwrap_or_else(|| unreachable!("space button"))
             .id()
             .clone();
-        app.submit_command(target.clone(), SemanticCommand::RequestFocus, CommandOrigin::programmatic())
-            .unwrap_or_else(|_| unreachable!("focus"));
-        app.pump(full).unwrap_or_else(|_| unreachable!("focus settles"));
+        app.submit_command(
+            target.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus"));
+        app.pump(full)
+            .unwrap_or_else(|_| unreachable!("focus settles"));
         let device_id = device(97);
         for (phase, active) in [
             (KeyboardPhase::Down, active_down),
