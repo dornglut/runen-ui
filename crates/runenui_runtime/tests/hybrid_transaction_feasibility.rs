@@ -236,7 +236,6 @@ fn settle(runtime: &mut AppRuntime<App>) {
     assert!(report.is_quiescent());
 }
 
-
 #[test]
 fn live_compatible_focusout_retirement_and_earlier_fifo_are_observable() {
     // This test specifically exercises the old-live-route callback absent
@@ -285,22 +284,28 @@ fn live_compatible_focusout_retirement_and_earlier_fifo_are_observable() {
         assert_eq!(*runtime.state().token, 18);
         let observed = runtime.state().observed.borrow();
         assert_eq!(
-            observed.iter().filter(|event| **event == "ancestor-ime-cancel").count(),
+            observed
+                .iter()
+                .filter(|event| **event == "ancestor-ime-cancel")
+                .count(),
             2,
             "live IME cancellation routed through C/T/B ancestor"
         );
         assert_eq!(
-            observed.iter().filter(|event| **event == "ancestor-focus-out").count(),
+            observed
+                .iter()
+                .filter(|event| **event == "ancestor-focus-out")
+                .count(),
             2,
             "live FocusOut reached original capture/bubble ancestor"
         );
         let cancel_at = observed
             .iter()
-            .position(|event| *event == &"ancestor-ime-cancel")
+            .position(|event| *event == "ancestor-ime-cancel")
             .unwrap_or_else(|| unreachable!("IME routed"));
         let out_at = observed
             .iter()
-            .position(|event| *event == &"ancestor-focus-out")
+            .position(|event| *event == "ancestor-focus-out")
             .unwrap_or_else(|| unreachable!("FocusOut routed"));
         assert!(cancel_at < out_at);
         drop(observed);
@@ -367,7 +372,10 @@ fn zero_user_output_does_not_fix_routed_reservation_or_atomicity() {
             RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned),
             "even callbacks that emit no app work face the unchanged full-R route admission"
         );
-        assert!(!runtime.state().enabled, "app state changed before admission");
+        assert!(
+            !runtime.state().enabled,
+            "app state changed before admission"
+        );
         assert_eq!(*runtime.state().token, 18);
         let observed = runtime.state().observed.borrow();
         assert!(observed.contains(&"application-update"));

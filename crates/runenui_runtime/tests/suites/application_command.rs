@@ -8,11 +8,11 @@ mod application_flow;
 mod application_work;
 #[path = "../automation_rejection.rs"]
 mod automation_rejection;
+#[path = "../hybrid_transaction_feasibility.rs"]
+mod hybrid_transaction_feasibility;
 #[path = "../public_consumer.rs"]
 mod public_consumer;
 #[path = "../routed_commands.rs"]
 mod routed_commands;
 #[path = "../transactional_cancellation.rs"]
 mod transactional_cancellation;
-#[path = "../hybrid_transaction_feasibility.rs"]
-mod hybrid_transaction_feasibility;
