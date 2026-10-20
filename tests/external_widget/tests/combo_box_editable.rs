@@ -1,5 +1,5 @@
 #![allow(refining_impl_trait)]
-//! Editable ComboBox must be one M10 TextField / M5 ComboBox semantic owner.
+//! Editable `ComboBox` must be one M10 `TextField` / M5 `ComboBox` semantic owner.
 use runenui_core::{
     ComboBoxRequest, CommandOrigin, CommittedTextEvent, EditIntent, EditResolution, Effects,
     ElementId, IntoUpdateOutput, KeyLocation, KeyModifiers, KeyboardCompositionState,
@@ -17,7 +17,7 @@ use runenui_runtime::{
 const FONT: &[u8] =
     include_bytes!("../../../crates/runenui_text/tests/fixtures/Cantarell-Regular.ttf");
 
-fn doc(revision: u64) -> TextDocumentSnapshot {
+const fn doc(revision: u64) -> TextDocumentSnapshot {
     TextDocumentSnapshot::new(
         TextDocumentId::new(331),
         TextDocumentRevision::new(revision),
@@ -309,7 +309,7 @@ fn committed_input_edits_application_text_without_committing_popup_candidate() {
     );
 }
 
-fn key(
+const fn key(
     logical: LogicalKey,
     physical: PhysicalKey,
     composition: KeyboardCompositionState,
@@ -542,7 +542,7 @@ fn disabling_open_editable_combo_withdraws_popup_but_preserves_application_text_
     assert_eq!(runtime.state().source, "q");
     assert_eq!(runtime.state().revision, 1);
     assert_eq!(runtime.state().chosen, 0);
-    assert!(runtime.state().popup_log.is_empty());
+    assert_eq!(runtime.state().popup_log.len(), 0);
     assert!(
         runtime
             .index()
@@ -574,7 +574,7 @@ fn disabling_open_editable_combo_withdraws_popup_but_preserves_application_text_
         !runtime
             .index()
             .node(&owner)
-            .is_some_and(|node| node.is_focusable())
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
     );
     assert_eq!(runtime.state().submitted, 0);
 
@@ -602,7 +602,7 @@ fn disabling_open_editable_combo_withdraws_popup_but_preserves_application_text_
     assert_eq!(runtime.state().source, "q");
     assert_eq!(runtime.state().revision, 1);
     assert_eq!(runtime.state().chosen, 0);
-    assert!(runtime.state().popup_log.is_empty());
+    assert_eq!(runtime.state().popup_log.len(), 0);
     assert_eq!(runtime.state().submitted, 0);
 }
 

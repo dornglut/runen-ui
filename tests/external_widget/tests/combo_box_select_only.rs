@@ -1,5 +1,5 @@
 #![allow(refining_impl_trait)]
-//! Select-only ComboBox uses one focus owner and app-selected Option callbacks.
+//! Select-only `ComboBox` uses one focus owner and app-selected Option callbacks.
 use runenui_core::{
     ComboBoxRequest, CommandOrigin, ElementId, LogicalPoint, NoHostProtocol, PointerButton,
     PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SceneShape,
@@ -88,6 +88,20 @@ fn command(app: &mut AppRuntime<App>, target: MountedNodeId, cmd: SemanticComman
         .unwrap_or_else(|_| unreachable!("semantic action admitted"));
     settle(app);
 }
+fn assert_proxy_options_are_not_focusable(app: &mut AppRuntime<App>) {
+    let one = id(app, "choice.one");
+    let two = id(app, "choice.two");
+    assert!(
+        !app.index()
+            .node(&one)
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
+    );
+    assert!(
+        !app.index()
+            .node(&two)
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
+    );
+}
 #[test]
 fn select_only_keeps_real_focus_on_owner_while_selection_remains_application_owned() {
     let mut app = AppRuntime::<App>::mount(State::default());
@@ -98,18 +112,7 @@ fn select_only_keeps_real_focus_on_owner_while_selection_remains_application_own
     assert!(app.state().open);
     assert_eq!(app.state().log, [ComboBoxRequest::Open]);
     assert_eq!(app.focus().focused_node(), Some(&owner));
-    let one = id(&mut app, "choice.one");
-    let two = id(&mut app, "choice.two");
-    assert!(
-        !app.index()
-            .node(&one)
-            .is_some_and(|node| node.is_focusable())
-    );
-    assert!(
-        !app.index()
-            .node(&two)
-            .is_some_and(|node| node.is_focusable())
-    );
+    assert_proxy_options_are_not_focusable(&mut app);
     let published = app
         .publish_surface(&SurfaceBuildContext::tight(
             &runenui_core::StyleEnvironment::default(),
@@ -152,7 +155,7 @@ fn select_only_keeps_real_focus_on_owner_while_selection_remains_application_own
             .relationships()
             .iter()
             .find(|link| link.kind() == runenui_core::SemanticRelationshipKind::ActiveDescendant)
-            .map(|link| link.target()),
+            .map(runenui_runtime::SemanticRelationship::target),
         Some(first.id())
     );
     command(&mut app, owner.clone(), SemanticCommand::FocusDown);
@@ -183,7 +186,7 @@ fn select_only_keeps_real_focus_on_owner_while_selection_remains_application_own
             .relationships()
             .iter()
             .find(|link| link.kind() == runenui_core::SemanticRelationshipKind::ActiveDescendant)
-            .map(|link| link.target()),
+            .map(runenui_runtime::SemanticRelationship::target),
         Some(second.id()),
         "transient active Option changes while the app value remains uncommitted"
     );
@@ -248,7 +251,7 @@ fn controls_identifies_actual_listbox_and_active_option_without_focus_repair() {
     );
 }
 
-fn key(
+const fn key(
     physical: runenui_core::PhysicalKey,
     logical: runenui_core::LogicalKey,
     composition: runenui_core::KeyboardCompositionState,
@@ -465,7 +468,7 @@ fn closed_select_only_displays_app_selected_option_using_retained_m8_text_not_st
     let unselected = collapsed_display_glyphs(0);
     let one = collapsed_display_glyphs(1);
     let two = collapsed_display_glyphs(2);
-    assert!(!unselected.is_empty());
+    assert_ne!(unselected.len(), 0);
     assert!(
         unselected.len() > one.len(),
         "the unselected fallback prompt must not replace the chosen option"
@@ -634,7 +637,7 @@ fn closed_combo_exposes_app_selected_option_as_neutral_semantic_text_value() {
     }
 }
 
-fn native_combo_arrow(
+const fn native_combo_arrow(
     phase: runenui_core::KeyboardPhase,
     modifiers: runenui_core::KeyModifiers,
     composition: runenui_core::KeyboardCompositionState,
