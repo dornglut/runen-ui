@@ -904,6 +904,96 @@ mod tests {
     }
 
     #[test]
+    fn window_local_key_lifetimes_never_cross_acknowledge_or_cancel() {
+        let device = device(201);
+        let logical = WinitKey::Character("w".into());
+        let physical = WinitPhysicalKey::Code(KeyCode::KeyW);
+        let mut left_window = KeyboardInputState::default();
+        let mut right_window = KeyboardInputState::default();
+        let left = pending_down(&mut left_window, device, physical, &logical);
+        let right = pending_down(&mut right_window, device, physical, &logical);
+
+        assert_ne!(left, right, "identical native IDs do not alias window-local adapter tokens");
+        assert_eq!(
+            right_window.resolve_down_admission(left, KeyboardDownDecision::Queued),
+            Err(KeyboardDownAdmissionError::StaleOrAlreadyResolved)
+        );
+        assert_eq!(
+            left_window.resolve_down_admission(left, KeyboardDownDecision::RejectedBeforeQueue),
+            Ok(())
+        );
+        assert_eq!(
+            right_window.resolve_down_admission(right, KeyboardDownDecision::Queued),
+            Ok(())
+        );
+        assert!(left_window
+            .cancel_device(device, KeyModifiers::NONE, KeyboardCompositionState::Inactive)
+            .unwrap_or_else(|error| unreachable!("left original is rejected: {error:?}"))
+            .is_empty());
+        assert_eq!(left_window.pressed_len(), 0);
+        let physical_up = submitted(right_window.key_input(
+            device,
+            &transition(ElementState::Released, physical, &logical, false, false),
+            KeyModifiers::NONE,
+            KeyboardCompositionState::Inactive,
+        ));
+        assert_eq!(physical_up.phase(), KeyboardPhase::Up);
+        assert_eq!(physical_up.device_id(), Some(device));
+        assert_eq!(right_window.pressed_len(), 0);
+    }
+
+    #[test]
+    fn retired_device_generation_does_not_alias_a_fresh_neutral_source() {
+        let mut keyboard = KeyboardInputState::default();
+        let old_device = device(220);
+        let reincarnated = device(221);
+        let physical = WinitPhysicalKey::Code(KeyCode::KeyW);
+        let logical = WinitKey::Character("w".into());
+        let old = pending_down(&mut keyboard, old_device, physical, &logical);
+        keyboard
+            .resolve_down_admission(old, KeyboardDownDecision::RejectedBeforeQueue)
+            .unwrap_or_else(|error| unreachable!("old original was rejected: {error:?}"));
+        assert!(keyboard
+            .cancel_device(
+                old_device,
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            )
+            .unwrap_or_else(|error| unreachable!("old rejected tombstone can retire: {error:?}"))
+            .is_empty());
+
+        let fresh = pending_down(&mut keyboard, reincarnated, physical, &logical);
+        assert_ne!(old, fresh);
+        assert_eq!(
+            keyboard.resolve_down_admission(old, KeyboardDownDecision::Queued),
+            Err(KeyboardDownAdmissionError::StaleOrAlreadyResolved)
+        );
+        assert_eq!(
+            keyboard.resolve_down_admission(fresh, KeyboardDownDecision::Queued),
+            Ok(())
+        );
+        assert!(keyboard
+            .cancel_device(
+                old_device,
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            )
+            .unwrap_or_else(|error| unreachable!("old device is absent: {error:?}"))
+            .is_empty());
+        let cancelled = keyboard
+            .cancel_device(
+                reincarnated,
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            )
+            .unwrap_or_else(|error| unreachable!("fresh original is queued: {error:?}"));
+        assert_eq!(cancelled.len(), 1);
+        assert_eq!(cancelled[0].phase(), KeyboardPhase::Cancel);
+        assert_eq!(cancelled[0].device_id(), Some(reincarnated));
+        assert_eq!(keyboard.pressed_len(), 0);
+    }
+
+    #[test]
     fn admission_identity_exhaustion_never_reuses_an_old_token() {
         let mut keyboard = KeyboardInputState {
             next_down_admission: u64::MAX,
