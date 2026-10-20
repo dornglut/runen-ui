@@ -7,8 +7,8 @@ use core::fmt;
 use runenui_core::{
     CommandOrigin, CommittedTextEvent, CompositionCancel, CompositionCancelReason, CompositionEnd,
     CompositionEvent, CompositionGeneration, CompositionRange, CompositionStart, CompositionUpdate,
-    ElementId, FocusGroupActivationPolicy, HostProtocol, InputDeviceId, KeyboardCompositionState,
-    KeyboardEvent, KeyboardPhase, LogicalKey, MonotonicInstant, PhysicalKey, SemanticCommand,
+    ElementId, FocusGroupActivationPolicy, HostProtocol, InputDeviceId, KeyModifiers,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, MonotonicInstant, PhysicalKey, SemanticCommand,
     ShortcutBinding, UiEvent, WorkSequence,
 };
 
@@ -1719,16 +1719,27 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     const fn generic_keyboard_default(event: &KeyboardEvent) -> Option<SemanticCommand> {
-        if !matches!(event.phase(), KeyboardPhase::Down) {
+        // Only the earlier editor/widget/shortcut owners may act during composition.
+        if !matches!(event.phase(), KeyboardPhase::Down)
+            || matches!(event.composition_state(), KeyboardCompositionState::Active)
+        {
             return None;
         }
         match event.logical_key() {
             LogicalKey::Tab if event.modifiers().shift() => Some(SemanticCommand::FocusPrevious),
             LogicalKey::Tab => Some(SemanticCommand::FocusNext),
-            LogicalKey::ArrowLeft => Some(SemanticCommand::FocusLeft),
-            LogicalKey::ArrowRight => Some(SemanticCommand::FocusRight),
-            LogicalKey::ArrowUp => Some(SemanticCommand::FocusUp),
-            LogicalKey::ArrowDown => Some(SemanticCommand::FocusDown),
+            LogicalKey::ArrowLeft if event.modifiers() == KeyModifiers::NONE => {
+                Some(SemanticCommand::FocusLeft)
+            }
+            LogicalKey::ArrowRight if event.modifiers() == KeyModifiers::NONE => {
+                Some(SemanticCommand::FocusRight)
+            }
+            LogicalKey::ArrowUp if event.modifiers() == KeyModifiers::NONE => {
+                Some(SemanticCommand::FocusUp)
+            }
+            LogicalKey::ArrowDown if event.modifiers() == KeyModifiers::NONE => {
+                Some(SemanticCommand::FocusDown)
+            }
             LogicalKey::Escape => Some(SemanticCommand::CancelOrBack),
             LogicalKey::Enter if !event.is_repeat() => Some(SemanticCommand::Activate),
             _ => None,
@@ -1743,14 +1754,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         type_ahead_context: Option<&crate::focus::FocusGroupTypeAheadContext>,
     ) -> bool {
         if matches!(event.physical_key(), PhysicalKey::Space) {
-            return matches!(event.phase(), KeyboardPhase::Up) && !event.is_repeat();
+            return matches!(event.phase(), KeyboardPhase::Up)
+                && !event.is_repeat()
+                && event.composition_state() != KeyboardCompositionState::Active;
         }
         if self.editor_owned_keyboard_default(event, target).is_some() {
             return true;
         }
         if event.composition_state() == KeyboardCompositionState::Active {
-            return Self::generic_keyboard_default(event)
-                .is_some_and(|command| command != SemanticCommand::CancelOrBack);
+            return false;
         }
         if let Some(candidate) = shortcut_candidate {
             return candidate.reserves_default_output();
@@ -1781,6 +1793,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Ok(());
         }
         if matches!(event.physical_key(), PhysicalKey::Space) {
+            // A composition-active Space release cannot activate a prior Space press.
+            // Retire that same existing ownership without producing a default command.
+            if event.composition_state() == KeyboardCompositionState::Active {
+                if event.phase() == KeyboardPhase::Up
+                    && self.space_ownership.as_ref().is_some_and(|owner| {
+                        owner.target == target && owner.device_id == event.device_id()
+                    })
+                {
+                    self.revoke_space_ownership_in_transaction(
+                        transaction,
+                        TraceSpaceCleanupReason::Release,
+                    );
+                }
+                return Ok(());
+            }
             match event.phase() {
                 KeyboardPhase::Down
                     if !event.is_repeat()
@@ -1873,11 +1900,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Ok(());
         }
         let command = Self::generic_keyboard_default(event);
-        if event.composition_state() == KeyboardCompositionState::Active
-            && command == Some(SemanticCommand::CancelOrBack)
-        {
-            return Ok(());
-        }
         if matches!(command, Some(SemanticCommand::Activate))
             && !self.keyboard_activation_eligible(&target)
         {

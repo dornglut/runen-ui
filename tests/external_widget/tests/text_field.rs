@@ -9,6 +9,7 @@ use runenui_core::{
     WidgetTextInput, text_field,
 };
 
+#[derive(Debug)]
 struct DownstreamField {
     snapshot: TextDocumentSnapshot,
     source: String,
@@ -21,11 +22,11 @@ impl Widget<EditIntent> for DownstreamField {
 
     fn create_state(&self) -> Self::State {}
 
-    fn text_input(&self, _: &Self::State) -> WidgetTextInput {
+    fn text_input(&self, &(): &Self::State) -> WidgetTextInput {
         WidgetTextInput::new(true, true)
     }
 
-    fn editable(&self, _: &Self::State) -> Option<EditableContribution<EditIntent>> {
+    fn editable(&self, &(): &Self::State) -> Option<EditableContribution<EditIntent>> {
         let newline = if self.mode == SemanticEditableMode::SingleLine {
             TextNewlinePolicy::ReplaceWithSpace
         } else {
@@ -33,7 +34,7 @@ impl Widget<EditIntent> for DownstreamField {
         };
         EditableContribution::new(
             self.snapshot,
-            &self.source,
+            self.source.as_str(),
             self.selection,
             TextSensitivity::Public,
             false,
@@ -45,7 +46,7 @@ impl Widget<EditIntent> for DownstreamField {
         .map(|contribution| contribution.with_newline_policy(newline))
     }
 
-    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+    fn measure(&self, &(): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         let wrap = if self.mode == SemanticEditableMode::SingleLine {
             TextLeafWrap::NoWrap
         } else {
@@ -54,7 +55,7 @@ impl Widget<EditIntent> for DownstreamField {
         WidgetMeasure::Text(TextLeafMeasure::new(&self.source).with_wrap_mode(wrap))
     }
 
-    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+    fn semantics(&self, &(): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         let Some(editable) = SemanticEditable::new(
             self.snapshot,
             &self.source,
@@ -90,10 +91,8 @@ impl Widget<EditIntent> for DownstreamField {
 
 #[test]
 fn downstream_text_field_matches_standard_m10_and_m8_contracts() {
-    let snapshot = TextDocumentSnapshot::new(
-        TextDocumentId::new(105),
-        TextDocumentRevision::new(7),
-    );
+    let snapshot =
+        TextDocumentSnapshot::new(TextDocumentId::new(105), TextDocumentRevision::new(7));
     let source = "abc";
     let caret = TextPosition::new(snapshot, source, source.len(), TextAffinity::Upstream)
         .unwrap_or_else(|_| unreachable!("fixture caret is valid"));
@@ -112,10 +111,8 @@ fn downstream_text_field_matches_standard_m10_and_m8_contracts() {
         let standard = text_field(snapshot, source, selection, mode, |intent| intent)
             .unwrap_or_else(|_| unreachable!("fixture is a valid field"))
             .into_element();
-        let (_, _, _, _, _, _, _, _, downstream, _) =
-            downstream.into_runtime_parts().into_parts();
-        let (_, _, _, _, _, _, _, _, standard, _) =
-            standard.into_runtime_parts().into_parts();
+        let (_, _, _, _, _, _, _, _, downstream, _) = downstream.into_runtime_parts().into_parts();
+        let (_, _, _, _, _, _, _, _, standard, _) = standard.into_runtime_parts().into_parts();
         let downstream_state = downstream.create_state();
         let standard_state = standard.create_state();
         assert_eq!(

@@ -2028,3 +2028,78 @@ fn initial_observation_capacity_error_rearms_wake_without_fifo_work() {
         crate::RuntimeStatus::Running
     );
 }
+
+#[test]
+fn a1_composition_active_space_release_retires_ownership_without_activating() {
+    for (active_down, active_up) in [(true, true), (false, true)] {
+        let mut app = AppRuntime::<SpaceApp>::mount(0);
+        let full = PumpBudget::new(32, 32, 32, 32);
+        app.pump(full).unwrap_or_else(|_| unreachable!("mount"));
+        let authored = ElementId::new("space").unwrap_or_else(|_| unreachable!());
+        let target = app
+            .index()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored))
+            .unwrap_or_else(|| unreachable!("space button"))
+            .id()
+            .clone();
+        app.submit_command(target.clone(), SemanticCommand::RequestFocus, CommandOrigin::programmatic())
+            .unwrap_or_else(|_| unreachable!("focus"));
+        app.pump(full).unwrap_or_else(|_| unreachable!("focus settles"));
+        let device_id = device(97);
+        for (phase, active) in [
+            (KeyboardPhase::Down, active_down),
+            (KeyboardPhase::Up, active_up),
+        ] {
+            let receipt = app
+                .submit_keyboard(KeyboardEvent::new(
+                    phase,
+                    PhysicalKey::Space,
+                    LogicalKey::Space,
+                    KeyModifiers::NONE,
+                    false,
+                    KeyLocation::Standard,
+                    if active {
+                        KeyboardCompositionState::Active
+                    } else {
+                        KeyboardCompositionState::Inactive
+                    },
+                    Some(device_id),
+                ))
+                .unwrap_or_else(|_| unreachable!("focused Space ingress"))
+                .sequence();
+            let batch = pump::pump_recorded::<SpaceApp>(&mut app.runtime, PumpBudget::new(1, 0, 0, 0))
+                .unwrap_or_else(|_| unreachable!("native settlement"));
+            assert_eq!(batch.processed_through(), Some(receipt));
+            let facts = batch.ordered_records().iter().find_map(|record| match record {
+                InputArbitrationRecord::InputSettled(settled) if settled.sequence() == receipt =>
+                    Some(settled.finality()),
+                _ => None,
+            }).unwrap_or_else(|| unreachable!("exact Space receipt"));
+            if active {
+                let UiInputFinality::Committed(facts) = facts else {
+                    unreachable!("active Space input committed")
+                };
+                assert_eq!(facts.conflict(), UiInputConflict::ObservedNonexclusive);
+                assert_eq!(facts.reasons(), []);
+                assert_eq!(facts.default_disposition(), crate::UiDefaultDisposition::None);
+            }
+        }
+        app.pump(full).unwrap_or_else(|_| unreachable!("Space cleanup"));
+        assert_eq!(*app.state(), 0, "IME Space cannot activate a button");
+        // No stale Space owner may activate a later unrelated release.
+        app.submit_keyboard(space_key(KeyboardPhase::Up, device_id))
+            .unwrap_or_else(|_| unreachable!("subsequent release"));
+        app.pump(full).unwrap_or_else(|_| unreachable!("stale release"));
+        assert_eq!(*app.state(), 0);
+        // Normal keyboard activation still works after an IME-owned release.
+        app.submit_keyboard(space_key(KeyboardPhase::Down, device_id))
+            .unwrap_or_else(|_| unreachable!("new Down"));
+        app.submit_keyboard(space_key(KeyboardPhase::Up, device_id))
+            .unwrap_or_else(|_| unreachable!("new Up"));
+        app.pump(full).unwrap_or_else(|_| unreachable!("new activation"));
+        assert_eq!(*app.state(), 1);
+        assert_eq!(app.focus().focused_node(), Some(&target));
+    }
+}

@@ -1,18 +1,17 @@
 #![allow(refining_impl_trait)]
 
-//! A downstream Widget composes the M10 editor, ComboBox M5 proxy, M4 focus
-//! and ordinary OptionItem activation without private built-in recognition.
+//! A downstream Widget composes the M10 editor, `ComboBox` M5 proxy, M4 focus
+//! and ordinary `OptionItem` activation without private built-in recognition.
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, CommittedTextEvent, EditIntent, EditResolution,
     EditableContribution, EditingSessionPolicy, Effects, ElementId, EventContext, EventPhase,
-    IntoUpdateOutput, NoHostProtocol, SemanticAction, SemanticAutocomplete,
-    SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticEditable,
-    SemanticEditableMode, SemanticNodeContribution, SemanticPopupKind, SemanticReference,
-    SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
-    TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
-    TextLeafMeasure, TextNewlinePolicy, TextPosition, TextSelection, TextSensitivity,
-    UiApp, UiEvent, UpdateOutput, View, Widget, WidgetEventOutput, WidgetInvalidation,
-    WidgetMeasure, WidgetMeasureInput, WidgetTextInput, WidgetUpdateContext,
+    IntoUpdateOutput, NoHostProtocol, SemanticAction, SemanticAutocomplete, SemanticCommand,
+    SemanticContribution, SemanticContributionContext, SemanticEditable, SemanticEditableMode,
+    SemanticNodeContribution, SemanticPopupKind, SemanticReference, SemanticRelationship,
+    SemanticRelationshipKind, SemanticRole, SemanticState, TextAffinity, TextDocumentId,
+    TextDocumentRevision, TextDocumentSnapshot, TextLeafMeasure, TextNewlinePolicy, TextPosition,
+    TextSelection, TextSensitivity, UiApp, UiEvent, UpdateOutput, View, Widget, WidgetEventOutput,
+    WidgetInvalidation, WidgetMeasure, WidgetMeasureInput, WidgetTextInput, WidgetUpdateContext,
     container, list_box, option_item,
 };
 use runenui_runtime::{
@@ -22,8 +21,11 @@ use runenui_runtime::{
 const FONT: &[u8] =
     include_bytes!("../../../crates/runenui_text/tests/fixtures/Cantarell-Regular.ttf");
 
-fn doc(revision: u64) -> TextDocumentSnapshot {
-    TextDocumentSnapshot::new(TextDocumentId::new(30331), TextDocumentRevision::new(revision))
+const fn doc(revision: u64) -> TextDocumentSnapshot {
+    TextDocumentSnapshot::new(
+        TextDocumentId::new(30331),
+        TextDocumentRevision::new(revision),
+    )
 }
 enum Action {
     Edit(Box<EditIntent>),
@@ -34,6 +36,7 @@ struct State {
     revision: u64,
     chosen: u8,
 }
+#[derive(Debug)]
 struct Owner {
     snapshot: TextDocumentSnapshot,
     source: String,
@@ -48,9 +51,7 @@ impl Widget<Action> for Owner {
 
     fn update(&self, _: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         context.invalidate(
-            WidgetInvalidation::SEMANTICS
-                | WidgetInvalidation::LAYOUT
-                | WidgetInvalidation::PAINT,
+            WidgetInvalidation::SEMANTICS | WidgetInvalidation::LAYOUT | WidgetInvalidation::PAINT,
         );
     }
 
@@ -81,7 +82,7 @@ impl Widget<Action> for Owner {
     fn editable(&self, _: &Self::State) -> Option<EditableContribution<Action>> {
         EditableContribution::new(
             self.snapshot,
-            &self.source,
+            self.source.as_str(),
             self.selection,
             TextSensitivity::Public,
             false,
@@ -94,7 +95,7 @@ impl Widget<Action> for Owner {
     }
 
     fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
-        WidgetMeasure::Text(TextLeafMeasure::new(&self.source))
+        WidgetMeasure::Text(TextLeafMeasure::new(self.source.as_str()))
     }
 
     fn semantics(
@@ -104,14 +105,18 @@ impl Widget<Action> for Owner {
     ) -> SemanticContribution {
         let Some(editable) = SemanticEditable::new(
             self.snapshot,
-            &self.source,
+            self.source.as_str(),
             self.selection,
             TextSensitivity::Public,
             false,
         ) else {
             return SemanticContribution::empty();
         };
-        let option_id = if *second_active { "parity.second" } else { "parity.first" };
+        let option_id = if *second_active {
+            "parity.second"
+        } else {
+            "parity.first"
+        };
         let mut node = SemanticNodeContribution::primary(SemanticRole::ComboBox)
             .with_name("Custom editable")
             .with_state(SemanticState::ENABLED.with_expanded(true))
@@ -157,10 +162,11 @@ impl UiApp for App {
         let snapshot = doc(state.revision);
         let caret = TextPosition::new(
             snapshot,
-            &state.source,
+            state.source.as_str(),
             state.source.len(),
             TextAffinity::Upstream,
-        ).unwrap_or_else(|_| unreachable!("valid downstream caret"));
+        )
+        .unwrap_or_else(|_| unreachable!("valid downstream caret"));
         let popup = list_box([
             option_item("First", state.chosen == 1)
                 .id("parity.first")
@@ -170,7 +176,8 @@ impl UiApp for App {
                 .id("parity.second")
                 .combo_box_proxy()
                 .on_activate(|| Action::Choose(2)),
-        ]).id("parity.popup");
+        ])
+        .id("parity.popup");
         container(
             Owner {
                 snapshot,
@@ -191,10 +198,9 @@ impl UiApp for App {
         match action {
             Action::Edit(intent) => {
                 let range = intent.replacement();
-                state.source.replace_range(
-                    range.start()..range.end(),
-                    intent.replacement_text(),
-                );
+                state
+                    .source
+                    .replace_range(range.start()..range.end(), intent.replacement_text());
                 state.revision += 1;
                 UpdateOutput::edit(EditResolution::accepted(
                     intent.request().clone(),
@@ -210,9 +216,12 @@ impl UiApp for App {
 }
 
 fn settle(app: &mut AppRuntime<App>) {
-    assert!(app.pump(PumpBudget::new(256, 256, 256, 256)).unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
+    assert!(
+        app.pump(PumpBudget::new(256, 256, 256, 256))
+            .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
             .report()
-            .is_quiescent());
+            .is_quiescent()
+    );
 }
 
 #[test]
@@ -222,48 +231,85 @@ fn downstream_widget_owns_the_same_editable_proxy_contract_without_private_runti
         revision: 1,
         chosen: 0,
     });
-    app.register_text_font_bytes(FONT.to_vec()).unwrap_or_else(|_| unreachable!());
+    app.register_text_font_bytes(FONT.to_vec())
+        .unwrap_or_else(|_| unreachable!());
     app.set_text_generic_family_mapping(
         GenericFontFamily::SansSerif,
         &[FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!())],
-    ).unwrap_or_else(|_| unreachable!());
+    )
+    .unwrap_or_else(|_| unreachable!());
     settle(&mut app);
-    let owner = app.index().nodes().iter()
-        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "parity.owner"))
+    let owner = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "parity.owner")
+        })
         .unwrap_or_else(|| unreachable!("downstream mounted owner"))
-        .id().clone();
-    assert!(app.index().nodes().iter().all(|node|
-        node.authored_id().is_none_or(|id| id.as_str() != "parity.first")
-            || !node.is_focusable()));
+        .id()
+        .clone();
+    assert!(app.index().nodes().iter().all(|node| {
+        node.authored_id()
+            .is_none_or(|id| id.as_str() != "parity.first")
+            || !node.is_focusable()
+    }));
     app.submit_command(
         owner.clone(),
         SemanticCommand::RequestFocus,
         CommandOrigin::programmatic(),
-    ).unwrap_or_else(|_| unreachable!("current focus command"));
+    )
+    .unwrap_or_else(|_| unreachable!("current focus command"));
     settle(&mut app);
-    let semantic = app.publish_surface(&SurfaceBuildContext::tight(
-        &runenui_core::StyleEnvironment::default(),
-        LogicalSize::try_new(480.0, 260.0).unwrap_or_else(|_| unreachable!()),
-    )).unwrap_or_else(|error| unreachable!("downstream publication: {error:?}"));
+    let semantic = app
+        .publish_surface(&SurfaceBuildContext::tight(
+            &runenui_core::StyleEnvironment::default(),
+            LogicalSize::try_new(480.0, 260.0).unwrap_or_else(|_| unreachable!()),
+        ))
+        .unwrap_or_else(|error| unreachable!("downstream publication: {error:?}"));
     let snapshot = semantic.semantic_publication().snapshot();
-    let combo = snapshot.nodes().iter()
+    let combo = snapshot
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::ComboBox)
         .unwrap_or_else(|| unreachable!("downstream ComboBox semantics"));
     assert!(combo.editable().is_some());
-    assert_eq!(combo.editable_mode(), Some(SemanticEditableMode::SingleLine));
-    assert!(!snapshot.nodes().iter()
-        .any(|node| node.role() == SemanticRole::EditableText));
-    assert_eq!(combo.relationships().iter()
-        .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
-        .count(), 1);
+    assert_eq!(
+        combo.editable_mode(),
+        Some(SemanticEditableMode::SingleLine)
+    );
+    assert!(
+        !snapshot
+            .nodes()
+            .iter()
+            .any(|node| node.role() == SemanticRole::EditableText)
+    );
+    assert_eq!(
+        combo
+            .relationships()
+            .iter()
+            .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
+            .count(),
+        1
+    );
     assert_eq!(app.focus().focused_node(), Some(&owner));
-    app.submit_command(owner.clone(), SemanticCommand::FocusDown, CommandOrigin::programmatic())
-        .unwrap_or_else(|_| unreachable!("routed proxy navigation"));
+    app.submit_command(
+        owner.clone(),
+        SemanticCommand::FocusDown,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("routed proxy navigation"));
     settle(&mut app);
-    assert_eq!(app.state().chosen, 0, "active Option cannot commit durable selection");
-    app.submit_text(CommittedTextEvent::new("x", None)
-        .unwrap_or_else(|_| unreachable!("source text")))
-        .unwrap_or_else(|_| unreachable!("M10 downstream text ingress"));
+    assert_eq!(
+        app.state().chosen,
+        0,
+        "active Option cannot commit durable selection"
+    );
+    app.submit_text(
+        CommittedTextEvent::new("x", None).unwrap_or_else(|_| unreachable!("source text")),
+    )
+    .unwrap_or_else(|_| unreachable!("M10 downstream text ingress"));
     settle(&mut app);
     assert_eq!(app.state().source, "ax");
     assert_eq!(app.state().chosen, 0);
