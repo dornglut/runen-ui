@@ -689,7 +689,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
-    #[allow(clippy::too_many_lines, reason = "one routed focus transition must preserve original notification sequencing")]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one routed focus transition must preserve original notification sequencing"
+    )]
     pub(in crate::runtime) fn commit_focus_transition(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
