@@ -62,15 +62,25 @@ impl<Action> ReconciliationPlan<Action> {
         fn visit<Action>(plan: &PlannedNode<Action>, tree: &MountedTree<Action>) -> Option<usize> {
             match plan {
                 PlannedNode::Retain {
-                    id, controlled, removals, children, ..
+                    id,
+                    controlled,
+                    removals,
+                    children,
+                    ..
                 } => {
-                    if !removals.is_empty() { return None; }
+                    if !removals.is_empty() {
+                        return None;
+                    }
                     let mut total = 0usize;
                     if let Some(c) = controlled {
-                        if tree.node(id)?.state.controlled_revision().is_none() { return None; }
+                        if tree.node(id)?.state.controlled_revision().is_none() {
+                            return None;
+                        }
                         total = c.update_actions.len().checked_add(c.notices.len())?;
                     }
-                    for child in children { total = total.checked_add(visit(child, tree)?)?; }
+                    for child in children {
+                        total = total.checked_add(visit(child, tree)?)?;
+                    }
                     Some(total)
                 }
                 PlannedNode::Mount { .. } | PlannedNode::Replace { .. } => None,
@@ -654,7 +664,10 @@ impl<Action> MountedTree<Action> {
                 children,
             } => {
                 self.update_retained_node(
-                    &id, incoming, &path, stats,
+                    &id,
+                    incoming,
+                    &path,
+                    stats,
                     #[cfg(feature = "controlled-transaction-prototype")]
                     controlled,
                 )?;
@@ -718,12 +731,14 @@ impl<Action> MountedTree<Action> {
         incoming: IncomingNode<Action>,
         path: &str,
         stats: &mut ReconcileStats<Action>,
-        #[cfg(feature = "controlled-transaction-prototype")]
-        controlled: Option<runenui_core::ControlledMountedPlan<Action>>,
+        #[cfg(feature = "controlled-transaction-prototype")] controlled: Option<
+            runenui_core::ControlledMountedPlan<Action>,
+        >,
     ) -> Result<(), ReconciliationApplyError> {
         #[cfg(feature = "controlled-transaction-prototype")]
         let controlled_changed = controlled.as_ref().is_some_and(|plan| {
-            self.node(id).and_then(|node| node.state.controlled_revision())
+            self.node(id)
+                .and_then(|node| node.state.controlled_revision())
                 .is_some_and(|revision| revision != plan.revision)
         });
         #[cfg(feature = "controlled-transaction-prototype")]
@@ -755,16 +770,25 @@ impl<Action> MountedTree<Action> {
         #[cfg(feature = "controlled-transaction-prototype")]
         if let Some(prepared) = controlled {
             if controlled_changed {
-                outputs.extend(prepared.update_actions.into_iter().map(runenui_core::__runtime::MountedEffect::Action));
+                outputs.extend(
+                    prepared
+                        .update_actions
+                        .into_iter()
+                        .map(runenui_core::__runtime::MountedEffect::Action),
+                );
             }
-            self.controlled_pending.extend(prepared.notices.into_iter().map(|notice| {
-                ControlledPreparedNotice {
-                    owner: id.clone(),
-                    kind: notice.kind,
-                    phase: notice.phase,
-                    action: notice.action,
-                }
-            }));
+            self.controlled_pending
+                .extend(
+                    prepared
+                        .notices
+                        .into_iter()
+                        .map(|notice| ControlledPreparedNotice {
+                            owner: id.clone(),
+                            kind: notice.kind,
+                            phase: notice.phase,
+                            action: notice.action,
+                        }),
+                );
         }
         if !outputs.is_empty() {
             stats.mounted_outputs.push((id.clone(), outputs));

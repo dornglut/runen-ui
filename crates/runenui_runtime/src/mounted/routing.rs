@@ -32,16 +32,20 @@ impl<Action> MountedTree<Action> {
         allowance: usize,
     ) -> Option<EventInvocation<Action>> {
         use runenui_core::{CompositionEvent, ControlledNoticeKind, FocusEventKind};
-        let kind = if event.as_focus().is_some_and(|f| f.kind() == FocusEventKind::Out) {
+        let kind = if event
+            .as_focus()
+            .is_some_and(|f| f.kind() == FocusEventKind::Out)
+        {
             ControlledNoticeKind::FocusOut
         } else if matches!(event, UiEvent::Composition(CompositionEvent::Cancel(_))) {
             ControlledNoticeKind::CompositionCancel
         } else {
             return None;
         };
-        let index = self.controlled_pending.iter().position(|item| {
-            &item.owner == current && item.phase == phase && item.kind == kind
-        })?;
+        let index = self
+            .controlled_pending
+            .iter()
+            .position(|item| &item.owner == current && item.phase == phase && item.kind == kind)?;
         let action = self.controlled_pending.remove(index).action;
         Some(EventInvocation {
             widget: WidgetEventOutput::none(),
@@ -111,7 +115,9 @@ impl<Action> MountedTree<Action> {
         output_allowance: usize,
     ) -> Result<EventInvocation<Action>, WidgetBridgeError> {
         #[cfg(feature = "controlled-transaction-prototype")]
-        if let Some(output) = self.take_controlled_invocation(current, phase, event, output_allowance) {
+        if let Some(output) =
+            self.take_controlled_invocation(current, phase, event, output_allowance)
+        {
             return Ok(output);
         }
         let node = self
@@ -156,7 +162,9 @@ impl<Action> MountedTree<Action> {
         output_allowance: usize,
     ) -> Result<EventInvocation<Action>, WidgetBridgeError> {
         #[cfg(feature = "controlled-transaction-prototype")]
-        if let Some(output) = self.take_controlled_invocation(current, phase, event, output_allowance) {
+        if let Some(output) =
+            self.take_controlled_invocation(current, phase, event, output_allowance)
+        {
             return Ok(output);
         }
         let node = self

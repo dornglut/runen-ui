@@ -17,7 +17,9 @@ use core::{any::Any, fmt};
 
 pub trait ErasedWidget<Action>: fmt::Debug {
     #[cfg(feature = "controlled-transaction-prototype")]
-    fn controlled_take_plan(&mut self) -> Option<crate::ControlledMountedPlan<Action>>;
+    fn controlled_take_plan(&mut self) -> Option<crate::ControlledMountedPlan<Action>> {
+        None
+    }
     fn widget_type_id(&self) -> WidgetTypeId;
     fn widget_type_name(&self) -> &'static str;
     fn state_type_id(&self) -> WidgetStateTypeId;
@@ -262,15 +264,20 @@ pub struct MountedWidgetState {
 #[cfg(feature = "controlled-transaction-prototype")]
 impl MountedWidgetState {
     pub fn controlled_revision(&self) -> Option<u64> {
-        self.value.downcast_ref::<crate::ControlledRetainedState>().map(crate::ControlledRetainedState::revision)
+        self.value
+            .downcast_ref::<crate::ControlledRetainedState>()
+            .map(crate::ControlledRetainedState::revision)
     }
     pub fn controlled_set_revision(&mut self, revision: u64) -> bool {
-        let Some(state) = self.value.downcast_mut::<crate::ControlledRetainedState>() else { return false };
+        let Some(state) = self.value.downcast_mut::<crate::ControlledRetainedState>() else {
+            return false;
+        };
         state.__runtime_set_revision(revision);
         true
     }
     pub fn controlled_resource(&self) -> Option<&dyn Any> {
-        self.value.downcast_ref::<crate::ControlledRetainedState>()
+        self.value
+            .downcast_ref::<crate::ControlledRetainedState>()
             .map(crate::ControlledRetainedState::resource)
     }
 }
@@ -315,7 +322,9 @@ impl<Action> MountedWidget<Action> {
     pub fn controlled_take_plan(&mut self) -> Option<crate::ControlledMountedPlan<Action>> {
         // Fail closed: no external widget is trusted to participate in the
         // speculative interpreter by implementing a similarly named method.
-        if self.widget_type_name() != core::any::type_name::<crate::ControlledDeclarativeWidget<Action>>() {
+        if self.widget_type_name()
+            != core::any::type_name::<crate::ControlledDeclarativeWidget<Action>>()
+        {
             return None;
         }
         self.inner.controlled_take_plan()

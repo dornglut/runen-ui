@@ -225,9 +225,9 @@ mod application;
 mod application_command;
 mod builtins;
 mod combo_box;
+mod computed_style;
 #[cfg(feature = "controlled-transaction-prototype")]
 mod controlled_widget;
-mod computed_style;
 mod editing;
 mod effects;
 mod element;
@@ -288,11 +288,6 @@ include!("element_macros.rs");
 include!("identity_macros.rs");
 include!("token_macros.rs");
 
-#[cfg(feature = "controlled-transaction-prototype")]
-pub use controlled_widget::{
-    ControlledDeclarativeWidget, ControlledMountedPlan, ControlledNotice,
-    ControlledNoticeKind, ControlledRetainedState,
-};
 pub use application::{
     HostProtocol, NoHostCommand, NoHostProtocol, NoHostResponse, NoHostResponseKind, UiApp,
 };
@@ -310,6 +305,11 @@ pub use combo_box::{
     editable_combo_box,
 };
 pub use computed_style::ComputedStyle;
+#[cfg(feature = "controlled-transaction-prototype")]
+pub use controlled_widget::{
+    ControlledDeclarativeWidget, ControlledMountedPlan, ControlledNotice, ControlledNoticeKind,
+    ControlledRetainedState,
+};
 pub use editing::{
     EditChangeMap, EditGroupHint, EditIntent, EditInverse, EditKind, EditRequestId, EditResolution,
     EditResolutionOutcome, EditSelection, EditableContribution, EditableContributionError,

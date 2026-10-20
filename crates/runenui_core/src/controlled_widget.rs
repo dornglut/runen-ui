@@ -1,12 +1,15 @@
 //! EXPERIMENTAL #475: closed declarative widget authoring. Not an accepted API.
-use std::{any::Any, fmt, rc::Rc};
 use crate::{
-    ChildBearingWidget, EventPhase, Widget, WidgetEventOutput,
-    WidgetUpdateContext, WidgetInvalidation,
+    ChildBearingWidget, EventPhase, Widget, WidgetEventOutput, WidgetInvalidation,
+    WidgetUpdateContext,
 };
+use std::{any::Any, fmt, rc::Rc};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ControlledNoticeKind { CompositionCancel, FocusOut }
+pub enum ControlledNoticeKind {
+    CompositionCancel,
+    FocusOut,
+}
 
 pub struct ControlledNotice<Action> {
     pub kind: ControlledNoticeKind,
@@ -27,10 +30,16 @@ pub struct ControlledRetainedState {
     resource: Box<dyn Any>,
 }
 impl ControlledRetainedState {
-    pub fn revision(&self) -> u64 { self.revision }
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
     #[doc(hidden)]
-    pub fn __runtime_set_revision(&mut self, revision: u64) { self.revision = revision; }
-    pub fn resource(&self) -> &dyn Any { self.resource.as_ref() }
+    pub fn __runtime_set_revision(&mut self, revision: u64) {
+        self.revision = revision;
+    }
+    pub fn resource(&self) -> &dyn Any {
+        self.resource.as_ref()
+    }
 }
 
 /// Only this framework-owned widget type can supply interpreted controlled
@@ -51,10 +60,7 @@ impl<Action> fmt::Debug for ControlledDeclarativeWidget<Action> {
     }
 }
 impl<Action> ControlledDeclarativeWidget<Action> {
-    pub fn new(
-        revision: u64,
-        make_resource: impl Fn() -> Box<dyn Any> + 'static,
-    ) -> Self {
+    pub fn new(revision: u64, make_resource: impl Fn() -> Box<dyn Any> + 'static) -> Self {
         Self {
             initial_revision: 0,
             next_revision: revision,
@@ -69,8 +75,17 @@ impl<Action> ControlledDeclarativeWidget<Action> {
         self
     }
     #[must_use]
-    pub fn on_notice(mut self, kind: ControlledNoticeKind, phase: EventPhase, action: Action) -> Self {
-        self.notices.push(ControlledNotice { kind, phase, action });
+    pub fn on_notice(
+        mut self,
+        kind: ControlledNoticeKind,
+        phase: EventPhase,
+        action: Action,
+    ) -> Self {
+        self.notices.push(ControlledNotice {
+            kind,
+            phase,
+            action,
+        });
         self
     }
 }
@@ -95,7 +110,9 @@ impl<Action> Widget<Action> for ControlledDeclarativeWidget<Action> {
         })
     }
     fn event(
-        &mut self, _state: &mut Self::State, _event: &crate::UiEvent,
+        &mut self,
+        _state: &mut Self::State,
+        _event: &crate::UiEvent,
         _context: &mut crate::EventContext<'_, Action>,
     ) -> WidgetEventOutput {
         WidgetEventOutput::none()

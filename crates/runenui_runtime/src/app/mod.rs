@@ -112,10 +112,7 @@ impl<App: UiApp> AppRuntime<App> {
     }
 
     #[cfg(feature = "controlled-transaction-prototype")]
-    pub fn experiment_retained_resource(
-        &self,
-        id: &MountedNodeId,
-    ) -> Option<&dyn core::any::Any> {
+    pub fn experiment_retained_resource(&self, id: &MountedNodeId) -> Option<&dyn core::any::Any> {
         self.runtime.tree.node(id)?.state.controlled_resource()
     }
 

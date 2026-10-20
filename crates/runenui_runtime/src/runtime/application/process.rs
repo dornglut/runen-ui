@@ -36,27 +36,31 @@ pub(crate) fn process_application_action<App: UiApp>(
     // #475 EXPERIMENT ONLY. All authored action and widget scripts are
     // owned by this candidate; no retained widget callback is invoked here.
     #[cfg(feature = "controlled-transaction-prototype")]
-    let controlled = if let Some(prepared_state) =
-        App::controlled_prepare(runtime.state(), &action)
-    {
-        let candidate = App::root(&prepared_state).into_element();
-        let candidate_plan = runtime.tree.plan_reconciliation(
-            candidate,
-            runtime.mounted_public_slot_limit,
-        );
-        // This is a LATE admission gate, after the controlled mounted-node
-        // state instructions and exact authored C/T/B outputs were staged.
-        let controlled_count = candidate_plan.as_ref().ok()
-            .and_then(|plan| plan.validate_controlled(&runtime.tree));
-        let stage_valid = controlled_count.is_some();
-        let capacity_ok = controlled_count
-            .and_then(|staged| runtime.limits.transaction_outputs().checked_mul(2)
-                .and_then(|routed| routed.checked_add(staged))
-            )
-            .is_some_and(|slots| runtime.queue.preflight_commit(slots).is_ok());
-        let injected = core::mem::take(&mut runtime.controlled_fail_after_stage);
-        if !stage_valid || !capacity_ok || injected {
-            runtime.controlled_refusals.push(super::super::ControlledProcessingRefusal {
+    let controlled =
+        if let Some(prepared_state) = App::controlled_prepare(runtime.state(), &action) {
+            let candidate = App::root(&prepared_state).into_element();
+            let candidate_plan = runtime
+                .tree
+                .plan_reconciliation(candidate, runtime.mounted_public_slot_limit);
+            // This is a LATE admission gate, after the controlled mounted-node
+            // state instructions and exact authored C/T/B outputs were staged.
+            let controlled_count = candidate_plan
+                .as_ref()
+                .ok()
+                .and_then(|plan| plan.validate_controlled(&runtime.tree));
+            let stage_valid = controlled_count.is_some();
+            let capacity_ok = controlled_count
+                .and_then(|staged| {
+                    runtime
+                        .limits
+                        .transaction_outputs()
+                        .checked_mul(2)
+                        .and_then(|routed| routed.checked_add(staged))
+                })
+                .is_some_and(|slots| runtime.queue.preflight_commit(slots).is_ok());
+            let injected = core::mem::take(&mut runtime.controlled_fail_after_stage);
+            if !stage_valid || !capacity_ok || injected {
+                runtime.controlled_refusals.push(super::super::ControlledProcessingRefusal {
                 sequence,
                 reason: if !stage_valid {
                     super::super::ControlledProcessingRefusalReason::UnsupportedReconciliation
@@ -67,15 +71,15 @@ pub(crate) fn process_application_action<App: UiApp>(
                 },
                 original: action,
             });
-            return ProcessApplicationActionOutcome::Completed;
-        }
-        Some((
-            prepared_state,
-            candidate_plan.unwrap_or_else(|_| unreachable!("validated candidate")),
-        ))
-    } else {
-        None
-    };
+                return ProcessApplicationActionOutcome::Completed;
+            }
+            Some((
+                prepared_state,
+                candidate_plan.unwrap_or_else(|_| unreachable!("validated candidate")),
+            ))
+        } else {
+            None
+        };
 
     let before = ReconciliationGeneration(runtime.generation);
     let Some(next) = runtime.next_generation() else {
