@@ -2428,10 +2428,12 @@ impl ReferenceHost {
                 }
             }
             KeyboardInputOutcome::Suppressed(diagnostic) => {
+                q1!("stage=keyboard_adapter_suppressed reason={diagnostic:?}");
                 self.note_keyboard_ingress_diagnostic(diagnostic);
                 return;
             }
             KeyboardInputOutcome::Failed(failure) => {
+                q1!("stage=keyboard_adapter_failed reason={failure:?}");
                 self.fail(
                     event_loop,
                     &format!("native keyboard ingress failed closed: {failure:?}"),
@@ -2857,13 +2859,23 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
                     q1!("stage=native_cursor window={window_id:?} native_device={device_id:?}");
                 }
                 WindowEvent::Ime(Ime::Preedit(text, _)) => {
-                    q1!("stage=native_ime kind=preedit bytes={}", text.len());
+                    q1!(
+                        "stage=native_ime window={window_id:?} kind=preedit bytes={}",
+                        text.len()
+                    );
                 }
                 WindowEvent::Ime(Ime::Commit(text)) => {
-                    q1!("stage=native_ime kind=commit bytes={}", text.len());
+                    q1!(
+                        "stage=native_ime window={window_id:?} kind=commit bytes={}",
+                        text.len()
+                    );
                 }
-                WindowEvent::Ime(Ime::Enabled) => q1!("stage=native_ime kind=enabled"),
-                WindowEvent::Ime(Ime::Disabled) => q1!("stage=native_ime kind=disabled"),
+                WindowEvent::Ime(Ime::Enabled) => {
+                    q1!("stage=native_ime window={window_id:?} kind=enabled");
+                }
+                WindowEvent::Ime(Ime::Disabled) => {
+                    q1!("stage=native_ime window={window_id:?} kind=disabled");
+                }
                 WindowEvent::Focused(focused) => {
                     q1!("stage=native_focus window={window_id:?} focused={focused}");
                 }

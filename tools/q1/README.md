@@ -59,14 +59,14 @@ For performance use **release** builds with fixed CPU/OS/display/profile, repeat
 
 Build the exact branch **before** capture so RSS represents the native host, **not the Cargo build process**:
 
-\`\`\`sh
+```sh
 cargo +stable build --release --locked -p reference_winit
 python3 -m pip install psutil
 python3 tools/q1/q1_capture.py --repo . --scenario S1 --source physical --out ./q1-results/S1-run1 -- ./target/release/reference_winit
 python3 tools/q1/q1_validate.py ./q1-results/S1-run1 --require-physical
-\`\`\`
+```
 
-Windows executable: \`./target/release/reference_winit.exe\` and \`python\` instead of \`python3\`; launch from a PowerShell session with the exact feature checkout and a real interactive window. Repeat S1–S8 (see \`scenarios.json\`) on the actual available Windows/Linux X11/Wayland systems. The \`--source physical\` label is **operator attestation**, not a platform auto-detection; never apply it to Xvfb, VNC simulation, CI or a scripted headless event. Output directories must be fresh. The collector preserves only structured Q1 lines and SHA256s of \`events.jsonl\`/\`memory.jsonl\`, plus \`manifest.json\`; it does not retain other stderr or Debug text. \`psutil\` is needed to report RSS; its absence leaves that metric unqualified. Copy results **outside version control**, add the actual hardware/input-device/display manifest and real operator run sheet, and keep private key/text input out of the workload.
+Windows executable: `./target/release/reference_winit.exe` and `python` instead of `python3`; launch from a PowerShell session with the exact feature checkout and a real interactive window. Repeat S1–S8 (see `scenarios.json`) on the actual available Windows/Linux X11/Wayland systems. The `--source physical` label is **operator attestation**, not a platform auto-detection; never apply it to Xvfb, VNC simulation, CI or a scripted headless event. Output directories must be fresh. The collector preserves only structured Q1 lines and SHA256s of `events.jsonl`/`memory.jsonl`, plus `manifest.json`; it does not retain other stderr or Debug text. `psutil` is needed to report RSS; its absence leaves that metric unqualified. Copy results **outside version control**, add the actual hardware/input-device/display manifest and real operator run sheet, and keep private key/text input out of the workload.
 
-The validator checks observer order, duplicate \`(scope,WorkSequence)\` M13 outcomes, and observed Winit IDs/held-key high-water. It **cannot** authenticate raw DeviceEvent-to-WindowEvent physical device correlation, infer genuine source retirement or derive a D3-R source cap from a single run. Native loss, exact input→completed Present, and downstream Editor U9-C native proof remain **BLOCKED** without separate physical source evidence. A locally generated fixture only tests the parser, not RunenUI behavior.
+The validator checks observer order, duplicate `(scope,WorkSequence)` M13 outcomes, and observed Winit IDs/held-key high-water. It **cannot** authenticate raw DeviceEvent-to-WindowEvent physical device correlation, infer genuine source retirement or derive a D3-R source cap from a single run. Native loss, exact input→completed Present, and downstream Editor U9-C native proof remain **BLOCKED** without separate physical source evidence. A locally generated fixture only tests the parser, not RunenUI behavior.
 
