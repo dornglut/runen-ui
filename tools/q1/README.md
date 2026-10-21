@@ -1,10 +1,10 @@
 # Q1 D3-R observational capture — reference host
 
-**Scope:** [#475](https://github.com/dornglut/runen-ui/issues/475), `UI475-D3R-QUALIFICATION-21`. This is a **draft, opt-in, read-only baseline probe**. No retirement credits, source caps, admission policy, host game permission, mutable widget behavior or M13 finality are changed. The result does **not** qualify D3-R production.
+**Scope:** owning issue #475, `UI475-D3R-QUALIFICATION-21`. This is a **draft, opt-in, read-only baseline probe**. No retirement credits, source caps, admission policy, host game permission, mutable widget behavior or M13 finality are changed. The result does **not** qualify D3-R production.
 
 ## Authority and provenance
 
-Accepted RunenUI baseline `c5c8a9f01f22202e9b3443e0edec373eec71d01e`, accepted Runenwerk baseline `c341628646e0f936d26cbe459529529af3e893b4`. This branch adds diagnostic lines only to the existing **RunenUI reference Winit host**, and must not be mistaken for the existing accepted `main` behavior. Runenwerk [U9-C draft #1286](https://github.com/dornglut/runenwerk/pull/1286) is not accepted native integration. Existing `RUNENUI_REFERENCE_PROOF=1` and `RUNENUI_TRACE` cover canonical trace; the new `RUNENUI_Q1=1` captures a minimal stream without plaintext committed text/preedit. **Do not type private text** in native measurement sessions; existing optional proof Debug messages may expose keys.
+Accepted RunenUI and Runenwerk baselines MUST be pinned to their separately verified immutable main commits at measurement time; the exact SHAs belong in the run manifest and owning GitHub issue rather than this durable guide. This branch adds diagnostic lines only to the existing **RunenUI reference Winit host**, and must not be mistaken for the existing accepted `main` behavior. Runenwerk U9-C draft #1286 is not accepted native integration. Existing `RUNENUI_REFERENCE_PROOF=1` and `RUNENUI_TRACE` cover canonical trace; the new `RUNENUI_Q1=1` captures a minimal stream without plaintext committed text/preedit. **Do not type private text** in native measurement sessions; existing optional proof Debug messages may expose keys.
 
 ## Build/run on owner-accessible real hardware
 
@@ -26,7 +26,7 @@ cargo +stable run --locked -p reference_winit --release 2>&1 | Tee-Object q1-raw
 
 Optional: `RUNENUI_REFERENCE_PROOF=1` enables the previously accepted canonical redacted trace sink and other existing proof diagnostics. It is **not required** to capture the Q1 source/M13 fields.
 
-Run the fixed scenarios **S1–S8** from [#475 Q1 qualification](https://github.com/dornglut/runen-ui/issues/475#issuecomment-6304742569) with an operator script/checklist. Use a fresh folder per scenario/repetition, commit SHA, OS/display server, CPU/GPU/RAM, device IDs, input method, native/virtual injection provenance, real source loss and display-Present boundary. Recommended one capture per scenario and three physically repeated passes where actually possible; report UNAVAILABLE for missing physical Wayland/X11/Windows/device. A synthetic/headless CI run MUST be labeled as such, not physical evidence.
+Run the fixed scenarios **S1–S8** from [#475 Q1 qualification](owning issue #475 Q1 qualification record) with an operator script/checklist. Use a fresh folder per scenario/repetition, commit SHA, OS/display server, CPU/GPU/RAM, device IDs, input method, native/virtual injection provenance, real source loss and display-Present boundary. Recommended one capture per scenario and three physically repeated passes where actually possible; report UNAVAILABLE for missing physical Wayland/X11/Windows/device. A synthetic/headless CI run MUST be labeled as such, not physical evidence.
 
 ### Observer line schema `RUNENUI_Q1` (schema v1)
 
@@ -58,7 +58,7 @@ For performance use **release** builds with fixed CPU/OS/display/profile, repeat
 
 ### Accepted Runenwerk Editor/native workload comparison (separate owner)
 
-In a **separate** checked-out `dornglut/runenwerk` worktree at accepted `c341628646e0f936d26cbe459529529af3e893b4`, with its normal toolchain and supported native GPU/OS:
+In a **separate** checked-out `dornglut/runenwerk` worktree at verified accepted Runenwerk main commit, recorded in the run manifest, with its normal toolchain and supported native GPU/OS:
 
 ```sh
 git rev-parse HEAD
