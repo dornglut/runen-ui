@@ -45,7 +45,10 @@ def main():
         issues.append("NONZERO_OR_UNKNOWN_PROCESS_EXIT")
     if manifest.get("observations") != len(raw_rows):
         issues.append("OBSERVATION_COUNT_MISMATCH")
-    if set(manifest.get("sha256", {})) != {"events.jsonl", "memory.jsonl"}:
+    required_artifacts = {"events.jsonl", "memory.jsonl"}
+    if manifest.get("source") == "physical":
+        required_artifacts.add("operator_protocol.json")
+    if set(manifest.get("sha256", {})) != required_artifacts:
         issues.append("MISSING_OR_UNEXPECTED_ARTIFACT_DIGEST")
     rows = []
     required_by_stage = {
@@ -88,11 +91,33 @@ def main():
         rows.append(fields)
     if len(rows) != len(raw_rows):
         issues.append("INCOMPLETE_OBSERVATION_STREAM")
-    for filename in ("events.jsonl", "memory.jsonl"):
+    for filename in sorted(required_artifacts):
         expected = manifest.get("sha256", {}).get(filename)
-        actual = hashlib.sha256((root / filename).read_bytes()).hexdigest()
+        try:
+            actual = hashlib.sha256((root / filename).read_bytes()).hexdigest()
+        except OSError:
+            actual = None
         if not isinstance(expected, str) or len(expected) != 64 or actual != expected:
             issues.append("SHA256_MISMATCH_OR_MISSING:" + filename)
+    if manifest.get("source") == "physical":
+        try:
+            protocol = json.loads((root / "operator_protocol.json").read_text())
+        except (OSError, ValueError):
+            protocol = None
+        required = {"schema", "scenario", "operator_alias", "platform",
+                    "hardware", "display_backend", "input_method",
+                    "device_inventory", "planned_actions", "source_mapping_evidence"}
+        if (not isinstance(protocol, dict)
+                or protocol.get("schema") != "runenui-q1-operator-v1"
+                or protocol.get("scenario") != manifest.get("scenario")
+                or required - protocol.keys()
+                or any(not isinstance(protocol[key], str) or not protocol[key].strip()
+                       for key in required - {"device_inventory"})
+                or not isinstance(protocol.get("device_inventory"), list)
+                or not protocol["device_inventory"]
+                or any(not isinstance(device, str) or not device.strip()
+                       for device in protocol["device_inventory"])):
+            issues.append("MISSING_OR_INVALID_OPERATOR_PROTOCOL")
     if not rows:
         issues.append("NO_Q1_OBSERVATIONS")
     if args.require_physical and manifest.get("source") != "physical":
@@ -238,6 +263,8 @@ def main():
         "baseline_sha": manifest.get("sha"),
         "scenario": manifest.get("scenario"),
         "source": manifest.get("source"),
+        "operator_attestation_sha256": manifest.get("sha256", {}).get("operator_protocol.json"),
+        "operator_attestation_qualification": "operator assertion only; physical device and source mapping remain independently unverified",
         "stage_counts": dict(sorted(stages.items())),
         "native_winit_window_device_pairs": len(raw_id_pairs),
         "max_observed_native_held_keys": max_held,

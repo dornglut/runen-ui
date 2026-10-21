@@ -138,6 +138,36 @@ completion. Tool-observed WorkSequence matches cannot establish that semantic
 linkage on their own. An exit with no missing records still cannot certify
 the completeness of source types this host never emitted.
 
+## Required physical operator protocol
+
+A physical capture now requires `--operator-protocol ./q1-protocol.json`.
+Prepare a **nonprivate**, scenario-specific JSON before the run and preserve the
+collector's copied `operator_protocol.json` and its SHA256:
+
+```json
+{
+  "schema": "runenui-q1-operator-v1",
+  "scenario": "S1",
+  "operator_alias": "session-operator-1",
+  "platform": "Linux/X11",
+  "hardware": "CPU/GPU/RAM model and relevant versions: fill with actual hardware",
+  "display_backend": "X11/Wayland/Windows build, display and refresh: fill with facts",
+  "input_method": "IME / keyboard layout: fill with actual method",
+  "device_inventory": ["keyboard-A alias; OS source ID, when verifiable"],
+  "planned_actions": "Exact scenario actions, timings, source removal method and repetitions",
+  "source_mapping_evidence": "UNPROVEN unless independently established from physical OS sources"
+}
+```
+
+Replace placeholders with actual first-hand observations; never use this example
+as real evidence. Use redacted aliases rather than user identifiers, device serial
+numbers or typed text. Append externally signed/hashed **executed** action notes
+and any OS mapping evidence as separate artifacts; the pre-run protocol only
+records an operator assertion. The collector checks schema and scenario, copies
+the protocol into the result, and hashes it; it cannot authenticate the
+operator, device or actual performed actions. The validator rejects an
+incomplete physical protocol, not an unsupported source-to-window claim.
+
 ## Owner-executable collector and validator
 
 Build the exact branch **before** capture so RSS represents the native host, **not the Cargo build process**:
@@ -145,11 +175,11 @@ Build the exact branch **before** capture so RSS represents the native host, **n
 ```sh
 cargo +stable build --release --locked -p reference_winit
 python3 -m pip install psutil
-python3 tools/q1/q1_capture.py --repo . --scenario S1 --source physical --out ./q1-results/S1-run1 -- ./target/release/reference_winit
+python3 tools/q1/q1_capture.py --repo . --scenario S1 --source physical --operator-protocol ./q1-protocol.json --out ./q1-results/S1-run1 -- ./target/release/reference_winit
 python3 tools/q1/q1_validate.py ./q1-results/S1-run1 --require-physical
 ```
 
 Windows executable: `./target/release/reference_winit.exe` and `python` instead of `python3`; launch from a PowerShell session with the exact feature checkout and a real interactive window. Repeat physically executable native **subsets** of S1–S8 (see `scenarios.json` and the coverage table above) on actual available Windows/Linux X11/Wayland systems; report incomplete scenarios BLOCKED. The `--source physical` label is **operator attestation**, not a platform auto-detection; never apply it to Xvfb, VNC simulation, CI or a scripted headless event. Output directories must be fresh. The collector preserves only structured Q1 lines and SHA256s of `events.jsonl`/`memory.jsonl`, plus `manifest.json`; it does not retain other stderr or Debug text. The wrapper records the **exact launched executable path and its SHA256** as a reproducibility aid; this does not by itself prove that the binary was built from the manifest source SHA. It rejects a nonexistent/implicit PATH target; pass the previously built binary explicitly. `manifest.json` is not signed: custody of the directory and its independent external checksum/attachment still matters. `psutil` is needed to report RSS; its absence leaves that metric unqualified. Copy results **outside version control**, add the actual hardware/input-device/display manifest and real operator run sheet, and keep private key/text input out of the workload.
 
-The validator checks raw Winit keyboard, mouse, touch and host-composition lifetime peaks (observed, not UI-admitted), explicit S2–S5 input/protocol stage presence, observer order, duplicate `(scope,WorkSequence)` M13 outcomes, missing admitted keyboard/pointer settlement, and observed Winit IDs/held-key high-water. Physical runs also require an actual RSS sample and an actual repository SHA in the manifest, but remain **operator-attested** rather than automatically hardware-authenticated. It **cannot** authenticate raw DeviceEvent-to-WindowEvent physical device correlation, infer genuine source retirement or derive a D3-R source cap from a single run. Native loss, exact input→completed Present, and downstream Editor U9-C native proof remain **BLOCKED** without separate physical source evidence. A locally generated fixture only tests the parser, not RunenUI behavior.
+The validator checks raw Winit keyboard, mouse, touch and host-composition lifetime peaks (observed, not UI-admitted), explicit S2–S5 input/protocol stage presence, observer order, duplicate `(scope,WorkSequence)` M13 outcomes, missing admitted keyboard/pointer settlement, and observed Winit IDs/held-key high-water. Physical runs also require an actual RSS sample, an actual repository SHA, and a schema-checked, SHA256-preserved nonprivate operator protocol; none automatically authenticates physical hardware. It **cannot** authenticate raw DeviceEvent-to-WindowEvent physical device correlation, infer genuine source retirement or derive a D3-R source cap from a single run. Native loss, exact input→completed Present, and downstream Editor U9-C native proof remain **BLOCKED** without separate physical source evidence. A locally generated fixture only tests the parser, not RunenUI behavior.
 

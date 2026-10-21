@@ -33,6 +33,7 @@ def main():
     parser.add_argument("--scenario", required=True, choices=[f"S{i}" for i in range(1, 9)])
     parser.add_argument("--out", required=True, help="Fresh directory; existing paths are rejected")
     parser.add_argument("--source", required=True, choices=["physical", "virtual", "headless"])
+    parser.add_argument("--operator-protocol", help="Operator-attested JSON protocol, required for physical captures")
     parser.add_argument("--max-seconds", type=int, default=900)
     parser.add_argument("--max-records", type=int, default=1000000)
     parser.add_argument("command", nargs=argparse.REMAINDER)
@@ -40,8 +41,35 @@ def main():
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command or min(args.max_seconds, args.max_records) <= 0:
         parser.error("A command and positive capture limits are required")
+    operator_protocol = None
+    if args.source == "physical":
+        if not args.operator_protocol:
+            parser.error("--source physical requires --operator-protocol with source and action inventory")
+        try:
+            operator_protocol = json.loads(pathlib.Path(args.operator_protocol).read_text())
+        except (OSError, ValueError) as error:
+            parser.error(f"Could not read operator protocol: {error}")
+        required = {"schema", "scenario", "operator_alias", "platform",
+                    "hardware", "display_backend", "input_method",
+                    "device_inventory", "planned_actions", "source_mapping_evidence"}
+        if (not isinstance(operator_protocol, dict)
+                or operator_protocol.get("schema") != "runenui-q1-operator-v1"
+                or operator_protocol.get("scenario") != args.scenario
+                or required - operator_protocol.keys()
+                or any(not isinstance(operator_protocol[key], str) or
+                       not operator_protocol[key].strip()
+                       for key in required - {"device_inventory"})):
+            parser.error("Invalid operator protocol schema, scenario or required strings")
+        devices = operator_protocol["device_inventory"]
+        if (not isinstance(devices, list) or not devices
+                or any(not isinstance(device, str) or not device.strip() for device in devices)):
+            parser.error("Operator protocol requires nonempty redacted device inventory")
+    elif args.operator_protocol:
+        parser.error("--operator-protocol is only valid for --source physical")
     target = pathlib.Path(args.out)
     target.mkdir(parents=True, exist_ok=False)
+    if operator_protocol is not None:
+        (target / "operator_protocol.json").write_text(json.dumps(operator_protocol, indent=2) + "\n")
     repo = pathlib.Path(args.repo).resolve()
     try:
         head = subprocess.check_output(
@@ -145,7 +173,8 @@ def main():
         "memory_samples": len((target / "memory.jsonl").read_text().splitlines()),
         "sha256": {
             name: sha256(target / name)
-            for name in ("events.jsonl", "memory.jsonl")
+            for name in (("events.jsonl", "memory.jsonl", "operator_protocol.json")
+                         if operator_protocol is not None else ("events.jsonl", "memory.jsonl"))
         },
     })
     (target / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

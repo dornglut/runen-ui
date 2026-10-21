@@ -184,6 +184,26 @@ class Q1ValidatorTest(unittest.TestCase):
             manifest = json.loads((output / "manifest.json").read_text())
             self.assertIn("max_records", manifest["warnings"])
 
+    def test_unattested_physical_label_rejected(self):
+        # This is a deliberately false label in a synthetic negative fixture.
+        status, report = self.run_validation(s2_records(), source="physical")
+        self.assertNotEqual(status, 0)
+        self.assertIn("MISSING_OR_INVALID_OPERATOR_PROTOCOL", report["issues"])
+        self.assertIn("NO_NATIVE_RSS_SAMPLING", report["issues"])
+
+    def test_collector_rejects_missing_physical_protocol(self):
+        collector = pathlib.Path(__file__).with_name("q1_capture.py")
+        with tempfile.TemporaryDirectory(prefix="q1-unattested-") as directory:
+            root = pathlib.Path(directory)
+            result = subprocess.run([
+                sys.executable, str(collector), "--repo", str(root),
+                "--scenario", "S2", "--source", "physical",
+                "--out", str(root / "run"), "--", sys.executable, "-c", "pass",
+            ], capture_output=True, text=True, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("--operator-protocol", result.stderr)
+            self.assertFalse((root / "run").exists())
+
     def test_incomplete_s5_ime_rejected(self):
         fields = [
             record("native_ime", window="W", kind="preedit", bytes=4),
