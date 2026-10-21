@@ -64,9 +64,9 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_REVISION"
           if command -v python3 >/dev/null 2>&1; then
-            python3 -m unittest discover -s tools/q1 -p 'test_q1.py' -v
+            python3 -B -m unittest discover -s tools/q1 -p 'test_q1.py' -v
           else
-            python -m unittest discover -s tools/q1 -p 'test_q1.py' -v
+            python -B -m unittest discover -s tools/q1 -p 'test_q1.py' -v
           fi
           git diff --check
           test -z "$(git status --short)"
