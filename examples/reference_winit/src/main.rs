@@ -162,6 +162,96 @@ macro_rules! proof {
     };
 }
 
+// Q1 is an opt-in, read-only, privacy-minimized native/M13 observation stream.
+// It never submits work or replaces canonical trace or physical source authority.
+fn q1_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| env::var("RUNENUI_Q1").is_ok_and(|value| value == "1"))
+}
+
+fn q1_record(arguments: fmt::Arguments<'_>) {
+    static START: OnceLock<Instant> = OnceLock::new();
+    static SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    if !q1_enabled() {
+        return;
+    }
+    let sequence = SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let elapsed_us = START.get_or_init(Instant::now).elapsed().as_micros();
+    eprintln!("RUNENUI_Q1 seq={sequence} us={elapsed_us} {arguments}");
+}
+
+macro_rules! q1 {
+    ($($argument:tt)*) => {
+        if q1_enabled() {
+            q1_record(format_args!($($argument)*));
+        }
+    };
+}
+
+// Read-only raw Winit source observation; intentionally independent of UI ownership.
+fn q1_native_window_event(window_id: WindowId, event: &WindowEvent) {
+    if !q1_enabled() {
+        return;
+    }
+    match event {
+        WindowEvent::KeyboardInput {
+            device_id,
+            event,
+            is_synthetic,
+        } => {
+            q1!(
+                "stage=native_keyboard window={window_id:?} native_device={device_id:?} key={:?} state={:?} repeat={} synthetic={is_synthetic}",
+                event.physical_key,
+                event.state,
+                event.repeat
+            );
+        }
+        WindowEvent::MouseInput {
+            device_id,
+            state,
+            button,
+        } => {
+            q1!(
+                "stage=native_mouse window={window_id:?} native_device={device_id:?} button={button:?} state={state:?}"
+            );
+        }
+        WindowEvent::Touch(touch) => {
+            q1!(
+                "stage=native_touch window={window_id:?} native_device={:?} touch={} phase={:?}",
+                touch.device_id,
+                touch.id,
+                touch.phase
+            );
+        }
+        WindowEvent::CursorMoved { device_id, .. } => {
+            q1!("stage=native_cursor window={window_id:?} native_device={device_id:?}");
+        }
+        WindowEvent::Ime(Ime::Preedit(text, _)) => {
+            q1!(
+                "stage=native_ime window={window_id:?} kind=preedit bytes={}",
+                text.len()
+            );
+        }
+        WindowEvent::Ime(Ime::Commit(text)) => {
+            q1!(
+                "stage=native_ime window={window_id:?} kind=commit bytes={}",
+                text.len()
+            );
+        }
+        WindowEvent::Ime(Ime::Enabled) => {
+            q1!("stage=native_ime window={window_id:?} kind=enabled");
+        }
+        WindowEvent::Ime(Ime::Disabled) => {
+            q1!("stage=native_ime window={window_id:?} kind=disabled");
+        }
+        WindowEvent::Focused(focused) => {
+            q1!("stage=native_focus window={window_id:?} focused={focused}");
+        }
+        WindowEvent::Destroyed => q1!("stage=native_window_destroyed window={window_id:?}"),
+        _ => {}
+    }
+}
+
 const fn drag_drop_source(
     request: &runenui_core::FrameworkServiceRequest,
 ) -> Option<runenui_core::WorkSequence> {
@@ -859,7 +949,10 @@ impl ReferenceHost {
         native: DeviceId,
     ) -> Option<InputDeviceId> {
         match self.device_identities.resolve(native) {
-            Ok(device_id) => Some(device_id),
+            Ok(device_id) => {
+                q1!("stage=device_resolved native={native:?} mapped={device_id:?}");
+                Some(device_id)
+            }
             Err(DeviceIdentityError::Exhausted) => {
                 self.fail(event_loop, "native input device identity space exhausted");
                 None
@@ -1008,6 +1101,50 @@ impl ReferenceHost {
                 return false;
             }
         };
+        q1!(
+            "stage=pump_end q={} processed={} through={:?} revision={} paused={:?}",
+            batch.report().remaining_queued_envelopes(),
+            batch.report().processed_envelopes(),
+            batch
+                .processed_through()
+                .map(runenui_core::WorkSequence::get),
+            batch.final_ownership().revision().get(),
+            batch.pause_reason()
+        );
+        for record in batch.ordered_records() {
+            match record {
+                runenui_runtime::InputArbitrationRecord::InputSettled(settlement) => {
+                    let finality = match settlement.finality() {
+                        runenui_runtime::UiInputFinality::Committed(_) => "Committed",
+                        runenui_runtime::UiInputFinality::ProcessingRejected(_) => {
+                            "ProcessingRejected"
+                        }
+                        runenui_runtime::UiInputFinality::Aborted(_) => "Aborted",
+                        _ => "FutureFinality",
+                    };
+                    q1!(
+                        "stage=m13_settled scope={:?} work={} family={:?} finality={} device={:?} revision={}",
+                        format!("{:?}", settlement.scope()).replace(' ', ""),
+                        settlement.sequence().get(),
+                        settlement.family(),
+                        finality,
+                        settlement.device_id(),
+                        settlement.ownership_revision().get()
+                    );
+                }
+                runenui_runtime::InputArbitrationRecord::OwnershipChanged(transition) => {
+                    q1!("stage=m13_ownership_changed record={transition:?}");
+                }
+                runenui_runtime::InputArbitrationRecord::ScopeRetired(retirement) => {
+                    q1!(
+                        "stage=m13_scope_retired scope={:?} reason={:?}",
+                        retirement.scope(),
+                        retirement.reason()
+                    );
+                }
+                _ => {}
+            }
+        }
         self.revoke_stopped_runtime_pointer();
         if self.runtime.status() != runenui_runtime::RuntimeStatus::Running {
             return false;
@@ -1318,12 +1455,21 @@ impl ReferenceHost {
         // Native window events are serialized on this event loop. Submit first,
         // then pump once; callers must not pump the same pointer event again.
         proof!("stage=pointer_translated source={stage:?} event={event:?}");
-        if let Err(error) = self.runtime.submit_pointer(event) {
-            self.fail(
-                event_loop,
-                &format!("{stage} could not enter runtime input: {error}"),
-            );
-            return false;
+        match self.runtime.submit_pointer(event) {
+            Ok(submission) => {
+                q1!(
+                    "stage=pointer_admitted work={}",
+                    submission.sequence().get()
+                );
+            }
+            Err(error) => {
+                q1!("stage=pointer_refused reason={:?}", error.kind());
+                self.fail(
+                    event_loop,
+                    &format!("{stage} could not enter runtime input: {error}"),
+                );
+                return false;
+            }
         }
         self.pump_runtime_once();
         self.collect_redraw_request();
@@ -1436,18 +1582,26 @@ impl ReferenceHost {
     ) -> Option<KeyboardDownDecision> {
         proof!("stage=keyboard_translated source={stage:?} event={event:?}");
         match self.runtime.submit_keyboard(event) {
-            Ok(_) => Some(KeyboardDownDecision::Queued),
+            Ok(submission) => {
+                q1!(
+                    "stage=keyboard_admitted work={}",
+                    submission.sequence().get()
+                );
+                Some(KeyboardDownDecision::Queued)
+            }
             Err(error)
                 if error.kind() == SubmitKeyboardErrorKind::NoFocusedTarget
                     && error.event().phase() == runenui_core::KeyboardPhase::Down
                     && !error.event().is_repeat() =>
             {
+                q1!("stage=keyboard_refused_prequeue reason=NoFocusedTarget");
                 self.note_keyboard_ingress_diagnostic(
                     KeyboardIngressDiagnostic::NoFocusedRuntimeTarget,
                 );
                 Some(KeyboardDownDecision::RejectedBeforeQueue)
             }
             Err(error) => {
+                q1!("stage=keyboard_refused reason={:?}", error.kind());
                 self.fail(
                     event_loop,
                     &format!("{stage} could not enter runtime input: {error}"),
@@ -1603,6 +1757,11 @@ impl ReferenceHost {
                     .remember_composition_generation(generation.clone());
                 self.last_text_ingress_diagnostic = None;
                 proof!("stage=composition_started generation={}", generation.get());
+                q1!(
+                    "stage=composition_started generation={} work={}",
+                    generation.get(),
+                    submission.sequence().get()
+                );
                 eprintln!("reference_winit composition started");
                 Some(generation)
             }
@@ -1632,6 +1791,7 @@ impl ReferenceHost {
     fn retire_stale_native_composition(&mut self) {
         self.text_input.retire_composition();
         proof!("stage=composition_retired reason=stale");
+        q1!("stage=composition_retired reason=stale");
         self.note_text_ingress_diagnostic(TextIngressDiagnostic::CompositionNoLongerActive);
     }
 
@@ -1646,6 +1806,7 @@ impl ReferenceHost {
                 proof!(
                     "stage=composition_cancelled generation={generation_value} reason={reason:?}"
                 );
+                q1!("stage=composition_cancelled generation={generation_value}");
                 eprintln!("reference_winit composition cancelled: {reason}");
                 self.pump_runtime_once();
                 true
@@ -1734,6 +1895,7 @@ impl ReferenceHost {
                 Ok(_) => {
                     self.text_input.retire_composition();
                     proof!("stage=composition_ended generation={generation_value}");
+                    q1!("stage=composition_ended generation={generation_value}");
                     eprintln!("reference_winit composition ended");
                 }
                 Err(error)
@@ -2335,10 +2497,12 @@ impl ReferenceHost {
                 }
             }
             KeyboardInputOutcome::Suppressed(diagnostic) => {
+                q1!("stage=keyboard_adapter_suppressed reason={diagnostic:?}");
                 self.note_keyboard_ingress_diagnostic(diagnostic);
                 return;
             }
             KeyboardInputOutcome::Failed(failure) => {
+                q1!("stage=keyboard_adapter_failed reason={failure:?}");
                 self.fail(
                     event_loop,
                     &format!("native keyboard ingress failed closed: {failure:?}"),
@@ -2641,6 +2805,7 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
         event: DeviceEvent,
     ) {
         if matches!(event, DeviceEvent::Removed) {
+            q1!("stage=native_device_removed raw_device={device_id:?}");
             // This single-window probe does not own a seat/device manager.
             // Conservatively revoke on native source loss instead of guessing
             // whether the removed source can still drive this lease.
@@ -2728,6 +2893,7 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             accessibility.process_event(window, &event);
             proof!("stage=accessibility_event_processed");
         }
+        q1_native_window_event(window_id, &event);
         match event {
             WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                 self.close_native_window(event_loop);
