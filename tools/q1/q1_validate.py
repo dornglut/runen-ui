@@ -76,6 +76,12 @@ def main():
     if not stages.get("native_device_removed"):
         warnings.append("NATIVE_DEVICE_REMOVAL_NOT_OBSERVED")
     memory = [json.loads(line) for line in (root / "memory.jsonl").read_text().splitlines() if line]
+    queue_samples = [int(row["q"]) for row in rows if row.get("stage") == "pump_end"]
+    elapsed_seconds = manifest.get("elapsed_s") or 0
+    native_events = sum(
+        stages.get(name, 0)
+        for name in ("native_keyboard", "native_mouse", "native_touch", "native_cursor", "native_ime")
+    )
     output = {
         "schema": "runenui-q1-validation-v1",
         "baseline_sha": manifest["sha"],
@@ -95,6 +101,14 @@ def main():
             "p99": percentile(durations, .99) if len(durations) >= 1000 else None,
         },
         "rss_peak_bytes": max((item["rss_bytes"] for item in memory), default=None),
+        "native_observed_events_per_second": (
+            native_events / elapsed_seconds if elapsed_seconds > 0 else None
+        ),
+        "pump_checkpoint_max_waiting_Q": max(queue_samples, default=None),
+        "pump_checkpoint_min_free_C_minus_Q": (
+            4096 - max(queue_samples) if queue_samples else None
+        ),
+        "queue_headroom_qualification": "checkpoint only; no D3-R future T/G credits or continuous high-water on accepted main",
         "blocked": [
             "physical device mapping and unobserved source teardown",
             "native event to completed Present boundary",
