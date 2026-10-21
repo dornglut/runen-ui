@@ -1058,7 +1058,7 @@ impl ReferenceHost {
                     };
                     q1!(
                         "stage=m13_settled scope={:?} work={} family={:?} finality={} device={:?} revision={}",
-                        settlement.scope(),
+                        format!("{:?}", settlement.scope()).replace(' ', ""),
                         settlement.sequence().get(),
                         settlement.family(),
                         finality,
