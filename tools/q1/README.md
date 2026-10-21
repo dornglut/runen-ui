@@ -55,6 +55,20 @@ For performance use **release** builds with fixed CPU/OS/display/profile, repeat
 **Safety and scope:** do not merge this instrumentation as a D3-R product behavior change, amend accepted ADR 0005/0006/0019, or repin Runenwerk. This Q1 draft remains independent of #476 and expired/closed #499–#501.
 
 
+
+### Accepted Runenwerk Editor/native workload comparison (separate owner)
+
+In a **separate** checked-out `dornglut/runenwerk` worktree at accepted `c341628646e0f936d26cbe459529529af3e893b4`, with its normal toolchain and supported native GPU/OS:
+
+```sh
+git rev-parse HEAD
+cargo +stable build --release --locked -p runenwerk_editor -p runenwerk_render_lab
+./target/release/runenwerk_editor
+./target/release/runenwerk-render-lab
+```
+
+The Render Lab executable name is `runenwerk-render-lab`; on Windows use the corresponding `.exe`. Collect the same **operator-defined S1–S8 workload/rate, OS device inventory, native RSS and event-to-display evidence when available**, but **do not** submit this Editor process to the RunenUI Q1 validator and call it a RunenUI/M13 result: accepted Runenwerk main does not contain the U9-C native RunenUI source bridge, and its persisted normalized recordings do not record raw Winit identities, text/IME and final native teardown. Real Editor original M13 correlation needs a separately authorized source-qualified observational integration, not draft #1286 inference. Status until observed: **BLOCKED**.
+
 ## Owner-executable collector and validator
 
 Build the exact branch **before** capture so RSS represents the native host, **not the Cargo build process**:
