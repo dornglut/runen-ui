@@ -50,10 +50,18 @@ def main():
         ).strip()
     except (OSError, subprocess.CalledProcessError):
         head = None
+    executable = pathlib.Path(command[0])
+    if not executable.is_absolute():
+        executable = repo / executable
+    executable = executable.resolve()
+    if not executable.is_file():
+        parser.error("Q1 must measure a previously built executable file, not a PATH command")
+    executable_digest = sha256(executable)
     manifest = {
         "schema": "runenui-q1-run-v1", "sha": head,
         "scenario": args.scenario, "source": args.source,
         "command": command, "repo": str(repo),
+        "executable": str(executable), "executable_sha256": executable_digest,
         "os": platform.platform(), "cpu": platform.processor(),
         "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "warning": "physical is operator attestation, NOT inferred from runner OS"
@@ -134,6 +142,7 @@ def main():
         "elapsed_s": time.monotonic() - t0,
         "exit_code": result, "observations": count,
         "warnings": sorted(set(warnings)), "psutil": psutil is not None,
+        "memory_samples": len((target / "memory.jsonl").read_text().splitlines()),
         "sha256": {
             name: sha256(target / name)
             for name in ("events.jsonl", "memory.jsonl")

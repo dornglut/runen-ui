@@ -69,6 +69,44 @@ cargo +stable build --release --locked -p runenwerk_editor -p runenwerk_render_l
 
 The Render Lab executable name is `runenwerk-render-lab`; on Windows use the corresponding `.exe`. Collect the same **operator-defined S1–S8 workload/rate, OS device inventory, native RSS and event-to-display evidence when available**, but **do not** submit this Editor process to the RunenUI Q1 validator and call it a RunenUI/M13 result: accepted Runenwerk main does not contain the U9-C native RunenUI source bridge, and its persisted normalized recordings do not record raw Winit identities, text/IME and final native teardown. Real Editor original M13 correlation needs a separately authorized source-qualified observational integration, not draft #1286 inference. Status until observed: **BLOCKED**.
 
+## Tooling decision and tested boundaries
+
+**Decision for Q1:** retain the limited Python 3 standard-library capture and validation
+scripts rather than create a persistent Rust `xtask` acquisition subsystem. This
+workflow is an opt-in, operator-driven, temporary physical-measurement instrument,
+not a production RunenUI component or new canonical validation authority. `psutil`
+is the only optional nonstandard Python dependency, and is **required for a
+physically qualified RSS sample**. If the workflow becomes permanent or is
+adopted as a mandatory repository gate, reassess Rust `xtask` integration
+and the cost of keeping Python. Language uniformity alone is not a reason to
+rewrite the collector.
+
+Run the checked-in **synthetic tooling regressions** before any physical capture,
+on both the desired host OS and in the operator checkout:
+
+```sh
+python3 -m unittest discover -s tools/q1 -p 'test_q1.py' -v
+```
+
+These focused Python tests are **not** covered by `cargo validate` or the
+existing Rust CI partitions; canonical CI success alone does not verify
+the Python validator. Negative cases must exit nonzero, including malformed
+events, missing required scenario steps, interrupted/nonzero native process
+exit, missing M13 correlation and observer sequence gaps. Tests are explicitly
+synthetic; they do not qualify physical Windows/Linux behavior.
+
+A successful `q1_validate.py` result certifies only local structured capture
+integrity. In particular, it requires a process exit code of zero, matching
+record count and expected artifact SHA256 digests, contiguous observer indices
+starting at zero, actual stderr records, and any observed keyboard/pointer
+admission to have a matching observed M13 settlement. It rejects observed
+stage omissions and missing required S2 repeat/release and S5
+Preedit/Commit/Disabled classes. This is **not** proof that the original native
+source identity was authenticated or that M13 describes descendant/gameplay
+completion. Tool-observed WorkSequence matches cannot establish that semantic
+linkage on their own. An exit with no missing records still cannot certify
+the completeness of source types this host never emitted.
+
 ## Owner-executable collector and validator
 
 Build the exact branch **before** capture so RSS represents the native host, **not the Cargo build process**:
@@ -80,7 +118,7 @@ python3 tools/q1/q1_capture.py --repo . --scenario S1 --source physical --out ./
 python3 tools/q1/q1_validate.py ./q1-results/S1-run1 --require-physical
 ```
 
-Windows executable: `./target/release/reference_winit.exe` and `python` instead of `python3`; launch from a PowerShell session with the exact feature checkout and a real interactive window. Repeat S1–S8 (see `scenarios.json`) on the actual available Windows/Linux X11/Wayland systems. The `--source physical` label is **operator attestation**, not a platform auto-detection; never apply it to Xvfb, VNC simulation, CI or a scripted headless event. Output directories must be fresh. The collector preserves only structured Q1 lines and SHA256s of `events.jsonl`/`memory.jsonl`, plus `manifest.json`; it does not retain other stderr or Debug text. `psutil` is needed to report RSS; its absence leaves that metric unqualified. Copy results **outside version control**, add the actual hardware/input-device/display manifest and real operator run sheet, and keep private key/text input out of the workload.
+Windows executable: `./target/release/reference_winit.exe` and `python` instead of `python3`; launch from a PowerShell session with the exact feature checkout and a real interactive window. Repeat S1–S8 (see `scenarios.json`) on the actual available Windows/Linux X11/Wayland systems. The `--source physical` label is **operator attestation**, not a platform auto-detection; never apply it to Xvfb, VNC simulation, CI or a scripted headless event. Output directories must be fresh. The collector preserves only structured Q1 lines and SHA256s of `events.jsonl`/`memory.jsonl`, plus `manifest.json`; it does not retain other stderr or Debug text. The wrapper records the **exact launched executable path and its SHA256** as a reproducibility aid; this does not by itself prove that the binary was built from the manifest source SHA. It rejects a nonexistent/implicit PATH target; pass the previously built binary explicitly. `manifest.json` is not signed: custody of the directory and its independent external checksum/attachment still matters. `psutil` is needed to report RSS; its absence leaves that metric unqualified. Copy results **outside version control**, add the actual hardware/input-device/display manifest and real operator run sheet, and keep private key/text input out of the workload.
 
-The validator checks raw Winit keyboard, mouse, touch and host-composition lifetime peaks (observed, not UI-admitted), explicit S2–S5 input/protocol stage presence, observer order, duplicate `(scope,WorkSequence)` M13 outcomes, and observed Winit IDs/held-key high-water. It **cannot** authenticate raw DeviceEvent-to-WindowEvent physical device correlation, infer genuine source retirement or derive a D3-R source cap from a single run. Native loss, exact input→completed Present, and downstream Editor U9-C native proof remain **BLOCKED** without separate physical source evidence. A locally generated fixture only tests the parser, not RunenUI behavior.
+The validator checks raw Winit keyboard, mouse, touch and host-composition lifetime peaks (observed, not UI-admitted), explicit S2–S5 input/protocol stage presence, observer order, duplicate `(scope,WorkSequence)` M13 outcomes, missing admitted keyboard/pointer settlement, and observed Winit IDs/held-key high-water. Physical runs also require an actual RSS sample and an actual repository SHA in the manifest, but remain **operator-attested** rather than automatically hardware-authenticated. It **cannot** authenticate raw DeviceEvent-to-WindowEvent physical device correlation, infer genuine source retirement or derive a D3-R source cap from a single run. Native loss, exact input→completed Present, and downstream Editor U9-C native proof remain **BLOCKED** without separate physical source evidence. A locally generated fixture only tests the parser, not RunenUI behavior.
 
