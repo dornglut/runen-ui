@@ -1791,6 +1791,7 @@ impl ReferenceHost {
     fn retire_stale_native_composition(&mut self) {
         self.text_input.retire_composition();
         proof!("stage=composition_retired reason=stale");
+        q1!("stage=composition_retired reason=stale");
         self.note_text_ingress_diagnostic(TextIngressDiagnostic::CompositionNoLongerActive);
     }
 
@@ -1805,6 +1806,7 @@ impl ReferenceHost {
                 proof!(
                     "stage=composition_cancelled generation={generation_value} reason={reason:?}"
                 );
+                q1!("stage=composition_cancelled generation={generation_value}");
                 eprintln!("reference_winit composition cancelled: {reason}");
                 self.pump_runtime_once();
                 true
@@ -1893,6 +1895,7 @@ impl ReferenceHost {
                 Ok(_) => {
                     self.text_input.retire_composition();
                     proof!("stage=composition_ended generation={generation_value}");
+                    q1!("stage=composition_ended generation={generation_value}");
                     eprintln!("reference_winit composition ended");
                 }
                 Err(error)

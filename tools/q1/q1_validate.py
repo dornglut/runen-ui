@@ -73,8 +73,52 @@ def main():
         elif row.get("state") == "Released" and held[key] > 0:
             held[key] -= 1
         max_held = max(max_held, sum(held.values()))
+    # These are Winit observation peaks, NOT admitted UI lifetime/credit counts.
+    mouse_held = set()
+    touch_held = set()
+    composition_held = set()
+    max_mouse = max_touch = max_composition = 0
+    for row in rows:
+        stage = row.get("stage")
+        if stage == "native_mouse":
+            key = (row.get("window"), row.get("native_device"), row.get("button"))
+            if row.get("state") == "Pressed":
+                mouse_held.add(key)
+            elif row.get("state") == "Released":
+                mouse_held.discard(key)
+        elif stage == "native_touch":
+            key = (row.get("window"), row.get("native_device"), row.get("touch"))
+            if row.get("phase") == "Started":
+                touch_held.add(key)
+            elif row.get("phase") in ("Ended", "Cancelled"):
+                touch_held.discard(key)
+        elif stage == "composition_started":
+            composition_held.add(row["generation"])
+        elif stage in ("composition_ended", "composition_cancelled"):
+            composition_held.discard(row["generation"])
+        elif stage == "composition_retired":
+            # Stale generation is host-owned; its identity is no longer valid.
+            composition_held.clear()
+        max_mouse = max(max_mouse, len(mouse_held))
+        max_touch = max(max_touch, len(touch_held))
+        max_composition = max(max_composition, len(composition_held))
     if not stages.get("native_device_removed"):
         warnings.append("NATIVE_DEVICE_REMOVAL_NOT_OBSERVED")
+    required_any = {
+        "S2": ("native_keyboard",),
+        "S3": ("native_keyboard", "native_device_removed"),
+        "S4": ("native_mouse", "native_touch"),
+        "S5": ("native_ime",),
+        "S7": ("native_focus", "native_device_removed"),
+    }
+    if manifest["scenario"] in required_any:
+        if not any(stages.get(name) for name in required_any[manifest["scenario"]]):
+            issues.append("SCENARIO_EXPECTED_NATIVE_OBSERVATION_MISSING")
+    if args.require_physical and not manifest.get("sha"):
+        issues.append("MISSING_CHECKED_OUT_BUILD_SHA")
+    if any(int(row["q"]) > 4096 or int(row["q"]) < 0
+           for row in rows if row.get("stage") == "pump_end"):
+        issues.append("INVALID_QUEUE_CHECKPOINT")
     memory = [json.loads(line) for line in (root / "memory.jsonl").read_text().splitlines() if line]
     queue_samples = [int(row["q"]) for row in rows if row.get("stage") == "pump_end"]
     elapsed_seconds = manifest.get("elapsed_s") or 0
@@ -91,6 +135,13 @@ def main():
         "native_winit_window_device_pairs": len(raw_id_pairs),
         "max_observed_native_held_keys": max_held,
         "still_held_at_close": sum(held.values()),
+        "max_observed_native_mouse_buttons": max_mouse,
+        "max_observed_native_touch_contacts": max_touch,
+        "max_host_observed_composition_generations": max_composition,
+        "mouse_buttons_held_at_close": len(mouse_held),
+        "touch_contacts_held_at_close": len(touch_held),
+        "host_compositions_held_at_close": len(composition_held),
+        "lifetime_qualification": "raw Winit/host observations only, NOT accepted source credits or authenticated physical devices",
         "m13_unique_settlements": len(settlements),
         "m13_finality": {
             f"{family}:{status}": count for (family, status), count in sorted(finality.items())
