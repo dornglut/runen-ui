@@ -273,6 +273,7 @@ def main():
         "admission_latency_qualification": "correlation by observed WorkSequence within reference host, not verified physical OS-to-framework source identity or descendant finality",
         "blocked": [
             "physical device mapping and unobserved source teardown",
+            "full S1-S8 campaign not exercisable by reference_winit single-editor DemoApp; see tooling README coverage matrix",
             "native event to completed Present boundary",
             "accepted main contains no D3-R credits",
             "no ratified source caps or performance thresholds",

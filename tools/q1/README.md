@@ -69,6 +69,34 @@ cargo +stable build --release --locked -p runenwerk_editor -p runenwerk_render_l
 
 The Render Lab executable name is `runenwerk-render-lab`; on Windows use the corresponding `.exe`. Collect the same **operator-defined S1–S8 workload/rate, OS device inventory, native RSS and event-to-display evidence when available**, but **do not** submit this Editor process to the RunenUI Q1 validator and call it a RunenUI/M13 result: accepted Runenwerk main does not contain the U9-C native RunenUI source bridge, and its persisted normalized recordings do not record raw Winit identities, text/IME and final native teardown. Real Editor original M13 correlation needs a separately authorized source-qualified observational integration, not draft #1286 inference. Status until observed: **BLOCKED**.
 
+## Actual reference-host scenario coverage (critical qualification limit)
+
+Source audit: `examples/reference_winit/src/main.rs` builds one keyed
+`DemoSurface` editor under `DemoApp`; it does **not** author a ComboBox or
+two independently focusable A/B widgets, nor does it offer a configurable
+headless C/R saturation driver. Therefore a successful native capture or
+`--require-physical` validation is **NOT** a completed S1–S8 scenario campaign.
+The same Q1 format can characterize *subsets* of these scenarios:
+
+| Scenario | Direct reference-host observations | Required evidence still unavailable from this host |
+| --- | --- | --- |
+| S1 | Single editable surface and basic host input | Actual Editor + TextField/ComboBox multi-widget interactions and normal background action workload |
+| S2 | Native key Down, repeat and Up plus admitted original M13 | Explicit old-focus A→B→A lifecycle with independent recipients |
+| S3 | Window/raw device identity and Removed callback | Authenticated physical A/B-to-window source mapping, unplug of only A while B remains held, replug lifetime |
+| S4 | Mouse/touch window events, admitted pointer WorkSequence | Two independently mapped sources, capture owner retirement, complete source-loss behavior |
+| S5 | Native IME events and host composition generation | Compatible FocusOut of live old TextField route, C/T/B and Space cleanup under pressure |
+| S6 | None of the scripted deterministic C/R/fanout cases | Separate deterministic public consumer with exact C16/R4 and default C4096/R1024 admission/cleanup proof |
+| S7 | Window focus loss, raw Removed, shutdown observation | Deliberate pending-original/host-refusal-not-drained/M13 saturation and certified cleanup |
+| S8 | Long-running one-editor native input observations | Actual Editor workload, cross-source background actions, full owned resource residence/memory return |
+
+Treat each unmet predicate as **BLOCKED** with the required host, build SHA and
+operator/hardware evidence. Do not label S1–S8 PASS just because the reference
+host exits successfully. The accepted Runenwerk Editor cannot provide the missing
+RunenUI original-M13 source evidence until a **separately authorized** native
+integration is accepted. No use of draft #476 or U9-C #1286 is acceptable as
+accepted-main production evidence. S6 needs separate headless deterministic
+tests, never simulation disguised as physical source data.
+
 ## Tooling decision and tested boundaries
 
 **Decision for Q1:** retain the limited Python 3 standard-library capture and validation
@@ -121,7 +149,7 @@ python3 tools/q1/q1_capture.py --repo . --scenario S1 --source physical --out ./
 python3 tools/q1/q1_validate.py ./q1-results/S1-run1 --require-physical
 ```
 
-Windows executable: `./target/release/reference_winit.exe` and `python` instead of `python3`; launch from a PowerShell session with the exact feature checkout and a real interactive window. Repeat S1–S8 (see `scenarios.json`) on the actual available Windows/Linux X11/Wayland systems. The `--source physical` label is **operator attestation**, not a platform auto-detection; never apply it to Xvfb, VNC simulation, CI or a scripted headless event. Output directories must be fresh. The collector preserves only structured Q1 lines and SHA256s of `events.jsonl`/`memory.jsonl`, plus `manifest.json`; it does not retain other stderr or Debug text. The wrapper records the **exact launched executable path and its SHA256** as a reproducibility aid; this does not by itself prove that the binary was built from the manifest source SHA. It rejects a nonexistent/implicit PATH target; pass the previously built binary explicitly. `manifest.json` is not signed: custody of the directory and its independent external checksum/attachment still matters. `psutil` is needed to report RSS; its absence leaves that metric unqualified. Copy results **outside version control**, add the actual hardware/input-device/display manifest and real operator run sheet, and keep private key/text input out of the workload.
+Windows executable: `./target/release/reference_winit.exe` and `python` instead of `python3`; launch from a PowerShell session with the exact feature checkout and a real interactive window. Repeat physically executable native **subsets** of S1–S8 (see `scenarios.json` and the coverage table above) on actual available Windows/Linux X11/Wayland systems; report incomplete scenarios BLOCKED. The `--source physical` label is **operator attestation**, not a platform auto-detection; never apply it to Xvfb, VNC simulation, CI or a scripted headless event. Output directories must be fresh. The collector preserves only structured Q1 lines and SHA256s of `events.jsonl`/`memory.jsonl`, plus `manifest.json`; it does not retain other stderr or Debug text. The wrapper records the **exact launched executable path and its SHA256** as a reproducibility aid; this does not by itself prove that the binary was built from the manifest source SHA. It rejects a nonexistent/implicit PATH target; pass the previously built binary explicitly. `manifest.json` is not signed: custody of the directory and its independent external checksum/attachment still matters. `psutil` is needed to report RSS; its absence leaves that metric unqualified. Copy results **outside version control**, add the actual hardware/input-device/display manifest and real operator run sheet, and keep private key/text input out of the workload.
 
 The validator checks raw Winit keyboard, mouse, touch and host-composition lifetime peaks (observed, not UI-admitted), explicit S2–S5 input/protocol stage presence, observer order, duplicate `(scope,WorkSequence)` M13 outcomes, missing admitted keyboard/pointer settlement, and observed Winit IDs/held-key high-water. Physical runs also require an actual RSS sample and an actual repository SHA in the manifest, but remain **operator-attested** rather than automatically hardware-authenticated. It **cannot** authenticate raw DeviceEvent-to-WindowEvent physical device correlation, infer genuine source retirement or derive a D3-R source cap from a single run. Native loss, exact input→completed Present, and downstream Editor U9-C native proof remain **BLOCKED** without separate physical source evidence. A locally generated fixture only tests the parser, not RunenUI behavior.
 

@@ -72,6 +72,7 @@ class Q1ValidatorTest(unittest.TestCase):
         self.assertIn("NOT_PHYSICAL_NATIVE_EVIDENCE", report["warnings"])
         self.assertEqual(report["observed_admitted_to_m13_matches"], 1)
         self.assertEqual(report["max_observed_native_held_keys"], 1)
+        self.assertTrue(any("full S1-S8 campaign" in gap for gap in report["blocked"]))
 
     def test_duplicate_m13_settlement_rejected(self):
         fields = s2_records()
