@@ -55,6 +55,8 @@ def main():
         "native_keyboard": {"window", "native_device", "key", "state", "repeat"},
         "native_mouse": {"window", "native_device", "button", "state"},
         "native_touch": {"window", "native_device", "touch", "phase"},
+        "native_focus": {"window", "focused"},
+        "native_device_removed": {"raw_device"},
         "composition_started": {"generation"},
         "composition_ended": {"generation"},
         "composition_cancelled": {"generation"},
@@ -80,6 +82,9 @@ def main():
         missing = required_by_stage.get(fields["stage"], set()) - fields.keys()
         if missing:
             issues.append("MISSING_STAGE_FIELDS:" + fields["stage"])
+            continue
+        if fields["stage"] == "native_focus" and fields["focused"] not in {"true", "false"}:
+            issues.append("INVALID_NATIVE_FOCUS_STATE")
             continue
         if fields["stage"] == "pump_end":
             try:
@@ -237,7 +242,13 @@ def main():
             issues.append("S5_MISSING_PREEDIT_COMMIT_OR_DISABLED")
     if scenario == "S5" and not (stages.get("composition_ended") or stages.get("composition_cancelled")):
         issues.append("SCENARIO_MISSING_COMPOSITION_TERMINATION")
-    if scenario == "S7" and not (stages.get("native_focus") or stages.get("native_device_removed")):
+    if scenario == "S7" and not (
+        any(row.get("stage") == "native_focus" and row.get("focused") == "false"
+            for row in rows)
+        or stages.get("native_device_removed")
+    ):
+        # Presence of a focused=true startup callback is not source loss.
+        # This structural check cannot prove device identity or cancellation.
         issues.append("SCENARIO_MISSING_SOURCE_LOSS")
     if args.require_physical and not manifest.get("sha"):
         issues.append("MISSING_CHECKED_OUT_BUILD_SHA")

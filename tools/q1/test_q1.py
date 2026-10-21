@@ -204,6 +204,73 @@ class Q1ValidatorTest(unittest.TestCase):
             self.assertIn("--operator-protocol", result.stderr)
             self.assertFalse((root / "run").exists())
 
+    def test_s7_rejects_focused_true_only(self):
+        status, report = self.run_validation(
+            [record("native_focus", window="W", focused="true")], scenario="S7",
+        )
+        self.assertNotEqual(status, 0)
+        self.assertIn("SCENARIO_MISSING_SOURCE_LOSS", report["issues"])
+
+    def test_s7_rejects_no_source_loss_events(self):
+        status, report = self.run_validation(
+            [record("pump_end", q=0)], scenario="S7",
+        )
+        self.assertNotEqual(status, 0)
+        self.assertIn("SCENARIO_MISSING_SOURCE_LOSS", report["issues"])
+
+    def test_s7_rejects_missing_or_invalid_focus_payload(self):
+        for fields in (
+            {"window": "W"},
+            {"window": "W", "focused": "unknown"},
+            {"window": "W", "focused": "False"},
+            {"focused": "false"},
+        ):
+            with self.subTest(fields=fields):
+                status, report = self.run_validation(
+                    [record("native_focus", **fields)], scenario="S7",
+                )
+                self.assertNotEqual(status, 0)
+                self.assertIn("SCENARIO_MISSING_SOURCE_LOSS", report["issues"])
+                self.assertTrue(
+                    any(issue.startswith(("MISSING_STAGE_FIELDS:", "INVALID_NATIVE_FOCUS_STATE"))
+                        for issue in report["issues"]),
+                    report["issues"],
+                )
+
+    def test_s7_rejects_removed_event_without_source_identity(self):
+        status, report = self.run_validation(
+            [record("native_device_removed")], scenario="S7",
+        )
+        self.assertNotEqual(status, 0)
+        self.assertIn("MISSING_STAGE_FIELDS:native_device_removed", report["issues"])
+        self.assertIn("SCENARIO_MISSING_SOURCE_LOSS", report["issues"])
+
+    def test_s7_accepts_blur_with_or_without_recovery(self):
+        for recovered in (False, True):
+            with self.subTest(recovered=recovered):
+                fields = [
+                    record("native_focus", window="W", focused="true"),
+                    record("native_focus", window="W", focused="false"),
+                ]
+                if recovered:
+                    fields.append(record("native_focus", window="W", focused="true"))
+                status, report = self.run_validation(fields, scenario="S7")
+                self.assertEqual(status, 0, report["issues"])
+                self.assertIn("NOT_PHYSICAL_NATIVE_EVIDENCE", report["warnings"])
+                self.assertTrue(
+                    any("full S1-S8 campaign" in gap for gap in report["blocked"]),
+                )
+
+    def test_s7_accepts_device_removal_without_focus_recovery(self):
+        status, report = self.run_validation(
+            [
+                record("native_focus", window="W", focused="true"),
+                record("native_device_removed", raw_device="D"),
+            ], scenario="S7",
+        )
+        self.assertEqual(status, 0, report["issues"])
+        self.assertNotIn("SCENARIO_MISSING_SOURCE_LOSS", report["issues"])
+
     def test_incomplete_s5_ime_rejected(self):
         fields = [
             record("native_ime", window="W", kind="preedit", bytes=4),
