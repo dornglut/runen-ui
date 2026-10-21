@@ -88,9 +88,12 @@ on both the desired host OS and in the operator checkout:
 python3 -m unittest discover -s tools/q1 -p 'test_q1.py' -v
 ```
 
-These focused Python tests are **not** covered by `cargo validate` or the
-existing Rust CI partitions; canonical CI success alone does not verify
-the Python validator. Negative cases must exit nonzero, including malformed
+These focused Python tests are **not** part of `cargo validate` or the
+existing Rust CI partitions. The independent, exact-feature-head
+`.github/workflows/q1-tooling.yml` test job executes these synthetic checks on
+Windows and Linux whenever the Q1 tooling changes. It provides supplemental
+tooling evidence, **not** another canonical validation authority and never
+physical device evidence. Negative cases must exit nonzero, including malformed
 events, missing required scenario steps, interrupted/nonzero native process
 exit, missing M13 correlation and observer sequence gaps. Tests are explicitly
 synthetic; they do not qualify physical Windows/Linux behavior.
