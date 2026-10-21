@@ -1105,7 +1105,9 @@ impl ReferenceHost {
             "stage=pump_end q={} processed={} through={:?} revision={} paused={:?}",
             batch.report().remaining_queued_envelopes(),
             batch.report().processed_envelopes(),
-            batch.processed_through().map(runenui_core::WorkSequence::get),
+            batch
+                .processed_through()
+                .map(runenui_core::WorkSequence::get),
             batch.final_ownership().revision().get(),
             batch.pause_reason()
         );
