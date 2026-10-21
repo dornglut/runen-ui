@@ -390,9 +390,7 @@ fn audit_ci_workflow(root: &Path, findings: &mut Vec<Finding>) -> Result<(), Str
         ));
     }
 
-    if root.join(Q1_TOOLING_TEST_PATH).is_file()
-        && root.join(Q1_TOOLING_WORKFLOW_PATH).is_file()
-    {
+    if root.join(Q1_TOOLING_TEST_PATH).is_file() && root.join(Q1_TOOLING_WORKFLOW_PATH).is_file() {
         let workflow = read_to_string(root, Q1_TOOLING_WORKFLOW_PATH)?;
         for required in [
             "permissions:\n  contents: read",
