@@ -243,7 +243,7 @@ def main():
         issues.append("MISSING_CHECKED_OUT_BUILD_SHA")
     if any(int(row["q"]) > 4096 for row in rows if row.get("stage") == "pump_end"):
         issues.append("INVALID_QUEUE_CHECKPOINT")
-    if args.require_physical and (not manifest.get("psutil") or not memory):
+    if manifest.get("source") == "physical" and (not manifest.get("psutil") or not memory):
         issues.append("NO_NATIVE_RSS_SAMPLING")
     valid_memory = []
     for item in memory:
