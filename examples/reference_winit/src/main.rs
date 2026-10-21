@@ -170,11 +170,11 @@ fn q1_enabled() -> bool {
 }
 
 fn q1_record(arguments: fmt::Arguments<'_>) {
+    static START: OnceLock<Instant> = OnceLock::new();
+    static SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     if !q1_enabled() {
         return;
     }
-    static START: OnceLock<Instant> = OnceLock::new();
-    static SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let sequence = SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let elapsed_us = START.get_or_init(Instant::now).elapsed().as_micros();
     eprintln!("RUNENUI_Q1 seq={sequence} us={elapsed_us} {arguments}");
