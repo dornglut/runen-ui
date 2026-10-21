@@ -43,6 +43,8 @@ const REUSABLE_RUST_WORKFLOW: &str = "reusable-rust-cargo-validate.yml";
 const ACTIVE_WORKFLOW_DIRECTORY: &str = ".github/workflows";
 const CI_WORKFLOW_PATH: &str = ".github/workflows/ci.yml";
 const VISUAL_CONFORMANCE_WORKFLOW_PATH: &str = ".github/workflows/visual-conformance.yml";
+const Q1_TOOLING_WORKFLOW_PATH: &str = ".github/workflows/q1-tooling.yml";
+const Q1_TOOLING_TEST_PATH: &str = "tools/q1/test_q1.py";
 const VISUAL_CONFORMANCE_M8D_PROOF_PATH: &str = "crates/runenui_render_wgpu/tests/m8d_visual.rs";
 const VISUAL_CONFORMANCE_M10F_PROOF_PATH: &str =
     "crates/runenui_render_wgpu/tests/m10f_editable.rs";
@@ -371,6 +373,9 @@ fn expected_active_workflow_files(root: &Path) -> BTreeSet<String> {
     {
         expected.insert("visual-conformance.yml".to_owned());
     }
+    if root.join(Q1_TOOLING_TEST_PATH).is_file() {
+        expected.insert("q1-tooling.yml".to_owned());
+    }
     expected
 }
 
@@ -383,6 +388,30 @@ fn audit_ci_workflow(root: &Path, findings: &mut Vec<Finding>) -> Result<(), Str
             Some(ACTIVE_WORKFLOW_DIRECTORY.to_owned()),
             format!("expected active workflow files {expected:?}, found {found:?}"),
         ));
+    }
+
+    if root.join(Q1_TOOLING_TEST_PATH).is_file()
+        && root.join(Q1_TOOLING_WORKFLOW_PATH).is_file()
+    {
+        let workflow = read_to_string(root, Q1_TOOLING_WORKFLOW_PATH)?;
+        for required in [
+            "permissions:\n  contents: read",
+            "persist-credentials: false",
+            "matrix:\n        os: [ubuntu-24.04, windows-2022]",
+            "ref: ${{ steps.revision.outputs.expected_revision }}",
+            "test \"$(git rev-parse HEAD)\" = \"$EXPECTED_REVISION\"",
+            "python3 -B -m unittest discover -s tools/q1 -p 'test_q1.py' -v",
+            "python -B -m unittest discover -s tools/q1 -p 'test_q1.py' -v",
+            "test -z \"$(git status --short)\"",
+        ] {
+            if !workflow.contains(required) {
+                findings.push(Finding::fatal(
+                    "repository.q1_tooling_workflow_contract",
+                    Some(Q1_TOOLING_WORKFLOW_PATH.to_owned()),
+                    format!("Q1 tooling workflow missing required read-only proof: {required}"),
+                ));
+            }
+        }
     }
 
     let actual = normalize_newlines(&read_to_string(root, CI_WORKFLOW_PATH)?);
