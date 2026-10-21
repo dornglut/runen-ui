@@ -174,8 +174,7 @@ fn q1_record(arguments: fmt::Arguments<'_>) {
         return;
     }
     static START: OnceLock<Instant> = OnceLock::new();
-    static SERIAL: std::sync::atomic::AtomicU64 =
-        std::sync::atomic::AtomicU64::new(0);
+    static SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let sequence = SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let elapsed_us = START.get_or_init(Instant::now).elapsed().as_micros();
     eprintln!("RUNENUI_Q1 seq={sequence} us={elapsed_us} {arguments}");
@@ -889,7 +888,7 @@ impl ReferenceHost {
             Ok(device_id) => {
                 q1!("stage=device_resolved native={native:?} mapped={device_id:?}");
                 Some(device_id)
-            },
+            }
             Err(DeviceIdentityError::Exhausted) => {
                 self.fail(event_loop, "native input device identity space exhausted");
                 None
@@ -1051,8 +1050,11 @@ impl ReferenceHost {
                 runenui_runtime::InputArbitrationRecord::InputSettled(settlement) => {
                     let finality = match settlement.finality() {
                         runenui_runtime::UiInputFinality::Committed(_) => "Committed",
-                        runenui_runtime::UiInputFinality::ProcessingRejected(_) => "ProcessingRejected",
+                        runenui_runtime::UiInputFinality::ProcessingRejected(_) => {
+                            "ProcessingRejected"
+                        }
                         runenui_runtime::UiInputFinality::Aborted(_) => "Aborted",
+                        _ => "FutureFinality",
                     };
                     q1!(
                         "stage=m13_settled scope={:?} work={} family={:?} finality={} device={:?} revision={}",
@@ -1068,7 +1070,11 @@ impl ReferenceHost {
                     q1!("stage=m13_ownership_changed record={transition:?}");
                 }
                 runenui_runtime::InputArbitrationRecord::ScopeRetired(retirement) => {
-                    q1!("stage=m13_scope_retired scope={:?} reason={:?}", retirement.scope(), retirement.reason());
+                    q1!(
+                        "stage=m13_scope_retired scope={:?} reason={:?}",
+                        retirement.scope(),
+                        retirement.reason()
+                    );
                 }
                 _ => {}
             }
@@ -1385,7 +1391,10 @@ impl ReferenceHost {
         proof!("stage=pointer_translated source={stage:?} event={event:?}");
         match self.runtime.submit_pointer(event) {
             Ok(submission) => {
-                q1!("stage=pointer_admitted work={}", submission.sequence().get());
+                q1!(
+                    "stage=pointer_admitted work={}",
+                    submission.sequence().get()
+                );
             }
             Err(error) => {
                 q1!("stage=pointer_refused reason={:?}", error.kind());
@@ -1508,9 +1517,12 @@ impl ReferenceHost {
         proof!("stage=keyboard_translated source={stage:?} event={event:?}");
         match self.runtime.submit_keyboard(event) {
             Ok(submission) => {
-                q1!("stage=keyboard_admitted work={}", submission.sequence().get());
+                q1!(
+                    "stage=keyboard_admitted work={}",
+                    submission.sequence().get()
+                );
                 Some(KeyboardDownDecision::Queued)
-            },
+            }
             Err(error)
                 if error.kind() == SubmitKeyboardErrorKind::NoFocusedTarget
                     && error.event().phase() == runenui_core::KeyboardPhase::Down
@@ -1679,7 +1691,11 @@ impl ReferenceHost {
                     .remember_composition_generation(generation.clone());
                 self.last_text_ingress_diagnostic = None;
                 proof!("stage=composition_started generation={}", generation.get());
-                q1!("stage=composition_started generation={} work={}", generation.get(), submission.sequence().get());
+                q1!(
+                    "stage=composition_started generation={} work={}",
+                    generation.get(),
+                    submission.sequence().get()
+                );
                 eprintln!("reference_winit composition started");
                 Some(generation)
             }
@@ -2808,16 +2824,34 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
         }
         if q1_enabled() {
             match &event {
-                WindowEvent::KeyboardInput { device_id, event, is_synthetic } => {
-                    q1!("stage=native_keyboard window={window_id:?} native_device={device_id:?} key={:?} state={:?} repeat={} synthetic={is_synthetic}",
-                        event.physical_key, event.state, event.repeat);
+                WindowEvent::KeyboardInput {
+                    device_id,
+                    event,
+                    is_synthetic,
+                } => {
+                    q1!(
+                        "stage=native_keyboard window={window_id:?} native_device={device_id:?} key={:?} state={:?} repeat={} synthetic={is_synthetic}",
+                        event.physical_key,
+                        event.state,
+                        event.repeat
+                    );
                 }
-                WindowEvent::MouseInput { device_id, state, button } => {
-                    q1!("stage=native_mouse window={window_id:?} native_device={device_id:?} button={button:?} state={state:?}");
+                WindowEvent::MouseInput {
+                    device_id,
+                    state,
+                    button,
+                } => {
+                    q1!(
+                        "stage=native_mouse window={window_id:?} native_device={device_id:?} button={button:?} state={state:?}"
+                    );
                 }
                 WindowEvent::Touch(touch) => {
-                    q1!("stage=native_touch window={window_id:?} native_device={:?} touch={} phase={:?}",
-                        touch.device_id, touch.id, touch.phase);
+                    q1!(
+                        "stage=native_touch window={window_id:?} native_device={:?} touch={} phase={:?}",
+                        touch.device_id,
+                        touch.id,
+                        touch.phase
+                    );
                 }
                 WindowEvent::CursorMoved { device_id, .. } => {
                     q1!("stage=native_cursor window={window_id:?} native_device={device_id:?}");
