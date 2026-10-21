@@ -26,7 +26,7 @@ cargo +stable run --locked -p reference_winit --release 2>&1 | Tee-Object q1-raw
 
 Optional: `RUNENUI_REFERENCE_PROOF=1` enables the previously accepted canonical redacted trace sink and other existing proof diagnostics. It is **not required** to capture the Q1 source/M13 fields.
 
-Run the fixed scenarios **S1–S8** from [#475 Q1 qualification](owning issue #475 Q1 qualification record) with an operator script/checklist. Use a fresh folder per scenario/repetition, commit SHA, OS/display server, CPU/GPU/RAM, device IDs, input method, native/virtual injection provenance, real source loss and display-Present boundary. Recommended one capture per scenario and three physically repeated passes where actually possible; report UNAVAILABLE for missing physical Wayland/X11/Windows/device. A synthetic/headless CI run MUST be labeled as such, not physical evidence.
+Run the fixed scenarios **S1–S8** from owning issue #475's Q1 qualification record with an operator script/checklist. Use a fresh folder per scenario/repetition, commit SHA, OS/display server, CPU/GPU/RAM, device IDs, input method, native/virtual injection provenance, real source loss and display-Present boundary. Recommended one capture per scenario and three physically repeated passes where actually possible; report UNAVAILABLE for missing physical Wayland/X11/Windows/device. A synthetic/headless CI run MUST be labeled as such, not physical evidence.
 
 ### Observer line schema `RUNENUI_Q1` (schema v1)
 
