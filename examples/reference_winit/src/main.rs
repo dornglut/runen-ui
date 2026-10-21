@@ -188,6 +188,71 @@ macro_rules! q1 {
     };
 }
 
+// Read-only raw Winit source observation; intentionally independent of UI ownership.
+fn q1_native_window_event(window_id: WindowId, event: &WindowEvent) {
+    if !q1_enabled() {
+        return;
+    }
+    match event {
+        WindowEvent::KeyboardInput {
+            device_id,
+            event,
+            is_synthetic,
+        } => {
+            q1!(
+                "stage=native_keyboard window={window_id:?} native_device={device_id:?} key={:?} state={:?} repeat={} synthetic={is_synthetic}",
+                event.physical_key,
+                event.state,
+                event.repeat
+            );
+        }
+        WindowEvent::MouseInput {
+            device_id,
+            state,
+            button,
+        } => {
+            q1!(
+                "stage=native_mouse window={window_id:?} native_device={device_id:?} button={button:?} state={state:?}"
+            );
+        }
+        WindowEvent::Touch(touch) => {
+            q1!(
+                "stage=native_touch window={window_id:?} native_device={:?} touch={} phase={:?}",
+                touch.device_id,
+                touch.id,
+                touch.phase
+            );
+        }
+        WindowEvent::CursorMoved { device_id, .. } => {
+            q1!("stage=native_cursor window={window_id:?} native_device={device_id:?}");
+        }
+        WindowEvent::Ime(Ime::Preedit(text, _)) => {
+            q1!(
+                "stage=native_ime window={window_id:?} kind=preedit bytes={}",
+                text.len()
+            );
+        }
+        WindowEvent::Ime(Ime::Commit(text)) => {
+            q1!(
+                "stage=native_ime window={window_id:?} kind=commit bytes={}",
+                text.len()
+            );
+        }
+        WindowEvent::Ime(Ime::Enabled) => {
+            q1!("stage=native_ime window={window_id:?} kind=enabled");
+        }
+        WindowEvent::Ime(Ime::Disabled) => {
+            q1!("stage=native_ime window={window_id:?} kind=disabled");
+        }
+        WindowEvent::Focused(focused) => {
+            q1!("stage=native_focus window={window_id:?} focused={focused}");
+        }
+        WindowEvent::Destroyed => q1!("stage=native_window_destroyed window={window_id:?}"),
+        _ => {}
+    }
+}
+
+
 const fn drag_drop_source(
     request: &runenui_core::FrameworkServiceRequest,
 ) -> Option<runenui_core::WorkSequence> {
@@ -1041,7 +1106,7 @@ impl ReferenceHost {
             "stage=pump_end q={} processed={} through={:?} revision={} paused={:?}",
             batch.report().remaining_queued_envelopes(),
             batch.report().processed_envelopes(),
-            batch.processed_through().map(|value| value.get()),
+            batch.processed_through().map(runenui_core::WorkSequence::get),
             batch.final_ownership().revision().get(),
             batch.pause_reason()
         );
@@ -2824,65 +2889,7 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             accessibility.process_event(window, &event);
             proof!("stage=accessibility_event_processed");
         }
-        if q1_enabled() {
-            match &event {
-                WindowEvent::KeyboardInput {
-                    device_id,
-                    event,
-                    is_synthetic,
-                } => {
-                    q1!(
-                        "stage=native_keyboard window={window_id:?} native_device={device_id:?} key={:?} state={:?} repeat={} synthetic={is_synthetic}",
-                        event.physical_key,
-                        event.state,
-                        event.repeat
-                    );
-                }
-                WindowEvent::MouseInput {
-                    device_id,
-                    state,
-                    button,
-                } => {
-                    q1!(
-                        "stage=native_mouse window={window_id:?} native_device={device_id:?} button={button:?} state={state:?}"
-                    );
-                }
-                WindowEvent::Touch(touch) => {
-                    q1!(
-                        "stage=native_touch window={window_id:?} native_device={:?} touch={} phase={:?}",
-                        touch.device_id,
-                        touch.id,
-                        touch.phase
-                    );
-                }
-                WindowEvent::CursorMoved { device_id, .. } => {
-                    q1!("stage=native_cursor window={window_id:?} native_device={device_id:?}");
-                }
-                WindowEvent::Ime(Ime::Preedit(text, _)) => {
-                    q1!(
-                        "stage=native_ime window={window_id:?} kind=preedit bytes={}",
-                        text.len()
-                    );
-                }
-                WindowEvent::Ime(Ime::Commit(text)) => {
-                    q1!(
-                        "stage=native_ime window={window_id:?} kind=commit bytes={}",
-                        text.len()
-                    );
-                }
-                WindowEvent::Ime(Ime::Enabled) => {
-                    q1!("stage=native_ime window={window_id:?} kind=enabled");
-                }
-                WindowEvent::Ime(Ime::Disabled) => {
-                    q1!("stage=native_ime window={window_id:?} kind=disabled");
-                }
-                WindowEvent::Focused(focused) => {
-                    q1!("stage=native_focus window={window_id:?} focused={focused}");
-                }
-                WindowEvent::Destroyed => q1!("stage=native_window_destroyed window={window_id:?}"),
-                _ => {}
-            }
-        }
+        q1_native_window_event(window_id, &event);
         match event {
             WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                 self.close_native_window(event_loop);
