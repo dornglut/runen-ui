@@ -104,16 +104,20 @@ def main():
         max_composition = max(max_composition, len(composition_held))
     if not stages.get("native_device_removed"):
         warnings.append("NATIVE_DEVICE_REMOVAL_NOT_OBSERVED")
-    required_any = {
-        "S2": ("native_keyboard",),
+    required_all = {
+        "S2": ("native_keyboard", "keyboard_admitted", "m13_settled"),
         "S3": ("native_keyboard", "native_device_removed"),
-        "S4": ("native_mouse", "native_touch"),
-        "S5": ("native_ime",),
-        "S7": ("native_focus", "native_device_removed"),
+        "S4": ("native_mouse", "native_touch", "pointer_admitted"),
+        "S5": ("native_ime", "composition_started"),
     }
-    if manifest["scenario"] in required_any:
-        if not any(stages.get(name) for name in required_any[manifest["scenario"]]):
-            issues.append("SCENARIO_EXPECTED_NATIVE_OBSERVATION_MISSING")
+    scenario = manifest["scenario"]
+    missing = [name for name in required_all.get(scenario, ()) if not stages.get(name)]
+    if missing:
+        issues.append("SCENARIO_MISSING_REQUIRED_STAGES:" + ",".join(missing))
+    if scenario == "S5" and not (stages.get("composition_ended") or stages.get("composition_cancelled")):
+        issues.append("SCENARIO_MISSING_COMPOSITION_TERMINATION")
+    if scenario == "S7" and not (stages.get("native_focus") or stages.get("native_device_removed")):
+        issues.append("SCENARIO_MISSING_SOURCE_LOSS")
     if args.require_physical and not manifest.get("sha"):
         issues.append("MISSING_CHECKED_OUT_BUILD_SHA")
     if any(int(row["q"]) > 4096 or int(row["q"]) < 0
