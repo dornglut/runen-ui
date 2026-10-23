@@ -982,6 +982,30 @@ path = "tests/suites/harness_boundary.rs"
                 .iter()
                 .any(|finding| finding.message.contains("imports absent test source"))
         );
+
+        fs::write(tests.join("new_negative_proof.rs"), "")?;
+        let manifest = fs::read_to_string(testing.join("Cargo.toml"))?;
+        fs::write(
+            testing.join("Cargo.toml"),
+            manifest.replace("autotests = false", "autotests = true"),
+        )?;
+        findings.clear();
+        super::audit_testing(&fixture.0, &mut findings)?;
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.message.contains("autotests = false"))
+        );
+
+        fs::write(testing.join("Cargo.toml"), manifest)?;
+        fs::write(suites.join("unexpected.rs"), "")?;
+        findings.clear();
+        super::audit_testing(&fixture.0, &mut findings)?;
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.message.contains("unregistered testing suite source"))
+        );
         Ok(())
     }
 }
