@@ -76,7 +76,11 @@ impl UiApp for SecretApp {
         .id("secret.editable")
     }
 
-    fn update(_: &mut Self::State, (): Self::Action) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {}
+    fn update(
+        _: &mut Self::State,
+        (): Self::Action,
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+    }
 }
 
 fn published(case: Case) -> runenui_runtime::SurfacePublication {

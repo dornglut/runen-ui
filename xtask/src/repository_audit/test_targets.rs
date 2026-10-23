@@ -317,7 +317,6 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<(), Stri
     Ok(())
 }
 
-
 const RUNTIME_MANIFEST: &str = "crates/runenui_runtime/Cargo.toml";
 const RUNTIME_TEST_DIRECTORY: &str = "crates/runenui_runtime/tests";
 
@@ -365,7 +364,10 @@ fn audit_runtime_coverage(
 fn audit_runtime(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
     let contents = fs::read_to_string(root.join(RUNTIME_MANIFEST))
         .map_err(|error| format!("failed to read {RUNTIME_MANIFEST}: {error}"))?;
-    if !contents.lines().any(|line| line.trim() == "autotests = false") {
+    if !contents
+        .lines()
+        .any(|line| line.trim() == "autotests = false")
+    {
         runtime_failure(
             findings,
             RUNTIME_MANIFEST,
@@ -421,7 +423,9 @@ fn audit_runtime(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String>
             .map_err(|_| "non-UTF-8 runtime suite name".to_owned())?;
         if path.is_dir()
             || (path.extension().and_then(|ext| ext.to_str()) == Some("rs")
-                && !name.strip_suffix(".rs").is_some_and(|stem| suites.contains(stem)))
+                && !name
+                    .strip_suffix(".rs")
+                    .is_some_and(|stem| suites.contains(stem)))
         {
             runtime_failure(
                 findings,
@@ -515,17 +519,30 @@ mod tests {
             .collect();
         let registered = BTreeMap::from([(
             "focus_visible.rs".to_owned(),
-            vec!["focus_keyboard_input".to_owned(), "another_suite".to_owned()],
+            vec![
+                "focus_keyboard_input".to_owned(),
+                "another_suite".to_owned(),
+            ],
         )]);
         let mut findings = Vec::new();
         super::audit_runtime_coverage(&sources, &registered, &mut findings);
         assert_eq!(findings.len(), 2);
         assert!(findings.iter().any(|f| f.message.contains("unregistered")));
-        assert!(findings.iter().any(|f| f.message.contains("more than once")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.message.contains("more than once"))
+        );
 
         let registered = BTreeMap::from([
-            ("focus_visible.rs".to_owned(), vec!["focus_keyboard_input".to_owned()]),
-            ("m11_password_field.rs".to_owned(), vec!["m10_semantic_integrity".to_owned()]),
+            (
+                "focus_visible.rs".to_owned(),
+                vec!["focus_keyboard_input".to_owned()],
+            ),
+            (
+                "m11_password_field.rs".to_owned(),
+                vec!["m10_semantic_integrity".to_owned()],
+            ),
         ]);
         findings.clear();
         super::audit_runtime_coverage(&sources, &registered, &mut findings);
