@@ -516,6 +516,217 @@ fn audit_runtime(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String>
     Ok(())
 }
 
+
+const TESTING_MANIFEST: &str = "crates/runenui_testing/Cargo.toml";
+const TESTING_TEST_DIRECTORY: &str = "crates/runenui_testing/tests";
+const TESTING_DIRECT: &[&str] = &["counter", "m5e_counter_origins"];
+const TESTING_SUITES: &[&str] = &["controls_semantics", "motion_time", "harness_boundary"];
+
+fn testing_failure(findings: &mut Vec<Finding>, path: &str, message: impl Into<String>) {
+    findings.push(Finding::fatal(
+        "repository.testing_test_registration",
+        Some(path.to_owned()),
+        message,
+    ));
+}
+
+fn audit_testing_manifest(
+    contents: &str,
+    registered: &mut BTreeMap<String, Vec<String>>,
+    findings: &mut Vec<Finding>,
+) {
+    if !contents.lines().any(|line| line.trim() == "autotests = false") {
+        testing_failure(
+            findings,
+            TESTING_MANIFEST,
+            "expected explicit testing targets with autotests = false",
+        );
+    }
+    let mut targets = BTreeMap::<String, usize>::new();
+    for block in contents.split("[[test]]").skip(1) {
+        let mut name = None;
+        let mut path = None;
+        for line in block.lines() {
+            if line.trim_start().starts_with('[') {
+                break;
+            }
+            name = name.or_else(|| quoted(line, "name = \""));
+            path = path.or_else(|| quoted(line, "path = \""));
+        }
+        match (name, path) {
+            (Some(name), Some(path))
+                if TESTING_DIRECT.contains(&name) && path == format!("tests/{name}.rs") =>
+            {
+                *targets.entry(name.to_owned()).or_default() += 1;
+                registered
+                    .entry(format!("{name}.rs"))
+                    .or_default()
+                    .push(format!("Cargo:{name}"));
+            }
+            (Some(name), Some(path))
+                if TESTING_SUITES.contains(&name)
+                    && path == format!("tests/suites/{name}.rs") =>
+            {
+                *targets.entry(name.to_owned()).or_default() += 1;
+            }
+            _ => testing_failure(
+                findings,
+                TESTING_MANIFEST,
+                "unexpected, missing or malformed explicit testing [[test]] target",
+            ),
+        }
+    }
+    for target in TESTING_DIRECT.iter().chain(TESTING_SUITES.iter()) {
+        if targets.get(*target) != Some(&1) {
+            testing_failure(
+                findings,
+                TESTING_MANIFEST,
+                format!("expected exactly one Cargo target for testing suite {target}"),
+            );
+        }
+    }
+}
+
+fn audit_testing_suite(
+    root: &Path,
+    suite: &str,
+    registered: &mut BTreeMap<String, Vec<String>>,
+    findings: &mut Vec<Finding>,
+) -> Result<(), String> {
+    let relative = format!("{TESTING_TEST_DIRECTORY}/suites/{suite}.rs");
+    let contents = fs::read_to_string(root.join(&relative))
+        .map_err(|error| format!("failed to read {relative}: {error}"))?;
+    let mut pending = None;
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if let Some(file) = trimmed
+            .strip_prefix("#[path = \"../")
+            .and_then(|tail| tail.strip_suffix("\"]"))
+        {
+            let module = file.strip_suffix(".rs").unwrap_or("");
+            if module.is_empty() || module.contains('/') || module.contains('\\') {
+                testing_failure(findings, &relative, format!("invalid testing suite import: {file}"));
+            }
+            if pending.replace(module.to_owned()).is_some() {
+                testing_failure(findings, &relative, "two consecutive testing #[path] declarations");
+            }
+        } else if let Some(module) = trimmed
+            .strip_prefix("mod ")
+            .and_then(|tail| tail.strip_suffix(';'))
+        {
+            if pending.as_deref() != Some(module) {
+                testing_failure(
+                    findings,
+                    &relative,
+                    format!("testing module {module} lacks a matching preceding #[path]"),
+                );
+            } else {
+                registered
+                    .entry(format!("{module}.rs"))
+                    .or_default()
+                    .push(suite.to_owned());
+            }
+            pending = None;
+        } else if !trimmed.is_empty() {
+            testing_failure(
+                findings,
+                &relative,
+                format!("unexpected testing suite entrypoint syntax: {trimmed}"),
+            );
+        }
+    }
+    if pending.is_some() {
+        testing_failure(findings, &relative, "dangling testing #[path] without module");
+    }
+    Ok(())
+}
+
+fn check_testing_coverage(
+    sources: &BTreeSet<String>,
+    registered: &BTreeMap<String, Vec<String>>,
+    findings: &mut Vec<Finding>,
+) {
+    for source in sources {
+        match registered.get(source) {
+            None => testing_failure(
+                findings,
+                TESTING_TEST_DIRECTORY,
+                format!("unregistered testing test source: {source}"),
+            ),
+            Some(owners) if owners.len() != 1 => testing_failure(
+                findings,
+                TESTING_TEST_DIRECTORY,
+                format!("testing test {source} imported more than once: {owners:?}"),
+            ),
+            Some(_) => {}
+        }
+    }
+    for source in registered.keys() {
+        if !sources.contains(source) {
+            testing_failure(
+                findings,
+                TESTING_TEST_DIRECTORY,
+                format!("testing suite imports absent test source: {source}"),
+            );
+        }
+    }
+}
+
+pub(super) fn audit_testing(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
+    let contents = fs::read_to_string(root.join(TESTING_MANIFEST))
+        .map_err(|error| format!("failed to read {TESTING_MANIFEST}: {error}"))?;
+    let mut registered = BTreeMap::new();
+    audit_testing_manifest(&contents, &mut registered, findings);
+
+    let suite_dir = format!("{TESTING_TEST_DIRECTORY}/suites");
+    for entry in fs::read_dir(root.join(&suite_dir))
+        .map_err(|error| format!("failed to inspect {suite_dir}: {error}"))?
+    {
+        let entry = entry.map_err(|error| format!("failed to inspect testing suite: {error}"))?;
+        let path = entry.path();
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| "non-UTF-8 testing suite file".to_owned())?;
+        if path.is_dir()
+            || (path.extension().and_then(|ext| ext.to_str()) == Some("rs")
+                && !TESTING_SUITES.iter().any(|suite| name == format!("{suite}.rs")))
+        {
+            testing_failure(
+                findings,
+                &suite_dir,
+                format!("unregistered testing suite source: {name}"),
+            );
+        }
+    }
+    for suite in TESTING_SUITES {
+        audit_testing_suite(root, suite, &mut registered, findings)?;
+    }
+
+    let mut sources = BTreeSet::new();
+    for entry in fs::read_dir(root.join(TESTING_TEST_DIRECTORY))
+        .map_err(|error| format!("failed to inspect {TESTING_TEST_DIRECTORY}: {error}"))?
+    {
+        let entry = entry.map_err(|error| format!("failed to inspect testing source: {error}"))?;
+        let path = entry.path();
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| "non-UTF-8 testing source file".to_owned())?;
+        if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+            sources.insert(name);
+        } else if path.is_dir() && name != "suites" {
+            testing_failure(
+                findings,
+                TESTING_TEST_DIRECTORY,
+                format!("unexpected testing test directory: {name}"),
+            );
+        }
+    }
+    check_testing_coverage(&sources, &registered, findings);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
