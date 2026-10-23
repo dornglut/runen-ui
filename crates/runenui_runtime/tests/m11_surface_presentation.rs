@@ -173,7 +173,6 @@ impl UiApp for AnchorApp {
                 ))
                 .with_anchor(*anchor),
             )
-
             .into_element();
         column(vec![popup]).id("owner")
     }
@@ -259,7 +258,6 @@ impl<Action> Widget<Action> for LayerProbe {
 
 impl<Action> ChildBearingWidget<Action> for LayerProbe {}
 
-
 struct StackingApp;
 
 impl UiApp for StackingApp {
@@ -318,7 +316,6 @@ fn presentation_band_outranks_ordinary_scene_layers_for_paint_and_hit() {
     assert_eq!(items[0].layer(), SceneLayer::new(10_000));
     assert_eq!(items[1].layer(), SceneLayer::new(-10_000));
 }
-
 
 fn singular_presentation() -> PresentationTransform {
     PresentationTransform::new(
@@ -551,7 +548,6 @@ fn nested_presentation_root_is_an_independent_later_band_above_ancestor() {
     assert_eq!(items[1].layer(), SceneLayer::new(-500));
 }
 
-
 #[derive(Clone, Copy)]
 struct MovingState {
     x: f32,
@@ -655,7 +651,6 @@ fn placement_rebuild_retains_one_mounted_and_semantic_lifetime() {
     assert_eq!(second_snapshot.anchor_bounds().x(), 60.0);
 }
 
-
 struct ScrollAnchorApp;
 
 impl UiApp for ScrollAnchorApp {
@@ -753,7 +748,6 @@ fn owner_anchor_follows_accepted_scroll_without_inflating_scroll_extent() {
     assert_eq!(scrolled_anchor.width(), initial_anchor.width());
     assert_eq!(scrolled_anchor.height(), initial_anchor.height());
 }
-
 
 #[derive(Clone, Copy)]
 enum SiblingStackAction {

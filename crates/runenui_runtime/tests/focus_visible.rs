@@ -339,7 +339,6 @@ fn shutdown_clears_focus_indication_with_real_focus_authority() {
     assert!(!app.focus().focus_visible());
 }
 
-
 #[test]
 fn keyboard_traversal_promotes_pointer_focus_and_tracks_canonical_target() {
     let mut app = mount();
@@ -525,7 +524,6 @@ fn remembered_restoration_obeys_canonical_source_not_focus_reason() {
     assert_eq!(app.focus().focused_node(), Some(&inner));
     assert!(app.focus().focus_visible());
 }
-
 
 struct StyledApp;
 

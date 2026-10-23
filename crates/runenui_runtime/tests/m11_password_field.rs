@@ -17,7 +17,6 @@ use runenui_text::{
     TextSystem,
 };
 
-
 const FONT: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/Cantarell-Regular.ttf");
 const SECRET: &str = "Secrét漢🌐";
 
