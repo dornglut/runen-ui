@@ -1001,11 +1001,11 @@ path = "tests/suites/harness_boundary.rs"
         fs::write(suites.join("unexpected.rs"), "")?;
         findings.clear();
         super::audit_testing(&fixture.0, &mut findings)?;
-        assert!(
-            findings
-                .iter()
-                .any(|finding| finding.message.contains("unregistered testing suite source"))
-        );
+        assert!(findings.iter().any(|finding| {
+            finding
+                .message
+                .contains("unregistered testing suite source")
+        }));
         Ok(())
     }
 }
