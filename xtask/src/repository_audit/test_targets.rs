@@ -623,17 +623,17 @@ fn audit_testing_suite(
             .strip_prefix("mod ")
             .and_then(|tail| tail.strip_suffix(';'))
         {
-            if pending.as_deref() != Some(module) {
+            if pending.as_deref() == Some(module) {
+                registered
+                    .entry(format!("{module}.rs"))
+                    .or_default()
+                    .push(suite.to_owned());
+            } else {
                 testing_failure(
                     findings,
                     &relative,
                     format!("testing module {module} lacks a matching preceding #[path]"),
                 );
-            } else {
-                registered
-                    .entry(format!("{module}.rs"))
-                    .or_default()
-                    .push(suite.to_owned());
             }
             pending = None;
         } else if !trimmed.is_empty() {
