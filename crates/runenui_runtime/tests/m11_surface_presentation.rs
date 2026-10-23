@@ -1100,6 +1100,11 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
         .unwrap_or_else(|| unreachable!("fixture pointer identity is non-zero"));
     let down_point = LogicalPoint::new(10.0, 10.0)
         .unwrap_or_else(|_| unreachable!("fixture down point is finite"));
+    assert_eq!(
+        publication.hit_test_scene().target_at(down_point),
+        Some(&capture),
+        "capture-start point must hit the intended owner in the current displayed scene"
+    );
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -1117,6 +1122,11 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
 
     let move_point = LogicalPoint::new(60.0, 10.0)
         .unwrap_or_else(|_| unreachable!("fixture move point is finite"));
+    assert_eq!(
+        publication.hit_test_scene().target_at(move_point),
+        Some(&projected),
+        "move point must physically hit the projected fixture in the same displayed scene"
+    );
     runtime
         .submit_pointer(
             PointerEvent::new(
