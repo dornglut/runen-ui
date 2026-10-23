@@ -1,8 +1,8 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::{
-    ElementId, NoHostProtocol, SemanticAction, SemanticCommand,
-    SemanticRelationshipKind, SemanticRole, UiApp, View, button, column, disclosure,
+    ElementId, NoHostProtocol, SemanticAction, SemanticCommand, SemanticRelationshipKind,
+    SemanticRole, UiApp, View, button, column, disclosure,
 };
 use runenui_runtime::PumpBudget;
 use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
@@ -81,7 +81,10 @@ fn budget() -> SettleBudget {
 }
 
 fn settle(harness: &mut TestHarness<DisclosureApp>) {
-    assert_eq!(harness.run_until_idle(budget()).outcome(), SettleOutcome::Idle);
+    assert_eq!(
+        harness.run_until_idle(budget()).outcome(),
+        SettleOutcome::Idle
+    );
 }
 
 fn query() -> SemanticQuery {
@@ -91,8 +94,12 @@ fn query() -> SemanticQuery {
 }
 
 fn assert_disclosure(harness: &TestHarness<DisclosureApp>, expanded: bool) {
-    let snapshot = harness.semantic_snapshot().unwrap_or_else(|_| unreachable!("published"));
-    let node = snapshot.nodes().iter()
+    let snapshot = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("published"));
+    let node = snapshot
+        .nodes()
+        .iter()
         .find(|node| node.role() == SemanticRole::Button && node.name() == Some("Advanced"))
         .unwrap_or_else(|| unreachable!("trigger semantic node"));
     assert_eq!(node.state().expanded(), Some(expanded));
@@ -105,17 +112,23 @@ fn assert_disclosure(harness: &TestHarness<DisclosureApp>, expanded: bool) {
         node.supported_actions().contains(&SemanticAction::Collapse),
         expanded && harness.state().enabled,
     );
-    let relations = node.relationships().iter()
+    let relations = node
+        .relationships()
+        .iter()
         .filter(|r| r.kind() == SemanticRelationshipKind::Controls)
         .collect::<Vec<_>>();
     assert_eq!(relations.len(), usize::from(expanded));
-    let panel_nodes = snapshot.nodes().iter()
+    let panel_nodes = snapshot
+        .nodes()
+        .iter()
         .filter(|node| node.role() == SemanticRole::Button && node.name() == Some("Panel action"))
         .count();
     assert_eq!(panel_nodes, usize::from(expanded));
     if expanded {
         assert_eq!(
-            snapshot.node(relations[0].target()).map(runenui_runtime::SemanticNode::role),
+            snapshot
+                .node(relations[0].target())
+                .map(runenui_runtime::SemanticNode::role),
             Some(SemanticRole::Group)
         );
     }
@@ -132,10 +145,15 @@ fn activate_expand_collapse_converge_on_one_application_update_fifo() {
     let mut harness = TestHarness::<DisclosureApp>::mount(state(false));
     assert!(harness.publish().is_ok());
     assert_disclosure(&harness, false);
-    let trigger = harness.unique_semantic_target(&query())
+    let trigger = harness
+        .unique_semantic_target(&query())
         .unwrap_or_else(|error| unreachable!("trigger exists: {error:?}"));
 
-    assert!(harness.submit_semantic_action(&trigger, SemanticAction::Expand).is_ok());
+    assert!(
+        harness
+            .submit_semantic_action(&trigger, SemanticAction::Expand)
+            .is_ok()
+    );
     assert_eq!(harness.state().expanded, false);
     settle(&mut harness);
     assert_eq!(harness.state().toggles, 1);
@@ -143,27 +161,50 @@ fn activate_expand_collapse_converge_on_one_application_update_fifo() {
     assert!(harness.publish().is_ok());
     assert_disclosure(&harness, true);
 
-    let trigger = harness.unique_semantic_target(&query())
+    let trigger = harness
+        .unique_semantic_target(&query())
         .unwrap_or_else(|error| unreachable!("trigger remains: {error:?}"));
-    assert!(harness.submit_semantic_action(&trigger, SemanticAction::Expand).is_err());
-    assert!(harness.submit_semantic_action(&trigger, SemanticAction::Activate).is_ok());
+    assert!(
+        harness
+            .submit_semantic_action(&trigger, SemanticAction::Expand)
+            .is_err()
+    );
+    assert!(
+        harness
+            .submit_semantic_action(&trigger, SemanticAction::Activate)
+            .is_ok()
+    );
     settle(&mut harness);
     assert_eq!(harness.state().toggles, 2);
     assert_eq!(harness.state().expanded, false);
     assert!(harness.publish().is_ok());
     assert_disclosure(&harness, false);
 
-    let trigger = harness.unique_semantic_target(&query())
+    let trigger = harness
+        .unique_semantic_target(&query())
         .unwrap_or_else(|error| unreachable!("collapsed trigger remains: {error:?}"));
-    assert!(harness.submit_semantic_action(&trigger, SemanticAction::Collapse).is_err());
-    assert!(harness.submit_semantic_action(&trigger, SemanticAction::Activate).is_ok());
+    assert!(
+        harness
+            .submit_semantic_action(&trigger, SemanticAction::Collapse)
+            .is_err()
+    );
+    assert!(
+        harness
+            .submit_semantic_action(&trigger, SemanticAction::Activate)
+            .is_ok()
+    );
     settle(&mut harness);
     assert!(harness.publish().is_ok());
     assert_disclosure(&harness, true);
 
-    let trigger = harness.unique_semantic_target(&query())
+    let trigger = harness
+        .unique_semantic_target(&query())
         .unwrap_or_else(|error| unreachable!("expanded trigger remains: {error:?}"));
-    assert!(harness.submit_semantic_action(&trigger, SemanticAction::Collapse).is_ok());
+    assert!(
+        harness
+            .submit_semantic_action(&trigger, SemanticAction::Collapse)
+            .is_ok()
+    );
     settle(&mut harness);
     assert!(harness.publish().is_ok());
     assert_disclosure(&harness, false);
@@ -176,10 +217,19 @@ fn disabled_and_authored_state_do_not_mutate_expansion_behind_app() {
     assert!(harness.publish().is_ok());
     author(&mut harness, Action::Enable(false));
     assert_disclosure(&harness, false);
-    let trigger = harness.unique_semantic_target(&query())
+    let trigger = harness
+        .unique_semantic_target(&query())
         .unwrap_or_else(|error| unreachable!("disabled trigger remains: {error:?}"));
-    assert!(harness.submit_semantic_action(&trigger, SemanticAction::Expand).is_err());
-    assert!(harness.submit_semantic_action(&trigger, SemanticAction::Activate).is_err());
+    assert!(
+        harness
+            .submit_semantic_action(&trigger, SemanticAction::Expand)
+            .is_err()
+    );
+    assert!(
+        harness
+            .submit_semantic_action(&trigger, SemanticAction::Activate)
+            .is_err()
+    );
     settle(&mut harness);
     assert!(!harness.state().expanded);
     assert_eq!(harness.state().toggles, 0);
@@ -197,23 +247,33 @@ fn collapsing_mounted_panel_retires_focusable_child_and_relationship() {
     let mut harness = TestHarness::<DisclosureApp>::mount(state(true));
     assert!(harness.publish().is_ok());
     assert_disclosure(&harness, true);
-    let child = harness.unique_semantic_target(
-        &SemanticQuery::new().with_role(SemanticRole::Button).with_name("Panel action")
-    ).unwrap_or_else(|error| unreachable!("focusable content: {error:?}"));
-    harness.submit_automation_command(
-        ElementId::new("disclosure.child")
-            .unwrap_or_else(|_| unreachable!("fixture ID valid")),
-        SemanticCommand::RequestFocus,
-    ).unwrap_or_else(|error| unreachable!("focus request admitted: {error:?}"));
+    let child = harness
+        .unique_semantic_target(
+            &SemanticQuery::new()
+                .with_role(SemanticRole::Button)
+                .with_name("Panel action"),
+        )
+        .unwrap_or_else(|error| unreachable!("focusable content: {error:?}"));
+    harness
+        .submit_automation_command(
+            ElementId::new("disclosure.child").unwrap_or_else(|_| unreachable!("fixture ID valid")),
+            SemanticCommand::RequestFocus,
+        )
+        .unwrap_or_else(|error| unreachable!("focus request admitted: {error:?}"));
     settle(&mut harness);
     assert!(harness.publish().is_ok());
     assert_eq!(
-        harness.semantic_snapshot().unwrap_or_else(|_| unreachable!("published")).focused(),
+        harness
+            .semantic_snapshot()
+            .unwrap_or_else(|_| unreachable!("published"))
+            .focused(),
         Some(child.node_id())
     );
     author(&mut harness, Action::Author(false));
     assert_disclosure(&harness, false);
-    let snapshot = harness.semantic_snapshot().unwrap_or_else(|_| unreachable!("published"));
+    let snapshot = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|_| unreachable!("published"));
     assert!(snapshot.node(child.node_id()).is_none());
     assert_ne!(snapshot.focused(), Some(child.node_id()));
     assert_eq!(harness.state().child_activations, 0);
