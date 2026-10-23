@@ -95,9 +95,7 @@ fn acquisition_rollback_failure_arms_retry_without_postponing_it() {
 fn stopped_runtime_revokes_lock_without_requiring_native_focus_loss() {
     for status in [
         runenui_runtime::RuntimeStatus::Closed,
-        runenui_runtime::RuntimeStatus::Terminal(
-            runenui_runtime::RuntimeTerminalReason::Poisoned,
-        ),
+        runenui_runtime::RuntimeStatus::Terminal(runenui_runtime::RuntimeTerminalReason::Poisoned),
     ] {
         let mut modes = pointer_mode::PointerModes::default();
         let mut native = PointerProbe::default();
@@ -135,9 +133,7 @@ fn stopped_runtime_revokes_lock_without_requiring_native_focus_loss() {
         assert!(!modes.gameplay_motion_allowed());
         assert!(!modes.ui_pointer_allowed());
         let grabs = native.grabs;
-        assert!(
-            super::revoke_pointer_for_runtime_stop(status, &mut modes, &mut native).is_ok()
-        );
+        assert!(super::revoke_pointer_for_runtime_stop(status, &mut modes, &mut native).is_ok());
         assert_eq!(
             native.grabs, grabs,
             "stopped-runtime observation must not busy-retry native release"
@@ -403,9 +399,9 @@ fn displayed_frame(mapping: NativeMapping) -> DisplayedFrame {
     let style_environment = StyleEnvironment::default();
     let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size())
         .with_raster_scale(mapping.raster_scale());
-    let publication = runtime.publish_surface(&context).unwrap_or_else(|error| {
-        unreachable!("fixture surface publication is valid: {error:?}")
-    });
+    let publication = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|error| unreachable!("fixture surface publication is valid: {error:?}"));
     DisplayedFrame {
         input_context: publication.input_context().clone(),
         mapping,
@@ -417,8 +413,7 @@ fn displayed_frame(mapping: NativeMapping) -> DisplayedFrame {
 fn reference_editor_publishes_visible_editable_text_and_accepts_commits() {
     let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
         DemoState::default(),
-        RuntimeConfig::default()
-            .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+        RuntimeConfig::default().with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
     );
     let _ = runtime
         .pump(HOST_PUMP_BUDGET)
@@ -430,9 +425,9 @@ fn reference_editor_publishes_visible_editable_text_and_accepts_commits() {
     let style_environment = StyleEnvironment::default();
     let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size())
         .with_raster_scale(mapping.raster_scale());
-    let publication = runtime.publish_surface(&context).unwrap_or_else(|error| {
-        unreachable!("reference editor publication is valid: {error:?}")
-    });
+    let publication = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|error| unreachable!("reference editor publication is valid: {error:?}"));
 
     assert!(
         publication
@@ -448,12 +443,10 @@ fn reference_editor_publishes_visible_editable_text_and_accepts_commits() {
             .nodes()
             .iter()
             .any(|node| {
-                node.role() == runenui_core::SemanticRole::EditableText
-                    && node.editable().is_some()
+                node.role() == runenui_core::SemanticRole::EditableText && node.editable().is_some()
             })
     );
-    let accessibility_update =
-        SemanticAdapter::new().update(publication.semantic_publication());
+    let accessibility_update = SemanticAdapter::new().update(publication.semantic_publication());
     assert!(
         accessibility_update.diagnostics.is_empty(),
         "reference editor semantic actions are translated without diagnostics: {:?}",
@@ -494,17 +487,14 @@ fn reference_editor_publishes_visible_editable_text_and_accepts_commits() {
 fn native_mouse_drag_selects_preloaded_text_before_keyboard_input() {
     fn expect_ok<T, E: std::fmt::Debug>(result: Result<T, E>, message: &str) -> T {
         assert!(result.is_ok(), "{message}: {:?}", result.as_ref().err());
-        result.unwrap_or_else(|_| {
-            unreachable!("the assertion above reports the unexpected error")
-        })
+        result.unwrap_or_else(|_| unreachable!("the assertion above reports the unexpected error"))
     }
 
     let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
         .unwrap_or_else(|| unreachable!("fixture native mapping is valid"));
     let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
         DemoState::default(),
-        RuntimeConfig::default()
-            .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+        RuntimeConfig::default().with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
     );
     let _ = runtime
         .pump(HOST_PUMP_BUDGET)
@@ -638,8 +628,7 @@ fn native_mouse_drag_selects_preloaded_text_before_keyboard_input() {
         .to_owned();
 
     let selection_publication = runtime.publish_surface(&context);
-    let selection_publication =
-        expect_ok(selection_publication, "dragged selection republishes");
+    let selection_publication = expect_ok(selection_publication, "dragged selection republishes");
     let selection = selection_publication
         .semantic_publication()
         .snapshot()
@@ -836,8 +825,7 @@ fn native_mouse_drag_selects_preloaded_text_before_keyboard_input() {
 fn reference_editor_undo_and_redo_restore_application_owned_text_history() {
     let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
         DemoState::default(),
-        RuntimeConfig::default()
-            .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+        RuntimeConfig::default().with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
     );
     let _ = runtime
         .pump(HOST_PUMP_BUDGET)
@@ -943,8 +931,7 @@ fn reference_editor_undo_and_redo_restore_application_owned_text_history() {
     assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
     assert_eq!(runtime.state().selection_seed, initial_selection);
 
-    let redo =
-        runtime.submit_command(owner, SemanticCommand::Redo, CommandOrigin::programmatic());
+    let redo = runtime.submit_command(owner, SemanticCommand::Redo, CommandOrigin::programmatic());
     assert!(redo.is_ok(), "reference editor accepts redo: {redo:?}");
     let _ = runtime
         .pump(HOST_PUMP_BUDGET)
@@ -1496,9 +1483,7 @@ fn issue_263_large_document_publication_profile() {
                     runenui_core::GenericFontFamily::SansSerif,
                     &[profile_family],
                 )
-                .unwrap_or_else(|_| {
-                    unreachable!("controlled profile generic mapping is valid")
-                });
+                .unwrap_or_else(|_| unreachable!("controlled profile generic mapping is valid"));
             let _ = runtime
                 .pump(HOST_PUMP_BUDGET)
                 .unwrap_or_else(|_| unreachable!("test pump observation"))
@@ -1639,10 +1624,7 @@ fn issue_263_large_document_publication_profile() {
     }
 }
 
-fn translated_point(
-    displayed: &DisplayedFrame,
-    mapping: NativeMapping,
-) -> TranslatedPointerPoint {
+fn translated_point(displayed: &DisplayedFrame, mapping: NativeMapping) -> TranslatedPointerPoint {
     displayed
         .translate_cursor(Some(mapping), PhysicalPosition::new(240.0, 120.0))
         .unwrap_or_else(|_| unreachable!("fixture displayed mapping admits point ingress"))
