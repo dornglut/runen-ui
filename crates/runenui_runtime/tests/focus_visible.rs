@@ -42,7 +42,7 @@ impl UiApp for App {
 #[derive(Debug)]
 struct TextInputProbe;
 
-impl Widget<Action> for TextInputProbe {
+impl<AnyAction> Widget<AnyAction> for TextInputProbe {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -356,6 +356,7 @@ impl UiApp for RestoreApp {
                 button("Remember").id("remember").on_activate(|| ()),
             ])
             .id("nested")
+            .into_element()
             .focus_scope(FocusScope::new()),
             button("Outside").id("outside").on_activate(|| ()),
         ])
