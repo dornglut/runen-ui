@@ -131,11 +131,11 @@ fn pointer_helper_preserves_context_and_drives_public_pointer_activation() {
             node.id().clone(),
         ))
     })() else {
-        return;
+        panic!("increment hit target must be present in the published scene");
     };
 
     let Some(pointer_id) = PointerId::new(1) else {
-        return;
+        panic!("test pointer identifier must be valid");
     };
     let Ok(down) = harness.pointer_event(
         pointer_id,
@@ -143,14 +143,14 @@ fn pointer_helper_preserves_context_and_drives_public_pointer_activation() {
         PointerPhase::Down,
         point,
     ) else {
-        return;
+        panic!("pointer-down event must be constructible");
     };
     assert_eq!(down.surface_context(), &expected_context);
     let down = down
         .with_changed_button(PointerButton::Primary)
         .with_buttons(PointerButtons::new([PointerButton::Primary]));
     let Ok(down_submission) = harness.submit_pointer(down) else {
-        return;
+        panic!("pointer-down event must be admitted");
     };
     assert_eq!(
         harness.run_until_idle(settle_budget()).outcome(),
@@ -164,11 +164,11 @@ fn pointer_helper_preserves_context_and_drives_public_pointer_activation() {
         PointerPhase::Up,
         point,
     ) else {
-        return;
+        panic!("pointer-up event must be constructible");
     };
     let up = up.with_changed_button(PointerButton::Primary);
     let Ok(up_submission) = harness.submit_pointer(up) else {
-        return;
+        panic!("pointer-up event must be admitted");
     };
     assert!(down_submission.sequence() < up_submission.sequence());
     assert_eq!(
@@ -178,7 +178,7 @@ fn pointer_helper_preserves_context_and_drives_public_pointer_activation() {
     assert_eq!(*harness.state(), 1);
 
     let Some(publication) = harness.publication() else {
-        return;
+        panic!("committed harness publication must remain available");
     };
     assert!(publication.frame().node(&expected_target).is_some());
 }
