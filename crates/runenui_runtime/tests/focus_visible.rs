@@ -1,14 +1,15 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Brush, Color, CommandOrigin, Element, ElementId, HitContribution, HitContributionContext, KeyLocation,
-    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, LogicalLength,
-    LogicalPoint, LogicalRect, NoHostProtocol, Outline, PhysicalKey, PointerButton, PointerButtons,
+    Brush, Color, CommandOrigin, Element, ElementId, FocusScope, HitContribution,
+    HitContributionContext, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
+    KeyboardPhase, LayoutDimension, LayoutStyle, LogicalKey, LogicalLength, LogicalPoint,
+    LogicalRect, NoHostProtocol, Outline, PhysicalKey, PointerButton, PointerButtons,
     PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
     SemanticActionRequest, SemanticCommand, SemanticContribution, SemanticContributionContext,
-    SemanticNodeContribution, SemanticRole, FocusScope, StyleEnvironment, StyleInteractionState,
-    StyleProperties, StyleRecipe, StyleRecipeId, StyleTheme, StyleTokens, StrokeStyle, UiApp, View,
-    Widget, WidgetActivation, WidgetMeasure, WidgetTextInput, button, children, column,
+    SemanticNodeContribution, SemanticRole, StrokeStyle, StyleEnvironment, StyleInteractionState,
+    StyleProperties, StyleRecipe, StyleRecipeId, StyleTheme, StyleTokens, UiApp, View, Widget,
+    WidgetActivation, WidgetMeasure, WidgetTextInput, button, children, column,
 };
 use runenui_runtime::{
     AppRuntime, InputModality, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext,
@@ -29,9 +30,18 @@ impl UiApp for App {
 
     fn root((): &Self::State) -> impl View<Self::Action> {
         column(children![
-            button("Ordinary").id("ordinary").on_activate(|| Action::Activate),
-            Element::new(TextInputProbe).id("editable").focusable(true),
-            button("Other").id("other").on_activate(|| Action::Activate),
+            button("Ordinary")
+                .id("ordinary")
+                .with_layout(pointer_fixture_layout())
+                .on_activate(|| Action::Activate),
+            Element::new(TextInputProbe)
+                .id("editable")
+                .focusable(true)
+                .with_layout(pointer_fixture_layout()),
+            button("Other")
+                .id("other")
+                .with_layout(pointer_fixture_layout())
+                .on_activate(|| Action::Activate),
         ])
     }
 
@@ -42,7 +52,7 @@ impl UiApp for App {
 #[derive(Debug)]
 struct TextInputProbe;
 
-impl Widget<Action> for TextInputProbe {
+impl<AnyAction> Widget<AnyAction> for TextInputProbe {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -55,11 +65,7 @@ impl Widget<Action> for TextInputProbe {
         WidgetTextInput::new(true, false)
     }
 
-    fn measure(
-        &self,
-        (): &Self::State,
-        _: runenui_core::WidgetMeasureInput,
-    ) -> WidgetMeasure {
+    fn measure(&self, (): &Self::State, _: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::measured(LogicalLength::from(64_u16), LogicalLength::from(24_u16))
     }
 
@@ -72,13 +78,28 @@ impl Widget<Action> for TextInputProbe {
 
     fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         SemanticContribution::single(
-            SemanticNodeContribution::primary(SemanticRole::Button).with_name("Editable"),
+            SemanticNodeContribution::primary(SemanticRole::Button)
+                .with_name("Editable")
+                .with_action(SemanticAction::RequestFocus),
         )
     }
 }
 
+fn pointer_fixture_layout() -> LayoutStyle {
+    LayoutStyle::default()
+        .with_width(LayoutDimension::length(LogicalLength::from(80_u16)))
+        .with_height(LayoutDimension::length(LogicalLength::from(30_u16)))
+}
+
 fn settle<Application: UiApp>(runtime: &mut AppRuntime<Application>) {
-    assert!(runtime.pump(PumpBudget::new(64, 64, 64, 64)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned().is_quiescent());
+    assert!(
+        runtime
+            .pump(PumpBudget::new(64, 64, 64, 64))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
 }
 
 fn mount() -> AppRuntime<App> {
@@ -87,7 +108,10 @@ fn mount() -> AppRuntime<App> {
     runtime
 }
 
-fn mounted_id<Application: UiApp>(runtime: &mut AppRuntime<Application>, authored: &str) -> MountedNodeId {
+fn mounted_id<Application: UiApp>(
+    runtime: &mut AppRuntime<Application>,
+    authored: &str,
+) -> MountedNodeId {
     let id = ElementId::new(authored).unwrap_or_else(|_| unreachable!("known id"));
     runtime
         .index()
@@ -99,35 +123,76 @@ fn mounted_id<Application: UiApp>(runtime: &mut AppRuntime<Application>, authore
         .clone()
 }
 
-fn focus<Application: UiApp>(runtime: &mut AppRuntime<Application>, node: &MountedNodeId, origin: CommandOrigin) {
-    assert!(runtime
-        .submit_command(node.clone(), SemanticCommand::RequestFocus, origin)
-        .is_ok());
+fn focus<Application: UiApp>(
+    runtime: &mut AppRuntime<Application>,
+    node: &MountedNodeId,
+    origin: CommandOrigin,
+) {
+    assert!(
+        runtime
+            .submit_command(node.clone(), SemanticCommand::RequestFocus, origin)
+            .is_ok()
+    );
     settle(runtime);
     assert_eq!(runtime.focus().focused_node(), Some(node));
 }
 
-fn pointer_focus<Application: UiApp>(runtime: &mut AppRuntime<Application>, name: &str, pointer: u64) {
+fn published_hit_point(
+    publication: &runenui_runtime::SurfacePublication,
+    target: &MountedNodeId,
+) -> LogicalPoint {
+    let scene = publication.hit_test_scene();
+    let region = scene
+        .regions()
+        .iter()
+        .find(|region| {
+            region.target() == target
+                && matches!(region.shape(), runenui_core::SceneShape::Rect(bounds) if bounds.width() > 0.0 && bounds.height() > 0.0)
+        })
+        .unwrap_or_else(|| unreachable!("authored target has a current projected hit region"));
+    let runenui_core::SceneShape::Rect(bounds) = region.shape() else {
+        unreachable!("chosen hit region must be rectangular")
+    };
+    let local = LogicalPoint::new(
+        bounds.width().mul_add(0.5, bounds.x()),
+        bounds.height().mul_add(0.5, bounds.y()),
+    )
+    .unwrap_or_else(|_| unreachable!("finite projected region center"));
+    let point = region
+        .local_to_surface()
+        .transform_point(local)
+        .unwrap_or_else(|| unreachable!("non-singular current projection"));
+    assert_eq!(
+        scene.target_at(point),
+        Some(target),
+        "the current displayed hit scene must target the exact authored fixture"
+    );
+    point
+}
+
+fn pointer_focus<Application: UiApp>(
+    runtime: &mut AppRuntime<Application>,
+    authored_id: &str,
+    pointer: u64,
+) {
     let environment = StyleEnvironment::default();
-    let size = LogicalSize::try_new(260.0, 180.0)
-        .unwrap_or_else(|_| unreachable!("finite surface"));
+    let size =
+        LogicalSize::try_new(260.0, 180.0).unwrap_or_else(|_| unreachable!("finite surface"));
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::tight(&environment, size))
-        .unwrap_or_else(|error| panic!("published surface: {error:?}"));
-    let snapshot = publication.semantic_publication().snapshot();
-    let node = snapshot
-        .nodes()
-        .iter()
-        .find(|node| node.name() == Some(name))
-        .unwrap_or_else(|| unreachable!("named widget is on surface"));
-    let bounds = node.bounds();
-    let point = LogicalPoint::new(bounds.x() + bounds.width() / 2.0, bounds.y() + bounds.height() / 2.0)
-        .unwrap_or_else(|_| unreachable!("published bounds are finite"));
+        .unwrap_or_else(|error| unreachable!("published surface: {error:?}"));
+    let target = mounted_id(runtime, authored_id);
+    let point = published_hit_point(&publication, &target);
     let id = PointerId::new(pointer).unwrap_or_else(|| unreachable!("nonzero id"));
-    let context = publication.input_context().clone();
-    let down = PointerEvent::new(id, PointerDeviceKind::Mouse, PointerPhase::Down, point, context)
-        .with_buttons(PointerButtons::new([PointerButton::Primary]))
-        .with_changed_button(PointerButton::Primary);
+    let down = PointerEvent::new(
+        id,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        point,
+        publication.input_context().clone(),
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Primary]))
+    .with_changed_button(PointerButton::Primary);
     assert!(runtime.submit_pointer(down).is_ok());
     settle(runtime);
 }
@@ -136,13 +201,13 @@ fn pointer_focus<Application: UiApp>(runtime: &mut AppRuntime<Application>, name
 fn pointer_focus_is_hidden_for_button_but_visible_for_custom_text_input() {
     let mut app = mount();
     let ordinary = mounted_id(&mut app, "ordinary");
-    pointer_focus(&mut app, "Ordinary", 1);
+    pointer_focus(&mut app, "ordinary", 1);
     assert_eq!(app.focus().focused_node(), Some(&ordinary));
     assert!(!app.focus().focus_visible());
 
     let mut custom = mount();
     let editable = mounted_id(&mut custom, "editable");
-    pointer_focus(&mut custom, "Editable", 2);
+    pointer_focus(&mut custom, "editable", 2);
     assert_eq!(custom.focus().focused_node(), Some(&editable));
     assert!(custom.focus().focus_visible());
 }
@@ -163,22 +228,32 @@ fn source_aware_transfers_and_stable_owner_promotion_are_distinct() {
     let mut hidden = mount();
     let first = mounted_id(&mut hidden, "ordinary");
     let next = mounted_id(&mut hidden, "other");
-    pointer_focus(&mut hidden, "Ordinary", 3);
+    pointer_focus(&mut hidden, "ordinary", 3);
     assert_eq!(hidden.focus().focused_node(), Some(&first));
     assert!(!hidden.focus().focus_visible());
     focus(&mut hidden, &next, CommandOrigin::programmatic());
     assert!(!hidden.focus().focus_visible());
 
     // A committed controller event on that same focused owner promotes without focus transfer.
-    let before = hidden.trace().records().filter(|r| matches!(r.kind(), TraceRecordKind::FocusTransitionCommitted { .. })).count();
+    let before = hidden
+        .trace()
+        .records()
+        .filter(|r| matches!(r.kind(), TraceRecordKind::FocusTransitionCommitted { .. }))
+        .count();
     focus(&mut hidden, &next, CommandOrigin::controller());
     assert_eq!(hidden.focus().modality(), Some(InputModality::Controller));
     assert!(hidden.focus().focus_visible());
-    let after = hidden.trace().records().filter(|r| matches!(r.kind(), TraceRecordKind::FocusTransitionCommitted { .. })).count();
+    let after = hidden
+        .trace()
+        .records()
+        .filter(|r| matches!(r.kind(), TraceRecordKind::FocusTransitionCommitted { .. }))
+        .count();
     assert_eq!(before, after);
     assert!(hidden.trace().records().any(|r| {
-        matches!(r.kind(), TraceRecordKind::FocusVisibilityChanged { visible: true })
-            && r.context().focus_record_role() == Some(TraceFocusRecordRole::FocusVisibility)
+        matches!(
+            r.kind(),
+            TraceRecordKind::FocusVisibilityChanged { visible: true }
+        ) && r.context().focus_record_role() == Some(TraceFocusRecordRole::FocusVisibility)
     }));
     // Same-owner programmatic and pointer modality cannot demote a promoted owner.
     focus(&mut hidden, &next, CommandOrigin::programmatic());
@@ -187,10 +262,12 @@ fn source_aware_transfers_and_stable_owner_promotion_are_distinct() {
     assert!(jsonl.contains("focus_visibility_changed"));
     assert!(jsonl.contains("focus_visibility"));
     let replay = TraceReplay::parse_jsonl(&jsonl)
-        .unwrap_or_else(|error| panic!("typed visibility trace replays: {error:?}"));
-    assert!(replay
-        .records()
-        .any(|record| record.kind().as_str() == "focus_visibility_changed"));
+        .unwrap_or_else(|error| unreachable!("typed visibility trace replays: {error:?}"));
+    assert!(
+        replay
+            .records()
+            .any(|record| record.kind().as_str() == "focus_visibility_changed")
+    );
 }
 
 #[test]
@@ -210,7 +287,7 @@ fn nonpointing_focus_sources_and_automation_inheritance_use_canonical_modality()
     // Automation does not invent visible indication when transferring hidden focus.
     let mut app = mount();
     let other = mounted_id(&mut app, "other");
-    pointer_focus(&mut app, "Ordinary", 9);
+    pointer_focus(&mut app, "ordinary", 9);
     assert!(!app.focus().focus_visible());
     focus(&mut app, &other, CommandOrigin::automation());
     assert!(!app.focus().focus_visible());
@@ -220,15 +297,28 @@ fn nonpointing_focus_sources_and_automation_inheritance_use_canonical_modality()
 fn semantic_action_request_focus_uses_accessibility_ingress_and_typed_trace() {
     let mut app = mount();
     let environment = StyleEnvironment::default();
-    let size = LogicalSize::try_new(260.0, 180.0)
-        .unwrap_or_else(|_| unreachable!("finite surface"));
+    let size =
+        LogicalSize::try_new(260.0, 180.0).unwrap_or_else(|_| unreachable!("finite surface"));
     let publication = app
         .publish_surface(&SurfaceBuildContext::tight(&environment, size))
         .unwrap_or_else(|_| unreachable!("surface publishes"));
     let snapshot = publication.semantic_publication().snapshot();
-    let target = snapshot.nodes().iter().find(|n| n.name() == Some("Ordinary"))
-        .unwrap_or_else(|| unreachable!("button in semantic snapshot"));
-    let request = SemanticActionRequest::new(snapshot.surface_id().clone(), target.id().clone(), SemanticAction::RequestFocus);
+    let target = snapshot
+        .nodes()
+        .iter()
+        .find(|n| n.name() == Some("Editable"))
+        .unwrap_or_else(|| unreachable!("focus-action custom widget in semantic snapshot"));
+    assert!(
+        target
+            .supported_actions()
+            .contains(&SemanticAction::RequestFocus),
+        "the custom fixture must advertise RequestFocus"
+    );
+    let request = SemanticActionRequest::new(
+        snapshot.surface_id().clone(),
+        target.id().clone(),
+        SemanticAction::RequestFocus,
+    );
     assert!(app.submit_semantic_action(request).is_ok());
     settle(&mut app);
     assert_eq!(app.focus().modality(), Some(InputModality::Accessibility));
@@ -241,16 +331,16 @@ fn shutdown_clears_focus_indication_with_real_focus_authority() {
     let ordinary = mounted_id(&mut app, "ordinary");
     focus(&mut app, &ordinary, CommandOrigin::controller());
     assert!(app.focus().focus_visible());
-    app.shutdown().unwrap_or_else(|_| unreachable!("shutdown observation")).report().to_owned();
+    app.shutdown()
+        .unwrap_or_else(|_| unreachable!("shutdown observation"));
     assert!(app.focus().focused_node().is_none());
     assert!(!app.focus().focus_visible());
 }
 
-
 #[test]
 fn keyboard_traversal_promotes_pointer_focus_and_tracks_canonical_target() {
     let mut app = mount();
-    pointer_focus(&mut app, "Ordinary", 12);
+    pointer_focus(&mut app, "ordinary", 12);
     assert!(!app.focus().focus_visible());
     let event = KeyboardEvent::new(
         KeyboardPhase::Down,
@@ -273,14 +363,14 @@ fn keyboard_traversal_promotes_pointer_focus_and_tracks_canonical_target() {
 fn pointer_activity_does_not_demote_visible_focus_without_owner_transfer() {
     let mut app = mount();
     let ordinary = mounted_id(&mut app, "ordinary");
-    pointer_focus(&mut app, "Ordinary", 13);
+    pointer_focus(&mut app, "ordinary", 13);
     assert!(!app.focus().focus_visible());
     focus(&mut app, &ordinary, CommandOrigin::controller());
     assert!(app.focus().focus_visible());
 
     let environment = StyleEnvironment::default();
-    let size = LogicalSize::try_new(260.0, 180.0)
-        .unwrap_or_else(|_| unreachable!("finite surface"));
+    let size =
+        LogicalSize::try_new(260.0, 180.0).unwrap_or_else(|_| unreachable!("finite surface"));
     let context = app
         .publish_surface(&SurfaceBuildContext::tight(&environment, size))
         .unwrap_or_else(|_| unreachable!("updated surface publishes"))
@@ -309,7 +399,10 @@ impl UiApp for DisabledApp {
     type HostProtocol = NoHostProtocol;
 
     fn root(enabled: &Self::State) -> impl View<Self::Action> {
-        button("Retire").id("retire").enabled(*enabled).on_activate(|| ())
+        button("Retire")
+            .id("retire")
+            .enabled(*enabled)
+            .on_activate(|| ())
     }
 
     fn update(state: &mut Self::State, (): Self::Action) {
@@ -329,16 +422,31 @@ fn disablement_retires_focus_and_its_visibility_latch_together() {
         .unwrap_or_else(|| unreachable!("retire is mounted"))
         .id()
         .clone();
-    assert!(app.submit_command(
-        target,
-        SemanticCommand::RequestFocus,
-        CommandOrigin::programmatic(),
-    ).is_ok());
-    assert!(app.pump(PumpBudget::new(64, 64, 64, 64)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned().is_quiescent());
+    assert!(
+        app.submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .is_ok()
+    );
+    assert!(
+        app.pump(PumpBudget::new(64, 64, 64, 64))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
     assert!(app.focus().focus_visible());
 
     assert!(app.submit_action(()).is_ok());
-    assert!(app.pump(PumpBudget::new(64, 64, 64, 64)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned().is_quiescent());
+    assert!(
+        app.pump(PumpBudget::new(64, 64, 64, 64))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
     assert!(app.focus().focused_node().is_none());
     assert!(!app.focus().focus_visible());
 }
@@ -353,11 +461,18 @@ impl UiApp for RestoreApp {
     fn root((): &Self::State) -> impl View<Self::Action> {
         column(children![
             column(children![
-                button("Remember").id("remember").on_activate(|| ()),
+                button("Remember")
+                    .id("remember")
+                    .with_layout(pointer_fixture_layout())
+                    .on_activate(|| ()),
             ])
             .id("nested")
+            .into_element()
             .focus_scope(FocusScope::new()),
-            button("Outside").id("outside").on_activate(|| ()),
+            button("Outside")
+                .id("outside")
+                .with_layout(pointer_fixture_layout())
+                .on_activate(|| ()),
         ])
     }
 
@@ -371,19 +486,20 @@ fn remembered_restoration_obeys_canonical_source_not_focus_reason() {
     let inner = mounted_id(&mut app, "remember");
     let outer = mounted_id(&mut app, "outside");
     let scope = mounted_id(&mut app, "nested");
-    pointer_focus(&mut app, "Remember", 27);
+    pointer_focus(&mut app, "remember", 27);
     assert_eq!(app.focus().focused_node(), Some(&inner));
     assert!(!app.focus().focus_visible());
 
     focus(&mut app, &outer, CommandOrigin::programmatic());
     assert!(!app.focus().focus_visible());
-    assert!(app
-        .submit_command(
+    assert!(
+        app.submit_command(
             scope.clone(),
             SemanticCommand::RestoreFocus,
             CommandOrigin::programmatic(),
         )
-        .is_ok());
+        .is_ok()
+    );
     settle(&mut app);
     assert_eq!(app.focus().focused_node(), Some(&inner));
     assert_eq!(
@@ -394,18 +510,18 @@ fn remembered_restoration_obeys_canonical_source_not_focus_reason() {
 
     focus(&mut app, &outer, CommandOrigin::controller());
     assert!(app.focus().focus_visible());
-    assert!(app
-        .submit_command(
+    assert!(
+        app.submit_command(
             scope,
             SemanticCommand::RestoreFocus,
             CommandOrigin::programmatic(),
         )
-        .is_ok());
+        .is_ok()
+    );
     settle(&mut app);
     assert_eq!(app.focus().focused_node(), Some(&inner));
     assert!(app.focus().focus_visible());
 }
-
 
 struct StyledApp;
 
@@ -420,11 +536,13 @@ impl UiApp for StyledApp {
         column(children![
             button("Focus indicator")
                 .id("styled")
+                .with_layout(pointer_fixture_layout())
                 .recipe(recipe.clone())
                 .on_activate(|| ()),
             Element::new(TextInputProbe)
                 .id("styled-custom")
                 .focusable(true)
+                .with_layout(pointer_fixture_layout())
                 .recipe(recipe),
         ])
     }
@@ -432,8 +550,7 @@ impl UiApp for StyledApp {
     fn update((): &mut Self::State, (): Self::Action) {}
 }
 
-#[test]
-fn stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfer() {
+fn focus_visible_environment() -> StyleEnvironment {
     let mut recipe = StyleRecipe::new(StyleProperties::EMPTY);
     recipe
         .define_interaction(
@@ -452,23 +569,76 @@ fn stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfe
             recipe,
         )
         .unwrap_or_else(|_| unreachable!("recipe defined once"));
-    let environment = StyleEnvironment::new(theme);
-    let size = LogicalSize::try_new(240.0, 100.0)
-        .unwrap_or_else(|_| unreachable!("finite publication"));
+    StyleEnvironment::new(theme)
+}
+
+fn assert_custom_focus_visible_recipe(
+    app: &mut AppRuntime<StyledApp>,
+    context: &SurfaceBuildContext<'_>,
+    after: &runenui_runtime::SurfacePublication,
+) {
+    // The same public recipe also works for a non-built-in Widget with text-input capability.
+    let custom = after
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "styled-custom")
+        })
+        .unwrap_or_else(|| unreachable!("downstream styled widget is published"));
+    let custom_id = custom.id().clone();
+    let point = published_hit_point(after, &custom_id);
+    let down = PointerEvent::new(
+        PointerId::new(78).unwrap_or_else(|| unreachable!("distinct pointer")),
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        point,
+        after.input_context().clone(),
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Primary]))
+    .with_changed_button(PointerButton::Primary);
+    assert!(app.submit_pointer(down).is_ok());
+    settle(app);
+    assert_eq!(app.focus().focused_node(), Some(&custom_id));
+    assert!(app.focus().focus_visible());
+    let downstream = app
+        .publish_surface(context)
+        .unwrap_or_else(|error| unreachable!("downstream styled publication: {error:?}"));
+    assert!(
+        downstream
+            .frame()
+            .nodes()
+            .iter()
+            .find(|node| node.id() == &custom_id)
+            .unwrap_or_else(|| unreachable!("custom widget remains published"))
+            .computed_style()
+            .outline()
+            .is_some()
+    );
+}
+
+#[test]
+fn stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfer() {
+    let environment = focus_visible_environment();
+    let size =
+        LogicalSize::try_new(240.0, 100.0).unwrap_or_else(|_| unreachable!("finite publication"));
     let context = SurfaceBuildContext::tight(&environment, size);
     let mut app = AppRuntime::<StyledApp>::mount(());
     settle(&mut app);
 
-    let initial = app.publish_surface(&context)
-        .unwrap_or_else(|error| panic!("initial styled publication: {error:?}"));
-    let styled = initial.frame().nodes().iter()
+    let initial = app
+        .publish_surface(&context)
+        .unwrap_or_else(|error| unreachable!("initial styled publication: {error:?}"));
+    let styled = initial
+        .frame()
+        .nodes()
+        .iter()
         .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "styled"))
         .unwrap_or_else(|| unreachable!("styled button publishes"));
     assert!(styled.computed_style().outline().is_none());
     let target = styled.id().clone();
-    let bounds = styled.bounds();
-    let point = LogicalPoint::new(bounds.x() + bounds.width() / 2.0, bounds.y() + bounds.height() / 2.0)
-        .unwrap_or_else(|_| unreachable!("finite geometry"));
+    let point = published_hit_point(&initial, &target);
     let down = PointerEvent::new(
         PointerId::new(77).unwrap_or_else(|| unreachable!("nonzero pointer")),
         PointerDeviceKind::Mouse,
@@ -482,64 +652,72 @@ fn stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfe
     settle(&mut app);
     assert_eq!(app.focus().focused_node(), Some(&target));
     assert!(!app.focus().focus_visible());
-    let pointer_publication = app.publish_surface(&context)
-        .unwrap_or_else(|error| panic!("pointer publication: {error:?}"));
-    assert!(pointer_publication.frame().nodes().iter()
-        .find(|node| node.id() == &target)
-        .unwrap_or_else(|| unreachable!("focused button published"))
-        .computed_style().outline().is_none());
+    let pointer_publication = app
+        .publish_surface(&context)
+        .unwrap_or_else(|error| unreachable!("pointer publication: {error:?}"));
+    assert!(
+        pointer_publication
+            .frame()
+            .nodes()
+            .iter()
+            .find(|node| node.id() == &target)
+            .unwrap_or_else(|| unreachable!("focused button published"))
+            .computed_style()
+            .outline()
+            .is_none()
+    );
 
-    let focus_transitions = app.trace().records()
-        .filter(|record| matches!(record.kind(), TraceRecordKind::FocusTransitionCommitted { .. }))
+    let focus_transitions = app
+        .trace()
+        .records()
+        .filter(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusTransitionCommitted { .. }
+            )
+        })
         .count();
-    assert!(app.submit_command(
-        target.clone(),
-        SemanticCommand::RequestFocus,
-        CommandOrigin::controller(),
-    ).is_ok());
+    assert!(
+        app.submit_command(
+            target.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::controller(),
+        )
+        .is_ok()
+    );
     settle(&mut app);
     assert_eq!(app.focus().focused_node(), Some(&target));
     assert!(app.focus().focus_visible());
-    assert_eq!(focus_transitions, app.trace().records()
-        .filter(|record| matches!(record.kind(), TraceRecordKind::FocusTransitionCommitted { .. }))
-        .count());
-    let after = app.publish_surface(&context)
-        .unwrap_or_else(|error| panic!("promoted publication: {error:?}"));
-    assert!(after.frame().nodes().iter()
-        .find(|node| node.id() == &target)
-        .unwrap_or_else(|| unreachable!("unchanged owner remains published"))
-        .computed_style().outline().is_some());
+    assert_eq!(
+        focus_transitions,
+        app.trace()
+            .records()
+            .filter(|record| matches!(
+                record.kind(),
+                TraceRecordKind::FocusTransitionCommitted { .. }
+            ))
+            .count()
+    );
+    let after = app
+        .publish_surface(&context)
+        .unwrap_or_else(|error| unreachable!("promoted publication: {error:?}"));
+    assert!(
+        after
+            .frame()
+            .nodes()
+            .iter()
+            .find(|node| node.id() == &target)
+            .unwrap_or_else(|| unreachable!("unchanged owner remains published"))
+            .computed_style()
+            .outline()
+            .is_some()
+    );
     assert!(app.trace().records().any(|record| {
-        matches!(record.kind(), TraceRecordKind::FocusVisibilityChanged { visible: true })
+        matches!(
+            record.kind(),
+            TraceRecordKind::FocusVisibilityChanged { visible: true }
+        )
     }));
 
-    // The same public recipe also works for a non-built-in Widget with text-input capability.
-    let custom = after.frame().nodes().iter()
-        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "styled-custom"))
-        .unwrap_or_else(|| unreachable!("downstream styled widget is published"));
-    let custom_id = custom.id().clone();
-    let bounds = custom.bounds();
-    let point = LogicalPoint::new(
-        bounds.x() + bounds.width() / 2.0,
-        bounds.y() + bounds.height() / 2.0,
-    ).unwrap_or_else(|_| unreachable!("published custom bounds are finite"));
-    let down = PointerEvent::new(
-        PointerId::new(78).unwrap_or_else(|| unreachable!("distinct pointer")),
-        PointerDeviceKind::Mouse,
-        PointerPhase::Down,
-        point,
-        after.input_context().clone(),
-    )
-    .with_buttons(PointerButtons::new([PointerButton::Primary]))
-    .with_changed_button(PointerButton::Primary);
-    assert!(app.submit_pointer(down).is_ok());
-    settle(&mut app);
-    assert_eq!(app.focus().focused_node(), Some(&custom_id));
-    assert!(app.focus().focus_visible());
-    let downstream = app.publish_surface(&context)
-        .unwrap_or_else(|error| panic!("downstream styled publication: {error:?}"));
-    assert!(downstream.frame().nodes().iter()
-        .find(|node| node.id() == &custom_id)
-        .unwrap_or_else(|| unreachable!("custom widget remains published"))
-        .computed_style().outline().is_some());
+    assert_custom_focus_visible_recipe(&mut app, &context, &after);
 }

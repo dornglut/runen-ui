@@ -2,6 +2,8 @@
 mod m11_presentation_focus_lifecycle;
 #[path = "../m11_presentation_lifecycle.rs"]
 mod m11_presentation_lifecycle;
+#[path = "../m11_surface_presentation.rs"]
+mod m11_surface_presentation;
 #[path = "../m8d_integration.rs"]
 mod m8d_integration;
 #[path = "../m9_background_brush.rs"]

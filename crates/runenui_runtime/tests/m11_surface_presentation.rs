@@ -24,11 +24,11 @@ fn fixed(width: u16, height: u16) -> LayoutStyle {
         .with_height(LayoutDimension::length(LogicalLength::from(height)))
 }
 
-fn tight_context<'a>(
-    environment: &'a StyleEnvironment,
+fn tight_context(
+    environment: &StyleEnvironment,
     width: u16,
     height: u16,
-) -> SurfaceBuildContext<'a> {
+) -> SurfaceBuildContext<'_> {
     SurfaceBuildContext::new(
         environment,
         LayoutConstraints::tight(LogicalSize::new(
@@ -117,13 +117,22 @@ fn presentation_is_out_of_flow_and_fallback_geometry_is_correlated() {
         .surface_presentation()
         .unwrap_or_else(|| unreachable!("popup root publishes placement facts"));
     assert_eq!(presentation.candidate_index(), 1);
-    assert_eq!(presentation.placement().side(), SurfacePresentationSide::Top);
+    assert_eq!(
+        presentation.placement().side(),
+        SurfacePresentationSide::Top
+    );
     assert_eq!(presentation.anchor_bounds().x(), owner.bounds().x() + 4.0);
     assert_eq!(presentation.anchor_bounds().y(), owner.bounds().y() + 3.0);
     assert_eq!(presentation.anchor_bounds().width(), owner.bounds().width());
-    assert_eq!(presentation.anchor_bounds().height(), owner.bounds().height());
+    assert_eq!(
+        presentation.anchor_bounds().height(),
+        owner.bounds().height()
+    );
     assert_eq!(presentation.placed_bounds().x(), owner.bounds().x() + 4.0);
-    assert_eq!(presentation.placed_bounds().y(), owner.bounds().y() + 3.0 - 20.0);
+    assert_eq!(
+        presentation.placed_bounds().y(),
+        owner.bounds().y() + 3.0 - 20.0
+    );
 
     let semantic = publication
         .semantic_publication()
@@ -158,10 +167,12 @@ impl UiApp for AnchorApp {
             .on_activate(|| ())
             .id("anchored")
             .with_layout(fixed(20, 10))
-            .surface_presentation(SurfacePresentation::new(
-                SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
+            .surface_presentation(
+                SurfacePresentation::new(SurfacePresentationPlacement::new(
+                    SurfacePresentationSide::Center,
+                ))
+                .with_anchor(*anchor),
             )
-            .with_anchor(*anchor))
             .into_element();
         column(vec![popup]).id("owner")
     }
@@ -173,9 +184,10 @@ impl UiApp for AnchorApp {
 fn surface_point_and_viewport_anchors_resolve_without_owner_geometry_authority() {
     let environment = StyleEnvironment::default();
 
-    let point = LogicalPoint::new(70.0, 40.0)
-        .unwrap_or_else(|_| unreachable!("fixture point is finite"));
-    let mut point_runtime = AppRuntime::<AnchorApp>::mount(SurfacePresentationAnchor::SurfacePoint(point));
+    let point =
+        LogicalPoint::new(70.0, 40.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
+    let mut point_runtime =
+        AppRuntime::<AnchorApp>::mount(SurfacePresentationAnchor::SurfacePoint(point));
     let point_publication = point_runtime
         .publish_surface(&tight_context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("point-anchor publication is admitted"));
@@ -246,7 +258,6 @@ impl<Action> Widget<Action> for LayerProbe {
 
 impl<Action> ChildBearingWidget<Action> for LayerProbe {}
 
-
 struct StackingApp;
 
 impl UiApp for StackingApp {
@@ -265,13 +276,15 @@ impl UiApp for StackingApp {
             color: Color::BLACK,
         })
         .id("presentation")
-        .surface_presentation(SurfacePresentation::new(
-            SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-        )
-        .with_anchor(SurfacePresentationAnchor::SurfacePoint(
-            LogicalPoint::new(20.0, 20.0)
-                .unwrap_or_else(|_| unreachable!("fixture point is finite")),
-        )));
+        .surface_presentation(
+            SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Center,
+            ))
+            .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                LogicalPoint::new(20.0, 20.0)
+                    .unwrap_or_else(|_| unreachable!("fixture point is finite")),
+            )),
+        );
         column(vec![ordinary, presentation])
     }
 
@@ -288,8 +301,8 @@ fn presentation_band_outranks_ordinary_scene_layers_for_paint_and_hit() {
 
     let ordinary = node(&publication, "ordinary");
     let presentation = node(&publication, "presentation");
-    let point = LogicalPoint::new(10.0, 10.0)
-        .unwrap_or_else(|_| unreachable!("fixture point is finite"));
+    let point =
+        LogicalPoint::new(10.0, 10.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
 
     assert_eq!(
         publication.hit_test_scene().target_at(point),
@@ -303,7 +316,6 @@ fn presentation_band_outranks_ordinary_scene_layers_for_paint_and_hit() {
     assert_eq!(items[0].layer(), SceneLayer::new(10_000));
     assert_eq!(items[1].layer(), SceneLayer::new(-10_000));
 }
-
 
 fn singular_presentation() -> PresentationTransform {
     PresentationTransform::new(
@@ -327,9 +339,9 @@ impl UiApp for SingularAnchorApp {
             .on_activate(|| ())
             .id("withheld")
             .with_layout(fixed(20, 20))
-            .surface_presentation(SurfacePresentation::new(
-                SurfacePresentationPlacement::new(SurfacePresentationSide::Bottom),
-            ))
+            .surface_presentation(SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Bottom,
+            )))
             .into_element();
         column(vec![popup])
             .id("singular-owner")
@@ -364,9 +376,12 @@ fn owner_relative_anchor_fails_closed_for_singular_owner_projection() {
             .iter()
             .all(|semantic| semantic.name() != Some("withheld"))
     );
-    let point = LogicalPoint::new(5.0, 25.0)
-        .unwrap_or_else(|_| unreachable!("fixture point is finite"));
-    assert_ne!(publication.hit_test_scene().target_at(point), Some(withheld.id()));
+    let point =
+        LogicalPoint::new(5.0, 25.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
+    assert_ne!(
+        publication.hit_test_scene().target_at(point),
+        Some(withheld.id())
+    );
 }
 
 #[derive(Clone, Debug)]
@@ -403,18 +418,18 @@ impl UiApp for ClipEscapeApp {
     fn root((): &Self::State) -> impl View<Self::Action> {
         let popup = Element::new(ClipProbe)
             .id("clip-popup")
-            .surface_presentation(SurfacePresentation::new(
-                SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-            )
-            .with_anchor(SurfacePresentationAnchor::SurfacePoint(
-                LogicalPoint::new(40.0, 10.0)
-                    .unwrap_or_else(|_| unreachable!("fixture point is finite")),
-            )));
+            .surface_presentation(
+                SurfacePresentation::new(SurfacePresentationPlacement::new(
+                    SurfacePresentationSide::Center,
+                ))
+                .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                    LogicalPoint::new(40.0, 10.0)
+                        .unwrap_or_else(|_| unreachable!("fixture point is finite")),
+                )),
+            );
         let owner = column(vec![popup])
             .id("clip-owner")
-            .with_layout(
-                fixed(20, 20).with_overflow(OverflowStyle::all(OverflowPolicy::Scroll)),
-            )
+            .with_layout(fixed(20, 20).with_overflow(OverflowStyle::all(OverflowPolicy::Scroll)))
             .into_element();
         column(vec![owner])
     }
@@ -431,24 +446,24 @@ fn presentation_escapes_ancestor_clip_but_preserves_local_clip_and_surface_clip(
         .unwrap_or_else(|_| unreachable!("clip publication is admitted"));
     let popup = node(&publication, "clip-popup");
 
-    let inside_local = LogicalPoint::new(35.0, 10.0)
-        .unwrap_or_else(|_| unreachable!("fixture point is finite"));
+    let inside_local =
+        LogicalPoint::new(35.0, 10.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
     assert_eq!(
         publication.hit_test_scene().target_at(inside_local),
         Some(popup.id()),
         "presentation must escape its logical owner's 20px ancestor clip"
     );
 
-    let outside_local = LogicalPoint::new(55.0, 10.0)
-        .unwrap_or_else(|_| unreachable!("fixture point is finite"));
+    let outside_local =
+        LogicalPoint::new(55.0, 10.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
     assert_ne!(
         publication.hit_test_scene().target_at(outside_local),
         Some(popup.id()),
         "presentation-local authored clip must remain authoritative"
     );
 
-    let outside_surface = LogicalPoint::new(70.0, 10.0)
-        .unwrap_or_else(|_| unreachable!("fixture point is finite"));
+    let outside_surface =
+        LogicalPoint::new(70.0, 10.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
     assert_ne!(
         publication.hit_test_scene().target_at(outside_surface),
         Some(popup.id()),
@@ -478,13 +493,15 @@ impl UiApp for NestedStackingApp {
             color: Color::BLACK,
         })
         .id("nested")
-        .surface_presentation(SurfacePresentation::new(
-            SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-        )
-        .with_anchor(SurfacePresentationAnchor::SurfacePoint(
-            LogicalPoint::new(20.0, 20.0)
-                .unwrap_or_else(|_| unreachable!("fixture point is finite")),
-        )));
+        .surface_presentation(
+            SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Center,
+            ))
+            .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                LogicalPoint::new(20.0, 20.0)
+                    .unwrap_or_else(|_| unreachable!("fixture point is finite")),
+            )),
+        );
 
         let ancestor = container(
             LayerProbe {
@@ -494,13 +511,15 @@ impl UiApp for NestedStackingApp {
             vec![nested],
         )
         .id("ancestor")
-        .surface_presentation(SurfacePresentation::new(
-            SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-        )
-        .with_anchor(SurfacePresentationAnchor::SurfacePoint(
-            LogicalPoint::new(20.0, 20.0)
-                .unwrap_or_else(|_| unreachable!("fixture point is finite")),
-        )));
+        .surface_presentation(
+            SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Center,
+            ))
+            .with_anchor(SurfacePresentationAnchor::SurfacePoint(
+                LogicalPoint::new(20.0, 20.0)
+                    .unwrap_or_else(|_| unreachable!("fixture point is finite")),
+            )),
+        );
 
         column(vec![ancestor.into_element()])
     }
@@ -516,16 +535,18 @@ fn nested_presentation_root_is_an_independent_later_band_above_ancestor() {
         .publish_surface(&tight_context(&environment, 80, 80))
         .unwrap_or_else(|_| unreachable!("nested presentation publication is admitted"));
     let nested = node(&publication, "nested");
-    let point = LogicalPoint::new(10.0, 10.0)
-        .unwrap_or_else(|_| unreachable!("fixture point is finite"));
+    let point =
+        LogicalPoint::new(10.0, 10.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
 
-    assert_eq!(publication.hit_test_scene().target_at(point), Some(nested.id()));
+    assert_eq!(
+        publication.hit_test_scene().target_at(point),
+        Some(nested.id())
+    );
     let items = publication.paint_scene().items();
     assert_eq!(items.len(), 2);
     assert_eq!(items[0].layer(), SceneLayer::new(500));
     assert_eq!(items[1].layer(), SceneLayer::new(-500));
 }
-
 
 #[derive(Clone, Copy)]
 struct MovingState {
@@ -553,9 +574,9 @@ impl UiApp for MovingPresentationApp {
             .key("moving")
             .with_layout(fixed(20, 10))
             .surface_presentation(
-                SurfacePresentation::new(
-                    SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-                )
+                SurfacePresentation::new(SurfacePresentationPlacement::new(
+                    SurfacePresentationSide::Center,
+                ))
                 .with_anchor(SurfacePresentationAnchor::SurfacePoint(point)),
             )
             .into_element();
@@ -594,12 +615,16 @@ fn placement_rebuild_retains_one_mounted_and_semantic_lifetime() {
     runtime
         .submit_action(MovingAction::Move)
         .unwrap_or_else(|_| unreachable!("application action is admitted"));
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    )).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert!(report.is_quiescent());
 
     let second = runtime
@@ -619,10 +644,12 @@ fn placement_rebuild_retains_one_mounted_and_semantic_lifetime() {
 
     assert_eq!(second_node.id(), &mounted_id);
     assert_eq!(second_semantic.id(), &semantic_id);
-    assert_ne!(first_snapshot.placed_bounds(), second_snapshot.placed_bounds());
+    assert_ne!(
+        first_snapshot.placed_bounds(),
+        second_snapshot.placed_bounds()
+    );
     assert_eq!(second_snapshot.anchor_bounds().x(), 60.0);
 }
-
 
 struct ScrollAnchorApp;
 
@@ -636,9 +663,9 @@ impl UiApp for ScrollAnchorApp {
             .on_activate(|| ())
             .id("scroll-popup")
             .with_layout(fixed(20, 10))
-            .surface_presentation(SurfacePresentation::new(
-                SurfacePresentationPlacement::new(SurfacePresentationSide::Bottom),
-            ))
+            .surface_presentation(SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Bottom,
+            )))
             .into_element();
         let owner = column(vec![popup])
             .id("scroll-owner")
@@ -653,9 +680,7 @@ impl UiApp for ScrollAnchorApp {
 
         column(vec![filler, owner])
             .id("scroll-root")
-            .with_layout(
-                fixed(40, 40).with_overflow(OverflowStyle::all(OverflowPolicy::Scroll)),
-            )
+            .with_layout(fixed(40, 40).with_overflow(OverflowStyle::all(OverflowPolicy::Scroll)))
     }
 
     fn update((): &mut Self::State, (): Self::Action) {}
@@ -689,8 +714,8 @@ fn owner_anchor_follows_accepted_scroll_without_inflating_scroll_extent() {
         .unwrap_or_else(|| unreachable!("initial owner anchor resolves"))
         .anchor_bounds();
 
-    let point = LogicalPoint::new(5.0, 5.0)
-        .unwrap_or_else(|_| unreachable!("wheel point is finite"));
+    let point =
+        LogicalPoint::new(5.0, 5.0).unwrap_or_else(|_| unreachable!("wheel point is finite"));
     let wheel = PointerEvent::new(
         PointerId::new(341).unwrap_or_else(|| unreachable!("fixture pointer is non-zero")),
         PointerDeviceKind::Mouse,
@@ -699,13 +724,14 @@ fn owner_anchor_follows_accepted_scroll_without_inflating_scroll_extent() {
         initial.input_context().clone(),
     )
     .with_scroll_delta(
-        LogicalDelta::new(0.0, 10.0)
-            .unwrap_or_else(|_| unreachable!("wheel delta is finite")),
+        LogicalDelta::new(0.0, 10.0).unwrap_or_else(|_| unreachable!("wheel delta is finite")),
     );
     runtime
         .submit_pointer(wheel)
         .unwrap_or_else(|_| unreachable!("wheel is admitted"));
-    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"));
 
     let scrolled = runtime
         .publish_surface(&context)
@@ -720,7 +746,6 @@ fn owner_anchor_follows_accepted_scroll_without_inflating_scroll_extent() {
     assert_eq!(scrolled_anchor.width(), initial_anchor.width());
     assert_eq!(scrolled_anchor.height(), initial_anchor.height());
 }
-
 
 #[derive(Clone, Copy)]
 enum SiblingStackAction {
@@ -737,9 +762,9 @@ fn sibling_presentation(id: &'static str, color: Color) -> Element<SiblingStackA
     .id(id)
     .key(id)
     .surface_presentation(
-        SurfacePresentation::new(
-            SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-        )
+        SurfacePresentation::new(SurfacePresentationPlacement::new(
+            SurfacePresentationSide::Center,
+        ))
         .with_anchor(SurfacePresentationAnchor::SurfacePoint(
             LogicalPoint::new(20.0, 20.0)
                 .unwrap_or_else(|_| unreachable!("fixture point is finite")),
@@ -774,8 +799,8 @@ fn direct_presentation_siblings_follow_current_keyed_mounted_preorder() {
     let mut runtime = AppRuntime::<SiblingStackApp>::mount(false);
     let environment = StyleEnvironment::default();
     let context = tight_context(&environment, 80, 80);
-    let point = LogicalPoint::new(10.0, 10.0)
-        .unwrap_or_else(|_| unreachable!("fixture point is finite"));
+    let point =
+        LogicalPoint::new(10.0, 10.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
 
     let initial = runtime
         .publish_surface(&context)
@@ -794,7 +819,10 @@ fn direct_presentation_siblings_follow_current_keyed_mounted_preorder() {
                 usize::MAX,
                 usize::MAX,
                 usize::MAX,
-            )).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned()
+            ))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
             .is_quiescent()
     );
 
@@ -828,9 +856,9 @@ impl UiApp for FocusProjectionApp {
             .id("focus-projected")
             .with_layout(fixed(20, 20))
             .surface_presentation(
-                SurfacePresentation::new(
-                    SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-                )
+                SurfacePresentation::new(SurfacePresentationPlacement::new(
+                    SurfacePresentationSide::Center,
+                ))
                 .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                     LogicalPoint::new(70.0, 10.0)
                         .unwrap_or_else(|_| unreachable!("fixture point is finite")),
@@ -855,7 +883,10 @@ fn directional_focus_uses_projected_presentation_geometry() {
     let projected_snapshot = node(&publication, "focus-projected")
         .surface_presentation()
         .unwrap_or_else(|| unreachable!("projected focus target has placement facts"));
-    assert!(projected_snapshot.visible_bounds().x() > node(&publication, "focus-start").bounds().max_x());
+    assert!(
+        projected_snapshot.visible_bounds().x()
+            > node(&publication, "focus-start").bounds().max_x()
+    );
 
     runtime
         .submit_command(
@@ -864,7 +895,9 @@ fn directional_focus_uses_projected_presentation_geometry() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("focus request is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    runtime
+        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert_eq!(runtime.focus().focused_node(), Some(&start));
 
     runtime
@@ -874,7 +907,9 @@ fn directional_focus_uses_projected_presentation_geometry() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("directional focus command is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    runtime
+        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert_eq!(
         runtime.focus().focused_node(),
         Some(&projected),
@@ -938,9 +973,9 @@ impl UiApp for RouteProjectionApp {
         })
         .id("route-target")
         .surface_presentation(
-            SurfacePresentation::new(
-                SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-            )
+            SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Center,
+            ))
             .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                 LogicalPoint::new(60.0, 20.0)
                     .unwrap_or_else(|_| unreachable!("fixture point is finite")),
@@ -976,7 +1011,9 @@ fn projected_target_keeps_ordinary_logical_routed_ancestry() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("route command is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    runtime
+        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"));
 
     assert_eq!(
         facts.borrow().as_slice(),
@@ -1063,16 +1100,18 @@ impl UiApp for CaptureProjectionApp {
             capture_on_down: true,
             moves: Rc::clone(moves),
         })
-        .id("capture-owner");
+        .id("capture-owner")
+        .with_layout(fixed(20, 20));
         let projected = Element::new(CaptureProjectionProbe {
             capture_on_down: false,
             moves: Rc::clone(moves),
         })
         .id("capture-projected")
+        .with_layout(fixed(20, 20))
         .surface_presentation(
-            SurfacePresentation::new(
-                SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-            )
+            SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Center,
+            ))
             .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                 LogicalPoint::new(60.0, 10.0)
                     .unwrap_or_else(|_| unreachable!("fixture point is finite")),
@@ -1082,6 +1121,54 @@ impl UiApp for CaptureProjectionApp {
     }
 
     fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+// Pointer fixtures use current projected hit geometry, not authored guesses
+// about layout or presentation placement.
+// A geometrically positive region can still be obscured by a later presentation
+// band. Choose an actually hittable point from the exact current displayed scene.
+fn capture_proof_hit_point(
+    publication: &runenui_runtime::SurfacePublication,
+    target: &MountedNodeId,
+) -> LogicalPoint {
+    let scene = publication.hit_test_scene();
+    let mut candidates = 0;
+    let mut obscured = 0;
+    let mut uncovered = 0;
+    for region in scene
+        .regions()
+        .iter()
+        .filter(|region| region.target() == target)
+    {
+        let SceneShape::Rect(bounds) = region.shape() else {
+            continue;
+        };
+        if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
+            continue;
+        }
+        for x in [0.125, 0.375, 0.625, 0.875] {
+            for y in [0.125, 0.375, 0.625, 0.875] {
+                let Ok(local) = LogicalPoint::new(
+                    bounds.width().mul_add(x, bounds.x()),
+                    bounds.height().mul_add(y, bounds.y()),
+                ) else {
+                    continue;
+                };
+                let Some(point) = region.local_to_surface().transform_point(local) else {
+                    continue;
+                };
+                candidates += 1;
+                match scene.target_at(point) {
+                    Some(found) if found == target => return point,
+                    Some(_) => obscured += 1,
+                    None => uncovered += 1,
+                }
+            }
+        }
+    }
+    unreachable!(
+        "target has no unobscured projected hit sample: {candidates} candidates, {obscured} obscured, {uncovered} uncovered; scene: {scene:#?}"
+    );
 }
 
 #[test]
@@ -1096,10 +1183,9 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
     let projected = node(&publication, "capture-projected").id().clone();
     let context = publication.input_context().clone();
 
-    let pointer_id = PointerId::new(341)
-        .unwrap_or_else(|| unreachable!("fixture pointer identity is non-zero"));
-    let down_point = LogicalPoint::new(10.0, 10.0)
-        .unwrap_or_else(|_| unreachable!("fixture down point is finite"));
+    let pointer_id =
+        PointerId::new(341).unwrap_or_else(|| unreachable!("fixture pointer identity is non-zero"));
+    let down_point = capture_proof_hit_point(&publication, &capture);
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -1113,10 +1199,16 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|_| unreachable!("capture-start pointer is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    assert!(
+        runtime
+            .pump(PumpBudget::new(64, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
 
-    let move_point = LogicalPoint::new(60.0, 10.0)
-        .unwrap_or_else(|_| unreachable!("fixture move point is finite"));
+    let move_point = capture_proof_hit_point(&publication, &projected);
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -1129,7 +1221,14 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
         )
         .unwrap_or_else(|_| unreachable!("captured move is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    assert!(
+        runtime
+            .pump(PumpBudget::new(64, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
 
     assert_eq!(
         moves.borrow().as_slice(),

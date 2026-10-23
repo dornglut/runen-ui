@@ -311,6 +311,208 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<(), Stri
     }
     expand_nested_imports(root, &mut registered, findings)?;
     check_coverage(&sources, &registered, findings);
+    if root.join("crates/runenui_runtime").is_dir() {
+        audit_runtime(root, findings)?;
+    }
+    Ok(())
+}
+
+const RUNTIME_MANIFEST: &str = "crates/runenui_runtime/Cargo.toml";
+const RUNTIME_TEST_DIRECTORY: &str = "crates/runenui_runtime/tests";
+
+fn runtime_failure(findings: &mut Vec<Finding>, path: &str, message: impl Into<String>) {
+    findings.push(Finding::fatal(
+        "repository.runtime_test_registration",
+        Some(path.to_owned()),
+        message,
+    ));
+}
+
+fn audit_runtime_coverage(
+    sources: &BTreeSet<String>,
+    registered: &BTreeMap<String, Vec<String>>,
+    findings: &mut Vec<Finding>,
+) {
+    for source in sources {
+        match registered.get(source) {
+            None => runtime_failure(
+                findings,
+                RUNTIME_TEST_DIRECTORY,
+                format!("unregistered runtime test source: {source}"),
+            ),
+            Some(owners) if owners.len() != 1 => runtime_failure(
+                findings,
+                RUNTIME_TEST_DIRECTORY,
+                format!("runtime test {source} registered more than once: {owners:?}"),
+            ),
+            Some(_) => {}
+        }
+    }
+    for source in registered.keys() {
+        if !sources.contains(source) {
+            runtime_failure(
+                findings,
+                RUNTIME_TEST_DIRECTORY,
+                format!("runtime suite imports absent test source: {source}"),
+            );
+        }
+    }
+}
+
+// Both direct Cargo test roots and suite #[path] imports are executable owners.
+// This catches new inert tests whenever runtime keeps autotests = false.
+type RuntimeManifestRegistration = (BTreeSet<String>, BTreeMap<String, Vec<String>>);
+
+fn audit_runtime_manifest(
+    root: &Path,
+    findings: &mut Vec<Finding>,
+) -> Result<RuntimeManifestRegistration, String> {
+    let contents = fs::read_to_string(root.join(RUNTIME_MANIFEST))
+        .map_err(|error| format!("failed to read {RUNTIME_MANIFEST}: {error}"))?;
+    if !contents
+        .lines()
+        .any(|line| line.trim() == "autotests = false")
+    {
+        runtime_failure(
+            findings,
+            RUNTIME_MANIFEST,
+            "expected explicit runtime test registration with autotests = false",
+        );
+    }
+
+    let mut suites = BTreeSet::<String>::new();
+    let mut registered = BTreeMap::<String, Vec<String>>::new();
+    for block in contents.split("[[test]]").skip(1) {
+        let mut name = None;
+        let mut path = None;
+        for line in block.lines() {
+            if line.trim_start().starts_with('[') {
+                break;
+            }
+            name = name.or_else(|| quoted(line, "name = \""));
+            path = path.or_else(|| quoted(line, "path = \""));
+        }
+        match (name, path) {
+            (Some(name), Some(path)) if path == format!("tests/suites/{name}.rs") => {
+                if !suites.insert(name.to_owned()) {
+                    runtime_failure(
+                        findings,
+                        RUNTIME_MANIFEST,
+                        format!("duplicate runtime Cargo suite target: {name}"),
+                    );
+                }
+            }
+            (Some(name), Some(path)) if path == format!("tests/{name}.rs") => {
+                registered
+                    .entry(format!("{name}.rs"))
+                    .or_default()
+                    .push(format!("Cargo:{name}"));
+            }
+            _ => runtime_failure(
+                findings,
+                RUNTIME_MANIFEST,
+                "unexpected, missing or malformed runtime [[test]] target",
+            ),
+        }
+    }
+
+    Ok((suites, registered))
+}
+
+fn audit_runtime(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
+    let (suites, mut registered) = audit_runtime_manifest(root, findings)?;
+
+    let suite_dir = format!("{RUNTIME_TEST_DIRECTORY}/suites");
+    for entry in fs::read_dir(root.join(&suite_dir))
+        .map_err(|error| format!("failed to inspect {suite_dir}: {error}"))?
+    {
+        let entry = entry.map_err(|error| format!("failed to inspect runtime suite: {error}"))?;
+        let path = entry.path();
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| "non-UTF-8 runtime suite name".to_owned())?;
+        if path.is_dir()
+            || (path.extension().and_then(|ext| ext.to_str()) == Some("rs")
+                && !name
+                    .strip_suffix(".rs")
+                    .is_some_and(|stem| suites.contains(stem)))
+        {
+            runtime_failure(
+                findings,
+                &suite_dir,
+                format!("unregistered runtime suite source: {name}"),
+            );
+        }
+    }
+
+    for suite in &suites {
+        let relative = format!("{suite_dir}/{suite}.rs");
+        let content = fs::read_to_string(root.join(&relative))
+            .map_err(|error| format!("failed to read {relative}: {error}"))?;
+        let mut pending: Option<&str> = None;
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if let Some(file) = trimmed
+                .strip_prefix("#[path = \"../")
+                .and_then(|tail| tail.strip_suffix("\"]"))
+            {
+                if pending.replace(file).is_some() {
+                    runtime_failure(findings, &relative, "consecutive runtime #[path] imports");
+                }
+            } else if let Some(module) = trimmed
+                .strip_prefix("mod ")
+                .and_then(|tail| tail.strip_suffix(';'))
+            {
+                let file = pending.take();
+                if file.and_then(|path| path.strip_suffix(".rs")) != Some(module)
+                    || file.is_some_and(|path| path.contains('/') || path.contains('\\'))
+                {
+                    runtime_failure(
+                        findings,
+                        &relative,
+                        format!("runtime module {module} lacks matching local #[path]"),
+                    );
+                } else if let Some(file) = file {
+                    registered
+                        .entry(file.to_owned())
+                        .or_default()
+                        .push(suite.to_owned());
+                }
+            } else if !trimmed.is_empty() {
+                runtime_failure(
+                    findings,
+                    &relative,
+                    format!("unexpected runtime suite entrypoint syntax: {trimmed}"),
+                );
+            }
+        }
+        if pending.is_some() {
+            runtime_failure(findings, &relative, "dangling runtime #[path] import");
+        }
+    }
+
+    let mut sources = BTreeSet::new();
+    for entry in fs::read_dir(root.join(RUNTIME_TEST_DIRECTORY))
+        .map_err(|error| format!("failed to inspect {RUNTIME_TEST_DIRECTORY}: {error}"))?
+    {
+        let entry = entry.map_err(|error| format!("failed to inspect runtime test: {error}"))?;
+        let path = entry.path();
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| "non-UTF-8 runtime test name".to_owned())?;
+        if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+            sources.insert(name);
+        } else if path.is_dir() && name != "suites" && name != "surface_context" {
+            runtime_failure(
+                findings,
+                RUNTIME_TEST_DIRECTORY,
+                format!("unexpected runtime test directory: {name}"),
+            );
+        }
+    }
+    audit_runtime_coverage(&sources, &registered, findings);
     Ok(())
 }
 
@@ -319,6 +521,44 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{audit_manifest, check_coverage};
+
+    #[test]
+    fn runtime_registration_guard_rejects_inert_and_duplicate_sources() {
+        let sources = ["focus_visible.rs", "m11_password_field.rs"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        let registered = BTreeMap::from([(
+            "focus_visible.rs".to_owned(),
+            vec![
+                "focus_keyboard_input".to_owned(),
+                "another_suite".to_owned(),
+            ],
+        )]);
+        let mut findings = Vec::new();
+        super::audit_runtime_coverage(&sources, &registered, &mut findings);
+        assert_eq!(findings.len(), 2);
+        assert!(findings.iter().any(|f| f.message.contains("unregistered")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.message.contains("more than once"))
+        );
+
+        let registered = BTreeMap::from([
+            (
+                "focus_visible.rs".to_owned(),
+                vec!["focus_keyboard_input".to_owned()],
+            ),
+            (
+                "m11_password_field.rs".to_owned(),
+                vec!["m10_semantic_integrity".to_owned()],
+            ),
+        ]);
+        findings.clear();
+        super::audit_runtime_coverage(&sources, &registered, &mut findings);
+        assert_eq!(findings, Vec::new());
+    }
 
     #[test]
     fn nested_module_imports_are_counted_without_direct_suite_registration() {
