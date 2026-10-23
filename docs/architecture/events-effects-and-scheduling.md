@@ -62,6 +62,6 @@ Semantic action processing revalidates the exact accepted semantic lifetime at q
 
 ## Boundaries
 
-This architecture does not make RunenUI a native event loop, platform input translator, default executor service, production scrolling implementation, editable-text system, or multi-window host. Those capabilities require their owning later contracts.
+`runenui_runtime` owns logical scrolling and transient editing sessions; application state owns durable text documents and the host executes native clipboard/IME services. The runtime does not own a native event loop, platform input translation, application document storage, a default host executor, or a multi-window host. See [status](../status.md) for remaining production-platform qualification.
 
 Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent M4 observable/proof obligations remain under [conformance](../conformance/README.md).

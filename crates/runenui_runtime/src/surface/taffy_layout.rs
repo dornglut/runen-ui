@@ -43,9 +43,9 @@ use super::resolve::{
 use super::{LayoutOverflow, SurfaceLayoutNode, SurfaceLayoutReport, SurfaceTextMeasurementRecord};
 use crate::{AxisConstraints, AxisLimit, LayoutConstraints};
 
-/// Derive the sole source for shaping a secret editable leaf. A stale/foreign
-/// widget source or M10 preedit fails closed; no literal reaches the M8 request.
-/// Caret/IME integration remains an independently gated part of #319.
+/// Derive the masked shaping source for a secret editable leaf. Reject a
+/// mismatched document snapshot or preedit before shaping; source literals
+/// never enter the renderer-facing text resource.
 fn secret_text_shaping_source<Action>(
     descriptor: &TextLeafMeasure,
     editable: &runenui_core::EditableContribution<Action>,

@@ -132,9 +132,9 @@ pub enum StylePreferenceKind {
 
 /// Mandatory preference policy applied above authored overrides.
 ///
-/// M8A has no animation property family, so reduced motion is currently an
-/// explicit cache/invalidation fact without a style-property override. M9 may
-/// extend this policy without changing preference ownership.
+/// High-contrast properties override authored style values. Reduced motion is
+/// carried as a preference fact and applied by runtime motion planning, not
+/// represented by a competing authored style-property layer.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StylePreferencePolicy {
     high_contrast: StyleProperties,

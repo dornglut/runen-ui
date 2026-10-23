@@ -222,7 +222,7 @@ InputShutdownBatch:
 
 Every returned record/snapshot is immutable with private runtime-authored fields; no host mutation authority is exposed. A direct terminal observed by `input_ownership().status()` is itself sufficient to invalidate outstanding host correlations **without another pump or an individually emitted retirement record**; later `ScopeRetired` is idempotent. Likewise, `RevisionExhausted` MUST NOT become an `Err` that discards previous committed records or irreversible cleanup: report partial successful progress plus terminal scope invalidation, or reject before mutation with exact preflight. Explicit shutdown MUST return a completed retirement observation after its mutation or fail before beginning it.
 
-The later implementation #428 owns **exact compile-time signatures**, required trait derivations and legal method placement in the public crates as a clean cutover. Any public variant, accessor type or semantic departure from this frozen target requires an owner-reviewed ADR revision. Purely mechanical implementation placement that does not change these public contracts belongs in the implementation review and public consumer compile proof.
+Exact compile-time signatures, trait derivations and public method placement are owned by source/Rustdoc and the accepted public-consumer compile proofs. A semantic departure from this frozen design requires an owner-reviewed ADR revision; mechanical implementation placement that preserves the contract remains an implementation decision.
 
 ## Tradeoffs, counterexamples and conformance
 
