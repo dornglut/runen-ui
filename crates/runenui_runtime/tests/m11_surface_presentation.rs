@@ -1086,37 +1086,42 @@ impl UiApp for CaptureProjectionApp {
 
 // Pointer fixtures use current projected hit geometry, not authored guesses
 // about layout or presentation placement.
-fn capture_proof_hit_center(
+// A geometrically positive region can still be obscured by a later presentation
+// band. Choose an actually hittable point from the exact current displayed scene.
+fn capture_proof_hit_point(
     publication: &runenui_runtime::SurfacePublication,
     target: &MountedNodeId,
 ) -> LogicalPoint {
     let scene = publication.hit_test_scene();
-    let region = scene
-        .regions()
-        .iter()
-        .find(|region| {
-            region.target() == target
-                && matches!(region.shape(), SceneShape::Rect(bounds) if bounds.width() > 0.0 && bounds.height() > 0.0)
-        })
-        .unwrap_or_else(|| unreachable!("the intended target must have positive projected hit geometry"));
-    let SceneShape::Rect(bounds) = region.shape() else {
-        unreachable!("the selected hit region is rectangular")
-    };
-    let local = LogicalPoint::new(
-        bounds.width().mul_add(0.5, bounds.x()),
-        bounds.height().mul_add(0.5, bounds.y()),
-    )
-    .unwrap_or_else(|_| unreachable!("the hit-region center is finite"));
-    let point = region
-        .local_to_surface()
-        .transform_point(local)
-        .unwrap_or_else(|| unreachable!("the hit projection is invertible"));
-    assert_eq!(
-        scene.target_at(point),
-        Some(target),
-        "the displayed hit scene must target the exact intended owner"
+    let mut candidates = 0;
+    for region in scene.regions().iter().filter(|region| region.target() == target) {
+        let SceneShape::Rect(bounds) = region.shape() else {
+            continue;
+        };
+        if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
+            continue;
+        }
+        for x in [0.125, 0.375, 0.625, 0.875] {
+            for y in [0.125, 0.375, 0.625, 0.875] {
+                let Ok(local) = LogicalPoint::new(
+                    bounds.width().mul_add(x, bounds.x()),
+                    bounds.height().mul_add(y, bounds.y()),
+                ) else {
+                    continue;
+                };
+                let Some(point) = region.local_to_surface().transform_point(local) else {
+                    continue;
+                };
+                candidates += 1;
+                if scene.target_at(point) == Some(target) {
+                    return point;
+                }
+            }
+        }
+    }
+    panic!(
+        "target has no unobscured projected hit sample among {candidates} tested points"
     );
-    point
 }
 
 #[test]
@@ -1133,7 +1138,7 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
 
     let pointer_id = PointerId::new(341)
         .unwrap_or_else(|| unreachable!("fixture pointer identity is non-zero"));
-    let down_point = capture_proof_hit_center(&publication, &capture);
+    let down_point = capture_proof_hit_point(&publication, &capture);
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -1149,7 +1154,7 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
         .unwrap_or_else(|_| unreachable!("capture-start pointer is admitted"));
     runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
 
-    let move_point = capture_proof_hit_center(&publication, &projected);
+    let move_point = capture_proof_hit_point(&publication, &projected);
     runtime
         .submit_pointer(
             PointerEvent::new(
