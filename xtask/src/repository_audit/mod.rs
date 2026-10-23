@@ -278,6 +278,9 @@ fn build_report(root: &Path) -> Result<AuditReport, String> {
     if root.join("tests/external_widget").is_dir() {
         test_targets::audit(root, &mut report.findings)?;
     }
+    if root.join("crates/runenui_testing").is_dir() {
+        test_targets::audit_testing(root, &mut report.findings)?;
+    }
     audit_documentation_authority(root, &mut report.findings)?;
     context::audit(root, &mut report.findings)?;
     report.metrics.matrix = matrix::audit(root, &mut report.findings)?;
