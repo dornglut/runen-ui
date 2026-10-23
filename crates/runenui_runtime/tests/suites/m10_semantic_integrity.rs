@@ -9,6 +9,11 @@ mod m10e_scroll;
 #[path = "../semantic_m5c_integrity.rs"]
 mod semantic_m5c_integrity;
 
+#[path = "../m11_password_field.rs"]
+mod m11_password_field;
+#[path = "../m11_secret_layout.rs"]
+mod m11_secret_layout;
+
 #[path = "../m11_selectable_text.rs"]
 mod m11_selectable_text;
 
