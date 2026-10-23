@@ -12,6 +12,8 @@ mod focus_groups;
 mod focus_scopes;
 #[path = "../focus_trace.rs"]
 mod focus_trace;
+#[path = "../focus_visible.rs"]
+mod focus_visible;
 #[path = "../input_lifecycle_cleanup.rs"]
 mod input_lifecycle_cleanup;
 #[path = "../input_m4c5.rs"]
