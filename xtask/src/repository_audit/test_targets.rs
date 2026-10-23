@@ -516,7 +516,6 @@ fn audit_runtime(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String>
     Ok(())
 }
 
-
 const TESTING_MANIFEST: &str = "crates/runenui_testing/Cargo.toml";
 const TESTING_TEST_DIRECTORY: &str = "crates/runenui_testing/tests";
 const TESTING_DIRECT: &[&str] = &["counter", "m5e_counter_origins"];
@@ -535,7 +534,10 @@ fn audit_testing_manifest(
     registered: &mut BTreeMap<String, Vec<String>>,
     findings: &mut Vec<Finding>,
 ) {
-    if !contents.lines().any(|line| line.trim() == "autotests = false") {
+    if !contents
+        .lines()
+        .any(|line| line.trim() == "autotests = false")
+    {
         testing_failure(
             findings,
             TESTING_MANIFEST,
@@ -564,8 +566,7 @@ fn audit_testing_manifest(
                     .push(format!("Cargo:{name}"));
             }
             (Some(name), Some(path))
-                if TESTING_SUITES.contains(&name)
-                    && path == format!("tests/suites/{name}.rs") =>
+                if TESTING_SUITES.contains(&name) && path == format!("tests/suites/{name}.rs") =>
             {
                 *targets.entry(name.to_owned()).or_default() += 1;
             }
@@ -605,10 +606,18 @@ fn audit_testing_suite(
         {
             let module = file.strip_suffix(".rs").unwrap_or("");
             if module.is_empty() || module.contains('/') || module.contains('\\') {
-                testing_failure(findings, &relative, format!("invalid testing suite import: {file}"));
+                testing_failure(
+                    findings,
+                    &relative,
+                    format!("invalid testing suite import: {file}"),
+                );
             }
             if pending.replace(module.to_owned()).is_some() {
-                testing_failure(findings, &relative, "two consecutive testing #[path] declarations");
+                testing_failure(
+                    findings,
+                    &relative,
+                    "two consecutive testing #[path] declarations",
+                );
             }
         } else if let Some(module) = trimmed
             .strip_prefix("mod ")
@@ -636,7 +645,11 @@ fn audit_testing_suite(
         }
     }
     if pending.is_some() {
-        testing_failure(findings, &relative, "dangling testing #[path] without module");
+        testing_failure(
+            findings,
+            &relative,
+            "dangling testing #[path] without module",
+        );
     }
     Ok(())
 }
@@ -690,7 +703,9 @@ pub(super) fn audit_testing(root: &Path, findings: &mut Vec<Finding>) -> Result<
             .map_err(|_| "non-UTF-8 testing suite file".to_owned())?;
         if path.is_dir()
             || (path.extension().and_then(|ext| ext.to_str()) == Some("rs")
-                && !TESTING_SUITES.iter().any(|suite| name == format!("{suite}.rs")))
+                && !TESTING_SUITES
+                    .iter()
+                    .any(|suite| name == format!("{suite}.rs")))
         {
             testing_failure(
                 findings,
@@ -938,12 +953,14 @@ path = "tests/suites/harness_boundary.rs"
         );
 
         findings.clear();
-        let with_new = format!(
-            "{harness}#[path = \"../new_negative_proof.rs\"]\nmod new_negative_proof;\n"
-        );
+        let with_new =
+            format!("{harness}#[path = \"../new_negative_proof.rs\"]\nmod new_negative_proof;\n");
         fs::write(suites.join("harness_boundary.rs"), &with_new)?;
         super::audit_testing(&fixture.0, &mut findings)?;
-        assert!(findings.is_empty(), "new proof registered once: {findings:?}");
+        assert!(
+            findings.is_empty(),
+            "new proof registered once: {findings:?}"
+        );
 
         fs::write(
             suites.join("controls_semantics.rs"),
@@ -967,5 +984,4 @@ path = "tests/suites/harness_boundary.rs"
         );
         Ok(())
     }
-
 }
