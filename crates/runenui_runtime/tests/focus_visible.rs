@@ -599,7 +599,7 @@ fn assert_custom_focus_visible_recipe(
     .with_buttons(PointerButtons::new([PointerButton::Primary]))
     .with_changed_button(PointerButton::Primary);
     assert!(app.submit_pointer(down).is_ok());
-    settle(&mut app);
+    settle(app);
     assert_eq!(app.focus().focused_node(), Some(&custom_id));
     assert!(app.focus().focus_visible());
     let downstream = app
