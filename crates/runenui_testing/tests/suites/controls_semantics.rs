@@ -1,3 +1,11 @@
+#[path = "../m11_button_pressed.rs"]
+mod m11_button_pressed;
+#[path = "../m11_disclosure.rs"]
+mod m11_disclosure;
+#[path = "../m11_progress.rs"]
+mod m11_progress;
+#[path = "../m11_toolbar.rs"]
+mod m11_toolbar;
 #[path = "../m11a_controls.rs"]
 mod m11a_controls;
 #[path = "../m11b_checked_semantics.rs"]
