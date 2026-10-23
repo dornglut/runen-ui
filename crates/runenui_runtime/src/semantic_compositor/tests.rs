@@ -2,9 +2,8 @@ use runenui_core::{
     __runtime::RuntimeNamespace, Axis, ElementId, Focusability, LogicalPoint, LogicalRect,
     LogicalSize, LogicalTransform, ScrollControlSnapshot, SemanticAction, SemanticBounds,
     SemanticContribution, SemanticItem, SemanticKey, SemanticNodeContribution, SemanticNumber,
-    SemanticOrientation, SemanticPopupKind, SemanticRange, SemanticReference,
-    SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
-    WidgetActivation,
+    SemanticOrientation, SemanticPopupKind, SemanticRange, SemanticReference, SemanticRelationship,
+    SemanticRelationshipKind, SemanticRole, SemanticState, WidgetActivation,
 };
 
 use super::{
@@ -15,8 +14,7 @@ use super::{
 fn rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
     LogicalRect::new(
         LogicalPoint::new(x, y).unwrap_or_else(|_| unreachable!("test point is finite")),
-        LogicalSize::try_new(width, height)
-            .unwrap_or_else(|_| unreachable!("test size is valid")),
+        LogicalSize::try_new(width, height).unwrap_or_else(|_| unreachable!("test size is valid")),
     )
 }
 
@@ -29,10 +27,8 @@ fn scroll_projection(
 ) -> SemanticScrollControlFacts {
     SemanticScrollControlFacts {
         owner,
-        snapshot: ScrollControlSnapshot::__runtime_from_metrics(
-            axis, offset, viewport, content,
-        )
-        .unwrap_or_else(|| unreachable!("controlled scroll projection is valid")),
+        snapshot: ScrollControlSnapshot::__runtime_from_metrics(axis, offset, viewport, content)
+            .unwrap_or_else(|| unreachable!("controlled scroll projection is valid")),
     }
 }
 
@@ -636,9 +632,7 @@ fn scrollbar_semantics_are_derived_from_exact_bound_snapshot_and_owner() {
         scrollbar_owner_id,
         None,
         Vec::new(),
-        SemanticContribution::single(SemanticNodeContribution::primary(
-            SemanticRole::ScrollBar,
-        )),
+        SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::ScrollBar)),
         vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
         rect(80.0, 0.0, 20.0, 100.0),
     );
@@ -779,9 +773,7 @@ fn non_scrollable_scrollbar_withholds_runtime_mutable_actions() {
         scrollbar_owner_id,
         None,
         Vec::new(),
-        SemanticContribution::single(SemanticNodeContribution::primary(
-            SemanticRole::ScrollBar,
-        )),
+        SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::ScrollBar)),
         vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
         rect(80.0, 0.0, 20.0, 100.0),
     );
@@ -833,9 +825,7 @@ fn scrollbar_without_bound_projection_is_diagnosed_and_withheld() {
         scrollbar_owner_id,
         None,
         Vec::new(),
-        SemanticContribution::single(SemanticNodeContribution::primary(
-            SemanticRole::ScrollBar,
-        )),
+        SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::ScrollBar)),
         vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
         rect(80.0, 0.0, 20.0, 100.0),
     );
@@ -878,9 +868,7 @@ fn scrollbar_missing_bound_primary_is_diagnosed_and_controls_are_withheld() {
         scrollbar_owner_id,
         None,
         Vec::new(),
-        SemanticContribution::single(SemanticNodeContribution::primary(
-            SemanticRole::ScrollBar,
-        )),
+        SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::ScrollBar)),
         vec![(SemanticKey::PRIMARY, scrollbar_id.clone())],
         rect(80.0, 0.0, 20.0, 100.0),
     );
@@ -964,9 +952,7 @@ fn active_descendant_missing_current_target_is_diagnosed_and_withheld() {
             popup,
             Some(popup_element),
             Vec::new(),
-            SemanticContribution::single(SemanticNodeContribution::primary(
-                SemanticRole::ListBox,
-            )),
+            SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::ListBox)),
             vec![(SemanticKey::PRIMARY, listbox_id.clone())],
             rect(0.0, 30.0, 60.0, 60.0),
         ),
@@ -1149,9 +1135,7 @@ fn active_descendant_outside_controlled_listbox_is_diagnosed_and_withheld() {
             popup,
             Some(popup_element),
             Vec::new(),
-            SemanticContribution::single(SemanticNodeContribution::primary(
-                SemanticRole::ListBox,
-            )),
+            SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::ListBox)),
             vec![(SemanticKey::PRIMARY, listbox_id.clone())],
             rect(0.0, 30.0, 60.0, 60.0),
         ),
@@ -1159,9 +1143,7 @@ fn active_descendant_outside_controlled_listbox_is_diagnosed_and_withheld() {
             outside,
             Some(outside_element),
             Vec::new(),
-            SemanticContribution::single(SemanticNodeContribution::primary(
-                SemanticRole::Option,
-            )),
+            SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::Option)),
             vec![(SemanticKey::PRIMARY, outside_option_id.clone())],
             rect(70.0, 30.0, 20.0, 20.0),
         ),
