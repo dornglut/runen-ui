@@ -94,7 +94,7 @@ fn disabled_and_inert_nodes_remain_queryable_but_fail_action_admission() {
         let mut harness = TestHarness::<StateApp>::mount(availability);
         assert!(harness.publish().is_ok());
         let Ok(target) = harness.unique_semantic_target(&query) else {
-            panic!("disabled or inert probe must be uniquely queryable");
+            unreachable!("disabled or inert probe must be uniquely queryable");
         };
         assert!(
             harness
@@ -111,7 +111,7 @@ fn hidden_nodes_are_absent_from_the_committed_semantic_snapshot() {
     assert!(harness.publish().is_ok());
 
     let Ok(matches) = harness.query_semantics(&probe_query()) else {
-        panic!("semantic query must succeed after publication");
+        unreachable!("semantic query must succeed after publication");
     };
     assert!(matches.is_empty());
 }
@@ -121,7 +121,7 @@ fn enabled_action_is_accepted_but_snapshot_scope_cannot_cross_runtimes() {
     let mut first = TestHarness::<StateApp>::mount(Availability::Enabled);
     assert!(first.publish().is_ok());
     let Ok(target) = first.unique_semantic_target(&probe_query()) else {
-        panic!("enabled probe must be uniquely queryable");
+        unreachable!("enabled probe must be uniquely queryable");
     };
     assert!(
         first
