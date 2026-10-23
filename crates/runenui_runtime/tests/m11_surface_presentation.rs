@@ -828,9 +828,9 @@ impl UiApp for FocusProjectionApp {
             .id("focus-projected")
             .with_layout(fixed(20, 20))
             .surface_presentation(
-                SurfacePresentation::new(
-                    SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-                )
+                SurfacePresentation::new(SurfacePresentationPlacement::new(
+                    SurfacePresentationSide::Center,
+                ))
                 .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                     LogicalPoint::new(70.0, 10.0)
                         .unwrap_or_else(|_| unreachable!("fixture point is finite")),
@@ -855,7 +855,10 @@ fn directional_focus_uses_projected_presentation_geometry() {
     let projected_snapshot = node(&publication, "focus-projected")
         .surface_presentation()
         .unwrap_or_else(|| unreachable!("projected focus target has placement facts"));
-    assert!(projected_snapshot.visible_bounds().x() > node(&publication, "focus-start").bounds().max_x());
+    assert!(
+        projected_snapshot.visible_bounds().x()
+            > node(&publication, "focus-start").bounds().max_x()
+    );
 
     runtime
         .submit_command(
@@ -864,7 +867,11 @@ fn directional_focus_uses_projected_presentation_geometry() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("focus request is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    runtime
+        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(runtime.focus().focused_node(), Some(&start));
 
     runtime
@@ -874,7 +881,11 @@ fn directional_focus_uses_projected_presentation_geometry() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("directional focus command is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    runtime
+        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
     assert_eq!(
         runtime.focus().focused_node(),
         Some(&projected),
@@ -938,9 +949,9 @@ impl UiApp for RouteProjectionApp {
         })
         .id("route-target")
         .surface_presentation(
-            SurfacePresentation::new(
-                SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-            )
+            SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Center,
+            ))
             .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                 LogicalPoint::new(60.0, 20.0)
                     .unwrap_or_else(|_| unreachable!("fixture point is finite")),
@@ -976,7 +987,11 @@ fn projected_target_keeps_ordinary_logical_routed_ancestry() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("route command is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    runtime
+        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
 
     assert_eq!(
         facts.borrow().as_slice(),
@@ -1063,16 +1078,18 @@ impl UiApp for CaptureProjectionApp {
             capture_on_down: true,
             moves: Rc::clone(moves),
         })
-        .id("capture-owner");
+        .id("capture-owner")
+        .with_layout(fixed(20, 20));
         let projected = Element::new(CaptureProjectionProbe {
             capture_on_down: false,
             moves: Rc::clone(moves),
         })
         .id("capture-projected")
+        .with_layout(fixed(20, 20))
         .surface_presentation(
-            SurfacePresentation::new(
-                SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
-            )
+            SurfacePresentation::new(SurfacePresentationPlacement::new(
+                SurfacePresentationSide::Center,
+            ))
             .with_anchor(SurfacePresentationAnchor::SurfacePoint(
                 LogicalPoint::new(60.0, 10.0)
                     .unwrap_or_else(|_| unreachable!("fixture point is finite")),
@@ -1082,6 +1099,54 @@ impl UiApp for CaptureProjectionApp {
     }
 
     fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+// Pointer fixtures use current projected hit geometry, not authored guesses
+// about layout or presentation placement.
+// A geometrically positive region can still be obscured by a later presentation
+// band. Choose an actually hittable point from the exact current displayed scene.
+fn capture_proof_hit_point(
+    publication: &runenui_runtime::SurfacePublication,
+    target: &MountedNodeId,
+) -> LogicalPoint {
+    let scene = publication.hit_test_scene();
+    let mut candidates = 0;
+    let mut obscured = 0;
+    let mut uncovered = 0;
+    for region in scene
+        .regions()
+        .iter()
+        .filter(|region| region.target() == target)
+    {
+        let SceneShape::Rect(bounds) = region.shape() else {
+            continue;
+        };
+        if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
+            continue;
+        }
+        for x in [0.125, 0.375, 0.625, 0.875] {
+            for y in [0.125, 0.375, 0.625, 0.875] {
+                let Ok(local) = LogicalPoint::new(
+                    bounds.width().mul_add(x, bounds.x()),
+                    bounds.height().mul_add(y, bounds.y()),
+                ) else {
+                    continue;
+                };
+                let Some(point) = region.local_to_surface().transform_point(local) else {
+                    continue;
+                };
+                candidates += 1;
+                match scene.target_at(point) {
+                    Some(found) if found == target => return point,
+                    Some(_) => obscured += 1,
+                    None => uncovered += 1,
+                }
+            }
+        }
+    }
+    panic!(
+        "target has no unobscured projected hit sample: {candidates} candidates, {obscured} obscured, {uncovered} uncovered; scene: {scene:#?}"
+    );
 }
 
 #[test]
@@ -1096,10 +1161,9 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
     let projected = node(&publication, "capture-projected").id().clone();
     let context = publication.input_context().clone();
 
-    let pointer_id = PointerId::new(341)
-        .unwrap_or_else(|| unreachable!("fixture pointer identity is non-zero"));
-    let down_point = LogicalPoint::new(10.0, 10.0)
-        .unwrap_or_else(|_| unreachable!("fixture down point is finite"));
+    let pointer_id =
+        PointerId::new(341).unwrap_or_else(|| unreachable!("fixture pointer identity is non-zero"));
+    let down_point = capture_proof_hit_point(&publication, &capture);
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -1113,10 +1177,16 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|_| unreachable!("capture-start pointer is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    assert!(
+        runtime
+            .pump(PumpBudget::new(64, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
 
-    let move_point = LogicalPoint::new(60.0, 10.0)
-        .unwrap_or_else(|_| unreachable!("fixture move point is finite"));
+    let move_point = capture_proof_hit_point(&publication, &projected);
     runtime
         .submit_pointer(
             PointerEvent::new(
@@ -1129,7 +1199,14 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
         )
         .unwrap_or_else(|_| unreachable!("captured move is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    assert!(
+        runtime
+            .pump(PumpBudget::new(64, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("pump observation"))
+            .report()
+            .to_owned()
+            .is_quiescent()
+    );
 
     assert_eq!(
         moves.borrow().as_slice(),
