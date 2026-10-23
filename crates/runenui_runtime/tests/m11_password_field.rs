@@ -1,4 +1,4 @@
-//! Standard password TextField exercising the accepted M10/M8 secret authority.
+//! Standard password `TextField` exercising the accepted M10/M8 secret authority.
 
 use runenui_core::Typography;
 use runenui_core::{
@@ -35,7 +35,7 @@ enum Action {
 
 struct PasswordApp;
 
-fn snapshot(revision: u64) -> TextDocumentSnapshot {
+const fn snapshot(revision: u64) -> TextDocumentSnapshot {
     TextDocumentSnapshot::new(
         TextDocumentId::new(940),
         TextDocumentRevision::new(revision),
@@ -190,10 +190,10 @@ fn secret_password_publication_masks_shaped_resources_and_semantic_value() {
     let expected: Vec<u32> = artifact
         .lines()
         .iter()
-        .flat_map(|line| line.runs())
+        .flat_map(runenui_text::TextLine::runs)
         .flat_map(|run| run.shaped_resource().glyphs().iter().map(|g| g.id()))
         .collect();
-    assert!(!expected.is_empty());
+    assert_ne!(expected, [] as [u32; 0]);
     assert_eq!(glyphs(&surface), expected);
     assert!(!format!("{:?}", surface.paint_scene()).contains(SECRET));
 }
@@ -211,9 +211,7 @@ fn password_submit_and_public_rebuild_keep_m10_authority_and_shaping_consistent(
         .unwrap_or_else(|_| unreachable!("focus command is accepted"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     publication(&mut runtime);
 
     runtime
@@ -224,9 +222,7 @@ fn password_submit_and_public_rebuild_keep_m10_authority_and_shaping_consistent(
         .unwrap_or_else(|_| unreachable!("secret field accepts insertion"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert_eq!(runtime.state().text, format!("{SECRET}!"));
     let after_edit = publication(&mut runtime);
     assert_eq!(
@@ -242,9 +238,7 @@ fn password_submit_and_public_rebuild_keep_m10_authority_and_shaping_consistent(
         .unwrap_or_else(|_| unreachable!("rebuild is admitted"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let public = publication(&mut runtime);
     let editable = public.semantic_publication().snapshot().nodes()[0]
         .editable()
@@ -258,9 +252,7 @@ fn password_submit_and_public_rebuild_keep_m10_authority_and_shaping_consistent(
         .unwrap_or_else(|_| unreachable!("secret reclassification is admitted"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let secret_again = publication(&mut runtime);
     let editable = secret_again.semantic_publication().snapshot().nodes()[0]
         .editable()
@@ -284,9 +276,7 @@ fn password_clipboard_copy_cut_suppress_disclosure_and_paste_uses_m10_service() 
         .unwrap_or_else(|_| unreachable!("focus is admitted"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     publication(&mut runtime);
 
     for command in [
@@ -299,9 +289,7 @@ fn password_clipboard_copy_cut_suppress_disclosure_and_paste_uses_m10_service() 
             .unwrap_or_else(|_| unreachable!("clipboard command is routed"));
         runtime
             .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
     }
     assert_eq!(runtime.state().text, SECRET);
     assert!(runtime.pending_framework_services().iter().all(|service| {
@@ -316,9 +304,7 @@ fn password_clipboard_copy_cut_suppress_disclosure_and_paste_uses_m10_service() 
         .unwrap_or_else(|_| unreachable!("paste command is routed"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let service = runtime
         .pending_framework_services()
         .into_iter()
@@ -340,9 +326,7 @@ fn password_clipboard_copy_cut_suppress_disclosure_and_paste_uses_m10_service() 
         .unwrap_or_else(|_| unreachable!("classified response is admitted"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert_eq!(runtime.state().text, "new-é🔒");
     let surface = publication(&mut runtime);
     assert_eq!(
@@ -371,9 +355,7 @@ fn secret_composition_masks_preedit_before_shaping_and_keeps_candidate_geometry(
         .unwrap_or_else(|_| unreachable!("password is focusable"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     publication(&mut runtime);
     let composition = runtime
         .start_composition(None)
@@ -381,9 +363,7 @@ fn secret_composition_masks_preedit_before_shaping_and_keeps_candidate_geometry(
 
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     runtime
         .submit_composition_update(
             composition.generation().clone(),
@@ -393,15 +373,11 @@ fn secret_composition_masks_preedit_before_shaping_and_keeps_candidate_geometry(
         .unwrap_or_else(|_| unreachable!("password preedit is admitted"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let during = publication(&mut runtime);
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert_eq!(
         during.semantic_publication().snapshot().nodes()[0]
             .editable()
@@ -427,12 +403,10 @@ fn secret_composition_masks_preedit_before_shaping_and_keeps_candidate_geometry(
         .unwrap_or_else(|_| unreachable!("password composition is cancelable"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let after = publication(&mut runtime);
     assert_eq!(runtime.state().text, SECRET);
-    assert!(!glyphs(&after).is_empty());
+    assert_ne!(glyphs(&after), [] as [u32; 0]);
     assert_eq!(
         after.semantic_publication().snapshot().nodes()[0]
             .editable()
@@ -455,18 +429,14 @@ fn sensitive_paste_cannot_cross_secret_to_public_reclassification_at_completion(
         .unwrap_or_else(|_| unreachable!("password focus is admitted"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     publication(&mut runtime);
     runtime
         .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
         .unwrap_or_else(|_| unreachable!("typed clipboard request is admitted"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let token = runtime
         .pending_framework_services()
         .into_iter()
@@ -484,9 +454,7 @@ fn sensitive_paste_cannot_cross_secret_to_public_reclassification_at_completion(
         .unwrap_or_else(|_| unreachable!("application may reclassify"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let public = publication(&mut runtime);
     assert_eq!(
         public.semantic_publication().snapshot().nodes()[0]
@@ -503,9 +471,7 @@ fn sensitive_paste_cannot_cross_secret_to_public_reclassification_at_completion(
     if runtime.complete_framework_service(&token, response).is_ok() {
         runtime
             .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned();
+            .unwrap_or_else(|_| unreachable!("pump observation"));
     }
     assert_eq!(runtime.state().text, SECRET);
     assert!(!runtime.trace().export_jsonl().contains(PAYLOAD));
@@ -534,9 +500,7 @@ fn password_reclassification_while_composing_restores_a_masked_publication() {
         .unwrap_or_else(|_| unreachable!("password focus is admitted"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     publication(&mut runtime);
     let started = runtime
         .start_composition(None)
@@ -544,17 +508,13 @@ fn password_reclassification_while_composing_restores_a_masked_publication() {
 
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     runtime
         .submit_composition_update(started.generation().clone(), PREEDIT.to_owned(), None)
         .unwrap_or_else(|_| unreachable!("preedit is admitted"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let initially_masked = publication(&mut runtime);
     assert!(!format!("{:?}", initially_masked.paint_scene()).contains(PREEDIT));
 
@@ -563,9 +523,7 @@ fn password_reclassification_while_composing_restores_a_masked_publication() {
         .unwrap_or_else(|_| unreachable!("app controls classification"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let public = publication(&mut runtime);
     assert_eq!(
         public.semantic_publication().snapshot().nodes()[0]
@@ -580,9 +538,7 @@ fn password_reclassification_while_composing_restores_a_masked_publication() {
         .unwrap_or_else(|_| unreachable!("app restores secret classification"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let masked_again = publication(&mut runtime);
     assert_eq!(glyphs(&initially_masked), glyphs(&masked_again));
     for literal in [SECRET, PREEDIT] {
@@ -593,9 +549,7 @@ fn password_reclassification_while_composing_restores_a_masked_publication() {
         .unwrap_or_else(|_| unreachable!("active composition is canceled"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let after = publication(&mut runtime);
     assert_eq!(runtime.state().text, SECRET);
     assert_eq!(
@@ -619,9 +573,7 @@ fn queued_edit_and_sensitivity_reclassification_follow_one_application_fifo() {
         .unwrap_or_else(|_| unreachable!("password is focusable"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     publication(&mut runtime);
 
     runtime
@@ -635,9 +587,7 @@ fn queued_edit_and_sensitivity_reclassification_follow_one_application_fifo() {
         .unwrap_or_else(|_| unreachable!("app reclassification is queued"));
     runtime
         .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let public = publication(&mut runtime);
     assert_eq!(runtime.state().text, format!("{SECRET}é"));
     assert_eq!(
@@ -658,9 +608,7 @@ fn queued_edit_and_sensitivity_reclassification_follow_one_application_fifo() {
         .unwrap_or_else(|_| unreachable!("pending input uses the M10 session"));
     runtime
         .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     let secret_again = publication(&mut runtime);
     assert_eq!(runtime.state().text, format!("{SECRET}é漢"));
     assert_eq!(

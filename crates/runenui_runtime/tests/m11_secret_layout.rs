@@ -14,7 +14,7 @@ use runenui_text::{
 
 const FONT: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/Cantarell-Regular.ttf");
 
-fn snapshot() -> TextDocumentSnapshot {
+const fn snapshot() -> TextDocumentSnapshot {
     TextDocumentSnapshot::new(TextDocumentId::new(721), TextDocumentRevision::new(1))
 }
 
@@ -35,7 +35,7 @@ impl Widget<()> for EditableSecretLeaf {
 
     fn create_state(&self) -> Self::State {}
 
-    fn editable(&self, _: &Self::State) -> Option<EditableContribution<()>> {
+    fn editable(&self, (): &Self::State) -> Option<EditableContribution<()>> {
         let cursor = TextPosition::new(
             snapshot(),
             self.source,
@@ -54,7 +54,7 @@ impl Widget<()> for EditableSecretLeaf {
         .ok()
     }
 
-    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+    fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         // Deliberately supply the literal source to prove the runtime lowers
         // it to a masked M8 request rather than merely masking paint.
         WidgetMeasure::Text(TextLeafMeasure::new(self.measure))
@@ -76,7 +76,7 @@ impl UiApp for SecretApp {
         .id("secret.editable")
     }
 
-    fn update(_: &mut Self::State, (): Self::Action) {}
+    fn update(_: &mut Self::State, (): Self::Action) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {}
 }
 
 fn published(case: Case) -> runenui_runtime::SurfacePublication {
@@ -151,7 +151,7 @@ fn secret_editable_leaf_shaped_resources_match_bullets_not_original_source() {
     let expected_glyphs: Vec<u32> = expected
         .lines()
         .iter()
-        .flat_map(|line| line.runs())
+        .flat_map(runenui_text::TextLine::runs)
         .flat_map(|run| {
             run.shaped_resource()
                 .glyphs()
@@ -174,7 +174,7 @@ fn foreign_secret_descriptor_cannot_shape_literal_widget_content() {
         secret: "owner-password",
         displayed: "unauthorized-plaintext",
     });
-    assert!(glyph_ids(&surface).is_empty());
+    assert_eq!(glyph_ids(&surface), [] as [u32; 0]);
     let diagnostics = format!("{:?}", surface.layout_report());
     assert!(!diagnostics.contains("owner-password"));
     assert!(!diagnostics.contains("unauthorized-plaintext"));

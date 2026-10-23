@@ -24,11 +24,11 @@ fn fixed(width: u16, height: u16) -> LayoutStyle {
         .with_height(LayoutDimension::length(LogicalLength::from(height)))
 }
 
-fn tight_context<'a>(
-    environment: &'a StyleEnvironment,
+fn tight_context(
+    environment: &StyleEnvironment,
     width: u16,
     height: u16,
-) -> SurfaceBuildContext<'a> {
+) -> SurfaceBuildContext<'_> {
     SurfaceBuildContext::new(
         environment,
         LayoutConstraints::tight(LogicalSize::new(
@@ -731,9 +731,7 @@ fn owner_anchor_follows_accepted_scroll_without_inflating_scroll_extent() {
         .unwrap_or_else(|_| unreachable!("wheel is admitted"));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
 
     let scrolled = runtime
         .publish_surface(&context)
@@ -899,9 +897,7 @@ fn directional_focus_uses_projected_presentation_geometry() {
         .unwrap_or_else(|_| unreachable!("focus request is admitted"));
     runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert_eq!(runtime.focus().focused_node(), Some(&start));
 
     runtime
@@ -913,9 +909,7 @@ fn directional_focus_uses_projected_presentation_geometry() {
         .unwrap_or_else(|_| unreachable!("directional focus command is admitted"));
     runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
     assert_eq!(
         runtime.focus().focused_node(),
         Some(&projected),
@@ -1019,9 +1013,7 @@ fn projected_target_keeps_ordinary_logical_routed_ancestry() {
         .unwrap_or_else(|_| unreachable!("route command is admitted"));
     runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
 
     assert_eq!(
         facts.borrow().as_slice(),
@@ -1174,7 +1166,7 @@ fn capture_proof_hit_point(
             }
         }
     }
-    panic!(
+    unreachable!(
         "target has no unobscured projected hit sample: {candidates} candidates, {obscured} obscured, {uncovered} uncovered; scene: {scene:#?}"
     );
 }
