@@ -119,7 +119,10 @@ fn pointer_focus<Application: UiApp>(runtime: &mut AppRuntime<Application>, auth
     let region = scene
         .regions()
         .iter()
-        .find(|region| region.target() == &target && matches!(region.shape(), runenui_core::SceneShape::Rect(_)))
+        .find(|region| {
+            region.target() == &target
+                && matches!(region.shape(), runenui_core::SceneShape::Rect(bounds) if bounds.width() > 0.0 && bounds.height() > 0.0)
+        })
         .unwrap_or_else(|| unreachable!("authored target has a current projected hit region"));
     let runenui_core::SceneShape::Rect(bounds) = region.shape() else {
         unreachable!("chosen hit region must be rectangular")
