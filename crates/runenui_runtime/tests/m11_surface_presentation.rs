@@ -1063,12 +1063,14 @@ impl UiApp for CaptureProjectionApp {
             capture_on_down: true,
             moves: Rc::clone(moves),
         })
-        .id("capture-owner");
+        .id("capture-owner")
+        .with_layout(fixed(20, 20));
         let projected = Element::new(CaptureProjectionProbe {
             capture_on_down: false,
             moves: Rc::clone(moves),
         })
         .id("capture-projected")
+        .with_layout(fixed(20, 20))
         .surface_presentation(
             SurfacePresentation::new(
                 SurfacePresentationPlacement::new(SurfacePresentationSide::Center),
@@ -1094,6 +1096,8 @@ fn capture_proof_hit_point(
 ) -> LogicalPoint {
     let scene = publication.hit_test_scene();
     let mut candidates = 0;
+    let mut obscured = 0;
+    let mut uncovered = 0;
     for region in scene.regions().iter().filter(|region| region.target() == target) {
         let SceneShape::Rect(bounds) = region.shape() else {
             continue;
@@ -1113,14 +1117,16 @@ fn capture_proof_hit_point(
                     continue;
                 };
                 candidates += 1;
-                if scene.target_at(point) == Some(target) {
-                    return point;
+                match scene.target_at(point) {
+                    Some(found) if found == target => return point,
+                    Some(_) => obscured += 1,
+                    None => uncovered += 1,
                 }
             }
         }
     }
     panic!(
-        "target has no unobscured projected hit sample among {candidates} tested points"
+        "target has no unobscured projected hit sample: {candidates} candidates, {obscured} obscured, {uncovered} uncovered; scene: {scene:#?}"
     );
 }
 
@@ -1152,7 +1158,7 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
             .with_changed_button(PointerButton::Primary),
         )
         .unwrap_or_else(|_| unreachable!("capture-start pointer is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    assert!(runtime.pump(PumpBudget::new(64, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned().is_quiescent());
 
     let move_point = capture_proof_hit_point(&publication, &projected);
     runtime
@@ -1167,7 +1173,7 @@ fn projected_physical_target_does_not_steal_existing_pointer_capture() {
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
         )
         .unwrap_or_else(|_| unreachable!("captured move is admitted"));
-    runtime.pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned();
+    assert!(runtime.pump(PumpBudget::new(64, usize::MAX, usize::MAX, usize::MAX)).unwrap_or_else(|_| unreachable!("pump observation")).report().to_owned().is_quiescent());
 
     assert_eq!(
         moves.borrow().as_slice(),
