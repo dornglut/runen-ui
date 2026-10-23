@@ -38,7 +38,7 @@ fn real_counter_uses_public_semantic_query_action_publication_and_replay() {
     assert!(harness.publish().is_ok());
 
     let Ok(snapshot) = harness.semantic_snapshot() else {
-        return;
+        unreachable!("published counter semantic snapshot is required");
     };
     let first_surface = snapshot.surface_id().clone();
     let first_revision = snapshot.revision();
@@ -48,7 +48,7 @@ fn real_counter_uses_public_semantic_query_action_publication_and_replay() {
         .with_name("+")
         .with_supported_action(SemanticAction::Activate);
     let Ok(target) = harness.unique_semantic_target(&increment) else {
-        return;
+        unreachable!("counter increment target must be uniquely queryable");
     };
     assert_eq!(target.surface_id(), &first_surface);
     assert!(
@@ -64,7 +64,7 @@ fn real_counter_uses_public_semantic_query_action_publication_and_replay() {
 
     assert!(harness.publish().is_ok());
     let Some(publication) = harness.publication() else {
-        return;
+        unreachable!("published counter frame must remain available");
     };
     assert!(!publication.frame().nodes().is_empty());
     assert!(!publication.layout_report().nodes().is_empty());
@@ -84,7 +84,7 @@ fn real_counter_uses_public_semantic_query_action_publication_and_replay() {
     let mut foreign = counter_harness();
     assert!(foreign.publish().is_ok());
     let Ok(foreign_snapshot) = foreign.semantic_snapshot() else {
-        return;
+        unreachable!("foreign counter semantic snapshot is required");
     };
     assert!(matches!(
         harness.semantic_update_from(foreign_snapshot.surface_id(), first_revision),
