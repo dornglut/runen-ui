@@ -361,10 +361,12 @@ fn audit_runtime_coverage(
 
 // Both direct Cargo test roots and suite #[path] imports are executable owners.
 // This catches new inert tests whenever runtime keeps autotests = false.
+type RuntimeManifestRegistration = (BTreeSet<String>, BTreeMap<String, Vec<String>>);
+
 fn audit_runtime_manifest(
     root: &Path,
     findings: &mut Vec<Finding>,
-) -> Result<(BTreeSet<String>, BTreeMap<String, Vec<String>>), String> {
+) -> Result<RuntimeManifestRegistration, String> {
     let contents = fs::read_to_string(root.join(RUNTIME_MANIFEST))
         .map_err(|error| format!("failed to read {RUNTIME_MANIFEST}: {error}"))?;
     if !contents
