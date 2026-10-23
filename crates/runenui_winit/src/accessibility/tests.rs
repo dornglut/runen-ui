@@ -1,17 +1,16 @@
 use super::*;
 use runenui_core::{
     __runtime::RuntimeNamespace, EditIntent, EditResolution, EditableContribution,
-    EditingSessionPolicy, Element, LogicalSize, NoHostProtocol, SemanticAction,
-    SemanticActionData, SemanticAutocomplete, SemanticCheckedState, SemanticCollectionPosition,
-    SemanticContribution, SemanticContributionContext, SemanticEditable,
-    SemanticHierarchyLevel, SemanticInvalidState, SemanticItem, SemanticKey,
-    SemanticNodeContribution, SemanticNumber, SemanticOrientation, SemanticPopupKind,
-    SemanticPressedState, SemanticRange, SemanticReference, SemanticRelationship,
-    SemanticRelationshipKind, SemanticRole, SemanticSelectionMode, SemanticState, SemanticText,
-    SemanticValue, StyleEnvironment, TextDocumentId, TextDocumentRevision,
-    TextDocumentSnapshot, TextSelection, TextSensitivity, UiApp, UpdateOutput, View, Widget,
-    WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetInvalidation,
-    WidgetMeasure, WidgetMeasureInput,
+    EditingSessionPolicy, Element, LogicalSize, NoHostProtocol, SemanticAction, SemanticActionData,
+    SemanticAutocomplete, SemanticCheckedState, SemanticCollectionPosition, SemanticContribution,
+    SemanticContributionContext, SemanticEditable, SemanticHierarchyLevel, SemanticInvalidState,
+    SemanticItem, SemanticKey, SemanticNodeContribution, SemanticNumber, SemanticOrientation,
+    SemanticPopupKind, SemanticPressedState, SemanticRange, SemanticReference,
+    SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticSelectionMode,
+    SemanticState, SemanticText, SemanticValue, StyleEnvironment, TextDocumentId,
+    TextDocumentRevision, TextDocumentSnapshot, TextSelection, TextSensitivity, UiApp,
+    UpdateOutput, View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
+    WidgetInvalidation, WidgetMeasure, WidgetMeasureInput,
 };
 use runenui_runtime::{
     AppRuntime, FontFamilyName, GenericFontFamily, PumpBudget, SurfaceBuildContext,
@@ -79,10 +78,8 @@ fn typed_semantics(known_size: u64) -> SemanticContribution {
     let minimum = SemanticNumber::new(0.0).unwrap_or_else(|_| unreachable!("finite minimum"));
     let maximum = SemanticNumber::new(10.0).unwrap_or_else(|_| unreachable!("finite maximum"));
     let current = SemanticNumber::new(5.0).unwrap_or_else(|_| unreachable!("finite current"));
-    let small_step =
-        SemanticNumber::new(1.0).unwrap_or_else(|_| unreachable!("finite small step"));
-    let large_step =
-        SemanticNumber::new(5.0).unwrap_or_else(|_| unreachable!("finite large step"));
+    let small_step = SemanticNumber::new(1.0).unwrap_or_else(|_| unreachable!("finite small step"));
+    let large_step = SemanticNumber::new(5.0).unwrap_or_else(|_| unreachable!("finite large step"));
     let range = SemanticRange::new(Some(minimum), Some(maximum), Some(current))
         .and_then(|range| range.with_small_step(small_step))
         .and_then(|range| range.with_large_step(large_step))
@@ -186,8 +183,8 @@ fn multiple_error_message_semantics() -> SemanticContribution {
     ));
     let listbox =
         SemanticNodeContribution::new(listbox_key, SemanticRole::ListBox).with_name("Errors");
-    let first_error = SemanticNodeContribution::new(first_error_key, SemanticRole::Text)
-        .with_name("First error");
+    let first_error =
+        SemanticNodeContribution::new(first_error_key, SemanticRole::Text).with_name("First error");
     let second_error = SemanticNodeContribution::new(second_error_key, SemanticRole::Text)
         .with_name("Second error");
     SemanticContribution::single(
@@ -213,11 +210,7 @@ impl Widget<FixtureAction> for Fixture {
         context.invalidate(WidgetInvalidation::SEMANTICS);
         WidgetActivationOutput::changed_with_action(FixtureAction)
     }
-    fn semantics(
-        &self,
-        (): &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         if self.phase == 5 {
             return conflicting_collection_semantics();
         }
@@ -277,9 +270,7 @@ impl Widget<FixtureAction> for Fixture {
                         SemanticRole::Checkbox,
                     )
                     .with_name("Check it")
-                    .with_state(
-                        SemanticState::ENABLED.with_checked(SemanticCheckedState::Mixed),
-                    ),
+                    .with_state(SemanticState::ENABLED.with_checked(SemanticCheckedState::Mixed)),
                 )
                 .with_child(
                     SemanticNodeContribution::new(
@@ -357,8 +348,7 @@ fn initial_tree_maps_roles_text_and_custom_action_without_duplicate_label() {
     assert_eq!(update.mode, UpdateMode::InitialFull);
     assert!(update.diagnostics.iter().any(|diagnostic| matches!(
         diagnostic,
-        AdapterDiagnostic::UnsupportedValueType(_)
-            | AdapterDiagnostic::UnsupportedInertState(_)
+        AdapterDiagnostic::UnsupportedValueType(_) | AdapterDiagnostic::UnsupportedInertState(_)
     )));
     let text = update
         .tree_update
@@ -417,10 +407,7 @@ fn initial_tree_maps_roles_text_and_custom_action_without_duplicate_label() {
         update
             .diagnostics
             .iter()
-            .filter(|diagnostic| matches!(
-                diagnostic,
-                AdapterDiagnostic::UnsupportedValueType(_)
-            ))
+            .filter(|diagnostic| matches!(diagnostic, AdapterDiagnostic::UnsupportedValueType(_)))
             .count(),
         2
     );
@@ -769,10 +756,7 @@ fn multiple_error_messages_diagnose_and_withhold_native_error_target() {
         update
             .diagnostics
             .iter()
-            .filter(|diagnostic| matches!(
-                diagnostic,
-                AdapterDiagnostic::MultipleErrorMessages(_)
-            ))
+            .filter(|diagnostic| matches!(diagnostic, AdapterDiagnostic::MultipleErrorMessages(_)))
             .count(),
         1
     );
@@ -1249,11 +1233,7 @@ impl Widget<EditableAction> for EditableFixture {
         WidgetMeasure::Text(runenui_core::TextLeafMeasure::new(self.text.clone()))
     }
 
-    fn semantics(
-        &self,
-        (): &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         let selection = TextSelection::collapsed(
             TextPosition::new(
                 self.snapshot,
@@ -1453,8 +1433,7 @@ fn composite_editable_roles_project_exact_native_roles() {
 
 #[test]
 fn secret_and_read_only_editable_projection_cannot_gain_native_disclosure_or_mutation() {
-    let (secret_publication, secret_adapter) =
-        editable_publication(TextSensitivity::Secret, false);
+    let (secret_publication, secret_adapter) = editable_publication(TextSensitivity::Secret, false);
     let secret = &secret_publication.snapshot().nodes()[0];
     let secret_parent = secret_adapter
         .active_id(secret_publication.snapshot().surface_id(), secret.id())
@@ -1547,15 +1526,10 @@ impl UiApp for StandardPasswordApp {
                 };
                 UpdateOutput::effects(runenui_core::Effects::none())
             }
-            StandardPasswordAction::Edit(intent) => {
-                UpdateOutput::edit(EditResolution::rejected(
-                    intent.request().clone(),
-                    TextDocumentSnapshot::new(
-                        TextDocumentId::new(190),
-                        TextDocumentRevision::new(1),
-                    ),
-                ))
-            }
+            StandardPasswordAction::Edit(intent) => UpdateOutput::edit(EditResolution::rejected(
+                intent.request().clone(),
+                TextDocumentSnapshot::new(TextDocumentId::new(190), TextDocumentRevision::new(1)),
+            )),
         }
     }
 }
