@@ -10,27 +10,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-mod accessibility;
-mod device_identity;
 mod framework_services;
-mod keyboard_input;
-mod mouse_input;
 mod pointer_mode;
 mod proof_trace;
 #[cfg(test)]
 mod text_input;
 mod wheel_input;
 
-use accessibility::{AccessibilityEvent, SemanticAdapter};
-use device_identity::{DeviceIdentityError, DeviceIdentityMap};
 use framework_services::NativeFrameworkServices;
-use keyboard_input::{
-    KeyboardDownDecision, KeyboardIngressDiagnostic, KeyboardInputOutcome, KeyboardInputState,
-    NativeKeyTransition,
-};
-use mouse_input::{
-    MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
-};
 use pointer_mode::{
     Mode as HostPointerMode, Outcome as HostPointerOutcome, Scope as HostPointerScope,
     State as HostPointerState, WinitPointer,
@@ -54,6 +41,15 @@ use runenui_render_wgpu::{
 use runenui_runtime::{
     AppRuntime, PumpBudget, RedrawRequest, SubmitCompositionErrorKind, SubmitKeyboardErrorKind,
     SubmitTextErrorKind, SurfaceBuildContext, SurfacePublication,
+};
+use runenui_winit::accessibility::{AccessibilityEvent, SemanticAdapter};
+use runenui_winit::device_identity::{DeviceIdentityError, DeviceIdentityMap};
+use runenui_winit::keyboard_input::{
+    KeyboardDownDecision, KeyboardIngressDiagnostic, KeyboardInputOutcome, KeyboardInputState,
+    NativeKeyTransition,
+};
+use runenui_winit::mouse_input::{
+    MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
 };
 use runenui_winit::native_mapping::{NativeMapping, NativePointError};
 use runenui_winit::text_input::{
@@ -2879,18 +2875,17 @@ mod tests {
         MAX_EDITOR_HISTORY_ENTRIES, NATIVE_RELEASE_RETRY_INTERVAL, NativeMapping, PendingFrame,
         PointIngressDiagnostic, RAW_MOTION_PROBE_TIMEOUT, ReferenceDocumentPreset,
         STRESS_DOCUMENT_LINES, SemanticAdapter, SemanticCommand, StyleEnvironment,
-        SurfaceBuildContext, earliest_host_deadline,
-        mouse_input::{
-            MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
-            translate_mouse_button,
-        },
-        native_release_retry_due, push_editor_history, raw_motion_probe_expired,
-        translate_modifiers,
+        SurfaceBuildContext, earliest_host_deadline, native_release_retry_due, push_editor_history,
+        raw_motion_probe_expired, translate_modifiers,
     };
     use runenui_core::{
         InputDeviceId, KeyModifiers, KeyboardPhase, LogicalPoint, PointerButton, PointerPhase,
     };
     use runenui_runtime::{FontSourcePolicy, LogicalSize, RuntimeConfig};
+    use runenui_winit::mouse_input::{
+        MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
+        translate_mouse_button,
+    };
     use std::time::Instant;
     use winit::{
         dpi::{PhysicalPosition, PhysicalSize},
