@@ -2,7 +2,7 @@
 
 > **Category: Guide**
 
-These projects inform specific design questions; they are not dependencies, compatibility claims, or evidence that RunenUI currently implements equivalent behavior.
+This list separates adopted implementation dependencies from external design references. Neither a dependency nor a reference implies API or behavior compatibility with RunenUI.
 
 - [Xilem and Masonry](https://docs.rs/xilem/latest/xilem/) inform the separation between declarative authoring and a retained widget runtime.
 - [Iced](https://docs.rs/iced/latest/iced/) and the Elm architecture inform application-owned state, messages/actions, and explicit update.
