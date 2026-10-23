@@ -270,19 +270,48 @@ pub(crate) fn process_application_action<App: UiApp>(
         } else {
             runenui_core::FocusReason::Removal
         };
-        let (trace_target, old_route, surface) =
-            previous_focus_trace.unwrap_or_else(|| (None, Vec::new(), None));
-        runtime.commit_reconciled_focus_cleanup(super::super::focus::ReconciledFocusCleanup {
-            old_route,
-            reason,
-            sequence,
-            causal_parent: transaction_parent,
-            instant: trace_transaction.logical_time(),
-            before,
-            after,
-            trace_target,
-            surface,
-        });
+        let routed = if reason == FocusReason::Disablement {
+            let cause = super::super::focus::InputLifetimeCleanupCause::new(
+                Some(sequence),
+                transaction_parent,
+                trace_transaction.logical_time(),
+                CommandOrigin::programmatic(),
+            );
+            match runtime.commit_live_reconciled_focus_out(cause) {
+                Ok(delivered) => delivered,
+                Err(failure) => {
+                    // Routed capacity exhaustion may already terminalize the runtime
+                    // with its exact reason. The outer application transaction
+                    // must report that same terminal reason to the pump.
+                    let reason = match runtime.status {
+                        RuntimeStatus::Terminal(reason) => reason,
+                        RuntimeStatus::Running | RuntimeStatus::Closed => {
+                            mutation_phase.terminal_reason(RuntimeTerminalReason::Poisoned)
+                        }
+                    };
+                    let cancelled =
+                        runtime.enter_terminal_with_parent(reason, 0, failure.causal_parent());
+                    return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+                }
+            }
+        } else {
+            false
+        };
+        if !routed {
+            let (trace_target, old_route, surface) =
+                previous_focus_trace.unwrap_or_else(|| (None, Vec::new(), None));
+            runtime.commit_reconciled_focus_cleanup(super::super::focus::ReconciledFocusCleanup {
+                old_route,
+                reason,
+                sequence,
+                causal_parent: transaction_parent,
+                instant: trace_transaction.logical_time(),
+                before,
+                after,
+                trace_target,
+                surface,
+            });
+        }
     } else if retained_focus {
         runtime.trace.record_draft(
             trace_transaction

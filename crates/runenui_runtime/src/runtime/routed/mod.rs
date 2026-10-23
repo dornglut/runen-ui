@@ -312,6 +312,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
     }
 
+    pub(in crate::runtime) fn try_begin_reconciled_focus_cleanup_transaction(
+        &mut self,
+        facts: RoutedIngressFacts,
+        cancel_composition: bool,
+    ) -> Result<RoutedTransaction<Action>, RoutedFailureLineage> {
+        let (route, admission) =
+            self.prepare_reconciled_focus_cleanup_route(&facts, cancel_composition)?;
+        let pointer_callback_targets = route.clone();
+        Ok(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
+    }
+
     pub(crate) fn try_begin_focus_input_transaction(
         &mut self,
         facts: RoutedIngressFacts,

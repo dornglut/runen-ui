@@ -4,9 +4,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, CommittedTextEvent, CompositionCancelReason,
-    CompositionEvent, Element, EventContext, EventPhase, InputDeviceId, KeyLocation, KeyModifiers,
-    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
-    PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
+    CompositionEvent, Element, EventContext, EventPhase, Focusability, InputDeviceId, KeyLocation,
+    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
+    NoHostProtocol, PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
     WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetTextInput, container,
 };
 use runenui_runtime::{
@@ -73,6 +73,7 @@ enum InputAction {
     MakeNotActionable,
     LoseTextCapability,
     LoseCompositionCapability,
+    RetireFocusability,
 }
 
 #[derive(Debug)]
@@ -88,9 +89,11 @@ struct InputState {
     actionable: bool,
     text_capable: bool,
     composition_capable: bool,
+    focus_eligible: bool,
     prevent_keyboard: bool,
     prevent_text: bool,
     duplicate_target_id: bool,
+    emit_composition_cancel_action: bool,
     activations: usize,
 }
 
@@ -104,9 +107,11 @@ impl InputState {
             actionable: true,
             text_capable: true,
             composition_capable: true,
+            focus_eligible: true,
             prevent_keyboard: false,
             prevent_text: false,
             duplicate_target_id: false,
+            emit_composition_cancel_action: false,
             activations: 0,
         }
     }
@@ -126,6 +131,7 @@ struct InputWidget {
     composition_capable: bool,
     prevent_keyboard: bool,
     prevent_text: bool,
+    emit_composition_cancel_action: bool,
 }
 
 impl InputWidget {
@@ -179,6 +185,12 @@ impl Widget<InputAction> for InputWidget {
         context: &mut EventContext<'_, InputAction>,
     ) -> WidgetEventOutput {
         self.observe(event, context);
+        if self.emit_composition_cancel_action
+            && context.phase() == EventPhase::Target
+            && matches!(event, UiEvent::Composition(CompositionEvent::Cancel(_)))
+        {
+            context.emit(InputAction::Activated);
+        }
         WidgetEventOutput::none()
     }
 
@@ -302,9 +314,16 @@ impl UiApp for InputApp {
                     composition_capable: state.composition_capable,
                     prevent_keyboard: state.prevent_keyboard,
                     prevent_text: state.prevent_text,
+                    emit_composition_cancel_action: state.emit_composition_cancel_action,
                 })
             };
-            children.push(target.id("target").key("target").focusable(true));
+            children.push(target.id("target").key("target").with_focusability(
+                if state.focus_eligible {
+                    Focusability::Focusable
+                } else {
+                    Focusability::NotFocusable
+                },
+            ));
         }
         children.push(
             Element::new(InputWidget {
@@ -316,6 +335,7 @@ impl UiApp for InputApp {
                 composition_capable: false,
                 prevent_keyboard: false,
                 prevent_text: false,
+                emit_composition_cancel_action: false,
             })
             .id("other")
             .key("other")
@@ -332,6 +352,7 @@ impl UiApp for InputApp {
                     composition_capable: false,
                     prevent_keyboard: false,
                     prevent_text: false,
+                    emit_composition_cancel_action: false,
                 })
                 .id("target")
                 .key("duplicate"),
@@ -347,6 +368,7 @@ impl UiApp for InputApp {
                 composition_capable: false,
                 prevent_keyboard: false,
                 prevent_text: false,
+                emit_composition_cancel_action: false,
             },
             children,
         )
@@ -363,6 +385,7 @@ impl UiApp for InputApp {
             InputAction::MakeNotActionable => state.actionable = false,
             InputAction::LoseTextCapability => state.text_capable = false,
             InputAction::LoseCompositionCapability => state.composition_capable = false,
+            InputAction::RetireFocusability => state.focus_eligible = false,
         }
     }
 }
@@ -2321,4 +2344,577 @@ fn automation_04_disabled_tracing_preserves_resolution_and_command_behavior() {
     settle(&mut runtime);
     assert_eq!(runtime.state().activations, 1);
     assert_eq!(runtime.trace().len(), 0);
+}
+
+#[test]
+fn focusability_only_retirement_preflights_pending_ime_callbacks_with_focusout() {
+    // Three-node root/target/other tree: the old FocusOut and a still-live
+    // composition cancellation each invoke the old C/T/B route. A preflight
+    // that counts only FocusOut undercharges the mandatory callback trace.
+    // Work and trace admission remain independent, so set R=1 and make the
+    // non-wrapping trace authority the controlled tight resource.
+    for active_composition in [false, true] {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut runtime = mounted_with_config(
+            InputState::standard(Rc::clone(&log)),
+            RuntimeConfig::default()
+                .with_limits(RuntimeLimits::default().with_transaction_outputs(1)),
+        );
+        focus(&mut runtime, "target");
+        let old = target(&mut runtime, "target");
+        if active_composition {
+            runtime
+                .start_composition(None)
+                .unwrap_or_else(|_| unreachable!("focused live owner accepts composition"));
+            settle(&mut runtime);
+        }
+        clear_log(&runtime);
+        runtime
+            .submit_action(InputAction::RetireFocusability)
+            .unwrap_or_else(|_| unreachable!("original action admitted"));
+        // Fits the ordinary single FocusOut preflight but not the additional
+        // mandatory composition C/T/B invocations and retirement facts.
+        runtime.__seed_next_trace_sequence_for_test(u64::MAX - 76);
+        let report = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("one source action processed"))
+            .report()
+            .to_owned();
+        assert_eq!(report.processed_envelopes(), 1);
+        assert!(!runtime.state().focus_eligible);
+        if active_composition {
+            assert_eq!(
+                runtime.status(),
+                RuntimeStatus::Terminal(RuntimeTerminalReason::TraceSequenceExhausted),
+                "combined mandatory callback and trace plan must reject before mutation of routed state"
+            );
+            assert_eq!(runtime.focus().focused_node(), Some(&old));
+            let observed = log.borrow().clone();
+            assert!(
+                observed.iter().all(|entry| {
+                    entry.input
+                        == ObservedInput::CompositionCancel(CompositionCancelReason::Shutdown)
+                }),
+                "rejected disablement may only route terminal Shutdown cleanup, not the unadmitted Disablement/FocusOut; observed: {observed:?}"
+            );
+            assert!(runtime.trace().records().any(|record| matches!(
+                record.kind(),
+                TraceRecordKind::RoutedEventAdmissionRejected {
+                    capacity:
+                        runenui_runtime::TraceRoutedAdmissionRejection::TraceSequenceExhausted
+                }
+            )));
+        } else {
+            assert_eq!(runtime.status(), RuntimeStatus::Running);
+            assert_eq!(runtime.focus().focused_node(), None);
+            assert!(
+                runtime.trace().records().any(|record| matches!(
+                    record.kind(),
+                    TraceRecordKind::FocusNotificationResolved {
+                        kind: runenui_runtime::FocusEventKind::Out
+                    }
+                ) && record.context().delivery()
+                    == Some(TraceDeliveryOutcome::Delivered)),
+                "ordinary FocusOut without composition keeps its prior admitted budget"
+            );
+        }
+    }
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "focusability-only revocation must preserve the exact old live route and distinct cleanup reasons"
+)]
+fn focusability_only_retirement_labels_live_ime_and_space_cleanup_as_disablement() {
+    // The widget remains enabled, actionable and composition-capable; only
+    // authored focus eligibility changes on the compatible mounted lifetime.
+    // Capability-loss cleanup therefore does not pre-cancel composition or
+    // revoke Space, and commit_focus_transition must do both correctly.
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = mounted(InputState::standard(Rc::clone(&log)));
+    focus(&mut runtime, "target");
+    let original_target = target(&mut runtime, "target");
+    let device = InputDeviceId::new(31).unwrap_or_else(|| unreachable!("nonzero device"));
+    runtime
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Down,
+            PhysicalKey::Space,
+            LogicalKey::Space,
+            false,
+            Some(device),
+        ))
+        .unwrap_or_else(|_| unreachable!("focused owner accepts Space down"));
+    settle(&mut runtime);
+    runtime
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("focus owner accepts real composition"));
+    settle(&mut runtime);
+    clear_log(&runtime);
+    let trace_start = runtime.trace().len();
+
+    runtime
+        .submit_action(InputAction::RetireFocusability)
+        .unwrap_or_else(|_| unreachable!("compatible authoring update accepted"));
+    let report = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("one source action processed"))
+        .report()
+        .to_owned();
+    assert_eq!(report.processed_envelopes(), 1);
+    assert!(!runtime.state().focus_eligible);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.focus().focused_node(), None);
+    assert_eq!(
+        runtime
+            .index()
+            .node(&original_target)
+            .map(runenui_runtime::MountedNodeRef::id),
+        Some(&original_target),
+        "compatibly updated text owner must keep its mounted lifetime"
+    );
+
+    let observations = log.borrow();
+    assert!(
+        observations.iter().any(|entry| {
+            entry.node == "target"
+                && entry.phase == Some(EventPhase::Target)
+                && entry.input
+                    == ObservedInput::CompositionCancel(CompositionCancelReason::Disablement)
+        }),
+        "loss of focusability must cancel live composition with Disablement, not FocusTransfer"
+    );
+    drop(observations);
+    let records = runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .collect::<Vec<_>>();
+    let cancelled = records.iter().position(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::CompositionCancelled {
+                reason: CompositionCancelReason::Disablement
+            }
+        ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+    });
+    let space = records.iter().position(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::KeyboardSpaceOwnershipCleared {
+                reason: runenui_runtime::TraceSpaceCleanupReason::Disablement
+            }
+        )
+    });
+    let focus_out = records.iter().position(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::FocusNotificationResolved {
+                kind: runenui_runtime::FocusEventKind::Out
+            }
+        ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+    });
+    assert!(
+        matches!((cancelled, space, focus_out), (Some(a), Some(b), Some(c)) if a < b && b < c),
+        "real cancellation, Space retirement and old-route FocusOut must be ordered and named for disablement"
+    );
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one end-to-end reconciliation proof connects composition, Space, FocusOut and stale-release chronology"
+)]
+fn reconciliation_disablement_retires_active_composition_and_space_before_live_focus_out() {
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = mounted(InputState::standard(Rc::clone(&log)));
+    focus(&mut runtime, "target");
+    let original_target = target(&mut runtime, "target");
+    let device = InputDeviceId::new(23).unwrap_or_else(|| unreachable!("nonzero device"));
+    runtime
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Down,
+            PhysicalKey::Space,
+            LogicalKey::Space,
+            false,
+            Some(device),
+        ))
+        .unwrap_or_else(|_| unreachable!("Space down accepted on focused target"));
+    settle(&mut runtime);
+
+    let composition = runtime
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("composition-capable owner accepts start"));
+    settle(&mut runtime);
+    clear_log(&runtime);
+    let trace_start = runtime.trace().len();
+
+    runtime
+        .submit_action(InputAction::Disable)
+        .unwrap_or_else(|_| unreachable!("compatible disablement admitted"));
+    let receipt = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("bounded action pump"));
+    assert_eq!(receipt.report().processed_envelopes(), 1);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.focus().focused_node(), None);
+    assert_eq!(
+        runtime
+            .index()
+            .node(&original_target)
+            .map(runenui_runtime::MountedNodeRef::id),
+        Some(&original_target),
+        "the disabled focus owner retains its exact mounted lifetime"
+    );
+    assert_eq!(runtime.state().activations, 0);
+    let observations = log.borrow();
+    assert!(
+        observations.iter().any(|fact| {
+            fact.node == "target"
+                && fact.phase == Some(EventPhase::Target)
+                && fact.input
+                    == ObservedInput::CompositionCancel(CompositionCancelReason::Disablement)
+                && fact.cancelable == Some(false)
+        }),
+        "composition cancellation reaches the still-live old target"
+    );
+    assert!(
+        !observations
+            .iter()
+            .any(|fact| fact.input == ObservedInput::Unmounted),
+        "compatible disablement must not unmount the old widget"
+    );
+    drop(observations);
+
+    let records = runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .collect::<Vec<_>>();
+    let composition_cancel = records
+        .iter()
+        .position(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::CompositionCancelled {
+                    reason: CompositionCancelReason::Disablement
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        })
+        .unwrap_or_else(|| unreachable!("composition cancellation is delivered"));
+    let space_cleanup = records
+        .iter()
+        .position(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::KeyboardSpaceOwnershipCleared {
+                    reason: runenui_runtime::TraceSpaceCleanupReason::Disablement
+                }
+            )
+        })
+        .unwrap_or_else(|| unreachable!("Space ownership is revoked on disablement"));
+    let focus_out = records
+        .iter()
+        .position(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: runenui_runtime::FocusEventKind::Out
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        })
+        .unwrap_or_else(|| unreachable!("the live old focus route observes FocusOut"));
+    assert!(
+        composition_cancel < space_cleanup && space_cleanup < focus_out,
+        "IME and Space retirement precede the delivered live-route FocusOut"
+    );
+    assert_eq!(
+        records
+            .iter()
+            .filter(|record| {
+                matches!(
+                    record.kind(),
+                    TraceRecordKind::FocusNotificationResolved {
+                        kind: runenui_runtime::FocusEventKind::Out
+                    }
+                )
+            })
+            .count(),
+        1,
+        "the reconciled focus lifetime retires exactly once"
+    );
+    assert!(matches!(
+        runtime.submit_composition_end(composition.generation().clone()),
+        Err(error) if error.kind() == SubmitCompositionErrorKind::StaleGeneration
+    ));
+
+    focus(&mut runtime, "other");
+    runtime
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Up,
+            PhysicalKey::Space,
+            LogicalKey::Space,
+            false,
+            Some(device),
+        ))
+        .unwrap_or_else(|_| unreachable!("stale key release enters the canonical input path"));
+    settle(&mut runtime);
+    assert_eq!(
+        runtime.state().activations,
+        0,
+        "stale Space must not activate another owner"
+    );
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one bounded comparison proves both sides of consecutive routed input cleanup admission"
+)]
+fn composition_output_can_exhaust_the_following_required_focus_out_reservation() {
+    // The two routed notifications each conservatively require two free
+    // queue positions at a one-output allowance. Capacity for the first
+    // notification alone does not guarantee that the entire cleanup chain
+    // completes after irreversible application reconciliation.
+    for emit_cancel_action in [false, true] {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut state = InputState::standard(Rc::clone(&log));
+        state.emit_composition_cancel_action = emit_cancel_action;
+        let mut runtime = mounted_with_config(
+            state,
+            RuntimeConfig::default().with_limits(
+                RuntimeLimits::default()
+                    .with_waiting_envelopes(16)
+                    .with_transaction_outputs(1),
+            ),
+        );
+        focus(&mut runtime, "target");
+        let owner = target(&mut runtime, "target");
+        runtime
+            .start_composition(None)
+            .unwrap_or_else(|_| unreachable!("live owner accepts composition"));
+        settle(&mut runtime);
+        clear_log(&runtime);
+
+        // After the first Disable envelope is popped, 14 remain waiting:
+        // two slots suffice for composition cancellation, but if its routed
+        // callback queues one action only one slot remains for FocusOut.
+        runtime
+            .submit_action(InputAction::Disable)
+            .unwrap_or_else(|_| unreachable!("disabling action is admitted"));
+        for _ in 0..14 {
+            runtime
+                .submit_action(InputAction::Activated)
+                .unwrap_or_else(|_| unreachable!("filler action is admitted"));
+        }
+        // Exclude the external admissions: any later accepted action belongs to
+        // the composition callback and can be proven to precede the failure.
+        let trace_start = runtime.trace().len();
+        let batch = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("bounded pump is observable"));
+        assert_eq!(batch.report().processed_envelopes(), 1);
+        assert!(!runtime.state().enabled);
+        assert_eq!(runtime.state().activations, 0);
+        assert!(log.borrow().iter().any(|fact| {
+            fact.node == "target"
+                && fact.phase == Some(EventPhase::Target)
+                && fact.input
+                    == ObservedInput::CompositionCancel(CompositionCancelReason::Disablement)
+        }));
+        let records = runtime
+            .trace()
+            .records()
+            .skip(trace_start)
+            .collect::<Vec<_>>();
+        let cancelled = records.iter().position(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::CompositionCancelled {
+                    reason: CompositionCancelReason::Disablement
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        });
+        assert!(cancelled.is_some());
+        let focus_out = records.iter().position(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: runenui_runtime::FocusEventKind::Out
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        });
+        let emitted = records
+            .iter()
+            .position(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted));
+        if emit_cancel_action {
+            let emitted_at =
+                emitted.unwrap_or_else(|| unreachable!("composition callback output was queued"));
+            let rejected_at = records
+                .iter()
+                .position(|record| {
+                    matches!(
+                        record.kind(),
+                        TraceRecordKind::RoutedEventAdmissionRejected {
+                            capacity:
+                                runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
+                        }
+                    )
+                })
+                .unwrap_or_else(|| unreachable!("FocusOut reservation was rejected"));
+            assert!(
+                cancelled.is_some_and(|at| at < emitted_at) && emitted_at < rejected_at,
+                "the first callback output commits before the second notification rejects"
+            );
+            assert_eq!(runtime.focus().focused_node(), Some(&owner));
+            assert_eq!(
+                runtime.status(),
+                RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+            );
+            assert_eq!(
+                batch.report().outcome(),
+                runenui_runtime::PumpOutcome::Terminal(RuntimeTerminalReason::Poisoned)
+            );
+            assert!(
+                focus_out.is_none(),
+                "the second callback cannot claim delivery"
+            );
+            assert!(records.iter().any(|record| matches!(
+                record.kind(),
+                TraceRecordKind::RoutedEventAdmissionRejected {
+                    capacity: runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
+                }
+            )));
+        } else {
+            assert!(
+                emitted.is_none(),
+                "an output-free composition callback creates no extra action"
+            );
+            assert_eq!(runtime.status(), RuntimeStatus::Running);
+            assert_eq!(runtime.focus().focused_node(), None);
+            assert!(
+                focus_out.is_some_and(|position| position > cancelled.unwrap_or_default()),
+                "composition cleanup precedes the delivered FocusOut"
+            );
+        }
+    }
+}
+
+#[test]
+fn focusability_only_retirement_keeps_ime_and_focus_out_in_one_output_transaction() {
+    // Unlike capability-loss cleanup, focusability-only retirement preserves
+    // composition eligibility until the live old-route focus transition.
+    // Its cancellation and FocusOut must share one conservative routed
+    // admission and output allowance, including at the exact FIFO boundary.
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut state = InputState::standard(Rc::clone(&log));
+    state.emit_composition_cancel_action = true;
+    let mut runtime = mounted_with_config(
+        state,
+        RuntimeConfig::default().with_limits(
+            RuntimeLimits::default()
+                .with_waiting_envelopes(16)
+                .with_transaction_outputs(1),
+        ),
+    );
+    focus(&mut runtime, "target");
+    let original = target(&mut runtime, "target");
+    runtime
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("live focus owner accepts composition"));
+    settle(&mut runtime);
+    clear_log(&runtime);
+
+    runtime
+        .submit_action(InputAction::RetireFocusability)
+        .unwrap_or_else(|_| unreachable!("retirement action accepted"));
+    for _ in 0..14 {
+        runtime
+            .submit_action(InputAction::Activated)
+            .unwrap_or_else(|_| unreachable!("filler action accepted"));
+    }
+    // After the first pop, q=14 and C=16: exactly 2*R free slots.
+    // The composition callback emits one action; no second reservation may
+    // be demanded for the FocusOut within this SAME routed transaction.
+    let trace_start = runtime.trace().len();
+    let first = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("one action processed"))
+        .report()
+        .to_owned();
+    assert_eq!(first.processed_envelopes(), 1);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert!(!runtime.state().focus_eligible);
+    assert_eq!(runtime.focus().focused_node(), None);
+    assert_eq!(
+        runtime
+            .index()
+            .node(&original)
+            .map(runenui_runtime::MountedNodeRef::id),
+        Some(&original),
+        "the original mounted widget remains live"
+    );
+    assert!(log.borrow().iter().any(|entry| {
+        entry.node == "target"
+            && entry.phase == Some(EventPhase::Target)
+            && entry.input == ObservedInput::CompositionCancel(CompositionCancelReason::Disablement)
+    }));
+
+    assert_shared_focus_retirement_trace(&runtime, trace_start);
+
+    // All accepted older actions precede the callback-produced tail action.
+    let followers = runtime
+        .pump(PumpBudget::new(14, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("older admitted actions process"))
+        .report()
+        .to_owned();
+    assert_eq!(followers.processed_envelopes(), 14);
+    assert_eq!(runtime.state().activations, 14);
+    let callback_tail = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("callback action processes at FIFO tail"))
+        .report()
+        .to_owned();
+    assert_eq!(callback_tail.processed_envelopes(), 1);
+    assert_eq!(runtime.state().activations, 15);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+fn assert_shared_focus_retirement_trace(runtime: &AppRuntime<InputApp>, trace_start: usize) {
+    let records = runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .collect::<Vec<_>>();
+    let cancelled = records.iter().position(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::CompositionCancelled {
+                reason: CompositionCancelReason::Disablement
+            }
+        ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+    });
+    let focus_out = records.iter().position(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::FocusNotificationResolved {
+                kind: runenui_runtime::FocusEventKind::Out
+            }
+        ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+    });
+    let accepted = records
+        .iter()
+        .position(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted));
+    assert!(
+        matches!((cancelled, focus_out, accepted), (Some(a), Some(b), Some(c)) if a < b && b < c),
+        "composition cancellation and FocusOut must finish before their shared callback output is committed"
+    );
+    assert_eq!(
+        records
+            .iter()
+            .filter(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted))
+            .count(),
+        1,
+        "one callback action is committed once"
+    );
 }

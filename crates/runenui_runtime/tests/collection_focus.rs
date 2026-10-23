@@ -3,15 +3,17 @@
 use std::time::Duration;
 
 use runenui_core::{
-    CommandOrigin, Element, FocusGroup, FocusGroupActivationPolicy, FocusGroupBoundaryPolicy,
-    FocusGroupTypeAhead, Focusability, KeyLocation, KeyModifiers, KeyboardCompositionState,
-    KeyboardEvent, KeyboardPhase, LayoutContainer, LayoutDimension, LayoutStyle, LogicalKey,
-    LogicalLength, NoHostProtocol, OverflowPolicy, OverflowStyle, PhysicalKey, SemanticCommand,
-    StyleEnvironment, UiApp, View, Widget, WidgetActivation, button, children, column, row,
+    CommandOrigin, Element, FocusEventKind, FocusGroup, FocusGroupActivationPolicy,
+    FocusGroupBoundaryPolicy, FocusGroupTypeAhead, Focusability, KeyLocation, KeyModifiers,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LayoutContainer, LayoutDimension,
+    LayoutStyle, LogicalKey, LogicalLength, NoHostProtocol, OverflowPolicy, OverflowStyle,
+    PhysicalKey, SemanticCommand, StyleEnvironment, UiApp, View, Widget, WidgetActivation, button,
+    children, column, row,
 };
 use runenui_runtime::{
-    AppRuntime, FocusReason, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig,
-    SurfaceBuildContext, TraceConfig, TraceRecordKind,
+    AppRuntime, FocusReason, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits,
+    RuntimeStatus, RuntimeTerminalReason, SurfaceBuildContext, TraceConfig, TraceDeliveryOutcome,
+    TraceRecordKind,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -559,6 +561,17 @@ fn removing_disabled_discoverability_clears_existing_focus_as_disablement() {
 
     assert_eq!(runtime.focus().focused_node(), None);
     assert_eq!(runtime.focus().reason(), Some(FocusReason::Disablement));
+    assert!(
+        runtime.trace().records().any(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        }),
+        "compatible disablement must route noncancelable FocusOut while the old route remains live"
+    );
     let disabled = id(&mut runtime, "disabled");
     assert!(
         runtime
@@ -566,4 +579,299 @@ fn removing_disabled_discoverability_clears_existing_focus_as_disablement() {
             .node(&disabled)
             .is_some_and(|node| !node.is_focusable())
     );
+}
+
+#[test]
+fn compatible_disablement_queue_saturation_does_not_claim_focus_out_delivery() {
+    const CAPACITY: usize = 16;
+    let limits = RuntimeLimits::default()
+        .with_waiting_envelopes(CAPACITY)
+        .with_transaction_outputs(1);
+    let mut runtime = AppRuntime::<App>::mount_with_config(
+        State { discoverable: true },
+        RuntimeConfig::default().with_limits(limits),
+    );
+    settle(&mut runtime);
+    let owner = id(&mut runtime, "disabled");
+    command(&mut runtime, owner, SemanticCommand::RequestFocus);
+    let trace_before = runtime.trace().len();
+
+    for _ in 0..CAPACITY {
+        runtime
+            .submit_action(Action::UseDiscoverablePolicy(false))
+            .unwrap_or_else(|_| unreachable!("the queue admits exactly its full capacity"));
+    }
+    let _ = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("bounded pump must return the terminal outcome"));
+    assert_eq!(
+        runtime.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned),
+        "missing capacity after application mutation must not leave a half-running runtime"
+    );
+    assert!(
+        !runtime.trace().records().skip(trace_before).any(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        }),
+        "a rejected routed FocusOut cannot be reported as delivered"
+    );
+}
+
+#[test]
+fn output_free_focus_retirement_has_exact_queue_admission_boundary() {
+    const CAPACITY: usize = 16;
+    // 15 queued actions leave 14 waiting after the initiating action is popped:
+    // two conservative slots remain and the zero-output FocusOut is admitted.
+    // 16 queued actions leave 15 waiting and only one free slot: this candidate
+    // terminalizes *after* mutation instead of claiming a delivered callback.
+    for (submitted, admitted) in [(15, true), (16, false)] {
+        let mut runtime = AppRuntime::<App>::mount_with_config(
+            State { discoverable: true },
+            RuntimeConfig::default().with_limits(
+                RuntimeLimits::default()
+                    .with_waiting_envelopes(CAPACITY)
+                    .with_transaction_outputs(1),
+            ),
+        );
+        settle(&mut runtime);
+        let owner = id(&mut runtime, "disabled");
+        command(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+        assert_eq!(runtime.focus().focused_node(), Some(&owner));
+        let trace_start = runtime.trace().len();
+        for index in 0..submitted {
+            runtime
+                .submit_action(Action::UseDiscoverablePolicy(index != 0))
+                .unwrap_or_else(|_| unreachable!("the configured waiting queue admits input"));
+        }
+        let one = runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("one-envelope pump reports completion or terminal"));
+        assert_eq!(one.report().processed_envelopes(), 1);
+        assert_eq!(
+            runtime.focus().focused_node(),
+            (!admitted).then_some(&owner),
+            "admitted retirement clears focus; rejected preflight cannot claim a committed transition"
+        );
+        assert!(
+            runtime.index().node(&owner).is_some(),
+            "the original disabled owner is still mounted"
+        );
+        assert!(
+            !runtime.state().discoverable,
+            "the initiating application action has already mutated state"
+        );
+        let delivered = runtime.trace().records().skip(trace_start).any(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        });
+        assert_eq!(delivered, admitted);
+        if admitted {
+            assert_eq!(runtime.status(), RuntimeStatus::Running);
+        } else {
+            assert_eq!(
+                runtime.status(),
+                RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+            );
+            assert!(
+                runtime.trace().records().skip(trace_start).any(|record| {
+                    matches!(
+                        record.kind(),
+                        TraceRecordKind::RoutedEventAdmissionRejected {
+                            capacity:
+                                runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
+                        }
+                    )
+                }),
+                "checked queue pressure must report the precise rejected authority"
+            );
+        }
+    }
+}
+
+#[test]
+fn default_limits_focusout_requires_the_full_conservative_queue_headroom() {
+    // Production defaults: 4096 waiting envelopes and 1024 possible
+    // routed outputs, conservatively reserving 2048 queue positions.
+    // These are synthetic bursts, not representative throughput measurements.
+    const REQUIRED_FREE_SLOTS: usize = 2 * 1024;
+    const WAITING_CAPACITY: usize = 4096;
+    for (submitted, delivered) in [
+        (WAITING_CAPACITY - REQUIRED_FREE_SLOTS + 1, true),
+        (WAITING_CAPACITY - REQUIRED_FREE_SLOTS + 2, false),
+    ] {
+        let mut runtime = AppRuntime::<App>::mount(State { discoverable: true });
+        settle(&mut runtime);
+        let owner = id(&mut runtime, "disabled");
+        command(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+        let trace_start = runtime.trace().len();
+
+        for index in 0..submitted {
+            runtime
+                .submit_action(Action::UseDiscoverablePolicy(index != 0))
+                .unwrap_or_else(|_| unreachable!("default queue accepts the synthetic burst"));
+        }
+        let batch = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("one-envelope pump remains observable"));
+        assert_eq!(batch.report().processed_envelopes(), 1);
+        assert!(!runtime.state().discoverable);
+        let focused = runtime.focus().focused_node();
+        assert_eq!(focused, (!delivered).then_some(&owner));
+        let delivered_trace = runtime.trace().records().skip(trace_start).any(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out
+                }
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+        });
+        assert_eq!(delivered_trace, delivered);
+        if delivered {
+            assert_eq!(runtime.status(), RuntimeStatus::Running);
+            assert_eq!(batch.report().remaining_queued_envelopes(), submitted - 1);
+        } else {
+            assert_eq!(
+                runtime.status(),
+                RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+            );
+            assert_eq!(
+                batch.report().outcome(),
+                runenui_runtime::PumpOutcome::Terminal(RuntimeTerminalReason::Poisoned)
+            );
+            assert!(
+                runtime
+                    .trace()
+                    .records()
+                    .skip(trace_start)
+                    .any(|record| matches!(
+                        record.kind(),
+                        TraceRecordKind::RoutedEventAdmissionRejected {
+                            capacity:
+                                runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
+                        }
+                    ))
+            );
+        }
+    }
+}
+
+#[test]
+fn queue_pressure_without_focus_retirement_does_not_reserve_optional_focus_out() {
+    let mut runtime = AppRuntime::<App>::mount_with_config(
+        State { discoverable: true },
+        RuntimeConfig::default().with_limits(
+            RuntimeLimits::default()
+                .with_waiting_envelopes(16)
+                .with_transaction_outputs(1),
+        ),
+    );
+    settle(&mut runtime);
+    let owner = id(&mut runtime, "disabled");
+    command(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+    for _ in 0..16 {
+        runtime
+            .submit_action(Action::UseDiscoverablePolicy(true))
+            .unwrap_or_else(|_| unreachable!("all queue positions are admitted"));
+    }
+    let one = runtime
+        .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("the first action is processed"));
+    assert_eq!(one.report().processed_envelopes(), 1);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.focus().focused_node(), Some(&owner));
+}
+
+#[cfg(feature = "internal-test-seams")]
+#[test]
+fn reconciled_focusout_trace_exhaustion_reports_one_terminal_reason() {
+    let mut runtime = AppRuntime::<App>::mount(State { discoverable: true });
+    settle(&mut runtime);
+    let owner = id(&mut runtime, "disabled");
+    command(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+    assert_eq!(runtime.focus().focused_node(), Some(&owner));
+
+    runtime
+        .submit_action(Action::UseDiscoverablePolicy(false))
+        .unwrap_or_else(|_| unreachable!("application action admitted before trace exhaustion"));
+    // Leave enough trace IDs for the base application transaction but not
+    // the maximum routed FocusOut plan after opaque state reconciliation.
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 30);
+    let batch = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("terminal pump must remain observable"));
+    assert_eq!(batch.report().processed_envelopes(), 1);
+    assert!(!runtime.state().discoverable);
+    assert_eq!(
+        runtime.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::TraceSequenceExhausted)
+    );
+    assert_eq!(
+        batch.report().outcome(),
+        runenui_runtime::PumpOutcome::Terminal(RuntimeTerminalReason::TraceSequenceExhausted)
+    );
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::RoutedEventAdmissionRejected {
+            capacity: runenui_runtime::TraceRoutedAdmissionRejection::TraceSequenceExhausted
+        }
+    )));
+    assert!(!runtime.trace().records().any(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::FocusNotificationResolved {
+                kind: FocusEventKind::Out
+            }
+        ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+    }));
+}
+
+#[cfg(feature = "internal-test-seams")]
+#[test]
+fn reconciled_focusout_work_sequence_exhaustion_has_one_terminal_reason() {
+    let mut runtime = AppRuntime::<App>::mount(State { discoverable: true });
+    settle(&mut runtime);
+    let owner = id(&mut runtime, "disabled");
+    command(&mut runtime, owner.clone(), SemanticCommand::RequestFocus);
+
+    runtime
+        .submit_action(Action::UseDiscoverablePolicy(false))
+        .unwrap_or_else(|_| unreachable!("action admitted before sequence limit"));
+    runtime.__seed_next_work_sequence_for_test(u64::MAX);
+    let batch = runtime
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("terminal sequence exhaustion remains observable"));
+    assert_eq!(batch.report().processed_envelopes(), 1);
+    assert!(!runtime.state().discoverable);
+    assert_eq!(runtime.focus().focused_node(), Some(&owner));
+    assert_eq!(
+        runtime.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::WorkSequenceExhausted)
+    );
+    assert_eq!(
+        batch.report().outcome(),
+        runenui_runtime::PumpOutcome::Terminal(RuntimeTerminalReason::WorkSequenceExhausted)
+    );
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::RoutedEventAdmissionRejected {
+            capacity: runenui_runtime::TraceRoutedAdmissionRejection::WorkSequenceExhausted
+        }
+    )));
+    assert!(!runtime.trace().records().any(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::FocusNotificationResolved {
+                kind: FocusEventKind::Out
+            }
+        ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+    }));
 }
