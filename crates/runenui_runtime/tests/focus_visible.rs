@@ -107,27 +107,48 @@ fn focus<Application: UiApp>(runtime: &mut AppRuntime<Application>, node: &Mount
     assert_eq!(runtime.focus().focused_node(), Some(node));
 }
 
-fn pointer_focus<Application: UiApp>(runtime: &mut AppRuntime<Application>, name: &str, pointer: u64) {
+fn pointer_focus<Application: UiApp>(runtime: &mut AppRuntime<Application>, authored_id: &str, pointer: u64) {
     let environment = StyleEnvironment::default();
     let size = LogicalSize::try_new(260.0, 180.0)
         .unwrap_or_else(|_| unreachable!("finite surface"));
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::tight(&environment, size))
-        .unwrap_or_else(|error| panic!("published surface: {error:?}"));
-    let snapshot = publication.semantic_publication().snapshot();
-    let node = snapshot
-        .nodes()
+        .unwrap_or_else(|error| unreachable!("published surface: {error:?}"));
+    let target = mounted_id(runtime, authored_id);
+    let scene = publication.hit_test_scene();
+    let region = scene
+        .regions()
         .iter()
-        .find(|node| node.name() == Some(name))
-        .unwrap_or_else(|| unreachable!("named widget is on surface"));
-    let bounds = node.bounds();
-    let point = LogicalPoint::new(bounds.x() + bounds.width() / 2.0, bounds.y() + bounds.height() / 2.0)
-        .unwrap_or_else(|_| unreachable!("published bounds are finite"));
+        .find(|region| region.target() == &target && matches!(region.shape(), runenui_core::SceneShape::Rect(_)))
+        .unwrap_or_else(|| unreachable!("authored target has a current projected hit region"));
+    let runenui_core::SceneShape::Rect(bounds) = region.shape() else {
+        unreachable!("chosen hit region must be rectangular")
+    };
+    assert!(bounds.width() > 0.0 && bounds.height() > 0.0);
+    let local = LogicalPoint::new(
+        bounds.width().mul_add(0.5, bounds.x()),
+        bounds.height().mul_add(0.5, bounds.y()),
+    )
+    .unwrap_or_else(|_| unreachable!("finite projected region center"));
+    let point = region
+        .local_to_surface()
+        .transform_point(local)
+        .unwrap_or_else(|| unreachable!("non-singular current projection"));
+    assert_eq!(
+        scene.target_at(point),
+        Some(&target),
+        "the current displayed hit scene must target the exact authored fixture"
+    );
     let id = PointerId::new(pointer).unwrap_or_else(|| unreachable!("nonzero id"));
-    let context = publication.input_context().clone();
-    let down = PointerEvent::new(id, PointerDeviceKind::Mouse, PointerPhase::Down, point, context)
-        .with_buttons(PointerButtons::new([PointerButton::Primary]))
-        .with_changed_button(PointerButton::Primary);
+    let down = PointerEvent::new(
+        id,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        point,
+        publication.input_context().clone(),
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Primary]))
+    .with_changed_button(PointerButton::Primary);
     assert!(runtime.submit_pointer(down).is_ok());
     settle(runtime);
 }
@@ -136,13 +157,13 @@ fn pointer_focus<Application: UiApp>(runtime: &mut AppRuntime<Application>, name
 fn pointer_focus_is_hidden_for_button_but_visible_for_custom_text_input() {
     let mut app = mount();
     let ordinary = mounted_id(&mut app, "ordinary");
-    pointer_focus(&mut app, "Ordinary", 1);
+    pointer_focus(&mut app, "ordinary", 1);
     assert_eq!(app.focus().focused_node(), Some(&ordinary));
     assert!(!app.focus().focus_visible());
 
     let mut custom = mount();
     let editable = mounted_id(&mut custom, "editable");
-    pointer_focus(&mut custom, "Editable", 2);
+    pointer_focus(&mut custom, "editable", 2);
     assert_eq!(custom.focus().focused_node(), Some(&editable));
     assert!(custom.focus().focus_visible());
 }
@@ -163,7 +184,7 @@ fn source_aware_transfers_and_stable_owner_promotion_are_distinct() {
     let mut hidden = mount();
     let first = mounted_id(&mut hidden, "ordinary");
     let next = mounted_id(&mut hidden, "other");
-    pointer_focus(&mut hidden, "Ordinary", 3);
+    pointer_focus(&mut hidden, "ordinary", 3);
     assert_eq!(hidden.focus().focused_node(), Some(&first));
     assert!(!hidden.focus().focus_visible());
     focus(&mut hidden, &next, CommandOrigin::programmatic());
@@ -210,7 +231,7 @@ fn nonpointing_focus_sources_and_automation_inheritance_use_canonical_modality()
     // Automation does not invent visible indication when transferring hidden focus.
     let mut app = mount();
     let other = mounted_id(&mut app, "other");
-    pointer_focus(&mut app, "Ordinary", 9);
+    pointer_focus(&mut app, "ordinary", 9);
     assert!(!app.focus().focus_visible());
     focus(&mut app, &other, CommandOrigin::automation());
     assert!(!app.focus().focus_visible());
@@ -250,7 +271,7 @@ fn shutdown_clears_focus_indication_with_real_focus_authority() {
 #[test]
 fn keyboard_traversal_promotes_pointer_focus_and_tracks_canonical_target() {
     let mut app = mount();
-    pointer_focus(&mut app, "Ordinary", 12);
+    pointer_focus(&mut app, "ordinary", 12);
     assert!(!app.focus().focus_visible());
     let event = KeyboardEvent::new(
         KeyboardPhase::Down,
@@ -273,7 +294,7 @@ fn keyboard_traversal_promotes_pointer_focus_and_tracks_canonical_target() {
 fn pointer_activity_does_not_demote_visible_focus_without_owner_transfer() {
     let mut app = mount();
     let ordinary = mounted_id(&mut app, "ordinary");
-    pointer_focus(&mut app, "Ordinary", 13);
+    pointer_focus(&mut app, "ordinary", 13);
     assert!(!app.focus().focus_visible());
     focus(&mut app, &ordinary, CommandOrigin::controller());
     assert!(app.focus().focus_visible());
@@ -372,7 +393,7 @@ fn remembered_restoration_obeys_canonical_source_not_focus_reason() {
     let inner = mounted_id(&mut app, "remember");
     let outer = mounted_id(&mut app, "outside");
     let scope = mounted_id(&mut app, "nested");
-    pointer_focus(&mut app, "Remember", 27);
+    pointer_focus(&mut app, "remember", 27);
     assert_eq!(app.focus().focused_node(), Some(&inner));
     assert!(!app.focus().focus_visible());
 
