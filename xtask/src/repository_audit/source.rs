@@ -342,9 +342,9 @@ fn add_production_diagnostics(metrics: &ModuleMetrics, findings: &mut Vec<Findin
             || metrics.responsibilities.len() >= MULTI_RESPONSIBILITY_COUNT)
     {
         findings.push(Finding::diagnostic(
-            "diagnostic.god_file_candidate",
+            "diagnostic.composite_concentration",
             Some(path),
-            "module crosses the composite concentration threshold; review cohesion before expanding it",
+            "module meets the combined size and public-item/responsibility heuristic; inspect cohesion before restructuring",
         ));
     }
 }
