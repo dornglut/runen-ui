@@ -262,7 +262,7 @@ fn source_aware_transfers_and_stable_owner_promotion_are_distinct() {
     assert!(jsonl.contains("focus_visibility_changed"));
     assert!(jsonl.contains("focus_visibility"));
     let replay = TraceReplay::parse_jsonl(&jsonl)
-        .unwrap_or_else(|error| panic!("typed visibility trace replays: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("typed visibility trace replays: {error:?}"));
     assert!(
         replay
             .records()
@@ -332,9 +332,7 @@ fn shutdown_clears_focus_indication_with_real_focus_authority() {
     focus(&mut app, &ordinary, CommandOrigin::controller());
     assert!(app.focus().focus_visible());
     app.shutdown()
-        .unwrap_or_else(|_| unreachable!("shutdown observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("shutdown observation"));
     assert!(app.focus().focused_node().is_none());
     assert!(!app.focus().focus_visible());
 }
@@ -552,8 +550,7 @@ impl UiApp for StyledApp {
     fn update((): &mut Self::State, (): Self::Action) {}
 }
 
-#[test]
-fn stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfer() {
+fn focus_visible_environment() -> StyleEnvironment {
     let mut recipe = StyleRecipe::new(StyleProperties::EMPTY);
     recipe
         .define_interaction(
@@ -572,7 +569,58 @@ fn stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfe
             recipe,
         )
         .unwrap_or_else(|_| unreachable!("recipe defined once"));
-    let environment = StyleEnvironment::new(theme);
+    StyleEnvironment::new(theme)
+}
+
+fn assert_custom_focus_visible_recipe(
+    app: &mut AppRuntime<StyledApp>,
+    context: &SurfaceBuildContext<'_>,
+    after: &runenui_runtime::SurfacePublication,
+) {
+    // The same public recipe also works for a non-built-in Widget with text-input capability.
+    let custom = after
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "styled-custom")
+        })
+        .unwrap_or_else(|| unreachable!("downstream styled widget is published"));
+    let custom_id = custom.id().clone();
+    let point = published_hit_point(after, &custom_id);
+    let down = PointerEvent::new(
+        PointerId::new(78).unwrap_or_else(|| unreachable!("distinct pointer")),
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        point,
+        after.input_context().clone(),
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Primary]))
+    .with_changed_button(PointerButton::Primary);
+    assert!(app.submit_pointer(down).is_ok());
+    settle(&mut app);
+    assert_eq!(app.focus().focused_node(), Some(&custom_id));
+    assert!(app.focus().focus_visible());
+    let downstream = app
+        .publish_surface(context)
+        .unwrap_or_else(|error| unreachable!("downstream styled publication: {error:?}"));
+    assert!(
+        downstream
+            .frame()
+            .nodes()
+            .iter()
+            .find(|node| node.id() == &custom_id)
+            .unwrap_or_else(|| unreachable!("custom widget remains published"))
+            .computed_style()
+            .outline()
+            .is_some()
+    );
+}
+
+#[test]
+fn stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfer() {
+    let environment = focus_visible_environment();
     let size =
         LogicalSize::try_new(240.0, 100.0).unwrap_or_else(|_| unreachable!("finite publication"));
     let context = SurfaceBuildContext::tight(&environment, size);
@@ -581,7 +629,7 @@ fn stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfe
 
     let initial = app
         .publish_surface(&context)
-        .unwrap_or_else(|error| panic!("initial styled publication: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("initial styled publication: {error:?}"));
     let styled = initial
         .frame()
         .nodes()
@@ -606,7 +654,7 @@ fn stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfe
     assert!(!app.focus().focus_visible());
     let pointer_publication = app
         .publish_surface(&context)
-        .unwrap_or_else(|error| panic!("pointer publication: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("pointer publication: {error:?}"));
     assert!(
         pointer_publication
             .frame()
@@ -652,7 +700,7 @@ fn stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfe
     );
     let after = app
         .publish_surface(&context)
-        .unwrap_or_else(|error| panic!("promoted publication: {error:?}"));
+        .unwrap_or_else(|error| unreachable!("promoted publication: {error:?}"));
     assert!(
         after
             .frame()
@@ -671,43 +719,5 @@ fn stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfe
         )
     }));
 
-    // The same public recipe also works for a non-built-in Widget with text-input capability.
-    let custom = after
-        .frame()
-        .nodes()
-        .iter()
-        .find(|node| {
-            node.authored_id()
-                .is_some_and(|id| id.as_str() == "styled-custom")
-        })
-        .unwrap_or_else(|| unreachable!("downstream styled widget is published"));
-    let custom_id = custom.id().clone();
-    let point = published_hit_point(&after, &custom_id);
-    let down = PointerEvent::new(
-        PointerId::new(78).unwrap_or_else(|| unreachable!("distinct pointer")),
-        PointerDeviceKind::Mouse,
-        PointerPhase::Down,
-        point,
-        after.input_context().clone(),
-    )
-    .with_buttons(PointerButtons::new([PointerButton::Primary]))
-    .with_changed_button(PointerButton::Primary);
-    assert!(app.submit_pointer(down).is_ok());
-    settle(&mut app);
-    assert_eq!(app.focus().focused_node(), Some(&custom_id));
-    assert!(app.focus().focus_visible());
-    let downstream = app
-        .publish_surface(&context)
-        .unwrap_or_else(|error| panic!("downstream styled publication: {error:?}"));
-    assert!(
-        downstream
-            .frame()
-            .nodes()
-            .iter()
-            .find(|node| node.id() == &custom_id)
-            .unwrap_or_else(|| unreachable!("custom widget remains published"))
-            .computed_style()
-            .outline()
-            .is_some()
-    );
+    assert_custom_focus_visible_recipe(&mut app, &context, &after);
 }

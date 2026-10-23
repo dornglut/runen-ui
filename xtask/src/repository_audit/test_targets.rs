@@ -361,7 +361,10 @@ fn audit_runtime_coverage(
 
 // Both direct Cargo test roots and suite #[path] imports are executable owners.
 // This catches new inert tests whenever runtime keeps autotests = false.
-fn audit_runtime(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
+fn audit_runtime_manifest(
+    root: &Path,
+    findings: &mut Vec<Finding>,
+) -> Result<(BTreeSet<String>, BTreeMap<String, Vec<String>>), String> {
     let contents = fs::read_to_string(root.join(RUNTIME_MANIFEST))
         .map_err(|error| format!("failed to read {RUNTIME_MANIFEST}: {error}"))?;
     if !contents
@@ -410,6 +413,12 @@ fn audit_runtime(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String>
             ),
         }
     }
+
+    Ok((suites, registered))
+}
+
+fn audit_runtime(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
+    let (suites, mut registered) = audit_runtime_manifest(root, findings)?;
 
     let suite_dir = format!("{RUNTIME_TEST_DIRECTORY}/suites");
     for entry in fs::read_dir(root.join(&suite_dir))
@@ -546,7 +555,7 @@ mod tests {
         ]);
         findings.clear();
         super::audit_runtime_coverage(&sources, &registered, &mut findings);
-        assert!(findings.is_empty());
+        assert_eq!(findings, Vec::new());
     }
 
     #[test]
