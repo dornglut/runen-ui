@@ -853,4 +853,116 @@ mod tests {
                 .any(|item| item.message.contains("harness_trace_identity"))
         );
     }
+
+    #[test]
+    fn testing_registration_guard_fails_closed_on_source_mutations(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use std::{
+            fs,
+            path::PathBuf,
+            sync::atomic::{AtomicUsize, Ordering},
+        };
+
+        struct Fixture(PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+
+        static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);
+        let fixture = Fixture(std::env::temp_dir().join(format!(
+            "runenui-testing-registration-{}-{}",
+            std::process::id(),
+            NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed)
+        )));
+        let testing = fixture.0.join("crates/runenui_testing");
+        let tests = testing.join("tests");
+        let suites = tests.join("suites");
+        fs::create_dir_all(&suites)?;
+        fs::write(
+            testing.join("Cargo.toml"),
+            r#"[package]
+autotests = false
+
+[[test]]
+name = "counter"
+path = "tests/counter.rs"
+
+[[test]]
+name = "m5e_counter_origins"
+path = "tests/m5e_counter_origins.rs"
+
+[[test]]
+name = "controls_semantics"
+path = "tests/suites/controls_semantics.rs"
+
+[[test]]
+name = "motion_time"
+path = "tests/suites/motion_time.rs"
+
+[[test]]
+name = "harness_boundary"
+path = "tests/suites/harness_boundary.rs"
+"#,
+        )?;
+        for source in [
+            "counter.rs",
+            "m5e_counter_origins.rs",
+            "controls.rs",
+            "clock.rs",
+            "harness.rs",
+        ] {
+            fs::write(tests.join(source), "")?;
+        }
+        let controls = "#[path = \"../controls.rs\"]\nmod controls;\n";
+        let clock = "#[path = \"../clock.rs\"]\nmod clock;\n";
+        let harness = "#[path = \"../harness.rs\"]\nmod harness;\n";
+        fs::write(suites.join("controls_semantics.rs"), controls)?;
+        fs::write(suites.join("motion_time.rs"), clock)?;
+        fs::write(suites.join("harness_boundary.rs"), harness)?;
+
+        let mut findings = Vec::new();
+        super::audit_testing(&fixture.0, &mut findings)?;
+        assert!(findings.is_empty(), "valid fixture: {findings:?}");
+
+        fs::write(tests.join("new_negative_proof.rs"), "")?;
+        super::audit_testing(&fixture.0, &mut findings)?;
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.message.contains("unregistered testing test source"))
+        );
+
+        findings.clear();
+        let with_new = format!(
+            "{harness}#[path = \"../new_negative_proof.rs\"]\nmod new_negative_proof;\n"
+        );
+        fs::write(suites.join("harness_boundary.rs"), &with_new)?;
+        super::audit_testing(&fixture.0, &mut findings)?;
+        assert!(findings.is_empty(), "new proof registered once: {findings:?}");
+
+        fs::write(
+            suites.join("controls_semantics.rs"),
+            format!("{controls}#[path = \"../new_negative_proof.rs\"]\nmod new_negative_proof;\n"),
+        )?;
+        super::audit_testing(&fixture.0, &mut findings)?;
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.message.contains("imported more than once"))
+        );
+
+        findings.clear();
+        fs::write(suites.join("controls_semantics.rs"), controls)?;
+        fs::remove_file(tests.join("new_negative_proof.rs"))?;
+        super::audit_testing(&fixture.0, &mut findings)?;
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.message.contains("imports absent test source"))
+        );
+        Ok(())
+    }
+
 }
