@@ -855,6 +855,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the filesystem mutation proof exercises each tested registration transition through the real repository audit"
+    )]
     fn testing_registration_guard_fails_closed_on_source_mutations(
     ) -> Result<(), Box<dyn std::error::Error>> {
         use std::{
