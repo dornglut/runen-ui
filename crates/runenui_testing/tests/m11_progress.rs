@@ -39,7 +39,10 @@ impl UiApp for ProgressApp {
         control
     }
 
-    fn update(model: &mut Self::State, action: Self::Action) {
+    fn update(
+        model: &mut Self::State,
+        action: Self::Action,
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             Action::SetCurrent(current) => {
                 model.current = current;
@@ -77,7 +80,7 @@ fn current(h: &TestHarness<ProgressApp>) -> Option<SemanticNumber> {
     let n = snapshot
         .node(t.node_id())
         .unwrap_or_else(|| unreachable!("node published"));
-    assert!(n.supported_actions().is_empty());
+    assert_eq!(n.supported_actions(), []);
     assert!(!n.state().disabled());
     n.range().and_then(runenui_core::SemanticRange::current)
 }

@@ -99,7 +99,7 @@ impl UiApp for App {
     }
 }
 
-fn state() -> State {
+const fn state() -> State {
     State {
         orientation: Axis::Horizontal,
         boundary: FocusGroupBoundaryPolicy::Stop,
@@ -146,7 +146,7 @@ fn focus_name(h: &TestHarness<App>, label: &str) {
     );
 }
 
-fn key(physical: PhysicalKey, logical: LogicalKey) -> KeyboardEvent {
+const fn key(physical: PhysicalKey, logical: LogicalKey) -> KeyboardEvent {
     KeyboardEvent::new(
         KeyboardPhase::Down,
         physical,
@@ -172,26 +172,26 @@ fn toolbar_is_one_external_stop_with_manual_real_focus_and_stop_boundary() {
         .unwrap_or_else(|| unreachable!("toolbar semantics"));
     assert_eq!(node.name(), Some("Editor tools"));
     assert_eq!(node.orientation(), Some(SemanticOrientation::Horizontal));
-    assert!(node.supported_actions().is_empty());
+    assert_eq!(node.supported_actions(), []);
 
     command(&mut h, "before", SemanticCommand::RequestFocus);
     command(&mut h, "before", SemanticCommand::FocusNext);
     focus_name(&h, "Open");
     command(&mut h, "toolbar.open", SemanticCommand::FocusRight);
     focus_name(&h, "Mode A");
-    assert!(h.state().activations.is_empty());
+    assert_eq!(h.state().activations, [] as [&str; 0]);
     assert!(h.state().radio_selected);
 
     command(&mut h, "toolbar.radio.a", SemanticCommand::FocusRight);
     focus_name(&h, "Save");
     command(&mut h, "toolbar.save", SemanticCommand::FocusRight);
     focus_name(&h, "Save");
-    assert!(h.state().activations.is_empty());
+    assert_eq!(h.state().activations, [] as [&str; 0]);
     command(&mut h, "toolbar.save", SemanticCommand::FocusNext);
     focus_name(&h, "After");
     command(&mut h, "after", SemanticCommand::FocusPrevious);
     focus_name(&h, "Open");
-    assert!(h.state().activations.is_empty());
+    assert_eq!(h.state().activations, [] as [&str; 0]);
 }
 
 #[test]
@@ -251,7 +251,7 @@ fn toolbar_vertical_wrap_home_end_and_disabled_discoverability() {
     settle(&mut h);
     assert!(h.publish().is_ok());
     focus_name(&h, "Open");
-    assert!(h.state().activations.is_empty());
+    assert_eq!(h.state().activations, [] as [&str; 0]);
 }
 
 #[test]
@@ -261,11 +261,11 @@ fn explicit_activation_does_not_transfer_selection_or_activate_on_navigation() {
     command(&mut h, "before", SemanticCommand::RequestFocus);
     command(&mut h, "before", SemanticCommand::FocusNext);
     command(&mut h, "toolbar.open", SemanticCommand::FocusRight);
-    assert_eq!(h.state().radio_selected, true);
-    assert!(h.state().activations.is_empty());
+    assert!(h.state().radio_selected);
+    assert_eq!(h.state().activations, [] as [&str; 0]);
     command(&mut h, "toolbar.radio.a", SemanticCommand::Activate);
-    assert_eq!(h.state().radio_selected, false);
-    assert!(h.state().activations.is_empty());
+    assert!(!h.state().radio_selected);
+    assert_eq!(h.state().activations, [] as [&str; 0]);
     command(&mut h, "toolbar.save", SemanticCommand::Activate);
     assert_eq!(h.state().activations, vec!["Save"]);
 }

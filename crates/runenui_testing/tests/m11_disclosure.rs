@@ -51,7 +51,10 @@ impl UiApp for DisclosureApp {
         column(children)
     }
 
-    fn update(state: &mut Self::State, action: Self::Action) {
+    fn update(
+        state: &mut Self::State,
+        action: Self::Action,
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             Action::Toggle => {
                 state.toggles += 1;
@@ -64,7 +67,7 @@ impl UiApp for DisclosureApp {
     }
 }
 
-fn state(expanded: bool) -> State {
+const fn state(expanded: bool) -> State {
     State {
         expanded,
         enabled: true,
@@ -154,10 +157,10 @@ fn activate_expand_collapse_converge_on_one_application_update_fifo() {
             .submit_semantic_action(&trigger, SemanticAction::Expand)
             .is_ok()
     );
-    assert_eq!(harness.state().expanded, false);
+    assert!(!harness.state().expanded);
     settle(&mut harness);
     assert_eq!(harness.state().toggles, 1);
-    assert_eq!(harness.state().expanded, true);
+    assert!(harness.state().expanded);
     assert!(harness.publish().is_ok());
     assert_disclosure(&harness, true);
 
@@ -176,7 +179,7 @@ fn activate_expand_collapse_converge_on_one_application_update_fifo() {
     );
     settle(&mut harness);
     assert_eq!(harness.state().toggles, 2);
-    assert_eq!(harness.state().expanded, false);
+    assert!(!harness.state().expanded);
     assert!(harness.publish().is_ok());
     assert_disclosure(&harness, false);
 
