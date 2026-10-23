@@ -1,5 +1,4 @@
 //! Mounted production shaping proof for the bounded secret-text layout guard.
-//! Password input activation, caret/IME and service integration remain gated in #319.
 
 use runenui_core::{
     EditableContribution, EditingSessionPolicy, Element, FontFamilyName, GenericFontFamily,
