@@ -48,7 +48,7 @@ For text measurement, finite and semantic minimum/max-content requests are lower
 
 ## Current limitations
 
-The current profile intentionally remains bounded: it does not provide virtualization, native scrolling mechanics, or browser inline-formatting breadth. Those later capabilities build on the accepted M8 logical geometry, overflow/extents, and text artifacts rather than introducing a second layout/text authority. Taffy state is transaction-local and disposable; final logical geometry remains a single runtime-owned publication product.
+The current profile does not provide virtualization, a general native scrolling widget/OS integration layer, or browser inline-formatting breadth. Runtime-owned logical scrolling and standard scroll controls are implemented separately from layout; see [status](../status.md) and the [M10](../conformance/m10-conformance-matrix.md)/[M11](../conformance/m11-conformance-matrix.md) contracts. Taffy state is transaction-local and disposable; final logical geometry remains one runtime-owned publication product.
 
 ## Extraction rule
 

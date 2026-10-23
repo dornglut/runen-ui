@@ -1,10 +1,10 @@
 //! Headless runtime for `RunenUI`.
 //!
 //! This crate owns typed action delivery, update calls, root rebuilding, input
-//! policy, trace recording, renderer-facing surface-frame publication, and
-//! renderer-independent semantic snapshot/update/diagnostic publication plus
-//! exact semantic-node action ingress/resolution. Native accessibility adapters
-//! remain a later host slice.
+//! policy, trace recording, staged renderer-neutral paint/hit publication, and
+//! independent semantic snapshot/update/diagnostic publication plus
+//! exact semantic-node action ingress/resolution. The downstream `runenui_winit`
+//! adapter projects published semantics to native accessibility APIs.
 //!
 //! Runtime-generated identities and products have no public forgery constructors:
 //!

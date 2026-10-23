@@ -686,7 +686,8 @@ fn supported_actions(
                         | SemanticRole::TreeItem
                 ) && authored.state().expanded().is_some()
             }
-            // Clipboard commands remain unadvertised until M10D supplies service authority.
+            // Clipboard commands have routed editing defaults, but this semantic
+            // projection does not advertise them as supported accessibility actions.
             _ => false,
         })
         .cloned()
