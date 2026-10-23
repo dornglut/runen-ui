@@ -95,7 +95,9 @@ fn button_without_authored_pressed_state_remains_momentary() {
     let mut harness = TestHarness::<ButtonApp>::mount(initial_state(None));
     assert!(harness.publish().is_ok());
     assert_pressed(&harness, None);
-    let target = harness.unique_semantic_target(&button_query()).unwrap_or_else(|error| unreachable!("required test result: {error:?}"));
+    let target = harness
+        .unique_semantic_target(&button_query())
+        .unwrap_or_else(|error| unreachable!("required test result: {error:?}"));
     assert!(
         harness
             .submit_semantic_action(&target, SemanticAction::Activate)
@@ -117,9 +119,14 @@ fn button_pressed_semantics_follow_only_application_authored_updates() {
         TestHarness::<ButtonApp>::mount(initial_state(Some(SemanticPressedState::Unpressed)));
     assert!(harness.publish().is_ok());
     assert_pressed(&harness, Some(SemanticPressedState::Unpressed));
-    let original_revision = harness.semantic_snapshot().unwrap_or_else(|error| unreachable!("required test result: {error:?}")).revision();
+    let original_revision = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|error| unreachable!("required test result: {error:?}"))
+        .revision();
 
-    let target = harness.unique_semantic_target(&button_query()).unwrap_or_else(|error| unreachable!("required test result: {error:?}"));
+    let target = harness
+        .unique_semantic_target(&button_query())
+        .unwrap_or_else(|error| unreachable!("required test result: {error:?}"));
     assert!(
         harness
             .submit_semantic_action(&target, SemanticAction::Activate)
@@ -137,7 +144,10 @@ fn button_pressed_semantics_follow_only_application_authored_updates() {
     assert!(harness.publish().is_ok());
     assert_pressed(&harness, Some(SemanticPressedState::Unpressed));
     assert_eq!(
-        harness.semantic_snapshot().unwrap_or_else(|error| unreachable!("required test result: {error:?}")).revision(),
+        harness
+            .semantic_snapshot()
+            .unwrap_or_else(|error| unreachable!("required test result: {error:?}"))
+            .revision(),
         original_revision
     );
 
@@ -150,7 +160,10 @@ fn button_pressed_semantics_follow_only_application_authored_updates() {
         );
         assert!(harness.publish().is_ok());
         assert_pressed(&harness, Some(pressed));
-        let next = harness.semantic_snapshot().unwrap_or_else(|error| unreachable!("required test result: {error:?}")).revision();
+        let next = harness
+            .semantic_snapshot()
+            .unwrap_or_else(|error| unreachable!("required test result: {error:?}"))
+            .revision();
         assert!(next > previous);
         previous = next;
 
@@ -160,7 +173,13 @@ fn button_pressed_semantics_follow_only_application_authored_updates() {
             SettleOutcome::Idle
         );
         assert!(harness.publish().is_ok());
-        assert_eq!(harness.semantic_snapshot().unwrap_or_else(|error| unreachable!("required test result: {error:?}")).revision(), previous);
+        assert_eq!(
+            harness
+                .semantic_snapshot()
+                .unwrap_or_else(|error| unreachable!("required test result: {error:?}"))
+                .revision(),
+            previous
+        );
     }
 
     assert!(harness.submit_action(Action::Author(None)).is_ok());
@@ -244,7 +263,9 @@ impl UiApp for ParityApp {
 fn downstream_custom_widget_uses_identical_public_pressed_semantic_contract() {
     let mut harness = TestHarness::<ParityApp>::mount(SemanticPressedState::Mixed);
     assert!(harness.publish().is_ok());
-    let snapshot = harness.semantic_snapshot().unwrap_or_else(|error| unreachable!("required test result: {error:?}"));
+    let snapshot = harness
+        .semantic_snapshot()
+        .unwrap_or_else(|error| unreachable!("required test result: {error:?}"));
     let roles = snapshot
         .nodes()
         .iter()
