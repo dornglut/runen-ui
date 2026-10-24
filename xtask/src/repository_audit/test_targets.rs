@@ -1,5 +1,5 @@
-//! Fail-closed coverage for the external-widget package's explicit Cargo suites.
-//! Cargo autotests=false makes new test files inert until a suite imports them.
+//! Fail-closed coverage for explicit Cargo test suites and their source files.
+//! With Cargo autotests disabled, sources not registered in a suite are inert.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -516,20 +516,50 @@ fn audit_runtime(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String>
     Ok(())
 }
 
-const TESTING_MANIFEST: &str = "crates/runenui_testing/Cargo.toml";
-const TESTING_TEST_DIRECTORY: &str = "crates/runenui_testing/tests";
-const TESTING_DIRECT: &[&str] = &["counter", "m5e_counter_origins"];
-const TESTING_SUITES: &[&str] = &["controls_semantics", "motion_time", "harness_boundary"];
+// Explicit test roots are an execution contract: with Cargo autotests disabled,
+// every owned source must be reachable from exactly one declared test target.
+struct ExplicitTestPackage {
+    name: &'static str,
+    manifest: &'static str,
+    tests_dir: &'static str,
+    direct: &'static [&'static str],
+    suites: &'static [&'static str],
+    finding_code: &'static str,
+}
 
-fn testing_failure(findings: &mut Vec<Finding>, path: &str, message: impl Into<String>) {
+const TESTING_PACKAGE: ExplicitTestPackage = ExplicitTestPackage {
+    name: "testing",
+    manifest: "crates/runenui_testing/Cargo.toml",
+    tests_dir: "crates/runenui_testing/tests",
+    direct: &["counter", "m5e_counter_origins"],
+    suites: &["controls_semantics", "motion_time", "harness_boundary"],
+    finding_code: "repository.testing_test_registration",
+};
+
+const CORE_PACKAGE: ExplicitTestPackage = ExplicitTestPackage {
+    name: "core",
+    manifest: "crates/runenui_core/Cargo.toml",
+    tests_dir: "crates/runenui_core/tests",
+    direct: &[],
+    suites: &["element_authoring", "input_protocols", "style_resolution"],
+    finding_code: "repository.core_test_registration",
+};
+
+fn explicit_test_failure(
+    package: &ExplicitTestPackage,
+    findings: &mut Vec<Finding>,
+    path: &str,
+    message: impl Into<String>,
+) {
     findings.push(Finding::fatal(
-        "repository.testing_test_registration",
+        package.finding_code,
         Some(path.to_owned()),
         message,
     ));
 }
 
-fn audit_testing_manifest(
+fn audit_explicit_test_manifest(
+    package: &ExplicitTestPackage,
     contents: &str,
     registered: &mut BTreeMap<String, Vec<String>>,
     findings: &mut Vec<Finding>,
@@ -538,10 +568,11 @@ fn audit_testing_manifest(
         .lines()
         .any(|line| line.trim() == "autotests = false")
     {
-        testing_failure(
+        explicit_test_failure(
+            package,
             findings,
-            TESTING_MANIFEST,
-            "expected explicit testing targets with autotests = false",
+            package.manifest,
+            format!("expected explicit {} targets with autotests = false", package.name),
         );
     }
     let mut targets = BTreeMap::<String, usize>::new();
@@ -557,7 +588,7 @@ fn audit_testing_manifest(
         }
         match (name, path) {
             (Some(name), Some(path))
-                if TESTING_DIRECT.contains(&name) && path == format!("tests/{name}.rs") =>
+                if package.direct.contains(&name) && path == format!("tests/{name}.rs") =>
             {
                 *targets.entry(name.to_owned()).or_default() += 1;
                 registered
@@ -566,35 +597,38 @@ fn audit_testing_manifest(
                     .push(format!("Cargo:{name}"));
             }
             (Some(name), Some(path))
-                if TESTING_SUITES.contains(&name) && path == format!("tests/suites/{name}.rs") =>
+                if package.suites.contains(&name) && path == format!("tests/suites/{name}.rs") =>
             {
                 *targets.entry(name.to_owned()).or_default() += 1;
             }
-            _ => testing_failure(
+            _ => explicit_test_failure(
+                package,
                 findings,
-                TESTING_MANIFEST,
-                "unexpected, missing or malformed explicit testing [[test]] target",
+                package.manifest,
+                format!("unexpected, missing or malformed explicit {} [[test]] target", package.name),
             ),
         }
     }
-    for target in TESTING_DIRECT.iter().chain(TESTING_SUITES.iter()) {
+    for target in package.direct.iter().chain(package.suites.iter()) {
         if targets.get(*target) != Some(&1) {
-            testing_failure(
+            explicit_test_failure(
+                package,
                 findings,
-                TESTING_MANIFEST,
-                format!("expected exactly one Cargo target for testing suite {target}"),
+                package.manifest,
+                format!("expected exactly one Cargo target for {} suite {target}", package.name),
             );
         }
     }
 }
 
-fn audit_testing_suite(
+fn audit_explicit_test_suite(
     root: &Path,
+    package: &ExplicitTestPackage,
     suite: &str,
     registered: &mut BTreeMap<String, Vec<String>>,
     findings: &mut Vec<Finding>,
 ) -> Result<(), String> {
-    let relative = format!("{TESTING_TEST_DIRECTORY}/suites/{suite}.rs");
+    let relative = format!("{}/suites/{suite}.rs", package.tests_dir);
     let contents = fs::read_to_string(root.join(&relative))
         .map_err(|error| format!("failed to read {relative}: {error}"))?;
     let mut pending = None;
@@ -606,17 +640,19 @@ fn audit_testing_suite(
         {
             let module = file.strip_suffix(".rs").unwrap_or("");
             if module.is_empty() || module.contains('/') || module.contains('\\') {
-                testing_failure(
+                explicit_test_failure(
+                    package,
                     findings,
                     &relative,
-                    format!("invalid testing suite import: {file}"),
+                    format!("invalid {} suite import: {file}", package.name),
                 );
             }
             if pending.replace(module.to_owned()).is_some() {
-                testing_failure(
+                explicit_test_failure(
+                    package,
                     findings,
                     &relative,
-                    "two consecutive testing #[path] declarations",
+                    format!("two consecutive {} #[path] declarations", package.name),
                 );
             }
         } else if let Some(module) = trimmed
@@ -629,117 +665,136 @@ fn audit_testing_suite(
                     .or_default()
                     .push(suite.to_owned());
             } else {
-                testing_failure(
+                explicit_test_failure(
+                    package,
                     findings,
                     &relative,
-                    format!("testing module {module} lacks a matching preceding #[path]"),
+                    format!("{} module {module} lacks a matching preceding #[path]", package.name),
                 );
             }
             pending = None;
         } else if !trimmed.is_empty() {
-            testing_failure(
+            explicit_test_failure(
+                package,
                 findings,
                 &relative,
-                format!("unexpected testing suite entrypoint syntax: {trimmed}"),
+                format!("unexpected {} suite entrypoint syntax: {trimmed}", package.name),
             );
         }
     }
     if pending.is_some() {
-        testing_failure(
+        explicit_test_failure(
+            package,
             findings,
             &relative,
-            "dangling testing #[path] without module",
+            format!("dangling {} #[path] without module", package.name),
         );
     }
     Ok(())
 }
 
-fn check_testing_coverage(
+fn check_explicit_test_coverage(
+    package: &ExplicitTestPackage,
     sources: &BTreeSet<String>,
     registered: &BTreeMap<String, Vec<String>>,
     findings: &mut Vec<Finding>,
 ) {
     for source in sources {
         match registered.get(source) {
-            None => testing_failure(
+            None => explicit_test_failure(
+                package,
                 findings,
-                TESTING_TEST_DIRECTORY,
-                format!("unregistered testing test source: {source}"),
+                package.tests_dir,
+                format!("unregistered {} test source: {source}", package.name),
             ),
-            Some(owners) if owners.len() != 1 => testing_failure(
+            Some(owners) if owners.len() != 1 => explicit_test_failure(
+                package,
                 findings,
-                TESTING_TEST_DIRECTORY,
-                format!("testing test {source} imported more than once: {owners:?}"),
+                package.tests_dir,
+                format!("{} test {source} imported more than once: {owners:?}", package.name),
             ),
             Some(_) => {}
         }
     }
     for source in registered.keys() {
         if !sources.contains(source) {
-            testing_failure(
+            explicit_test_failure(
+                package,
                 findings,
-                TESTING_TEST_DIRECTORY,
-                format!("testing suite imports absent test source: {source}"),
+                package.tests_dir,
+                format!("{} suite imports absent test source: {source}", package.name),
             );
         }
     }
 }
 
-pub(super) fn audit_testing(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
-    let contents = fs::read_to_string(root.join(TESTING_MANIFEST))
-        .map_err(|error| format!("failed to read {TESTING_MANIFEST}: {error}"))?;
+fn audit_explicit_test_package(
+    root: &Path,
+    package: &ExplicitTestPackage,
+    findings: &mut Vec<Finding>,
+) -> Result<(), String> {
+    let contents = fs::read_to_string(root.join(package.manifest))
+        .map_err(|error| format!("failed to read {}: {error}", package.manifest))?;
     let mut registered = BTreeMap::new();
-    audit_testing_manifest(&contents, &mut registered, findings);
+    audit_explicit_test_manifest(package, &contents, &mut registered, findings);
 
-    let suite_dir = format!("{TESTING_TEST_DIRECTORY}/suites");
+    let suite_dir = format!("{}/suites", package.tests_dir);
     for entry in fs::read_dir(root.join(&suite_dir))
         .map_err(|error| format!("failed to inspect {suite_dir}: {error}"))?
     {
-        let entry = entry.map_err(|error| format!("failed to inspect testing suite: {error}"))?;
+        let entry = entry.map_err(|error| format!("failed to inspect {} suite: {error}", package.name))?;
         let path = entry.path();
         let name = entry
             .file_name()
             .into_string()
-            .map_err(|_| "non-UTF-8 testing suite file".to_owned())?;
+            .map_err(|_| format!("non-UTF-8 {} suite file", package.name))?;
         if path.is_dir()
             || (path.extension().and_then(|ext| ext.to_str()) == Some("rs")
-                && !TESTING_SUITES
-                    .iter()
-                    .any(|suite| name == format!("{suite}.rs")))
+                && !package.suites.iter().any(|suite| name == format!("{suite}.rs")))
         {
-            testing_failure(
+            explicit_test_failure(
+                package,
                 findings,
                 &suite_dir,
-                format!("unregistered testing suite source: {name}"),
+                format!("unregistered {} suite source: {name}", package.name),
             );
         }
     }
-    for suite in TESTING_SUITES {
-        audit_testing_suite(root, suite, &mut registered, findings)?;
+    for suite in package.suites {
+        audit_explicit_test_suite(root, package, suite, &mut registered, findings)?;
     }
 
     let mut sources = BTreeSet::new();
-    for entry in fs::read_dir(root.join(TESTING_TEST_DIRECTORY))
-        .map_err(|error| format!("failed to inspect {TESTING_TEST_DIRECTORY}: {error}"))?
+    for entry in fs::read_dir(root.join(package.tests_dir))
+        .map_err(|error| format!("failed to inspect {}: {error}", package.tests_dir))?
     {
-        let entry = entry.map_err(|error| format!("failed to inspect testing source: {error}"))?;
+        let entry = entry.map_err(|error| format!("failed to inspect {} source: {error}", package.name))?;
         let path = entry.path();
         let name = entry
             .file_name()
             .into_string()
-            .map_err(|_| "non-UTF-8 testing source file".to_owned())?;
+            .map_err(|_| format!("non-UTF-8 {} source file", package.name))?;
         if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
             sources.insert(name);
         } else if path.is_dir() && name != "suites" {
-            testing_failure(
+            explicit_test_failure(
+                package,
                 findings,
-                TESTING_TEST_DIRECTORY,
-                format!("unexpected testing test directory: {name}"),
+                package.tests_dir,
+                format!("unexpected {} test directory: {name}", package.name),
             );
         }
     }
-    check_testing_coverage(&sources, &registered, findings);
+    check_explicit_test_coverage(package, &sources, &registered, findings);
     Ok(())
+}
+
+pub(super) fn audit_testing(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
+    audit_explicit_test_package(root, &TESTING_PACKAGE, findings)
+}
+
+pub(super) fn audit_core(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
+    audit_explicit_test_package(root, &CORE_PACKAGE, findings)
 }
 
 #[cfg(test)]
@@ -1006,6 +1061,104 @@ path = "tests/suites/harness_boundary.rs"
                 .message
                 .contains("unregistered testing suite source")
         }));
+        Ok(())
+    }
+
+
+    #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "filesystem mutations test the exact source registration state transitions"
+    )]
+    fn core_registration_mutations_fail_closed() -> Result<(), Box<dyn std::error::Error>> {
+        use std::{
+            fs,
+            path::PathBuf,
+            sync::atomic::{AtomicUsize, Ordering},
+        };
+
+        struct Fixture(PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+
+        static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);
+        let fixture = Fixture(std::env::temp_dir().join(format!(
+            "runenui-core-registration-{}-{}",
+            std::process::id(),
+            NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed)
+        )));
+        let core = fixture.0.join("crates/runenui_core");
+        let tests = core.join("tests");
+        let suites = tests.join("suites");
+        fs::create_dir_all(&suites)?;
+        let manifest = r#"[package]
+autotests = false
+
+[[test]]
+name = "element_authoring"
+path = "tests/suites/element_authoring.rs"
+
+[[test]]
+name = "input_protocols"
+path = "tests/suites/input_protocols.rs"
+
+[[test]]
+name = "style_resolution"
+path = "tests/suites/style_resolution.rs"
+"#;
+        fs::write(core.join("Cargo.toml"), manifest)?;
+        for (suite, source) in [
+            ("element_authoring", "element.rs"),
+            ("input_protocols", "input.rs"),
+            ("style_resolution", "style.rs"),
+        ] {
+            fs::write(tests.join(source), "")?;
+            fs::write(
+                suites.join(format!("{suite}.rs")),
+                format!("#[path = \"../{source}\"]\nmod {};\n", source.trim_end_matches(".rs")),
+            )?;
+        }
+        let mut findings = Vec::new();
+        super::audit_core(&fixture.0, &mut findings)?;
+        assert!(findings.is_empty(), "valid core fixture: {findings:?}");
+
+        fs::write(tests.join("new_proof.rs"), "")?;
+        super::audit_core(&fixture.0, &mut findings)?;
+        assert!(findings.iter().any(|f| f.message.contains("unregistered core test source")));
+
+        findings.clear();
+        let registered = "#[path = \"../element.rs\"]\nmod element;\n#[path = \"../new_proof.rs\"]\nmod new_proof;\n";
+        fs::write(suites.join("element_authoring.rs"), registered)?;
+        super::audit_core(&fixture.0, &mut findings)?;
+        assert!(findings.is_empty(), "registered once: {findings:?}");
+
+        fs::write(
+            suites.join("input_protocols.rs"),
+            "#[path = \"../input.rs\"]\nmod input;\n#[path = \"../new_proof.rs\"]\nmod new_proof;\n",
+        )?;
+        super::audit_core(&fixture.0, &mut findings)?;
+        assert!(findings.iter().any(|f| f.message.contains("imported more than once")));
+
+        findings.clear();
+        fs::write(suites.join("input_protocols.rs"), "#[path = \"../input.rs\"]\nmod input;\n")?;
+        fs::remove_file(tests.join("new_proof.rs"))?;
+        super::audit_core(&fixture.0, &mut findings)?;
+        assert!(findings.iter().any(|f| f.message.contains("imports absent test source")));
+
+        fs::write(tests.join("new_proof.rs"), "")?;
+        fs::write(core.join("Cargo.toml"), manifest.replace("autotests = false", "autotests = true"))?;
+        findings.clear();
+        super::audit_core(&fixture.0, &mut findings)?;
+        assert!(findings.iter().any(|f| f.message.contains("autotests = false")));
+
+        fs::write(core.join("Cargo.toml"), manifest)?;
+        fs::write(suites.join("unexpected.rs"), "")?;
+        findings.clear();
+        super::audit_core(&fixture.0, &mut findings)?;
+        assert!(findings.iter().any(|f| f.message.contains("unregistered core suite source")));
         Ok(())
     }
 }
