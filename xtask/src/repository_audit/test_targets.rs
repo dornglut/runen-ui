@@ -572,7 +572,10 @@ fn audit_explicit_test_manifest(
             package,
             findings,
             package.manifest,
-            format!("expected explicit {} targets with autotests = false", package.name),
+            format!(
+                "expected explicit {} targets with autotests = false",
+                package.name
+            ),
         );
     }
     let mut targets = BTreeMap::<String, usize>::new();
@@ -605,7 +608,10 @@ fn audit_explicit_test_manifest(
                 package,
                 findings,
                 package.manifest,
-                format!("unexpected, missing or malformed explicit {} [[test]] target", package.name),
+                format!(
+                    "unexpected, missing or malformed explicit {} [[test]] target",
+                    package.name
+                ),
             ),
         }
     }
@@ -615,7 +621,10 @@ fn audit_explicit_test_manifest(
                 package,
                 findings,
                 package.manifest,
-                format!("expected exactly one Cargo target for {} suite {target}", package.name),
+                format!(
+                    "expected exactly one Cargo target for {} suite {target}",
+                    package.name
+                ),
             );
         }
     }
@@ -669,7 +678,10 @@ fn audit_explicit_test_suite(
                     package,
                     findings,
                     &relative,
-                    format!("{} module {module} lacks a matching preceding #[path]", package.name),
+                    format!(
+                        "{} module {module} lacks a matching preceding #[path]",
+                        package.name
+                    ),
                 );
             }
             pending = None;
@@ -678,7 +690,10 @@ fn audit_explicit_test_suite(
                 package,
                 findings,
                 &relative,
-                format!("unexpected {} suite entrypoint syntax: {trimmed}", package.name),
+                format!(
+                    "unexpected {} suite entrypoint syntax: {trimmed}",
+                    package.name
+                ),
             );
         }
     }
