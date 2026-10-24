@@ -3,8 +3,8 @@
 use runenui_core::SurfaceInputContext;
 
 use crate::{
-    HitTestScene, PaintPublication, PaintScene, SemanticDiagnosticReport, SemanticPublication,
-    SurfaceFrame, SurfaceLayoutReport, SurfaceStyleReport,
+    HitTestScene, InputOwnershipTransition, PaintPublication, PaintScene, SemanticDiagnosticReport,
+    SemanticPublication, SurfaceFrame, SurfaceLayoutReport, SurfaceStyleReport,
 };
 
 /// One runtime-issued surface publication aligning distinct immutable sibling products.
@@ -20,6 +20,7 @@ pub struct SurfacePublication {
     products: crate::surface::SurfacePublication,
     semantic_publication: SemanticPublication,
     semantic_diagnostics: SemanticDiagnosticReport,
+    input_ownership_transition: Option<InputOwnershipTransition>,
 }
 
 impl SurfacePublication {
@@ -36,7 +37,28 @@ impl SurfacePublication {
             products,
             semantic_publication,
             semantic_diagnostics,
+            input_ownership_transition: None,
         }
+    }
+
+    pub(crate) fn with_input_ownership_transition(
+        mut self,
+        transition: InputOwnershipTransition,
+    ) -> Self {
+        self.input_ownership_transition = Some(transition);
+        self
+    }
+
+    /// Returns the exact direct ownership transition for this publication when
+    /// its preceding state was materialized and no earlier direct boundary was
+    /// pending. The transition's after-snapshot retains this publication's
+    /// input context. It proves only this invocation; callers must match its
+    /// scope and `before_revision()` to their own current witness. `None` means
+    /// continuity was not proven for this operation; a host must retain its
+    /// conservative revision-gap behavior.
+    #[must_use]
+    pub const fn input_ownership_transition(&self) -> Option<&InputOwnershipTransition> {
+        self.input_ownership_transition.as_ref()
     }
 
     /// Returns the exact immutable renderer publication aligned with this commit.
@@ -103,8 +125,10 @@ impl SurfacePublication {
         self.products.layout_report()
     }
 
-    /// Consumes this complete publication while explicitly retaining only its
-    /// renderer-facing paint and layout/debug products.
+    /// Consumes this publication into its renderer-facing paint and layout/debug
+    /// products, preserving the directly coupled ownership observation as the
+    /// final tuple element. A missing observation remains `None` and must not be
+    /// inferred from the extracted renderer products.
     #[must_use]
     pub fn into_renderer_products(
         self,
@@ -113,17 +137,27 @@ impl SurfacePublication {
         SurfaceFrame,
         SurfaceStyleReport,
         SurfaceLayoutReport,
+        Option<InputOwnershipTransition>,
     ) {
         let Self {
             paint_publication,
             products,
+            input_ownership_transition,
             ..
         } = self;
         let (frame, style_report, layout_report) = products.into_parts();
-        (paint_publication, frame, style_report, layout_report)
+        (
+            paint_publication,
+            frame,
+            style_report,
+            layout_report,
+            input_ownership_transition,
+        )
     }
 
-    /// Consumes this publication into every independently typed public sibling product.
+    /// Consumes this publication into every independently typed public sibling
+    /// product, preserving the directly coupled ownership observation as the
+    /// final tuple element.
     #[must_use]
     pub fn into_complete_products(
         self,
@@ -135,6 +169,7 @@ impl SurfacePublication {
         SurfaceLayoutReport,
         SemanticPublication,
         SemanticDiagnosticReport,
+        Option<InputOwnershipTransition>,
     ) {
         let Self {
             paint_publication,
@@ -142,6 +177,7 @@ impl SurfacePublication {
             products,
             semantic_publication,
             semantic_diagnostics,
+            input_ownership_transition,
         } = self;
         let (frame, style_report, layout_report) = products.into_parts();
         (
@@ -152,6 +188,7 @@ impl SurfacePublication {
             layout_report,
             semantic_publication,
             semantic_diagnostics,
+            input_ownership_transition,
         )
     }
 }
