@@ -145,7 +145,7 @@ impl Fixture {
         for (path, contents) in [
             (
                 "crates/runenui_core/Cargo.toml",
-                "[package]\nname = \"runenui_core\"\n\n[dependencies]\n",
+                "[package]\nname = \"runenui_core\"\nautotests = false\n\n[[test]]\nname = \"element_authoring\"\npath = \"tests/suites/element_authoring.rs\"\n\n[[test]]\nname = \"input_protocols\"\npath = \"tests/suites/input_protocols.rs\"\n\n[[test]]\nname = \"style_resolution\"\npath = \"tests/suites/style_resolution.rs\"\n\n[dependencies]\n",
             ),
             (
                 "crates/runenui_core/src/lib.rs",
@@ -174,6 +174,17 @@ impl Fixture {
             ("xtask/src/main.rs", "fn main() {}\n"),
         ] {
             self.write(path, contents)?;
+        }
+        for (suite, source) in [
+            ("element_authoring", "element"),
+            ("input_protocols", "input"),
+            ("style_resolution", "style"),
+        ] {
+            self.write(&format!("crates/runenui_core/tests/{source}.rs"), "")?;
+            self.write(
+                &format!("crates/runenui_core/tests/suites/{suite}.rs"),
+                &format!("#[path = \"../{source}.rs\"]\nmod {source};\n"),
+            )?;
         }
         Ok(())
     }
