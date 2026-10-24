@@ -202,7 +202,7 @@ impl InputOwnershipSnapshot {
     }
 }
 
-/// One synchronous owner-authored transition after a canonical commit boundary.
+/// One synchronous owner-authored transition after an observed runtime boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InputOwnershipTransition {
     pub(crate) before_revision: InputOwnershipRevision,

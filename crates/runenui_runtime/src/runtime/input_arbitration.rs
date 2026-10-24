@@ -168,6 +168,25 @@ pub(crate) fn integrity_only_pointer_finality(
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    /// Reserves the post-publication projection only when the preceding
+    /// externally observable state is already materialized and no outside-pump
+    /// boundary is pending. A missing baseline or coalesced boundary stays a
+    /// conservative gap; publication must not relabel it as its own transition.
+    pub(crate) fn reserve_direct_publication_observation(
+        &self,
+    ) -> Result<Option<(InputOwnershipRevision, InputSnapshotReservation)>, InputObservationError>
+    {
+        if self.input_observation.pending_direct_boundaries != 0 {
+            return Ok(None);
+        }
+        let Some(previous) = self.input_observation.last.as_ref() else {
+            return Ok(None);
+        };
+        let before_revision = previous.revision;
+        self.reserve_input_observation()
+            .map(|reservation| Some((before_revision, reservation)))
+    }
+
     /// Records *existing* synchronous public mutations that occur without a
     /// canonical FIFO envelope. This is only a revision witness: the existing
     /// focus/composition/surface authorities still own all actual state.
