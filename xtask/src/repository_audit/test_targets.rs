@@ -711,7 +711,10 @@ fn check_explicit_test_coverage(
                 package,
                 findings,
                 package.tests_dir,
-                format!("{} test {source} imported more than once: {owners:?}", package.name),
+                format!(
+                    "{} test {source} imported more than once: {owners:?}",
+                    package.name
+                ),
             ),
             Some(_) => {}
         }
@@ -722,7 +725,10 @@ fn check_explicit_test_coverage(
                 package,
                 findings,
                 package.tests_dir,
-                format!("{} suite imports absent test source: {source}", package.name),
+                format!(
+                    "{} suite imports absent test source: {source}",
+                    package.name
+                ),
             );
         }
     }
@@ -742,7 +748,8 @@ fn audit_explicit_test_package(
     for entry in fs::read_dir(root.join(&suite_dir))
         .map_err(|error| format!("failed to inspect {suite_dir}: {error}"))?
     {
-        let entry = entry.map_err(|error| format!("failed to inspect {} suite: {error}", package.name))?;
+        let entry =
+            entry.map_err(|error| format!("failed to inspect {} suite: {error}", package.name))?;
         let path = entry.path();
         let name = entry
             .file_name()
@@ -750,7 +757,10 @@ fn audit_explicit_test_package(
             .map_err(|_| format!("non-UTF-8 {} suite file", package.name))?;
         if path.is_dir()
             || (path.extension().and_then(|ext| ext.to_str()) == Some("rs")
-                && !package.suites.iter().any(|suite| name == format!("{suite}.rs")))
+                && !package
+                    .suites
+                    .iter()
+                    .any(|suite| name == format!("{suite}.rs")))
         {
             explicit_test_failure(
                 package,
@@ -768,7 +778,8 @@ fn audit_explicit_test_package(
     for entry in fs::read_dir(root.join(package.tests_dir))
         .map_err(|error| format!("failed to inspect {}: {error}", package.tests_dir))?
     {
-        let entry = entry.map_err(|error| format!("failed to inspect {} source: {error}", package.name))?;
+        let entry =
+            entry.map_err(|error| format!("failed to inspect {} source: {error}", package.name))?;
         let path = entry.path();
         let name = entry
             .file_name()
@@ -1064,7 +1075,6 @@ path = "tests/suites/harness_boundary.rs"
         Ok(())
     }
 
-
     #[test]
     #[allow(
         clippy::too_many_lines,
@@ -1118,7 +1128,10 @@ path = "tests/suites/style_resolution.rs"
             fs::write(tests.join(source), "")?;
             fs::write(
                 suites.join(format!("{suite}.rs")),
-                format!("#[path = \"../{source}\"]\nmod {};\n", source.trim_end_matches(".rs")),
+                format!(
+                    "#[path = \"../{source}\"]\nmod {};\n",
+                    source.trim_end_matches(".rs")
+                ),
             )?;
         }
         let mut findings = Vec::new();
@@ -1127,7 +1140,11 @@ path = "tests/suites/style_resolution.rs"
 
         fs::write(tests.join("new_proof.rs"), "")?;
         super::audit_core(&fixture.0, &mut findings)?;
-        assert!(findings.iter().any(|f| f.message.contains("unregistered core test source")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.message.contains("unregistered core test source"))
+        );
 
         findings.clear();
         let registered = "#[path = \"../element.rs\"]\nmod element;\n#[path = \"../new_proof.rs\"]\nmod new_proof;\n";
@@ -1140,25 +1157,47 @@ path = "tests/suites/style_resolution.rs"
             "#[path = \"../input.rs\"]\nmod input;\n#[path = \"../new_proof.rs\"]\nmod new_proof;\n",
         )?;
         super::audit_core(&fixture.0, &mut findings)?;
-        assert!(findings.iter().any(|f| f.message.contains("imported more than once")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.message.contains("imported more than once"))
+        );
 
         findings.clear();
-        fs::write(suites.join("input_protocols.rs"), "#[path = \"../input.rs\"]\nmod input;\n")?;
+        fs::write(
+            suites.join("input_protocols.rs"),
+            "#[path = \"../input.rs\"]\nmod input;\n",
+        )?;
         fs::remove_file(tests.join("new_proof.rs"))?;
         super::audit_core(&fixture.0, &mut findings)?;
-        assert!(findings.iter().any(|f| f.message.contains("imports absent test source")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.message.contains("imports absent test source"))
+        );
 
         fs::write(tests.join("new_proof.rs"), "")?;
-        fs::write(core.join("Cargo.toml"), manifest.replace("autotests = false", "autotests = true"))?;
+        fs::write(
+            core.join("Cargo.toml"),
+            manifest.replace("autotests = false", "autotests = true"),
+        )?;
         findings.clear();
         super::audit_core(&fixture.0, &mut findings)?;
-        assert!(findings.iter().any(|f| f.message.contains("autotests = false")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.message.contains("autotests = false"))
+        );
 
         fs::write(core.join("Cargo.toml"), manifest)?;
         fs::write(suites.join("unexpected.rs"), "")?;
         findings.clear();
         super::audit_core(&fixture.0, &mut findings)?;
-        assert!(findings.iter().any(|f| f.message.contains("unregistered core suite source")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.message.contains("unregistered core suite source"))
+        );
         Ok(())
     }
 }
