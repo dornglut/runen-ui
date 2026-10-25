@@ -1,0 +1,72 @@
+name: Q1 observation tooling tests
+
+on:
+  pull_request:
+    paths:
+      - 'tools/q1/**'
+      - '.github/workflows/q1-tooling.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'tools/q1/**'
+      - '.github/workflows/q1-tooling.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: q1-tooling-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  observer-tests:
+    name: Q1 Python synthetic tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Resolve expected revision
+        id: revision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SHA: ${{ github.sha }}
+          PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request) expected_revision="$PULL_REQUEST_HEAD_SHA" ;;
+            push|workflow_dispatch) expected_revision="$EVENT_SHA" ;;
+            *) echo "Unsupported event: $EVENT_NAME" >&2; exit 1 ;;
+          esac
+          test -n "$expected_revision"
+          echo "expected_revision=$expected_revision" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact feature head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ steps.revision.outputs.expected_revision }}
+          clean: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Prove exact checkout and run focused tests
+        env:
+          EXPECTED_REVISION: ${{ steps.revision.outputs.expected_revision }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_REVISION"
+          if command -v python3 >/dev/null 2>&1; then
+            python3 -B -m unittest discover -s tools/q1 -p 'test_q1.py' -v
+          else
+            python -B -m unittest discover -s tools/q1 -p 'test_q1.py' -v
+          fi
+          git diff --check
+          test -z "$(git status --short)"

@@ -412,6 +412,32 @@ fn ci_contract_drift_is_fatal() -> Result<(), String> {
 }
 
 #[test]
+fn q1_workflow_inventory_and_read_only_host_checks_are_enforced() -> Result<(), String> {
+    let fixture = Fixture::new("q1-workflow")?;
+    let checkout_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or("xtask must have a repository parent")?;
+    let workflow = fs::read_to_string(checkout_root.join(".github/workflows/q1-tooling.yml"))
+        .map_err(|error| format!("failed to read Q1 workflow: {error}"))?;
+    fixture.write("tools/q1/test_q1.py", "# Synthetic Q1 unit tests\n")?;
+    fixture.write(".github/workflows/q1-tooling.yml", &workflow)?;
+    let report = build_report(fixture.path())?;
+    assert!(report.is_success(), "{}", report.render_failure());
+
+    fixture.write(
+        ".github/workflows/q1-tooling.yml",
+        &workflow.replace("persist-credentials: false", "persist-credentials: true"),
+    )?;
+    let report = build_report(fixture.path())?;
+    assert_fatal_code(&report, "repository.q1_tooling_workflow_contract");
+
+    fixture.remove("tools/q1/test_q1.py")?;
+    let report = build_report(fixture.path())?;
+    assert_fatal_code(&report, "repository.workflow_inventory");
+    Ok(())
+}
+
+#[test]
 fn validation_partition_inventory_drift_is_fatal() -> Result<(), String> {
     let fixture = Fixture::new("partition-inventory-drift")?;
     fixture.write(

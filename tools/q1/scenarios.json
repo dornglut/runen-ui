@@ -1,0 +1,19 @@
+{
+  "schema": "runenui-q1-scenarios-v1",
+  "scenarios": {
+    "S1": "Normal editor navigation, TextField, ComboBox, focus and background actions",
+    "S2": "Real keyboard Down/hold/repeat/Up and old-focus A-B-A",
+    "S3": "Two source keys A/B, source A removal with B held, replug",
+    "S4": "Mouse/touch A/B drag, multi-button hold, capture and source loss",
+    "S5": "Actual IME Preedit/Commit/Disabled and old-route compatible FocusOut",
+    "S6": "Deterministic headless FIFO saturation C16/R4 and C4096/R1024",
+    "S7": "Window blur, source loss, pending original, partial pump and shutdown",
+    "S8": "Extended normal interaction with long-held keys, then clean release"
+  },
+  "physical_platforms": ["Windows", "Linux/X11", "Linux/Wayland"],
+  "physical_repeats_per_scenario": 3,
+  "headless_repeats_per_scenario": 30,
+  "p99_min_samples": 1000,
+  "default_source_caps": null,
+  "default_performance_limits": null
+}
