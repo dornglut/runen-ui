@@ -146,6 +146,7 @@ pub enum PublishSurfaceError {
     TextLayout(runenui_text::TextLayoutError),
     PresentationGeometry,
     Motion,
+    InputObservation(crate::InputObservationError),
     Closed,
     Terminal(RuntimeTerminalReason),
 }

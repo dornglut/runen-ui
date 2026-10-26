@@ -202,7 +202,7 @@ fn intervening_non_input_work_does_not_create_or_reorder_native_receipts() {
 }
 
 #[test]
-fn coalesced_direct_publications_expose_a_revision_gap_without_claiming_present() {
+fn direct_publications_return_contiguous_transitions_without_claiming_present() {
     use crate::{LogicalSize, SurfaceBuildContext};
     use runenui_core::StyleEnvironment;
 
@@ -225,8 +225,31 @@ fn coalesced_direct_publications_expose_a_revision_gap_without_claiming_present(
         first.input_context().hit_test_generation(),
         second.input_context().hit_test_generation(),
     );
-    // Neither publication was followed by a pump or intermediate host query.
-    // The gap tells a host it cannot infer uninterrupted input eligibility.
+    // Each successful direct publication returns its own exact transition,
+    // before any later pump or host query can coalesce it.
+    let first_transition = first
+        .input_ownership_transition()
+        .unwrap_or_else(|| unreachable!("first direct transition is operation-coupled"));
+    let second_transition = second
+        .input_ownership_transition()
+        .unwrap_or_else(|| unreachable!("second direct transition is operation-coupled"));
+    assert_eq!(first_transition.before_revision(), before.revision());
+    assert_eq!(
+        first_transition.after().revision().get(),
+        before.revision().get() + 1
+    );
+    assert_eq!(
+        first_transition.after().surfaces()[0].latest_retained_context(),
+        Some(first.input_context())
+    );
+    assert_eq!(
+        second_transition.before_revision(),
+        first_transition.after().revision()
+    );
+    assert_eq!(
+        second_transition.after().revision().get(),
+        second_transition.before_revision().get() + 1
+    );
     let observed = app
         .input_ownership()
         .unwrap_or_else(|_| unreachable!("post-publication ownership projection"));
@@ -243,6 +266,268 @@ fn coalesced_direct_publications_expose_a_revision_gap_without_claiming_present(
             .revision(),
         observed.revision(),
     );
+}
+
+#[test]
+fn publication_transition_precedes_zero_and_partial_canonical_pump_batches() {
+    use crate::{LogicalSize, SurfaceBuildContext};
+    use runenui_core::StyleEnvironment;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    let mut app = focused_runtime(false);
+    let before = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("baseline ownership"));
+    let environment = StyleEnvironment::default();
+    let size = LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("viewport"));
+    let publication = app
+        .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+        .unwrap_or_else(|_| unreachable!("publication accepted"));
+    let transition = publication
+        .input_ownership_transition()
+        .unwrap_or_else(|| unreachable!("direct transition returned"));
+    assert_eq!(transition.before_revision(), before.revision());
+
+    // The public pump wrapper performs its wake acknowledgment/rearm around
+    // the recorded pump. Its zero-budget batch contains neither a duplicate
+    // nor a dropped publication revision.
+    let zero = app
+        .pump(PumpBudget::new(0, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("zero-budget public batch"));
+    assert_eq!(zero.ordered_records(), []);
+    assert_eq!(
+        zero.final_ownership().revision(),
+        transition.after().revision()
+    );
+
+    let wake_calls = Arc::new(AtomicUsize::new(0));
+    let callback_calls = Arc::clone(&wake_calls);
+    app.set_wake_transport(move || {
+        callback_calls.fetch_add(1, Ordering::SeqCst);
+    });
+    let receipt = app
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("keyboard ingress accepted"));
+    let following = app
+        .submit_keyboard(key())
+        .unwrap_or_else(|_| unreachable!("second keyboard ingress accepted"));
+    assert_eq!(wake_calls.load(Ordering::SeqCst), 1);
+    let partial = app
+        .pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("partial public pump"));
+    assert_eq!(partial.processed_through(), Some(receipt.sequence()));
+    assert_eq!(partial.report().remaining_queued_envelopes(), 1);
+    assert_eq!(
+        partial.report().outcome(),
+        crate::PumpOutcome::BudgetExhausted
+    );
+    assert!(partial.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(settled)
+            if settled.sequence() == receipt.sequence()
+    )));
+    assert!(!partial.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(settled)
+            if settled.sequence() == following.sequence()
+    )));
+    assert_eq!(
+        partial.final_ownership().scope(),
+        transition.after().scope()
+    );
+    assert!(partial.final_ownership().revision().get() >= transition.after().revision().get());
+    assert_eq!(wake_calls.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn publication_after_pending_composition_keeps_the_unknown_prelude_unproven() {
+    use crate::{LogicalSize, SurfaceBuildContext};
+    use runenui_core::StyleEnvironment;
+
+    let mut app = AppRuntime::<TextOwnershipApp>::mount(());
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let target = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id() == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
+        })
+        .unwrap_or_else(|| unreachable!("editor mounted"))
+        .id()
+        .clone();
+    app.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("focus accepted"));
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let before = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("baseline ownership"));
+    let composition = app
+        .start_composition(Some(device(53)))
+        .unwrap_or_else(|_| unreachable!("composition start admitted"));
+
+    let environment = StyleEnvironment::default();
+    let size = LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("viewport"));
+    let publication = app
+        .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+        .unwrap_or_else(|_| unreachable!("publication follows pending composition"));
+    assert!(publication.input_ownership_transition().is_none());
+
+    let observed = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("coalesced direct gap remains observable"));
+    assert!(observed.revision().get() >= before.revision().get() + 2);
+    assert_eq!(
+        observed.keyboard().composition_generation(),
+        Some(composition.generation())
+    );
+}
+
+#[test]
+fn publication_transition_cannot_bridge_a_completed_composition_aba() {
+    use crate::{LogicalSize, SurfaceBuildContext};
+    use runenui_core::StyleEnvironment;
+
+    let mut app = AppRuntime::<TextOwnershipApp>::mount(());
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let target = app
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id() == Some(&ElementId::new("editor").unwrap_or_else(|_| unreachable!()))
+        })
+        .unwrap_or_else(|| unreachable!("editor mounted"))
+        .id()
+        .clone();
+    app.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    )
+    .unwrap_or_else(|_| unreachable!("focus accepted"));
+    let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
+    let before = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("pre-ABA snapshot"));
+    assert_eq!(before.keyboard().composition_generation(), None);
+
+    let start = app
+        .start_composition(Some(device(54)))
+        .unwrap_or_else(|_| unreachable!("composition start admitted"));
+    app.cancel_composition(start.generation().clone())
+        .unwrap_or_else(|_| unreachable!("matching cancellation admitted"));
+    let settled = app
+        .pump(PumpBudget::new(2, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("start and cancel settle canonically"));
+    assert_eq!(
+        settled
+            .final_ownership()
+            .keyboard()
+            .composition_generation(),
+        None
+    );
+    assert!(settled.final_ownership().revision().get() > before.revision().get());
+    assert!(settled.ordered_records().iter().any(|record| matches!(
+        record,
+        InputArbitrationRecord::InputSettled(input)
+            if input.sequence() == start.sequence()
+    )));
+
+    let environment = StyleEnvironment::default();
+    let size = LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("viewport"));
+    let publication = app
+        .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+        .unwrap_or_else(|_| unreachable!("later publication accepted"));
+    let transition = publication
+        .input_ownership_transition()
+        .unwrap_or_else(|| unreachable!("exact later publication transition"));
+    // The new observation begins at the actual settled revision. It cannot
+    // launder the earlier composition interval into evidence from publication.
+    assert_eq!(
+        transition.before_revision(),
+        settled.final_ownership().revision()
+    );
+    assert_ne!(transition.before_revision(), before.revision());
+    assert_eq!(transition.after().keyboard().composition_generation(), None);
+}
+
+#[test]
+fn publication_observation_capacity_is_preflighted_before_retained_context_changes() {
+    use crate::{LogicalSize, PublishSurfaceError, SurfaceBuildContext};
+    use runenui_core::StyleEnvironment;
+
+    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let environment = StyleEnvironment::default();
+    let size = LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("viewport"));
+    let build = SurfaceBuildContext::tight(&environment, size);
+    let initial = app
+        .publish_surface(&build)
+        .unwrap_or_else(|_| unreachable!("initial retained publication"));
+    assert!(initial.input_ownership_transition().is_none());
+    let _ = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("publication baseline"));
+    let before = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("stable baseline"));
+
+    app.runtime.inject_input_reservation_failure_after(0);
+    assert!(matches!(
+        app.publish_surface(&build),
+        Err(PublishSurfaceError::InputObservation(
+            crate::InputObservationError::Capacity
+        ))
+    ));
+    let after = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("failed admission leaves ownership readable"));
+    assert_eq!(after.revision(), before.revision());
+    assert_eq!(
+        after.surfaces()[0].latest_retained_context(),
+        Some(initial.input_context())
+    );
+}
+
+#[test]
+fn consuming_surface_product_extractions_preserve_direct_ownership_observation() {
+    use crate::{LogicalSize, SurfaceBuildContext};
+    use runenui_core::StyleEnvironment;
+
+    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let _ = app
+        .input_ownership()
+        .unwrap_or_else(|_| unreachable!("materialized baseline"));
+    let environment = StyleEnvironment::default();
+    let size = LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("viewport"));
+    let build = SurfaceBuildContext::tight(&environment, size);
+
+    let complete = app
+        .publish_surface(&build)
+        .unwrap_or_else(|_| unreachable!("complete extraction publication"));
+    let expected_complete = complete
+        .input_ownership_transition()
+        .cloned()
+        .unwrap_or_else(|| unreachable!("complete direct observation"));
+    let (_, _, _, _, _, _, _, complete_observation) = complete.into_complete_products();
+    assert_eq!(complete_observation, Some(expected_complete));
+
+    let renderer = app
+        .publish_surface(&build)
+        .unwrap_or_else(|_| unreachable!("renderer extraction publication"));
+    let expected_renderer = renderer
+        .input_ownership_transition()
+        .cloned()
+        .unwrap_or_else(|| unreachable!("renderer direct observation"));
+    let (_, _, _, _, renderer_observation) = renderer.into_renderer_products();
+    assert_eq!(renderer_observation, Some(expected_renderer));
 }
 
 #[test]
@@ -1980,7 +2265,8 @@ fn observation_capacity_pause_requests_retry_wake_even_with_empty_fifo() {
     // Initial snapshot reservation, then one zero-work readiness checkpoint.
     // Fail the mandatory terminal checkpoint even though the FIFO is empty.
     app.runtime.inject_input_reservation_failure_after(2);
-    let partial = pump::pump_recorded::<ProbeApp>(&mut app.runtime, PumpBudget::new(0, 0, 0, 0))
+    let partial = app
+        .pump(PumpBudget::new(0, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("after a checkpoint, capacity produces a partial batch"));
     assert_eq!(
         partial.pause_reason(),

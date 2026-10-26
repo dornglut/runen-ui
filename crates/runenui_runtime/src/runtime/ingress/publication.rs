@@ -177,6 +177,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.enter_terminal(reason, 0);
             return Err(PublishSurfaceError::Terminal(reason));
         }
+        // A successful publication can now return its exact direct ownership
+        // transition. Reserve the complete post-commit projection before the
+        // retained scene changes. Pending composition/publication boundaries
+        // (or an unmaterialized initial state) are intentionally left as gaps.
+        let direct_input_observation = self
+            .reserve_direct_publication_observation()
+            .map_err(PublishSurfaceError::InputObservation)?;
         // Retain a cheap immutable handle to the previous committed semantic
         // publication. Exact lookup is O(1) per candidate, without cloning
         // every semantic node or building an unbounded mirror of its IDs.
@@ -269,7 +276,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
 
         let commit = staged.commit_store();
-        let publication = self
+        let mut publication = self
             .surface_publication
             .commit_publication(&mut self.tree, commit);
         self.note_direct_input_ownership_boundary();
@@ -317,6 +324,34 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.replenish_surface_publication_reservation();
         if let Some(admission) = followup_redraw {
             self.commit_admitted_redraw_request(admission, published, instant);
+        }
+        if let RuntimeStatus::Terminal(reason) = self.status {
+            return Err(PublishSurfaceError::Terminal(reason));
+        }
+        if let Some((before_revision, reservation)) = direct_input_observation {
+            let (after, transition) = self.input_ownership_reserved(reservation);
+            // The direct publication note is the only synchronous ownership
+            // boundary expected after reservation. Future hooks may add one;
+            // keep the result conservative in release builds if that invariant
+            // changes rather than certifying a coalesced interval.
+            let exact_single_step = before_revision
+                .get()
+                .checked_add(1)
+                .is_some_and(|expected| after.revision().get() == expected);
+            let exact_publication_context = after.surfaces().iter().any(|surface| {
+                surface.surface_id() == publication.input_context().surface_id()
+                    && surface.latest_retained_context() == Some(publication.input_context())
+            });
+            if exact_single_step
+                && after.status() == RuntimeStatus::Running
+                && exact_publication_context
+            {
+                publication =
+                    publication.with_input_ownership_transition(crate::InputOwnershipTransition {
+                        before_revision,
+                        after: transition,
+                    });
+            }
         }
         Ok(publication)
     }

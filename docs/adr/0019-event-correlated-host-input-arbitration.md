@@ -84,6 +84,16 @@ Not all mutations happen during pump. `start_composition` binds a pending genera
 
 **Logical RunenUI publication is not completed native Present.** A `SurfaceInputOwnership::latest_retained_context()` describes a retained RunenUI snapshot only. Its presence does not certify displayed pixels; the host owns completed-Present→actually displayed snapshot mapping and must route pointer ingress with that **exact** compatible context, including delayed/reordered/rejected Present and detach. Do not name a retained candidate `displayed_context` or promote it on publication alone.
 
+### Direct publication continuity
+
+A successful direct `AppRuntime::publish_surface` may return an exact owner-produced `InputOwnershipTransition` attached to its `SurfacePublication`. This transition proves only the publication invocation that carries it; it cannot repair a preceding revision gap, certify completed native Present, or grant host gameplay permission.
+
+The runtime may attach the transition only when it has a materialized prior ownership snapshot and no outside-pump direct boundary is pending before publication. It MUST reserve bounded after-snapshot storage before committing the retained publication. It MUST attach the transition only after synchronous publication phases finish, the runtime remains Running, the transition advances exactly one revision, and the after-snapshot names the returned publication's exact retained input context. The host may advance its continuity witness only when scope and `before_revision` match its own current witness.
+
+An absent transition means continuity for this publication was not proven; the host MUST retain conservative revision-gap behavior. The runtime MUST NOT query or consume a pending composition/publication boundary before deciding whether this transition is complete or combine that prelude with the publication transition. Unknown or coalesced composition and exclusive intervals remain conservative. If pre-commit observation storage cannot be reserved, publication returns an observation-admission error without committing a new retained context. After commit, capture is infallible from reserved storage. A later terminal failure returns failure rather than a successful proof, and an unexpected non-single revision step suppresses the transition.
+
+Consuming a `SurfacePublication` into renderer products MUST preserve the optional transition as an explicit returned value. A caller may discard it only while retaining conservative revision-gap behavior. This observation does not change source, key, focus-session, gameplay, or completed-Present authority.
+
 ## Boundedness, partial progress and observation failure
 
 No global settlement backlog, second event queue, producer callback, trace dependency or unbounded receipt ledger. The output is **owned by its caller** per pump/shutdown; its input-settlement cardinality is at most the number of reached external input envelopes. Ownership transitions consolidate at most once per committed processing/checkpoint boundary; snapshot pointer cardinality is bounded by `RuntimeLimits::pointer_streams` and hosted work/checkpoints by `PumpBudget` and existing capacity limits. Include terminal retirement in the preflight bound; overflow never silently drops a required fact.

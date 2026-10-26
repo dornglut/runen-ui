@@ -90,9 +90,10 @@ impl<App: UiApp> AppRuntime<App> {
     /// # Errors
     ///
     /// Returns [`PublishSurfaceError::Full`] for recoverable stationary-pointer
-    /// re-hit backpressure without committing a new publication. Closed and
-    /// terminal runtimes return their exact status instead of invoking widget
-    /// capability callbacks.
+    /// re-hit backpressure and [`PublishSurfaceError::InputObservation`] when
+    /// the directly coupled ownership projection cannot be reserved; neither
+    /// commits a new publication. Closed and terminal runtimes return their
+    /// exact status instead of invoking widget capability callbacks.
     pub fn publish_surface(
         &mut self,
         context: &SurfaceBuildContext<'_>,
