@@ -5,7 +5,8 @@ use runenui_core::{
 };
 
 use super::{
-    CollectedRoutedOutput, RoutedFailureLineage, RoutedTransaction, Runtime, RuntimeStatus,
+    CollectedRoutedOutput, RoutedFailureLineage, RoutedIngressFacts, RoutedTransaction, Runtime,
+    RuntimeStatus,
 };
 use crate::{
     MountedNodeId, ReconciliationGeneration, TraceContext, TraceDeliveryOutcome, TraceEventContext,
@@ -74,6 +75,16 @@ struct FocusNotificationPlan {
     related: Option<MountedNodeId>,
     previous: Option<MountedNodeId>,
     current: Option<MountedNodeId>,
+}
+
+// A compatible focusability-only retirement can keep composition and Space
+// capabilities active. Its cleanup remains Disablement, not FocusTransfer.
+fn composition_cancel_reason_for_focus(reason: FocusReason) -> CompositionCancelReason {
+    if reason == FocusReason::Disablement {
+        CompositionCancelReason::Disablement
+    } else {
+        CompositionCancelReason::FocusTransfer
+    }
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -718,10 +729,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.cancel_composition_in_transaction(
                 transaction,
                 old,
-                runenui_core::CompositionCancelReason::FocusTransfer,
+                composition_cancel_reason_for_focus(reason),
             )?;
         }
-        self.revoke_space_for_focus_transfer(transaction, old_target.as_ref());
+        self.revoke_space_for_focus_change(transaction, old_target.as_ref(), reason);
         let old_route = match old_target.as_ref() {
             Some(old) if self.tree.target_status(old) == TargetStatus::Live => {
                 self.checked_focus_route(old)?
@@ -808,18 +819,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(())
     }
 
-    fn revoke_space_for_focus_transfer(
+    fn revoke_space_for_focus_change(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
         old_target: Option<&MountedNodeId>,
+        reason: FocusReason,
     ) {
         if self
             .space_ownership
             .as_ref()
             .is_some_and(|owner| old_target == Some(&owner.target))
         {
+            let cleanup_reason = if reason == FocusReason::Disablement {
+                TraceSpaceCleanupReason::Disablement
+            } else {
+                TraceSpaceCleanupReason::FocusTransfer
+            };
             transaction.parent = self.revoke_space_ownership_with_cause(
-                TraceSpaceCleanupReason::FocusTransfer,
+                cleanup_reason,
                 InputLifetimeCleanupCause::new(
                     Some(transaction.sequence),
                     transaction.parent,
@@ -1002,6 +1019,67 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 && tree.target_status(target) == TargetStatus::Live
                 && nearest_scope(tree, target).as_ref() == Some(scope)
         });
+    }
+
+    /// Reuses the checked routed focus transaction for a compatible update that
+    /// retired an old *unchanged and fully live* route. This is deliberately
+    /// not used for removal, replacement or reparented/stale old routes.
+    ///
+    /// Application reconciliation has already mutated the mounted tree; an
+    /// admission/commit failure must terminalize the outer action rather than
+    /// silently suppress this required noncancelable notification.
+    pub(in crate::runtime) fn commit_live_reconciled_focus_out(
+        &mut self,
+        cause: InputLifetimeCleanupCause,
+    ) -> Result<bool, RoutedFailureLineage> {
+        let Some(owner) = self.focus.focused_node().cloned() else {
+            return Ok(false);
+        };
+        if self.tree.target_status(&owner) != TargetStatus::Live {
+            return Ok(false);
+        }
+        let sequence = cause
+            .sequence
+            .unwrap_or_else(|| unreachable!("reconciled focus retirement has one action sequence"));
+        let facts = RoutedIngressFacts::new(
+            sequence,
+            owner.clone(),
+            cause.origin,
+            cause.instant,
+            TraceEventContext::new(TraceEventFamily::Focus, false),
+            cause.causal_parent,
+            TraceReservation::continuation(),
+        );
+        let route = match self.checked_focus_route(&owner) {
+            Ok(route) => route,
+            Err(failure) => {
+                return Err(self.poison_routed_facts(&facts, failure, Some(&owner)));
+            }
+        };
+        if route.as_slice() != self.focus.route() {
+            return Ok(false);
+        }
+        // Focusability alone may retire focus while composition stays valid.
+        // The forthcoming cancel and FocusOut each invoke the unchanged old
+        // route; charge both before either can mutate mounted widget state.
+        let cancel_composition = self.composition.owner() == Some(&owner);
+        let mut transaction =
+            self.try_begin_reconciled_focus_cleanup_transaction(facts, cancel_composition)?;
+        if let Err(error) =
+            self.commit_focus_transition(&mut transaction, None, FocusReason::Disablement)
+        {
+            let current = transaction.failure_current_target.clone();
+            return Err(self.poison_transaction(&transaction, error, current.as_ref()));
+        }
+        let failure = transaction.failure_facts();
+        if self.commit_routed_transaction(transaction).is_err() {
+            return Err(self.poison_routed_event(
+                &failure,
+                TraceRoutedIntegrityFailure::CommitInvariantFailure,
+                Some(&owner),
+            ));
+        }
+        Ok(true)
     }
 
     pub(in crate::runtime) fn commit_reconciled_focus_cleanup(

@@ -124,6 +124,42 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         )
     }
 
+    /// The exact old route is immutable during this transaction. A live
+    /// composition cancellation and the mandatory `FocusOut` traverse that same
+    /// checked route, and BOTH must be charged before the first callback.
+    pub(super) fn prepare_reconciled_focus_cleanup_route(
+        &mut self,
+        facts: &RoutedIngressFacts,
+        cancel_composition: bool,
+    ) -> Result<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan), RoutedFailureLineage> {
+        let route = self.prepare_invocation_route(facts, true)?;
+        let callbacks = self.ordinary_invocation_count(facts, true, route.len())?;
+        let admitted = if cancel_composition {
+            callbacks.checked_mul(2).ok_or_else(|| {
+                self.handle_routed_admission_rejection(
+                    TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
+                    facts,
+                )
+            })?
+        } else {
+            callbacks
+        };
+        let extra = MandatoryTracePlan::focus_commit()
+            .checked_add(if cancel_composition {
+                MandatoryTracePlan::composition_cleanup()
+            } else {
+                MandatoryTracePlan::none()
+            })
+            .ok_or_else(|| {
+                self.handle_routed_admission_rejection(
+                    TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
+                    facts,
+                )
+            })?;
+        let admission = self.admit_routed_invocations(facts, callbacks, admitted, extra, 0)?;
+        Ok((route, admission))
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(super) fn prepare_pointer_routed_route(
         &mut self,
