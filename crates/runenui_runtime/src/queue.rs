@@ -3829,15 +3829,14 @@ mod reservation_tests {
                         .expect("generation reserves exactly one terminal credit");
                 }
                 assert_eq!(queue.root_remaining(reservation.quota()), Ok(0));
-                if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
-                    if let Some(kib) = status
+                if let Ok(status) = std::fs::read_to_string("/proc/self/status")
+                    && let Some(kib) = status
                         .lines()
                         .find_map(|line| line.strip_prefix("VmRSS:"))
                         .and_then(|value| value.split_whitespace().next())
                         .and_then(|value| value.parse::<usize>().ok())
-                    {
-                        max_rss_kib = max_rss_kib.max(kib);
-                    }
+                {
+                    max_rss_kib = max_rss_kib.max(kib);
                 }
                 let start = Instant::now();
                 for generation in generations {
