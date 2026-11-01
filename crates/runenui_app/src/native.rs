@@ -1,4 +1,4 @@
-//! Native single-window application host over the public RunenUI runtime and renderer.
+//! Native single-window application host over the public `RunenUI` runtime and renderer.
 //! This is an optional outer composition owner, never a second UI runtime.
 
 use crate::NativeAppError;
@@ -1067,7 +1067,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
     }
 }
 
-pub(crate) fn run_native<A: UiApp<HostProtocol = NoHostProtocol>>(
+pub fn run_native<A: UiApp<HostProtocol = NoHostProtocol>>(
     title: String,
     state: A::State,
     environment: StyleEnvironment,
@@ -1089,8 +1089,5 @@ pub(crate) fn run_native<A: UiApp<HostProtocol = NoHostProtocol>>(
     event_loop
         .run_app(&mut host)
         .map_err(|error| NativeAppError::EventLoop(error.to_string()))?;
-    match host.fatal {
-        Some(detail) => Err(NativeAppError::Fatal(detail)),
-        None => Ok(()),
-    }
+    host.fatal.map_or(Ok(()), |detail| Err(NativeAppError::Fatal(detail)))
 }
