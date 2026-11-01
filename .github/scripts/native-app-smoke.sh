@@ -54,9 +54,25 @@ for entry in "fluent_counter:Counter" "fluent_status:Status"; do
   xdotool windowactivate --sync "$window_id"
   xdotool windowsize "$window_id" 850 530
   # The second consumer has a one-shot initial timer (1500 ms).
-  # Keep it alive across the deadline, then close through the OS WM protocol.
+  # Require an exact callback observation, not just an idle process.
   if [[ "$executable" == "fluent_status" ]]; then
-    sleep 2
+    timer_observed=""
+    for _ in $(seq 1 100); do
+      if grep -Fq "RUNENUI_FLUENT_STATUS_TIMER_FIRED" "$log"; then
+        timer_observed=yes
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$timer_observed" ]]; then
+      echo "Canonical initial timer did not reach application action" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    echo "Canonical native timer action PASS"
   fi
   if ! kill -0 "$app_pid" 2>/dev/null; then
     echo "Native process failed during resize/idle: ${executable}" >&2
