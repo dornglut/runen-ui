@@ -215,6 +215,7 @@ struct NativeHost<A: UiApp<HostProtocol = NoHostProtocol>> {
     title: String,
     resources: Box<dyn ResourceProvider>,
     fatal: Option<String>,
+    cleanup_error: Option<String>,
     runtime: AppRuntime<A>,
     style_environment: StyleEnvironment,
     event_loop_proxy: EventLoopProxy<HostEvent>,
@@ -254,6 +255,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             title,
             resources,
             fatal: None,
+            cleanup_error: None,
             runtime,
             style_environment,
             event_loop_proxy: proxy,
@@ -410,9 +412,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             Ok(batch) => batch,
             Err(error) => {
                 // Closing the host also retires its native receipt associations.
-                self.fatal.get_or_insert_with(|| {
-                    format!("native shutdown observation unavailable: {error}")
-                });
+                self.cleanup_error.get_or_insert_with(|| error.to_string());
                 return;
             }
         };
@@ -477,8 +477,12 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         Ok(true)
     }
 
-    fn drive_runtime(&mut self, _event_loop: &ActiveEventLoop) {
+    fn drive_runtime(&mut self, event_loop: &ActiveEventLoop) {
         self.pump_runtime_once();
+        if let RuntimeStatus::Terminal(reason) = self.runtime.status() {
+            self.fail(event_loop, &format!("runtime terminal: {reason:?}"));
+            return;
+        }
         self.collect_redraw_request();
     }
 
@@ -1082,13 +1086,21 @@ pub fn run_native<A: UiApp<HostProtocol = NoHostProtocol>>(
     let mut host = NativeHost::<A>::new(proxy, title, state, environment, resources, config);
     if let RuntimeStatus::Terminal(reason) = host.runtime.status() {
         host.shutdown_runtime_checked();
-        return Err(NativeAppError::Fatal(format!(
-            "initial runtime work terminated: {reason:?}"
-        )));
+        return NativeAppError::combine_exit(
+            Some(NativeAppError::Fatal(format!(
+                "initial runtime work terminated: {reason:?}"
+            ))),
+            host.cleanup_error.map(NativeAppError::Shutdown),
+        );
     }
-    event_loop
-        .run_app(&mut host)
-        .map_err(|error| NativeAppError::EventLoop(error.to_string()))?;
-    host.fatal
-        .map_or(Ok(()), |detail| Err(NativeAppError::Fatal(detail)))
+    let event_loop_result = event_loop.run_app(&mut host);
+    // An event-loop error is not proof that the exiting callback ran.
+    // Always attempt required observed runtime shutdown afterwards.
+    host.shutdown_runtime_checked();
+    let primary = host.fatal.map(NativeAppError::Fatal);
+    let event_loop_error = event_loop_result
+        .err()
+        .map(|error| NativeAppError::EventLoop(error.to_string()));
+    let primary = NativeAppError::combine_exit(primary, event_loop_error).err();
+    NativeAppError::combine_exit(primary, host.cleanup_error.map(NativeAppError::Shutdown))
 }
