@@ -184,12 +184,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(HostRequestCancelError::Terminal(reason));
         }
         let capacity = if let Some(root) = root_quota {
-            if self
+            // A live sequence does not guarantee room for other roots'
+            // unsequenced reservations. Check before recording cancellation.
+            if let Err(error) = self
                 .queue
                 .preflight_root_host_cancellation(root, token.generation)
-                .is_err()
+                .and_then(|()| self.queue.preflight_root_sequence(root, 1))
             {
-                let reason = RuntimeTerminalReason::Poisoned;
+                let reason = match error {
+                    crate::queue::QueueReservationError::SequenceExhausted => {
+                        RuntimeTerminalReason::WorkSequenceExhausted
+                    }
+                    _ => RuntimeTerminalReason::Poisoned,
+                };
                 self.enter_terminal(reason, 0);
                 return Err(HostRequestCancelError::Terminal(reason));
             }

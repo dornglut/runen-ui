@@ -1026,6 +1026,37 @@ fn detached_host_completion_with_only_three_unreserved_records_never_runs_mapper
 
 #[test]
 #[allow(clippy::assert_is_empty)]
+fn host_cancellation_preserves_another_roots_reserved_sequence_at_max() {
+    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
+    let _ = runtime
+        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("initial host start must be processed"));
+    let token = runtime.pending_host_requests()[0].token();
+
+    // The independent action retains two unsequenced credits in another root.
+    // A host cancellation cannot spend MAX and steal the other root's promise.
+    runtime
+        .submit_action(HostAction::Replace)
+        .unwrap_or_else(|_| unreachable!("independent producer admission fits"));
+    runtime.__seed_next_work_sequence_for_test(u64::MAX);
+
+    assert!(matches!(
+        runtime.cancel_host_request(&token),
+        Err(HostRequestCancelError::Terminal(
+            RuntimeTerminalReason::WorkSequenceExhausted
+        ))
+    ));
+    assert_eq!(
+        runtime.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::WorkSequenceExhausted)
+    );
+    assert!(runtime.pending_host_requests().is_empty());
+    assert!(runtime.state().is_empty());
+}
+
+#[test]
+#[allow(clippy::assert_is_empty)]
 fn host_cancellation_sequence_exhaustion_terminalizes_and_closes_authority() {
     let mut runtime = AppRuntime::<HostApp>::mount(Vec::new())
         .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
