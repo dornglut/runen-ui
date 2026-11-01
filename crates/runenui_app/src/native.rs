@@ -1083,7 +1083,13 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // Also catch terminalization in direct input/AccessKit pump paths that
+        // return before calling drive_runtime. Never park a terminal runtime.
+        if let RuntimeStatus::Terminal(reason) = self.runtime.status() {
+            self.fail(event_loop, &format!("runtime terminal: {reason:?}"));
+            return;
+        }
         self.request_pending_redraw();
     }
 
