@@ -73,6 +73,27 @@ for entry in "fluent_counter:Counter" "fluent_status:Status"; do
       exit 1
     fi
     echo "Canonical native timer action PASS"
+    # A genuine XTest keyboard event should activate the explicitly authored
+    # and runtime-focused button. Do not submit an internal semantic action.
+    xdotool windowactivate --sync "$window_id"
+    xdotool key --clearmodifiers space
+    key_observed=""
+    for _ in $(seq 1 50); do
+      if grep -Fq "RUNENUI_FLUENT_STATUS_TOGGLED" "$log"; then
+        key_observed=yes
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$key_observed" ]]; then
+      echo "Native X11 Space activation did not reach authored button action" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    echo "Focused native keyboard action PASS"
   fi
   if ! kill -0 "$app_pid" 2>/dev/null; then
     echo "Native process failed during resize/idle: ${executable}" >&2
