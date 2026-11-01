@@ -1185,6 +1185,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn native_monotonic_deadline_uses_identical_runtime_origin() {
+        let origin = Instant::now();
+        let clock = NativeMonotonicClock { origin };
+        let delta = Duration::from_millis(17);
+        let logical = MonotonicInstant::ZERO
+            .checked_add(delta)
+            .unwrap_or_else(|_| unreachable!("17 milliseconds fit runtime time"));
+        assert_eq!(clock.host_deadline(logical), origin.checked_add(delta));
+    }
+
+    #[test]
     fn native_line_wheel_uses_documented_logical_units() {
         let event = normalize_wheel_delta(MouseScrollDelta::LineDelta(0.0, -1.0), 2.0)
             .unwrap_or_else(|| unreachable!("finite line delta must be representable"));
