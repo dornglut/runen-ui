@@ -233,7 +233,6 @@ struct NativeHost<A: UiApp<HostProtocol = NoHostProtocol>> {
     modifiers: KeyModifiers,
     mapping_publication_needed: bool,
     presentation_suppressed: bool,
-    window_focused: bool,
 }
 
 impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
@@ -273,7 +272,6 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             modifiers: KeyModifiers::NONE,
             mapping_publication_needed: false,
             presentation_suppressed: false,
-            window_focused: true,
         }
     }
 
@@ -411,7 +409,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         let batch = match self.runtime.shutdown() {
             Ok(batch) => batch,
             Err(error) => {
-                // Closing the host also retires its native receipt associations.
+                // The shutdown transition was not observed; report the error, not success.
                 self.cleanup_error.get_or_insert_with(|| error.to_string());
                 return;
             }
@@ -954,7 +952,6 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
             return;
         }
         self.presentation_suppressed = false;
-        self.window_focused = true;
         self.drive_runtime(event_loop);
         self.request_pending_redraw();
     }
@@ -973,7 +970,6 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
         self.displayed_frame = None;
         self.mapping_publication_needed = false;
         self.presentation_suppressed = true;
-        self.window_focused = false;
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: HostEvent) {
@@ -1037,7 +1033,6 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
                 self.modifiers = translate_modifiers(modifiers.state());
             }
             WindowEvent::Focused(false) => {
-                self.window_focused = false;
                 if !self.cancel_keyboard_authority(event_loop) {
                     return;
                 }
@@ -1048,7 +1043,6 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
                 self.modifiers = KeyModifiers::NONE;
             }
             WindowEvent::Focused(true) => {
-                self.window_focused = true;
                 self.drive_runtime(event_loop);
             }
             WindowEvent::Occluded(occluded) => {
