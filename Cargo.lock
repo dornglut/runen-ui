@@ -2023,6 +2023,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "runenui_app"
+version = "0.1.0"
+dependencies = [
+ "accesskit_winit",
+ "runenui_core",
+ "runenui_render_wgpu",
+ "runenui_runtime",
+ "runenui_winit",
+ "winit",
+]
+
+[[package]]
 name = "runenui_core"
 version = "0.1.0"
 
