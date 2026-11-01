@@ -178,7 +178,7 @@ impl PresentationRetry {
         self.next_attempt.filter(|deadline| *deadline > now)
     }
 
-    fn reset(&mut self) {
+    const fn reset(&mut self) {
         self.consecutive_failures = 0;
         self.next_attempt = None;
     }
@@ -1270,13 +1270,16 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
         // A recoverable presentation failure schedules a native-only wake.
         // It never re-enters the runtime, invents a publication, or polls
         // continuously while a surface is occluded or timing out.
-        let presentation_deadline =
-            if self.presentation_suppressed || self.pending_frame.is_none() {
-                None
-            } else {
-                self.presentation_retry.future_deadline(now)
-            };
-        let next_wake = future_deadline.into_iter().chain(presentation_deadline).min();
+        let presentation_deadline = if self.presentation_suppressed || self.pending_frame.is_none()
+        {
+            None
+        } else {
+            self.presentation_retry.future_deadline(now)
+        };
+        let next_wake = future_deadline
+            .into_iter()
+            .chain(presentation_deadline)
+            .min();
         // If a runtime deadline remains due after this one bounded pump,
         // rely on the canonical pending-wake handshake rather than a spin.
         event_loop.set_control_flow(next_wake.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
