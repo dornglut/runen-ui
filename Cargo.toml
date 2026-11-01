@@ -11,6 +11,7 @@ members = [
     "crates/runenui_testing",
 
     "examples/counter",
+    "examples/fluent_counter",
     "examples/reference_winit",
 
     "tests/external_widget",
