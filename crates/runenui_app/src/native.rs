@@ -1089,5 +1089,6 @@ pub fn run_native<A: UiApp<HostProtocol = NoHostProtocol>>(
     event_loop
         .run_app(&mut host)
         .map_err(|error| NativeAppError::EventLoop(error.to_string()))?;
-    host.fatal.map_or(Ok(()), |detail| Err(NativeAppError::Fatal(detail)))
+    host.fatal
+        .map_or(Ok(()), |detail| Err(NativeAppError::Fatal(detail)))
 }
