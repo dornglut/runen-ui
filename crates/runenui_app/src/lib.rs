@@ -1,7 +1,7 @@
-//! Opt-in fluent native application composition for independent RunenUI programs.
+//! Opt-in fluent native application composition for independent `RunenUI` programs.
 //!
 //! This package does not own UI mounted state, actions, scheduling or publication;
-//! it composes the existing public RunenUI runtime, native adapter and renderer.
+//! it composes the existing public `RunenUI` runtime, native adapter and renderer.
 //!
 //! The basic native path intentionally supports only `NoHostProtocol` and one
 //! native window. Applications requiring host effects or external event-loop
@@ -35,14 +35,14 @@ impl App {
 
     /// Selects the native single-window profile and its display title.
     ///
-    /// The title is not a logical RunenUI surface key or an operating-system ID.
+    /// The title is not a logical `RunenUI` surface key or an operating-system ID.
     #[must_use]
     pub fn window(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
         self
     }
 
-    /// Installs a model that implements RunenUI's canonical `UiApp` trait itself.
+    /// Installs a model that implements `RunenUI`'s canonical `UiApp` trait itself.
     ///
     /// `UiApp<State = Self>` permits the model's type to be inferred from the
     /// value. No second application-state/queue/runtime authority is created.
@@ -100,7 +100,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ConfiguredApp<A> {
 
     /// Specifies the runtime's exact accepted configuration before mount.
     #[must_use]
-    pub fn runtime_config(mut self, config: RuntimeConfig) -> Self {
+    pub const fn runtime_config(mut self, config: RuntimeConfig) -> Self {
         self.runtime_config = config;
         self
     }
