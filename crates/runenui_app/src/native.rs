@@ -250,6 +250,7 @@ struct NativeHost<A: UiApp<HostProtocol = NoHostProtocol>> {
     resources: Box<dyn ResourceProvider>,
     fatal: Option<String>,
     cleanup_error: Option<String>,
+    exit_requested: bool,
     initial_focus: Option<ElementId>,
     native_clock: NativeMonotonicClock,
     next_deadline: Option<MonotonicInstant>,
@@ -293,6 +294,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             resources,
             fatal: None,
             cleanup_error: None,
+            exit_requested: false,
             initial_focus,
             native_clock,
             next_deadline: None,
@@ -317,6 +319,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
     }
 
     fn fail(&mut self, event_loop: &ActiveEventLoop, detail: &str) {
+        self.exit_requested = true;
         if self.fatal.is_none() {
             self.fatal = Some(detail.to_owned());
         }
@@ -1076,6 +1079,9 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
 
 impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for NativeHost<A> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.exit_requested {
+            return;
+        }
         if let Err(error) = self.prepare_native_target(event_loop) {
             self.fail(event_loop, &error);
             return;
@@ -1086,6 +1092,9 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
     }
 
     fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+        if self.exit_requested {
+            return;
+        }
         if !self.cancel_keyboard_authority(event_loop) {
             return;
         }
@@ -1102,6 +1111,9 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: HostEvent) {
+        if self.exit_requested {
+            return;
+        }
         match event {
             HostEvent::Wake => self.drive_runtime(event_loop),
             HostEvent::Accessibility(event) => {
@@ -1117,6 +1129,9 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
         window_id: WindowId,
         event: WindowEvent,
     ) {
+        if self.exit_requested {
+            return;
+        }
         if self
             .window
             .as_ref()
@@ -1131,6 +1146,9 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
         }
         match event {
             WindowEvent::CloseRequested | WindowEvent::Destroyed => {
+                // A later already-queued redraw/input event must not publish
+                // against this now-closed runtime during OS-loop teardown.
+                self.exit_requested = true;
                 self.shutdown_runtime_checked();
                 event_loop.exit();
             }
@@ -1186,6 +1204,9 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.exit_requested {
+            return;
+        }
         // Due timer/motion/type-ahead work needs an explicit bounded canonical
         // pump. The OS is not required to send another window event for it.
         if self
