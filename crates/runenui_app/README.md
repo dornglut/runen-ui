@@ -44,7 +44,10 @@ Two independently authored sample programs exercise different public contracts:
 actions and an initial 1500-ms timer. The
 [Native X11 Smoke](../../.github/workflows/native-x11-smoke.yml)
 workflow builds both and checks that visible native windows start, resize and
-exit after OS close under Xvfb and software Vulkan. This is Linux X11 virtual
+exit after OS close under Xvfb and software Vulkan. For `fluent_status`,
+it additionally unmaps and remaps the same native X11 window, then requires
+a new OS keyboard-triggered action following restoration. This does not inject
+GPU timeouts, prove device-loss recovery, or qualify IME. This is Linux X11 virtual
 display evidence, **not** Windows/macOS, physical input, IME, accessibility
 or arbitrary device-loss qualification.
 

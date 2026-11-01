@@ -120,6 +120,55 @@ for entry in "fluent_counter:Counter" "fluent_status:Status"; do
       exit 1
     fi
     echo "Native pointer action PASS"
+    # Hide and restore the SAME X11 window without terminating the app or
+    # rebuilding its UI runtime. A restored native window must remain able to
+    # receive genuine OS input after focus and surface visibility transitions.
+    pre_restore_toggles="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+    xdotool windowunmap "$window_id"
+    sleep 0.3
+    if ! kill -0 "$app_pid" 2>/dev/null; then
+      echo "Native process died while X11 window was unmapped" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    xdotool windowmap "$window_id"
+    remapped=""
+    for _ in $(seq 1 50); do
+      if xdotool search --onlyvisible --name "^${window_title}$" 2>/dev/null | grep -Fxq "$window_id"; then
+        remapped=yes
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$remapped" ]]; then
+      echo "Same native window did not become visible after X11 remap" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    xdotool windowactivate --sync "$window_id"
+    xdotool windowsize "$window_id" 790 490
+    xdotool key --clearmodifiers space
+    restored_input=""
+    for _ in $(seq 1 50); do
+      toggles="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+      if (( toggles > pre_restore_toggles )); then
+        restored_input=yes
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$restored_input" ]]; then
+      echo "Native keyboard action did not recover after X11 unmap/remap" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    echo "Native X11 hide/restore and post-restore keyboard action PASS"
   fi
   if ! kill -0 "$app_pid" 2>/dev/null; then
     echo "Native process failed during resize/idle: ${executable}" >&2
