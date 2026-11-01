@@ -377,6 +377,7 @@ fn validate_dependency_direction(
         RUNTIME_PACKAGE => BTreeSet::from([CORE_PACKAGE, TEXT_PACKAGE]),
         WINIT_PACKAGE => BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE]),
         NATIVE_APP_PACKAGE => BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE, RENDER_WGPU_PACKAGE, WINIT_PACKAGE]),
+        "fluent_counter" => BTreeSet::from([CORE_PACKAGE, NATIVE_APP_PACKAGE]),
         REFERENCE_WINIT_PACKAGE | "counter" => BTreeSet::from([
             CORE_PACKAGE,
             RUNTIME_PACKAGE,
