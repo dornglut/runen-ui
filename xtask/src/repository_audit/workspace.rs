@@ -383,6 +383,7 @@ fn validate_dependency_direction(
             WINIT_PACKAGE,
         ]),
         "fluent_counter" => BTreeSet::from([CORE_PACKAGE, NATIVE_APP_PACKAGE]),
+        "fluent_status" => BTreeSet::from([CORE_PACKAGE, NATIVE_APP_PACKAGE]),
         REFERENCE_WINIT_PACKAGE | "counter" => BTreeSet::from([
             CORE_PACKAGE,
             RUNTIME_PACKAGE,
