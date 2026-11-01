@@ -151,6 +151,39 @@ impl From<NativePointError> for PointIngressDiagnostic {
     }
 }
 
+// Rendering retry belongs to the native presentation owner. It must never
+// republish a runtime frame or advance displayed input mapping.
+#[derive(Default)]
+struct PresentationRetry {
+    consecutive_failures: u8,
+    next_attempt: Option<Instant>,
+}
+
+impl PresentationRetry {
+    fn defer(&mut self, now: Instant) {
+        // Bounded exponential backoff: 16, 32, 64, 128, then 256 ms.
+        // Occluded surfaces remain retryable even when the OS does not emit a
+        // matching WindowEvent::Occluded notification.
+        let shift = u32::from(self.consecutive_failures.min(4));
+        let delay = Duration::from_millis(16u64 << shift);
+        self.next_attempt = now.checked_add(delay);
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+    }
+
+    fn is_due(&self, now: Instant) -> bool {
+        self.next_attempt.is_none_or(|deadline| now >= deadline)
+    }
+
+    fn future_deadline(&self, now: Instant) -> Option<Instant> {
+        self.next_attempt.filter(|deadline| *deadline > now)
+    }
+
+    fn reset(&mut self) {
+        self.consecutive_failures = 0;
+        self.next_attempt = None;
+    }
+}
+
 impl DisplayedFrame {
     fn from_pending(pending: &PendingFrame) -> Self {
         Self {
@@ -265,6 +298,7 @@ struct NativeHost<A: UiApp<HostProtocol = NoHostProtocol>> {
     pending_redraw: Option<RedrawRequest>,
     pending_frame: Option<PendingFrame>,
     displayed_frame: Option<DisplayedFrame>,
+    presentation_retry: PresentationRetry,
     device_identities: DeviceIdentityMap,
     mouse: MouseInputState,
     keyboard: KeyboardInputState,
@@ -309,6 +343,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             pending_redraw: None,
             pending_frame: None,
             displayed_frame: None,
+            presentation_retry: PresentationRetry::default(),
             device_identities: DeviceIdentityMap::default(),
             mouse: MouseInputState::default(),
             keyboard: KeyboardInputState::default(),
@@ -390,6 +425,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         }
         self.mapping = next;
         self.pending_frame = None;
+        self.presentation_retry.reset();
         self.mapping_publication_needed = next.is_some();
         true
     }
@@ -617,7 +653,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
     }
 
     fn request_pending_redraw(&self) {
-        if self.presentation_suppressed {
+        if self.presentation_suppressed || !self.presentation_retry.is_due(Instant::now()) {
             return;
         }
         if (self.pending_frame.is_some()
@@ -984,12 +1020,13 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         if self.mapping != Some(pending.mapping) {
             self.mapping_publication_needed = self.mapping.is_some();
             self.pending_frame = None;
+            self.presentation_retry.reset();
             if let Err(error) = self.publish_if_needed() {
                 self.fail(event_loop, &error);
             }
             return;
         }
-        if self.presentation_suppressed {
+        if self.presentation_suppressed || !self.presentation_retry.is_due(Instant::now()) {
             return;
         }
         let Some(window) = self.window.as_ref() else {
@@ -1017,12 +1054,13 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
                 }
                 self.displayed_frame = Some(DisplayedFrame::from_pending(&pending));
                 self.pending_frame = None;
+                self.presentation_retry.reset();
                 self.drive_runtime(event_loop);
                 self.request_pending_redraw();
             }
             Err(
                 PublicationRenderError::SurfaceTimeout | PublicationRenderError::SurfaceOccluded,
-            ) => self.request_pending_redraw(),
+            ) => self.presentation_retry.defer(Instant::now()),
             Err(
                 PublicationRenderError::SurfaceOutdated
                 | PublicationRenderError::SurfaceSuboptimal
@@ -1031,7 +1069,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
                 if let Err(error) = self.configure_renderer(true) {
                     self.fail(event_loop, &error);
                 } else {
-                    self.request_pending_redraw();
+                    self.presentation_retry.defer(Instant::now());
                 }
             }
             Err(PublicationRenderError::SurfaceLost) => {
@@ -1046,7 +1084,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
                 if let Err(error) = recovery {
                     self.fail(event_loop, &error);
                 } else {
-                    self.request_pending_redraw();
+                    self.presentation_retry.defer(Instant::now());
                 }
             }
             Err(error) => self.fail(event_loop, &format!("native presentation failed: {error}")),
@@ -1106,6 +1144,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
         self.mapping = None;
         self.pending_frame = None;
         self.displayed_frame = None;
+        self.presentation_retry.reset();
         self.mapping_publication_needed = false;
         self.presentation_suppressed = true;
     }
@@ -1195,6 +1234,8 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
             WindowEvent::Occluded(occluded) => {
                 self.presentation_suppressed = occluded;
                 if !occluded {
+                    // An OS visibility transition permits an immediate retry.
+                    self.presentation_retry.reset();
                     self.request_pending_redraw();
                 }
             }
@@ -1226,10 +1267,19 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
             .next_deadline
             .and_then(|deadline| self.native_clock.host_deadline(deadline))
             .filter(|deadline| *deadline > now);
-        // If a deadline remains due after this one bounded pump, rely on the
-        // canonical pending-wake handshake rather than a spinning OS loop.
-        event_loop
-            .set_control_flow(future_deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
+        // A recoverable presentation failure schedules a native-only wake.
+        // It never re-enters the runtime, invents a publication, or polls
+        // continuously while a surface is occluded or timing out.
+        let presentation_deadline =
+            if self.presentation_suppressed || self.pending_frame.is_none() {
+                None
+            } else {
+                self.presentation_retry.future_deadline(now)
+            };
+        let next_wake = future_deadline.into_iter().chain(presentation_deadline).min();
+        // If a runtime deadline remains due after this one bounded pump,
+        // rely on the canonical pending-wake handshake rather than a spin.
+        event_loop.set_control_flow(next_wake.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
         self.request_pending_redraw();
     }
 
@@ -1304,6 +1354,29 @@ mod tests {
                 .unwrap_or_else(|| unreachable!("known service request must be representable"));
             assert_eq!(response.kind(), request.response_kind());
         }
+    }
+
+    #[test]
+    fn recoverable_presentation_retry_is_deferred_and_bounded() {
+        let start = Instant::now();
+        let mut retry = PresentationRetry::default();
+        assert!(retry.is_due(start));
+        for (failure, delay_ms) in [16, 32, 64, 128, 256, 256, 256].into_iter().enumerate() {
+            let attempted_at = start + Duration::from_secs(failure as u64);
+            retry.defer(attempted_at);
+            let deadline = attempted_at + Duration::from_millis(delay_ms);
+            assert_eq!(retry.future_deadline(attempted_at), Some(deadline));
+            assert!(!retry.is_due(attempted_at));
+            assert!(!retry.is_due(deadline - Duration::from_nanos(1)));
+            assert!(retry.is_due(deadline));
+        }
+        retry.reset();
+        assert!(retry.is_due(start));
+        retry.defer(start);
+        assert_eq!(
+            retry.future_deadline(start),
+            Some(start + Duration::from_millis(16))
+        );
     }
 
     #[test]
