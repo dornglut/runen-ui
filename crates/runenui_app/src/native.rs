@@ -246,12 +246,15 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         resources: Box<dyn ResourceProvider>,
         config: RuntimeConfig,
     ) -> Self {
-        let mut runtime = AppRuntime::<A>::mount_with_config(model, config);
-        runtime.set_monotonic_clock(NativeMonotonicClock::new());
         let wake_proxy = proxy.clone();
-        runtime.set_wake_transport(move || {
-            let _ = wake_proxy.send_event(HostEvent::Wake);
-        });
+        let runtime = AppRuntime::<A>::mount_with_host_adapters(
+            model,
+            config,
+            NativeMonotonicClock::new(),
+            move || {
+                let _ = wake_proxy.send_event(HostEvent::Wake);
+            },
+        );
         Self {
             title,
             resources,
