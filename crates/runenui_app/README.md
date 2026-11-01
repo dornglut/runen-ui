@@ -28,9 +28,12 @@ before initial application effects, using one canonical runtime. It uses the
 bounded runtime pump report's next logical deadline for event-driven native
 timer/motion scheduling; it does not continuously draw frames when idle.
 
-**Current limitations:** advanced native IME text composition, framework
-services (including clipboard), native touch, and application-defined host
-request protocols are not yet implemented by this facade. The independent
+**Current limitations:** advanced native IME text composition, native
+touch, platform clipboard/cursor/drag-drop services and application-defined
+host-request protocols are not yet implemented by this facade. Unsupported
+framework service requests are completed with an explicit typed
+`FrameworkServiceFailure::Unavailable` response, not silently retained;
+this is not equivalent to providing the native operation. The independent
 Counter executable demonstrates typed actions, not a complete text-editing
 host. These limitations require explicit implementation and platform proof
 before general-purpose desktop acceptance.
