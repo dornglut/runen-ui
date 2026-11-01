@@ -3451,6 +3451,136 @@ mod reservation_tests {
 
     #[cfg(feature = "internal-test-seams")]
     #[test]
+    fn host_framework_and_timer_cancellations_preserve_an_independent_last_sequence() {
+        use crate::{
+            RuntimeLimits, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, work::WorkRegistry,
+        };
+
+        let mut queue = WorkQueue::<u8>::new(5);
+        queue.seed_next_sequence_for_test(u64::MAX - 4);
+        let root = queue
+            .reserve_for_producer(ProducerBudget::new(4, 0))
+            .expect("three terminal credits and one returned credit");
+        let independent = queue
+            .reserve_for_producer(ProducerBudget::new(1, 0))
+            .expect("independent root retains the final sequence");
+        let generations =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(3)
+                .expect("three work generations fit")
+                .0;
+        let framework = generations[0];
+        let host = generations[1];
+        let timer = generations[2];
+        queue
+            .retain_root_framework_service_lease(root.quota(), framework)
+            .expect("framework response and cancellation each own one credit");
+        queue
+            .retain_root_host_request_lease(root.quota(), host)
+            .expect("unstarted host request owns its cancellation credit");
+        queue
+            .retain_root_timer_lease(root.quota(), timer, false)
+            .expect("one-shot timer owns its cancellation credit");
+        assert_eq!(queue.root_remaining(root.quota()), Ok(0));
+
+        queue
+            .release_root_work_lease_for_cancellation(root.quota(), framework)
+            .expect("unused framework response returns exactly one credit");
+        queue
+            .release_root_work_lease_for_cancellation(root.quota(), host)
+            .expect("host cancellation keeps its own exact terminal credit");
+        queue
+            .release_root_work_lease_for_cancellation(root.quota(), timer)
+            .expect("timer cancellation keeps its own exact terminal credit");
+        assert_eq!(queue.root_remaining(root.quota()), Ok(1));
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        assert_eq!(queue.root_quotas[&root.quota()].live_work_leases, 0);
+        assert_eq!(queue.reserved, 5);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(u64::MAX - 4));
+
+        let identity = |family, generation: crate::work::WorkGeneration| {
+            TraceWorkIdentity::new(
+                TraceWorkOwner::Application,
+                family,
+                generation.get(),
+                None,
+            )
+        };
+        assert_eq!(
+            queue
+                .push_framework_service_request_cancellation(
+                    framework,
+                    identity(TraceWorkFamily::FrameworkService, framework),
+                    None,
+                )
+                .map(|sequence| sequence.map(WorkSequence::get)),
+            Ok(Some(u64::MAX - 4))
+        );
+        assert_eq!(
+            queue
+                .push_host_request_cancellation(
+                    host,
+                    identity(TraceWorkFamily::HostRequest, host),
+                    None,
+                )
+                .map(|sequence| sequence.map(WorkSequence::get)),
+            Ok(Some(u64::MAX - 3))
+        );
+        assert_eq!(
+            queue
+                .push_timer_cancellation(
+                    timer,
+                    identity(TraceWorkFamily::Timer, timer),
+                    None,
+                )
+                .map(|sequence| sequence.map(WorkSequence::get)),
+            Ok(Some(u64::MAX - 2))
+        );
+        assert_eq!(
+            queue
+                .push_rooted(root.quota(), |sequence, owner| {
+                    action_envelope(sequence, 1, owner)
+                })
+                .map(WorkSequence::get),
+            Ok(u64::MAX - 1),
+            "only the owning root reuses its released framework response credit"
+        );
+        assert_eq!(
+            queue
+                .push_rooted(independent.quota(), |sequence, owner| {
+                    action_envelope(sequence, 2, owner)
+                })
+                .map(WorkSequence::get),
+            Ok(u64::MAX),
+            "the unrelated root retains the last available global sequence"
+        );
+        assert_eq!(queue.next_sequence(), None);
+        assert_eq!(queue.reserved, 0);
+        assert_eq!(queue.len(), 5);
+
+        for expected in [u64::MAX - 4, u64::MAX - 3, u64::MAX - 2, u64::MAX - 1] {
+            let envelope = queue.pop().expect("root work retains FIFO order");
+            assert_eq!(envelope.sequence().get(), expected);
+            assert_eq!(envelope.root_quota(), Some(root.quota()));
+            assert!(!queue.is_closed());
+            queue
+                .finish_root_envelope(root.quota())
+                .expect("rooted completion retires only its own credits");
+        }
+        assert!(!queue.root_quotas.contains_key(&root.quota()));
+        let last = queue.pop().expect("independent root remains queued");
+        assert_eq!(last.sequence().get(), u64::MAX);
+        assert_eq!(last.root_quota(), Some(independent.quota()));
+        queue
+            .finish_root_envelope(independent.quota())
+            .expect("independent root retires its last credit");
+        assert!(queue.is_empty());
+        assert_eq!(queue.reserved, 0);
+        assert!(queue.root_quotas.is_empty());
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[test]
     fn cross_root_cancellation_credit_remains_sequenced_after_recycled_root_refusal() {
         use crate::{
             RuntimeLimits, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, work::WorkRegistry,
