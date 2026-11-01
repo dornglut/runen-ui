@@ -62,9 +62,7 @@ impl<App: UiApp> AppRuntime<App> {
         Self::finish_mount(runtime)
     }
 
-    fn finish_mount(
-        mut runtime: Runtime<App::State, App::Action, App::HostProtocol>,
-    ) -> Self {
+    fn finish_mount(mut runtime: Runtime<App::State, App::Action, App::HostProtocol>) -> Self {
         runtime.trace_action_labeler = Some(App::trace_action_label);
         runtime.initialize_application_work::<App>();
         runtime.rearm_wake_if_needed();
