@@ -9,6 +9,8 @@ use super::{
     TraceTarget, TraceWorkIdentity, UnacceptedCommand, WorkEnvelope, WorkFamily, WorkSequence,
 };
 
+mod admission;
+mod callback_completion;
 mod configuration;
 mod pointer;
 mod publication;
