@@ -376,7 +376,12 @@ fn validate_dependency_direction(
         TEXT_PACKAGE => BTreeSet::from([CORE_PACKAGE]),
         RUNTIME_PACKAGE => BTreeSet::from([CORE_PACKAGE, TEXT_PACKAGE]),
         WINIT_PACKAGE => BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE]),
-        NATIVE_APP_PACKAGE => BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE, RENDER_WGPU_PACKAGE, WINIT_PACKAGE]),
+        NATIVE_APP_PACKAGE => BTreeSet::from([
+            CORE_PACKAGE,
+            RUNTIME_PACKAGE,
+            RENDER_WGPU_PACKAGE,
+            WINIT_PACKAGE,
+        ]),
         "fluent_counter" => BTreeSet::from([CORE_PACKAGE, NATIVE_APP_PACKAGE]),
         REFERENCE_WINIT_PACKAGE | "counter" => BTreeSet::from([
             CORE_PACKAGE,
@@ -493,7 +498,9 @@ fn validate_required_workspace_dependencies(
                 findings.push(Finding::fatal(
                     "workspace.native_app_edge_dependency_missing",
                     Some(path_text(&member.relative.join("Cargo.toml"))),
-                    format!("runenui_app must consume reviewed native/renderer edge `{dependency}`"),
+                    format!(
+                        "runenui_app must consume reviewed native/renderer edge `{dependency}`"
+                    ),
                 ));
             }
         }
