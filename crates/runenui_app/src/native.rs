@@ -5,14 +5,15 @@ use crate::NativeAppError;
 
 use std::{
     future::Future,
-    #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
-    collections::VecDeque,
     pin::pin,
     sync::Arc,
     task::{Context, Poll, Wake, Waker},
     thread,
     time::{Duration, Instant},
 };
+
+#[cfg(all(debug_assertions, feature = "internal-test-seams"))]
+use std::collections::VecDeque;
 
 use runenui_core::{
     ElementId, FrameworkServiceFailure, FrameworkServiceRequest, FrameworkServiceResponse,
