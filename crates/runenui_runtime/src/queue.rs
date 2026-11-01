@@ -2813,6 +2813,26 @@ impl<Action> WorkQueue<Action> {
         self.waiting.is_empty()
     }
 
+    /// A failed root-credit transfer closes the queue. Pump must not execute
+    /// the removed envelope after that internal integrity failure.
+    pub(crate) const fn is_closed(&self) -> bool {
+        self.closed
+    }
+
+    #[cfg(test)]
+    pub(crate) fn invalidate_front_root_pending_for_test(&mut self) {
+        let root = self
+            .waiting
+            .front()
+            .and_then(WorkEnvelope::root_quota)
+            .unwrap_or_else(|| unreachable!("fixture has a rooted pending envelope"));
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .unwrap_or_else(|| unreachable!("fixture has a live root"));
+        quota.pending_envelopes = 0;
+    }
+
     /// Existing envelopes and retained causal roots can still run arbitrary
     /// producer code before a newly submitted interaction reaches its route.
     pub(crate) fn has_unfinished_producers(&self) -> bool {

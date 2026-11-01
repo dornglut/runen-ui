@@ -410,6 +410,13 @@ pub(crate) fn pump_recorded<App: UiApp>(
             observed.observe(runtime, None);
             return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
         };
+        if runtime.queue.is_closed() {
+            // Pop detected an invalid root ledger after removing the front
+            // envelope. Do not invoke any mutable application or input callback.
+            let cancelled = runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 1);
+            observed.observe(runtime, None);
+            return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
+        }
         let sequence = envelope.sequence();
         let root_quota = envelope.root_quota();
         let application_action = matches!(&envelope, WorkEnvelope::ApplicationAction(_));
@@ -679,7 +686,9 @@ mod tests {
     use runenui_core::{Element, NoHostProtocol, UiApp, View, text};
 
     use super::{PumpBudget, pump_recorded};
-    use crate::{RuntimeConfig, TraceActionCategory, runtime::Runtime};
+    use crate::{
+        RuntimeConfig, RuntimeStatus, RuntimeTerminalReason, TraceActionCategory, runtime::Runtime,
+    };
 
     struct App;
 
@@ -760,6 +769,43 @@ mod tests {
         let again = super::pump_recorded::<App>(&mut runtime, PumpBudget::new(0, 0, 0, 0))
             .unwrap_or_else(|_| unreachable!("observed retirement stays retired"));
         assert_eq!(again.ordered_records(), []);
+    }
+
+    #[test]
+    fn invalid_root_pop_closes_before_application_mutation_or_false_processing_receipt() {
+        let mut runtime = Runtime::mount(
+            0,
+            App::root,
+            RuntimeConfig::default(),
+            App::initial_producer_budget(&0),
+            |_, _| {
+                Ok(crate::runtime::PreparedInitialApplicationWork {
+                    application: crate::transaction::TransactionLedger::from_outputs(Vec::new(), 0)
+                        .unwrap_or_else(|_| unreachable!("empty initial ledger fits")),
+                    subscriptions: Vec::new(),
+                })
+            },
+        )
+        .unwrap_or_else(|_| unreachable!("internal test mount inputs are valid"));
+        runtime.initialize_application_work();
+        let mounted = pump_recorded::<App>(
+            &mut runtime,
+            PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
+        )
+        .unwrap_or_else(|_| unreachable!("initial work settles"));
+        assert!(mounted.report().is_quiescent());
+        runtime
+            .submit_action((), TraceActionCategory::DirectSubmission, None, None)
+            .unwrap_or_else(|_| unreachable!("qualified action admission"));
+        runtime.queue.invalidate_front_root_pending_for_test();
+
+        let batch = pump_recorded::<App>(&mut runtime, PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("terminal observation is retained"));
+        assert_eq!(*runtime.state(), 0, "invalid pop must not invoke UiApp::update");
+        assert_eq!(runtime.status(), RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned));
+        assert_eq!(batch.report().processed_envelopes(), 0);
+        assert_eq!(batch.report().cancelled_by_terminal_transition(), 1);
+        assert_eq!(batch.processed_through(), None);
     }
 
     #[test]
