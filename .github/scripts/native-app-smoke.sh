@@ -79,7 +79,10 @@ for entry in "fluent_counter:Counter" "fluent_status:Status"; do
     cat "$log" >&2
     exit 1
   fi
-  xdotool windowclose "$window_id"
+  # Request WM-managed graceful closure via _NET_CLOSE_WINDOW. Unlike
+  # xdotool windowclose (XDestroyWindow), this must not destroy the X11
+  # target before winit can retire its native input context.
+  wmctrl -ic "$window_id"
 
   closed=""
   for _ in $(seq 1 100); do
