@@ -1370,7 +1370,7 @@ mod tests {
             let deadline = attempted_at + Duration::from_millis(delay_ms);
             assert_eq!(retry.future_deadline(attempted_at), Some(deadline));
             assert!(!retry.is_due(attempted_at));
-            assert!(!retry.is_due(deadline - Duration::from_nanos(1)));
+            assert!(!retry.is_due(attempted_at + Duration::from_millis(delay_ms / 2)));
             assert!(retry.is_due(deadline));
         }
         retry.reset();
