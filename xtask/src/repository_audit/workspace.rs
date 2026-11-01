@@ -14,6 +14,7 @@ const TEXT_PACKAGE: &str = "runenui_text";
 const RUNTIME_PACKAGE: &str = "runenui_runtime";
 const RENDER_WGPU_PACKAGE: &str = "runenui_render_wgpu";
 const WINIT_PACKAGE: &str = "runenui_winit";
+const NATIVE_APP_PACKAGE: &str = "runenui_app";
 const TESTING_PACKAGE: &str = "runenui_testing";
 const REFERENCE_WINIT_PACKAGE: &str = "reference_winit";
 const EXTERNAL_HOST_PACKAGE: &str = "runenui_external_host_conformance";
@@ -375,6 +376,7 @@ fn validate_dependency_direction(
         TEXT_PACKAGE => BTreeSet::from([CORE_PACKAGE]),
         RUNTIME_PACKAGE => BTreeSet::from([CORE_PACKAGE, TEXT_PACKAGE]),
         WINIT_PACKAGE => BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE]),
+        NATIVE_APP_PACKAGE => BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE, RENDER_WGPU_PACKAGE, WINIT_PACKAGE]),
         REFERENCE_WINIT_PACKAGE | "counter" => BTreeSet::from([
             CORE_PACKAGE,
             RUNTIME_PACKAGE,
@@ -465,6 +467,11 @@ fn validate_required_workspace_dependencies(
             "workspace.winit_public_dependency_missing",
             "runenui_winit",
         ),
+        (
+            NATIVE_APP_PACKAGE,
+            "workspace.native_app_public_dependency_missing",
+            "runenui_app",
+        ),
     ] {
         if member.package == package {
             for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
@@ -475,6 +482,18 @@ fn validate_required_workspace_dependencies(
                         format!("{label} must depend on public workspace package `{dependency}`"),
                     ));
                 }
+            }
+        }
+    }
+
+    if member.package == NATIVE_APP_PACKAGE {
+        for dependency in [WINIT_PACKAGE, RENDER_WGPU_PACKAGE] {
+            if !workspace_dependencies.contains(dependency) {
+                findings.push(Finding::fatal(
+                    "workspace.native_app_edge_dependency_missing",
+                    Some(path_text(&member.relative.join("Cargo.toml"))),
+                    format!("runenui_app must consume reviewed native/renderer edge `{dependency}`"),
+                ));
             }
         }
     }
