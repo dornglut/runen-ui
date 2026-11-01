@@ -16,7 +16,9 @@ App::new()
 The model implements the existing `runenui_core::UiApp` with `State = Self`.
 The native shell supports a single window and `NoHostProtocol` currently.
 Additional application styling and resource providers can be specified with
-`.styles(...)` and `.resources(...)`. Font policy can be overridden by
+`.styles(...)` and `.resources(...)`. Applications can opt into an explicit
+validated authored initial focus with `.initial_focus(ElementId)`; the native
+host never guesses an element to focus or overrides an already-focused UI. Font policy can be overridden by
 `.runtime_config(...)`; native convenience defaults to system and bundled
 fonts. No implicit host effect handler or missing-resource fallback exists.
 
