@@ -540,7 +540,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             parent,
             remaining_outputs: admission.max_outputs,
             callback_output_budgets: admission.callback_output_budgets,
-            remaining_default_outputs: admission.mandatory_default_outputs,
+            remaining_default_outputs: admission.default_output_operations,
             propagation_stopped: false,
             host_input_claimed: false,
             keyboard_default_claim: None,

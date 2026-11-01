@@ -74,7 +74,7 @@ impl RoutedOutputBudget {
 pub(super) struct RoutedTransactionAdmissionPlan {
     pub(super) route_invocations: usize,
     pub(super) max_outputs: usize,
-    pub(super) mandatory_default_outputs: usize,
+    pub(super) default_output_operations: usize,
     pub(super) callback_output_budgets: HashMap<MountedNodeId, runenui_core::WidgetProducerBudget>,
     pub(super) declared_work_starts: runenui_core::WorkStartBudget,
     queued_default_outputs: usize,
@@ -103,18 +103,18 @@ impl RoutedTransactionAdmissionPlan {
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
         // IME and cursor services are registered as work, not placed in the
         // FIFO. Reserve their work/trace capacity without reserving queue slots.
-        let mandatory_default_outputs = mandatory_default_outputs
+        let default_output_operations = mandatory_default_outputs
             .checked_add(2)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
-        let total_output_envelopes = max_outputs
-            .checked_add(mandatory_default_outputs)
+        let trace_output_operations = max_outputs
+            .checked_add(default_output_operations)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
-        let trace = MandatoryTracePlan::routed_event(admitted_invocations, total_output_envelopes)
+        let trace = MandatoryTracePlan::routed_event(admitted_invocations, trace_output_operations)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
         Ok(Self {
             route_invocations,
             max_outputs,
-            mandatory_default_outputs,
+            default_output_operations,
             callback_output_budgets,
             declared_work_starts,
             queued_default_outputs,
@@ -151,7 +151,7 @@ impl RoutedTransactionAdmissionPlan {
         } else {
             let possible_mounted_outputs = self
                 .max_outputs
-                .checked_add(self.mandatory_default_outputs)
+                .checked_add(self.default_output_operations)
                 .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
             runtime
                 .work
