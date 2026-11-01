@@ -618,7 +618,10 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::expect_used, reason = "Explicit queue fixture assumptions in internal error-atomicity test")]
+    #[allow(
+        clippy::expect_used,
+        reason = "Explicit queue fixture assumptions in internal error-atomicity test"
+    )]
     fn invalid_later_pointer_button_index_preserves_earlier_claim_and_quota() {
         let mut queue = WorkQueue::<()>::new(3);
         let reservation = queue.reserve(3).expect("finite root fits");
@@ -664,10 +667,13 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::expect_used, reason = "Explicit queue fixture assumptions in internal error-atomicity test")]
+    #[allow(
+        clippy::expect_used,
+        reason = "Explicit queue fixture assumptions in internal error-atomicity test"
+    )]
     fn failed_rearm_preserves_the_original_reached_claim() {
-        let mut queue = WorkQueue::<()>::new(1);
-        let reservation = queue.reserve(1).expect("one root credit");
+        let mut queue = WorkQueue::<()>::new(2);
+        let reservation = queue.reserve(2).expect("two root credits");
         let source = queue
             .push_reserved_with_remainder(&reservation, envelope)
             .expect("source committed");
