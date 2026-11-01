@@ -12,7 +12,7 @@ impl Counter {
         Self { count: 0 }
     }
 
-    fn increment(&mut self) {
+    const fn increment(&mut self) {
         // The introductory model never wraps or panics at the i32 boundary.
         self.count = self.count.saturating_add(1);
     }
