@@ -110,7 +110,47 @@ pub(crate) struct WorkRecord<Action, Protocol: HostProtocol> {
     pub(crate) root_quota: Option<RootQuotaId>,
 }
 
+/// One application turn includes inline routed cleanup and the final app batch.
+/// A failed preview never partially charges another family or starts work.
+struct ApplicationTurnStarts {
+    declared: runenui_core::WorkStartBudget,
+    used: [usize; 5],
+}
+
+impl ApplicationTurnStarts {
+    fn preview(
+        &self,
+        families: impl Iterator<Item = AuthoredWorkFamily>,
+    ) -> Result<[usize; 5], runenui_core::ProducerContractViolation> {
+        let mut next = self.used;
+        for family in families {
+            let index = match family {
+                AuthoredWorkFamily::LocalTask => 0,
+                AuthoredWorkFamily::SendTask => 1,
+                AuthoredWorkFamily::Timer => 2,
+                AuthoredWorkFamily::HostRequest => 3,
+                AuthoredWorkFamily::FrameworkService => 4,
+                _ => unreachable!("authored work families are classified exhaustively"),
+            };
+            let attempted = next[index].checked_add(1);
+            let declared = self.declared.for_family(family);
+            let Some(count) = attempted.filter(|count| *count <= declared) else {
+                return Err(runenui_core::ProducerContractViolation {
+                    kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                    phase: runenui_core::ProducerPhase::ApplicationUpdate,
+                    component: runenui_core::BudgetComponent::WorkStarts(family),
+                    declared,
+                    attempted,
+                });
+            };
+            next[index] = count;
+        }
+        Ok(next)
+    }
+}
+
 pub(crate) struct WorkRegistry<Action, Protocol: HostProtocol> {
+    application_turn: Option<ApplicationTurnStarts>,
     records: HashMap<WorkGeneration, WorkRecord<Action, Protocol>>,
     keyed: HashMap<KeyIdentity, WorkGeneration>,
     next_generation: Option<NonZeroU64>,
@@ -141,6 +181,7 @@ impl WorkCancellationCounts {
 impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
     pub(crate) fn new(limits: RuntimeLimits) -> Self {
         Self {
+            application_turn: None,
             records: HashMap::new(),
             keyed: HashMap::new(),
             next_generation: NonZeroU64::new(1),
@@ -155,6 +196,43 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
 
     pub(crate) fn live_record_count(&self) -> usize {
         self.records.len()
+    }
+
+    pub(crate) const fn begin_application_turn(
+        &mut self,
+        declared: runenui_core::WorkStartBudget,
+    ) -> bool {
+        if self.application_turn.is_some() {
+            return false;
+        }
+        self.application_turn = Some(ApplicationTurnStarts {
+            declared,
+            used: [0; 5],
+        });
+        true
+    }
+
+    pub(crate) const fn finish_application_turn(&mut self) {
+        self.application_turn = None;
+    }
+
+    pub(crate) fn preflight_application_turn_starts(
+        &self,
+        families: impl Iterator<Item = AuthoredWorkFamily>,
+    ) -> Result<(), runenui_core::ProducerContractViolation> {
+        self.application_turn
+            .as_ref()
+            .map_or(Ok(()), |turn| turn.preview(families).map(|_| ()))
+    }
+
+    pub(crate) fn commit_application_turn_starts(
+        &mut self,
+        families: impl Iterator<Item = AuthoredWorkFamily>,
+    ) -> Result<(), runenui_core::ProducerContractViolation> {
+        if let Some(turn) = &mut self.application_turn {
+            turn.used = turn.preview(families)?;
+        }
+        Ok(())
     }
 
     /// Checks a new producer against claims of all accepted predecessor roots.

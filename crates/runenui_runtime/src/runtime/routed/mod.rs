@@ -15,7 +15,7 @@ use super::{Runtime, ingress::trace_semantic_action_rejection};
 use crate::{
     MonotonicInstant, MountedNodeId, TraceApplicationCommandOutcome, TraceContext,
     TraceEventContext, TraceEventFamily, TraceRecordKind, TraceRouteSnapshot,
-    TraceRoutedIntegrityFailure, TraceSemanticActionRejection, TraceSequence,
+    TraceSemanticActionRejection, TraceSequence,
     focus::focus_group_activation_policy,
     queue::{ApplicationCommandEnvelope, SemanticCommandEnvelope},
     trace::{MandatoryTracePlan, TraceRecordDraft},
@@ -95,12 +95,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             transaction.origin,
         );
         let failure_facts = transaction.failure_facts();
-        if self.commit_routed_transaction(transaction).is_err() {
-            self.poison_routed_event(
-                &failure_facts,
-                TraceRoutedIntegrityFailure::CommitInvariantFailure,
-                None,
-            );
+        if let Err(error) = self.commit_routed_transaction(transaction) {
+            self.poison_routed_event(&failure_facts, error.integrity_failure(), None);
         }
     }
 
@@ -388,12 +384,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return;
         }
         let failure_facts = transaction.failure_facts();
-        if self.commit_routed_transaction(transaction).is_err() {
-            self.poison_routed_event(
-                &failure_facts,
-                TraceRoutedIntegrityFailure::CommitInvariantFailure,
-                None,
-            );
+        if let Err(error) = self.commit_routed_transaction(transaction) {
+            self.poison_routed_event(&failure_facts, error.integrity_failure(), None);
         } else if let Some((entry, recipient)) = entry_proof
             && self.focus.focused_node() == Some(&recipient)
             && self.focus.session().is_some()

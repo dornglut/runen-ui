@@ -295,12 +295,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         let cleanup_parent = transaction.parent;
         let failure_facts = transaction.failure_facts();
-        if self.commit_routed_transaction(transaction).is_err() {
-            let lineage = self.poison_routed_event(
-                &failure_facts,
-                TraceRoutedIntegrityFailure::CommitInvariantFailure,
-                Some(&owner),
-            );
+        if let Err(error) = self.commit_routed_transaction(transaction) {
+            let lineage =
+                self.poison_routed_event(&failure_facts, error.integrity_failure(), Some(&owner));
             return Err(lineage);
         }
         Ok(cleanup_parent)
@@ -1162,13 +1159,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(self.poison_transaction(&transaction, failure, current.as_ref()));
         }
         let failure_facts = transaction.failure_facts();
-        self.commit_routed_transaction(transaction).map_err(|()| {
-            self.poison_routed_event(
-                &failure_facts,
-                TraceRoutedIntegrityFailure::CommitInvariantFailure,
-                Some(target),
-            )
-        })
+        self.commit_routed_transaction(transaction)
+            .map_err(|error| {
+                self.poison_routed_event(&failure_facts, error.integrity_failure(), Some(target))
+            })
     }
 
     pub(in crate::runtime) fn clear_focus_for_shutdown(

@@ -69,6 +69,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Ok(plan) => plan,
             Err(error) => {
                 let reason = match error {
+                    TransactionPlanError::ProducerViolation(cause) => {
+                        RuntimeTerminalReason::ProducerContractViolation(cause)
+                    }
                     TransactionPlanError::ProducerQuotaExceeded => RuntimeTerminalReason::Poisoned,
                     TransactionPlanError::WorkSequenceExhausted => {
                         RuntimeTerminalReason::WorkSequenceExhausted

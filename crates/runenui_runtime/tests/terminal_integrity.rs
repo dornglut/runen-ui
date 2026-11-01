@@ -883,7 +883,7 @@ fn unfundable_mounted_identity_profile_is_refused_before_update() {
         error.kind(),
         runenui_runtime::SubmitActionErrorKind::InvalidProducerProfile
     );
-    error.into_action();
+    let () = error.into_action();
     let batch = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"));

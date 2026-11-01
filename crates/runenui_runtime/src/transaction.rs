@@ -158,6 +158,41 @@ struct PreparedApplicationTransaction<Action, Protocol: HostProtocol> {
     mounted_effects: Vec<(WorkOwner, Vec<Effect<Action, Protocol>>)>,
 }
 
+fn authored_effect_family(family: WorkFamily) -> runenui_core::WorkFamily {
+    match family {
+        WorkFamily::LocalTask => runenui_core::WorkFamily::LocalTask,
+        WorkFamily::SendTask => runenui_core::WorkFamily::SendTask,
+        WorkFamily::Timer => runenui_core::WorkFamily::Timer,
+        WorkFamily::HostRequest => runenui_core::WorkFamily::HostRequest,
+        WorkFamily::FrameworkService => runenui_core::WorkFamily::FrameworkService,
+        WorkFamily::Subscription => {
+            unreachable!("subscriptions retain their concrete source family")
+        }
+    }
+}
+
+const fn subscription_start_family<Action>(
+    declaration: &Subscription<Action>,
+) -> runenui_core::WorkFamily {
+    match &declaration.source {
+        runenui_core::__runtime::SubscriptionSource::Local(_) => {
+            runenui_core::WorkFamily::LocalTask
+        }
+        runenui_core::__runtime::SubscriptionSource::Send { .. } => {
+            runenui_core::WorkFamily::SendTask
+        }
+    }
+}
+
+pub(crate) fn planned_start_family<Action, Protocol: HostProtocol>(
+    start: &PlannedOwnedStart<Action, Protocol>,
+) -> runenui_core::WorkFamily {
+    match &start.payload {
+        PlannedStartPayload::Effect(_) => authored_effect_family(start.family),
+        PlannedStartPayload::Subscription(declaration) => subscription_start_family(declaration),
+    }
+}
+
 impl<Action, Protocol: HostProtocol> PreparedApplicationTransaction<Action, Protocol> {
     fn new(input: ApplicationTransactionInput<Action, Protocol>) -> Self {
         Self {
@@ -224,6 +259,23 @@ fn plan_output_batches<State, Action, Protocol: HostProtocol>(
     state: &State,
     action_budgeter: Option<fn(&State, &Action) -> ProducerBudget>,
 ) -> Result<PlannedOutputBatches<Action, Protocol>, TransactionPlanError> {
+    let app = prepared
+        .application_effects
+        .iter()
+        .filter_map(effect_family)
+        .map(authored_effect_family);
+    let subscriptions = prepared
+        .application_subscription_starts
+        .iter()
+        .map(subscription_start_family);
+    let mounted = prepared
+        .mounted_effects
+        .iter()
+        .flat_map(|(_, effects)| effects.iter())
+        .filter_map(effect_family)
+        .map(authored_effect_family);
+    work.preflight_application_turn_starts(app.chain(subscriptions).chain(mounted))
+        .map_err(TransactionPlanError::ProducerViolation)?;
     let PreparedApplicationTransaction {
         lifecycle_invalidated,
         mounted_subscription_dirty,
@@ -693,6 +745,7 @@ pub(crate) enum TransactionOutputError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TransactionPlanError {
+    ProducerViolation(runenui_core::ProducerContractViolation),
     QueueFull,
     ProducerQuotaExceeded,
     WorkSequenceExhausted,

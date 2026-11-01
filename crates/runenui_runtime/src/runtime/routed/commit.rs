@@ -2,7 +2,8 @@ use runenui_core::{EventSource, FocusReason, HostProtocol, MonotonicInstant, Wid
 
 use super::{
     super::{
-        CollectedRoutedOutput, Runtime, application::PlannedWorkTrace, mounted_effect_into_effect,
+        CollectedRoutedOutput, CommitError, Runtime, application::PlannedWorkTrace,
+        mounted_effect_into_effect,
     },
     transaction::RoutedTransaction,
 };
@@ -19,7 +20,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn commit_routed_transaction(
         &mut self,
         transaction: RoutedTransaction<Action>,
-    ) -> Result<(), ()> {
+    ) -> Result<(), CommitError> {
         self.commit_routed_transaction_with(transaction, |_, transaction| {
             if transaction.pointer_capture_requests.is_empty() {
                 Ok(())
@@ -33,16 +34,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         mut transaction: RoutedTransaction<Action>,
         pre_output_commit: impl FnOnce(&mut Self, &mut RoutedTransaction<Action>) -> Result<(), ()>,
-    ) -> Result<(), ()> {
+    ) -> Result<(), CommitError> {
         #[cfg(feature = "internal-test-seams")]
         if self.test_seams.routed_commit_failure {
-            return Err(());
+            return Err(CommitError::Registry);
         }
         let pointer_interaction_before = (transaction.origin.source() == EventSource::Pointer)
             .then(|| self.pointer_registry.surface_interaction_projection(None));
         pre_output_commit(self, &mut transaction)?;
         if !transaction.pointer_capture_requests.is_empty() {
-            return Err(());
+            return Err(CommitError::Registry);
         }
         let pointer_style_changed = pointer_interaction_before.is_some_and(|before| {
             before.content_differs(&self.pointer_registry.surface_interaction_projection(None))
@@ -71,7 +72,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     fn plan_routed_outputs(
         &self,
         transaction: &mut RoutedTransaction<Action>,
-    ) -> Result<PlannedApplicationTransaction<Action, Protocol>, ()> {
+    ) -> Result<PlannedApplicationTransaction<Action, Protocol>, CommitError> {
         let subscription_dirty: Vec<_> = core::mem::take(&mut transaction.subscription_dirty)
             .into_iter()
             .filter(|owner| !self.mounted_subscription_reconcile_pending.contains(owner))
@@ -110,7 +111,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             root_quota,
             producer_budget,
         )
-        .map_err(|_| ())
+        .map_err(CommitError::from)
     }
 
     #[allow(clippy::too_many_lines)] // Stages all mutation before the single routed commit boundary.
@@ -119,7 +120,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         mut transaction: RoutedTransaction<Action>,
         plan: PlannedApplicationTransaction<Action, Protocol>,
         pointer_style_changed: bool,
-    ) -> Result<(), ()> {
+    ) -> Result<(), CommitError> {
         let focus_before = transaction.focus_before.clone();
         let PlannedApplicationTransaction {
             invalidated,
@@ -132,7 +133,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             semantic_events,
         } = plan;
         if !application_outputs.is_empty() || !application_subscription_starts.is_empty() {
-            return Err(());
+            return Err(CommitError::Registry);
         }
         let work_trace = PlannedWorkTrace::new(transaction.parent, transaction.instant);
         let root_quota = transaction.root_quota;
@@ -143,7 +144,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             semantic_events,
             work_trace,
             root_quota,
-        );
+        )?;
         for owner in mounted_subscription_dirty {
             if let Some(root) = root_quota {
                 self.queue

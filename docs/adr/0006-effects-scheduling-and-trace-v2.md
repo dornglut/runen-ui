@@ -334,6 +334,9 @@ survive nested mapping. Activation's returned primary action and secondary
 outputs share one allowance and are charged once. Subscription declaration
 mapping preserves the same authority; application start accounting follows the
 complete desired-set diff, so retained declarations do not spend new-start credit.
+Application effects, subscription starts and causal lifecycle cleanup share the
+whole application turn's per-family start allowance. A rejected batch spends no
+partial family credit; provisional starts are charged together before commit.
 
 Two-argument `UiApp::update` remains synchronous. Its entire returned Effects
 batch is validated for cardinality, families, residency, keyed overlap,

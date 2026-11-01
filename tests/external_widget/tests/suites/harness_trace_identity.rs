@@ -23,3 +23,6 @@ mod producer_work_operations;
 
 #[path = "../producer_subscription_operations.rs"]
 mod producer_subscription_operations;
+
+#[path = "../producer_whole_turn.rs"]
+mod producer_whole_turn;

@@ -137,7 +137,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             root_quota,
             producer_budget,
         )
-        .map_err(|_| CommitError::Registry)?;
+        .map_err(CommitError::from)?;
         self.commit_planned_application_transaction(plan, context)
     }
 
@@ -189,7 +189,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             semantic_events,
             work_trace,
             root_quota,
-        );
+        )?;
         if let Some(root_quota) = root_quota {
             self.append_cancellation_envelopes_rooted(
                 &invalidated,
@@ -284,31 +284,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         semantic_events: Vec<PlannedWorkSemanticEvent>,
         work_trace: PlannedWorkTrace,
         root_quota: Option<crate::queue::RootQuotaId>,
-    ) -> HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)> {
+    ) -> Result<HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>, CommitError> {
+        self.work
+            .commit_application_turn_starts(
+                starts.iter().map(crate::transaction::planned_start_family),
+            )
+            .map_err(CommitError::ProducerViolation)?;
         let PlannedWorkTrace {
             transaction_parent,
             logical_time,
             pre_recorded_lineage,
         } = work_trace;
         let invalidated_set: HashSet<_> = invalidated.iter().copied().collect();
-        let mut identities: HashMap<_, _> = invalidated
-            .iter()
-            .filter_map(|generation| {
-                self.trace_work_identity(*generation)
-                    .map(|identity| (generation.get(), identity))
-            })
-            .collect();
-        identities.extend(starts.iter().map(|start| {
-            (
-                start.generation.get(),
-                TraceWorkIdentity::new(
-                    trace_work_owner(&start.owner),
-                    trace_work_family(start.family),
-                    start.generation.get(),
-                    start.key.clone(),
-                ),
-            )
-        }));
+        let identities = self.application_start_identities(invalidated, &starts);
         self.work.commit_generation_reservation(next_generation);
         for start in starts {
             if !invalidated_set.contains(&start.generation) {
@@ -384,7 +372,33 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 }
             }
         }
-        lineage
+        Ok(lineage)
+    }
+
+    /// Snapshot trace identities before invalidation removes their live records.
+    fn application_start_identities(
+        &self,
+        invalidated: &[crate::work::WorkGeneration],
+        starts: &[crate::transaction::PlannedOwnedStart<Action, Protocol>],
+    ) -> HashMap<u64, TraceWorkIdentity> {
+        invalidated
+            .iter()
+            .filter_map(|generation| {
+                self.trace_work_identity(*generation)
+                    .map(|identity| (generation.get(), identity))
+            })
+            .chain(starts.iter().map(|start| {
+                (
+                    start.generation.get(),
+                    TraceWorkIdentity::new(
+                        trace_work_owner(&start.owner),
+                        trace_work_family(start.family),
+                        start.generation.get(),
+                        start.key.clone(),
+                    ),
+                )
+            }))
+            .collect()
     }
 
     pub(in crate::runtime) fn commit_application_start(

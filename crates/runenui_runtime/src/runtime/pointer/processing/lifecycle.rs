@@ -7,8 +7,7 @@ use super::super::{PointerRegistry, TouchGestureKind, TouchGestureState};
 use crate::{
     MountedNodeId, TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily,
     TracePointerCleanup, TracePointerContext, TracePointerPath, TraceRecordKind,
-    TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSequence, TraceSurfaceContext,
-    TraceTargetTransition,
+    TraceRouteSnapshot, TraceSequence, TraceSurfaceContext, TraceTargetTransition,
     mounted::TargetStatus,
     runtime::{MandatoryTracePlan, PointerDispatchFacts, RoutedIngressFacts, Runtime},
     trace::{TraceRecordDraft, TraceReservation},
@@ -665,10 +664,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.record_capture_loss_resolution(&capture_facts, transaction.parent);
         let resolution = transaction.parent;
         let failure = transaction.failure_facts();
-        if self.commit_routed_transaction(transaction).is_err() {
+        if let Err(error) = self.commit_routed_transaction(transaction) {
             self.poison_routed_event(
                 &failure,
-                TraceRoutedIntegrityFailure::CommitInvariantFailure,
+                error.integrity_failure(),
                 Some(&notification.owner),
             );
             return Err(());
