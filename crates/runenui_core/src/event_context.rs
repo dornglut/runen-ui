@@ -919,13 +919,12 @@ impl<Action> EventContext<'_, Action> {
             return Err(cause);
         }
         let index = crate::producer_violation::family_index(family);
-        if self.work_start_used[index] >= self.work_start_declared[index] {
-            let cause = crate::ProducerContractViolation::work_start(
-                crate::ProducerPhase::Widget(crate::WidgetProducerPhase::Event),
-                family,
-                self.work_start_declared[index],
-                self.work_start_used[index],
-            );
+        if let Some(cause) = crate::ProducerContractViolation::work_start_overrun(
+            crate::ProducerPhase::Widget(crate::WidgetProducerPhase::Event),
+            family,
+            Some(self.work_start_declared[index]),
+            self.work_start_used[index],
+        ) {
             self.producer_violation = Some(cause);
             self.overflowed = true;
             return Err(cause);

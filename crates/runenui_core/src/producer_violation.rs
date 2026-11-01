@@ -88,6 +88,20 @@ impl ProducerContractViolation {
             attempted: used.checked_add(1),
         }
     }
+
+    pub(crate) const fn work_start_overrun(
+        phase: ProducerPhase,
+        family: WorkFamily,
+        limit: Option<usize>,
+        used: usize,
+    ) -> Option<Self> {
+        match limit {
+            Some(declared) if used >= declared => {
+                Some(Self::work_start(phase, family, declared, used))
+            }
+            _ => None,
+        }
+    }
 }
 impl<T> EmitError<T> {
     pub(crate) const fn new(value: T, violation: ProducerContractViolation) -> Self {
@@ -123,6 +137,40 @@ mod tests {
         .enumerate()
         {
             assert_eq!(family_index(family), index);
+            assert_eq!(
+                ProducerContractViolation::work_start_overrun(
+                    ProducerPhase::ApplicationUpdate,
+                    family,
+                    None,
+                    index,
+                ),
+                None,
+                "unbounded contexts must remain unbounded",
+            );
+            assert_eq!(
+                ProducerContractViolation::work_start_overrun(
+                    ProducerPhase::ApplicationUpdate,
+                    family,
+                    Some(index + 1),
+                    index,
+                ),
+                None,
+                "the last declared slot must remain available",
+            );
+            assert_eq!(
+                ProducerContractViolation::work_start_overrun(
+                    ProducerPhase::ApplicationUpdate,
+                    family,
+                    Some(index),
+                    index,
+                ),
+                Some(ProducerContractViolation::work_start(
+                    ProducerPhase::ApplicationUpdate,
+                    family,
+                    index,
+                    index,
+                )),
+            );
             assert_eq!(
                 ProducerContractViolation::work_start(
                     ProducerPhase::ApplicationUpdate,

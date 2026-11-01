@@ -357,19 +357,15 @@ impl<Action> SubscriptionSet<Action> {
             return Err(cause);
         }
         let index = crate::producer_violation::family_index(family);
-        if let Some(budget) = self.work_starts {
-            let declared = budget.for_family(family);
-            if self.work_used[index] >= declared {
-                let cause = crate::ProducerContractViolation::work_start(
-                    self.phase,
-                    family,
-                    declared,
-                    self.work_used[index],
-                );
-                self.producer_violation = Some(cause);
-                self.overflowed = true;
-                return Err(cause);
-            }
+        if let Some(cause) = crate::ProducerContractViolation::work_start_overrun(
+            self.phase,
+            family,
+            self.work_starts.map(|budget| budget.for_family(family)),
+            self.work_used[index],
+        ) {
+            self.producer_violation = Some(cause);
+            self.overflowed = true;
+            return Err(cause);
         }
         self.used += 1;
         self.work_used[index] += 1;

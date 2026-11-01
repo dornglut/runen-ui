@@ -346,19 +346,15 @@ macro_rules! work_context {
             fn try_reserve_work(&mut self, family: WorkFamily) -> Result<(), crate::ProducerContractViolation> {
                 if let Some(cause) = self.producer_violation { return Err(cause); }
                 let index = crate::producer_violation::family_index(family);
-                if let Some(budget) = self.work_starts {
-                    let declared = budget.for_family(family);
-                    if self.work_used[index] >= declared {
-                        let cause = crate::ProducerContractViolation::work_start(
-                            crate::ProducerPhase::Widget($phase),
-                            family,
-                            declared,
-                            self.work_used[index],
-                        );
-                        self.producer_violation = Some(cause);
-                        self.overflowed = true;
-                        return Err(cause);
-                    }
+                if let Some(cause) = crate::ProducerContractViolation::work_start_overrun(
+                    crate::ProducerPhase::Widget($phase),
+                    family,
+                    self.work_starts.map(|budget| budget.for_family(family)),
+                    self.work_used[index],
+                ) {
+                    self.producer_violation = Some(cause);
+                    self.overflowed = true;
+                    return Err(cause);
                 }
                 self.__runtime_try_reserve_output()?;
                 self.work_used[index] += 1;
