@@ -1063,8 +1063,15 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             return;
         };
         #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
-        if self.test_first_pending.as_ref().is_some_and(|original| original != &pending.publication) {
-            self.fail(event_loop, "test: immutable pending publication changed during presentation recovery");
+        if self
+            .test_first_pending
+            .as_ref()
+            .is_some_and(|original| original != &pending.publication)
+        {
+            self.fail(
+                event_loop,
+                "test: immutable pending publication changed during presentation recovery",
+            );
             return;
         }
         let render_result = {
@@ -1422,9 +1429,8 @@ mod tests {
     #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
     #[test]
     fn native_fault_injection_accepts_only_named_recoverable_surface_statuses() {
-        let errors = parse_native_render_faults(
-            "timeout,occluded,outdated,suboptimal,not-configured,lost",
-        );
+        let errors =
+            parse_native_render_faults("timeout,occluded,outdated,suboptimal,not-configured,lost");
         assert_eq!(
             errors.into_iter().collect::<Vec<_>>(),
             vec![
