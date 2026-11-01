@@ -13,7 +13,7 @@ mod native;
 
 use core::fmt;
 
-use runenui_core::{NoHostProtocol, StyleEnvironment, UiApp};
+use runenui_core::{ElementId, NoHostProtocol, StyleEnvironment, UiApp};
 use runenui_render_wgpu::{
     ResourcePayload, ResourceProvider, ResourceProviderError, ResourceProviderErrorKind,
     ResourceRequest,
@@ -66,6 +66,7 @@ impl App {
         ConfiguredApp {
             title: self.title,
             state,
+            initial_focus: None,
             styles: StyleEnvironment::default(),
             resources: Box::new(NoExternalResources),
             runtime_config: RuntimeConfig::default()
@@ -79,6 +80,7 @@ pub struct ConfiguredApp<A: UiApp<HostProtocol = NoHostProtocol>> {
     title: Option<String>,
     state: A::State,
     styles: StyleEnvironment,
+    initial_focus: Option<ElementId>,
     resources: Box<dyn ResourceProvider>,
     runtime_config: RuntimeConfig,
 }
@@ -88,6 +90,16 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ConfiguredApp<A> {
     #[must_use]
     pub fn styles(mut self, styles: StyleEnvironment) -> Self {
         self.styles = styles;
+        self
+    }
+
+    /// Optionally identifies one application-authored element to focus once the
+    /// native window actually has operating-system focus.
+    ///
+    /// No focus policy is guessed from native window order or widget labels.
+    #[must_use]
+    pub fn initial_focus(mut self, target: ElementId) -> Self {
+        self.initial_focus = Some(target);
         self
     }
 
@@ -122,6 +134,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ConfiguredApp<A> {
             title,
             self.state,
             self.styles,
+            self.initial_focus,
             self.resources,
             self.runtime_config,
         )
