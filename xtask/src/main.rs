@@ -687,7 +687,7 @@ mod tests {
     fn repository_metadata_matches_owner_approved_gpl_license() -> Result<(), String> {
         let root = workspace_root()?;
         let members = repository_audit::declared_workspace_members(&root)?;
-        assert_eq!(members.len(), 14);
+        assert_eq!(members.len(), 15);
         assert_eq!(
             members
                 .iter()
@@ -696,6 +696,7 @@ mod tests {
             BTreeSet::from([
                 "counter",
                 "fluent_counter",
+                "fluent_status",
                 "reference_winit",
                 "runenui_app",
                 "runenui_core",
