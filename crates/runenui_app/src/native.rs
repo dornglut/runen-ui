@@ -9,7 +9,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll, Wake, Waker},
     thread,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use runenui_core::{
@@ -189,6 +189,7 @@ fn block_on<FutureType: Future>(future: FutureType) -> FutureType::Output {
     }
 }
 
+#[derive(Clone, Copy)]
 struct NativeMonotonicClock {
     origin: Instant,
 }
@@ -198,6 +199,10 @@ impl NativeMonotonicClock {
         Self {
             origin: Instant::now(),
         }
+    }
+
+    fn host_deadline(self, deadline: MonotonicInstant) -> Option<Instant> {
+        self.origin.checked_add(Duration::from_nanos(deadline.as_nanos()))
     }
 }
 
@@ -217,6 +222,8 @@ struct NativeHost<A: UiApp<HostProtocol = NoHostProtocol>> {
     fatal: Option<String>,
     cleanup_error: Option<String>,
     initial_focus: Option<ElementId>,
+    native_clock: NativeMonotonicClock,
+    next_deadline: Option<MonotonicInstant>,
     runtime: AppRuntime<A>,
     style_environment: StyleEnvironment,
     event_loop_proxy: EventLoopProxy<HostEvent>,
@@ -247,10 +254,11 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         config: RuntimeConfig,
     ) -> Self {
         let wake_proxy = proxy.clone();
+        let native_clock = NativeMonotonicClock::new();
         let runtime = AppRuntime::<A>::mount_with_host_adapters(
             model,
             config,
-            NativeMonotonicClock::new(),
+            native_clock,
             move || {
                 let _ = wake_proxy.send_event(HostEvent::Wake);
             },
@@ -261,6 +269,8 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             fatal: None,
             cleanup_error: None,
             initial_focus,
+            native_clock,
+            next_deadline: None,
             runtime,
             style_environment,
             event_loop_proxy: proxy,
@@ -399,6 +409,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
                 return;
             }
         };
+        self.next_deadline = batch.report().next_deadline();
         if !batch.ordered_records().is_empty() {
             eprintln!(
                 "RunenUI native input batch: {} ordered records, revision {}",
@@ -1094,12 +1105,30 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // Also catch terminalization in direct input/AccessKit pump paths that
-        // return before calling drive_runtime. Never park a terminal runtime.
+        // Due timer/motion/type-ahead work needs an explicit bounded canonical
+        // pump. The OS is not required to send another window event for it.
+        if self
+            .next_deadline
+            .is_some_and(|deadline| deadline <= self.native_clock.now())
+        {
+            self.drive_runtime(event_loop);
+        }
+        // Direct input/AccessKit paths also may terminalize. Never park a
+        // terminal runtime merely because the platform became idle.
         if let RuntimeStatus::Terminal(reason) = self.runtime.status() {
             self.fail(event_loop, &format!("runtime terminal: {reason:?}"));
             return;
         }
+        let now = Instant::now();
+        let future_deadline = self
+            .next_deadline
+            .and_then(|deadline| self.native_clock.host_deadline(deadline))
+            .filter(|deadline| *deadline > now);
+        // If a deadline remains due after this one bounded pump, rely on the
+        // canonical pending-wake handshake rather than a spinning OS loop.
+        event_loop.set_control_flow(
+            future_deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
+        );
         self.request_pending_redraw();
     }
 
