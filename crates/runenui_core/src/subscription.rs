@@ -360,13 +360,12 @@ impl<Action> SubscriptionSet<Action> {
         if let Some(budget) = self.work_starts {
             let declared = budget.for_family(family);
             if self.work_used[index] >= declared {
-                let cause = crate::ProducerContractViolation {
-                    kind: crate::ProducerViolationKind::DeclarationExceeded,
-                    phase: self.phase,
-                    component: crate::BudgetComponent::WorkStarts(family),
+                let cause = crate::ProducerContractViolation::work_start(
+                    self.phase,
+                    family,
                     declared,
-                    attempted: self.work_used[index].checked_add(1),
-                };
+                    self.work_used[index],
+                );
                 self.producer_violation = Some(cause);
                 self.overflowed = true;
                 return Err(cause);

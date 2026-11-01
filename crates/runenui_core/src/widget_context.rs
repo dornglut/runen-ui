@@ -349,12 +349,12 @@ macro_rules! work_context {
                 if let Some(budget) = self.work_starts {
                     let declared = budget.for_family(family);
                     if self.work_used[index] >= declared {
-                        let cause = crate::ProducerContractViolation {
-                            kind: crate::ProducerViolationKind::DeclarationExceeded,
-                            phase: crate::ProducerPhase::Widget($phase),
-                            component: crate::BudgetComponent::WorkStarts(family),
-                            declared, attempted: self.work_used[index].checked_add(1),
-                        };
+                        let cause = crate::ProducerContractViolation::work_start(
+                            crate::ProducerPhase::Widget($phase),
+                            family,
+                            declared,
+                            self.work_used[index],
+                        );
                         self.producer_violation = Some(cause);
                         self.overflowed = true;
                         return Err(cause);

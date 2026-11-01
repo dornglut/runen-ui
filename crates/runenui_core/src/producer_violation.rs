@@ -73,6 +73,21 @@ impl ProducerContractViolation {
             attempted: declared.checked_add(1),
         }
     }
+
+    pub(crate) const fn work_start(
+        phase: ProducerPhase,
+        family: WorkFamily,
+        declared: usize,
+        used: usize,
+    ) -> Self {
+        Self {
+            kind: ProducerViolationKind::DeclarationExceeded,
+            phase,
+            component: BudgetComponent::WorkStarts(family),
+            declared,
+            attempted: used.checked_add(1),
+        }
+    }
 }
 impl<T> EmitError<T> {
     pub(crate) const fn new(value: T, violation: ProducerContractViolation) -> Self {

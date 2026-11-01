@@ -918,21 +918,14 @@ impl<Action> EventContext<'_, Action> {
         if let Some(cause) = self.producer_violation {
             return Err(cause);
         }
-        let index = match family {
-            WorkFamily::LocalTask => 0,
-            WorkFamily::SendTask => 1,
-            WorkFamily::Timer => 2,
-            WorkFamily::HostRequest => 3,
-            WorkFamily::FrameworkService => 4,
-        };
+        let index = crate::producer_violation::family_index(family);
         if self.work_start_used[index] >= self.work_start_declared[index] {
-            let cause = crate::ProducerContractViolation {
-                kind: crate::ProducerViolationKind::DeclarationExceeded,
-                phase: crate::ProducerPhase::Widget(crate::WidgetProducerPhase::Event),
-                component: crate::BudgetComponent::WorkStarts(family),
-                declared: self.work_start_declared[index],
-                attempted: self.work_start_used[index].checked_add(1),
-            };
+            let cause = crate::ProducerContractViolation::work_start(
+                crate::ProducerPhase::Widget(crate::WidgetProducerPhase::Event),
+                family,
+                self.work_start_declared[index],
+                self.work_start_used[index],
+            );
             self.producer_violation = Some(cause);
             self.overflowed = true;
             return Err(cause);
