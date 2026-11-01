@@ -833,8 +833,7 @@ mod tests {
             let mut runtime = Runtime::mount(
                 0,
                 App::root,
-                RuntimeConfig::default()
-                    .with_trace_config(crate::TraceConfig::new(trace_capacity)),
+                RuntimeConfig::default().with_trace_config(crate::TraceConfig::new(trace_capacity)),
                 App::initial_producer_budget(&0),
                 |_, _| {
                     Ok(crate::runtime::PreparedInitialApplicationWork {
