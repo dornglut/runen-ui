@@ -413,6 +413,18 @@ pub(crate) fn pump_recorded<App: UiApp>(
         if runtime.queue.is_closed() {
             // Pop detected an invalid root ledger after removing the front
             // envelope. Do not invoke any mutable application or input callback.
+            // The popped input/command's mandatory trace reservation is no
+            // longer in the queue for terminal cancellation to discover.
+            let reservation = match &envelope {
+                WorkEnvelope::SemanticCommand(work) => Some(work.trace_reservation),
+                WorkEnvelope::ApplicationCommand(work) => Some(work.trace_reservation),
+                WorkEnvelope::Pointer(work) => Some(work.trace_reservation),
+                WorkEnvelope::Input(work) => Some(work.trace_reservation),
+                _ => None,
+            };
+            if let Some(reservation) = reservation {
+                runtime.trace.release_reservation(reservation);
+            }
             let cancelled = runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 1);
             observed.observe(runtime, None);
             return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
