@@ -1,4 +1,4 @@
-# ADR 0021 (PROPOSED): Independent UI application and native host composition
+# ADR 0021 (PROPOSED): Fluent independent UI applications and host composition
 
 > **Category:** Proposed ADR — review artifact only
 >
@@ -20,52 +20,77 @@ The earlier [#463](https://github.com/dornglut/runen-ui/issues/463#issuecomment-
 
 The design goal is: **one application model; optional capability-specific hosts; only one live UI authority**. It is not “one universal loop for every environment”.
 
-## Proposed decision, subject to the gates below
+## Primary developer contract — target only
 
-1. **Keep `UiApp` canonical.** Do not add a second application state, queue, reconciliation, effects engine, focus manager or renderer-neutral tree. The current static associated-type model is valid; avoid making users define their app twice.
-2. **Qualify an optional native application-host package** consuming the *public* `runenui_core`, `runenui_runtime`, `runenui_winit` and `runenui_render_wgpu` contracts. If a second real consumer and Cargo/dependency analysis justify the boundary, a candidate name is `runenui_host_winit`. It alone owns its own winit event loop, native target orchestration, renderer lifecycle and presentation observation. This would be an **explicit change** to the previous “application-owned loops” choice, approved only when this ADR is accepted.
-3. **Do not move the native host into `runenui_winit`.** That crate's accepted purpose is native input/AccessKit translation, with no renderer dependency and no host loop. Do not put winit, wgpu or AccessKit dependencies into `core` or `runtime`.
-4. **Do not require a new host-neutral `App` wrapper.** First qualify a native builder taking `App::State` directly plus `RuntimeConfig`, application-provided styles, resources, fonts, capability requirements and optional host-effect implementation. A shared immutable prepared-app definition is justified *only* if more than one real profile benefits from a single valid pre-mount configuration boundary.
-5. **Keep production headless and embedded use independent.** `AppRuntime::<App>::mount(...)` and explicit `pump`, input, publication and shutdown remain first-class public integration for headless, external renderers, game engines and tools that own their event loop. `runenui_testing` is a test harness, not the general production headless runner.
-6. **Do not claim multi-window support.** The first native host may implement one explicitly documented native window for the current single-surface runtime. The ownership structure must remain compatible with #353's future **one runtime, application-declared `SurfaceKey`, generational surface domains and host-owned `WindowId ↔ SurfaceId` association**, without introducing a permanent “first window = entire app” semantic shortcut.
-
-**This is a conditional recommendation**, not owner acceptance to implement the new package. Its viability depends on the compiler and lifecycle gates at the end of this document.
-
-## Current public facts versus target API
-
-The existing accepted `UiApp` trait has associated `State`, `Action` and `HostProtocol`, with static `root(state)` and `update(state, action)`. `AppRuntime::<App>::mount_with_config(state, config)` returns `AppRuntime<App>`, not a fallible builder or `App` instance. Its `pump`, native-neutral input and publication APIs are public. `StyleEnvironment` is presently supplied through `SurfaceBuildContext` during publication.
-
-The following example is **an unimplemented design candidate**, NOT compiling against accepted RunenUI and NOT approved syntax:
+**The accepted owner preference for investigation #541 is a RunenUI-first fluent facade at the same ergonomic level as Runenwerk:**
 
 ```rust
-use runenui_host_winit::{NativeUiHost, NativeWindowOptions};
+App::new()
+    .window("Counter")
+    .ui(Counter::new())
+    .run()?;
+```
 
-// CounterApp is a UiApp whose associated State is Counter.
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    NativeUiHost::<CounterApp>::builder(Counter::new())
-        .window(NativeWindowOptions::new().title("Counter"))
-        .styles(ui::style_environment())
-        .run()?;
-    Ok(())
+**This code is NOT currently exported, compile-checked as a native API or approved for implementation.** The fluent `App` is a small configuration/composition facade, **not** a new runtime. Its purpose is to let the user supply UI state and optional window intent while hiding ordinary native bootstrap. The existing `AppRuntime` remains the sole live mounted/input/work/publication authority.
+
+The straightforward type-safe approach needs **no `CounterApp` marker**: make the application state itself implement the existing `UiApp` contract with `type State = Self`. The current accepted trait supports that relationship directly:
+
+```rust
+struct Counter { count: i32 }
+enum CounterAction { Increment }
+
+impl UiApp for Counter {
+    type State = Self;
+    type Action = CounterAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self) -> impl View<Self::Action> {
+        text(format!("Count: {}", state.count))
+    }
+
+    fn update(
+        state: &mut Self,
+        action: Self::Action,
+    ) -> impl IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        match action {
+            CounterAction::Increment => state.count += 1,
+        }
+    }
 }
 ```
 
-The same exact application type remains usable today in a host-neutral program:
+The following is the **candidate type structure, not shipped library code**:
 
 ```rust
-let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
-let batch = runtime.pump(PumpBudget::new(64, 64, 64, 64))?;
+pub struct App { /* window/capability intent, not runtime */ }
+pub struct ConfiguredApp<A: UiApp> { /* one A::State, explicit intent */ }
+
+impl App {
+    pub fn new() -> Self { /* ... */ }
+    pub fn window(self, title: impl Into<WindowTitle>) -> Self { /* ... */ }
+    pub fn ui<A: UiApp<State = A>>(self, state: A) -> ConfiguredApp<A> { /* ... */ }
+    pub fn ui_with_state<A: UiApp>(self, state: A::State) -> ConfiguredApp<A> { /* ... */ }
+}
 ```
 
-A game or external renderer keeps calling the public runtime itself; it must not be made to enter a second library-controlled winit loop. A headless user controls quiescence, clock, budgets and logical publication explicitly. Only a *native-host* method owns `run()`. Adding `.run_headless()` solely to make a chain look symmetrical would be a misleading abstraction.
+Here `ui(self, model)` infers the application type from the value itself, requiring an actual `UiApp<State = Self>` implementation. **An arbitrary state object cannot identify a distinct `UiApp` marker**, because multiple app implementations could share the same associated `State`; Rust cannot safely reverse-lookup that type. `ui_with_state::<A>(state)` is an explicit advanced route for existing marker-based or separately typed applications, not a requirement for Counter. This distinction avoids blanket trait implementations, macros, registries, type erasure or a second application framework.
 
-### Public API questions that the compiler must settle
+A non-generic staging `App` followed by a typed `ConfiguredApp<A>` lets the facade accept `.window(...).ui(...)` or `.ui(...).window(...)` without moving a live host/runtime between modes; exact fluent method return types and capabilities must be compile-proved in the real package. Ordinary `Window::primary().title(...).size(...)` can be offered later as a typed advanced configuration; the shorthand string is a **title**, never a logical surface key or OS identity.
 
-- Generic construction: `NativeUiHost::<App>::builder(state: App::State)` and `RuntimeConfig` ownership; ensure Rust can infer the correct associated app, preserve the initial state on *pre-mount* configuration error, and avoid duplicate state.
-- Typed `HostProtocol`: a no-host-command default may be available for `NoHostProtocol` only. For a real command/response protocol, an explicit host executor/handler must provide exact typed completion and cancellation or the host must refuse the capability before mount. No effect is silently discarded.
-- External images and fonts: preserve caller's complete `ResourceRef`-keyed `ResourceProvider` and runtime-owned font source policy; do not replace missing resource or platform API with fictitious success. A native system-font default and deterministic headless default are distinct, explicitly documented profiles.
-- Native `WindowOptions` are native-layer types, not `UiApp` state or neutral surface semantics. Screen geometry/scaling must not be conflated with `RasterScale`, locale, accessibility facts or theme.
-- Typed `Result` and ordinary `main() -> Result` propagate native fatal errors. An explicit process exit bypassing required teardown is not the success path.
+## Proposed execution semantics, subject to qualification
+
+1. **One canonical UI runtime.** Both fluent and expert entry paths mount `AppRuntime<A>` exactly once, retaining typed actions/effects, host requests, input finality and publication. No second queue, state or focus manager.
+2. **Explicit capability selection.** `.window(...)` selects the optional native platform host *before* runtime admission. The native host owns winit events, wgpu presentation, AccessKit and native input lifetime; the low-level `runenui_winit` remains the pure adapter. Core/runtime/headless and embedded users incur **no native dependencies**.
+3. **Meaning of `run()`.** A configured native-window application enters the native event-driven loop with typed return/error handling. A windowless `.run()` should use a **separate headless event-driven executor implementation** over the *same* `AppRuntime` queue/clock, not the native event loop or a fabricated frame; finite advancement must be explicit. This proposed behavior aligns with Runenwerk's API **intent** and still requires an exact wake/exit/control contract before implementation. A foreign/game host keeps its own run loop and uses low-level `AppRuntime` directly.
+4. **No hidden defaults.** Styles, host effects, fonts, resources, native initial focus and OS capability failures must be explicit or have documented valid defaults. For an ordinary native window, conveniences can choose system fonts without changing deterministic bundled-only headless behavior.
+5. **Surface correctness.** Current RunenUI has one runtime surface. Future #353 requires one app with `SurfaceKey`-declared logical domains mapped to OS windows by the host; do not auto-create a second runtime or permanently equate a native window title with a `SurfaceId`. A single `.ui()` registers the application, not one independent `UiApp` per window.
+6. **No early acceptance.** #463's narrower prohibition on native runner extraction remains binding until a reviewed owner decision explicitly changes it. This draft defines the requested user-visible target and its proof gates only.
+
+## Compile evidence: what the draft probe can and cannot say
+
+The draft external-host test includes a **locally defined** fluent type facade and a `Counter`-like model that implements the actual public `UiApp` trait with `State = Self`. It checks that `.window("Counter").ui(Counter::new())` can infer the app type and that the resulting state executes through the real `AppRuntime` FIFO. It also checks a separate marker-based app with `ui_with_state::<A>(state)`; the current public marker route stays type-safe.
+
+**This is not a shipped `App`, native `.run()` or production desktop capability.** A compiler pass proves the *associated-type relationship* but not actual host creation, startup-order correctness, fallible configuration, font/resource/host protocol admission, native lifecycle or shutdown. Those require a separate implementation/CI/real-native proof after architecture acceptance.
 
 ## Owner map
 
@@ -112,9 +137,9 @@ Recovery of timeout/occlusion/outdated/lost renderer must retain and retry the *
 | --- | --- | --- |
 | Documentation/test refactor only | Useful independent cleanup, not sufficient | Does not remove repeated lifecycle knowledge from ordinary native apps |
 | Existing `runenui_winit` pure input/mapping helpers only | Retain; not enough for ordinary applications | #463 was right to avoid false sharing; a third native host shows the residual window/present/bootstrap burden |
-| An **optional** native composition layer over `AppRuntime` | **Investigate and qualify** | Encapsulates actual reusable native orchestration without forcing an event loop on embedding hosts |
-| A host-neutral `PreparedApp<App>` descriptor | Defer unless source/compile proof shows real shared pre-mount burden | Extra wrapper increases conceptual/public complexity; `UiApp` is already the model |
-| One all-platform universal `App::run()`/runner | Reject | Would confuse explicitly bounded headless execution with native loop ownership and violate embedded engine lifecycle |
+| Optional native implementation **behind the fluent facade** | **Qualify** | Ordinary applications get simple setup; embedded/engine hosts retain existing external loop/render ownership |
+| Fluent user-visible `App` facade, keeping `UiApp`/`AppRuntime` canonical | **Primary design target** | Removes marker and native bootstrap from ordinary app call sites without introducing another UI runtime |
+| One *universal execution loop* behind `App::run()` | Reject | Native, headless and embedded execution retain distinct owners; one fluent spelling does not imply one runner/scheduler |
 | Runenwerk providing standalone RunenUI host | Reject | Violates independent repo/product dependency direction |
 | One `AppRuntime` for each window | Reject for a single multi-window application | Conflicts with #353's single state/action/work authority |
 
@@ -122,7 +147,7 @@ Recovery of timeout/occlusion/outdated/lost renderer must retain and retry the *
 
 This **draft** is not itself acceptance and does not alter #463. Before an owner accepts the new optional native host boundary:
 
-1. A **compiler-backed external-consumer prototype** must validate real associated `UiApp::State` / `HostProtocol` signatures, fallible host startup, the selected native API, type-safe resource and font configuration and both positive and negative capability cases. No dummy native runner that merely holds an `AppRuntime` qualifies.
+1. First prove the direct-self-state `UiApp<State = Self>` and local fluent `.ui(model)` signature with real public Rust types, then separately **compiler-back an actual public `App` facade and native `.run()?`**: correct associated types, optional capabilities, fallible mount/startup, `HostProtocol`, fonts/resources and positive/negative cases. A local API-shape mock is **necessary but not sufficient**; it cannot establish that native hosting works.
 2. A state-transition design review must trace exact wake/clock startup, bounded pump, publication/retry/present, AccessKit, IME/keyboard/source admission, focus/occlusion/suspension, GPU device loss and error/cleanup outcomes. Validate no double work/queue/renderer/focus authority.
 3. One **ordinary independent external native app**, one second materially different consumer (Gallery only after its native draft is appropriately reconciled), a headless consumer without native dependencies, and an embedded owner of its own loop must compile/test on exact accepted APIs. Do not borrow experimental #539/#460 branches as accepted dependencies.
 4. Selected native operating-system walkthrough must cover a real window, click/Tab, text/IME as supported, accessibility, resize/DPI, focus loss, surface loss and normal/fatal process exit; skip claims are explicit.
@@ -130,6 +155,6 @@ This **draft** is not itself acceptance and does not alter #463. Before an owner
 6. Reconcile #353 single-runtime multi-surface and ADR 0020 pre-root environment requirements in **accepted** owner contracts. Keep Counter introductory, Gallery catalog, reference_winit specialized conformance. Refactor tests and layout primitives in separate bounded issue(s) with no proof deletion.
 7. Independent complete-diff review, exact-head canonical `cargo validate`, public-consumer tests and real-wgpu/native evidence; protected merge only with explicit owner authorization.
 
-**Research probe accompanying this draft:** `tests/external_host/tests/host_composition_probe.rs` compiles **existing** `UiApp`-associated state/config composition in a downstream crate and verifies two distinct apps can mount and drive the ordinary runtime. It deliberately imports **no winit/AccessKit/native host** and does **not** establish that the proposed native builder, multiple surfaces, clock startup or fatal-exit contract exists or compiles. This is useful narrow evidence only, not implementation acceptance.
+**Research probe accompanying this draft:** `tests/external_host/tests/host_composition_probe.rs` checks existing public trait composition and a **local** fluent `.window(...).ui(...)` shape where the UI model implements `UiApp<State = Self>`, plus a separate explicit marker/state path. It deliberately imports **no winit/AccessKit/native host** and does **not** establish that a public `App`, `.run()?`, multiple surfaces, clock startup or fatal-exit contract exists or compiles. This is narrow compiler evidence only, not implementation acceptance.
 
-**Disposition:** Proposed conditional choice of opt-in native composition, subject to the above gates and a deliberate owner-approved change to #463. No accepted production source, existing native host or conformance matrix is changed by this investigation.
+**Disposition:** Proposed **fluent `App` as the primary UX**, with optional native composition behind it, subject to the above gates and a deliberate owner-approved change to #463. No accepted production source, existing native host or conformance matrix is changed by this investigation.
