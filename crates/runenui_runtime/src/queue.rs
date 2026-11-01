@@ -3133,6 +3133,55 @@ mod reservation_tests {
     }
 
     #[test]
+    fn all_five_keyed_work_families_return_only_their_unused_root_credits() {
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        let mut queue = WorkQueue::<u8>::new(8);
+        let root = queue.reserve(7).expect("all five family credits fit");
+        let independent = queue.reserve(1).expect("other root remains owned");
+        let generations =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(5)
+                .expect("five unique generations")
+                .0;
+        queue
+            .retain_root_host_request_lease(root.quota(), generations[0])
+            .expect("host terminal credit");
+        queue
+            .retain_root_framework_service_lease(root.quota(), generations[1])
+            .expect("framework response and cancellation");
+        queue
+            .retain_root_local_task_lease(root.quota(), generations[2])
+            .expect("local task terminal credit");
+        queue
+            .retain_root_send_task_lease(root.quota(), generations[3])
+            .expect("send task terminal credit");
+        queue
+            .retain_root_timer_lease(root.quota(), generations[4], true)
+            .expect("repeating timer callback and cancellation");
+        assert_eq!(queue.root_remaining(root.quota()), Ok(0));
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        assert_eq!(queue.root_quotas[&root.quota()].live_work_leases, 5);
+
+        for (index, generation) in generations.iter().enumerate() {
+            queue
+                .release_root_work_lease(root.quota(), *generation)
+                .expect("each keyed lease returns exactly its remaining credits");
+            let returned = [1, 2, 1, 1, 2][..=index].iter().sum::<usize>();
+            assert_eq!(queue.root_remaining(root.quota()), Ok(returned));
+            assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        }
+        assert_eq!(queue.root_quotas[&root.quota()].live_work_leases, 0);
+        queue.release_reservation(&root).expect("root can retire");
+        assert!(!queue.root_quotas.contains_key(&root.quota()));
+        assert_eq!(queue.reserved, 1);
+        queue
+            .release_reservation(&independent)
+            .expect("unrelated root retains release right");
+        assert_eq!(queue.reserved, 0);
+    }
+
+    #[test]
     fn foreign_reserved_envelope_refusal_preserves_sequence_and_both_root_credits() {
         let mut queue = WorkQueue::<u8>::new(2);
         let first = queue.reserve(1).expect("first root fits");

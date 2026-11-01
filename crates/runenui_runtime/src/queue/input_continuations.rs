@@ -383,10 +383,11 @@ impl<Action> WorkQueue<Action> {
         &mut self,
         sequence: WorkSequence,
     ) -> Result<(), QueueReservationError> {
-        if let Some((key, root)) = self.claimed_input_continuations.remove(&sequence)
-            && !self.input_continuations.contains_key(&key)
-        {
-            self.retain_input_continuation(root, key)?;
+        if let Some((key, root)) = self.claimed_input_continuations.get(&sequence).cloned() {
+            if !self.input_continuations.contains_key(&key) {
+                self.retain_input_continuation(root, key)?;
+            }
+            self.claimed_input_continuations.remove(&sequence);
         }
         Ok(())
     }
@@ -421,6 +422,27 @@ impl<Action> WorkQueue<Action> {
         registration: NonZeroU64,
         buttons: &runenui_core::PointerButtons,
     ) -> Result<(), QueueReservationError> {
+        // Validate the complete source's pending button cardinality before
+        // rebinding any claim. A stale index must not partially rewrite the
+        // accepted pointer lifetime and lose the original owner.
+        if !buttons.is_empty() {
+            let button_count = buttons.iter().len();
+            let invalid = |key: &InputContinuationKey| {
+                matches!(
+                    key,
+                    InputContinuationKey::PendingPointer(source, index)
+                        if *source == sequence && *index >= button_count
+                )
+            };
+            if self
+                .claimed_input_continuations
+                .values()
+                .any(|(key, _)| invalid(key))
+                || self.input_continuations.keys().any(invalid)
+            {
+                return Err(QueueReservationError::Stale);
+            }
+        }
         for (key, _) in self.claimed_input_continuations.values_mut() {
             if let InputContinuationKey::PendingPointer(source, index) = key
                 && *source == sequence
@@ -593,6 +615,73 @@ mod tests {
             target: None,
             origin: ApplicationActionOrigin::Ordinary,
         })
+    }
+
+    #[test]
+    fn invalid_later_pointer_button_index_preserves_earlier_claim_and_quota() {
+        let mut queue = WorkQueue::<()>::new(3);
+        let reservation = queue.reserve(3).expect("finite root fits");
+        let source = queue
+            .push_reserved_with_remainder(&reservation, envelope)
+            .expect("source committed");
+        let claimed = InputContinuationKey::PendingPointer(source, 0);
+        let later = InputContinuationKey::PendingPointer(source, 2);
+        queue
+            .claimed_input_continuations
+            .insert(source, (claimed.clone(), reservation.quota()));
+        queue
+            .retain_input_continuation(reservation.quota(), later.clone())
+            .expect("pending later button guard fits");
+
+        let pointer = PointerId::new(1).expect("valid pointer");
+        let registration = NonZeroU64::new(1).expect("valid registration");
+        let buttons = runenui_core::PointerButtons::new([runenui_core::PointerButton::Primary]);
+        let before_remaining = queue.root_quotas[&reservation.quota()].remaining;
+        assert_eq!(
+            queue.bind_pointer_continuations(
+                reservation.quota(),
+                source,
+                pointer,
+                registration,
+                &buttons,
+            ),
+            Err(QueueReservationError::Stale),
+        );
+        assert_eq!(
+            queue.claimed_input_continuations.get(&source),
+            Some(&(claimed, reservation.quota())),
+        );
+        assert!(queue.input_continuations.contains_key(&later));
+        assert_eq!(queue.root_quotas[&reservation.quota()].input_continuations, 1);
+        assert_eq!(queue.root_quotas[&reservation.quota()].remaining, before_remaining);
+    }
+
+    #[test]
+    fn failed_rearm_preserves_the_original_reached_claim() {
+        let mut queue = WorkQueue::<()>::new(1);
+        let reservation = queue.reserve(1).expect("one root credit");
+        let source = queue
+            .push_reserved_with_remainder(&reservation, envelope)
+            .expect("source committed");
+        let claimed = InputContinuationKey::PendingSpace(source);
+        queue
+            .claimed_input_continuations
+            .insert(source, (claimed.clone(), reservation.quota()));
+        // Deliberately inject an inconsistent reserved guard count: a failed
+        // rearm must still preserve the reached source's claim.
+        queue
+            .root_quotas
+            .get_mut(&reservation.quota())
+            .expect("live root")
+            .input_continuations = 1;
+        assert_eq!(
+            queue.rearm_reached_input_continuation(source),
+            Err(QueueReservationError::Exhausted),
+        );
+        assert_eq!(
+            queue.claimed_input_continuations.get(&source),
+            Some(&(claimed, reservation.quota())),
+        );
     }
 
     #[test]
