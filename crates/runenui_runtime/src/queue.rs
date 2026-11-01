@@ -1442,96 +1442,73 @@ impl<Action> WorkQueue<Action> {
             .root_quotas
             .get_mut(&root)
             .ok_or(QueueReservationError::Stale)?;
-        // Validate the lease before touching generation credits: stale releases
-        // must not consume a pending terminal right or restore root capacity.
         if quota.live_work_leases == 0 {
             return Err(QueueReservationError::Stale);
         }
-        if let Some(credits) = quota.host_requests.remove(&generation) {
-            let released = usize::from(credits.response) + usize::from(credits.cancellation);
-            quota.remaining = quota
+
+        // A keyed lease transfers its unused future terminal credits back to
+        // the same root. Prove the complete transfer before removing the work
+        // generation; an invalid ledger must not be partially repaired.
+        let released = quota
+            .host_requests
+            .get(&generation)
+            .map(|credits| usize::from(credits.response) + usize::from(credits.cancellation))
+            .or_else(|| {
+                quota.framework_services
+                    .get(&generation)
+                    .map(|credits| usize::from(credits.response) + usize::from(credits.cancellation))
+            })
+            .or_else(|| {
+                quota.local_tasks.get(&generation).map(|credits| {
+                    usize::from(credits.completion.outcome)
+                        + usize::from(credits.completion.cancellation)
+                })
+            })
+            .or_else(|| {
+                quota.send_tasks.get(&generation).map(|credits| {
+                    usize::from(credits.completion.outcome)
+                        + usize::from(credits.completion.cancellation)
+                })
+            })
+            .or_else(|| {
+                quota.timers.get(&generation).map(|credits| {
+                    usize::from(credits.activity.firing)
+                        + usize::from(credits.activity.callback)
+                        + usize::from(credits.activity.cancellation)
+                })
+            });
+
+        if let Some(released) = released {
+            let future_after = future_credit_count(quota)
+                .and_then(|future| future.checked_sub(released))
+                .ok_or(QueueReservationError::Stale)?;
+            let remaining = quota
                 .remaining
                 .checked_add(released)
                 .ok_or(QueueReservationError::Exhausted)?;
             if quota
                 .pending_envelopes
-                .checked_add(quota.remaining)
-                .and_then(|occupied| {
-                    future_credit_count(quota).and_then(|future| occupied.checked_add(future))
-                })
+                .checked_add(remaining)
+                .and_then(|occupied| occupied.checked_add(future_after))
                 .is_none_or(|occupied| occupied > quota.limit)
             {
                 return Err(QueueReservationError::Stale);
             }
-        } else if let Some(credits) = quota.framework_services.remove(&generation) {
-            let released = usize::from(credits.response) + usize::from(credits.cancellation);
-            quota.remaining = quota
-                .remaining
-                .checked_add(released)
-                .ok_or(QueueReservationError::Exhausted)?;
-            if quota
-                .pending_envelopes
-                .checked_add(quota.remaining)
-                .and_then(|occupied| {
-                    future_credit_count(quota).and_then(|future| occupied.checked_add(future))
-                })
-                .is_none_or(|occupied| occupied > quota.limit)
-            {
-                return Err(QueueReservationError::Stale);
+            if quota.host_requests.contains_key(&generation) {
+                quota.host_requests.remove(&generation);
+            } else if quota.framework_services.contains_key(&generation) {
+                quota.framework_services.remove(&generation);
+            } else if quota.local_tasks.contains_key(&generation) {
+                quota.local_tasks.remove(&generation);
+            } else if quota.send_tasks.contains_key(&generation) {
+                quota.send_tasks.remove(&generation);
+            } else {
+                quota.timers.remove(&generation);
             }
-        } else if let Some(credits) = quota.local_tasks.remove(&generation) {
-            let released = usize::from(credits.completion.outcome)
-                + usize::from(credits.completion.cancellation);
-            quota.remaining = quota
-                .remaining
-                .checked_add(released)
-                .ok_or(QueueReservationError::Exhausted)?;
-            if quota
-                .pending_envelopes
-                .checked_add(quota.remaining)
-                .and_then(|occupied| {
-                    future_credit_count(quota).and_then(|future| occupied.checked_add(future))
-                })
-                .is_none_or(|occupied| occupied > quota.limit)
-            {
-                return Err(QueueReservationError::Stale);
-            }
-        } else if let Some(credits) = quota.send_tasks.remove(&generation) {
-            let released = usize::from(credits.completion.outcome)
-                + usize::from(credits.completion.cancellation);
-            quota.remaining = quota
-                .remaining
-                .checked_add(released)
-                .ok_or(QueueReservationError::Exhausted)?;
-            if quota
-                .pending_envelopes
-                .checked_add(quota.remaining)
-                .and_then(|occupied| {
-                    future_credit_count(quota).and_then(|future| occupied.checked_add(future))
-                })
-                .is_none_or(|occupied| occupied > quota.limit)
-            {
-                return Err(QueueReservationError::Stale);
-            }
-        } else if let Some(credits) = quota.timers.remove(&generation) {
-            let released = usize::from(credits.activity.firing)
-                + usize::from(credits.activity.callback)
-                + usize::from(credits.activity.cancellation);
-            quota.remaining = quota
-                .remaining
-                .checked_add(released)
-                .ok_or(QueueReservationError::Exhausted)?;
-            if quota
-                .pending_envelopes
-                .checked_add(quota.remaining)
-                .and_then(|occupied| {
-                    future_credit_count(quota).and_then(|future| occupied.checked_add(future))
-                })
-                .is_none_or(|occupied| occupied > quota.limit)
-            {
-                return Err(QueueReservationError::Stale);
-            }
+            quota.remaining = remaining;
         }
+        // A non-keyed subscription lease has no per-generation terminal map;
+        // its WorkRegistry record remains the authority for revocation.
         quota.live_work_leases -= 1;
         self.close_idle_root(root)
     }
@@ -3077,6 +3054,44 @@ mod reservation_tests {
                 framework_services: 0,
             },
         }
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[test]
+    fn quota_violation_during_lease_release_keeps_all_credits_and_generation_intact() {
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        let mut queue = WorkQueue::<u8>::new(1);
+        let reservation = queue.reserve(1).expect("one credit");
+        let generation =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(1)
+                .expect("one generation")
+                .0[0];
+        queue
+            .retain_root_local_task_lease(reservation.quota(), generation)
+            .expect("lease owns its terminal credit");
+        queue
+            .root_quotas
+            .get_mut(&reservation.quota())
+            .expect("root remains live")
+            .pending_envelopes = 1;
+
+        assert_eq!(
+            queue.release_root_work_lease(reservation.quota(), generation),
+            Err(QueueReservationError::Stale),
+            "a malformed occupied frontier cannot consume work ownership",
+        );
+        let quota = queue
+            .root_quotas
+            .get(&reservation.quota())
+            .expect("failed release must retain root");
+        assert_eq!(quota.remaining, 0);
+        assert_eq!(quota.pending_envelopes, 1);
+        assert_eq!(quota.live_work_leases, 1);
+        assert!(quota.local_tasks.contains_key(&generation));
+        assert_eq!(queue.reserved, 1);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
     }
 
     #[cfg(feature = "internal-test-seams")]
