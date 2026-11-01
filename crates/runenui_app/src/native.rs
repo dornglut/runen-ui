@@ -435,6 +435,12 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             }
         };
         self.next_deadline = batch.report().next_deadline();
+        // Motion/deadline-driven publications can become dirty without a
+        // freshly consumed explicit redraw token. This is a renderer-neutral
+        // readiness fact, not permission to synthesize extra frame updates.
+        if batch.report().publication_dirty() {
+            self.mapping_publication_needed = true;
+        }
         if !batch.ordered_records().is_empty() {
             eprintln!(
                 "RunenUI native input batch: {} ordered records, revision {}",
