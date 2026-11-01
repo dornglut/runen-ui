@@ -477,7 +477,7 @@ struct UnderfundedTimerApp;
 impl UiApp for UnderfundedTimerApp {
     fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
         // Two timer starts need two start Q credits, two cancellation credits,
-        // and one dirty-owner credit before the app root callback runs.
+        // and one dirty-owner credit before any external start can commit.
         runenui_core::ProducerBudget::new(4, 2)
             .with_reconciliation(1, 0, 1)
             .with_subscriptions(0, 0)
@@ -519,7 +519,7 @@ impl UiApp for UnderfundedTimerApp {
 }
 
 #[test]
-fn initial_timer_future_credits_are_checked_before_root_callback() {
+fn initial_timer_future_credits_are_checked_before_external_start() {
     let root_calls = Rc::new(Cell::new(0));
     let Err(error) = AppRuntime::<UnderfundedTimerApp>::mount(Rc::clone(&root_calls)) else {
         unreachable!("two cancellation futures do not fit the declared frontier")
@@ -536,7 +536,11 @@ fn initial_timer_future_credits_are_checked_before_root_callback() {
             }
         )
     );
-    assert_eq!(root_calls.get(), 0);
+    assert_eq!(
+        root_calls.get(),
+        1,
+        "APP-02 mounts the root before collecting actual initial Effects"
+    );
     let (state, _config) = error.into_parts();
     assert!(Rc::ptr_eq(&state, &root_calls));
 }
