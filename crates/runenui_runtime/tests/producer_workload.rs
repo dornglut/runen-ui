@@ -409,3 +409,73 @@ fn sixteen_credits_refuse_an_independent_ime_update_without_spending_cleanup() {
         "U475_SMALL_FORM C=16 retained_frontier=10 independent_update=10 update=Full cleanup=committed"
     );
 }
+
+/// Opt-in release-mode diagnostic, not a timing assertion or acceptance limit.
+#[test]
+#[ignore = "run by producer-ledger-performance workflow"]
+fn bench_u475_accumulated_noop_root_admission_scaling() {
+    const REPEATS: usize = 30;
+    for size in [32usize, 256, 1024, 2048] {
+        for trace in [0, 512] {
+            let mut timings = Vec::with_capacity(REPEATS);
+            let mut max_rss_kib = 0usize;
+            for _ in 0..REPEATS {
+                let mut runtime = AppRuntime::<Form>::mount_with_config(
+                    State {
+                        fields: 1,
+                        subscriptions: 0,
+                        text: String::new(),
+                        selection: 0,
+                        revision: 0,
+                        noops: 0,
+                    },
+                    RuntimeConfig::default()
+                        .with_queue_capacity(size)
+                        .with_trace_config(TraceConfig::new(trace)),
+                )
+                .unwrap_or_else(|error| panic!("diagnostic mount: {error}"));
+                assert!(
+                    runtime
+                        .pump(FULL)
+                        .unwrap_or_else(|_| unreachable!())
+                        .report()
+                        .is_quiescent()
+                );
+                let start = Instant::now();
+                for _ in 0..size {
+                    runtime
+                        .submit_action(Action::Noop)
+                        .unwrap_or_else(|error| panic!("one-credit producer fits: {error:?}"));
+                }
+                timings.push(start.elapsed().as_micros());
+                if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+                    if let Some(kib) = status
+                        .lines()
+                        .find_map(|line| line.strip_prefix("VmRSS:"))
+                        .and_then(|value| value.split_whitespace().next())
+                        .and_then(|value| value.parse::<usize>().ok())
+                    {
+                        max_rss_kib = max_rss_kib.max(kib);
+                    }
+                }
+                assert!(
+                    runtime
+                        .pump(FULL)
+                        .unwrap_or_else(|_| unreachable!())
+                        .report()
+                        .is_quiescent()
+                );
+                assert_eq!(runtime.state().noops, size);
+                assert_eq!(runtime.status(), RuntimeStatus::Running);
+                runtime.shutdown().unwrap_or_else(|_| unreachable!());
+            }
+            timings.sort_unstable();
+            println!(
+                "U475_METRIC,admission,{trace},{size},{REPEATS},{},{},{},{max_rss_kib}",
+                timings[REPEATS / 2],
+                timings[(95 * REPEATS).div_ceil(100) - 1],
+                timings[REPEATS - 1]
+            );
+        }
+    }
+}

@@ -3801,6 +3801,65 @@ mod reservation_tests {
         assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(65));
     }
 
+    /// Opt-in release-mode diagnostic, not a timing assertion or acceptance limit.
+    #[test]
+    #[ignore = "run by producer-ledger-performance workflow"]
+    fn bench_u475_keyed_generation_release_scaling() {
+        use std::time::Instant;
+
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        const REPEATS: usize = 30;
+        for size in [32usize, 256, 1024, 2048] {
+            let mut timings = Vec::with_capacity(REPEATS);
+            let mut max_rss_kib = 0usize;
+            for _ in 0..REPEATS {
+                let mut queue = WorkQueue::<u8>::new(size);
+                let reservation = queue
+                    .reserve(size)
+                    .expect("finite local-task terminal frontier fits");
+                let generations =
+                    WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                        .preview_generations(size)
+                        .expect("the benchmark generations fit")
+                        .0;
+                for generation in &generations {
+                    queue
+                        .retain_root_local_task_lease(reservation.quota(), *generation)
+                        .expect("generation reserves exactly one terminal credit");
+                }
+                assert_eq!(queue.root_remaining(reservation.quota()), Ok(0));
+                if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+                    if let Some(kib) = status
+                        .lines()
+                        .find_map(|line| line.strip_prefix("VmRSS:"))
+                        .and_then(|value| value.split_whitespace().next())
+                        .and_then(|value| value.parse::<usize>().ok())
+                    {
+                        max_rss_kib = max_rss_kib.max(kib);
+                    }
+                }
+                let start = Instant::now();
+                for generation in generations {
+                    queue
+                        .release_root_work_lease(reservation.quota(), generation)
+                        .expect("generation returns its unused terminal credit");
+                }
+                timings.push(start.elapsed().as_micros());
+                assert!(queue.root_quotas.is_empty());
+                assert_eq!(queue.reserved, 0);
+                assert!(queue.is_empty());
+            }
+            timings.sort_unstable();
+            println!(
+                "U475_METRIC,keyed-release,off,{size},{REPEATS},{},{},{},{max_rss_kib}",
+                timings[REPEATS / 2],
+                timings[(95 * REPEATS).div_ceil(100) - 1],
+                timings[REPEATS - 1]
+            );
+        }
+    }
+
     #[test]
     fn residency_claim_sums_follow_queued_active_and_terminal_roots() {
         use crate::work::WorkFamily;
