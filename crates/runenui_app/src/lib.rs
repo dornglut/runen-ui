@@ -47,7 +47,10 @@ impl App {
     /// `UiApp<State = Self>` permits the model's type to be inferred from the
     /// value. No second application-state/queue/runtime authority is created.
     #[must_use]
-    pub fn ui<A: UiApp<State = A, HostProtocol = NoHostProtocol>>(self, model: A) -> ConfiguredApp<A> {
+    pub fn ui<A: UiApp<State = A, HostProtocol = NoHostProtocol>>(
+        self,
+        model: A,
+    ) -> ConfiguredApp<A> {
         self.ui_with_state::<A>(model)
     }
 
@@ -56,7 +59,10 @@ impl App {
     /// Useful when the canonical `UiApp` implementor is intentionally distinct
     /// from the application state; no attempt to reverse-lookup the marker is made.
     #[must_use]
-    pub fn ui_with_state<A: UiApp<HostProtocol = NoHostProtocol>>(self, state: A::State) -> ConfiguredApp<A> {
+    pub fn ui_with_state<A: UiApp<HostProtocol = NoHostProtocol>>(
+        self,
+        state: A::State,
+    ) -> ConfiguredApp<A> {
         ConfiguredApp {
             title: self.title,
             state,
@@ -139,7 +145,9 @@ pub enum NativeAppError {
 impl fmt::Display for NativeAppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::WindowRequired => write!(f, "native application needs a .window(...) declaration"),
+            Self::WindowRequired => {
+                write!(f, "native application needs a .window(...) declaration")
+            }
             Self::WindowTitleEmpty => write!(f, "native application window title must be nonempty"),
             Self::EventLoop(detail) => write!(f, "native event-loop failure: {detail}"),
             Self::Fatal(detail) => write!(f, "native application failure: {detail}"),
