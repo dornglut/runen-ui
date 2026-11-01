@@ -140,6 +140,13 @@ pub enum NativeAppError {
     EventLoop(String),
     /// Native host, renderer, runtime or required shutdown failed.
     Fatal(String),
+    /// A primary failure occurred and the required cleanup also failed.
+    PrimaryAndCleanup {
+        /// The original failure that initiated native termination.
+        primary: Box<Self>,
+        /// The separate cleanup failure; its observation must not be hidden.
+        cleanup: String,
+    },
 }
 
 impl fmt::Display for NativeAppError {
@@ -151,11 +158,37 @@ impl fmt::Display for NativeAppError {
             Self::WindowTitleEmpty => write!(f, "native application window title must be nonempty"),
             Self::EventLoop(detail) => write!(f, "native event-loop failure: {detail}"),
             Self::Fatal(detail) => write!(f, "native application failure: {detail}"),
+            Self::PrimaryAndCleanup { primary, cleanup } => {
+                write!(f, "{primary}; cleanup also failed: {cleanup}")
+            }
         }
     }
 }
 
-impl std::error::Error for NativeAppError {}
+impl std::error::Error for NativeAppError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::PrimaryAndCleanup { primary, .. } => Some(primary.as_ref()),
+            _ => None,
+        }
+    }
+}
+
+impl NativeAppError {
+    fn combine_exit(primary: Option<Self>, cleanup: Option<String>) -> Result<(), Self> {
+        match (primary, cleanup) {
+            (None, None) => Ok(()),
+            (Some(primary), None) => Err(primary),
+            (None, Some(cleanup)) => Err(Self::Fatal(format!(
+                "native shutdown observation unavailable: {cleanup}"
+            ))),
+            (Some(primary), Some(cleanup)) => Err(Self::PrimaryAndCleanup {
+                primary: Box::new(primary),
+                cleanup,
+            }),
+        }
+    }
+}
 
 struct NoExternalResources;
 
@@ -203,6 +236,19 @@ mod tests {
         assert!(matches!(no_window, Err(NativeAppError::WindowRequired)));
         let empty = App::new().window("").ui(Minimal { value: 1 }).run();
         assert!(matches!(empty, Err(NativeAppError::WindowTitleEmpty)));
+    }
+
+    #[test]
+    fn native_exit_preserves_primary_and_cleanup_failures_separately() {
+        let combined = NativeAppError::combine_exit(
+            Some(NativeAppError::EventLoop("event loop failed".to_owned())),
+            Some("shutdown observation failed".to_owned()),
+        );
+        let Err(NativeAppError::PrimaryAndCleanup { primary, cleanup }) = combined else {
+            panic!("both failures must be returned as separate typed facts");
+        };
+        assert!(matches!(*primary, NativeAppError::EventLoop(_)));
+        assert_eq!(cleanup, "shutdown observation failed");
     }
 
     #[test]
