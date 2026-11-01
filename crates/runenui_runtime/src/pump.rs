@@ -801,8 +801,15 @@ mod tests {
 
         let batch = pump_recorded::<App>(&mut runtime, PumpBudget::new(1, 0, 0, 0))
             .unwrap_or_else(|_| unreachable!("terminal observation is retained"));
-        assert_eq!(*runtime.state(), 0, "invalid pop must not invoke UiApp::update");
-        assert_eq!(runtime.status(), RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned));
+        assert_eq!(
+            *runtime.state(),
+            0,
+            "invalid pop must not invoke UiApp::update"
+        );
+        assert_eq!(
+            runtime.status(),
+            RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+        );
         assert_eq!(batch.report().processed_envelopes(), 0);
         assert_eq!(batch.report().cancelled_by_terminal_transition(), 1);
         assert_eq!(batch.processed_through(), None);
