@@ -2,7 +2,7 @@
 
 > **Category:** Proposed ADR — review artifact only
 >
-> **Status:** **Proposed, NOT ACCEPTED; NOT IMPLEMENTED.** This document is carried on a draft investigation PR. It MUST NOT be treated as active architecture or implementation authority before a separately authorized owner review and protected acceptance.
+> **Status:** **Proposed, NOT ACCEPTED; not shipped on accepted `main`.** This document is a review artifact. It MUST NOT be treated as active architecture or implementation authority before a separately authorized owner review and protected acceptance.
 >
 > **Decision input:** [Investigation #541](https://github.com/dornglut/runen-ui/issues/541); prior [#463](https://github.com/dornglut/runen-ui/issues/463) explicitly rejected a generic runner and remains binding until revised.
 >
@@ -20,6 +20,14 @@ The earlier [#463](https://github.com/dornglut/runen-ui/issues/463#issuecomment-
 
 The design goal is: **one application model; optional capability-specific hosts; only one live UI authority**. It is not “one universal loop for every environment”.
 
+## Decision boundary for a protected ADR acceptance
+
+The proposed ownership change is **only** permission for one opt-in, independently packaged, native **single-window application host** behind a small fluent `App` facade. That host composes the existing public runtime, native input/semantics adapter and renderer; it does not acquire mounted state, scheduler, input finality, editing, semantic, layout or renderer authority. It is not a universal headless/embedded/game loop, multi-surface implementation, Counter-specific runner or Runenwerk dependency. Expert external hosts remain free to own their own loop.
+
+If this ADR is explicitly accepted through protected review, it supersedes **only** #463's earlier conclusion that no *stateful reusable native application host* was justified by the then-available consumers. It **retains** #463/#464's pure-adapter boundaries, keeps the existing specialized reference host, and does not by itself migrate Counter/Gallery, amend #353, ship `App::run()` or authorize a production merge. Until then, #463 remains binding.
+
+**Separate gates:** owner approval of this narrow architecture/ownership boundary belongs to this ADR. Correctness, public API compatibility, exact-head execution, platform support, proof and acceptance of a *specific implementation* belong to delivery #543. An unmerged implementation candidate may provide evidence for review but never becomes the accepted architecture, dependency or capability merely by compiling.
+
 ## Primary developer contract — target only
 
 **The accepted owner preference for investigation #541 is a RunenUI-first fluent facade at the same ergonomic level as Runenwerk:**
@@ -31,7 +39,7 @@ App::new()
     .run()?;
 ```
 
-**This code is NOT currently exported, compile-checked as a native API or approved for implementation.** The fluent `App` is a small configuration/composition facade, **not** a new runtime. Its purpose is to let the user supply UI state and optional window intent while hiding ordinary native bootstrap. The existing `AppRuntime` remains the sole live mounted/input/work/publication authority.
+**This code is a proposed public contract, not shipped on accepted `main`.** An unmerged delivery draft may compile it; that is not an accepted API. The fluent `App` is a small configuration/composition facade, **not** a new runtime. Its purpose is to let the user supply UI state and optional window intent while hiding ordinary native bootstrap. The existing `AppRuntime` remains the sole live mounted/input/work/publication authority.
 
 The straightforward type-safe approach needs **no `CounterApp` marker**: make the application state itself implement the existing `UiApp` contract with `type State = Self`. The current accepted trait supports that relationship directly:
 
@@ -81,7 +89,7 @@ A non-generic staging `App` followed by a typed `ConfiguredApp<A>` lets the faca
 
 1. **One canonical UI runtime.** Both fluent and expert entry paths mount `AppRuntime<A>` exactly once, retaining typed actions/effects, host requests, input finality and publication. No second queue, state or focus manager.
 2. **Explicit capability selection.** `.window(...)` selects the optional native platform host *before* runtime admission. The native host owns winit events, wgpu presentation, AccessKit and native input lifetime; the low-level `runenui_winit` remains the pure adapter. Core/runtime/headless and embedded users incur **no native dependencies**.
-3. **Meaning of `run()`.** A configured native-window application enters the native event-driven loop with typed return/error handling. A windowless `.run()` should use a **separate headless event-driven executor implementation** over the *same* `AppRuntime` queue/clock, not the native event loop or a fabricated frame; finite advancement must be explicit. This proposed behavior aligns with Runenwerk's API **intent** and still requires an exact wake/exit/control contract before implementation. A foreign/game host keeps its own run loop and uses low-level `AppRuntime` directly.
+3. **Meaning of `run()` in the authorized first slice.** A configured **native-window** application enters its native event-driven loop with typed return/error handling. A missing window is a typed unsupported-configuration error, never a silent fabricated headless or GPU run. A future windowless `.run()` or distinct headless executor requires a **separate accepted** wake/clock/exit/finite-advancement contract and is not included in this ADR's first native delivery. Headless and foreign/game hosts keep their own loops and use public `AppRuntime` directly.
 4. **No hidden defaults.** Styles, host effects, fonts, resources, native initial focus and OS capability failures must be explicit or have documented valid defaults. For an ordinary native window, conveniences can choose system fonts without changing deterministic bundled-only headless behavior.
 5. **Surface correctness.** Current RunenUI has one runtime surface. Future #353 requires one app with `SurfaceKey`-declared logical domains mapped to OS windows by the host; do not auto-create a second runtime or permanently equate a native window title with a `SurfaceId`. A single `.ui()` registers the application, not one independent `UiApp` per window.
 6. **No early acceptance.** #463's narrower prohibition on native runner extraction remains binding until a reviewed owner decision explicitly changes it. This draft defines the requested user-visible target and its proof gates only.
@@ -125,7 +133,7 @@ Dirty (runtime-owned)
 
 Recovery of timeout/occlusion/outdated/lost renderer must retain and retry the **correct immutable publication** where still compatible, not invoke `App::root` to fabricate another output or advance displayed pointer authority. Resize/scale/target generation changes may invalidate the pending target mapping, requiring an explicit fresh compatible publication; no old physical coordinates are rebound to a different surface. AccessKit projection is derived from published semantics; it must not create a competing UI tree authority.
 
-**Open unresolved contract:** accepted present code acknowledges redraw after *successful publication*; #353 target says acknowledge per-surface redraw **after successful Present**. These are materially different contracts. The correct runtime owner must decide if future publication-complete and presentation-complete tokens need distinct semantics or if the target contract should change. Do **not** silently change current `acknowledge_redraw` or accept the proposed host on an unproven assumption.
+**Normative first-slice single-surface rule:** use the **accepted** `acknowledge_redraw` contract after *successful publication*, retain the same immutable pending publication across recoverable render/Present retries while its target mapping remains valid, and promote the **displayed input context only after confirmed successful Present**. Do not issue a second redraw acknowledgment on Present or fabricate a new publication to retry. This freezes the existing accepted contract for the native facade, not a claim that all loss/retry cases have been qualified. **Separate future #353 decision:** its proposed per-surface acknowledgment after successful Present differs materially and requires an explicit runtime-owner migration/receipt decision before multi-surface cutover; the native host may not silently redefine either token.
 
 **Revocation:** native focus loss, occlusion, suspend, surface loss and destroy immediately fence input before cleanup can race queued work, while canonical runtime still owns focus/composition/pressed states and exact retirement. Native device IDs, IME generation, active key lifetimes, recorded pointer/capture receipts, window epochs, and renderer/frame identity must not cross incarnations. Host-native pointer lock/relative/gameplay policy belongs to #424/external host, never to this default UI host.
 
@@ -145,7 +153,9 @@ Recovery of timeout/occlusion/outdated/lost renderer must retain and retry the *
 
 ## Required acceptance proof and delivery boundaries
 
-This **draft** is not itself acceptance and does not alter #463. Before an owner accepts the new optional native host boundary:
+This **draft** is not itself acceptance and does not alter #463. The **ADR review/architecture decision** must establish the narrow permission above, preserve one runtime and public adapter boundaries, and explicitly record the scoped #463 supersession. The local Rust type probe and source comparison inform this decision; they do not certify a native executable.
+
+**The following are separate delivery #543 production acceptance gates**, even if provisional implementation code already exists before the ADR is accepted:
 
 1. First prove the direct-self-state `UiApp<State = Self>` and local fluent `.ui(model)` signature with real public Rust types, then separately **compiler-back an actual public `App` facade and native `.run()?`**: correct associated types, optional capabilities, fallible mount/startup, `HostProtocol`, fonts/resources and positive/negative cases. A local API-shape mock is **necessary but not sufficient**; it cannot establish that native hosting works.
 2. A state-transition design review must trace exact wake/clock startup, bounded pump, publication/retry/present, AccessKit, IME/keyboard/source admission, focus/occlusion/suspension, GPU device loss and error/cleanup outcomes. Validate no double work/queue/renderer/focus authority.
@@ -157,4 +167,4 @@ This **draft** is not itself acceptance and does not alter #463. Before an owner
 
 **Research probe accompanying this draft:** `tests/external_host/tests/host_composition_probe.rs` checks existing public trait composition and a **local** fluent `.window(...).ui(...)` shape where the UI model implements `UiApp<State = Self>`, plus a separate explicit marker/state path. It deliberately imports **no winit/AccessKit/native host** and does **not** establish that a public `App`, `.run()?`, multiple surfaces, clock startup or fatal-exit contract exists or compiles. This is narrow compiler evidence only, not implementation acceptance.
 
-**Disposition:** Proposed **fluent `App` as the primary UX**, with optional native composition behind it, subject to the above gates and a deliberate owner-approved change to #463. No accepted production source, existing native host or conformance matrix is changed by this investigation.
+**Disposition:** Proposed **fluent `App` as the primary UX**, with one optional single-window native host composed behind it. Only an explicitly reviewed, protected acceptance can enact the narrow #463 ownership exception; implementation #543 remains blocked from production acceptance until its independent gates pass. The proposal alone changes no accepted source, native-host contract or conformance matrix.
