@@ -95,6 +95,11 @@ impl Trace {
         self.capacity != 0
     }
 
+    #[cfg(test)]
+    pub(crate) const fn reserved_records_for_test(&self) -> usize {
+        self.reserved_records
+    }
+
     pub(crate) const fn payload_capture(&self) -> TracePayloadCapture {
         if self.is_enabled() {
             self.payload_capture

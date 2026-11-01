@@ -828,6 +828,88 @@ mod tests {
     }
 
     #[test]
+    fn invalid_root_command_pop_releases_trace_reservation_without_false_input_finality() {
+        for trace_capacity in [0, 512] {
+            let mut runtime = Runtime::mount(
+                0,
+                App::root,
+                RuntimeConfig::default()
+                    .with_trace_config(crate::TraceConfig::new(trace_capacity)),
+                App::initial_producer_budget(&0),
+                |_, _| {
+                    Ok(crate::runtime::PreparedInitialApplicationWork {
+                        application: crate::transaction::TransactionLedger::from_outputs(
+                            Vec::new(),
+                            0,
+                        )
+                        .unwrap_or_else(|_| unreachable!("empty initial ledger fits")),
+                        subscriptions: Vec::new(),
+                    })
+                },
+            )
+            .unwrap_or_else(|_| unreachable!("internal test mount inputs are valid"));
+            runtime.interaction_producer_budget = Some(|_| {
+                runenui_core::ProducerBudget::new(16, 8)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+                    .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 4))
+            });
+            runtime.initialize_application_work();
+            let mounted = pump_recorded::<App>(
+                &mut runtime,
+                PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
+            )
+            .unwrap_or_else(|_| unreachable!("initial work settles"));
+            assert!(mounted.report().is_quiescent());
+
+            let target = runtime
+                .tree
+                .root_id()
+                .unwrap_or_else(|| unreachable!("mounted root exists"))
+                .clone();
+            runtime
+                .submit_command(
+                    target,
+                    runenui_core::SemanticCommand::OpenMenu,
+                    runenui_core::CommandOrigin::programmatic(),
+                )
+                .unwrap_or_else(|error| unreachable!("command admission succeeds: {error:?}"));
+            assert_eq!(
+                runtime.trace.reserved_records_for_test(),
+                usize::from(trace_capacity != 0),
+                "the queued command owns exactly one active trace outcome when enabled"
+            );
+            runtime.queue.invalidate_front_root_pending_for_test();
+
+            let batch = pump_recorded::<App>(&mut runtime, PumpBudget::new(1, 0, 0, 0))
+                .unwrap_or_else(|_| unreachable!("terminal observation is retained"));
+            assert_eq!(*runtime.state(), 0, "invalid pop must not invoke update");
+            assert_eq!(
+                runtime.status(),
+                RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+            );
+            assert_eq!(batch.report().processed_envelopes(), 0);
+            assert_eq!(batch.report().cancelled_by_terminal_transition(), 1);
+            assert_eq!(batch.processed_through(), None);
+            assert!(
+                !batch.ordered_records().iter().any(|record| {
+                    matches!(record, crate::InputArbitrationRecord::InputSettled(_))
+                }),
+                "discarded command cannot fabricate an M13 input settlement"
+            );
+            assert_eq!(
+                runtime.trace.reserved_records_for_test(),
+                0,
+                "the popped command's trace credit is no longer in the terminal queue inventory"
+            );
+
+            let again = pump_recorded::<App>(&mut runtime, PumpBudget::new(0, 0, 0, 0))
+                .unwrap_or_else(|_| unreachable!("terminal observation is repeatable"));
+            assert_eq!(again.report().cancelled_by_terminal_transition(), 0);
+            assert_eq!(runtime.trace.reserved_records_for_test(), 0);
+        }
+    }
+
+    #[test]
     fn one_checkpoint_authority_runs_before_and_at_the_final_boundary() {
         let mut runtime = Runtime::mount(
             0,
