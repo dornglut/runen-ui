@@ -3451,6 +3451,10 @@ mod reservation_tests {
 
     #[cfg(feature = "internal-test-seams")]
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "One cross-family cancellation fixture proves the entire last-sequence FIFO frontier and drain"
+    )]
     fn host_framework_and_timer_cancellations_preserve_an_independent_last_sequence() {
         use crate::{
             RuntimeLimits, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, work::WorkRegistry,
