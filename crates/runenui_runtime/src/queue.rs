@@ -3618,7 +3618,9 @@ mod reservation_tests {
             .expect("A owns one independent reusable action credit");
         assert_eq!(
             queue
-                .push_reserved_with_remainder(&a, |sequence, root| action_envelope(sequence, 20, root))
+                .push_reserved_with_remainder(&a, |sequence, root| action_envelope(
+                    sequence, 20, root
+                ))
                 .map(WorkSequence::get),
             Ok(u64::MAX - 3)
         );
@@ -3627,7 +3629,10 @@ mod reservation_tests {
         assert_eq!(queue.root_remaining(a.quota()), Ok(1));
         assert_eq!(queue.root_remaining(b.quota()), Ok(1));
         assert_eq!(queue.reserved, 3);
-        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(u64::MAX - 2));
+        assert_eq!(
+            queue.next_sequence().map(WorkSequence::get),
+            Some(u64::MAX - 2)
+        );
 
         let commit = RootProducerCommit {
             root: a.quota(),
@@ -3652,9 +3657,9 @@ mod reservation_tests {
                 framework_services: 0,
             },
         };
-        queue
-            .preflight_root_producer_commit(commit)
-            .expect("B's cancellation is already sequenced by B's frontier; A needs one new credit");
+        queue.preflight_root_producer_commit(commit).expect(
+            "B's cancellation is already sequenced by B's frontier; A needs one new credit",
+        );
         queue
             .release_root_work_lease_for_cancellation(b.quota(), generation)
             .expect("B's live host lease transfers its cancellation credit");
@@ -3672,7 +3677,9 @@ mod reservation_tests {
         );
         assert_eq!(
             queue
-                .push_rooted(a.quota(), |sequence, root| action_envelope(sequence, 21, root))
+                .push_rooted(a.quota(), |sequence, root| action_envelope(
+                    sequence, 21, root
+                ))
                 .map(WorkSequence::get),
             Ok(u64::MAX - 1)
         );
@@ -3681,7 +3688,9 @@ mod reservation_tests {
             .expect("A's reached action leaves its new action pending");
         assert_eq!(
             queue
-                .push_rooted(b.quota(), |sequence, root| action_envelope(sequence, 11, root))
+                .push_rooted(b.quota(), |sequence, root| action_envelope(
+                    sequence, 11, root
+                ))
                 .map(WorkSequence::get),
             Ok(u64::MAX),
             "B retains the last sequence for its remaining promised credit"
@@ -3693,7 +3702,9 @@ mod reservation_tests {
             (u64::MAX - 1, a.quota()),
             (u64::MAX, b.quota()),
         ] {
-            let popped = queue.pop().expect("all three exact-fit envelopes remain ordered");
+            let popped = queue
+                .pop()
+                .expect("all three exact-fit envelopes remain ordered");
             assert_eq!(popped.sequence().get(), sequence);
             assert_eq!(popped.root_quota(), Some(root));
             assert!(!queue.is_closed());
