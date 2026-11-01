@@ -1,4 +1,4 @@
-//! Genuine standalone executable consumer of the public fluent RunenUI facade.
+//! Genuine standalone executable consumer of the public fluent `RunenUI` facade.
 
 use runenui_app::App;
 use runenui_core::{NoHostProtocol, UiApp, View, button, children, column, text};
