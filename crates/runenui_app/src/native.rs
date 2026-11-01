@@ -1250,6 +1250,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn unsupported_framework_services_preserve_exact_response_kind() {
+        let requests = [
+            FrameworkServiceRequest::ClipboardReadText { max_bytes: 64 },
+            FrameworkServiceRequest::InputMethod {
+                enabled: false,
+                candidate_area: None,
+                composition: None,
+            },
+            FrameworkServiceRequest::Cursor {
+                shape: runenui_core::CursorShape::Default,
+                visible: true,
+            },
+        ];
+        for request in &requests {
+            let response = unavailable_framework_response(request)
+                .unwrap_or_else(|| unreachable!("known service request must be representable"));
+            assert_eq!(response.kind(), request.response_kind());
+        }
+    }
+
+    #[test]
     fn native_monotonic_deadline_uses_identical_runtime_origin() {
         let origin = Instant::now();
         let clock = NativeMonotonicClock { origin };
