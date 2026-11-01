@@ -46,22 +46,21 @@ use winit::{
 const fn unavailable_framework_response(
     request: &FrameworkServiceRequest,
 ) -> Option<FrameworkServiceResponse> {
-    let unavailable = Err(FrameworkServiceFailure::Unavailable);
     match request {
         FrameworkServiceRequest::ClipboardReadText { .. } => {
-            Some(FrameworkServiceResponse::ClipboardReadText(unavailable))
+            Some(FrameworkServiceResponse::ClipboardReadText(Err(FrameworkServiceFailure::Unavailable)))
         }
         FrameworkServiceRequest::ClipboardWriteText { .. } => {
-            Some(FrameworkServiceResponse::ClipboardWriteText(unavailable))
+            Some(FrameworkServiceResponse::ClipboardWriteText(Err(FrameworkServiceFailure::Unavailable)))
         }
         FrameworkServiceRequest::InputMethod { .. } => {
-            Some(FrameworkServiceResponse::InputMethod(unavailable))
+            Some(FrameworkServiceResponse::InputMethod(Err(FrameworkServiceFailure::Unavailable)))
         }
         FrameworkServiceRequest::Cursor { .. } => {
-            Some(FrameworkServiceResponse::Cursor(unavailable))
+            Some(FrameworkServiceResponse::Cursor(Err(FrameworkServiceFailure::Unavailable)))
         }
         FrameworkServiceRequest::DragDrop { .. } => {
-            Some(FrameworkServiceResponse::DragDrop(unavailable))
+            Some(FrameworkServiceResponse::DragDrop(Err(FrameworkServiceFailure::Unavailable)))
         }
         _ => None,
     }
