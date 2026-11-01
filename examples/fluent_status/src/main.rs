@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use runenui_app::App;
 use runenui_core::{
-    Effects, IntoEffects, NoHostProtocol, TimerEffect, UiApp, View, button, children, column, text,
+    Effects, ElementId, IntoEffects, NoHostProtocol, TimerEffect, UiApp, View, button, children,
+    column, text,
 };
 
 #[derive(Default)]
@@ -29,6 +30,8 @@ impl UiApp for StatusUi {
         column(children![
             text(if state.running { "Running" } else { "Paused" }),
             button(if state.running { "Pause" } else { "Start" })
+                .id("status.toggle")
+                .key("status.toggle")
                 .on_activate(|| StatusAction::ToggleRunning),
             text(if state.timer_fired {
                 "Initial scheduled check finished"
@@ -49,7 +52,10 @@ impl UiApp for StatusUi {
         action: Self::Action,
     ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
-            StatusAction::ToggleRunning => state.running = !state.running,
+            StatusAction::ToggleRunning => {
+                state.running = !state.running;
+                eprintln!("RUNENUI_FLUENT_STATUS_TOGGLED");
+            },
             StatusAction::InitialTimerFired => {
                 state.timer_fired = true;
                 // Observable application event for the independent native
@@ -61,9 +67,12 @@ impl UiApp for StatusUi {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let initial_focus = ElementId::new("status.toggle")
+        .unwrap_or_else(|_| unreachable!("fixed application button identity must be valid"));
     App::new()
         .window("Status")
         .ui_with_state::<StatusUi>(StatusState::default())
+        .initial_focus(initial_focus)
         .run()?;
     Ok(())
 }
