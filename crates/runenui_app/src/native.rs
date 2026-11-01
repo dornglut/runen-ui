@@ -202,7 +202,8 @@ impl NativeMonotonicClock {
     }
 
     fn host_deadline(self, deadline: MonotonicInstant) -> Option<Instant> {
-        self.origin.checked_add(Duration::from_nanos(deadline.as_nanos()))
+        self.origin
+            .checked_add(Duration::from_nanos(deadline.as_nanos()))
     }
 }
 
@@ -255,14 +256,10 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
     ) -> Self {
         let wake_proxy = proxy.clone();
         let native_clock = NativeMonotonicClock::new();
-        let runtime = AppRuntime::<A>::mount_with_host_adapters(
-            model,
-            config,
-            native_clock,
-            move || {
+        let runtime =
+            AppRuntime::<A>::mount_with_host_adapters(model, config, native_clock, move || {
                 let _ = wake_proxy.send_event(HostEvent::Wake);
-            },
-        );
+            });
         Self {
             title,
             resources,
@@ -1126,9 +1123,8 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
             .filter(|deadline| *deadline > now);
         // If a deadline remains due after this one bounded pump, rely on the
         // canonical pending-wake handshake rather than a spinning OS loop.
-        event_loop.set_control_flow(
-            future_deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
-        );
+        event_loop
+            .set_control_flow(future_deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
         self.request_pending_redraw();
     }
 
