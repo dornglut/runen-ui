@@ -55,7 +55,7 @@ impl UiApp for StatusUi {
             StatusAction::ToggleRunning => {
                 state.running = !state.running;
                 eprintln!("RUNENUI_FLUENT_STATUS_TOGGLED");
-            },
+            }
             StatusAction::InitialTimerFired => {
                 state.timer_fired = true;
                 // Observable application event for the independent native
