@@ -93,6 +93,14 @@ jobs:
           set -euo pipefail
           timeout --signal=TERM 120s xvfb-run -a --server-args="-screen 0 1280x800x24" bash .github/scripts/native-app-smoke.sh
 
+      - name: Verify typed fatal native presentation and nonzero process exit
+        env:
+          RUST_BACKTRACE: "1"
+          RUNENUI_NATIVE_TEST_RENDER_FAULTS: "validation"
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM 45s xvfb-run -a --server-args="-screen 0 1280x800x24" bash .github/scripts/native-app-fatal-smoke.sh
+
       - name: Confirm checkout unchanged
         if: always()
         run: |
@@ -108,6 +116,7 @@ jobs:
           path: |
             ${{ runner.temp }}/fluent_counter.log
             ${{ runner.temp }}/fluent_status.log
+            ${{ runner.temp }}/fluent_counter_fatal.log
             ${{ runner.temp }}/runenui-openbox.log
           if-no-files-found: warn
           retention-days: 7

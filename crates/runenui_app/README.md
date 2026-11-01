@@ -53,7 +53,10 @@ before the first successful Present, then requires the very same immutable
 publication to survive all simulated errors and Present successfully. The
 default-feature native run still has no injection. This is host recovery-policy
 fault injection, **not** a real GPU device-loss, driver fault, IME or physical
-platform qualification. This is Linux X11 virtual
+platform qualification. A separate debug-only X11 negative-path run injects
+`SurfaceValidation` and requires the ordinary executable to terminate with
+the typed native fatal error and a nonzero exit, without claiming a real
+driver validation incident. This is Linux X11 virtual
 display evidence, **not** Windows/macOS, physical input, IME, accessibility
 or arbitrary device-loss qualification.
 

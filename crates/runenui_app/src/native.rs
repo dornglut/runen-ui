@@ -84,7 +84,10 @@ fn parse_native_render_faults(spec: &str) -> VecDeque<PublicationRenderError> {
             "suboptimal" => Some(PublicationRenderError::SurfaceSuboptimal),
             "not-configured" => Some(PublicationRenderError::SurfaceNotConfigured),
             "lost" => Some(PublicationRenderError::SurfaceLost),
-            _ => None,
+            "validation" => Some(PublicationRenderError::SurfaceValidation),
+            // An unknown test directive must fail closed through the host's
+            // existing typed fatal path rather than silently skipping proof.
+            _ => Some(PublicationRenderError::SurfaceValidation),
         })
         .collect()
 }
@@ -1435,6 +1438,10 @@ mod tests {
                 PublicationRenderError::SurfaceNotConfigured,
                 PublicationRenderError::SurfaceLost,
             ]
+        );
+        assert_eq!(
+            parse_native_render_faults("unrecognized").pop_front(),
+            Some(PublicationRenderError::SurfaceValidation)
         );
     }
 
