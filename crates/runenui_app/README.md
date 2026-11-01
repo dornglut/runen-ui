@@ -38,6 +38,16 @@ Counter executable demonstrates typed actions, not a complete text-editing
 host. These limitations require explicit implementation and platform proof
 before general-purpose desktop acceptance.
 
+Two independently authored sample programs exercise different public contracts:
+`fluent_counter` uses `.ui(model)` and pointer-triggered actions;
+`fluent_status` uses `.ui_with_state::<StatusUi>(state)`, two application
+actions and an initial 1500-ms timer. The
+[Native X11 Smoke](../../.github/workflows/native-x11-smoke.yml)
+workflow builds both and checks that visible native windows start, resize and
+exit after OS close under Xvfb and software Vulkan. This is Linux X11 virtual
+display evidence, **not** Windows/macOS, physical input, IME, accessibility
+or arbitrary device-loss qualification.
+
 The first native implementation is a standalone desktop delivery candidate
 owned by #543. The host-specific behavior still needs native platform and
 lifecycle qualification; a compiling crate is not acceptance. A windowless
