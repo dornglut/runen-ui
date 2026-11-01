@@ -1442,6 +1442,11 @@ impl<Action> WorkQueue<Action> {
             .root_quotas
             .get_mut(&root)
             .ok_or(QueueReservationError::Stale)?;
+        // Validate the lease before touching generation credits: stale releases
+        // must not consume a pending terminal right or restore root capacity.
+        if quota.live_work_leases == 0 {
+            return Err(QueueReservationError::Stale);
+        }
         if let Some(credits) = quota.host_requests.remove(&generation) {
             let released = usize::from(credits.response) + usize::from(credits.cancellation);
             quota.remaining = quota
@@ -1526,9 +1531,6 @@ impl<Action> WorkQueue<Action> {
             {
                 return Err(QueueReservationError::Stale);
             }
-        }
-        if quota.live_work_leases == 0 {
-            return Err(QueueReservationError::Stale);
         }
         quota.live_work_leases -= 1;
         self.close_idle_root(root)
@@ -1750,6 +1752,7 @@ impl<Action> WorkQueue<Action> {
         let sequence = WorkSequence::__runtime_new(next);
         let mut envelope = envelope(sequence, root);
         Self::bind_root(&mut envelope, root)?;
+        self.note_rooted_enqueued(root, &envelope)?;
         let quota = self
             .root_quotas
             .get_mut(&root)
@@ -1767,7 +1770,6 @@ impl<Action> WorkQueue<Action> {
         }
         self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
         self.reserved -= 1;
-        self.note_rooted_enqueued(root, &envelope)?;
         self.waiting.push_back(envelope);
         Ok(sequence)
     }
@@ -1807,6 +1809,7 @@ impl<Action> WorkQueue<Action> {
         let sequence = WorkSequence::__runtime_new(next);
         let mut envelope = envelope(sequence, root);
         Self::bind_root(&mut envelope, root)?;
+        self.note_rooted_enqueued(root, &envelope)?;
         let quota = self
             .root_quotas
             .get_mut(&root)
@@ -1824,7 +1827,6 @@ impl<Action> WorkQueue<Action> {
         }
         self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
         self.reserved -= 1;
-        self.note_rooted_enqueued(root, &envelope)?;
         self.waiting.push_back(envelope);
         Ok(sequence)
     }
@@ -1907,6 +1909,7 @@ impl<Action> WorkQueue<Action> {
         let sequence = WorkSequence::__runtime_new(next);
         let mut envelope = envelope(sequence, root);
         Self::bind_root(&mut envelope, root)?;
+        self.note_rooted_enqueued(root, &envelope)?;
         let quota = self
             .root_quotas
             .get_mut(&root)
@@ -1922,7 +1925,6 @@ impl<Action> WorkQueue<Action> {
         }
         self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
         self.reserved -= 1;
-        self.note_rooted_enqueued(root, &envelope)?;
         self.waiting.push_back(envelope);
         Ok(sequence)
     }
@@ -1968,6 +1970,7 @@ impl<Action> WorkQueue<Action> {
         {
             return Err(QueueReservationError::Stale);
         }
+        self.note_rooted_enqueued(root, &envelope)?;
         {
             let quota = self
                 .root_quotas
@@ -1988,7 +1991,6 @@ impl<Action> WorkQueue<Action> {
         }
         self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
         self.reserved -= 1;
-        self.note_rooted_enqueued(root, &envelope)?;
         if matches!(kind, TimerCreditKind::Callback) {
             self.root_quotas
                 .get_mut(&root)
@@ -2536,6 +2538,7 @@ impl<Action> WorkQueue<Action> {
             .ok_or(QueueReservationError::SequenceExhausted)?;
         let mut envelope = envelope(WorkSequence::__runtime_new(next), root);
         Self::bind_root(&mut envelope, root)?;
+        self.note_rooted_enqueued(root, &envelope)?;
         let quota = self
             .root_quotas
             .get_mut(&root)
@@ -2551,7 +2554,6 @@ impl<Action> WorkQueue<Action> {
         }
         self.next_sequence = next.get().checked_add(1).and_then(NonZeroU64::new);
         self.reserved -= 1;
-        self.note_rooted_enqueued(root, &envelope)?;
         self.waiting.push_back(envelope);
         Ok(WorkSequence::__runtime_new(next))
     }
@@ -3075,6 +3077,44 @@ mod reservation_tests {
                 framework_services: 0,
             },
         }
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[test]
+    fn stale_work_lease_release_preserves_generation_credits_and_root_capacity() {
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        let mut queue = WorkQueue::<u8>::new(1);
+        let reservation = queue.reserve(1).expect("one owned terminal credit fits");
+        let generation =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(1)
+                .expect("one work generation fits")
+                .0[0];
+        queue
+            .retain_root_local_task_lease(reservation.quota(), generation)
+            .expect("the live local task owns its terminal credit");
+
+        // Deliberately corrupt only the lease count to test an internal stale
+        // release. A refused operation must not corrupt the independent credits.
+        queue
+            .root_quotas
+            .get_mut(&reservation.quota())
+            .expect("root exists")
+            .live_work_leases = 0;
+        assert_eq!(
+            queue.release_root_work_lease(reservation.quota(), generation),
+            Err(QueueReservationError::Stale),
+        );
+        let quota = queue
+            .root_quotas
+            .get(&reservation.quota())
+            .expect("stale release leaves the root unchanged");
+        assert_eq!(quota.remaining, 0);
+        assert!(quota.local_tasks.contains_key(&generation));
+        assert_eq!(quota.live_work_leases, 0);
+        assert_eq!(queue.reserved, 1);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
     }
 
     #[test]
