@@ -206,6 +206,13 @@ impl Trace {
         let Some(reserved) = self.reserved_records.checked_sub(1) else {
             return false;
         };
+        if self.application_turn_remaining.is_some_and(|remaining| {
+            remaining
+                .checked_add(1)
+                .is_none_or(|available| plan.records > available)
+        }) {
+            return false;
+        }
         self.can_admit_with_reserved(plan, reserved)
     }
 
@@ -215,6 +222,11 @@ impl Trace {
                 .reserved_records
                 .checked_sub(1)
                 .unwrap_or_else(|| unreachable!("accepted ingress retains one trace reservation"));
+            if let Some(remaining) = &mut self.application_turn_remaining {
+                *remaining = remaining
+                    .checked_add(1)
+                    .unwrap_or_else(|| unreachable!("released trace credit was already funded"));
+            }
         }
     }
 
@@ -223,6 +235,11 @@ impl Trace {
             .reserved_records
             .checked_sub(count)
             .unwrap_or_else(|| unreachable!("queued ingress retains exact trace reservations"));
+        if let Some(remaining) = &mut self.application_turn_remaining {
+            *remaining = remaining
+                .checked_add(count)
+                .unwrap_or_else(|| unreachable!("released trace credits were already funded"));
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -491,6 +508,33 @@ impl Trace {
 #[cfg(test)]
 mod application_turn_tests {
     use super::*;
+
+    #[test]
+    fn an_existing_outcome_can_lend_its_exact_credit_to_the_turn() {
+        let mut trace =
+            Trace::new_for_runtime(TraceConfig::new(16), RuntimeNamespace::__runtime_new());
+        trace.next_sequence = NonZeroU64::new(u64::MAX - 4);
+        let outcome = trace
+            .reserve_command_outcome()
+            .unwrap_or_else(|| unreachable!("one existing outcome"));
+        assert!(trace.begin_application_turn(MandatoryTracePlan::planned_scheduler_transaction(4)));
+        assert!(!trace.can_admit(MandatoryTracePlan::planned_scheduler_transaction(5)));
+        assert!(trace.can_replace_reservation(
+            outcome,
+            MandatoryTracePlan::planned_scheduler_transaction(5)
+        ));
+        trace.release_reservation(outcome);
+        for _ in 0..5 {
+            assert!(
+                trace
+                    .record_draft(TraceRecordDraft::new(TraceRecordKind::RuntimeMounted))
+                    .is_some()
+            );
+        }
+        trace.finish_application_turn();
+        assert_eq!(trace.reserved_records, 0);
+        assert!(trace.next_sequence.is_none());
+    }
 
     #[test]
     fn optional_records_cannot_spend_the_whole_turn_floor() {

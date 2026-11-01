@@ -134,7 +134,7 @@ impl UiApp for DynamicTraceApp {
 }
 
 #[test]
-fn post_update_dynamic_trace_admission_failure_is_poisoned() {
+fn whole_turn_dynamic_trace_shortage_rejects_before_update() {
     let mut runtime = AppRuntime::<DynamicTraceApp>::mount(DynamicTraceState {
         mounted: true,
         updates: 0,
@@ -157,11 +157,11 @@ fn post_update_dynamic_trace_admission_failure_is_poisoned() {
         .report()
         .to_owned();
 
-    assert_eq!(runtime.state().updates, 1);
-    assert!(!runtime.state().mounted);
+    assert_eq!(runtime.state().updates, 0);
+    assert!(runtime.state().mounted);
     assert_eq!(
         runtime.status(),
-        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+        RuntimeStatus::Terminal(RuntimeTerminalReason::TraceSequenceExhausted)
     );
     assert_eq!(runtime.__live_work_record_count_for_test(), 0);
 }
@@ -851,7 +851,7 @@ impl UiApp for ReconcileMountedCapacityApp {
 }
 
 #[test]
-fn post_update_mounted_identity_exhaustion_poisoned_without_partial_tree_mutation() {
+fn unfundable_mounted_identity_profile_is_refused_before_update() {
     let child_mount_calls = Rc::new(Cell::new(0));
     let config =
         runenui_runtime::RuntimeConfig::default().__with_mounted_public_slot_limit_for_test(1);
@@ -875,20 +875,22 @@ fn post_update_mounted_identity_exhaustion_poisoned_without_partial_tree_mutatio
         .report()
         .to_owned();
 
-    runtime
+    let error = runtime
         .submit_action(())
-        .unwrap_or_else(|_| unreachable!("capacity transition action is accepted"));
-    let _ = runtime
+        .err()
+        .unwrap_or_else(|| unreachable!("declared peak cannot fit one identity"));
+    assert_eq!(
+        error.kind(),
+        runenui_runtime::SubmitActionErrorKind::InvalidProducerProfile
+    );
+    error.into_action();
+    let batch = runtime
         .pump(PumpBudget::new(1, 0, 0, 0))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+        .unwrap_or_else(|_| unreachable!("pump observation"));
+    assert_eq!(batch.report().processed_envelopes(), 0);
 
-    assert!(runtime.state().expanded);
+    assert!(!runtime.state().expanded);
     assert_eq!(child_mount_calls.get(), 0);
     assert_eq!(runtime.index().nodes().len(), 1);
-    assert_eq!(
-        runtime.status(),
-        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
-    );
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
 }

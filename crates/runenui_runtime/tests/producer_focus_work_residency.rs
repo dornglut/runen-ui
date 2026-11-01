@@ -79,6 +79,39 @@ impl Widget<Action> for Owner {
 }
 
 struct App;
+
+#[cfg(feature = "internal-test-seams")]
+#[test]
+fn declared_whole_turn_generations_are_checked_before_owned_action_acceptance() {
+    let callbacks = Rc::new(RefCell::new(Vec::new()));
+    let mut app = AppRuntime::<App>::mount_with_config(
+        State {
+            same_key: true,
+            armed: false,
+            enabled: true,
+            callbacks: Rc::clone(&callbacks),
+        },
+        RuntimeConfig::default().with_trace_config(TraceConfig::new(0)),
+    )
+    .unwrap_or_else(|_| unreachable!("one owner"));
+    app.pump(PumpBudget::new(16, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!());
+    app.__seed_next_work_generation_for_test(u64::MAX - 3);
+    let error = app.submit_action(Action::Disable).err().unwrap_or_else(|| {
+        unreachable!("five declared generations do not fit four remaining identities")
+    });
+    assert_eq!(
+        error.kind(),
+        runenui_runtime::SubmitActionErrorKind::Terminal(
+            RuntimeTerminalReason::WorkGenerationExhausted
+        )
+    );
+    assert!(matches!(error.into_action(), Action::Disable));
+    assert!(app.state().enabled);
+    assert!(callbacks.borrow().is_empty());
+    assert_eq!(app.__live_work_record_count_for_test(), 0);
+}
+
 const fn routed_profile() -> ProducerBudget {
     // One target's event profile is counted once for the command and four
     // times for generic focus notifications: 10 outputs, five possible starts

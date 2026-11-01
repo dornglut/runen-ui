@@ -57,6 +57,12 @@ Parley/Fontique/HarfRust/Skrifa/ICU types and the `unicode-segmentation` crate a
 
 Runtime must not own application document contents, validation, persistence, or durable undo history; depend on testing convenience, concrete native platforms, concrete renderer implementations, product state, external resource-provider/payload/cache ownership, font/shaping/line-breaking algorithm authority, SDF/MSDF realization, Lyon/backend tessellation, renderer shadow-mask/raster authority; or create a second action/edit/service/interaction/style/semantic/layout/motion/paint/hit/testing authority. Taffy types, node identity, topology, and caches remain private derived implementation state rather than public or retained framework authority.
 
+Application runtime construction returns an owned `InitialAdmissionError` on
+refusal. Its state/configuration can be recovered without cloning; successful
+construction alone does not accept later original input or guarantee unlimited
+producer capacity. The failure and finite-admission rules remain owned by
+[ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md#qualified-producer-admission-and-owned-failure).
+
 ## `runenui_render_wgpu`
 
 `runenui_render_wgpu` is the accepted reusable concrete renderer edge over ordinary public paint publication. It owns:

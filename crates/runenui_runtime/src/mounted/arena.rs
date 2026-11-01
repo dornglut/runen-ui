@@ -431,10 +431,10 @@ mod producer_peak_tests {
     #[test]
     fn last_generation_owner_is_charged_once_whether_retained_or_retired() {
         let mut arena = GenerationalArena::new();
-        arena.seed_vacant(u64::MAX);
         arena
             .insert_with_public_slot_limit(1, |_, _| "last generation")
             .unwrap_or_else(|_| unreachable!("initial slot"));
+        arena.slots[0].generation = u64::MAX;
         assert_eq!(arena.preflight_producer_peak(0, 1, 1), Ok(()));
         assert_eq!(
             arena.preflight_producer_peak(1, 0, 1),
