@@ -13,14 +13,15 @@ use std::{
 };
 
 use runenui_core::{
-    ElementId, FrameworkServiceFailure, FrameworkServiceRequest, FrameworkServiceResponse, InputDeviceId,
-    KeyModifiers, KeyboardCompositionState, LogicalDelta, NoHostProtocol,
+    ElementId, FrameworkServiceFailure, FrameworkServiceRequest, FrameworkServiceResponse,
+    InputDeviceId, KeyModifiers, KeyboardCompositionState, LogicalDelta, NoHostProtocol,
     PointerEvent, SemanticCommand, StyleEnvironment, SurfaceInputContext, UiApp,
 };
 use runenui_render_wgpu::{PublicationRenderError, Renderer, RendererOptions, ResourceProvider};
 use runenui_runtime::{
-    AppRuntime, FrameworkServiceResponseError, MonotonicClock, MonotonicInstant, PumpBudget, RedrawRequest, RuntimeConfig,
-    RuntimeStatus, SubmitKeyboardErrorKind, SurfaceBuildContext, SurfacePublication,
+    AppRuntime, FrameworkServiceResponseError, MonotonicClock, MonotonicInstant, PumpBudget,
+    RedrawRequest, RuntimeConfig, RuntimeStatus, SubmitKeyboardErrorKind, SurfaceBuildContext,
+    SurfacePublication,
 };
 use runenui_winit::{
     accessibility::{AccessibilityEvent, SemanticAdapter},
@@ -47,21 +48,21 @@ const fn unavailable_framework_response(
     request: &FrameworkServiceRequest,
 ) -> Option<FrameworkServiceResponse> {
     match request {
-        FrameworkServiceRequest::ClipboardReadText { .. } => {
-            Some(FrameworkServiceResponse::ClipboardReadText(Err(FrameworkServiceFailure::Unavailable)))
-        }
-        FrameworkServiceRequest::ClipboardWriteText { .. } => {
-            Some(FrameworkServiceResponse::ClipboardWriteText(Err(FrameworkServiceFailure::Unavailable)))
-        }
-        FrameworkServiceRequest::InputMethod { .. } => {
-            Some(FrameworkServiceResponse::InputMethod(Err(FrameworkServiceFailure::Unavailable)))
-        }
-        FrameworkServiceRequest::Cursor { .. } => {
-            Some(FrameworkServiceResponse::Cursor(Err(FrameworkServiceFailure::Unavailable)))
-        }
-        FrameworkServiceRequest::DragDrop { .. } => {
-            Some(FrameworkServiceResponse::DragDrop(Err(FrameworkServiceFailure::Unavailable)))
-        }
+        FrameworkServiceRequest::ClipboardReadText { .. } => Some(
+            FrameworkServiceResponse::ClipboardReadText(Err(FrameworkServiceFailure::Unavailable)),
+        ),
+        FrameworkServiceRequest::ClipboardWriteText { .. } => Some(
+            FrameworkServiceResponse::ClipboardWriteText(Err(FrameworkServiceFailure::Unavailable)),
+        ),
+        FrameworkServiceRequest::InputMethod { .. } => Some(FrameworkServiceResponse::InputMethod(
+            Err(FrameworkServiceFailure::Unavailable),
+        )),
+        FrameworkServiceRequest::Cursor { .. } => Some(FrameworkServiceResponse::Cursor(Err(
+            FrameworkServiceFailure::Unavailable,
+        ))),
+        FrameworkServiceRequest::DragDrop { .. } => Some(FrameworkServiceResponse::DragDrop(Err(
+            FrameworkServiceFailure::Unavailable,
+        ))),
         _ => None,
     }
 }
@@ -529,7 +530,10 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         let mut queued_response = false;
         for (token, request) in requests {
             let Some(response) = unavailable_framework_response(&request) else {
-                self.fail(event_loop, "unknown framework-service request cannot be fulfilled");
+                self.fail(
+                    event_loop,
+                    "unknown framework-service request cannot be fulfilled",
+                );
                 return None;
             };
             match self.runtime.complete_framework_service(&token, response) {
@@ -539,7 +543,10 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
                 Err(FrameworkServiceResponseError::Full(_)) => break,
                 Err(FrameworkServiceResponseError::Stale(_)) => {}
                 Err(_) => {
-                    self.fail(event_loop, "framework-service completion failed before admission");
+                    self.fail(
+                        event_loop,
+                        "framework-service completion failed before admission",
+                    );
                     return None;
                 }
             }
@@ -559,7 +566,10 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         if responded {
             self.pump_runtime_once();
             if let RuntimeStatus::Terminal(reason) = self.runtime.status() {
-                self.fail(event_loop, &format!("framework response terminal: {reason:?}"));
+                self.fail(
+                    event_loop,
+                    &format!("framework response terminal: {reason:?}"),
+                );
                 return;
             }
         }
