@@ -66,10 +66,8 @@ impl UiApp for MessageApp {
 
 #[test]
 fn independent_app_descriptors_mount_two_distinct_ui_apps_with_public_runtime_api() {
-    let numbers =
-        PreparedApp::<NumberApp>::new(42, RuntimeConfig::default()).mount();
-    let message =
-        PreparedApp::<MessageApp>::new("independent", RuntimeConfig::default()).mount();
+    let numbers = PreparedApp::<NumberApp>::new(42, RuntimeConfig::default()).mount();
+    let message = PreparedApp::<MessageApp>::new("independent", RuntimeConfig::default()).mount();
 
     assert_eq!(*numbers.state(), 42);
     assert_eq!(*message.state(), "independent");
