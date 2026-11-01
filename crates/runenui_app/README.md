@@ -46,8 +46,14 @@ actions and an initial 1500-ms timer. The
 workflow builds both and checks that visible native windows start, resize and
 exit after OS close under Xvfb and software Vulkan. For `fluent_status`,
 it additionally unmaps and remaps the same native X11 window, then requires
-a new OS keyboard-triggered action following restoration. This does not inject
-GPU timeouts, prove device-loss recovery, or qualify IME. This is Linux X11 virtual
+a new OS keyboard-triggered action following restoration. An additional debug-only,
+explicit `internal-test-seams` X11 run injects each recoverable *host-visible*
+surface status (timeout, occlusion, outdated, suboptimal, unconfigured, lost)
+before the first successful Present, then requires the very same immutable
+publication to survive all simulated errors and Present successfully. The
+default-feature native run still has no injection. This is host recovery-policy
+fault injection, **not** a real GPU device-loss, driver fault, IME or physical
+platform qualification. This is Linux X11 virtual
 display evidence, **not** Windows/macOS, physical input, IME, accessibility
 or arbitrary device-loss qualification.
 

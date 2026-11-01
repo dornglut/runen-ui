@@ -5,6 +5,8 @@ use crate::NativeAppError;
 
 use std::{
     future::Future,
+    #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
+    collections::VecDeque,
     pin::pin,
     sync::Arc,
     task::{Context, Poll, Wake, Waker},
@@ -69,6 +71,23 @@ const fn unavailable_framework_response(
 
 const INITIAL_PHYSICAL_SIZE: PhysicalSize<u32> = PhysicalSize::new(640, 420);
 const NATIVE_LINE_SCROLL_LOGICAL_UNITS: f64 = 48.0;
+
+#[cfg(all(debug_assertions, feature = "internal-test-seams"))]
+fn parse_native_render_faults(spec: &str) -> VecDeque<PublicationRenderError> {
+    spec.split(',')
+        .filter(|token| !token.is_empty())
+        .map(|token| match token {
+            "timeout" => PublicationRenderError::SurfaceTimeout,
+            "occluded" => PublicationRenderError::SurfaceOccluded,
+            "outdated" => PublicationRenderError::SurfaceOutdated,
+            "suboptimal" => PublicationRenderError::SurfaceSuboptimal,
+            "not-configured" => PublicationRenderError::SurfaceNotConfigured,
+            "lost" => PublicationRenderError::SurfaceLost,
+            _ => panic!("unknown native render test fault: {token}"),
+        })
+        .collect()
+}
+
 const HOST_PUMP_BUDGET: PumpBudget = PumpBudget::new(64, 64, 64, 64);
 
 #[derive(Debug)]
@@ -299,6 +318,10 @@ struct NativeHost<A: UiApp<HostProtocol = NoHostProtocol>> {
     pending_frame: Option<PendingFrame>,
     displayed_frame: Option<DisplayedFrame>,
     presentation_retry: PresentationRetry,
+    #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
+    test_render_faults: VecDeque<PublicationRenderError>,
+    #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
+    test_first_pending: Option<SurfacePublication>,
     device_identities: DeviceIdentityMap,
     mouse: MouseInputState,
     keyboard: KeyboardInputState,
@@ -344,6 +367,12 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             pending_frame: None,
             displayed_frame: None,
             presentation_retry: PresentationRetry::default(),
+            #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
+            test_render_faults: parse_native_render_faults(
+                &std::env::var("RUNENUI_NATIVE_TEST_RENDER_FAULTS").unwrap_or_default(),
+            ),
+            #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
+            test_first_pending: None,
             device_identities: DeviceIdentityMap::default(),
             mouse: MouseInputState::default(),
             keyboard: KeyboardInputState::default(),
@@ -1032,17 +1061,43 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         let Some(window) = self.window.as_ref() else {
             return;
         };
-        let render_result = self
-            .renderer
-            .as_mut()
-            .ok_or(PublicationRenderError::SurfaceUnavailable)
-            .and_then(|renderer| {
-                renderer.render_surface_publication(
-                    pending.publication.paint_publication(),
-                    self.resources.as_ref(),
-                    || window.pre_present_notify(),
-                )
-            });
+        #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
+        if self.test_first_pending.as_ref().is_some_and(|original| original != &pending.publication) {
+            self.fail(event_loop, "test: immutable pending publication changed during presentation recovery");
+            return;
+        }
+        let render_result = {
+            #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
+            if let Some(error) = self.test_render_faults.pop_front() {
+                if self.test_first_pending.is_none() {
+                    self.test_first_pending = Some(pending.publication.clone());
+                }
+                eprintln!("RUNENUI_NATIVE_TEST_RENDER_FAULT={error:?}");
+                Err(error)
+            } else {
+                self.renderer
+                    .as_mut()
+                    .ok_or(PublicationRenderError::SurfaceUnavailable)
+                    .and_then(|renderer| {
+                        renderer.render_surface_publication(
+                            pending.publication.paint_publication(),
+                            self.resources.as_ref(),
+                            || window.pre_present_notify(),
+                        )
+                    })
+            }
+            #[cfg(not(all(debug_assertions, feature = "internal-test-seams")))]
+            self.renderer
+                .as_mut()
+                .ok_or(PublicationRenderError::SurfaceUnavailable)
+                .and_then(|renderer| {
+                    renderer.render_surface_publication(
+                        pending.publication.paint_publication(),
+                        self.resources.as_ref(),
+                        || window.pre_present_notify(),
+                    )
+                })
+        };
         match render_result {
             Ok(observation) => {
                 if !observation.presented() {
@@ -1051,6 +1106,10 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
                         "renderer reported success without native presentation",
                     );
                     return;
+                }
+                #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
+                if self.test_first_pending.take().is_some() {
+                    eprintln!("RUNENUI_NATIVE_TEST_RENDER_RECOVERED=same_immutable_publication");
                 }
                 self.displayed_frame = Some(DisplayedFrame::from_pending(&pending));
                 self.pending_frame = None;
@@ -1357,6 +1416,25 @@ mod tests {
                 .unwrap_or_else(|| unreachable!("known service request must be representable"));
             assert_eq!(response.kind(), request.response_kind());
         }
+    }
+
+    #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
+    #[test]
+    fn native_fault_injection_accepts_only_named_recoverable_surface_statuses() {
+        let errors = parse_native_render_faults(
+            "timeout,occluded,outdated,suboptimal,not-configured,lost",
+        );
+        assert_eq!(
+            errors.into_iter().collect::<Vec<_>>(),
+            vec![
+                PublicationRenderError::SurfaceTimeout,
+                PublicationRenderError::SurfaceOccluded,
+                PublicationRenderError::SurfaceOutdated,
+                PublicationRenderError::SurfaceSuboptimal,
+                PublicationRenderError::SurfaceNotConfigured,
+                PublicationRenderError::SurfaceLost,
+            ]
+        );
     }
 
     #[test]

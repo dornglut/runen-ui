@@ -8,6 +8,10 @@ license.workspace = true
 publish.workspace = true
 edition.workspace = true
 
+[features]
+# A debug-only, opt-in native presentation fault-injection seam for OS smoke.
+internal-test-seams = []
+
 [dependencies]
 accesskit_winit = { version = "=0.33.2", default-features = false, features = ["rwh_06"] }
 runenui_core = { path = "../runenui_core", version = "0.1.0" }

@@ -51,6 +51,30 @@ for entry in "fluent_counter:Counter" "fluent_status:Status"; do
   fi
 
   echo "Found visible native window: ${executable} id=${window_id}"
+  if [[ -n "${RUNENUI_NATIVE_TEST_RENDER_FAULTS:-}" ]]; then
+    for status in SurfaceTimeout SurfaceOccluded SurfaceOutdated SurfaceSuboptimal SurfaceNotConfigured SurfaceLost; do
+      if ! grep -Fq "RUNENUI_NATIVE_TEST_RENDER_FAULT=${status}" "$log"; then
+        # These exact recoverable statuses must all have passed through the
+        # real native host's production recovery branches before first Present.
+        for _ in $(seq 1 100); do
+          grep -Fq "RUNENUI_NATIVE_TEST_RENDER_FAULT=${status}" "$log" && break
+          if ! kill -0 "$app_pid" 2>/dev/null; then break; fi
+          sleep 0.1
+        done
+      fi
+      if ! grep -Fq "RUNENUI_NATIVE_TEST_RENDER_FAULT=${status}" "$log"; then
+        echo "Missing injected native renderer surface status: ${status}" >&2
+        cat "$log" >&2
+        exit 1
+      fi
+    done
+    if ! grep -Fq "RUNENUI_NATIVE_TEST_RENDER_RECOVERED=same_immutable_publication" "$log"; then
+      echo "Native renderer did not Present the preserved publication after injected failures" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    echo "Injected native surface statuses and immutable publication recovery PASS"
+  fi
   xdotool windowactivate --sync "$window_id"
   xdotool windowsize "$window_id" 850 530
   # The second consumer has a one-shot initial timer (1500 ms).
