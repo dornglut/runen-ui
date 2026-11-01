@@ -360,7 +360,10 @@ impl<Action> SubscriptionSet<Action> {
         if let Some(cause) = crate::ProducerContractViolation::work_start_overrun(
             self.phase,
             family,
-            self.work_starts.map(|budget| budget.for_family(family)),
+            match self.work_starts {
+                Some(budget) => Some(budget.for_family(family)),
+                None => None,
+            },
             self.work_used[index],
         ) {
             self.producer_violation = Some(cause);
