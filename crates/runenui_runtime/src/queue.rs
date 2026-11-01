@@ -3167,12 +3167,15 @@ mod reservation_tests {
             queue
                 .release_root_work_lease(root.quota(), *generation)
                 .expect("each keyed lease returns exactly its remaining credits");
-            let returned = [1, 2, 1, 1, 2][..=index].iter().sum::<usize>();
-            assert_eq!(queue.root_remaining(root.quota()), Ok(returned));
+            if index < 4 {
+                let returned = [1, 2, 1, 1, 2][..=index].iter().sum::<usize>();
+                assert_eq!(queue.root_remaining(root.quota()), Ok(returned));
+                assert_eq!(queue.root_quotas[&root.quota()].live_work_leases, 4 - index);
+            }
             assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
         }
-        assert_eq!(queue.root_quotas[&root.quota()].live_work_leases, 0);
-        queue.release_reservation(&root).expect("root can retire");
+        // The last lease closes this idle root atomically, rather than leaving
+        // an extra reservation that must be explicitly released.
         assert!(!queue.root_quotas.contains_key(&root.quota()));
         assert_eq!(queue.reserved, 1);
         queue
