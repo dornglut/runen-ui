@@ -13,12 +13,13 @@ use std::{
 };
 
 use runenui_core::{
-    ElementId, InputDeviceId, KeyModifiers, KeyboardCompositionState, LogicalDelta, NoHostProtocol,
+    ElementId, FrameworkServiceFailure, FrameworkServiceRequest, FrameworkServiceResponse, InputDeviceId,
+    KeyModifiers, KeyboardCompositionState, LogicalDelta, NoHostProtocol,
     PointerEvent, SemanticCommand, StyleEnvironment, SurfaceInputContext, UiApp,
 };
 use runenui_render_wgpu::{PublicationRenderError, Renderer, RendererOptions, ResourceProvider};
 use runenui_runtime::{
-    AppRuntime, MonotonicClock, MonotonicInstant, PumpBudget, RedrawRequest, RuntimeConfig,
+    AppRuntime, FrameworkServiceResponseError, MonotonicClock, MonotonicInstant, PumpBudget, RedrawRequest, RuntimeConfig,
     RuntimeStatus, SubmitKeyboardErrorKind, SurfaceBuildContext, SurfacePublication,
 };
 use runenui_winit::{
@@ -38,6 +39,33 @@ use winit::{
     keyboard::ModifiersState,
     window::{Window, WindowId},
 };
+
+/// A native capability not implemented by this first desktop host receives a
+/// typed unavailable response rather than hanging forever on an accepted work
+/// token. No OS side effect may occur before that response is admitted.
+const fn unavailable_framework_response(
+    request: &FrameworkServiceRequest,
+) -> Option<FrameworkServiceResponse> {
+    let unavailable = Err(FrameworkServiceFailure::Unavailable);
+    match request {
+        FrameworkServiceRequest::ClipboardReadText { .. } => {
+            Some(FrameworkServiceResponse::ClipboardReadText(unavailable))
+        }
+        FrameworkServiceRequest::ClipboardWriteText { .. } => {
+            Some(FrameworkServiceResponse::ClipboardWriteText(unavailable))
+        }
+        FrameworkServiceRequest::InputMethod { .. } => {
+            Some(FrameworkServiceResponse::InputMethod(unavailable))
+        }
+        FrameworkServiceRequest::Cursor { .. } => {
+            Some(FrameworkServiceResponse::Cursor(unavailable))
+        }
+        FrameworkServiceRequest::DragDrop { .. } => {
+            Some(FrameworkServiceResponse::DragDrop(unavailable))
+        }
+        _ => None,
+    }
+}
 
 const INITIAL_PHYSICAL_SIZE: PhysicalSize<u32> = PhysicalSize::new(640, 420);
 const NATIVE_LINE_SCROLL_LOGICAL_UNITS: f64 = 48.0;
@@ -489,11 +517,52 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         Ok(true)
     }
 
+    fn reject_unsupported_framework_services(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+    ) -> Option<bool> {
+        let requests = self
+            .runtime
+            .pending_framework_services()
+            .into_iter()
+            .map(|service| (service.token(), service.request().clone()))
+            .collect::<Vec<_>>();
+        let mut queued_response = false;
+        for (token, request) in requests {
+            let Some(response) = unavailable_framework_response(&request) else {
+                self.fail(event_loop, "unknown framework-service request cannot be fulfilled");
+                return None;
+            };
+            match self.runtime.complete_framework_service(&token, response) {
+                Ok(_) => queued_response = true,
+                // The original work request stays live; retry after the next
+                // bounded pump frees queue capacity rather than losing it.
+                Err(FrameworkServiceResponseError::Full(_)) => break,
+                Err(FrameworkServiceResponseError::Stale(_)) => {}
+                Err(_) => {
+                    self.fail(event_loop, "framework-service completion failed before admission");
+                    return None;
+                }
+            }
+        }
+        Some(queued_response)
+    }
+
     fn drive_runtime(&mut self, event_loop: &ActiveEventLoop) {
         self.pump_runtime_once();
         if let RuntimeStatus::Terminal(reason) = self.runtime.status() {
             self.fail(event_loop, &format!("runtime terminal: {reason:?}"));
             return;
+        }
+        let Some(responded) = self.reject_unsupported_framework_services(event_loop) else {
+            return;
+        };
+        if responded {
+            self.pump_runtime_once();
+            if let RuntimeStatus::Terminal(reason) = self.runtime.status() {
+                self.fail(event_loop, &format!("framework response terminal: {reason:?}"));
+                return;
+            }
         }
         // Consume this one-time intent on the first genuinely focused
         // native window, even if the app already chose a runtime focus target.
