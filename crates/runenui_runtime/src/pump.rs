@@ -865,6 +865,7 @@ mod tests {
                 .root_id()
                 .unwrap_or_else(|| unreachable!("mounted root exists"))
                 .clone();
+            let prior_reservations = runtime.trace.reserved_records_for_test();
             runtime
                 .submit_command(
                     target,
@@ -874,8 +875,8 @@ mod tests {
                 .unwrap_or_else(|error| unreachable!("command admission succeeds: {error:?}"));
             assert_eq!(
                 runtime.trace.reserved_records_for_test(),
-                usize::from(trace_capacity != 0),
-                "the queued command owns exactly one active trace outcome when enabled"
+                prior_reservations + usize::from(trace_capacity != 0),
+                "the queued command owns one additional active trace outcome when enabled"
             );
             runtime.queue.invalidate_front_root_pending_for_test();
 
@@ -897,14 +898,18 @@ mod tests {
             );
             assert_eq!(
                 runtime.trace.reserved_records_for_test(),
-                0,
-                "the popped command's trace credit is no longer in the terminal queue inventory"
+                prior_reservations,
+                "the popped command releases only its own trace credit"
             );
 
             let again = pump_recorded::<App>(&mut runtime, PumpBudget::new(0, 0, 0, 0))
                 .unwrap_or_else(|_| unreachable!("terminal observation is repeatable"));
             assert_eq!(again.report().cancelled_by_terminal_transition(), 0);
-            assert_eq!(runtime.trace.reserved_records_for_test(), 0);
+            assert_eq!(
+                runtime.trace.reserved_records_for_test(),
+                prior_reservations,
+                "repeating observation cannot release an unrelated trace reservation"
+            );
         }
     }
 
