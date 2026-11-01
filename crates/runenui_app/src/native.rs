@@ -17,8 +17,7 @@ use runenui_core::{
     PointerEvent, StyleEnvironment, SurfaceInputContext, UiApp,
 };
 use runenui_render_wgpu::{
-    PublicationRenderError, Renderer, RendererOptions, ResourcePayload, ResourceProvider,
-    ResourceProviderError, ResourceProviderErrorKind, ResourceRequest,
+    PublicationRenderError, Renderer, RendererOptions, ResourceProvider,
 };
 use runenui_runtime::{
     AppRuntime, MonotonicClock, MonotonicInstant, PumpBudget, RedrawRequest,
@@ -55,21 +54,6 @@ enum HostEvent {
 impl From<accesskit_winit::Event> for HostEvent {
     fn from(event: accesskit_winit::Event) -> Self {
         Self::Accessibility(AccessibilityEvent::from(event))
-    }
-}
-
-struct NoExternalResources;
-
-impl ResourceProvider for NoExternalResources {
-    fn load(
-        &self,
-        _resource: &runenui_core::ResourceRef,
-        _request: ResourceRequest,
-    ) -> Result<ResourcePayload, ResourceProviderError> {
-        Err(ResourceProviderError::new(
-            ResourceProviderErrorKind::Missing,
-            "RunenUI provides no external image resources",
-        ))
     }
 }
 
