@@ -68,7 +68,21 @@ for entry in "fluent_counter:Counter" "fluent_status:Status"; do
         exit 1
       fi
     done
-    if ! grep -Fq "RUNENUI_NATIVE_TEST_RENDER_RECOVERED=same_immutable_publication" "$log"; then
+    # The final injected loss is followed by a bounded native retry, not
+    # synchronous Present. Observe completion without treating a still-pending
+    # retry as a failure at the exact moment the last fault was logged.
+    recovered=""
+    for _ in $(seq 1 100); do
+      if grep -Fq "RUNENUI_NATIVE_TEST_RENDER_RECOVERED=same_immutable_publication" "$log"; then
+        recovered=yes
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.1
+    done
+    if [[ -z "$recovered" ]]; then
       echo "Native renderer did not Present the preserved publication after injected failures" >&2
       cat "$log" >&2
       exit 1
