@@ -255,13 +255,17 @@ mod tests {
     fn native_exit_preserves_primary_and_cleanup_failures_separately() {
         let combined = NativeAppError::combine_exit(
             Some(NativeAppError::EventLoop("event loop failed".to_owned())),
-            Some(NativeAppError::Shutdown("shutdown observation failed".to_owned())),
+            Some(NativeAppError::Shutdown(
+                "shutdown observation failed".to_owned(),
+            )),
         );
         let Err(NativeAppError::Multiple { primary, secondary }) = combined else {
             panic!("both failures must be returned as separate typed facts");
         };
         assert!(matches!(*primary, NativeAppError::EventLoop(_)));
-        assert!(matches!(*secondary, NativeAppError::Shutdown(ref error) if error == "shutdown observation failed"));
+        assert!(
+            matches!(*secondary, NativeAppError::Shutdown(ref error) if error == "shutdown observation failed")
+        );
     }
 
     #[test]
