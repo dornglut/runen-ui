@@ -3496,15 +3496,13 @@ mod reservation_tests {
         assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
         assert_eq!(queue.root_quotas[&root.quota()].live_work_leases, 0);
         assert_eq!(queue.reserved, 5);
-        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(u64::MAX - 4));
+        assert_eq!(
+            queue.next_sequence().map(WorkSequence::get),
+            Some(u64::MAX - 4)
+        );
 
         let identity = |family, generation: crate::work::WorkGeneration| {
-            TraceWorkIdentity::new(
-                TraceWorkOwner::Application,
-                family,
-                generation.get(),
-                None,
-            )
+            TraceWorkIdentity::new(TraceWorkOwner::Application, family, generation.get(), None)
         };
         assert_eq!(
             queue
@@ -3528,11 +3526,7 @@ mod reservation_tests {
         );
         assert_eq!(
             queue
-                .push_timer_cancellation(
-                    timer,
-                    identity(TraceWorkFamily::Timer, timer),
-                    None,
-                )
+                .push_timer_cancellation(timer, identity(TraceWorkFamily::Timer, timer), None,)
                 .map(|sequence| sequence.map(WorkSequence::get)),
             Ok(Some(u64::MAX - 2))
         );
