@@ -94,6 +94,32 @@ for entry in "fluent_counter:Counter" "fluent_status:Status"; do
       exit 1
     fi
     echo "Focused native keyboard action PASS"
+    # Black-box hit probe, using only XTest OS pointer events. Search a
+    # bounded visible grid rather than relying on an internal UI geometry
+    # hook or a guessed single button pixel.
+    toggle_count="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+    pointer_observed=""
+    for y in 15 35 55 75 100 130 170 215 270; do
+      for x in 15 35 65 100 150 230 350 490; do
+        xdotool mousemove --window "$window_id" "$x" "$y"
+        xdotool click 1
+        sleep 0.12
+        observed_count="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+        if (( observed_count > toggle_count )); then
+          pointer_observed=yes
+          break 2
+        fi
+        if ! kill -0 "$app_pid" 2>/dev/null; then
+          break 2
+        fi
+      done
+    done
+    if [[ -z "$pointer_observed" ]]; then
+      echo "Native X11 pointer activation did not reach authored button action" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    echo "Native pointer action PASS"
   fi
   if ! kill -0 "$app_pid" 2>/dev/null; then
     echo "Native process failed during resize/idle: ${executable}" >&2
