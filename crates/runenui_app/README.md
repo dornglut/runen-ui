@@ -18,9 +18,22 @@ The native shell supports a single window and `NoHostProtocol` currently.
 Additional application styling and resource providers can be specified with
 `.styles(...)` and `.resources(...)`. Applications can opt into an explicit
 validated authored initial focus with `.initial_focus(ElementId)`; the native
-host never guesses an element to focus or overrides an already-focused UI. Font policy can be overridden by
-`.runtime_config(...)`; native convenience defaults to system and bundled
-fonts. No implicit host effect handler or missing-resource fallback exists.
+host never guesses an element to focus or overrides an already-focused UI.
+Font policy can be overridden by `.runtime_config(...)`; native convenience
+uses system and bundled fonts. No implicit host effect handler or missing-
+resource fallback exists.
+
+The native runner installs its monotonic clock and coalesced wake adapter
+before initial application effects, using one canonical runtime. It uses the
+bounded runtime pump report's next logical deadline for event-driven native
+timer/motion scheduling; it does not continuously draw frames when idle.
+
+**Current limitations:** advanced native IME text composition, framework
+services (including clipboard), native touch, and application-defined host
+request protocols are not yet implemented by this facade. The independent
+Counter executable demonstrates typed actions, not a complete text-editing
+host. These limitations require explicit implementation and platform proof
+before general-purpose desktop acceptance.
 
 The first native implementation is a standalone desktop delivery candidate
 owned by #543. The host-specific behavior still needs native platform and
