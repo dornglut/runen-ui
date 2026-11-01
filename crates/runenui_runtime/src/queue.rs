@@ -1454,9 +1454,9 @@ impl<Action> WorkQueue<Action> {
             .get(&generation)
             .map(|credits| usize::from(credits.response) + usize::from(credits.cancellation))
             .or_else(|| {
-                quota.framework_services
-                    .get(&generation)
-                    .map(|credits| usize::from(credits.response) + usize::from(credits.cancellation))
+                quota.framework_services.get(&generation).map(|credits| {
+                    usize::from(credits.response) + usize::from(credits.cancellation)
+                })
             })
             .or_else(|| {
                 quota.local_tasks.get(&generation).map(|credits| {
