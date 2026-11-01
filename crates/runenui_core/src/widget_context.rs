@@ -94,12 +94,12 @@ impl<Action> WidgetActivationContextOutputs<Action> {
     }
 }
 
-pub struct WidgetWorkCollector<Action> {
+pub struct WidgetOutputCollector<Action> {
     outputs: Vec<MountedEffect<Action>>,
     activation_order: Option<Vec<WidgetActivationContextOutputOrder>>,
 }
 
-impl<Action> WidgetWorkCollector<Action> {
+impl<Action> WidgetOutputCollector<Action> {
     pub const fn new() -> Self {
         Self {
             outputs: Vec::new(),
@@ -243,7 +243,7 @@ macro_rules! work_context {
         pub struct $name<Action = ()> {
             invalidation: WidgetInvalidation,
             subscription_invalidation: bool,
-            work: WidgetWorkCollector<Action>,
+            work: WidgetOutputCollector<Action>,
             remaining_outputs: Option<usize>,
             used_outputs: usize,
             overflowed: bool,
@@ -276,7 +276,7 @@ macro_rules! work_context {
                 Self {
                     invalidation: WidgetInvalidation::NONE,
                     subscription_invalidation: false,
-                    work: WidgetWorkCollector::new(),
+                    work: WidgetOutputCollector::new(),
                     remaining_outputs: None,
                     used_outputs: 0,
                     overflowed: false,
@@ -294,7 +294,7 @@ macro_rules! work_context {
                 Self {
                     invalidation: WidgetInvalidation::NONE,
                     subscription_invalidation: false,
-                    work: WidgetWorkCollector::new(),
+                    work: WidgetOutputCollector::new(),
                     remaining_outputs: Some(output_allowance),
                     used_outputs: 0,
                     overflowed: false,

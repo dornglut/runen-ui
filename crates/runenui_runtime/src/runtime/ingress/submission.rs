@@ -197,7 +197,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(SubmitActionError::Full(action));
         }
         let instant = self.now();
-        let sequence = match self.commit_preflighted_action(
+        let sequence = match self.admit_and_commit_action(
             action,
             causal_parent,
             target,
@@ -383,7 +383,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok((action, reservation))
     }
 
-    pub(in crate::runtime) fn commit_preflighted_action(
+    pub(in crate::runtime) fn admit_and_commit_action(
         &mut self,
         action: Action,
         causal_parent: Option<TraceSequence>,
@@ -953,7 +953,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         semantic_target: SemanticActionTarget,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         self.command_preflight(target)?;
-        self.commit_preflighted_command(
+        self.admit_and_commit_command(
             PreflightedCommand {
                 target,
                 command,
@@ -977,7 +977,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         root_quota: Option<RootQuotaId>,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         self.command_preflight(target)?;
-        self.commit_preflighted_command(
+        self.admit_and_commit_command(
             PreflightedCommand {
                 target,
                 command,
@@ -1018,7 +1018,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         root_quota: Option<RootQuotaId>,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         self.command_preflight(target)?;
-        self.commit_preflighted_command(
+        self.admit_and_commit_command(
             PreflightedCommand {
                 target,
                 command,
@@ -1045,7 +1045,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         root_quota: Option<RootQuotaId>,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         let result = self.command_preflight(routing_target).and_then(|()| {
-            self.commit_preflighted_command(
+            self.admit_and_commit_command(
                 PreflightedCommand {
                     target: routing_target,
                     command: SemanticCommand::RequestFocus,
@@ -1079,7 +1079,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         root_quota: Option<RootQuotaId>,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         let result = self.command_preflight(target).and_then(|()| {
-            self.commit_preflighted_command(
+            self.admit_and_commit_command(
                 PreflightedCommand {
                     target,
                     command: SemanticCommand::PresentationDismiss(reason),
@@ -1220,7 +1220,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(CommandSubmission::new(sequence))
     }
 
-    fn commit_preflighted_command(
+    fn admit_and_commit_command(
         &mut self,
         command: PreflightedCommand<'_>,
         inherited_root: Option<RootQuotaId>,

@@ -7,7 +7,7 @@ use crate::{
     DragDropPhase, ElementId, EventPhase, LogicalPoint, LogicalSize, MonotonicInstant,
     MountedNodeId, PointerId, ScrollControlSnapshot, SemanticCommand, SendTaskStartFailure,
     TimerEffect, WidgetInvalidation, WorkFamily, WorkKey, WorkSequence, effects::MountedEffect,
-    widget_context::WidgetWorkCollector,
+    widget_context::WidgetOutputCollector,
 };
 
 /// One action or delegated command in exact callback emission order.
@@ -101,7 +101,7 @@ pub struct EventContext<'a, Action> {
     invalidation: WidgetInvalidation,
     subscription_invalidation: bool,
     ordered: Vec<RoutedEventOutput<Action>>,
-    mounted_work: WidgetWorkCollector<Action>,
+    mounted_work: WidgetOutputCollector<Action>,
     remaining_outputs: usize,
     used_outputs: usize,
     overflowed: bool,
@@ -656,7 +656,7 @@ impl<'a, Action> EventContext<'a, Action> {
             invalidation: WidgetInvalidation::NONE,
             subscription_invalidation: false,
             ordered: Vec::new(),
-            mounted_work: WidgetWorkCollector::new(),
+            mounted_work: WidgetOutputCollector::new(),
             remaining_outputs: output_allowance,
             used_outputs: 0,
             overflowed: false,

@@ -494,7 +494,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         )
                         .map_err(|_| CommitError::Registry)?;
                     } else {
-                        self.commit_preflighted_action(
+                        self.admit_and_commit_action(
                             action,
                             transaction_parent,
                             None,
