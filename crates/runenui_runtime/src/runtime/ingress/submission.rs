@@ -197,42 +197,37 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(SubmitActionError::Full(action));
         }
         let instant = self.now();
-        let sequence = match self.admit_and_commit_action(
-            action,
-            causal_parent,
-            target,
-            category,
-            instant,
-        ) {
-            Ok(sequence) => sequence,
-            Err(ActionCommitError::WorkCapacity(action, family)) => {
-                return Err(SubmitActionError::WorkCapacity { action, family });
-            }
-            Err(ActionCommitError::QueueFull(action)) => {
-                self.record_optional(
-                    TraceRecordKind::ActionSubmissionRejectedFull,
-                    None,
-                    None,
-                    None,
-                );
-                return Err(SubmitActionError::Full(action));
-            }
-            Err(ActionCommitError::WorkSequenceExhausted(action)) => {
-                let reason = RuntimeTerminalReason::WorkSequenceExhausted;
-                self.enter_terminal(reason, 0);
-                return Err(SubmitActionError::Terminal { action, reason });
-            }
-            Err(ActionCommitError::TraceSequenceExhausted(action)) => {
-                let reason = RuntimeTerminalReason::TraceSequenceExhausted;
-                self.enter_terminal(reason, 0);
-                return Err(SubmitActionError::Terminal { action, reason });
-            }
-            Err(ActionCommitError::Integrity(action)) => {
-                let reason = RuntimeTerminalReason::Poisoned;
-                self.enter_terminal(reason, 0);
-                return Err(SubmitActionError::Terminal { action, reason });
-            }
-        };
+        let sequence =
+            match self.admit_and_commit_action(action, causal_parent, target, category, instant) {
+                Ok(sequence) => sequence,
+                Err(ActionCommitError::WorkCapacity(action, family)) => {
+                    return Err(SubmitActionError::WorkCapacity { action, family });
+                }
+                Err(ActionCommitError::QueueFull(action)) => {
+                    self.record_optional(
+                        TraceRecordKind::ActionSubmissionRejectedFull,
+                        None,
+                        None,
+                        None,
+                    );
+                    return Err(SubmitActionError::Full(action));
+                }
+                Err(ActionCommitError::WorkSequenceExhausted(action)) => {
+                    let reason = RuntimeTerminalReason::WorkSequenceExhausted;
+                    self.enter_terminal(reason, 0);
+                    return Err(SubmitActionError::Terminal { action, reason });
+                }
+                Err(ActionCommitError::TraceSequenceExhausted(action)) => {
+                    let reason = RuntimeTerminalReason::TraceSequenceExhausted;
+                    self.enter_terminal(reason, 0);
+                    return Err(SubmitActionError::Terminal { action, reason });
+                }
+                Err(ActionCommitError::Integrity(action)) => {
+                    let reason = RuntimeTerminalReason::Poisoned;
+                    self.enter_terminal(reason, 0);
+                    return Err(SubmitActionError::Terminal { action, reason });
+                }
+            };
         self.external_queue_commit_accepted();
         Ok(sequence)
     }

@@ -10,7 +10,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         causal_parent: Option<TraceSequence>,
     ) -> Option<WorkSequence> {
         let instant = self.now();
-        self.commit_preflighted_action(
+        self.admit_and_commit_action(
             action,
             causal_parent,
             None,
