@@ -84,9 +84,8 @@ fn parse_native_render_faults(spec: &str) -> VecDeque<PublicationRenderError> {
             "suboptimal" => PublicationRenderError::SurfaceSuboptimal,
             "not-configured" => PublicationRenderError::SurfaceNotConfigured,
             "lost" => PublicationRenderError::SurfaceLost,
-            "validation" => PublicationRenderError::SurfaceValidation,
-            // An unknown test directive must fail closed through the host's
-            // existing typed fatal path rather than silently skipping proof.
+            // Both an explicit "validation" token and an unrecognized test
+            // directive must reach the typed fatal path rather than vanish.
             _ => PublicationRenderError::SurfaceValidation,
         })
         .collect()
