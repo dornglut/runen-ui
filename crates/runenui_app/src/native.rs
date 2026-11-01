@@ -16,12 +16,10 @@ use runenui_core::{
     InputDeviceId, KeyModifiers, KeyboardCompositionState, LogicalDelta, NoHostProtocol,
     PointerEvent, StyleEnvironment, SurfaceInputContext, UiApp,
 };
-use runenui_render_wgpu::{
-    PublicationRenderError, Renderer, RendererOptions, ResourceProvider,
-};
+use runenui_render_wgpu::{PublicationRenderError, Renderer, RendererOptions, ResourceProvider};
 use runenui_runtime::{
-    AppRuntime, MonotonicClock, MonotonicInstant, PumpBudget, RedrawRequest,
-    RuntimeConfig, RuntimeStatus, SubmitKeyboardErrorKind, SurfaceBuildContext, SurfacePublication,
+    AppRuntime, MonotonicClock, MonotonicInstant, PumpBudget, RedrawRequest, RuntimeConfig,
+    RuntimeStatus, SubmitKeyboardErrorKind, SurfaceBuildContext, SurfacePublication,
 };
 use runenui_winit::{
     accessibility::{AccessibilityEvent, SemanticAdapter},
@@ -412,7 +410,9 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             Ok(batch) => batch,
             Err(error) => {
                 // Closing the host also retires its native receipt associations.
-                self.fatal.get_or_insert_with(|| format!("native shutdown observation unavailable: {error}"));
+                self.fatal.get_or_insert_with(|| {
+                    format!("native shutdown observation unavailable: {error}")
+                });
                 return;
             }
         };
@@ -430,7 +430,6 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             self.pending_redraw = self.runtime.take_redraw_request();
         }
     }
-
 
     fn publish_if_needed(&mut self) -> Result<bool, String> {
         if self.pending_frame.is_some() {
@@ -1083,9 +1082,12 @@ pub(crate) fn run_native<A: UiApp<HostProtocol = NoHostProtocol>>(
     let mut host = NativeHost::<A>::new(proxy, title, state, environment, resources, config);
     if let RuntimeStatus::Terminal(reason) = host.runtime.status() {
         host.shutdown_runtime_checked();
-        return Err(NativeAppError::Fatal(format!("initial runtime work terminated: {reason:?}")));
+        return Err(NativeAppError::Fatal(format!(
+            "initial runtime work terminated: {reason:?}"
+        )));
     }
-    event_loop.run_app(&mut host)
+    event_loop
+        .run_app(&mut host)
         .map_err(|error| NativeAppError::EventLoop(error.to_string()))?;
     match host.fatal {
         Some(detail) => Err(NativeAppError::Fatal(detail)),
