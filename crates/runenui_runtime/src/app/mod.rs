@@ -45,6 +45,35 @@ impl<App: UiApp> AppRuntime<App> {
         }
     }
 
+    /// Mounts an externally hosted application with its monotonic clock and
+    /// coalesced wake transport installed before initial application effects
+    /// and subscriptions are admitted to the canonical scheduler.
+    ///
+    /// Unlike installing these adapters *after* `mount_with_config`, this
+    /// ordering makes the initial application's work and its first wake
+    /// observe the same host clock and wake transport. Initial tree mount
+    /// still uses the accepted mount-relative zero-time trace convention.
+    ///
+    /// This does not create a native runner, event loop, or second scheduler.
+    #[must_use]
+    pub fn mount_with_host_adapters(
+        state: App::State,
+        config: RuntimeConfig,
+        clock: impl crate::MonotonicClock + 'static,
+        wake: impl crate::WakeTransport + 'static,
+    ) -> Self {
+        let mut runtime = Runtime::mount(state, |state| App::root(state).into_element(), config);
+        runtime.set_monotonic_clock(clock);
+        runtime.set_wake_transport(wake);
+        runtime.trace_action_labeler = Some(App::trace_action_label);
+        runtime.initialize_application_work::<App>();
+        runtime.rearm_wake_if_needed();
+        Self {
+            runtime,
+            _app: PhantomData,
+        }
+    }
+
     /// Registers immutable bundled font bytes with the runtime-owned text authority.
     ///
     /// # Errors
