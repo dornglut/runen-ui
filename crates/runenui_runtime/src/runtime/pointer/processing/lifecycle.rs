@@ -192,6 +192,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         sequence: WorkSequence,
         mut parent: Option<TraceSequence>,
         unmounted: &[MountedNodeId],
+        root: crate::queue::RootQuotaId,
     ) -> Result<Option<TraceSequence>, ()> {
         let instant = self.now();
         let cleanups = self.plan_reconciled_pointer_cleanup(unmounted);
@@ -218,6 +219,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         instant,
                         &cleanup,
                         notification,
+                        root,
                     )?;
                 } else {
                     let facts = CaptureLossTraceFacts {
@@ -600,6 +602,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         instant: MonotonicInstant,
         cleanup: &PointerCleanup,
         notification: &PointerCaptureNotification,
+        root: crate::queue::RootQuotaId,
     ) -> Result<Option<TraceSequence>, ()> {
         let facts = RoutedIngressFacts::new(
             sequence,
@@ -609,7 +612,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             TraceEventContext::new(TraceEventFamily::PointerCapture, false),
             parent,
             TraceReservation::continuation(),
-        );
+        )
+        // The causing update reserved this complete frontier before entering
+        // mutable application code. Live capture retirement and its outputs
+        // must spend that root rather than compete with queued followers.
+        .with_root_quota(root);
         let Some(mut transaction) = self.begin_pointer_routed_transaction(
             facts,
             false,

@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use std::{cell::Cell, rc::Rc};
 
@@ -6,13 +18,13 @@ use runenui_core::{
     ApplicationCommand, ApplicationCommandDisposition, ApplicationCommandId, ChildBearingWidget,
     CommandOrigin, Element, EventContext, EventPhase, NoHostProtocol, SemanticCommand,
     SemanticCommandEvent, StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetActivation,
-    WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, children, command_binding,
-    command_scope, container, text,
+    WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, button, children, column,
+    command_binding, command_scope, container, text,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, PumpBudget, RuntimeConfig, RuntimeLimits, SurfaceBuildContext,
-    TraceApplicationCommandOutcome, TraceRecordKind, TraceRoutedAdmissionRejection,
-    TraceTargetRejection,
+    AppRuntime, LayoutConstraints, PumpBudget, RuntimeConfig, RuntimeLimits,
+    SubmitCommandErrorKind, SurfaceBuildContext, TraceApplicationCommandOutcome, TraceRecordKind,
+    TraceRoutedAdmissionRejection, TraceTargetRejection,
 };
 
 const COMMAND: &str = "document.save";
@@ -72,6 +84,23 @@ struct CommandEmitter {
 }
 
 impl Widget<Action> for CommandEmitter {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -91,7 +120,7 @@ impl Widget<Action> for CommandEmitter {
             )
         {
             self.calls.set(self.calls.get() + 1);
-            context.emit_application_command(self.command.clone());
+            let _ = context.try_emit_application_command(self.command.clone());
         }
         WidgetEventOutput::none()
     }
@@ -108,6 +137,22 @@ struct ActivationCommandEmitter {
 }
 
 impl Widget<Action> for ActivationCommandEmitter {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(4)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -128,9 +173,9 @@ impl Widget<Action> for ActivationCommandEmitter {
         context: &mut WidgetActivationContext<Action>,
     ) -> WidgetActivationOutput<Action> {
         self.calls.set(self.calls.get() + 1);
-        context.emit(Action::ActivationBefore);
-        context.emit_application_command(self.command.clone());
-        context.emit(Action::ActivationAfter);
+        let _ = context.try_emit(Action::ActivationBefore);
+        let _ = context.try_emit_application_command(self.command.clone());
+        let _ = context.try_emit(Action::ActivationAfter);
         WidgetActivationOutput::action(Action::ActivationPrimary)
     }
 }
@@ -142,6 +187,22 @@ struct MappedActivationCommandEmitter {
 }
 
 impl Widget<LeafActivationAction> for MappedActivationCommandEmitter {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(4)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -156,9 +217,9 @@ impl Widget<LeafActivationAction> for MappedActivationCommandEmitter {
         context: &mut WidgetActivationContext<LeafActivationAction>,
     ) -> WidgetActivationOutput<LeafActivationAction> {
         self.calls.set(self.calls.get() + 1);
-        context.emit(LeafActivationAction::Before);
-        context.emit_application_command(self.command.clone());
-        context.emit(LeafActivationAction::After);
+        let _ = context.try_emit(LeafActivationAction::Before);
+        let _ = context.try_emit_application_command(self.command.clone());
+        let _ = context.try_emit(LeafActivationAction::After);
         WidgetActivationOutput::action(LeafActivationAction::Primary)
     }
 }
@@ -169,6 +230,23 @@ struct DownstreamCommandScope {
 }
 
 impl Widget<Action> for DownstreamCommandScope {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -185,7 +263,7 @@ impl Widget<Action> for DownstreamCommandScope {
                 .is_some_and(|event| event.command() == &self.command)
         {
             context.consume_application_command(ApplicationCommandDisposition::Resolved);
-            context.emit(Action::Inner);
+            let _ = context.try_emit(Action::Inner);
         }
         WidgetEventOutput::none()
     }
@@ -196,6 +274,44 @@ impl ChildBearingWidget<Action> for DownstreamCommandScope {}
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Every state renders an outer scope, emitter, inner scope, and three
+        // leaves. Initial reconciliation reserves one sequence per mounted
+        // owner even though this fixture declares no subscriptions.
+        runenui_core::ProducerBudget::new(6, 0)
+            .with_reconciliation(6, 0, 6)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let (queue_credits, dirty_owners) = match action {
+            Action::Replace | Action::SetMode(_) => (7, 6),
+            Action::Inner
+            | Action::Outer
+            | Action::ActivationPrimary
+            | Action::ActivationBefore
+            | Action::ActivationAfter
+            | Action::Mapped(_) => (1, 0),
+        };
+        runenui_core::ProducerBudget::new(queue_credits, 0)
+            .with_reconciliation(6, 6, dirty_owners)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The three ancestor Event collectors each declare one action per route phase (six
+        // outputs total); activation declares four (three context emissions plus its returned
+        // primary action). This is the trusted bound across every reachable route topology.
+        runenui_core::ProducerBudget::new(10, 10)
+            .with_reconciliation(6, 6, 6)
+            .with_application_outputs(0)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -386,6 +502,32 @@ fn submit_trigger(runtime: &mut AppRuntime<App>) {
         .unwrap_or_else(|_| unreachable!("live trigger target is accepted"));
 }
 
+fn assert_profile_refusal(
+    runtime: &mut AppRuntime<App>,
+    target: runenui_runtime::MountedNodeId,
+    command: SemanticCommand,
+) {
+    let result = runtime.submit_command(target.clone(), command, CommandOrigin::programmatic());
+    assert!(result.is_err(), "infeasible routed profile must be refused");
+    let Err(refused) = result else { return };
+    assert_eq!(
+        refused.kind(),
+        SubmitCommandErrorKind::InvalidProducerProfile
+    );
+    assert_eq!(
+        refused.into_unaccepted().into_parts(),
+        (target, command, CommandOrigin::programmatic())
+    );
+    let zero = runtime
+        .pump(PumpBudget::new(0, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!());
+    assert_eq!(zero.report().processed_envelopes(), 0);
+    assert!(!runtime.trace().kinds().any(|kind| matches!(
+        kind,
+        TraceRecordKind::CommandSubmissionAccepted | TraceRecordKind::RoutedEventStarted
+    )));
+}
+
 fn has_outcome(runtime: &AppRuntime<App>, expected: TraceApplicationCommandOutcome) -> bool {
     runtime.trace().records().any(|record| {
         matches!(
@@ -405,7 +547,7 @@ fn command_identity_reuses_validated_authored_identifier_grammar() {
 
 #[test]
 fn ancestor_emission_retains_original_target_and_nearest_scope_resolves_non_reentrantly() {
-    let mut runtime = AppRuntime::<App>::mount(state(Mode::Enabled));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(state(Mode::Enabled)));
     settle(&mut runtime);
     submit_trigger(&mut runtime);
 
@@ -434,7 +576,7 @@ fn disabled_and_ambiguous_inner_scopes_shadow_outer_bindings() {
         (Mode::Disabled, TraceApplicationCommandOutcome::Disabled),
         (Mode::Ambiguous, TraceApplicationCommandOutcome::Ambiguous),
     ] {
-        let mut runtime = AppRuntime::<App>::mount(state(mode));
+        let mut runtime = admitted!(AppRuntime::<App>::mount(state(mode)));
         settle(&mut runtime);
         submit_trigger(&mut runtime);
         pump_one(&mut runtime);
@@ -447,7 +589,7 @@ fn disabled_and_ambiguous_inner_scopes_shadow_outer_bindings() {
 
 #[test]
 fn duplicate_scope_diagnostic_is_published_and_observable() {
-    let mut runtime = AppRuntime::<App>::mount(state(Mode::Ambiguous));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(state(Mode::Ambiguous)));
     settle(&mut runtime);
     let style = StyleEnvironment::default();
     let publication = runtime
@@ -469,7 +611,7 @@ fn duplicate_scope_diagnostic_is_published_and_observable() {
 
 #[test]
 fn retained_scope_rebuild_updates_duplicate_diagnostic_publication() {
-    let mut runtime = AppRuntime::<App>::mount(state(Mode::Enabled));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(state(Mode::Enabled)));
     settle(&mut runtime);
     let style = StyleEnvironment::default();
 
@@ -505,7 +647,7 @@ fn retained_scope_rebuild_updates_duplicate_diagnostic_publication() {
 
 #[test]
 fn unbound_command_is_explicit_and_inert() {
-    let mut runtime = AppRuntime::<App>::mount(state(Mode::Unbound));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(state(Mode::Unbound)));
     settle(&mut runtime);
     submit_trigger(&mut runtime);
     pump_one(&mut runtime);
@@ -520,7 +662,7 @@ fn unbound_command_is_explicit_and_inert() {
 
 #[test]
 fn downstream_scope_uses_the_same_public_disposition_and_action_path() {
-    let mut runtime = AppRuntime::<App>::mount(state(Mode::CustomScope));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(state(Mode::CustomScope)));
     settle(&mut runtime);
     submit_trigger(&mut runtime);
     pump_one(&mut runtime);
@@ -535,7 +677,7 @@ fn downstream_scope_uses_the_same_public_disposition_and_action_path() {
 
 #[test]
 fn replacement_before_later_command_processing_rejects_exact_stale_target() {
-    let mut runtime = AppRuntime::<App>::mount(state(Mode::Enabled));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(state(Mode::Enabled)));
     settle(&mut runtime);
     submit_trigger(&mut runtime);
     runtime
@@ -580,24 +722,17 @@ fn replacement_before_later_command_processing_rejects_exact_stale_target() {
 #[test]
 fn routed_output_admission_rejects_before_emitter_callback_or_partial_command_commit() {
     let limits = RuntimeLimits::default().with_transaction_outputs(0);
-    let mut runtime = AppRuntime::<App>::mount_with_config(
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
         state(Mode::Enabled),
         RuntimeConfig::default().with_limits(limits),
-    );
+    ));
     settle(&mut runtime);
-    submit_trigger(&mut runtime);
+    let target = leaf(&mut runtime);
+    assert_profile_refusal(&mut runtime, target, SemanticCommand::OpenMenu);
 
     pump_one(&mut runtime);
     assert_eq!(runtime.state().emitter_calls.get(), 0);
     assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
-    assert!(runtime.trace().records().any(|record| {
-        matches!(
-            record.kind(),
-            TraceRecordKind::RoutedEventAdmissionRejected {
-                capacity: TraceRoutedAdmissionRejection::TransactionOutputs
-            }
-        )
-    }));
     assert!(!runtime.trace().records().any(|record| {
         matches!(
             record.kind(),
@@ -613,10 +748,10 @@ fn application_command_waiting_queue_saturation_rejects_before_emitter_callback(
     let limits = RuntimeLimits::default()
         .with_waiting_envelopes(QUEUE_CAPACITY)
         .with_transaction_outputs(1);
-    let mut runtime = AppRuntime::<App>::mount_with_config(
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
         state(Mode::Enabled),
         RuntimeConfig::default().with_limits(limits),
-    );
+    ));
     settle(&mut runtime);
     assert_eq!(
         runtime.status(),
@@ -624,34 +759,34 @@ fn application_command_waiting_queue_saturation_rejects_before_emitter_callback(
         "bounded fixture must mount and settle before admission pressure is applied"
     );
 
-    submit_trigger(&mut runtime);
-    for _ in 0..(QUEUE_CAPACITY - 1) {
+    // Seven unary action roots leave nine canonical credits. The application
+    // command requires ten credits for its reachable route outputs, so it is
+    // refused before admission and before any emitter callback.
+    for _ in 0..7 {
         runtime
             .submit_action(Action::Outer)
             .unwrap_or_else(|_| unreachable!("filler action is admitted"));
     }
-
-    assert_eq!(
-        runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .processed_envelopes(),
-        1
-    );
+    let target = leaf(&mut runtime);
+    let Err(error) = runtime.submit_command(
+        target.clone(),
+        SemanticCommand::OpenMenu,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!("insufficient root capacity rejects before command acceptance")
+    };
+    assert_eq!(error.kind(), SubmitCommandErrorKind::Full);
+    let (returned_target, returned_command, returned_origin) = error.into_unaccepted().into_parts();
+    assert_eq!(returned_target, target);
+    assert_eq!(returned_command, SemanticCommand::OpenMenu);
+    assert_eq!(returned_origin, CommandOrigin::programmatic());
     assert_eq!(runtime.state().emitter_calls.get(), 0);
     assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
     assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
-    assert!(runtime.trace().kinds().any(|kind| matches!(
-        kind,
-        TraceRecordKind::RoutedEventAdmissionRejected {
-            capacity: TraceRoutedAdmissionRejection::WaitingEnvelopes
-        }
-    )));
     assert!(!runtime.trace().kinds().any(|kind| matches!(
         kind,
-        TraceRecordKind::DelegatedApplicationCommandCollected { .. }
+        TraceRecordKind::CommandSubmissionAccepted
+            | TraceRecordKind::DelegatedApplicationCommandCollected { .. }
             | TraceRecordKind::ApplicationCommandResolution { .. }
     )));
 }
@@ -661,11 +796,11 @@ fn application_command_waiting_queue_saturation_rejects_before_emitter_callback(
 fn application_command_trace_exhaustion_rejects_before_emitter_callback() {
     let limits = RuntimeLimits::default()
         .with_waiting_envelopes(16)
-        .with_transaction_outputs(1);
-    let mut runtime = AppRuntime::<App>::mount_with_config(
+        .with_transaction_outputs(10);
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
         state(Mode::Enabled),
         RuntimeConfig::default().with_limits(limits),
-    );
+    ));
     settle(&mut runtime);
     assert_eq!(
         runtime.status(),
@@ -684,7 +819,9 @@ fn application_command_trace_exhaustion_rejects_before_emitter_callback() {
         runtime.status(),
         runenui_runtime::RuntimeStatus::Terminal(
             runenui_runtime::RuntimeTerminalReason::TraceSequenceExhausted
-        )
+        ),
+        "trace: {:?}",
+        runtime.trace().kinds().collect::<Vec<_>>()
     );
     assert!(runtime.trace().kinds().any(|kind| matches!(
         kind,
@@ -700,7 +837,7 @@ fn application_command_trace_exhaustion_rejects_before_emitter_callback() {
 }
 #[test]
 fn activation_context_preserves_primary_action_and_context_output_order() {
-    let mut runtime = AppRuntime::<App>::mount(state(Mode::Enabled));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(state(Mode::Enabled)));
     settle(&mut runtime);
     let target = direct_activation(&mut runtime);
     runtime
@@ -716,6 +853,12 @@ fn activation_context_preserves_primary_action_and_context_output_order() {
     assert_eq!(runtime.state().emitter_calls.get(), 1);
 
     pump_one(&mut runtime);
+    assert_eq!(
+        runtime.status(),
+        runenui_runtime::RuntimeStatus::Running,
+        "trace: {:?}",
+        runtime.trace().kinds().collect::<Vec<_>>()
+    );
     assert_eq!(runtime.state().updates, ["primary"]);
     pump_one(&mut runtime);
     assert_eq!(runtime.state().updates, ["primary", "before"]);
@@ -740,11 +883,11 @@ fn activation_context_preserves_primary_action_and_context_output_order() {
 
 #[test]
 fn recursively_mapped_activation_maps_actions_but_preserves_command_identity_and_capacity() {
-    let limits = RuntimeLimits::default().with_transaction_outputs(4);
-    let mut runtime = AppRuntime::<App>::mount_with_config(
+    let limits = RuntimeLimits::default().with_transaction_outputs(10);
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
         state(Mode::Enabled),
         RuntimeConfig::default().with_limits(limits),
-    );
+    ));
     settle(&mut runtime);
     let target = mapped_activation(&mut runtime);
     runtime
@@ -775,7 +918,7 @@ fn recursively_mapped_activation_maps_actions_but_preserves_command_identity_and
 #[test]
 fn disabled_and_non_actionable_activation_do_not_invoke_or_emit_commands() {
     for mode in [Mode::ActivationDisabled, Mode::ActivationNonActionable] {
-        let mut runtime = AppRuntime::<App>::mount(state(mode));
+        let mut runtime = admitted!(AppRuntime::<App>::mount(state(mode)));
         settle(&mut runtime);
         let target = direct_activation(&mut runtime);
         runtime
@@ -799,33 +942,44 @@ fn disabled_and_non_actionable_activation_do_not_invoke_or_emit_commands() {
 #[test]
 fn activation_command_admission_rejects_before_callback_under_output_backpressure() {
     let limits = RuntimeLimits::default().with_transaction_outputs(0);
-    let mut runtime = AppRuntime::<App>::mount_with_config(
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
         state(Mode::Enabled),
         RuntimeConfig::default().with_limits(limits),
-    );
+    ));
     settle(&mut runtime);
     let target = direct_activation(&mut runtime);
-    runtime
-        .submit_command(
-            target,
-            SemanticCommand::Activate,
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("live activation target is accepted"));
+    assert_profile_refusal(&mut runtime, target, SemanticCommand::Activate);
 
     pump_one(&mut runtime);
 
     assert_eq!(runtime.state().emitter_calls.get(), 0);
     assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
-    assert!(runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::RoutedEventAdmissionRejected {
-            capacity: TraceRoutedAdmissionRejection::TransactionOutputs
-        }
-    )));
     assert!(!runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::DelegatedApplicationCommandCollected { .. }
+    )));
+}
+
+#[test]
+fn activation_route_output_budget_four_refuses_before_callback() {
+    let limits = RuntimeLimits::default().with_transaction_outputs(4);
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
+        state(Mode::Enabled),
+        RuntimeConfig::default().with_limits(limits),
+    ));
+    settle(&mut runtime);
+    let target = mapped_activation(&mut runtime);
+    assert_profile_refusal(&mut runtime, target, SemanticCommand::Activate);
+
+    pump_one(&mut runtime);
+
+    assert_eq!(runtime.state().emitter_calls.get(), 0);
+    assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
+    assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
+    assert!(!runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::DelegatedApplicationCommandCollected { .. }
+            | TraceRecordKind::ApplicationCommandResolution { .. }
     )));
 }
 
@@ -835,46 +989,36 @@ fn activation_command_waiting_queue_saturation_rejects_before_callback_or_partia
     let limits = RuntimeLimits::default()
         .with_waiting_envelopes(QUEUE_CAPACITY)
         .with_transaction_outputs(4);
-    let mut runtime = AppRuntime::<App>::mount_with_config(
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
         state(Mode::Enabled),
         RuntimeConfig::default().with_limits(limits),
-    );
+    ));
     settle(&mut runtime);
-    let target = direct_activation(&mut runtime);
-    runtime
-        .submit_command(
-            target,
-            SemanticCommand::Activate,
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("live activation target is accepted"));
-    for _ in 0..(QUEUE_CAPACITY - 1) {
+    for _ in 0..7 {
         runtime
             .submit_action(Action::Outer)
             .unwrap_or_else(|_| unreachable!("filler action is admitted"));
     }
-
-    assert_eq!(
-        runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .processed_envelopes(),
-        1
-    );
+    let target = direct_activation(&mut runtime);
+    let Err(error) = runtime.submit_command(
+        target.clone(),
+        SemanticCommand::Activate,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!("insufficient root capacity rejects before activation callback")
+    };
+    assert_eq!(error.kind(), SubmitCommandErrorKind::Full);
+    let (returned_target, returned_command, returned_origin) = error.into_unaccepted().into_parts();
+    assert_eq!(returned_target, target);
+    assert_eq!(returned_command, SemanticCommand::Activate);
+    assert_eq!(returned_origin, CommandOrigin::programmatic());
     assert_eq!(runtime.state().emitter_calls.get(), 0);
     assert_eq!(runtime.state().updates, Vec::<&'static str>::new());
     assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
-    assert!(runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::RoutedEventAdmissionRejected {
-            capacity: TraceRoutedAdmissionRejection::WaitingEnvelopes
-        }
-    )));
     assert!(!runtime.trace().records().any(|record| matches!(
         record.kind(),
-        TraceRecordKind::DelegatedApplicationCommandCollected { .. }
+        TraceRecordKind::CommandSubmissionAccepted
+            | TraceRecordKind::DelegatedApplicationCommandCollected { .. }
             | TraceRecordKind::ApplicationCommandResolution { .. }
     )));
 }
@@ -884,11 +1028,11 @@ fn activation_command_waiting_queue_saturation_rejects_before_callback_or_partia
 fn activation_command_trace_exhaustion_rejects_before_callback_or_partial_output() {
     let limits = RuntimeLimits::default()
         .with_waiting_envelopes(16)
-        .with_transaction_outputs(4);
-    let mut runtime = AppRuntime::<App>::mount_with_config(
+        .with_transaction_outputs(10);
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
         state(Mode::Enabled),
         RuntimeConfig::default().with_limits(limits),
-    );
+    ));
     settle(&mut runtime);
     assert!(runtime.__surface_publication_trace_reserved_for_test());
 
@@ -909,7 +1053,9 @@ fn activation_command_trace_exhaustion_rejects_before_callback_or_partial_output
         runtime.status(),
         runenui_runtime::RuntimeStatus::Terminal(
             runenui_runtime::RuntimeTerminalReason::TraceSequenceExhausted
-        )
+        ),
+        "trace: {:?}",
+        runtime.trace().kinds().collect::<Vec<_>>()
     );
     assert!(!runtime.trace().records().any(|record| matches!(
         record.kind(),
@@ -919,7 +1065,7 @@ fn activation_command_trace_exhaustion_rejects_before_callback_or_partial_output
 
 #[test]
 fn activation_emitted_command_preserves_exact_target_generation_until_processing() {
-    let mut runtime = AppRuntime::<App>::mount(state(Mode::Enabled));
+    let mut runtime = admitted!(AppRuntime::<App>::mount(state(Mode::Enabled)));
     settle(&mut runtime);
     let target = direct_activation(&mut runtime);
     runtime
@@ -947,4 +1093,144 @@ fn activation_emitted_command_preserves_exact_target_generation_until_processing
             outcome: TraceTargetRejection::Stale
         }
     )));
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum ReachableProfileAction {
+    EnableRicherTarget,
+}
+
+#[derive(Debug, Default)]
+struct ReachableProfileState {
+    extra_focus_node: bool,
+}
+
+#[derive(Debug)]
+struct ReachableExtraFocusNode;
+
+impl Widget<ReachableProfileAction> for ReachableExtraFocusNode {
+    type State = ();
+
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        (): &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        if phase == runenui_core::WidgetProducerPhase::Event {
+            runenui_core::WidgetProducerBudget::new(1)
+        } else {
+            runenui_core::WidgetProducerBudget::new(0)
+        }
+    }
+
+    fn create_state(&self) -> Self::State {}
+}
+
+struct ReachableProfileApp;
+
+impl UiApp for ReachableProfileApp {
+    type State = ReachableProfileState;
+    type Action = ReachableProfileAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        let target = button("Stable target")
+            .id("stable-target")
+            .key("stable-target")
+            .on_activate(|| ReachableProfileAction::EnableRicherTarget);
+        if state.extra_focus_node {
+            column(children![
+                target,
+                Element::new(ReachableExtraFocusNode).key("extra-focus-node")
+            ])
+            .key("root")
+            .into_element()
+        } else {
+            column(children![target]).key("root").into_element()
+        }
+    }
+
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        match action {
+            ReachableProfileAction::EnableRicherTarget => runenui_core::ProducerBudget::new(3, 0)
+                .with_reconciliation(1, 1, 2)
+                .with_subscriptions(0, 0),
+        }
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The initial tree is smaller, but an earlier accepted action can add
+        // a focus-notification owner before a queued RequestFocus reaches the
+        // FIFO head. Four focus callbacks across that extra node are covered.
+        runenui_core::ProducerBudget::new(9, 9).with_application_outputs(0)
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        match action {
+            ReachableProfileAction::EnableRicherTarget => state.extra_focus_node = true,
+        }
+    }
+}
+
+#[test]
+fn queued_interaction_uses_profile_for_later_fifo_topology() {
+    let mut runtime = admitted!(AppRuntime::<ReachableProfileApp>::mount(
+        ReachableProfileState::default()
+    ));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
+    let target = runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "stable-target")
+        })
+        .unwrap_or_else(|| unreachable!("stable target is mounted"))
+        .id()
+        .clone();
+
+    runtime
+        .submit_action(ReachableProfileAction::EnableRicherTarget)
+        .unwrap_or_else(|_| unreachable!("predecessor action is accepted"));
+    admitted!(runtime.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    ));
+
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
+
+    assert!(runtime.state().extra_focus_node);
+    assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
+    assert!(
+        runtime.trace().records().any(|record| matches!(
+            record.kind(),
+            TraceRecordKind::FocusTransitionCommitted { .. }
+        )),
+        "status={:?}, trace={:?}",
+        runtime.status(),
+        runtime
+            .trace()
+            .records()
+            .map(runenui_runtime::TraceRecord::kind)
+            .collect::<Vec<_>>()
+    );
 }

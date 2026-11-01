@@ -53,12 +53,33 @@ struct State {
 struct LifecycleWorkWidget;
 
 impl Widget<bool> for LifecycleWorkWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0)),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            }
+            runenui_core::WidgetProducerPhase::Mount => runenui_core::WidgetProducerBudget::new(1)
+                .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0)),
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
 
     fn mount(&self, (): &mut Self::State, context: &mut WidgetMountContext<bool>) {
-        context.local_task(std::future::pending());
+        let _ = context.try_local_task(std::future::pending());
     }
 }
 
@@ -70,6 +91,30 @@ struct DynamicTraceState {
 struct DynamicTraceApp;
 
 impl UiApp for DynamicTraceApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One owner and at most one local start with outcome/cancel credits.
+        runenui_core::ProducerBudget::new(4, 1)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 1)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = DynamicTraceState;
     type Action = bool;
     type HostProtocol = NoHostProtocol;
@@ -93,7 +138,8 @@ fn post_update_dynamic_trace_admission_failure_is_poisoned() {
     let mut runtime = AppRuntime::<DynamicTraceApp>::mount(DynamicTraceState {
         mounted: true,
         updates: 0,
-    });
+    })
+    .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     let _ = runtime
         .pump(PumpBudget::new(16, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -123,6 +169,30 @@ fn post_update_dynamic_trace_admission_failure_is_poisoned() {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has at most 1 initial owners and no callback output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 5)
+            .with_application_outputs(0)
+            .with_reconciliation(1, 1, 1)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -165,6 +235,26 @@ impl Future for CountedPendingFuture {
 struct PollApp;
 
 impl UiApp for PollApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One owner and at most one local start with outcome/cancel credits.
+        runenui_core::ProducerBudget::new(4, 1)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = Rc<Cell<usize>>;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -187,7 +277,8 @@ fn work_sequence_exhaustion_prevents_local_future_poll() {
         let mut runtime = AppRuntime::<PollApp>::mount_with_config(
             Rc::clone(&calls),
             RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
-        );
+        )
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
         let _ = runtime
             .pump(PumpBudget::new(2, 0, 0, 0))
             .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -227,7 +318,8 @@ fn work_sequence_exhaustion_prevents_local_future_poll() {
 #[test]
 fn trace_sequence_exhaustion_prevents_local_future_poll() {
     let calls = Rc::new(Cell::new(0));
-    let mut runtime = AppRuntime::<PollApp>::mount(Rc::clone(&calls));
+    let mut runtime = AppRuntime::<PollApp>::mount(Rc::clone(&calls))
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     let _ = runtime
         .pump(PumpBudget::new(2, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -291,7 +383,8 @@ fn assert_readiness_retirement(
 #[allow(clippy::assert_is_empty)]
 fn direct_work_sequence_exhaustion_returns_action_and_closes_mutation() {
     let calls = Rc::new(Cell::new(0));
-    let mut runtime = AppRuntime::<App>::mount(state(&calls));
+    let mut runtime = AppRuntime::<App>::mount(state(&calls))
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     runtime.__seed_next_work_sequence_for_test(0);
 
     let Err(rejected) = runtime.submit_action(Action(1)) else {
@@ -331,7 +424,8 @@ fn direct_work_sequence_exhaustion_returns_action_and_closes_mutation() {
 #[allow(clippy::assert_is_empty)]
 fn command_submission_sequence_exhaustion_recovers_inputs_and_closes_mutation() {
     let calls = Rc::new(Cell::new(0));
-    let mut runtime = AppRuntime::<App>::mount(state(&calls));
+    let mut runtime = AppRuntime::<App>::mount(state(&calls))
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     let target = runtime.index().nodes()[0].id().clone();
     focus(&mut runtime, target.clone());
 
@@ -377,7 +471,8 @@ fn command_submission_sequence_exhaustion_recovers_inputs_and_closes_mutation() 
 #[allow(clippy::assert_is_empty)]
 fn direct_trace_sequence_exhaustion_returns_action_and_closes_mutation() {
     let calls = Rc::new(Cell::new(0));
-    let mut runtime = AppRuntime::<App>::mount(state(&calls));
+    let mut runtime = AppRuntime::<App>::mount(state(&calls))
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     runtime.__seed_next_trace_sequence_for_test(0);
 
     let Err(rejected) = runtime.submit_action(Action(1)) else {
@@ -414,7 +509,8 @@ fn direct_trace_sequence_exhaustion_returns_action_and_closes_mutation() {
 #[allow(clippy::assert_is_empty)]
 fn trace_exhaustion_during_pump_cancels_failed_and_waiting_envelopes() {
     let calls = Rc::new(Cell::new(0));
-    let mut runtime = AppRuntime::<App>::mount(state(&calls));
+    let mut runtime = AppRuntime::<App>::mount(state(&calls))
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -490,7 +586,8 @@ fn trace_exhaustion_during_pump_cancels_failed_and_waiting_envelopes() {
 #[allow(clippy::assert_is_empty)]
 fn reconciliation_generation_exhaustion_cancels_accepted_envelopes() {
     let calls = Rc::new(Cell::new(0));
-    let mut runtime = AppRuntime::<App>::mount(state(&calls));
+    let mut runtime = AppRuntime::<App>::mount(state(&calls))
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -572,6 +669,22 @@ fn reconciliation_generation_exhaustion_cancels_accepted_envelopes() {
 struct MountCountProbe(Rc<Cell<usize>>);
 
 impl Widget<()> for MountCountProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -584,6 +697,28 @@ impl Widget<()> for MountCountProbe {
 struct InitialMountedCapacityApp;
 
 impl UiApp for InitialMountedCapacityApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has at most 1 initial owners and no callback output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = Rc<Cell<usize>>;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -596,32 +731,64 @@ impl UiApp for InitialMountedCapacityApp {
 }
 
 #[test]
-#[allow(clippy::assert_is_empty)]
-fn initial_mounted_identity_exhaustion_runs_no_mount_callback_and_is_terminal() {
-    let mount_calls = Rc::new(Cell::new(0));
-    let config =
-        runenui_runtime::RuntimeConfig::default().__with_mounted_public_slot_limit_for_test(0);
-    let mut runtime =
-        AppRuntime::<InitialMountedCapacityApp>::mount_with_config(Rc::clone(&mount_calls), config);
-
-    assert_eq!(mount_calls.get(), 0);
-    assert!(runtime.index().nodes().is_empty());
-    assert_eq!(
-        runtime.status(),
-        RuntimeStatus::Terminal(RuntimeTerminalReason::MountedIdentityExhausted)
-    );
-    assert!(runtime.trace().kinds().any(|kind| matches!(
-        kind,
-        TraceRecordKind::RuntimeTerminal {
-            reason: RuntimeTerminalReason::MountedIdentityExhausted
-        }
-    )));
+fn initial_mounted_identity_exhaustion_returns_owned_state_without_mount_callbacks() {
+    for trace_capacity in [0, 256] {
+        let mount_calls = Rc::new(Cell::new(0));
+        let config = RuntimeConfig::default()
+            .with_trace_config(TraceConfig::new(trace_capacity))
+            .__with_mounted_public_slot_limit_for_test(0);
+        let Err(refused) = AppRuntime::<InitialMountedCapacityApp>::mount_with_config(
+            Rc::clone(&mount_calls),
+            config,
+        ) else {
+            unreachable!("zero mounted slots cannot represent one root")
+        };
+        assert_eq!(
+            refused.kind(),
+            runenui_runtime::InitialAdmissionErrorKind::MountedIdentityExhausted
+        );
+        assert!(Rc::ptr_eq(refused.state(), &mount_calls));
+        assert_eq!(mount_calls.get(), 0);
+        let (state, config) = refused.into_parts();
+        let retry = AppRuntime::<InitialMountedCapacityApp>::mount_with_config(state, config);
+        let Err(refused) = retry else {
+            unreachable!("the recovered config retains the zero-slot limit")
+        };
+        assert_eq!(
+            refused.kind(),
+            runenui_runtime::InitialAdmissionErrorKind::MountedIdentityExhausted
+        );
+        assert_eq!(mount_calls.get(), 0);
+        let (state, config) = refused.into_parts();
+        let mut runtime = AppRuntime::<InitialMountedCapacityApp>::mount_with_config(
+            state,
+            config.__with_mounted_public_slot_limit_for_test(1),
+        )
+        .unwrap_or_else(|_| unreachable!("the same state fits one mounted slot"));
+        assert!(Rc::ptr_eq(runtime.state(), &mount_calls));
+        assert_eq!(mount_calls.get(), 1);
+        assert_eq!(runtime.index().nodes().len(), 1);
+        assert_eq!(runtime.status(), RuntimeStatus::Running);
+    }
 }
 
 #[derive(Debug)]
 struct CapacityRoot;
 
 impl Widget<()> for CapacityRoot {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -638,6 +805,28 @@ struct MountedCapacityState {
 struct ReconcileMountedCapacityApp;
 
 impl UiApp for ReconcileMountedCapacityApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has at most 1 initial owners and no callback output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(2, 2, 2)
+    }
+
     type State = MountedCapacityState;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -672,7 +861,8 @@ fn post_update_mounted_identity_exhaustion_poisoned_without_partial_tree_mutatio
             child_mount_calls: Rc::clone(&child_mount_calls),
         },
         config,
-    );
+    )
+    .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     assert_eq!(runtime.index().nodes().len(), 1);
     let _ = runtime
         .pump(PumpBudget::new(

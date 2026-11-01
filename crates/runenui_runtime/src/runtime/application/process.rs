@@ -1,3 +1,4 @@
+use super::transaction::ApplicationTransactionCommitContext;
 use runenui_core::{CommandOrigin, FocusReason};
 
 use super::{
@@ -26,13 +27,63 @@ pub(crate) fn process_application_action<App: UiApp>(
     runtime: &mut Runtime<App::State, App::Action, App::HostProtocol>,
     envelope: ApplicationActionEnvelope<App::Action>,
 ) -> ProcessApplicationActionOutcome {
+    let root_quota = envelope.root_quota;
+    let outcome = process_application_action_inner::<App>(runtime, envelope);
+    runtime.retire_input_continuation_claims();
+    if matches!(runtime.status, RuntimeStatus::Running)
+        && runtime.queue.finish_root_action(root_quota).is_err()
+    {
+        let reason = RuntimeTerminalReason::Poisoned;
+        let cancelled = runtime.enter_terminal(reason, 0);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
+    outcome
+}
+
+#[allow(clippy::too_many_lines)]
+fn process_application_action_inner<App: UiApp>(
+    runtime: &mut Runtime<App::State, App::Action, App::HostProtocol>,
+    envelope: ApplicationActionEnvelope<App::Action>,
+) -> ProcessApplicationActionOutcome {
     let ApplicationActionEnvelope {
         sequence,
         action,
+        producer_budget,
+        root_quota,
         causal_parent,
         target,
         origin,
     } = envelope;
+    if !runtime.application_output_budget_fits(producer_budget)
+        || !runtime
+            .queue
+            .root_covers_action_budget(root_quota, producer_budget)
+    {
+        let reason = RuntimeTerminalReason::Poisoned;
+        let cancelled = runtime.enter_terminal(reason, 1);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
+    let may_enqueue = producer_budget.outputs() != 0
+        || producer_budget.dirty_subscription_owners() != 0
+        || producer_budget.application_subscriptions() != 0
+        || producer_budget
+            .work_starts()
+            .total()
+            .is_none_or(|count| count != 0);
+    if may_enqueue
+        && let Err(error) = runtime
+            .queue
+            .preflight_root_sequence(root_quota, producer_budget.queue_credits())
+    {
+        let reason = match error {
+            crate::queue::QueueReservationError::SequenceExhausted => {
+                RuntimeTerminalReason::WorkSequenceExhausted
+            }
+            _ => RuntimeTerminalReason::Poisoned,
+        };
+        let cancelled = runtime.enter_terminal(reason, 1);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
     let before = ReconciliationGeneration(runtime.generation);
     let Some(next) = runtime.next_generation() else {
         let reason = RuntimeTerminalReason::ReconciliationGenerationExhausted;
@@ -87,12 +138,32 @@ pub(crate) fn process_application_action<App: UiApp>(
     }
     let ledger = match TransactionLedger::collect(effects, runtime.limits.transaction_outputs()) {
         Ok(ledger) => ledger,
-        Err(_error) => {
-            let reason = RuntimeTerminalReason::Poisoned;
+        Err(crate::transaction::TransactionOutputError::Full { attempted, .. }) => {
+            let reason = RuntimeTerminalReason::ProducerContractViolation(
+                runenui_core::ProducerContractViolation {
+                    kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                    phase: runenui_core::ProducerPhase::ApplicationUpdate,
+                    component: runenui_core::BudgetComponent::ApplicationOutputs,
+                    declared: producer_budget.application_outputs(),
+                    attempted: Some(attempted),
+                },
+            );
             let cancelled = runtime.enter_terminal(reason, 1);
             return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
         }
     };
+    if let Err(reason) = ledger.validate_returned(&crate::transaction::ReturnedEffectsPreflight {
+        budget: producer_budget,
+        phase: runenui_core::ProducerPhase::ApplicationUpdate,
+        work: &runtime.work,
+        queue: &runtime.queue,
+        root: Some(root_quota),
+        state: app_state,
+        action_budgeter: runtime.action_producer_budget,
+    }) {
+        let cancelled = runtime.enter_terminal(reason, 1);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
     let update_output_count = ledger.len();
     runtime.trace.record_draft(
         trace_transaction
@@ -104,6 +175,7 @@ pub(crate) fn process_application_action<App: UiApp>(
     );
     let transient = App::root(app_state).into_element();
     let previous_focus = runtime.focus.focused_node().cloned();
+    let previous_focus_route = runtime.focus.route().to_vec();
     let presentation_focus_membership =
         runtime.presentation_focus_membership(previous_focus.as_ref());
     let previous_focus_trace = runtime.trace.is_enabled().then(|| {
@@ -136,7 +208,8 @@ pub(crate) fn process_application_action<App: UiApp>(
         transaction_parent,
         trace_transaction.logical_time(),
         CommandOrigin::programmatic(),
-    );
+    )
+    .with_root_quota(root_quota);
     runtime.cleanup_planned_input_lifetimes(
         reconciliation_plan.invalidated_lifetimes(),
         input_cleanup_cause,
@@ -147,11 +220,13 @@ pub(crate) fn process_application_action<App: UiApp>(
             cancelled: 0,
         };
     }
+    let mut root_lease_release_failed = false;
     let reconcile_stats = {
         let (
             tree,
             surface_publication,
             work,
+            queue,
             completion_ingress,
             local_tasks,
             timers,
@@ -163,6 +238,7 @@ pub(crate) fn process_application_action<App: UiApp>(
             &mut runtime.tree,
             &mut runtime.surface_publication,
             &mut runtime.work,
+            &mut runtime.queue,
             &runtime.completion_ingress,
             &mut runtime.local_tasks,
             &mut runtime.timers,
@@ -179,7 +255,7 @@ pub(crate) fn process_application_action<App: UiApp>(
                 if let Some(identity) = work.trace_identity(*generation) {
                     lifecycle_invalidated_identities.push(public_trace_work_identity(identity));
                 }
-                revoke_generation_authority(
+                if let Some(root_quota) = revoke_generation_authority(
                     *generation,
                     work,
                     completion_ingress,
@@ -189,16 +265,36 @@ pub(crate) fn process_application_action<App: UiApp>(
                     subscriptions,
                     host_requests,
                     framework_services,
-                );
+                ) && queue
+                    .release_root_work_lease(root_quota, *generation)
+                    .is_err()
+                {
+                    root_lease_release_failed = true;
+                }
             }
             lifecycle_invalidated.extend(generations);
         })
     };
+    if root_lease_release_failed {
+        let reason = RuntimeTerminalReason::Poisoned;
+        let cancelled = runtime.enter_terminal(reason, 0);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
     let Ok(reconcile_stats) = reconcile_stats else {
         let reason = mutation_phase.terminal_reason(RuntimeTerminalReason::Poisoned);
         let cancelled = runtime.enter_terminal(reason, 0);
         return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
     };
+    if let Some(cause) = reconcile_stats.producer_violation {
+        let reason = RuntimeTerminalReason::ProducerContractViolation(cause);
+        let cancelled = runtime.enter_terminal(reason, 0);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
+    if reconcile_stats.producer_overrun {
+        let reason = RuntimeTerminalReason::Poisoned;
+        let cancelled = runtime.enter_terminal(reason, 0);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
     let mounted_subscription_owners = reconcile_stats.mounted_owners.clone();
     let unmounted_work_owners = reconcile_stats.unmounted_owners.clone();
     let invalidated_subscription_owners = reconcile_stats.subscription_invalidated.clone();
@@ -273,6 +369,8 @@ pub(crate) fn process_application_action<App: UiApp>(
         let (trace_target, old_route, surface) =
             previous_focus_trace.unwrap_or_else(|| (None, Vec::new(), None));
         runtime.commit_reconciled_focus_cleanup(super::super::focus::ReconciledFocusCleanup {
+            committed_route: previous_focus_route,
+            root_quota,
             old_route,
             reason,
             sequence,
@@ -292,6 +390,12 @@ pub(crate) fn process_application_action<App: UiApp>(
                 .with_reconciliation(Some(before), Some(after))
                 .with_target(target.clone()),
         );
+    }
+    if let RuntimeStatus::Terminal(reason) = runtime.status {
+        return ProcessApplicationActionOutcome::Terminal {
+            reason,
+            cancelled: 0,
+        };
     }
     runtime.tree.finish_focus_validation();
     runtime.prune_focus_memory();
@@ -358,6 +462,7 @@ pub(crate) fn process_application_action<App: UiApp>(
                 FocusReason::PresentationRestoration,
                 tree_reconciled,
                 None,
+                Some(root_quota),
             )
             .is_err()
         {
@@ -372,7 +477,12 @@ pub(crate) fn process_application_action<App: UiApp>(
         }
     }
     if runtime
-        .reconcile_pointer_lifetimes(sequence, tree_reconciled, &unmounted_work_owners)
+        .reconcile_pointer_lifetimes(
+            sequence,
+            tree_reconciled,
+            &unmounted_work_owners,
+            root_quota,
+        )
         .is_err()
     {
         let reason = match runtime.status {
@@ -410,8 +520,26 @@ pub(crate) fn process_application_action<App: UiApp>(
     let mut mounted_batches = Vec::with_capacity(mounted_outputs.len());
     for (owner, outputs) in mounted_outputs {
         total_outputs = match total_outputs.checked_add(outputs.len()) {
-            Some(total) if total <= runtime.limits.transaction_outputs() => total,
-            _ => {
+            Some(total)
+                if total <= producer_budget.application_outputs()
+                    && total <= runtime.limits.transaction_outputs() =>
+            {
+                total
+            }
+            Some(total) => {
+                let reason = RuntimeTerminalReason::ProducerContractViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                        phase: runenui_core::ProducerPhase::ApplicationUpdate,
+                        component: runenui_core::BudgetComponent::ApplicationOutputs,
+                        declared: producer_budget.application_outputs(),
+                        attempted: Some(total),
+                    },
+                );
+                let cancelled = runtime.enter_terminal(reason, 0);
+                return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+            }
+            None => {
                 let reason = RuntimeTerminalReason::Poisoned;
                 let cancelled = runtime.enter_terminal(reason, 0);
                 return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
@@ -430,8 +558,19 @@ pub(crate) fn process_application_action<App: UiApp>(
         });
     }
 
-    let mut subscriptions = SubscriptionSet::new();
+    let mut subscriptions =
+        SubscriptionSet::__runtime_new_bounded(producer_budget.application_subscriptions());
     App::subscriptions(runtime.state(), &mut subscriptions);
+    if let Some(cause) = subscriptions.producer_violation() {
+        let reason = RuntimeTerminalReason::ProducerContractViolation(cause);
+        let cancelled = runtime.enter_terminal(reason, 0);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
+    if subscriptions.__runtime_overflowed() {
+        let reason = RuntimeTerminalReason::Poisoned;
+        let cancelled = runtime.enter_terminal(reason, 0);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
     let SubscriptionDiff {
         invalidated,
         starts,
@@ -440,6 +579,23 @@ pub(crate) fn process_application_action<App: UiApp>(
         &WorkOwner::Application,
         subscriptions.__runtime_into_declarations(),
     );
+    if let Err(reason) = crate::transaction::validate_application_family_starts(
+        producer_budget.work_starts(),
+        core::iter::once(&ledger).chain(mounted_batches.iter().map(|batch| &batch.ledger)),
+        &starts,
+    ) {
+        let cancelled = runtime.enter_terminal(reason, 0);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
+    if let Err(reason) = runtime.validate_subscription_residency(
+        Some(root_quota),
+        &invalidated,
+        starts.len(),
+        runenui_core::ProducerPhase::ApplicationSubscriptions,
+    ) {
+        let cancelled = runtime.enter_terminal(reason, 0);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
     let subscription_cancelled = invalidated.len();
     let input = ApplicationTransactionInput {
         lifecycle_invalidated,
@@ -452,11 +608,15 @@ pub(crate) fn process_application_action<App: UiApp>(
     if runtime
         .plan_and_commit_application_transaction(
             input,
-            &duplicate_keys,
-            subscription_cancelled,
-            transaction_parent,
-            lifecycle_cancellation_lineage,
-            trace_transaction,
+            ApplicationTransactionCommitContext::new(
+                duplicate_keys,
+                subscription_cancelled,
+                transaction_parent,
+                lifecycle_cancellation_lineage,
+                trace_transaction,
+                Some(root_quota),
+            ),
+            Some(producer_budget),
         )
         .is_err()
     {
@@ -505,6 +665,25 @@ mod focus_session_exhaustion_tests {
 
     #[allow(refining_impl_trait)]
     impl UiApp for TestApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(0, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+        }
+
         type State = State;
         type Action = Action;
         type HostProtocol = NoHostProtocol;
@@ -524,7 +703,16 @@ mod focus_session_exhaustion_tests {
             State { updates: 0 },
             |state| TestApp::root(state).into_element(),
             RuntimeConfig::default(),
-        );
+            runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1),
+            |_, _| {
+                Ok(crate::runtime::PreparedInitialApplicationWork {
+                    application: crate::transaction::TransactionLedger::from_outputs(Vec::new(), 0)
+                        .unwrap_or_else(|_| unreachable!("empty initial ledger fits")),
+                    subscriptions: Vec::new(),
+                })
+            },
+        )
+        .unwrap_or_else(|_| unreachable!("internal test mount inputs are valid"));
         runtime.focus.exhaust_for_test();
         assert!(runtime.queue.next_sequence().is_some());
         runtime

@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use std::time::Duration;
 
@@ -28,6 +40,22 @@ struct State {
 struct DisabledProbe;
 
 impl Widget<Action> for DisabledProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -39,7 +67,34 @@ impl Widget<Action> for DisabledProbe {
 
 struct App;
 
+impl App {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // At most 4 mounted owners in every reachable view. Each event
+        // callback declares at most 1 output: cover four focus and two
+        // ordinary-route visits, activation/default, and reconciliation.
+        runenui_core::ProducerBudget::new(31, 26)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+}
+
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -124,6 +179,22 @@ fn command(runtime: &mut AppRuntime<App>, target: MountedNodeId, command: Semant
 struct FocusProbe;
 
 impl Widget<()> for FocusProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -139,6 +210,22 @@ struct PolicyProbe {
 }
 
 impl Widget<()> for PolicyProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -150,7 +237,34 @@ impl Widget<()> for PolicyProbe {
 
 struct GroupPolicyApp;
 
+impl GroupPolicyApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // At most 5 mounted owners in every reachable view. Each event
+        // callback declares at most 0 output: cover four focus and two
+        // ordinary-route visits, activation/default, and reconciliation.
+        runenui_core::ProducerBudget::new(8, 2)
+            .with_reconciliation(5, 5, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+}
+
 impl UiApp for GroupPolicyApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = bool;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -202,7 +316,7 @@ fn group_policy_id(runtime: &mut AppRuntime<GroupPolicyApp>, authored: &str) -> 
 #[test]
 fn disabled_discoverable_policy_participates_in_focus_group_membership() {
     for (discoverable, expected) in [(true, "group.b"), (false, "group.c")] {
-        let mut runtime = AppRuntime::<GroupPolicyApp>::mount(discoverable);
+        let mut runtime = admitted!(AppRuntime::<GroupPolicyApp>::mount(discoverable));
         let _ = runtime
             .pump(PumpBudget::new(
                 usize::MAX,
@@ -245,7 +359,34 @@ fn disabled_discoverable_policy_participates_in_focus_group_membership() {
 
 struct ScrollGroupApp;
 
+impl ScrollGroupApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // At most 5 mounted owners in every reachable view. Each event
+        // callback declares at most 0 output: cover four focus and two
+        // ordinary-route visits, activation/default, and reconciliation.
+        runenui_core::ProducerBudget::new(8, 2)
+            .with_reconciliation(5, 5, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+}
+
 impl UiApp for ScrollGroupApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -309,10 +450,10 @@ fn scroll_id(runtime: &mut AppRuntime<ScrollGroupApp>, authored: &str) -> Mounte
 
 #[test]
 fn group_navigation_reveals_the_exact_new_focus_target() {
-    let mut runtime = AppRuntime::<ScrollGroupApp>::mount_with_config(
+    let mut runtime = admitted!(AppRuntime::<ScrollGroupApp>::mount_with_config(
         (),
         RuntimeConfig::default().with_trace_config(TraceConfig::new(256)),
-    );
+    ));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -405,10 +546,10 @@ fn group_navigation_reveals_the_exact_new_focus_target() {
 
 #[test]
 fn type_ahead_navigation_reveals_the_exact_new_focus_target() {
-    let mut runtime = AppRuntime::<ScrollGroupApp>::mount_with_config(
+    let mut runtime = admitted!(AppRuntime::<ScrollGroupApp>::mount_with_config(
         (),
         RuntimeConfig::default().with_trace_config(TraceConfig::new(256)),
-    );
+    ));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -482,7 +623,7 @@ fn type_ahead_navigation_reveals_the_exact_new_focus_target() {
 
 #[test]
 fn disabled_discoverable_policy_participates_while_ordinary_focusable_skips() {
-    let mut discoverable = AppRuntime::<App>::mount(State { discoverable: true });
+    let mut discoverable = admitted!(AppRuntime::<App>::mount(State { discoverable: true }));
     settle(&mut discoverable);
     let before = id(&mut discoverable, "before");
     let disabled = id(&mut discoverable, "disabled");
@@ -500,9 +641,9 @@ fn disabled_discoverable_policy_participates_while_ordinary_focusable_skips() {
             .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
     );
 
-    let mut ordinary = AppRuntime::<App>::mount(State {
+    let mut ordinary = admitted!(AppRuntime::<App>::mount(State {
         discoverable: false,
-    });
+    }));
     settle(&mut ordinary);
     let before = id(&mut ordinary, "before");
     let after = id(&mut ordinary, "after");
@@ -521,7 +662,7 @@ fn disabled_discoverable_policy_participates_while_ordinary_focusable_skips() {
 #[test]
 fn disabled_discoverable_policy_participates_in_directional_navigation() {
     for (discoverable, expected) in [(true, "disabled"), (false, "after")] {
-        let mut runtime = AppRuntime::<App>::mount(State { discoverable });
+        let mut runtime = admitted!(AppRuntime::<App>::mount(State { discoverable }));
         settle(&mut runtime);
         let environment = StyleEnvironment::default();
         runtime
@@ -542,7 +683,7 @@ fn disabled_discoverable_policy_participates_in_directional_navigation() {
 
 #[test]
 fn removing_disabled_discoverability_clears_existing_focus_as_disablement() {
-    let mut runtime = AppRuntime::<App>::mount(State { discoverable: true });
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State { discoverable: true }));
     settle(&mut runtime);
     let disabled = id(&mut runtime, "disabled");
     command(

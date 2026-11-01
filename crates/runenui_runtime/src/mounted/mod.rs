@@ -34,6 +34,4 @@ pub(crate) use semantic_action::{SemanticActionAuthority, SemanticActionAuthorit
 pub(crate) use semantic_publication_plan::{FinalizedSemanticPublication, SemanticMountedCommit};
 pub(crate) use surface_publication_plan::SurfaceCapabilityPlan;
 pub use tree::AutomationMatchDiagnostic;
-pub(crate) use tree::{
-    AutomationResolution, MountedIdentityExhausted, MountedTree, ReconcileStats, TargetStatus,
-};
+pub(crate) use tree::{AutomationResolution, InitialTreeMountError, MountedTree, TargetStatus};

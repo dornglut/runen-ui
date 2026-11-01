@@ -7,7 +7,7 @@ use crate::{
     EditableContribution, EventContext, HitContribution, HitContributionContext, PaintContribution,
     PaintContributionContext, SemanticContribution, SemanticContributionContext, ShortcutBinding,
     SubscriptionSet, UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetMountContext,
-    WidgetUnmountContext, WidgetUpdateContext,
+    WidgetProducerBudget, WidgetProducerPhase, WidgetUnmountContext, WidgetUpdateContext,
 };
 use core::{any::Any, fmt};
 use core::{
@@ -47,6 +47,13 @@ where
     fn state_type_id(&self) -> WidgetStateTypeId {
         self.child.state_type_id()
     }
+    fn producer_budget(
+        &self,
+        state: &dyn Any,
+        phase: WidgetProducerPhase,
+    ) -> Result<WidgetProducerBudget, WidgetBridgeError> {
+        self.child.producer_budget(state, phase)
+    }
     fn create_state(&self) -> Box<dyn Any> {
         self.child.create_state()
     }
@@ -55,8 +62,11 @@ where
         state: &mut dyn Any,
         context: &mut WidgetMountContext<ParentAction>,
     ) -> Result<(), WidgetBridgeError> {
-        let mut child_context = WidgetMountContext::__runtime_new();
+        let mut child_context = context.mapped_child();
         self.child.mount(state, &mut child_context)?;
+        if !context.absorb_budget(&child_context) {
+            return Ok(());
+        }
         transfer_context(child_context, context, &self.mapper);
         Ok(())
     }
@@ -65,8 +75,11 @@ where
         state: &mut dyn Any,
         context: &mut WidgetUpdateContext<ParentAction>,
     ) -> Result<(), WidgetBridgeError> {
-        let mut child_context = WidgetUpdateContext::__runtime_new();
+        let mut child_context = context.mapped_child();
         self.child.update(state, &mut child_context)?;
+        if !context.absorb_budget(&child_context) {
+            return Ok(());
+        }
         transfer_context(child_context, context, &self.mapper);
         Ok(())
     }
@@ -82,8 +95,11 @@ where
         state: &dyn Any,
         subscriptions: &mut SubscriptionSet<ParentAction>,
     ) -> Result<(), WidgetBridgeError> {
-        let mut child_subscriptions = SubscriptionSet::new();
+        let mut child_subscriptions = subscriptions.mapped_child();
         self.child.subscriptions(state, &mut child_subscriptions)?;
+        if !subscriptions.absorb_budget(&child_subscriptions) {
+            return Ok(());
+        }
         for declaration in child_subscriptions.__runtime_into_declarations() {
             let crate::subscription::Subscription {
                 key,
@@ -151,10 +167,16 @@ where
         state: &mut dyn Any,
         context: &mut WidgetActivationContext<ParentAction>,
     ) -> Result<WidgetActivationOutput<ParentAction>, WidgetBridgeError> {
-        let mut child_context = WidgetActivationContext::__runtime_new_with_semantic_target(
-            context.semantic_action_target().cloned(),
-        );
+        let mut child_context = context.mapped_child();
+        child_context.set_semantic_target(context.semantic_action_target().cloned());
         let action = self.child.activate(state, &mut child_context)?;
+        if !context.absorb_budget(&child_context) {
+            return Ok(if action.state_changed() {
+                WidgetActivationOutput::changed()
+            } else {
+                WidgetActivationOutput::none()
+            });
+        }
         transfer_activation_context(child_context, context, &self.mapper);
         Ok(action.map_action(self.mapper.as_ref()))
     }
@@ -210,7 +232,6 @@ impl<ChildAction: 'static, ParentAction: 'static> crate::LocalSubscriptionSource
 
 trait TransferContext<Action> {
     fn take_invalidation(&mut self) -> crate::WidgetInvalidation;
-    fn take_subscription_invalidation(&mut self) -> bool;
     fn take_outputs(&mut self) -> Vec<MountedEffect<Action>>;
 }
 
@@ -219,9 +240,6 @@ macro_rules! transfer_context_impl {
         impl<Action> TransferContext<Action> for $context<Action> {
             fn take_invalidation(&mut self) -> crate::WidgetInvalidation {
                 self.__runtime_take_invalidation()
-            }
-            fn take_subscription_invalidation(&mut self) -> bool {
-                self.__runtime_take_subscription_invalidation()
             }
             fn take_outputs(&mut self) -> Vec<MountedEffect<Action>> {
                 self.__runtime_take_outputs()
@@ -239,9 +257,6 @@ fn transfer_context<ChildAction: 'static, ParentAction: 'static>(
     mapper: &Rc<dyn Fn(ChildAction) -> ParentAction>,
 ) {
     parent.invalidate(child.take_invalidation());
-    if child.take_subscription_invalidation() {
-        parent.invalidate_subscriptions();
-    }
     for output in child.take_outputs() {
         parent.push_output(map_output(output, mapper));
     }
@@ -253,9 +268,6 @@ fn transfer_activation_context<ChildAction: 'static, ParentAction: 'static>(
     mapper: &Rc<dyn Fn(ChildAction) -> ParentAction>,
 ) {
     parent.invalidate(child.__runtime_take_invalidation());
-    if child.__runtime_take_subscription_invalidation() {
-        parent.invalidate_subscriptions();
-    }
     let (mounted, order) = child
         .__runtime_take_activation_outputs()
         .__runtime_into_parts();
@@ -288,7 +300,6 @@ fn transfer_activation_context<ChildAction: 'static, ParentAction: 'static>(
 
 trait ParentContext<Action> {
     fn invalidate(&mut self, invalidation: crate::WidgetInvalidation);
-    fn invalidate_subscriptions(&mut self);
     fn push_output(&mut self, output: MountedEffect<Action>);
 }
 
@@ -297,9 +308,6 @@ macro_rules! parent_context_impl {
         impl<Action> ParentContext<Action> for $context<Action> {
             fn invalidate(&mut self, invalidation: crate::WidgetInvalidation) {
                 self.invalidate(invalidation);
-            }
-            fn invalidate_subscriptions(&mut self) {
-                self.invalidate_subscriptions();
             }
             fn push_output(&mut self, output: MountedEffect<Action>) {
                 self.__runtime_push_output(output);
@@ -351,5 +359,56 @@ pub fn map_output<ChildAction: 'static, ParentAction: 'static>(
         }
         MountedEffect::Cancel { family, key } => MountedEffect::Cancel { family, key },
         MountedEffect::FrameworkService(request) => MountedEffect::FrameworkService(request),
+    }
+}
+
+#[cfg(test)]
+mod bounded_subscription_tests {
+    use super::MappedWidget;
+    use crate::widget_erasure::WidgetAdapter;
+    use crate::{SubscriptionSet, Widget, WidgetProducerBudget, WidgetProducerPhase, WorkKey};
+    use core::task::{Context, Poll};
+    use std::rc::Rc;
+
+    #[derive(Debug)]
+    struct TwoSubscriptions;
+
+    impl Widget<()> for TwoSubscriptions {
+        type State = ();
+
+        fn producer_budget(
+            &self,
+            _phase: WidgetProducerPhase,
+            _state: &Self::State,
+        ) -> WidgetProducerBudget {
+            WidgetProducerBudget::new(0).with_subscriptions(2)
+        }
+
+        fn create_state(&self) -> Self::State {}
+
+        fn subscriptions(&self, _state: &Self::State, set: &mut SubscriptionSet<()>) {
+            for key in ["first", "second"] {
+                let _ = set.try_local(
+                    WorkKey::new(key).unwrap_or_else(|_| unreachable!()),
+                    0,
+                    |_: &mut Context<'_>| Poll::Pending,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn mapped_widget_bounds_intermediate_subscriptions_by_parent_remaining_limit() {
+        let mapped = MappedWidget {
+            child: Box::new(WidgetAdapter(TwoSubscriptions)),
+            mapper: Rc::new(|action| action),
+        };
+        let mut parent = SubscriptionSet::__runtime_new_bounded(1);
+
+        crate::widget_erasure::ErasedWidget::subscriptions(&mapped, &(), &mut parent)
+            .unwrap_or_else(|_| unreachable!());
+
+        assert!(parent.__runtime_overflowed());
+        assert_eq!(parent.__runtime_into_declarations().len(), 0);
     }
 }

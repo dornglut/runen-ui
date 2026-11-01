@@ -1,3 +1,16 @@
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
+
 use runenui_core::{
     Color, LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, NoHostProtocol,
     PresentationOrigin, PresentationRotation, PresentationScale, PresentationTransform,
@@ -8,6 +21,30 @@ use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 struct PresentationGeometryApp;
 
 impl UiApp for PresentationGeometryApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 5)
+            .with_application_outputs(0)
+            .with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -49,7 +86,7 @@ fn approx_eq(left: f32, right: f32) {
 #[test]
 fn static_presentation_translation_correlates_paint_hit_and_semantic_geometry_without_layout_mutation()
  {
-    let mut runtime = AppRuntime::<PresentationGeometryApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<PresentationGeometryApp>::mount(()));
     let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(

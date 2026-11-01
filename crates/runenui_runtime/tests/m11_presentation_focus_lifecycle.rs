@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, Element, FocusBoundaryPolicy, FocusScope, FocusScopePolicy,
@@ -61,6 +73,22 @@ fn id(publication: &runenui_runtime::SurfacePublication, authored: &str) -> Moun
 struct FocusOwner;
 
 impl<Action> Widget<Action> for FocusOwner {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -107,6 +135,41 @@ struct OwnerRestoreState {
 struct OwnerRestoreApp;
 
 impl UiApp for OwnerRestoreApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Across reachable states, this tree has at most 4 mounted owners.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Pure app reconciliation can mount the bounded owner set and queue
+        // one restoration command when its presentation retires. Its routed
+        // allowance covers four passes over 2 event budgets plus two
+        // defaults; application/reconciliation output remains independently zero.
+        runenui_core::ProducerBudget::new(15, 10)
+            .with_application_outputs(0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event budgets sum to 2 across the authored owners. Bound two
+        // ordinary route passes, two boundary passes, four focus passes,
+        // and four activation/default outputs. Keep owner reconciliation
+        // and one cursor service outcome/cancel pair in the same frontier.
+        runenui_core::ProducerBudget::new(27, 20)
+            .with_application_outputs(0)
+            .with_reconciliation(4, 4, 4)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = OwnerRestoreState;
     type Action = OwnerRestoreAction;
     type HostProtocol = NoHostProtocol;
@@ -156,10 +219,10 @@ impl UiApp for OwnerRestoreApp {
 fn stale_exact_restoration_generation_never_retargets_by_authored_id_and_uses_owner() {
     let environment = StyleEnvironment::default();
     let context = surface_context(&environment);
-    let mut runtime = AppRuntime::<OwnerRestoreApp>::mount(OwnerRestoreState {
+    let mut runtime = admitted!(AppRuntime::<OwnerRestoreApp>::mount(OwnerRestoreState {
         open: false,
         replacement: false,
-    });
+    }));
     let first = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("baseline restoration surface publishes"));
@@ -217,6 +280,41 @@ struct ScopeRestoreState {
 struct ScopeRestoreApp;
 
 impl UiApp for ScopeRestoreApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Across reachable states, this tree has at most 6 mounted owners.
+        runenui_core::ProducerBudget::new(6, 0)
+            .with_reconciliation(6, 0, 6)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Pure app reconciliation can mount the bounded owner set and queue
+        // one restoration command when its presentation retires. Its routed
+        // allowance covers four passes over 3 event budgets plus two
+        // defaults; application/reconciliation output remains independently zero.
+        runenui_core::ProducerBudget::new(21, 14)
+            .with_application_outputs(0)
+            .with_reconciliation(6, 6, 6)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event budgets sum to 3 across the authored owners. Bound two
+        // ordinary route passes, two boundary passes, four focus passes,
+        // and four activation/default outputs. Keep owner reconciliation
+        // and one cursor service outcome/cancel pair in the same frontier.
+        runenui_core::ProducerBudget::new(37, 28)
+            .with_application_outputs(0)
+            .with_reconciliation(6, 6, 6)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = ScopeRestoreState;
     type Action = ScopeRestoreAction;
     type HostProtocol = NoHostProtocol;
@@ -278,10 +376,10 @@ impl UiApp for ScopeRestoreApp {
 fn restoration_uses_existing_focus_scope_fallback_when_exact_target_and_owner_are_gone() {
     let environment = StyleEnvironment::default();
     let context = surface_context(&environment);
-    let mut runtime = AppRuntime::<ScopeRestoreApp>::mount(ScopeRestoreState {
+    let mut runtime = admitted!(AppRuntime::<ScopeRestoreApp>::mount(ScopeRestoreState {
         open: false,
         owner_present: true,
-    });
+    }));
     let first = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("scope baseline publishes"));
@@ -329,6 +427,41 @@ enum TrapAction {
 struct TrapApp;
 
 impl UiApp for TrapApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Across reachable states, this tree has at most 5 mounted owners.
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Pure app reconciliation can mount the bounded owner set and queue
+        // one restoration command when its presentation retires. Its routed
+        // allowance covers four passes over 3 event budgets plus two
+        // defaults; application/reconciliation output remains independently zero.
+        runenui_core::ProducerBudget::new(20, 14)
+            .with_application_outputs(0)
+            .with_reconciliation(5, 5, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event budgets sum to 3 across the authored owners. Bound two
+        // ordinary route passes, two boundary passes, four focus passes,
+        // and four activation/default outputs. Keep owner reconciliation
+        // and one cursor service outcome/cancel pair in the same frontier.
+        runenui_core::ProducerBudget::new(36, 28)
+            .with_application_outputs(0)
+            .with_reconciliation(5, 5, 5)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = bool;
     type Action = TrapAction;
     type HostProtocol = NoHostProtocol;
@@ -388,7 +521,7 @@ impl UiApp for TrapApp {
 fn modal_style_focus_trapping_reuses_ordinary_focus_scope_authority() {
     let environment = StyleEnvironment::default();
     let context = surface_context(&environment);
-    let mut runtime = AppRuntime::<TrapApp>::mount(false);
+    let mut runtime = admitted!(AppRuntime::<TrapApp>::mount(false));
     runtime
         .submit_action(TrapAction::Open)
         .unwrap_or_else(|_| unreachable!("trap presentation open is accepted"));
@@ -437,6 +570,41 @@ struct NestedState {
 struct NestedRestoreApp;
 
 impl UiApp for NestedRestoreApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Across reachable states, this tree has at most 6 mounted owners.
+        runenui_core::ProducerBudget::new(6, 0)
+            .with_reconciliation(6, 0, 6)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Pure app reconciliation can mount the bounded owner set and queue
+        // one restoration command when its presentation retires. Its routed
+        // allowance covers four passes over 3 event budgets plus two
+        // defaults; application/reconciliation output remains independently zero.
+        runenui_core::ProducerBudget::new(21, 14)
+            .with_application_outputs(0)
+            .with_reconciliation(6, 6, 6)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event budgets sum to 3 across the authored owners. Bound two
+        // ordinary route passes, two boundary passes, four focus passes,
+        // and four activation/default outputs. Keep owner reconciliation
+        // and one cursor service outcome/cancel pair in the same frontier.
+        runenui_core::ProducerBudget::new(37, 28)
+            .with_application_outputs(0)
+            .with_reconciliation(6, 6, 6)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = NestedState;
     type Action = NestedAction;
     type HostProtocol = NoHostProtocol;
@@ -517,10 +685,10 @@ impl UiApp for NestedRestoreApp {
 fn nested_presentation_close_restores_within_surviving_outer_presentation() {
     let environment = StyleEnvironment::default();
     let context = surface_context(&environment);
-    let mut runtime = AppRuntime::<NestedRestoreApp>::mount(NestedState {
+    let mut runtime = admitted!(AppRuntime::<NestedRestoreApp>::mount(NestedState {
         outer: false,
         inner: false,
-    });
+    }));
     let baseline = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("nested baseline publishes"));

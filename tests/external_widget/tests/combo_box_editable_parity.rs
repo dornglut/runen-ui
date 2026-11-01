@@ -43,6 +43,25 @@ struct Owner {
     selection: TextSelection,
 }
 impl Widget<Action> for Owner {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            runenui_core::WidgetProducerPhase::Publication => {
+                runenui_core::WidgetProducerBudget::new(0).with_publication_reveals(1)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = bool;
 
     fn create_state(&self) -> Self::State {
@@ -154,6 +173,30 @@ impl ChildBearingWidget<Action> for Owner {}
 
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(0, 5, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(16, 16)
+            .with_reconciliation(0, 5, 5)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -224,13 +267,41 @@ fn settle(app: &mut AppRuntime<App>) {
     );
 }
 
+fn assert_combo_semantics(snapshot: &runenui_runtime::SemanticSnapshot) {
+    let combo = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::ComboBox)
+        .unwrap_or_else(|| unreachable!("downstream ComboBox semantics"));
+    assert!(combo.editable().is_some());
+    assert_eq!(
+        combo.editable_mode(),
+        Some(SemanticEditableMode::SingleLine)
+    );
+    assert!(
+        !snapshot
+            .nodes()
+            .iter()
+            .any(|node| node.role() == SemanticRole::EditableText)
+    );
+    assert_eq!(
+        combo
+            .relationships()
+            .iter()
+            .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
+            .count(),
+        1
+    );
+}
+
 #[test]
 fn downstream_widget_owns_the_same_editable_proxy_contract_without_private_runtime_paths() {
     let mut app = AppRuntime::<App>::mount(State {
         source: "a".into(),
         revision: 1,
         chosen: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     app.register_text_font_bytes(FONT.to_vec())
         .unwrap_or_else(|_| unreachable!());
     app.set_text_generic_family_mapping(
@@ -267,39 +338,31 @@ fn downstream_widget_owns_the_same_editable_proxy_contract_without_private_runti
             &runenui_core::StyleEnvironment::default(),
             LogicalSize::try_new(480.0, 260.0).unwrap_or_else(|_| unreachable!()),
         ))
-        .unwrap_or_else(|error| unreachable!("downstream publication: {error:?}"));
+        .unwrap_or_else(|error| {
+            unreachable!(
+                "downstream publication: {error:?}; status={:?}; trace={:?}",
+                app.status(),
+                app.trace().kinds().collect::<Vec<_>>()
+            )
+        });
     let snapshot = semantic.semantic_publication().snapshot();
-    let combo = snapshot
-        .nodes()
-        .iter()
-        .find(|node| node.role() == SemanticRole::ComboBox)
-        .unwrap_or_else(|| unreachable!("downstream ComboBox semantics"));
-    assert!(combo.editable().is_some());
-    assert_eq!(
-        combo.editable_mode(),
-        Some(SemanticEditableMode::SingleLine)
-    );
-    assert!(
-        !snapshot
-            .nodes()
-            .iter()
-            .any(|node| node.role() == SemanticRole::EditableText)
-    );
-    assert_eq!(
-        combo
-            .relationships()
-            .iter()
-            .filter(|link| link.kind() == SemanticRelationshipKind::ActiveDescendant)
-            .count(),
-        1
-    );
+    assert_combo_semantics(snapshot);
     assert_eq!(app.focus().focused_node(), Some(&owner));
     app.submit_command(
         owner.clone(),
         SemanticCommand::FocusDown,
         CommandOrigin::programmatic(),
     )
-    .unwrap_or_else(|_| unreachable!("routed proxy navigation"));
+    .unwrap_or_else(|error| {
+        unreachable!(
+            "routed proxy navigation: {error:?}; nodes={:?}",
+            app.index()
+                .nodes()
+                .iter()
+                .map(|node| (node.authored_id(), node.is_focusable()))
+                .collect::<Vec<_>>()
+        )
+    });
     settle(&mut app);
     assert_eq!(
         app.state().chosen,

@@ -15,6 +15,24 @@ const CANTARELL: &[u8] = include_bytes!(concat!(
 struct SurfaceApp;
 
 impl UiApp for SurfaceApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // 2 fixed mounted owners, each with one initial subscription reconciliation.
+        runenui_core::ProducerBudget::new(2, 0).with_reconciliation(2, 0, 2)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Updates retain the same fixed tree and start no app or subscription work.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 2, 0)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Routed/default outputs and their fixed-tree action descendants.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 2, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -49,7 +67,8 @@ fn register_controlled_text(harness: &mut TestHarness<SurfaceApp>) {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn fixed_surface_layout_and_font_backed_text_are_public_and_deterministic() {
-    let mut harness = TestHarness::<SurfaceApp>::mount(());
+    let mut harness = TestHarness::<SurfaceApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert_eq!(harness.surface_config().size(), DEFAULT_TEST_SURFACE_SIZE);
     register_controlled_text(&mut harness);
 
@@ -102,7 +121,8 @@ fn surface_size_is_explicitly_configurable_and_zero_extent_is_rejected() {
     let custom_size = LogicalSize::try_new(320.0, 240.0).unwrap_or(DEFAULT_TEST_SURFACE_SIZE);
     let config = TestSurfaceConfig::new(custom_size)
         .unwrap_or_else(|_| unreachable!("non-zero test surface is valid"));
-    let mut harness = TestHarness::<SurfaceApp>::mount(());
+    let mut harness = TestHarness::<SurfaceApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     register_controlled_text(&mut harness);
     harness.set_surface_config(config);
     let publication = harness

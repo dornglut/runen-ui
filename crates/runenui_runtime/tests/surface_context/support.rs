@@ -45,6 +45,32 @@ pub enum SurfaceAction {
 pub struct SurfaceApp;
 
 impl UiApp for SurfaceApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The row, two ordinary buttons, and optional extra button are the
+        // complete owner set. Mounting produces no widget output or work.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Button event/activation outputs and the resulting pure app turn.
+        runenui_core::ProducerBudget::new(5, 5)
+            .with_application_outputs(0)
+            .with_reconciliation(4, 4, 4)
+    }
+
     type State = SurfaceState;
     type Action = SurfaceAction;
     type HostProtocol = NoHostProtocol;
@@ -152,7 +178,8 @@ pub fn pump_all(runtime: &mut AppRuntime<SurfaceApp>) {
 }
 
 pub fn mounted_with(config: RuntimeConfig) -> AppRuntime<SurfaceApp> {
-    let mut runtime = AppRuntime::<SurfaceApp>::mount_with_config(SurfaceState::new(), config);
+    let mut runtime = AppRuntime::<SurfaceApp>::mount_with_config(SurfaceState::new(), config)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     pump_all(&mut runtime);
     runtime
 }

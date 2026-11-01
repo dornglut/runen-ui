@@ -1600,6 +1600,19 @@ mod tests {
     struct ImagePaint;
 
     impl Widget<()> for ImagePaint {
+        fn producer_budget(
+            &self,
+            phase: runenui_core::WidgetProducerPhase,
+            _state: &Self::State,
+        ) -> runenui_core::WidgetProducerBudget {
+            match phase {
+                runenui_core::WidgetProducerPhase::Subscriptions => {
+                    runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+                }
+                _ => runenui_core::WidgetProducerBudget::new(0),
+            }
+        }
+
         type State = ();
 
         fn create_state(&self) -> Self::State {}
@@ -1627,6 +1640,19 @@ mod tests {
     struct GroupedImageApp;
 
     impl UiApp for GroupedImageApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+        }
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+        }
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+        }
+
         type State = ();
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -1647,7 +1673,9 @@ mod tests {
 
     #[test]
     fn resource_and_group_preflight_accept_shadow_free_grouped_image() {
-        let mut runtime = AppRuntime::<GroupedImageApp>::mount(());
+        let mut runtime = AppRuntime::<GroupedImageApp>::mount(()).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         let environment = StyleEnvironment::default();
         let publication = runtime
             .publish_surface(&SurfaceBuildContext::new(

@@ -7,7 +7,7 @@ use super::{
     transaction::RoutedTransaction,
 };
 use crate::{
-    TraceActionCategory, TraceRecordKind,
+    MountedNodeId, TraceActionCategory, TraceRecordKind,
     transaction::{
         ApplicationTransactionInput, OwnedTransactionLedger, PlannedApplicationTransaction,
         TransactionLedger,
@@ -59,7 +59,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .map_err(|_| ())?;
         }
         self.cancel_stale_framework_services();
-        self.stage_committed_framework_services(&mut transaction);
+        self.stage_committed_framework_services(&mut transaction)?;
         let plan = self.plan_routed_outputs(&mut transaction)?;
         let result = self.commit_routed_plan(transaction, plan, pointer_style_changed);
         if result.is_ok() {
@@ -88,6 +88,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 ledger,
             });
         }
+        let root_quota = transaction.root_quota;
+        let producer_budget = root_quota.and_then(|root| self.queue.root_profile(root));
         PlannedApplicationTransaction::plan(
             ApplicationTransactionInput {
                 lifecycle_invalidated: Vec::new(),
@@ -103,6 +105,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             },
             &self.work,
             &self.queue,
+            self.state(),
+            self.action_producer_budget,
+            root_quota,
+            producer_budget,
         )
         .map_err(|_| ())
     }
@@ -129,28 +135,58 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(());
         }
         let work_trace = PlannedWorkTrace::new(transaction.parent, transaction.instant);
+        let root_quota = transaction.root_quota;
         let cancellation_lineage = self.commit_application_starts(
             &invalidated,
             starts,
             next_generation,
             semantic_events,
             work_trace,
+            root_quota,
         );
         for owner in mounted_subscription_dirty {
-            self.queue
-                .push_mounted_subscription_reconcile(owner.clone(), transaction.parent)
-                .map_err(|_| ())?;
+            if let Some(root) = root_quota {
+                self.queue
+                    .push_mounted_subscription_reconcile_rooted(
+                        owner.clone(),
+                        transaction.parent,
+                        root,
+                    )
+                    .map_err(|_| ())?;
+            } else {
+                self.queue
+                    .push_mounted_subscription_reconcile(owner.clone(), transaction.parent)
+                    .map_err(|_| ())?;
+            }
             self.mounted_subscription_reconcile_pending.push(owner);
         }
         self.append_collected_routed_outputs(
             transaction.notification_outputs,
             transaction.instant,
+            root_quota,
         )?;
-        self.append_collected_routed_outputs(transaction.routed_outputs, transaction.instant)?;
-        self.append_collected_routed_outputs(transaction.default_outputs, transaction.instant)?;
-        self.append_cancellation_envelopes(&invalidated, &cancellation_lineage);
-        self.append_planned_outputs(mounted_outputs, transaction.parent, transaction.instant)
-            .map_err(|_| ())?;
+        self.append_collected_routed_outputs(
+            transaction.routed_outputs,
+            transaction.instant,
+            root_quota,
+        )?;
+        self.append_collected_routed_outputs(
+            transaction.default_outputs,
+            transaction.instant,
+            root_quota,
+        )?;
+        if let Some(root) = root_quota {
+            self.append_cancellation_envelopes_rooted(&invalidated, &cancellation_lineage, root);
+        } else {
+            self.append_cancellation_envelopes(&invalidated, &cancellation_lineage);
+        }
+        self.append_planned_outputs(
+            mounted_outputs,
+            transaction.parent,
+            transaction.instant,
+            root_quota,
+        )
+        .map_err(|_| ())?;
         let mut pointer_selection_changed = false;
         if let Some(selection) = transaction.pointer_selection_update.take() {
             pointer_selection_changed = self
@@ -282,6 +318,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         outputs: Vec<CollectedRoutedOutput<Action>>,
         instant: MonotonicInstant,
+        root_quota: Option<crate::queue::RootQuotaId>,
     ) -> Result<(), ()> {
         for output in outputs {
             match output {
@@ -290,14 +327,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     causal_parent,
                     current_target,
                 } => {
-                    self.commit_preflighted_action(
+                    self.append_collected_action(
                         action,
                         causal_parent,
-                        Some(self.tree.trace_target(&current_target)),
-                        TraceActionCategory::RoutedCommand,
+                        &current_target,
                         instant,
-                    )
-                    .map_err(|_| ())?;
+                        root_quota,
+                    )?;
                 }
                 CollectedRoutedOutput::EditAction {
                     action,
@@ -305,14 +341,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     causal_parent,
                     current_target,
                 } => {
-                    self.commit_preflighted_edit_action(
+                    self.append_collected_edit_action(
                         action,
                         origin,
                         causal_parent,
-                        Some(self.tree.trace_target(&current_target)),
+                        &current_target,
                         instant,
-                    )
-                    .map_err(|_| ())?;
+                        root_quota,
+                    )?;
                 }
                 CollectedRoutedOutput::Command {
                     target,
@@ -320,30 +356,27 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     origin,
                     causal_parent,
                 } => {
-                    self.commit_preflighted_routed_command(
+                    self.append_collected_routed_command(
                         &target,
                         command,
                         origin,
                         causal_parent,
                         instant,
-                        None,
-                    )
-                    .map_err(|_| ())?;
+                        root_quota,
+                    )?;
                 }
                 CollectedRoutedOutput::BoundPresentationCancel {
                     target,
                     presentation_origin,
                     causal_parent,
                 } => {
-                    self.commit_preflighted_routed_command(
+                    self.append_collected_presentation_cancel(
                         &target,
-                        runenui_core::SemanticCommand::CancelOrBack,
-                        runenui_core::CommandOrigin::__runtime_keyboard_default(),
+                        presentation_origin,
                         causal_parent,
                         instant,
-                        Some(presentation_origin),
-                    )
-                    .map_err(|_| ())?;
+                        root_quota,
+                    )?;
                 }
                 CollectedRoutedOutput::ApplicationCommand {
                     target,
@@ -351,17 +384,141 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     origin,
                     causal_parent,
                 } => {
-                    self.commit_preflighted_routed_application_command(
+                    self.append_collected_application_command(
                         &target,
                         command,
                         origin,
                         causal_parent,
                         instant,
-                    )
-                    .map_err(|_| ())?;
+                        root_quota,
+                    )?;
                 }
             }
         }
         Ok(())
+    }
+
+    fn append_collected_routed_command(
+        &mut self,
+        target: &MountedNodeId,
+        command: runenui_core::SemanticCommand,
+        origin: runenui_core::CommandOrigin,
+        causal_parent: Option<crate::TraceSequence>,
+        instant: MonotonicInstant,
+        root_quota: Option<crate::queue::RootQuotaId>,
+    ) -> Result<(), ()> {
+        self.commit_preflighted_routed_command(
+            target,
+            command,
+            origin,
+            causal_parent,
+            instant,
+            None,
+            root_quota,
+        )
+        .map(|_| ())
+        .map_err(|_| ())
+    }
+
+    fn append_collected_presentation_cancel(
+        &mut self,
+        target: &MountedNodeId,
+        presentation_origin: crate::runtime::presentation::PresentationCancelOrigin,
+        causal_parent: Option<crate::TraceSequence>,
+        instant: MonotonicInstant,
+        root_quota: Option<crate::queue::RootQuotaId>,
+    ) -> Result<(), ()> {
+        self.commit_preflighted_routed_command(
+            target,
+            runenui_core::SemanticCommand::CancelOrBack,
+            runenui_core::CommandOrigin::__runtime_keyboard_default(),
+            causal_parent,
+            instant,
+            Some(presentation_origin),
+            root_quota,
+        )
+        .map(|_| ())
+        .map_err(|_| ())
+    }
+
+    fn append_collected_application_command(
+        &mut self,
+        target: &MountedNodeId,
+        command: runenui_core::ApplicationCommandId,
+        origin: runenui_core::CommandOrigin,
+        causal_parent: Option<crate::TraceSequence>,
+        instant: MonotonicInstant,
+        root_quota: Option<crate::queue::RootQuotaId>,
+    ) -> Result<(), ()> {
+        self.commit_preflighted_routed_application_command(
+            target,
+            command,
+            origin,
+            causal_parent,
+            instant,
+            root_quota,
+        )
+        .map(|_| ())
+        .map_err(|_| ())
+    }
+
+    fn append_collected_action(
+        &mut self,
+        action: Action,
+        causal_parent: Option<crate::TraceSequence>,
+        current_target: &MountedNodeId,
+        instant: MonotonicInstant,
+        root_quota: Option<crate::queue::RootQuotaId>,
+    ) -> Result<(), ()> {
+        let target = Some(self.tree.trace_target(current_target));
+        let result = if let Some(root) = root_quota {
+            let budget = self.action_producer_budget.map_or_else(
+                || runenui_core::ProducerBudget::new(1, 0),
+                |profile| profile(self.state(), &action),
+            );
+            self.commit_preflighted_action_from_root(
+                action,
+                budget,
+                root,
+                causal_parent,
+                target,
+                TraceActionCategory::RoutedCommand,
+                instant,
+            )
+        } else {
+            self.commit_preflighted_action(
+                action,
+                causal_parent,
+                target,
+                TraceActionCategory::RoutedCommand,
+                instant,
+            )
+        };
+        result.map(|_| ()).map_err(|_| ())
+    }
+
+    fn append_collected_edit_action(
+        &mut self,
+        action: Action,
+        origin: crate::editing::EditActionOrigin,
+        causal_parent: Option<crate::TraceSequence>,
+        current_target: &MountedNodeId,
+        instant: MonotonicInstant,
+        root_quota: Option<crate::queue::RootQuotaId>,
+    ) -> Result<(), ()> {
+        let target = Some(self.tree.trace_target(current_target));
+        let result = if let Some(root) = root_quota {
+            self.commit_preflighted_edit_action_from_root(
+                action,
+                origin,
+                root,
+                causal_parent,
+                target,
+                instant,
+            )
+        } else {
+            self.commit_preflighted_edit_action(action, origin, causal_parent, target, instant)
+        };
+        result.map(|_| ()).map_err(|_| ())
     }
 }

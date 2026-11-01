@@ -214,7 +214,7 @@ impl<Action> ComboWidget<Action> {
                 .as_focus()
                 .is_some_and(|focus| focus.kind() == FocusEventKind::Out)
         {
-            context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
+            let _ = context.try_emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
             return WidgetEventOutput::none();
         }
         let directive = if let Some(cmd) = event.as_semantic_command() {
@@ -224,13 +224,15 @@ impl<Action> ComboWidget<Action> {
                 SemanticCommand::FocusGroupFirst => Some(Navigation::First),
                 SemanticCommand::FocusGroupLast => Some(Navigation::Last),
                 SemanticCommand::Expand if !state.open => {
-                    context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Open));
+                    let _ =
+                        context.try_emit((*self.on_request.borrow_mut())(ComboBoxRequest::Open));
                     context.prevent_default();
                     context.stop_propagation();
                     return WidgetEventOutput::none();
                 }
                 SemanticCommand::Collapse if state.open => {
-                    context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
+                    let _ =
+                        context.try_emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
                     context.prevent_default();
                     context.stop_propagation();
                     return WidgetEventOutput::none();
@@ -253,7 +255,7 @@ impl<Action> ComboWidget<Action> {
                     if !key.is_repeat()
                         && let Some(action) = self.accept_active(state)
                     {
-                        context.emit(action);
+                        let _ = context.try_emit(action);
                     }
                     context.claim_host_input();
                     context.prevent_default();
@@ -261,7 +263,8 @@ impl<Action> ComboWidget<Action> {
                     return WidgetEventOutput::none();
                 }
                 LogicalKey::Escape if state.open => {
-                    context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
+                    let _ =
+                        context.try_emit((*self.on_request.borrow_mut())(ComboBoxRequest::Close));
                     context.claim_host_input();
                     context.prevent_default();
                     context.stop_propagation();
@@ -282,11 +285,14 @@ impl<Action> ComboWidget<Action> {
                 if state.active != old {
                     context.invalidate(WidgetInvalidation::SEMANTICS);
                     if let Some(active) = &state.active {
-                        context.emit_scroll_into_view_descendant(active);
+                        let _ = context.try_emit_scroll_into_view_descendant(active.clone());
                     }
                 }
             } else {
-                context.emit((*self.on_request.borrow_mut())(ComboBoxRequest::Open));
+                {
+                    let _ =
+                        context.try_emit((*self.on_request.borrow_mut())(ComboBoxRequest::Open));
+                };
             }
             context.prevent_default();
             context.stop_propagation();
@@ -302,6 +308,28 @@ enum Navigation {
     Last,
 }
 impl<Action> Widget<Action> for ComboWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication => crate::WidgetProducerBudget::new(0)
+                .with_publication_reveals(usize::from(state.open && state.active.is_some())),
+            // A proxy event emits one request, accepted option action, or
+            // descendant-scroll command. These branches are mutually exclusive.
+            crate::WidgetProducerPhase::Event | crate::WidgetProducerPhase::Activation => {
+                crate::WidgetProducerBudget::new(1)
+            }
+            crate::WidgetProducerPhase::Mount | crate::WidgetProducerPhase::Update => {
+                crate::WidgetProducerBudget::new(0)
+            }
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = ComboState;
     fn create_state(&self) -> Self::State {
         ComboState {
@@ -490,6 +518,23 @@ struct ComboLabel {
     label: String,
 }
 impl<Action> Widget<Action> for ComboLabel {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Event
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = String;
     fn create_state(&self) -> Self::State {
         self.label.clone()

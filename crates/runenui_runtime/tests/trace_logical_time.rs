@@ -8,6 +8,29 @@ use runenui_runtime::{AppRuntime, MonotonicInstant, PumpBudget, TraceRecord, Tra
 struct LogicalTimeApp;
 
 impl UiApp for LogicalTimeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One text owner plus one local start and its outcome/cancel credits.
+        runenui_core::ProducerBudget::new(4, 1)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -28,6 +51,31 @@ impl UiApp for LogicalTimeApp {
 struct ApplicationTimeApp;
 
 impl UiApp for ApplicationTimeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The initial text tree starts no work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Each update starts one anonymous local task, with independent outcome
+        // and cancellation credits; the test accepts one such root at a time.
+        runenui_core::ProducerBudget::new(4, 1)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -51,7 +99,8 @@ fn required_instant(record: &TraceRecord) -> MonotonicInstant {
 
 #[test]
 fn scheduler_work_facts_retain_monotonic_logical_time() {
-    let mut runtime = AppRuntime::<LogicalTimeApp>::mount(0);
+    let mut runtime = AppRuntime::<LogicalTimeApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(3, 0, 1, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -90,7 +139,8 @@ fn scheduler_work_facts_retain_monotonic_logical_time() {
 
 #[test]
 fn initial_application_transaction_facts_share_one_accepted_instant() {
-    let runtime = AppRuntime::<LogicalTimeApp>::mount(0);
+    let runtime = AppRuntime::<LogicalTimeApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let transaction = runtime
         .trace()
         .records()
@@ -211,7 +261,8 @@ fn assert_update_work_time(records: &[&TraceRecord], transaction: &TraceRecord) 
 
 #[test]
 fn update_application_transaction_facts_share_one_accepted_instant() {
-    let mut runtime = AppRuntime::<ApplicationTimeApp>::mount(0);
+    let mut runtime = AppRuntime::<ApplicationTimeApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let initial_instant = runtime
         .trace()
         .records()
@@ -249,7 +300,8 @@ fn update_application_transaction_facts_share_one_accepted_instant() {
 #[cfg(feature = "internal-test-seams")]
 #[test]
 fn terminal_and_shutdown_facts_retain_transition_time() {
-    let mut runtime = AppRuntime::<LogicalTimeApp>::mount(0);
+    let mut runtime = AppRuntime::<LogicalTimeApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     runtime.__seed_next_work_sequence_for_test(0);
     assert!(runtime.submit_action(()).is_err());
 

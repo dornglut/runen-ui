@@ -52,6 +52,26 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 5)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -119,7 +139,9 @@ fn focus(runtime: &mut AppRuntime<App>) {
             SemanticCommand::RequestFocus,
             CommandOrigin::programmatic(),
         )
-        .unwrap_or_else(|_| unreachable!("public focus command is accepted"));
+        .unwrap_or_else(|error| {
+            unreachable!("public focus command is accepted: {:?}", error.kind())
+        });
     settle(runtime);
 }
 
@@ -143,7 +165,8 @@ fn downstream_widget_uses_only_public_keyboard_text_and_composition_protocols() 
     let mut runtime = AppRuntime::<App>::mount(State {
         facts: Rc::clone(&facts),
         actions: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     focus(&mut runtime);
     facts.borrow_mut().clear();
@@ -242,7 +265,8 @@ fn downstream_text_and_composition_receipts_have_exact_exclusive_ui_finality() {
     let mut runtime = AppRuntime::<App>::mount(State {
         facts: Rc::clone(&facts),
         actions: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     focus(&mut runtime);
     let keyboard = runtime
@@ -320,6 +344,26 @@ fn downstream_text_and_composition_receipts_have_exact_exclusive_ui_finality() {
 struct SourceQualifiedSpaceApp;
 
 impl UiApp for SourceQualifiedSpaceApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 5)
+    }
+
     type State = usize;
     type Action = usize;
     type HostProtocol = NoHostProtocol;
@@ -404,7 +448,8 @@ fn public_space_lifetime_ignores_foreign_device_down_and_up_without_ghost_claim(
     let mut runtime = AppRuntime::<SourceQualifiedSpaceApp>::mount_with_config(
         0,
         RuntimeConfig::default().with_trace_config(TraceConfig::new(0)),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let budget = PumpBudget::new(32, 32, 32, 32);
     let _ = runtime
         .pump(budget)
@@ -499,6 +544,22 @@ struct NavigationKeyProbe {
 }
 
 impl Widget<()> for NavigationKeyProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -532,6 +593,26 @@ struct NavigationState {
 struct NavigationApp;
 
 impl UiApp for NavigationApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = NavigationState;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -553,7 +634,8 @@ fn downstream_widget_observes_structured_navigation_key_identities() {
     let observed = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<NavigationApp>::mount(NavigationState {
         observed: Rc::clone(&observed),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(
         runtime
             .pump(PumpBudget::new(

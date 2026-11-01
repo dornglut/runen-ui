@@ -8,6 +8,27 @@ use runenui_runtime::{AppRuntime, PumpBudget, PumpOutcome};
 struct LocalApp;
 
 impl UiApp for LocalApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -31,7 +52,8 @@ fn local_poll_budget_is_independent_and_exact() {
     assert_eq!(budget.max_local_polls(), 3);
     assert_eq!(budget.max_timer_promotions(), 4);
 
-    let mut runtime = AppRuntime::<LocalApp>::mount(0);
+    let mut runtime = AppRuntime::<LocalApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let blocked = runtime
         .pump(PumpBudget::new(2, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -60,6 +82,28 @@ fn local_poll_budget_is_independent_and_exact() {
 struct TimerApp;
 
 impl UiApp for TimerApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One initial owner and one timer start, plus its cancellation credit.
+        runenui_core::ProducerBudget::new(3, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 1, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 1, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -77,7 +121,8 @@ impl UiApp for TimerApp {
 
 #[test]
 fn timer_budget_and_future_deadline_observation_are_exact() {
-    let mut runtime = AppRuntime::<TimerApp>::mount(0);
+    let mut runtime = AppRuntime::<TimerApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let future = runtime
         .pump(PumpBudget::new(2, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -118,6 +163,27 @@ fn timer_budget_and_future_deadline_observation_are_exact() {
 struct SleepingApp;
 
 impl UiApp for SleepingApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = Rc<Cell<usize>>;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -133,7 +199,8 @@ impl UiApp for SleepingApp {
 
 #[test]
 fn sleeping_local_task_does_not_prevent_quiescence() {
-    let mut runtime = AppRuntime::<SleepingApp>::mount(Rc::new(Cell::new(0)));
+    let mut runtime = AppRuntime::<SleepingApp>::mount(Rc::new(Cell::new(0)))
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let report = runtime
         .pump(PumpBudget::new(2, 0, 1, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))

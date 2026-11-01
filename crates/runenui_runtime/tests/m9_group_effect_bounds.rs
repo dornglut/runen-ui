@@ -1,3 +1,26 @@
+macro_rules! admitted {
+    ($result:expr, $fallback:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return $fallback };
+        value
+    }};
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
+
 use runenui_core::{
     Brush, Color, ContributionClip, DropShadow, Element, LogicalLength, LogicalPoint, LogicalRect,
     NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionGroup,
@@ -26,6 +49,22 @@ struct BoundsPaint {
 }
 
 impl Widget<()> for BoundsPaint {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -50,6 +89,28 @@ impl Widget<()> for BoundsPaint {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = Case;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -143,14 +204,21 @@ fn unbounded_child_finite_clip() -> PaintContribution {
     PaintContribution::from_entries(vec![group.into()])
 }
 
-fn publish(case: Case) -> SurfacePublication {
-    let mut runtime = AppRuntime::<App>::mount(case);
-    runtime
-        .publish_surface(&SurfaceBuildContext::new(
-            &StyleEnvironment::default(),
-            LayoutConstraints::unbounded(),
-        ))
-        .unwrap_or_else(|_| unreachable!("controlled publication is admitted"))
+fn publish(case: Case) -> Option<SurfacePublication> {
+    let mut runtime = admitted!(AppRuntime::<App>::mount(case), None);
+    let publication = runtime.publish_surface(&SurfaceBuildContext::new(
+        &StyleEnvironment::default(),
+        LayoutConstraints::unbounded(),
+    ));
+    assert!(
+        publication.is_ok(),
+        "controlled publication is admitted: {:?}",
+        publication.as_ref().err()
+    );
+    let Ok(publication) = publication else {
+        return None;
+    };
+    Some(publication)
 }
 
 fn root_group(publication: &SurfacePublication) -> PaintSceneGroupId {
@@ -181,7 +249,9 @@ fn assert_close(actual: f32, expected: f32) {
 
 #[test]
 fn nested_group_effects_feed_parent_pre_shadow_coverage() {
-    let publication = publish(Case::NestedShadows);
+    let Some(publication) = publish(Case::NestedShadows) else {
+        return;
+    };
     let scene = publication.paint_scene();
     assert_eq!(scene.groups().len(), 2);
 
@@ -207,7 +277,9 @@ fn nested_group_effects_feed_parent_pre_shadow_coverage() {
 
 #[test]
 fn ordered_shadows_each_derive_from_same_pre_shadow_child_coverage() {
-    let publication = publish(Case::RepeatedShadows);
+    let Some(publication) = publish(Case::RepeatedShadows) else {
+        return;
+    };
     let group_id = root_group(&publication);
     let item = finite_item_bounds(&publication, 0);
     let group = finite_group_bounds(&publication, group_id);
@@ -220,7 +292,9 @@ fn ordered_shadows_each_derive_from_same_pre_shadow_child_coverage() {
 
 #[test]
 fn positive_spread_offset_and_three_sigma_support_expand_conservatively() {
-    let publication = publish(Case::PositiveSpreadOffsetBlur);
+    let Some(publication) = publish(Case::PositiveSpreadOffsetBlur) else {
+        return;
+    };
     let group_id = root_group(&publication);
     let item = finite_item_bounds(&publication, 0);
     let group = finite_group_bounds(&publication, group_id);
@@ -233,7 +307,9 @@ fn positive_spread_offset_and_three_sigma_support_expand_conservatively() {
 
 #[test]
 fn negative_spread_retains_pre_shadow_aabb_before_offset() {
-    let publication = publish(Case::NegativeSpread);
+    let Some(publication) = publish(Case::NegativeSpread) else {
+        return;
+    };
     let group_id = root_group(&publication);
     let item = finite_item_bounds(&publication, 0);
     let group = finite_group_bounds(&publication, group_id);
@@ -246,7 +322,9 @@ fn negative_spread_retains_pre_shadow_aabb_before_offset() {
 
 #[test]
 fn zero_group_opacity_does_not_shrink_conservative_geometric_bounds() {
-    let publication = publish(Case::ZeroOpacity);
+    let Some(publication) = publish(Case::ZeroOpacity) else {
+        return;
+    };
     let group_id = root_group(&publication);
     let item = finite_item_bounds(&publication, 0);
     let group = finite_group_bounds(&publication, group_id);
@@ -255,7 +333,9 @@ fn zero_group_opacity_does_not_shrink_conservative_geometric_bounds() {
 
 #[test]
 fn group_clip_constrains_complete_child_plus_shadow_result() {
-    let publication = publish(Case::ClipAfterEffects);
+    let Some(publication) = publish(Case::ClipAfterEffects) else {
+        return;
+    };
     let group_id = root_group(&publication);
     let group = finite_group_bounds(&publication, group_id);
 
@@ -267,7 +347,9 @@ fn group_clip_constrains_complete_child_plus_shadow_result() {
 
 #[test]
 fn finite_group_clip_narrows_unbounded_child_coverage() {
-    let publication = publish(Case::UnboundedChildFiniteClip);
+    let Some(publication) = publish(Case::UnboundedChildFiniteClip) else {
+        return;
+    };
     assert_eq!(
         publication.paint_scene().item_bounds(0),
         Some(PaintSceneBounds::Unbounded)
@@ -281,7 +363,9 @@ fn finite_group_clip_narrows_unbounded_child_coverage() {
 
 #[test]
 fn group_effect_bounds_do_not_change_m6_full_surface_damage_policy() {
-    let publication = publish(Case::PositiveSpreadOffsetBlur);
+    let Some(publication) = publish(Case::PositiveSpreadOffsetBlur) else {
+        return;
+    };
     assert_eq!(
         publication.paint_publication().damage(),
         PaintDamage::FullSurface

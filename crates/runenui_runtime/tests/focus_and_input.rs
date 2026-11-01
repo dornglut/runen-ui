@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use runenui_core::{
     CommandOrigin, Element, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
@@ -18,6 +30,23 @@ struct CompositionProbe {
 
 impl runenui_core::Widget<CompositionAction> for CompositionProbe {
     type State = ();
+
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event
+            | runenui_core::WidgetProducerPhase::Mount
+            | runenui_core::WidgetProducerPhase::Update
+            | runenui_core::WidgetProducerPhase::Subscriptions
+            | runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
 
     fn create_state(&self) -> Self::State {}
 
@@ -53,6 +82,32 @@ enum CompositionAction {}
 struct CompositionApp;
 
 impl UiApp for CompositionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(0, 3, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The fixed row has three owners in every reachable state. Event
+        // callbacks are pure; include defaults and the complete focus routes.
+        runenui_core::ProducerBudget::new(5, 1)
+            .with_reconciliation(0, 3, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = std::rc::Rc<std::cell::RefCell<Vec<String>>>;
     type Action = CompositionAction;
     type HostProtocol = NoHostProtocol;
@@ -103,6 +158,32 @@ enum Action {
 }
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(0, 3, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The fixed row has three owners in every reachable state. Event
+        // callbacks are bounded to one output; include defaults and the complete focus routes.
+        runenui_core::ProducerBudget::new(24, 20)
+            .with_reconciliation(0, 3, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = usize;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -121,7 +202,7 @@ impl UiApp for App {
 
 #[test]
 fn raw_keyboard_focus_commands_never_activate_or_emit_actions() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = admitted!(AppRuntime::<App>::mount(0));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -179,7 +260,7 @@ fn non_finite_pointer_positions_are_rejected() {
 
 #[test]
 fn command_modalities_are_retained_only_after_accepted_processing() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = admitted!(AppRuntime::<App>::mount(0));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -209,7 +290,7 @@ fn command_modalities_are_retained_only_after_accepted_processing() {
         assert_eq!(runtime.focus().modality(), Some(expected));
     }
 
-    let mut foreign = AppRuntime::<App>::mount(0);
+    let mut foreign = admitted!(AppRuntime::<App>::mount(0));
     let rejected = foreign.submit_command(
         target,
         SemanticCommand::RequestFocus,
@@ -221,7 +302,7 @@ fn command_modalities_are_retained_only_after_accepted_processing() {
 
 #[test]
 fn shutdown_clears_focus_memory_with_shutdown_reason_and_retains_modality() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = admitted!(AppRuntime::<App>::mount(0));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -294,10 +375,10 @@ fn shutdown_clears_focus_memory_with_shutdown_reason_and_retains_modality() {
 
 #[test]
 fn disabled_trace_preserves_focus_behavior() {
-    let mut runtime = AppRuntime::<App>::mount_with_config(
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
         0,
         RuntimeConfig::default().with_trace_config(TraceConfig::new(0)),
-    );
+    ));
     let target = runtime.index().nodes()[1].id().clone();
     runtime
         .submit_command(
@@ -322,35 +403,52 @@ fn disabled_trace_preserves_focus_behavior() {
 }
 
 #[test]
-fn processing_admission_exhaustion_commits_no_partial_focus_or_modality() {
+fn zero_output_profile_refusal_commits_no_partial_focus_or_modality() {
     let config =
         RuntimeConfig::default().with_limits(RuntimeLimits::default().with_transaction_outputs(0));
-    let mut runtime = AppRuntime::<App>::mount_with_config(0, config);
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(0, config));
+    let full = PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX);
+    assert!(
+        runtime
+            .pump(full)
+            .unwrap_or_else(|_| unreachable!())
+            .report()
+            .is_quiescent()
+    );
     let target = runtime.index().nodes()[1].id().clone();
-    runtime
-        .submit_command(
+    // The bounded interaction profile cannot fit a zero-output runtime.
+    // Refuse its owned original before queueing rather than accepting work
+    // that could fail after arbitrary callbacks under the previous contract.
+    let result = runtime.submit_command(
+        target.clone(),
+        SemanticCommand::RequestFocus,
+        CommandOrigin::controller(),
+    );
+    assert!(result.is_err(), "interaction profile cannot be admitted");
+    let Err(refused) = result else { return };
+    assert_eq!(
+        refused.kind(),
+        runenui_runtime::SubmitCommandErrorKind::InvalidProducerProfile
+    );
+    assert_eq!(
+        refused.into_unaccepted().into_parts(),
+        (
             target,
             SemanticCommand::RequestFocus,
-            CommandOrigin::controller(),
+            CommandOrigin::controller()
         )
-        .unwrap_or_else(|_| unreachable!("ingress accepts before routed admission"));
-    let _ = runtime
-        .pump(PumpBudget::new(
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-        ))
-        .unwrap_or_else(|_| unreachable!("pump observation"))
-        .report()
-        .to_owned();
+    );
+    let batch = runtime.pump(full).unwrap_or_else(|_| unreachable!());
+    assert_eq!(batch.report().processed_envelopes(), 0);
     assert_eq!(runtime.focus().focused_node(), None);
     assert_eq!(runtime.focus().modality(), None);
+    assert_eq!(*runtime.state(), 0);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
 }
 
 #[test]
 fn focus_trace_admission_exhaustion_commits_no_partial_focus_or_modality() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = admitted!(AppRuntime::<App>::mount(0));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -396,7 +494,9 @@ fn focus_trace_admission_exhaustion_commits_no_partial_focus_or_modality() {
 #[test]
 fn composition_focus_transfer_routes_cancel_before_focus_out_and_retires_generation() {
     let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-    let mut runtime = AppRuntime::<CompositionApp>::mount(std::rc::Rc::clone(&log));
+    let mut runtime = admitted!(AppRuntime::<CompositionApp>::mount(std::rc::Rc::clone(
+        &log
+    )));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -476,7 +576,9 @@ fn composition_focus_transfer_routes_cancel_before_focus_out_and_retires_generat
 #[test]
 fn composition_shutdown_routes_cancel_while_the_tree_is_still_live() {
     let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-    let mut runtime = AppRuntime::<CompositionApp>::mount(std::rc::Rc::clone(&log));
+    let mut runtime = admitted!(AppRuntime::<CompositionApp>::mount(std::rc::Rc::clone(
+        &log
+    )));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,

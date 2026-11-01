@@ -46,7 +46,38 @@ struct State {
 }
 
 struct App;
+impl App {
+    const fn producer_budget(nodes: usize) -> runenui_core::ProducerBudget {
+        let outputs = 6 * nodes + 2;
+        runenui_core::ProducerBudget::new(outputs + nodes + 1, outputs)
+            .with_application_outputs(0)
+            .with_reconciliation(nodes, nodes, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+}
+
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(9, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(9, 0, 9)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget(9)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget(9)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -164,7 +195,8 @@ fn runtime() -> AppRuntime<App> {
         replace_option: false,
         submitted: 0,
         disabled: false,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(runtime.register_text_font_bytes(FONT.to_vec()).is_ok());
     assert!(
         runtime

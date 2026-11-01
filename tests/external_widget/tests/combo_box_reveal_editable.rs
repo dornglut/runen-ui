@@ -18,6 +18,40 @@ const FONT: &[u8] =
 
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        // The open popup publishes one exact-option reveal only when the
+        // selected option lies below the four visible rows.
+        let outputs = usize::from(*state >= 4) * 4;
+        runenui_core::ProducerBudget::new(23, outputs)
+            .with_application_outputs(0)
+            .with_reconciliation(23, 0, 23)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(0, 23, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // TextField(2), ComboBox(1), ListBox(1), scrollbar(1), and thumb(1)
+        // own Event outputs. Focus transfer reserves four notifications for
+        // each owner plus the TextField/ComboBox ordinary route (28 outputs).
+        // The editable default additionally owns one FrameworkService start.
+        runenui_core::ProducerBudget::new(32, 30)
+            .with_application_outputs(0)
+            .with_reconciliation(0, 23, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = u8;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -68,7 +102,7 @@ impl UiApp for App {
 fn settle(app: &mut AppRuntime<App>) {
     assert!(
         app.pump(PumpBudget::new(256, 256, 256, 256))
-            .unwrap_or_else(|error| unreachable!("editable reveal pump: {error:?}"))
+            .unwrap_or_else(|_| unreachable!("editable reveal pump"))
             .report()
             .is_quiescent()
     );
@@ -100,7 +134,8 @@ fn command(app: &mut AppRuntime<App>, target: MountedNodeId, command: SemanticCo
 }
 
 fn configured(selected: u8) -> AppRuntime<App> {
-    let mut app = AppRuntime::<App>::mount(selected);
+    let mut app = AppRuntime::<App>::mount(selected)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     app.register_text_font_bytes(FONT.to_vec())
         .unwrap_or_else(|_| unreachable!("bundled text font"));
     app.set_text_generic_family_mapping(

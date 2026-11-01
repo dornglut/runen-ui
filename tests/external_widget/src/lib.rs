@@ -103,6 +103,15 @@
 //! use runenui_core::{EditResolution, NoHostProtocol, UiApp, UpdateOutput};
 //! struct Invalid;
 //! impl UiApp for Invalid {
+//!     fn initial_producer_budget(_: &Self::State) -> runenui_core::ProducerBudget {
+//!         runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1)
+//!     }
+//!     fn action_producer_budget(_: &Self::State, _: &Self::Action) -> runenui_core::ProducerBudget {
+//!         runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+//!     }
+//!     fn interaction_producer_budget(_: &Self::State) -> runenui_core::ProducerBudget {
+//!         runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+//!     }
 //!     type State = ();
 //!     type Action = ();
 //!     type HostProtocol = NoHostProtocol;
@@ -181,6 +190,19 @@ impl ExternalFocusWidget {
 }
 
 impl Widget<()> for ExternalFocusWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -301,6 +323,19 @@ impl ExternalInputAncestor {
 }
 
 impl<Action> Widget<Action> for ExternalInputAncestor {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -358,6 +393,20 @@ impl ExternalInputWidget {
 }
 
 impl Widget<ExternalInputAction> for ExternalInputWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -390,7 +439,7 @@ impl Widget<ExternalInputAction> for ExternalInputWidget {
             prevented_before_callback: context.default_is_prevented(),
         });
         if context.phase() == EventPhase::Target {
-            context.emit(ExternalInputAction::Observed(kind));
+            let _ = context.try_emit(ExternalInputAction::Observed(kind));
         }
         WidgetEventOutput::none()
     }
@@ -486,6 +535,25 @@ impl<Action> ExternalActivationSubscriptionWidget<Action> {
 }
 
 impl<Action> Widget<Action> for ExternalActivationSubscriptionWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        // Activation invalidates subscriptions, emits an auxiliary action,
+        // and returns one primary action; update invalidates once.
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(3)
+            }
+            runenui_core::WidgetProducerPhase::Update => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = usize;
 
     fn create_state(&self) -> Self::State {
@@ -499,7 +567,7 @@ impl<Action> Widget<Action> for ExternalActivationSubscriptionWidget<Action> {
     fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         if let Some(updated_state) = self.updated_state {
             *state = updated_state;
-            context.invalidate_subscriptions();
+            let _ = context.try_invalidate_subscriptions();
         }
     }
 
@@ -509,8 +577,8 @@ impl<Action> Widget<Action> for ExternalActivationSubscriptionWidget<Action> {
         context: &mut WidgetActivationContext<Action>,
     ) -> WidgetActivationOutput<Action> {
         *state += 1;
-        context.invalidate_subscriptions();
-        context.emit((self.auxiliary)());
+        let _ = context.try_invalidate_subscriptions();
+        let _ = context.try_emit((self.auxiliary)());
         WidgetActivationOutput::changed_with_action((self.primary)())
     }
 
@@ -560,12 +628,29 @@ impl ExternalSubscriptionWidget {
 }
 
 impl<Action> Widget<Action> for ExternalSubscriptionWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        // The duplicate-key diagnostic fixture still declares two entries.
+        match phase {
+            runenui_core::WidgetProducerPhase::Update => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0)
+                    .with_subscriptions(2)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(2, 0, 0, 0, 0))
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
 
     fn update(&self, (): &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
-        context.invalidate_subscriptions();
+        let _ = context.try_invalidate_subscriptions();
     }
 
     fn subscriptions(&self, (): &Self::State, subscriptions: &mut SubscriptionSet<Action>) {
@@ -575,7 +660,7 @@ impl<Action> Widget<Action> for ExternalSubscriptionWidget {
         let declaration = self.log.declarations.get() + 1;
         self.log.declarations.set(declaration);
         let log = Rc::clone(&self.log);
-        subscriptions.local(
+        let _ = subscriptions.try_local(
             WorkKey::new("external.subscription").unwrap_or_else(|_| unreachable!()),
             self.revision,
             move |_: &mut std::task::Context<'_>| {
@@ -584,7 +669,7 @@ impl<Action> Widget<Action> for ExternalSubscriptionWidget {
             },
         );
         if self.duplicate {
-            subscriptions.local(
+            let _ = subscriptions.try_local(
                 WorkKey::new("external.subscription").unwrap_or_else(|_| unreachable!()),
                 self.revision,
                 |_: &mut std::task::Context<'_>| Poll::Pending,
@@ -632,6 +717,22 @@ impl PulseButton {
 }
 
 impl Widget<ChildAction> for PulseButton {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = PulseState;
 
     fn create_state(&self) -> Self::State {
@@ -751,6 +852,19 @@ pub fn parent_view() -> Element<ParentAction> {
 pub struct CustomColumn;
 
 impl<Action> Widget<Action> for CustomColumn {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn semantics(
@@ -786,6 +900,19 @@ pub fn custom_column<Action>(children: impl Views<Action>) -> Container<Action> 
 pub struct CustomRow;
 
 impl<Action> Widget<Action> for CustomRow {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn semantics(
@@ -808,6 +935,19 @@ impl<Action> ChildBearingWidget<Action> for CustomRow {}
 pub struct MinimumPanel;
 
 impl<Action> Widget<Action> for MinimumPanel {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
@@ -828,6 +968,19 @@ impl<Action> ChildBearingWidget<Action> for MinimumPanel {}
 pub struct TextMinimumPanel;
 
 impl<Action> Widget<Action> for TextMinimumPanel {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
@@ -843,6 +996,19 @@ impl<Action> ChildBearingWidget<Action> for TextMinimumPanel {}
 pub struct UnsupportedMinimumPanel;
 
 impl<Action> Widget<Action> for UnsupportedMinimumPanel {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
@@ -983,7 +1149,30 @@ pub fn layout_case_view(case: LayoutCase) -> Element<LayoutAction> {
 
 pub struct LayoutConformanceApp;
 
+impl LayoutConformanceApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // At most 5 mounted owners and one event-producing button.
+        // Four focus visits, one route event, activation, and a default output;
+        // each new owner can add one subscription-reconciliation envelope.
+        const OUTPUTS: usize = 4 + 1 + 1 + 1;
+        runenui_core::ProducerBudget::new(1 + 5 + OUTPUTS, OUTPUTS).with_reconciliation(5, 5, 5)
+    }
+}
+
 impl UiApp for LayoutConformanceApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = LayoutState;
     type Action = LayoutAction;
     type HostProtocol = NoHostProtocol;
@@ -1004,7 +1193,30 @@ impl UiApp for LayoutConformanceApp {
 
 pub struct ConformanceApp;
 
+impl ConformanceApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // At most 4 mounted owners and one event-producing button.
+        // Four focus visits, one route event, activation, and a default output;
+        // each new owner can add one subscription-reconciliation envelope.
+        const OUTPUTS: usize = 4 + 1 + 1 + 1;
+        runenui_core::ProducerBudget::new(1 + 4 + OUTPUTS, OUTPUTS).with_reconciliation(4, 4, 4)
+    }
+}
+
 impl UiApp for ConformanceApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = usize;
     type Action = ParentAction;
     type HostProtocol = NoHostProtocol;
@@ -1028,6 +1240,19 @@ impl UiApp for ConformanceApp {
 pub struct GenericWidget<T>(pub T);
 
 impl<T: core::fmt::Debug + 'static> Widget<()> for GenericWidget<T> {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
 }
@@ -1039,6 +1264,19 @@ pub struct CountingLayoutPanel {
 }
 
 impl Widget<()> for CountingLayoutPanel {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
@@ -1055,6 +1293,19 @@ struct CountingText {
 }
 
 impl Widget<()> for CountingText {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
@@ -1071,6 +1322,19 @@ struct CountingFixed {
 }
 
 impl Widget<()> for CountingFixed {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
@@ -1113,6 +1377,19 @@ struct ResponsiveMeasuredWidget {
 }
 
 impl Widget<()> for ResponsiveMeasuredWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -1150,6 +1427,19 @@ struct BaselineMeasuredWidget {
 }
 
 impl Widget<()> for BaselineMeasuredWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -1194,6 +1484,19 @@ pub fn baseline_measurement_tree() -> Element<()> {
 pub struct UnsupportedMeasure;
 
 impl Widget<()> for UnsupportedMeasure {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {

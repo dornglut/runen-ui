@@ -109,6 +109,20 @@ struct PulseState {
 }
 
 impl Widget<()> for StatefulPulse {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        // Activation changes only private widget state/invalidation flags.
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = PulseState;
     fn create_state(&self) -> Self::State {
         PulseState { activations: 0 }
@@ -196,6 +210,22 @@ struct TreeState {
 
 struct TreeApp;
 impl UiApp for TreeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Two fixed child slots and their root; these callbacks emit no outputs.
+        runenui_core::ProducerBudget::new(3, 0).with_reconciliation(3, 3, 3)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0).with_reconciliation(3, 3, 3)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0).with_reconciliation(3, 3, 3)
+    }
+
     type State = TreeState;
     type Action = TreeAction;
     type HostProtocol = NoHostProtocol;
@@ -246,7 +276,8 @@ fn keyed_reorder_preserves_mounted_state_focus_and_slots() {
         order: ["a", "b"],
         show_a: true,
         log: Rc::clone(&log),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle_initial_mounted_declarations(&mut runtime);
     let a = node_id(&mut runtime, "probe.a");
     route_focus(&mut runtime, a.clone());
@@ -291,7 +322,8 @@ fn removal_makes_ids_stale_clears_focus_and_shutdown_unmounts_once() {
         order: ["a", "b"],
         show_a: true,
         log: Rc::clone(&log),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle_initial_mounted_declarations(&mut runtime);
     let a = node_id(&mut runtime, "probe.a");
     route_focus(&mut runtime, a.clone());
@@ -339,12 +371,14 @@ fn foreign_runtime_targets_are_rejected() {
         order: ["a", "b"],
         show_a: true,
         log: Rc::clone(&log),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let mut second = AppRuntime::<TreeApp>::mount(TreeState {
         order: ["a", "b"],
         show_a: true,
         log,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let id = node_id(&mut first, "probe.a");
     let Err(error) = second.submit_command(
         id.clone(),
@@ -371,7 +405,8 @@ fn mounted_publication_products_are_exactly_aligned() {
         order: ["a", "b"],
         show_a: true,
         log,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let index_ids: Vec<_> = runtime
         .index()
         .nodes()
@@ -412,6 +447,20 @@ struct SelfDisablingState {
 }
 
 impl Widget<()> for SelfDisabling {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        // Activation changes only private widget state/invalidation flags.
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = SelfDisablingState;
 
     fn create_state(&self) -> Self::State {
@@ -436,6 +485,22 @@ impl Widget<()> for SelfDisabling {
 struct SelfDisablingApp;
 
 impl UiApp for SelfDisablingApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One state-only widget, with no outputs in any callback phase.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -449,7 +514,8 @@ impl UiApp for SelfDisablingApp {
 
 #[test]
 fn state_only_interaction_invalidation_validates_focus_immediately() {
-    let mut runtime = AppRuntime::<SelfDisablingApp>::mount(());
+    let mut runtime = AppRuntime::<SelfDisablingApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let id = runtime.index().nodes()[0].id().clone();
     route_focus(&mut runtime, id.clone());
     route_activate(&mut runtime, id);
@@ -462,6 +528,20 @@ fn state_only_interaction_invalidation_validates_focus_immediately() {
 struct SelfRetaining;
 
 impl Widget<()> for SelfRetaining {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        // Activation changes only private widget state/invalidation flags.
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = usize;
 
     fn create_state(&self) -> Self::State {
@@ -486,6 +566,22 @@ impl Widget<()> for SelfRetaining {
 struct SelfRetainingApp;
 
 impl UiApp for SelfRetainingApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One state-only widget, with no outputs in any callback phase.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -499,7 +595,8 @@ impl UiApp for SelfRetainingApp {
 
 #[test]
 fn state_only_interaction_invalidation_preserves_still_valid_focus() {
-    let mut runtime = AppRuntime::<SelfRetainingApp>::mount(());
+    let mut runtime = AppRuntime::<SelfRetainingApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let id = runtime.index().nodes()[0].id().clone();
     route_focus(&mut runtime, id.clone());
     route_activate(&mut runtime, id.clone());
@@ -511,6 +608,22 @@ fn state_only_interaction_invalidation_preserves_still_valid_focus() {
 struct DownstreamLink;
 
 impl Widget<()> for DownstreamLink {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -556,6 +669,22 @@ struct DownstreamLinkApp;
 struct StandardLinkApp;
 
 impl UiApp for DownstreamLinkApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One leaf and one activation action; no callback starts work.
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -570,6 +699,22 @@ impl UiApp for DownstreamLinkApp {
 }
 
 impl UiApp for StandardLinkApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The standard Link has the same one-leaf/one-action frontier.
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -589,7 +734,8 @@ impl UiApp for StandardLinkApp {
 fn assert_link_action_is_ordinary<
     App: UiApp<State = usize, Action = (), HostProtocol = NoHostProtocol>,
 >() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = AppRuntime::<App>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle_initial_mounted_declarations(&mut runtime);
     let owner = runtime.index().nodes()[0].id().clone();
     runtime

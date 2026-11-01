@@ -15,6 +15,29 @@ use runenui_runtime::{
 struct TraceProgressApp;
 
 impl UiApp for TraceProgressApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -104,7 +127,8 @@ fn samples_since(
 
 #[test]
 fn explicit_trace_distinguishes_source_progress_from_segment_easing_progress() {
-    let mut runtime = AppRuntime::<TraceProgressApp>::mount(());
+    let mut runtime = AppRuntime::<TraceProgressApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
 
     let initial = runtime.trace().len();
     publish(&mut runtime);

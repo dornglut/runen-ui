@@ -117,6 +117,13 @@ pub trait SendSubscriptionSource<Item>: Send + 'static {
 #[must_use]
 pub struct SubscriptionSet<Action> {
     declarations: Vec<Subscription<Action>>,
+    limit: Option<usize>,
+    used: usize,
+    phase: crate::ProducerPhase,
+    work_starts: Option<crate::WorkStartBudget>,
+    work_used: [usize; 5],
+    overflowed: bool,
+    producer_violation: Option<crate::ProducerContractViolation>,
 }
 
 impl<Action> SubscriptionSet<Action> {
@@ -124,15 +131,40 @@ impl<Action> SubscriptionSet<Action> {
     pub const fn new() -> Self {
         Self {
             declarations: Vec::new(),
+            limit: None,
+            used: 0,
+            phase: crate::ProducerPhase::ApplicationSubscriptions,
+            work_starts: None,
+            work_used: [0; 5],
+            overflowed: false,
+            producer_violation: None,
+        }
+    }
+
+    /// Creates a runtime-owned collector bounded to one producer's declared
+    /// subscription count. Once full, later declarations are dropped and the
+    /// collector records a contract violation for transaction preflight.
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn __runtime_new_bounded(limit: usize) -> Self {
+        Self {
+            declarations: Vec::new(),
+            limit: Some(limit),
+            used: 0,
+            phase: crate::ProducerPhase::ApplicationSubscriptions,
+            work_starts: None,
+            work_used: [0; 5],
+            overflowed: false,
+            producer_violation: None,
         }
     }
 
     /// Declares a wake-aware local source polled by the shared local-work budget.
-    pub fn local<Source>(&mut self, key: WorkKey, revision: u64, source: Source)
+    fn push_local<Source>(&mut self, key: WorkKey, revision: u64, source: Source)
     where
         Source: LocalSubscriptionSource<Action> + 'static,
     {
-        self.declarations.push(Subscription {
+        self.push(Subscription {
             key,
             source_type: TypeId::of::<Source>(),
             revision,
@@ -141,14 +173,19 @@ impl<Action> SubscriptionSet<Action> {
     }
 
     /// Declares a start-once send producer with a UI-thread item mapper.
-    pub fn send<Item, Source, Map>(&mut self, key: WorkKey, revision: u64, source: Source, map: Map)
-    where
+    fn push_send<Item, Source, Map>(
+        &mut self,
+        key: WorkKey,
+        revision: u64,
+        source: Source,
+        map: Map,
+    ) where
         Item: Send + 'static,
         Source: SendSubscriptionSource<Item>,
         Map: FnMut(Item) -> Action + 'static,
     {
         let mut map = map;
-        self.declarations.push(Subscription {
+        self.push(Subscription {
             key,
             source_type: TypeId::of::<Source>(),
             revision,
@@ -163,6 +200,43 @@ impl<Action> SubscriptionSet<Action> {
                 }),
             },
         });
+    }
+
+    fn push(&mut self, declaration: Subscription<Action>) {
+        self.declarations.push(declaration);
+    }
+
+    #[doc(hidden)]
+    pub const fn __runtime_set_widget_budget(&mut self, budget: crate::WorkStartBudget) {
+        self.phase = crate::ProducerPhase::Widget(crate::WidgetProducerPhase::Subscriptions);
+        self.work_starts = Some(budget);
+    }
+
+    pub(crate) const fn mapped_child<Child>(&self) -> SubscriptionSet<Child> {
+        SubscriptionSet {
+            declarations: Vec::new(),
+            limit: self.limit,
+            used: self.used,
+            phase: self.phase,
+            work_starts: self.work_starts,
+            work_used: self.work_used,
+            overflowed: self.overflowed,
+            producer_violation: self.producer_violation,
+        }
+    }
+
+    pub(crate) fn absorb_budget<Child>(&mut self, child: &SubscriptionSet<Child>) -> bool {
+        self.used = child.used;
+        self.work_used = child.work_used;
+        self.producer_violation = self.producer_violation.or(child.producer_violation);
+        self.overflowed |= child.overflowed;
+        self.producer_violation.is_none()
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn __runtime_overflowed(&self) -> bool {
+        self.overflowed
     }
 }
 
@@ -250,7 +324,120 @@ impl<Action> SubscriptionSet<Action> {
         self.declarations
     }
 
-    pub fn __runtime_push(&mut self, declaration: Subscription<Action>) {
-        self.declarations.push(declaration);
+    pub(super) fn __runtime_push(&mut self, declaration: Subscription<Action>) {
+        self.push(declaration);
+    }
+}
+
+impl<Action> SubscriptionSet<Action> {
+    /// Borrows the first sticky declaration failure.
+    #[must_use]
+    pub const fn producer_violation(&self) -> Option<crate::ProducerContractViolation> {
+        self.producer_violation
+    }
+    const fn try_reserve_declaration(
+        &mut self,
+        family: crate::WorkFamily,
+    ) -> Result<(), crate::ProducerContractViolation> {
+        if let Some(cause) = self.producer_violation {
+            return Err(cause);
+        }
+        if let Some(limit) = self.limit
+            && self.used >= limit
+        {
+            let cause = crate::ProducerContractViolation {
+                kind: crate::ProducerViolationKind::DeclarationExceeded,
+                phase: self.phase,
+                component: crate::BudgetComponent::SubscriptionDeclarations,
+                declared: limit,
+                attempted: limit.checked_add(1),
+            };
+            self.producer_violation = Some(cause);
+            self.overflowed = true;
+            return Err(cause);
+        }
+        let index = crate::producer_violation::family_index(family);
+        if let Some(budget) = self.work_starts {
+            let declared = budget.for_family(family);
+            if self.work_used[index] >= declared {
+                let cause = crate::ProducerContractViolation {
+                    kind: crate::ProducerViolationKind::DeclarationExceeded,
+                    phase: self.phase,
+                    component: crate::BudgetComponent::WorkStarts(family),
+                    declared,
+                    attempted: self.work_used[index].checked_add(1),
+                };
+                self.producer_violation = Some(cause);
+                self.overflowed = true;
+                return Err(cause);
+            }
+        }
+        self.used += 1;
+        self.work_used[index] += 1;
+        Ok(())
+    }
+    /// Collects an owned source without starting it.
+    ///
+    /// # Errors
+    /// Returns key, revision and original source before erasure on overrun.
+    pub fn try_local<S: LocalSubscriptionSource<Action> + 'static>(
+        &mut self,
+        key: WorkKey,
+        revision: u64,
+        source: S,
+    ) -> Result<(), crate::EmitError<(WorkKey, u64, S)>> {
+        if let Err(cause) = self.try_reserve_declaration(crate::WorkFamily::LocalTask) {
+            return Err(crate::EmitError::new((key, revision, source), cause));
+        }
+        self.push_local(key, revision, source);
+        Ok(())
+    }
+    /// Collects a send source with a UI-thread mapper without starting it.
+    ///
+    /// # Errors
+    /// Returns the exact original key, revision, source and mapper on overrun.
+    pub fn try_send<I, S, M>(
+        &mut self,
+        key: WorkKey,
+        revision: u64,
+        source: S,
+        map: M,
+    ) -> Result<(), crate::EmitError<(WorkKey, u64, S, M)>>
+    where
+        I: Send + 'static,
+        S: SendSubscriptionSource<I>,
+        M: FnMut(I) -> Action + 'static,
+    {
+        if let Err(cause) = self.try_reserve_declaration(crate::WorkFamily::SendTask) {
+            return Err(crate::EmitError::new((key, revision, source, map), cause));
+        }
+        self.push_send(key, revision, source, map);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod bounded_tests {
+    use super::SubscriptionSet;
+    use crate::WorkKey;
+    use core::task::Poll;
+
+    #[test]
+    fn bounded_subscription_collector_caps_storage_and_reports_overflow() {
+        let mut subscriptions = SubscriptionSet::<()>::__runtime_new_bounded(1);
+        let _ = subscriptions.try_local(
+            WorkKey::new("first").unwrap_or_else(|_| unreachable!()),
+            0,
+            |_: &mut core::task::Context<'_>| Poll::Pending,
+        );
+        assert!(!subscriptions.__runtime_overflowed());
+        let _ = subscriptions.try_local(
+            WorkKey::new("overflow").unwrap_or_else(|_| unreachable!()),
+            0,
+            |_: &mut core::task::Context<'_>| Poll::Pending,
+        );
+
+        assert!(subscriptions.__runtime_overflowed());
+        assert_eq!(subscriptions.__runtime_into_declarations().len(), 1);
     }
 }

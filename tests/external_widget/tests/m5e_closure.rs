@@ -16,6 +16,22 @@ struct MappedState {
 struct MappedApp;
 
 impl UiApp for MappedApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The four-owner parent view has one event-producing button and two action factories.
+        runenui_core::ProducerBudget::new(12, 7).with_reconciliation(4, 4, 4)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(12, 7).with_reconciliation(4, 4, 4)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(12, 7).with_reconciliation(4, 4, 4)
+    }
+
     type State = MappedState;
     type Action = ParentAction;
     type HostProtocol = NoHostProtocol;
@@ -51,7 +67,8 @@ fn trace_position(kinds: &[&str], expected: &str) -> usize {
 
 #[test]
 fn mapped_downstream_widget_preserves_semantics_action_runtime_and_trace_authority() {
-    let mut harness = TestHarness::<MappedApp>::mount(MappedState::default());
+    let mut harness = TestHarness::<MappedApp>::mount(MappedState::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     let Ok(snapshot) = harness.semantic_snapshot() else {

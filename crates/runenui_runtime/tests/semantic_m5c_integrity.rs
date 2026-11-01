@@ -30,6 +30,28 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The single activation button has one initial owner reconciliation.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Button routing declares one event and one activation output.
+        runenui_core::ProducerBudget::new(5, 5)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -56,10 +78,12 @@ impl UiApp for App {
 
 fn runtime() -> AppRuntime<App> {
     AppRuntime::<App>::mount(state())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"))
 }
 
 fn runtime_with_config(config: RuntimeConfig) -> AppRuntime<App> {
     AppRuntime::<App>::mount_with_config(state(), config)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"))
 }
 
 fn state() -> State {

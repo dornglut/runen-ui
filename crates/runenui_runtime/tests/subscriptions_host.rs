@@ -35,6 +35,31 @@ struct SubscriptionState {
 struct SubscriptionApp;
 
 impl UiApp for SubscriptionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(2, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(2, 0, 0, 0, 0))
+            // The only nonduplicate stream key retains one subscription record.
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 1, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // The local source can finish with None. A later update redeclares the
+        // same desired stream and must fund its restart, not just retention.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_subscriptions(2, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 1, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = SubscriptionState;
     type Action = ();
     type HostProtocol = runenui_core::NoHostProtocol;
@@ -55,7 +80,7 @@ impl UiApp for SubscriptionApp {
             return;
         }
         let polls = Rc::clone(&state.source_polls);
-        subscriptions.local(
+        let _ = subscriptions.try_local(
             key("app.stream"),
             state.revision,
             move |_: &mut core::task::Context<'_>| {
@@ -65,7 +90,7 @@ impl UiApp for SubscriptionApp {
             },
         );
         if state.duplicate {
-            subscriptions.local(
+            let _ = subscriptions.try_local(
                 key("app.stream"),
                 state.revision,
                 |_: &mut core::task::Context<'_>| Poll::Ready(Some(())),
@@ -86,13 +111,15 @@ fn subscription_state() -> SubscriptionState {
 
 #[test]
 fn application_subscription_starts_initially_and_equal_identity_is_retained() {
-    let mut runtime = AppRuntime::<SubscriptionApp>::mount(subscription_state());
+    let mut runtime = AppRuntime::<SubscriptionApp>::mount(subscription_state())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
         .report()
         .to_owned();
     assert_eq!(runtime.state().updates, 1);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
     let polls_after_item = runtime.state().source_polls.get();
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
     let _ = runtime
@@ -101,12 +128,33 @@ fn application_subscription_starts_initially_and_equal_identity_is_retained() {
         .report()
         .to_owned();
     assert_eq!(runtime.state().updates, 2);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert!(runtime.state().source_polls.get() > polls_after_item);
 }
 
 struct DuplicateSubscriptionApp;
 
 impl UiApp for DuplicateSubscriptionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(2, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(2, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(2, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = runenui_core::NoHostProtocol;
@@ -118,18 +166,25 @@ impl UiApp for DuplicateSubscriptionApp {
     fn update((): &mut Self::State, (): Self::Action) {}
 
     fn subscriptions((): &Self::State, subscriptions: &mut SubscriptionSet<Self::Action>) {
-        subscriptions.local(key("duplicate"), 0, |_: &mut core::task::Context<'_>| {
-            Poll::Ready(Some(()))
-        });
-        subscriptions.local(key("duplicate"), 0, |_: &mut core::task::Context<'_>| {
-            Poll::Ready(Some(()))
-        });
+        {
+            let _ =
+                subscriptions.try_local(key("duplicate"), 0, |_: &mut core::task::Context<'_>| {
+                    Poll::Ready(Some(()))
+                });
+        };
+        {
+            let _ =
+                subscriptions.try_local(key("duplicate"), 0, |_: &mut core::task::Context<'_>| {
+                    Poll::Ready(Some(()))
+                });
+        };
     }
 }
 
 #[test]
 fn duplicate_subscription_key_is_diagnosed_and_starts_no_stream() {
-    let mut runtime = AppRuntime::<DuplicateSubscriptionApp>::mount(());
+    let mut runtime = AppRuntime::<DuplicateSubscriptionApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     assert!(
         runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
@@ -154,7 +209,8 @@ fn subscription_diagnostic_retention_is_explicitly_bounded() {
     let mut runtime = AppRuntime::<DuplicateSubscriptionApp>::mount_with_config(
         (),
         RuntimeConfig::default().with_limits(limits),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -172,7 +228,8 @@ fn subscription_diagnostic_retention_is_explicitly_bounded() {
     let mut disabled = AppRuntime::<DuplicateSubscriptionApp>::mount_with_config(
         (),
         RuntimeConfig::default().with_limits(disabled_limits),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = disabled
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -201,6 +258,27 @@ impl<Item: Send + 'static> SendSubscriptionSource<Item> for OneItemSource<Item> 
 }
 
 impl UiApp for SendSubscriptionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(1, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 1, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 1, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(1, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = (
         Rc<Cell<bool>>,
         usize,
@@ -222,7 +300,7 @@ impl UiApp for SendSubscriptionApp {
 
     fn subscriptions(state: &Self::State, subscriptions: &mut SubscriptionSet<Self::Action>) {
         let ui_state = Rc::clone(&state.0);
-        subscriptions.send(
+        let _ = subscriptions.try_send(
             key("send.stream"),
             0,
             OneItemSource {
@@ -241,7 +319,8 @@ fn send_subscription_item_uses_ingress_without_requiring_action_send() {
     let mapped = Rc::new(Cell::new(false));
     let sink = Arc::new(Mutex::new(None));
     let mut runtime =
-        AppRuntime::<SendSubscriptionApp>::mount((Rc::clone(&mapped), 0, Arc::clone(&sink)));
+        AppRuntime::<SendSubscriptionApp>::mount((Rc::clone(&mapped), 0, Arc::clone(&sink)))
+            .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -308,6 +387,45 @@ enum HostAction {
 struct HostApp;
 
 impl UiApp for HostApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 1, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 1, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let (credits, outputs, host_requests) = match action {
+            HostAction::Replace => (3, 1, 1),
+            HostAction::Value(_) => (1, 0, 0),
+        };
+        runenui_core::ProducerBudget::new(credits, outputs)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(
+                0,
+                0,
+                0,
+                host_requests,
+                0,
+            ))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(
+                0,
+                0,
+                0,
+                0,
+                host_requests,
+                0,
+            ))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = Vec<u8>;
     type Action = HostAction;
     type HostProtocol = Protocol;
@@ -343,6 +461,200 @@ fn request(value: u8) -> Effects<HostAction, Protocol> {
             Response::Text(_) => unreachable!(),
         },
     )
+}
+
+struct HostFrontierState {
+    queue_credits: usize,
+    cancel_during_fanout: bool,
+    values: Vec<u8>,
+}
+
+enum HostFrontierAction {
+    Fanout,
+    Value(u8),
+}
+
+struct HostFrontierApp;
+
+impl UiApp for HostFrontierApp {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(
+            state.queue_credits,
+            if state.cancel_during_fanout { 4 } else { 3 },
+        )
+        .with_reconciliation(1, 0, 1)
+        .with_subscriptions(0, 0)
+        .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 1, 0))
+        .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 1, 0))
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        match action {
+            HostFrontierAction::Fanout if state.cancel_during_fanout => {
+                runenui_core::ProducerBudget::new(4, 4)
+            }
+            HostFrontierAction::Fanout => runenui_core::ProducerBudget::new(3, 3),
+            HostFrontierAction::Value(_) => runenui_core::ProducerBudget::new(1, 0),
+        }
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
+    type State = HostFrontierState;
+    type Action = HostFrontierAction;
+    type HostProtocol = Protocol;
+
+    fn root(_: &Self::State) -> impl View<Self::Action> {
+        text("host frontier")
+    }
+
+    fn initial_effects(_: &Self::State) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+        Effects::host_request(Some(key("host.frontier")), Command::Number(1), |_| {
+            HostFrontierAction::Value(99)
+        })
+        .then(Effects::action(HostFrontierAction::Fanout))
+    }
+
+    fn update(
+        state: &mut Self::State,
+        action: Self::Action,
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        match action {
+            HostFrontierAction::Fanout => {
+                let output = Effects::action(HostFrontierAction::Value(1))
+                    .then(Effects::action(HostFrontierAction::Value(2)))
+                    .then(Effects::action(HostFrontierAction::Value(3)));
+                if state.cancel_during_fanout {
+                    output.then(Effects::cancel(
+                        runenui_core::WorkFamily::HostRequest,
+                        key("host.frontier"),
+                    ))
+                } else {
+                    output
+                }
+            }
+            HostFrontierAction::Value(value) => {
+                state.values.push(value);
+                Effects::none()
+            }
+        }
+    }
+}
+
+const fn host_frontier_state(queue_credits: usize) -> HostFrontierState {
+    HostFrontierState {
+        queue_credits,
+        cancel_during_fanout: false,
+        values: Vec::new(),
+    }
+}
+
+#[test]
+fn host_effect_cancellation_keeps_cancel_credit_at_same_root_p0() {
+    let mut state = host_frontier_state(5);
+    state.cancel_during_fanout = true;
+    let mut runtime = AppRuntime::<HostFrontierApp>::mount(state).unwrap_or_else(|error| {
+        unreachable!("source-sized host cancellation frontier is admitted: {error}")
+    });
+
+    let report = runtime
+        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("all causal work is pumpable"))
+        .report()
+        .to_owned();
+
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.state().values, [1, 2, 3]);
+    assert_eq!(report.remaining_queued_envelopes(), 0);
+    assert!(runtime.pending_host_requests().is_empty());
+}
+
+#[test]
+fn host_cancellation_credit_survives_same_root_positive_fanout() {
+    let mut runtime = AppRuntime::<HostFrontierApp>::mount(host_frontier_state(5))
+        .unwrap_or_else(|error| unreachable!("exact frontier profile is admitted: {error}"));
+    let report = runtime
+        .pump(PumpBudget::new(3, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("bounded pump observation"))
+        .report()
+        .to_owned();
+    assert_eq!(report.processed_envelopes(), 3);
+    let requests = runtime.pending_host_requests();
+    assert_eq!(requests.len(), 1);
+    let token = requests[0].token();
+    drop(requests);
+
+    runtime.cancel_host_request(&token).unwrap_or_else(|error| {
+        unreachable!("same-root fanout preserves prepaid cancellation: {error:?}")
+    });
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    let report = runtime
+        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("children and cancellation are pumpable"))
+        .report()
+        .to_owned();
+    assert_eq!(report.processed_envelopes(), 4);
+    assert_eq!(runtime.state().values, [1, 2, 3]);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn initial_host_start_refuses_before_outputs_when_frontier_cannot_fund_cancel() {
+    let Err(error) = AppRuntime::<HostFrontierApp>::mount(host_frontier_state(3)) else {
+        unreachable!("three startup envelopes plus cancellation need four credits");
+    };
+    assert_eq!(
+        error.kind(),
+        runenui_runtime::InitialAdmissionErrorKind::ProducerContractViolation(
+            runenui_core::ProducerContractViolation {
+                kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                phase: runenui_core::ProducerPhase::InitialEffects,
+                component: runenui_core::BudgetComponent::QueueFrontier,
+                declared: 3,
+                attempted: Some(4),
+            }
+        )
+    );
+    assert_eq!(error.frontier_requirement(), Some((4, 3)));
+    let (state, _) = error.into_parts();
+    assert_eq!(state.values, Vec::<u8>::new());
+}
+
+#[test]
+fn host_fanout_profile_overrun_commits_no_child_outputs() {
+    let mut runtime =
+        AppRuntime::<HostFrontierApp>::mount(host_frontier_state(4)).unwrap_or_else(|error| {
+            unreachable!("initial HostRequest and its cancellation fit: {error}")
+        });
+    let report = runtime
+        .pump(PumpBudget::new(3, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("bounded pump observation"))
+        .report()
+        .to_owned();
+    assert_eq!(report.processed_envelopes(), 3);
+    assert_eq!(runtime.state().values, Vec::<u8>::new());
+    assert_eq!(
+        runtime.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+    );
+    assert!(runtime.pending_host_requests().is_empty());
+    assert_eq!(
+        runtime
+            .trace()
+            .records()
+            .filter(|record| matches!(
+                record.kind(),
+                runenui_runtime::TraceRecordKind::ActionSubmissionAccepted
+            ))
+            .count(),
+        1,
+        "the initial fanout action was accepted, but none of its child actions were"
+    );
 }
 
 fn assert_host_success_causal_chain(runtime: &AppRuntime<HostApp>) {
@@ -428,7 +740,8 @@ fn assert_host_success_causal_chain(runtime: &AppRuntime<HostApp>) {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn host_commands_are_exposed_after_start_and_map_only_valid_live_responses() {
-    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
+    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     assert!(runtime.pending_host_requests().is_empty());
     let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
@@ -491,7 +804,8 @@ fn host_commands_are_exposed_after_start_and_map_only_valid_live_responses() {
 
 #[test]
 fn host_cancellation_is_exact_and_suppresses_later_completion() {
-    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
+    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -522,7 +836,8 @@ fn host_cancellation_is_exact_and_suppresses_later_completion() {
 #[cfg(feature = "internal-test-seams")]
 #[test]
 fn repeated_host_cancellation_and_replacement_retain_only_live_authority() {
-    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
+    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -574,6 +889,27 @@ struct TraceBoundaryHostState {
 struct TraceBoundaryHostApp;
 
 impl UiApp for TraceBoundaryHostApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 1, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 1, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = TraceBoundaryHostState;
     type Action = u8;
     type HostProtocol = Protocol;
@@ -608,7 +944,8 @@ fn trace_boundary_host_runtime() -> (
     let mut runtime = AppRuntime::<TraceBoundaryHostApp>::mount(TraceBoundaryHostState {
         mapper_calls: Rc::clone(&mapper_calls),
         updates: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -690,7 +1027,8 @@ fn detached_host_completion_with_only_three_unreserved_records_never_runs_mapper
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn host_cancellation_sequence_exhaustion_terminalizes_and_closes_authority() {
-    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
+    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -741,9 +1079,10 @@ fn host_cancellation_sequence_exhaustion_terminalizes_and_closes_authority() {
 }
 
 #[test]
-fn host_cancellation_queue_full_is_recoverable() {
-    let config = RuntimeConfig::default().with_queue_capacity(2);
-    let mut runtime = AppRuntime::<HostApp>::mount_with_config(Vec::new(), config);
+fn live_host_cancellation_uses_its_reserved_credit_under_unrelated_queue_pressure() {
+    let config = RuntimeConfig::default().with_queue_capacity(5);
+    let mut runtime = AppRuntime::<HostApp>::mount_with_config(Vec::new(), config)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -751,25 +1090,36 @@ fn host_cancellation_queue_full_is_recoverable() {
         .to_owned();
     let token = runtime.pending_host_requests()[0].token();
     runtime
-        .submit_action(HostAction::Replace)
+        .submit_action(HostAction::Value(1))
         .unwrap_or_else(|_| unreachable!());
     runtime
-        .submit_action(HostAction::Replace)
+        .submit_action(HostAction::Value(2))
         .unwrap_or_else(|_| unreachable!());
 
-    assert!(matches!(
-        runtime.cancel_host_request(&token),
-        Err(HostRequestCancelError::Full)
-    ));
+    let cancellation = runtime
+        .cancel_host_request(&token)
+        .unwrap_or_else(|error| unreachable!("live host request owns cleanup credit: {error:?}"));
     assert_eq!(runtime.status(), RuntimeStatus::Running);
-    assert_eq!(runtime.pending_host_requests().len(), 1);
+    assert!(runtime.pending_host_requests().is_empty());
+    assert!(cancellation.get() > 0);
+    let drained = runtime
+        .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| {
+            unreachable!("reserved cancellation and unrelated actions are pumpable")
+        })
+        .report()
+        .to_owned();
+    assert_eq!(drained.processed_envelopes(), 3);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.state(), &[1, 2]);
 }
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn one_remaining_sequence_is_the_final_host_mapper_action() {
-    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
+    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(2, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -809,7 +1159,8 @@ fn one_remaining_sequence_is_the_final_host_mapper_action() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn cancellation_invalidates_accepted_detached_response_before_ui_mapping() {
-    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
+    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -845,7 +1196,8 @@ fn cancellation_invalidates_accepted_detached_response_before_ui_mapping() {
 
 #[test]
 fn concrete_send_host_response_crosses_ingress_before_ui_mapping() {
-    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
+    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -871,7 +1223,8 @@ fn concrete_send_host_response_crosses_ingress_before_ui_mapping() {
 
 #[test]
 fn detached_host_completion_reserves_only_after_successful_ingress_acceptance() {
-    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
+    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -908,7 +1261,8 @@ fn cancellation_claims_before_detached_submission_and_retry_after_full_is_stale(
     let mut runtime = AppRuntime::<HostApp>::mount_with_config(
         Vec::new(),
         RuntimeConfig::default().with_limits(limits),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -938,7 +1292,8 @@ fn cancellation_claims_before_detached_submission_and_retry_after_full_is_stale(
 
 #[test]
 fn replacement_and_shutdown_invalidate_detached_completion_ownership() {
-    let mut replacement = AppRuntime::<HostApp>::mount(Vec::new());
+    let mut replacement = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = replacement
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -961,7 +1316,8 @@ fn replacement_and_shutdown_invalidate_detached_completion_ownership() {
         Err(HostResponseCompletionError::Stale(_))
     ));
 
-    let mut shutdown = AppRuntime::<HostApp>::mount(Vec::new());
+    let mut shutdown = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = shutdown
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -985,7 +1341,8 @@ fn replacement_and_shutdown_invalidate_detached_completion_ownership() {
 #[test]
 fn direct_completion_and_public_cancellation_each_arm_one_coalesced_wake() {
     let direct_wakes = Arc::new(AtomicUsize::new(0));
-    let mut direct = AppRuntime::<HostApp>::mount(Vec::new());
+    let mut direct = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = direct
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -1002,7 +1359,8 @@ fn direct_completion_and_public_cancellation_each_arm_one_coalesced_wake() {
     assert_eq!(direct_wakes.load(Ordering::SeqCst), 1);
 
     let cancellation_wakes = Arc::new(AtomicUsize::new(0));
-    let mut cancellation = AppRuntime::<HostApp>::mount(Vec::new());
+    let mut cancellation = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = cancellation
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -1025,7 +1383,8 @@ fn full_detached_host_submission_returns_ownership_without_reserving_request() {
     let mut runtime = AppRuntime::<HostApp>::mount_with_config(
         Vec::new(),
         RuntimeConfig::default().with_limits(limits),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -1053,7 +1412,8 @@ fn full_detached_host_submission_returns_ownership_without_reserving_request() {
 
 #[test]
 fn first_detached_host_submission_wins_and_later_submission_is_stale() {
-    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new());
+    let mut runtime = AppRuntime::<HostApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))

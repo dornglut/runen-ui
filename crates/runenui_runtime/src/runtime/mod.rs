@@ -9,6 +9,7 @@ mod focus;
 mod helpers;
 mod ingress;
 mod input_arbitration;
+mod input_continuations;
 mod lifecycle;
 mod mount;
 mod pointer;
@@ -27,9 +28,9 @@ use std::{
 
 use runenui_core::{
     __runtime::{Effect, MountedEffect, SendOutput, Subscription},
-    CommandOrigin, Element, ElementKey, HostProtocol, IntoEffects, NoHostProtocol, SemanticCommand,
-    SendSubscriptionSink, SendSubscriptionStartOutcome, SendTaskStartFailure, SubscriptionSet,
-    TouchGestureThresholds, UiApp, View,
+    CommandOrigin, Element, ElementKey, HostProtocol, NoHostProtocol, ProducerBudget,
+    SemanticCommand, SendSubscriptionSink, SendSubscriptionStartOutcome, SendTaskStartFailure,
+    SubscriptionSet, TouchGestureThresholds, UiApp, View,
 };
 use runenui_text::TextSystem;
 
@@ -44,10 +45,10 @@ use crate::{
         CompletionIngress, CompletionKind, FrameworkServiceResponseCompletion,
         HostResponseCompletion, SendTaskJob, UnavailableExecutor,
     },
-    mounted::{MountedIdentityExhausted, MountedTree, TargetStatus},
+    mounted::{MountedTree, TargetStatus},
     queue::{
-        ApplicationActionEnvelope, ApplicationActionOrigin, QueueCommitError, WorkEnvelope,
-        WorkQueue,
+        ApplicationActionEnvelope, ApplicationActionOrigin, QueueCommitError, QueueReservation,
+        WorkEnvelope, WorkQueue,
     },
     transaction::{
         ApplicationTransactionInput, OwnedTransactionLedger, PlannedApplicationTransaction,
@@ -86,6 +87,7 @@ pub use model::{
     TimerStartOutcome,
 };
 use pointer::PointerRegistry;
+pub(crate) use pointer::{button_transition_is_valid, touch_transition_is_supported};
 use presentation::PresentationLifecycleState;
 pub(crate) use routed::PointerDispatchFacts;
 pub(crate) use routed::{RoutedFailureLineage, RoutedIngressFacts, RoutedTransaction};
@@ -97,6 +99,11 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     pub(crate) queue: WorkQueue<Action>,
     pub(crate) trace: Trace,
     pub(crate) trace_action_labeler: Option<fn(&Action) -> Option<&'static str>>,
+    pub(crate) action_producer_budget: Option<fn(&State, &Action) -> runenui_core::ProducerBudget>,
+    pub(crate) interaction_producer_budget: Option<fn(&State) -> runenui_core::ProducerBudget>,
+    pub(crate) initial_producer_budget: ProducerBudget,
+    initial_application_work: Option<PreparedInitialApplicationWork<Action, Protocol>>,
+    pub(crate) initial_root_reservation: Option<QueueReservation>,
     text_system: TextSystem,
     pub(crate) focus: FocusState,
     input_observation: input_arbitration::InputObservationState,
@@ -154,6 +161,11 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     readiness_checkpoint_count: usize,
     #[cfg(feature = "internal-test-seams")]
     test_seams: model::RuntimeTestSeams,
+}
+
+pub(crate) struct PreparedInitialApplicationWork<Action, Protocol: HostProtocol> {
+    pub(crate) application: TransactionLedger<Action, Protocol>,
+    pub(crate) subscriptions: Vec<Subscription<Action>>,
 }
 
 pub(crate) enum ProcessApplicationActionOutcome {

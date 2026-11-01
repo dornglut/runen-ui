@@ -6,6 +6,32 @@ use runenui_runtime::{AppRuntime, PumpBudget, RuntimeConfig, TraceConfig, TraceR
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One button owner, with no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Button event/activation output and the resulting pure app turn share
+        // one causal root; the application itself produces no output.
+        runenui_core::ProducerBudget::new(5, 5)
+            .with_application_outputs(0)
+            .with_reconciliation(1, 1, 1)
+    }
+
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -27,7 +53,8 @@ impl UiApp for App {
 #[allow(clippy::assert_is_empty)]
 fn capacity_zero_retains_nothing_and_changes_no_behavior() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(0));
-    let mut runtime = AppRuntime::<App>::mount_with_config(0, config);
+    let mut runtime = AppRuntime::<App>::mount_with_config(0, config)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     assert!(runtime.trace().is_empty());
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
     let _ = runtime
@@ -44,7 +71,8 @@ fn capacity_zero_retains_nothing_and_changes_no_behavior() {
 #[allow(clippy::assert_is_empty)]
 fn logical_trace_capacity_does_not_eagerly_reserve() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(usize::MAX));
-    let mut runtime = AppRuntime::<App>::mount_with_config(0, config);
+    let mut runtime = AppRuntime::<App>::mount_with_config(0, config)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
 
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
     let report = runtime
@@ -67,7 +95,8 @@ fn logical_trace_capacity_does_not_eagerly_reserve() {
 #[test]
 fn bounded_retention_evicts_oldest_and_advances_the_exclusive_watermark() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(3));
-    let mut runtime = AppRuntime::<App>::mount_with_config(0, config);
+    let mut runtime = AppRuntime::<App>::mount_with_config(0, config)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
@@ -86,7 +115,8 @@ fn bounded_retention_evicts_oldest_and_advances_the_exclusive_watermark() {
     );
 
     let one = RuntimeConfig::default().with_trace_config(TraceConfig::new(1));
-    let mut one_runtime = AppRuntime::<App>::mount_with_config(0, one);
+    let mut one_runtime = AppRuntime::<App>::mount_with_config(0, one)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     one_runtime
         .submit_action(())
         .unwrap_or_else(|_| unreachable!());
@@ -112,7 +142,8 @@ fn bounded_retention_evicts_oldest_and_advances_the_exclusive_watermark() {
 #[test]
 fn repeated_eviction_advances_exclusive_watermark_exactly() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(2));
-    let mut runtime = AppRuntime::<App>::mount_with_config(0, config);
+    let mut runtime = AppRuntime::<App>::mount_with_config(0, config)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let mut observed = Vec::new();
 
     for _ in 1..=4 {
@@ -138,7 +169,8 @@ fn repeated_eviction_advances_exclusive_watermark_exactly() {
 
 #[test]
 fn direct_submission_records_work_sequence_without_a_causal_parent() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = AppRuntime::<App>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let work = runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
     let acceptance = runtime
         .trace()
@@ -153,7 +185,8 @@ fn direct_submission_records_work_sequence_without_a_causal_parent() {
 
 #[test]
 fn routed_action_acceptance_links_target_collection_and_application_transaction() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = AppRuntime::<App>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -231,7 +264,8 @@ fn routed_action_acceptance_links_target_collection_and_application_transaction(
 }
 
 fn logical_record_order() -> Vec<TraceRecordKind> {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = AppRuntime::<App>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
     let _ = runtime
         .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
@@ -248,7 +282,8 @@ fn identical_logical_execution_has_identical_record_order() {
 
 #[test]
 fn shutdown_cancellation_is_visible_in_the_canonical_trace() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = AppRuntime::<App>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))

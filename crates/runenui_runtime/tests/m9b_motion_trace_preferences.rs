@@ -22,6 +22,29 @@ struct TransitionSnapTraceApp;
 macro_rules! timeline_trace_app {
     ($app:ty, $strategy:expr) => {
         impl UiApp for $app {
+            fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+                // The motion fixture has at most 1 mounted owners; timelines
+                // do not introduce scheduler tasks or application output.
+                runenui_core::ProducerBudget::new(1, 0)
+                    .with_reconciliation(1, 0, 1)
+                    .with_subscriptions(0, 0)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+            }
+
+            fn action_producer_budget(
+                _state: &Self::State,
+                _action: &Self::Action,
+            ) -> runenui_core::ProducerBudget {
+                runenui_core::ProducerBudget::new(1, 0)
+                    .with_reconciliation(1, 1, 1)
+                    .with_subscriptions(0, 0)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+            }
+
+            fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+                runenui_core::ProducerBudget::new(1, 0)
+            }
+
             type State = ();
             type Action = ();
             type HostProtocol = NoHostProtocol;
@@ -48,6 +71,29 @@ struct TransitionState {
 }
 
 impl UiApp for TransitionSnapTraceApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = TransitionState;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -235,7 +281,8 @@ fn observed_since<App: UiApp>(runtime: &AppRuntime<App>, start: usize) -> Vec<Ob
 
 #[test]
 fn hold_initial_trace_restarts_from_the_preference_change_instant() {
-    let mut runtime = AppRuntime::<HoldTraceApp>::mount(());
+    let mut runtime = AppRuntime::<HoldTraceApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let reduced = reduced_motion();
 
     let entered_at = runtime.trace().len();
@@ -302,7 +349,8 @@ fn hold_initial_trace_restarts_from_the_preference_change_instant() {
 
 #[test]
 fn finite_timeline_snap_to_end_traces_terminal_state_and_completed_retention() {
-    let mut runtime = AppRuntime::<SnapTraceApp>::mount(());
+    let mut runtime = AppRuntime::<SnapTraceApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let reduced = reduced_motion();
 
     let snapped_at = runtime.trace().len();
@@ -353,7 +401,8 @@ fn finite_timeline_snap_to_end_traces_terminal_state_and_completed_retention() {
 
 #[test]
 fn high_contrast_trace_is_independent_from_same_clock_motion_preference() {
-    let mut runtime = AppRuntime::<SuppressedTraceApp>::mount(());
+    let mut runtime = AppRuntime::<SuppressedTraceApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let high_contrast = high_contrast();
     publish(&mut runtime, &high_contrast);
 
@@ -418,7 +467,8 @@ fn high_contrast_trace_is_independent_from_same_clock_motion_preference() {
 #[test]
 fn transition_snap_to_end_traces_terminal_value_and_completion_atomically() {
     let mut runtime =
-        AppRuntime::<TransitionSnapTraceApp>::mount(TransitionState { transparent: false });
+        AppRuntime::<TransitionSnapTraceApp>::mount(TransitionState { transparent: false })
+            .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     publish(&mut runtime, &StyleEnvironment::default());
     dispatch_transition(&mut runtime);
 

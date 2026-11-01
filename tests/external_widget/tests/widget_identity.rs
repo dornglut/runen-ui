@@ -39,6 +39,22 @@ fn widget_identity_for_authored<App: UiApp>(
 struct PulseApp;
 
 impl UiApp for PulseApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One mapped leaf emits one activation action and no further work.
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+
     type State = usize;
     type Action = ParentAction;
     type HostProtocol = NoHostProtocol;
@@ -57,7 +73,8 @@ impl UiApp for PulseApp {
 
 #[test]
 fn concrete_widget_state_and_action_mapping_identity_are_mounted_and_stable() {
-    let mut runtime = AppRuntime::<PulseApp>::mount(0);
+    let mut runtime = AppRuntime::<PulseApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle_initial_mounted_declarations(&mut runtime);
     assert_eq!(
         widget_identity_for_authored(&mut runtime, "external.pulse"),
@@ -105,6 +122,22 @@ enum NestedAction {
 struct NestedMappingApp;
 
 impl UiApp for NestedMappingApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Recursive action mapping preserves the same one-leaf frontier.
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+
     type State = Option<NestedAction>;
     type Action = NestedAction;
     type HostProtocol = NoHostProtocol;
@@ -122,7 +155,8 @@ impl UiApp for NestedMappingApp {
 
 #[test]
 fn nested_recursive_mapping_preserves_non_clone_action_and_widget_state_identity() {
-    let mut runtime = AppRuntime::<NestedMappingApp>::mount(None);
+    let mut runtime = AppRuntime::<NestedMappingApp>::mount(None)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle_initial_mounted_declarations(&mut runtime);
     assert_eq!(
         widget_identity_for_authored(&mut runtime, "external.pulse"),
@@ -158,6 +192,22 @@ fn nested_recursive_mapping_preserves_non_clone_action_and_widget_state_identity
 struct GenericApp<T>(core::marker::PhantomData<T>);
 
 impl<T: core::fmt::Debug + Default + 'static> UiApp for GenericApp<T> {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // This generic leaf has no output, default or subscription callback.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -171,8 +221,10 @@ impl<T: core::fmt::Debug + Default + 'static> UiApp for GenericApp<T> {
 
 #[test]
 fn generic_external_widget_instantiations_have_distinct_mounted_type_identity() {
-    let mut u8_runtime = AppRuntime::<GenericApp<u8>>::mount(());
-    let mut u16_runtime = AppRuntime::<GenericApp<u16>>::mount(());
+    let mut u8_runtime = AppRuntime::<GenericApp<u8>>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
+    let mut u16_runtime = AppRuntime::<GenericApp<u16>>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let u8_identity = widget_identity_for_authored(&mut u8_runtime, "generic");
     let u16_identity = widget_identity_for_authored(&mut u16_runtime, "generic");
 

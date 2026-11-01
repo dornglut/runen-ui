@@ -26,7 +26,8 @@ pub(crate) struct MountedActivationOutput<Action> {
     pub(crate) outputs: WidgetActivationContextOutputs<Action>,
     pub(crate) state_changed: bool,
     pub(crate) overflowed: bool,
-    pub(crate) remaining_outputs: usize,
+    pub(crate) producer_violation: Option<runenui_core::ProducerContractViolation>,
+    pub(crate) used_outputs: usize,
 }
 
 #[cfg(test)]
@@ -123,6 +124,17 @@ impl<Action> MountedTree<Action> {
         output_allowance: usize,
         semantic_target: Option<SemanticActionTarget>,
     ) -> Result<MountedActivationOutput<Action>, WidgetBridgeError> {
+        let profile_allowance = self
+            .node(id)
+            .ok_or(WidgetBridgeError::StatePayloadMismatch)?
+            .widget
+            .producer_budget(
+                &self
+                    .node(id)
+                    .ok_or(WidgetBridgeError::StatePayloadMismatch)?
+                    .state,
+                runenui_core::WidgetProducerPhase::Activation,
+            )?;
         let node = self
             .node_mut(id)
             .ok_or(WidgetBridgeError::StatePayloadMismatch)?;
@@ -130,21 +142,17 @@ impl<Action> MountedTree<Action> {
             return Err(WidgetBridgeError::StatePayloadMismatch);
         }
         let mut context = WidgetActivationContext::__runtime_new_bounded_with_semantic_target(
-            output_allowance,
+            output_allowance.min(profile_allowance.outputs()),
             semantic_target,
         );
+        context.__runtime_set_work_starts(profile_allowance.work_starts());
         let activation = node.widget.activate(&mut node.state, &mut context)?;
         let invalidation = context.__runtime_take_invalidation();
         let subscription_invalidation = context.__runtime_take_subscription_invalidation();
         apply_invalidation(node, invalidation);
         let outputs = context.__runtime_take_activation_outputs();
         let state_changed = activation.state_changed();
-        let primary_action = activation
-            .into_action()
-            .filter(|_| context.__runtime_reserve_output());
-        let remaining_outputs = context
-            .__runtime_remaining_outputs()
-            .unwrap_or_else(|| unreachable!("activation context is bounded"));
+        let primary_action = activation.into_action();
         Ok(MountedActivationOutput {
             invalidation,
             subscription_invalidation,
@@ -152,7 +160,8 @@ impl<Action> MountedTree<Action> {
             outputs,
             state_changed,
             overflowed: context.__runtime_overflowed(),
-            remaining_outputs,
+            producer_violation: context.producer_violation(),
+            used_outputs: context.__runtime_used_outputs(),
         })
     }
 

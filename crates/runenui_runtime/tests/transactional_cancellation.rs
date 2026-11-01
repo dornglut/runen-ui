@@ -41,6 +41,30 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(2, 0, 0, 0, 0))
+            // Both provisional starts use one owner-local key; at most one
+            // generation remains resident after this atomic transaction.
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -107,7 +131,8 @@ fn run(action: Action) -> RunResult {
         old: Rc::clone(&old),
         first: Rc::clone(&first),
         second: Rc::clone(&second),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error:?}"));
     let _ = runtime
         .pump(PumpBudget::new(2, 0, 1, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -258,12 +283,31 @@ struct MountedCancellationWidget {
 }
 
 impl Widget<()> for MountedCancellationWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(2)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(2, 0, 0, 0, 0))
+            }
+            runenui_core::WidgetProducerPhase::Mount => runenui_core::WidgetProducerBudget::new(1)
+                .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0)),
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
 
     fn mount(&self, (): &mut Self::State, context: &mut WidgetMountContext<()>) {
-        context.keyed_local_task(key(), MountedPollProbe(Rc::clone(&self.old)));
+        let _ = context.try_keyed_local_task(key(), MountedPollProbe(Rc::clone(&self.old)));
     }
 
     fn activation(&self, (): &Self::State) -> WidgetActivation {
@@ -277,20 +321,24 @@ impl Widget<()> for MountedCancellationWidget {
     ) -> WidgetActivationOutput<()> {
         match self.mode {
             Action::CancelThenStart => {
-                context.cancel(WorkFamily::LocalTask, key());
-                context.keyed_local_task(key(), MountedPollProbe(Rc::clone(&self.first)));
+                let _ = context.try_cancel(WorkFamily::LocalTask, key());
+                let _ =
+                    context.try_keyed_local_task(key(), MountedPollProbe(Rc::clone(&self.first)));
             }
             Action::StartThenCancel => {
-                context.keyed_local_task(key(), MountedPollProbe(Rc::clone(&self.first)));
-                context.cancel(WorkFamily::LocalTask, key());
+                let _ =
+                    context.try_keyed_local_task(key(), MountedPollProbe(Rc::clone(&self.first)));
+                let _ = context.try_cancel(WorkFamily::LocalTask, key());
             }
             Action::StartThenReplace => {
-                context.keyed_local_task(key(), MountedPollProbe(Rc::clone(&self.first)));
-                context.keyed_local_task(key(), MountedPollProbe(Rc::clone(&self.second)));
+                let _ =
+                    context.try_keyed_local_task(key(), MountedPollProbe(Rc::clone(&self.first)));
+                let _ =
+                    context.try_keyed_local_task(key(), MountedPollProbe(Rc::clone(&self.second)));
             }
             Action::CancelTwice => {
-                context.cancel(WorkFamily::LocalTask, key());
-                context.cancel(WorkFamily::LocalTask, key());
+                let _ = context.try_cancel(WorkFamily::LocalTask, key());
+                let _ = context.try_cancel(WorkFamily::LocalTask, key());
             }
         }
         WidgetActivationOutput::none()
@@ -311,6 +359,32 @@ impl Future for MountedPollProbe {
 struct MountedCancellationApp;
 
 impl UiApp for MountedCancellationApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Each of two task starts emits one start record and reserves one exact
+        // completion/cancellation record. The activation output collector also
+        // accounts for both start requests.
+        runenui_core::ProducerBudget::new(6, 4)
+            .with_work_starts(runenui_core::WorkStartBudget::new(2, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
     type State = MountedCancellationWidget;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -337,7 +411,8 @@ fn run_mounted(action: Action) -> (Vec<(&'static str, u64)>, Vec<u64>, u64) {
         old: Rc::clone(&old),
         first,
         second,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(2, 0, 1, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -467,7 +542,8 @@ fn trace_retention_eviction_does_not_change_live_cancellation_authority() {
             second,
         },
         config,
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(2, 0, 1, 0))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -520,13 +596,31 @@ impl SendSubscriptionSource<Arc<u8>> for RetainedSinkSource {
 }
 
 impl Widget<UnmountAction> for BarrierWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0)
+                    .with_subscriptions(1)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(0, 1, 0, 0, 0))
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
 
     fn subscriptions(&self, (): &Self::State, subscriptions: &mut SubscriptionSet<UnmountAction>) {
         let mapped = Arc::clone(&self.mapped);
-        subscriptions.send(
+        let _ = subscriptions.try_send(
             WorkKey::new("unmount.barrier").unwrap_or_else(|_| unreachable!()),
             0,
             RetainedSinkSource {
@@ -556,6 +650,28 @@ struct UnmountState {
 struct UnmountApp;
 
 impl UiApp for UnmountApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 1, 0, 0, 0))
+            // One send-backed subscription, not a send-task registry record.
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 1, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = UnmountState;
     type Action = UnmountAction;
     type HostProtocol = NoHostProtocol;
@@ -596,7 +712,8 @@ fn assert_mounted_subscription_authority_is_stale_before_unmount(replace: bool) 
         barrier: Arc::clone(&barrier),
         sink: Arc::clone(&sink),
         mapped: Arc::clone(&mapped),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error:?}"));
     let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -657,13 +774,34 @@ struct TaskBarrierWidget {
 }
 
 impl Widget<UnmountAction> for TaskBarrierWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 1, 0, 0, 0)),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(0, 1, 0, 0, 0))
+            }
+            runenui_core::WidgetProducerPhase::Mount => runenui_core::WidgetProducerBudget::new(1)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 1, 0, 0, 0)),
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
 
     fn mount(&self, (): &mut Self::State, context: &mut WidgetMountContext<UnmountAction>) {
         let mapped = Arc::clone(&self.mapped);
-        context.send_task(async { 7_u8 }, move |_| {
+        let _ = context.try_send_task(async { 7_u8 }, move |_| {
             mapped.fetch_add(1, Ordering::SeqCst);
             UnmountAction::Item
         });
@@ -684,6 +822,30 @@ struct TaskUnmountState {
 struct TaskUnmountApp;
 
 impl UiApp for TaskUnmountApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Mount produces one send task. Its root frontier must also keep one
+        // outcome and one cancellation credit funded, alongside the dirty
+        // mounted-subscription owner retained by initial tree reconciliation.
+        runenui_core::ProducerBudget::new(4, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 1, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 1, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = TaskUnmountState;
     type Action = UnmountAction;
     type HostProtocol = NoHostProtocol;
@@ -739,7 +901,8 @@ fn mounted_send_task_completion_is_stale_during_unmount_callback() {
         mounted: true,
         barrier: Arc::clone(&barrier),
         mapped: Arc::clone(&mapped),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     runtime.set_send_task_executor(RetainingSendTaskExecutor(Arc::clone(&jobs)));
     let _ = runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))

@@ -20,6 +20,29 @@ use runenui_runtime::{
 struct TimelineApp;
 
 impl UiApp for TimelineApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -37,6 +60,29 @@ impl UiApp for TimelineApp {
 struct TimelineHandoffApp;
 
 impl UiApp for TimelineHandoffApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = Duration;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -66,6 +112,29 @@ enum CollisionAction {
 }
 
 impl UiApp for CollisionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = bool;
     type Action = CollisionAction;
     type HostProtocol = NoHostProtocol;
@@ -90,6 +159,29 @@ impl UiApp for CollisionApp {
 }
 
 impl UiApp for DuplicateIdApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = bool;
     type Action = CollisionAction;
     type HostProtocol = NoHostProtocol;
@@ -114,6 +206,29 @@ impl UiApp for DuplicateIdApp {
 }
 
 impl UiApp for OverflowApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = bool;
     type Action = CollisionAction;
     type HostProtocol = NoHostProtocol;
@@ -203,7 +318,8 @@ fn pump_one_action<App: UiApp>(runtime: &mut AppRuntime<App>) {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn explicit_timeline_uses_public_manual_time_and_reuses_unaffected_stages() {
-    let mut runtime = AppRuntime::<TimelineApp>::mount(());
+    let mut runtime = AppRuntime::<TimelineApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &environment);
@@ -236,7 +352,8 @@ fn explicit_timeline_uses_public_manual_time_and_reuses_unaffected_stages() {
 
 #[test]
 fn timeline_completion_hands_off_from_exact_terminal_sample() {
-    let mut runtime = AppRuntime::<TimelineHandoffApp>::mount(Duration::from_millis(100));
+    let mut runtime = AppRuntime::<TimelineHandoffApp>::mount(Duration::from_millis(100))
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &environment);
@@ -262,7 +379,8 @@ fn timeline_completion_hands_off_from_exact_terminal_sample() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn zero_duration_handoff_commits_style_target_in_the_same_candidate() {
-    let mut runtime = AppRuntime::<TimelineHandoffApp>::mount(Duration::ZERO);
+    let mut runtime = AppRuntime::<TimelineHandoffApp>::mount(Duration::ZERO)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &environment);
@@ -285,7 +403,8 @@ fn zero_duration_handoff_commits_style_target_in_the_same_candidate() {
 
 #[test]
 fn duplicate_target_rejection_does_not_advance_or_restart_retained_motion() {
-    let mut runtime = AppRuntime::<CollisionApp>::mount(false);
+    let mut runtime = AppRuntime::<CollisionApp>::mount(false)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
 
@@ -369,7 +488,8 @@ fn duplicate_target_rejection_does_not_advance_or_restart_retained_motion() {
 
 #[test]
 fn duplicate_animation_id_rejection_is_canonically_attributed_and_atomic() {
-    let mut runtime = AppRuntime::<DuplicateIdApp>::mount(false);
+    let mut runtime = AppRuntime::<DuplicateIdApp>::mount(false)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
 
@@ -426,7 +546,8 @@ fn duplicate_animation_id_rejection_is_canonically_attributed_and_atomic() {
 
 #[test]
 fn late_candidate_start_overflow_is_a_canonical_recoverable_planning_rejection() {
-    let mut runtime = AppRuntime::<OverflowApp>::mount(false);
+    let mut runtime = AppRuntime::<OverflowApp>::mount(false)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let initial = publish(&mut runtime, &environment);
@@ -497,7 +618,8 @@ fn late_candidate_start_overflow_is_a_canonical_recoverable_planning_rejection()
 #[cfg(feature = "internal-test-seams")]
 #[test]
 fn planning_rejection_diagnostic_does_not_consume_publication_reservation() {
-    let mut runtime = AppRuntime::<OverflowApp>::mount(false);
+    let mut runtime = AppRuntime::<OverflowApp>::mount(false)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let _ = publish(&mut runtime, &environment);
@@ -530,7 +652,8 @@ fn planning_rejection_diagnostic_does_not_consume_publication_reservation() {
 fn enabled_transition_policy_is_recorded_in_the_canonical_trace() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(128));
     let mut runtime =
-        AppRuntime::<TimelineHandoffApp>::mount_with_config(Duration::from_millis(100), config);
+        AppRuntime::<TimelineHandoffApp>::mount_with_config(Duration::from_millis(100), config)
+            .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
 
     let publication = publish(&mut runtime, &environment);

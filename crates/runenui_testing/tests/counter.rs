@@ -25,10 +25,11 @@ fn settle_budget() -> SettleBudget {
 
 fn counter_harness() -> TestHarness<CounterApp> {
     TestHarness::mount_with_config(
-        Counter::new(),
+        app::CounterAppState::new(Counter::new()),
         RuntimeConfig::default(),
         TestSurfaceConfig::default().with_style_environment(ui::style_environment()),
     )
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"))
 }
 
 #[test]
@@ -60,7 +61,7 @@ fn real_counter_uses_public_semantic_query_action_publication_and_replay() {
         harness.run_until_idle(settle_budget()).outcome(),
         SettleOutcome::Idle
     );
-    assert_eq!(harness.state().count, 1);
+    assert_eq!(harness.state().counter.count, 1);
 
     assert!(harness.publish().is_ok());
     let Some(publication) = harness.publication() else {

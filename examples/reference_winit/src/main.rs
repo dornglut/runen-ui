@@ -28,19 +28,20 @@ use runenui_core::{
     EditResolution, EditSelection, EditableContribution, EditingSessionPolicy, Element,
     EventContext, HitContribution, HitContributionContext, InputDeviceId, KeyModifiers,
     KeyboardEvent, LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
-    NoHostProtocol, OverflowPolicy, OverflowStyle, PointerEvent, SemanticAction, SemanticCommand,
-    SemanticContribution, SemanticEditable, SemanticNodeContribution, SemanticRole, SemanticState,
-    StyleEnvironment, SurfaceInputContext, TextAffinity, TextDocumentId, TextDocumentRevision,
-    TextDocumentSnapshot, TextSelection, TextSensitivity, UiApp, UiEvent, UpdateOutput, View,
-    Widget, WidgetActivation, WidgetMeasure, WidgetTextInput,
+    NoHostProtocol, OverflowPolicy, OverflowStyle, PointerEvent, ProducerBudget, SemanticAction,
+    SemanticCommand, SemanticContribution, SemanticEditable, SemanticNodeContribution,
+    SemanticRole, SemanticState, StyleEnvironment, SurfaceInputContext, TextAffinity,
+    TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextSelection, TextSensitivity,
+    UiApp, UiEvent, UpdateOutput, View, Widget, WidgetActivation, WidgetMeasure,
+    WidgetProducerBudget, WidgetProducerPhase, WidgetTextInput,
 };
 use runenui_render_wgpu::{
     PublicationRenderError, Renderer, RendererOptions, ResourcePayload, ResourceProvider,
     ResourceProviderError, ResourceProviderErrorKind, ResourceRequest,
 };
 use runenui_runtime::{
-    AppRuntime, PumpBudget, RedrawRequest, SubmitCompositionErrorKind, SubmitKeyboardErrorKind,
-    SubmitTextErrorKind, SurfaceBuildContext, SurfacePublication,
+    AppRuntime, InitialAdmissionError, PumpBudget, RedrawRequest, SubmitCompositionErrorKind,
+    SubmitKeyboardErrorKind, SubmitTextErrorKind, SurfaceBuildContext, SurfacePublication,
 };
 use runenui_winit::accessibility::{AccessibilityEvent, SemanticAdapter};
 use runenui_winit::device_identity::{DeviceIdentityError, DeviceIdentityMap};
@@ -358,6 +359,17 @@ struct DemoSurface {
 impl Widget<DemoAction> for DemoSurface {
     type State = ();
 
+    fn producer_budget(
+        &self,
+        phase: WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> WidgetProducerBudget {
+        match phase {
+            WidgetProducerPhase::Event => WidgetProducerBudget::new(1),
+            _ => WidgetProducerBudget::new(0),
+        }
+    }
+
     fn create_state(&self) -> Self::State {}
 
     fn activation(&self, _state: &Self::State) -> WidgetActivation {
@@ -422,7 +434,7 @@ impl Widget<DemoAction> for DemoSurface {
         {
             // Dropped file names remain host-owned; the reference editor only
             // exercises exact-target admission and never opens or reads them.
-            context.accept_drag_drop();
+            let _ = context.try_accept_drag_drop();
         }
         runenui_core::WidgetEventOutput::none()
     }
@@ -583,6 +595,36 @@ impl UiApp for DemoApp {
         state.revision = next_revision;
         state.selection_seed = next_selection;
         UpdateOutput::edit(resolution)
+    }
+
+    fn initial_producer_budget(_state: &Self::State) -> ProducerBudget {
+        // Initial admission mounts the fixed editor owner and queues its first
+        // subscription reconciliation. The app and widget declare no effects,
+        // subscriptions, or work starts.
+        ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(_state: &Self::State, _action: &Self::Action) -> ProducerBudget {
+        // One Edit updates the app state and reconciles the same single editor
+        // owner. It creates no child actions, subscriptions, or work starts.
+        ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> ProducerBudget {
+        // The single editor has one event output per callback. Cover ordinary
+        // routing and all four focus-notification allowances, edit/default
+        // outputs, and clipboard/IME starts with their terminal credits.
+        ProducerBudget::new(16, 10)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
     }
 
     fn trace_action_label(_action: &Self::Action) -> Option<&'static str> {
@@ -761,9 +803,11 @@ struct ReferenceHost {
 }
 
 impl ReferenceHost {
-    #[must_use]
-    fn new(proxy: EventLoopProxy<HostEvent>, state: DemoState) -> Self {
-        let (runtime, trace_sink) = proof_trace::mount::<DemoApp>(state, proof_enabled());
+    fn new(
+        proxy: EventLoopProxy<HostEvent>,
+        state: DemoState,
+    ) -> Result<Self, InitialAdmissionError<DemoState>> {
+        let (runtime, trace_sink) = proof_trace::mount::<DemoApp>(state, proof_enabled())?;
         let wake_proxy = proxy.clone();
         runtime.set_wake_transport(move || {
             let _ = wake_proxy.send_event(HostEvent::Wake);
@@ -802,7 +846,7 @@ impl ReferenceHost {
             native_release_retry_at: None,
         };
         host.drain_runtime_trace();
-        host
+        Ok(host)
     }
 
     fn drain_runtime_trace(&self) {
@@ -2861,10 +2905,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_loop = EventLoop::<HostEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
-    let mut host = ReferenceHost::new(proxy, preset.initial_state());
+    let mut host = match ReferenceHost::new(proxy, preset.initial_state()) {
+        Ok(host) => host,
+        Err(error) => {
+            eprintln!(
+                "reference_winit refused initial runtime admission ({:?}): {error}",
+                error.kind()
+            );
+            // Keep the exact unaccepted state and configuration inside the
+            // returned error so an embedding caller can correct the profile
+            // or capacity and retry. This executable has no safe automatic
+            // correction for sequence or identity exhaustion.
+            return Err(Box::new(error));
+        }
+    };
     event_loop.run_app(&mut host)?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+fn mount_demo_runtime_for_test(state: DemoState) -> AppRuntime<DemoApp> {
+    AppRuntime::<DemoApp>::mount(state)
+        .unwrap_or_else(|_| unreachable!("reference demo runtime admission is valid"))
+}
+
+#[cfg(test)]
+fn mount_demo_runtime_with_config_for_test(
+    state: DemoState,
+    config: runenui_runtime::RuntimeConfig,
+) -> AppRuntime<DemoApp> {
+    AppRuntime::<DemoApp>::mount_with_config(state, config)
+        .unwrap_or_else(|_| unreachable!("reference demo runtime admission is valid"))
+}

@@ -20,6 +20,22 @@ enum Action {
 #[derive(Debug)]
 struct TreeRoot;
 impl Widget<Action> for TreeRoot {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn semantics(
@@ -40,6 +56,22 @@ impl ChildBearingWidget<Action> for TreeRoot {}
 #[derive(Debug)]
 struct Branch;
 impl Widget<Action> for Branch {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn semantics(
@@ -78,6 +110,22 @@ struct Leaf {
     selected: bool,
 }
 impl Widget<Action> for Leaf {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = bool;
     fn create_state(&self) -> Self::State {
         self.selected
@@ -122,6 +170,33 @@ impl Widget<Action> for Leaf {
 }
 struct CustomTree;
 impl UiApp for CustomTree {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 4, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 1)
+            .with_reconciliation(4, 4, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = String;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -179,7 +254,8 @@ fn settle(runtime: &mut AppRuntime<CustomTree>) {
 
 #[test]
 fn custom_tree_uses_exact_public_hierarchy_focus_and_domain_selection() {
-    let mut runtime = AppRuntime::<CustomTree>::mount("domain-alpha".into());
+    let mut runtime = AppRuntime::<CustomTree>::mount("domain-alpha".into())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     let branch_id = runenui_core::ElementId::new("custom.branch")
         .unwrap_or_else(|_| unreachable!("valid authoring ID"));

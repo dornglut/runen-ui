@@ -14,6 +14,9 @@ use runenui_runtime::{
 
 const FULL: PumpBudget = PumpBudget::new(64, 64, 64, 64);
 const ONE: PumpBudget = PumpBudget::new(1, 0, 0, 0);
+// TreeView focus routing costs 33 outputs: five on the command route plus
+// four focus-notification passes over its root and two three-output items.
+const FOCUS_COMMAND_OUTPUTS: usize = 33;
 
 #[derive(Clone, Copy, Debug)]
 enum Control {
@@ -40,6 +43,43 @@ struct State {
 
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let mounted_nodes = match state.control {
+            Control::Menu => 4,
+            Control::MenuBar | Control::ListBox | Control::TabList | Control::Toolbar => 3,
+            Control::TreeView => 5,
+        };
+        runenui_core::ProducerBudget::new(mounted_nodes, 0)
+            .with_reconciliation(mounted_nodes, 0, mounted_nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let mounted_nodes = match state.control {
+            Control::Menu => 4,
+            Control::TreeView => 5,
+            _ => 3,
+        };
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(mounted_nodes, 0, mounted_nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let mounted_nodes = match state.control {
+            Control::Menu => 4,
+            Control::TreeView => 5,
+            _ => 3,
+        };
+        runenui_core::ProducerBudget::new(FOCUS_COMMAND_OUTPUTS, FOCUS_COMMAND_OUTPUTS)
+            .with_reconciliation(mounted_nodes, 0, mounted_nodes)
+    }
+
     type State = State;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -129,7 +169,10 @@ fn runtime(control: Control, trace_capacity: usize, focused: &str) -> AppRuntime
             activations: 0,
         },
         RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
-    );
+    )
+    .unwrap_or_else(|error| {
+        unreachable!("fixture initial {control:?} admission must succeed: {error:?}")
+    });
     runtime.pump(FULL).unwrap_or_else(|_| unreachable!("mount"));
     let environment = StyleEnvironment::default();
     let context = SurfaceBuildContext::tight(
@@ -149,7 +192,7 @@ fn runtime(control: Control, trace_capacity: usize, focused: &str) -> AppRuntime
             SemanticCommand::RequestFocus,
             CommandOrigin::programmatic(),
         )
-        .unwrap_or_else(|_| unreachable!("menu focus admission"));
+        .unwrap_or_else(|error| unreachable!("menu focus admission: {:?}", error.kind()));
     runtime
         .pump(FULL)
         .unwrap_or_else(|_| unreachable!("menu focus"));

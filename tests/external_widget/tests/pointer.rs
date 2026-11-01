@@ -51,6 +51,23 @@ struct ExternalPointerWidget {
 }
 
 impl Widget<ChildAction> for ExternalPointerWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -64,7 +81,7 @@ impl Widget<ChildAction> for ExternalPointerWidget {
         let observation = match event {
             UiEvent::Pointer(pointer) => {
                 if pointer.phase() == PointerPhase::Down {
-                    context.capture_pointer();
+                    let _ = context.try_capture_pointer();
                 }
                 Observation::Pointer {
                     phase: pointer.phase(),
@@ -138,6 +155,35 @@ fn presentation(translation: f32, singular: bool) -> PresentationTransform {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(0, 1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Ordinary/boundary routing plus four deferred capture callbacks can
+        // contribute six outputs. A wheel/Up default and cursor add two more.
+        // Those six callbacks, one queued default, two cursor outcome pairs
+        // and protected continuation access require twelve frontier credits.
+        runenui_core::ProducerBudget::new(12, 8)
+            .with_application_outputs(0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -186,19 +232,15 @@ fn pointer_event(
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
-    assert!(
-        runtime
-            .pump(PumpBudget::new(
-                usize::MAX,
-                usize::MAX,
-                usize::MAX,
-                usize::MAX,
-            ))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .is_quiescent()
-    );
+    let batch = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("pump observation"));
+    assert!(batch.report().is_quiescent(), "pump did not settle");
 }
 
 #[test]
@@ -238,8 +280,10 @@ fn assert_captured_close_outside_hit(close_phase: PointerPhase, trace_disabled: 
             runenui_runtime::RuntimeConfig::default()
                 .with_trace_config(runenui_runtime::TraceConfig::new(0)),
         )
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"))
     } else {
         AppRuntime::<App>::mount(state)
+            .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"))
     };
     settle(&mut runtime);
     let env = StyleEnvironment::default();
@@ -329,7 +373,8 @@ fn downstream_widget_uses_public_pointer_capture_boundary_and_wheel_protocol() {
         observations: Rc::clone(&observations),
         translation: 0.0,
         singular: false,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     let style_environment = StyleEnvironment::default();
     let publication = runtime
@@ -431,7 +476,8 @@ fn pointer_local_position_uses_retained_capture_geometry_and_rejects_singular_tr
         observations: Rc::clone(&observations),
         translation: 10.0,
         singular: false,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     let style_environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(

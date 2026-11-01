@@ -8,6 +8,30 @@ use runenui_runtime::{AppRuntime, DuplicateIdentityKind};
 
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has at most 5 initial owners and no callback output.
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 5, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 5)
+            .with_application_outputs(0)
+            .with_reconciliation(5, 5, 5)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -27,7 +51,8 @@ impl UiApp for App {
 
 #[test]
 fn authored_duplicates_are_deterministic_in_mounted_preorder() {
-    let mut runtime = AppRuntime::<App>::mount(());
+    let mut runtime = AppRuntime::<App>::mount(())
+        .unwrap_or_else(|_| unreachable!("identity diagnostics fixture admission is valid"));
     let index = runtime.index();
     assert_eq!(index.nodes().len(), 5);
     let exact: Vec<_> = index

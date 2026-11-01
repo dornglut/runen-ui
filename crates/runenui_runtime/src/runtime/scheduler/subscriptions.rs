@@ -11,6 +11,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         sequence: WorkSequence,
         owner: &MountedNodeId,
         causal_parent: Option<TraceSequence>,
+        root_quota: Option<crate::queue::RootQuotaId>,
     ) {
         self.mounted_subscription_reconcile_pending
             .retain(|pending| pending != owner);
@@ -30,22 +31,124 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.cancel_owner_work(&WorkOwner::Mounted(owner.clone()));
             return;
         }
-        let mut subscriptions = SubscriptionSet::new();
-        if self
-            .tree
-            .declare_subscriptions(owner, &mut subscriptions)
-            .is_err()
-        {
-            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
-            return;
-        }
-        let declarations = subscriptions.__runtime_into_declarations();
+        let declarations = if let Some(declarations) = self.tree.take_initial_subscriptions(owner) {
+            declarations
+        } else {
+            let Ok(widget_budget) = self.tree.subscriptions_budget(owner) else {
+                self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                return;
+            };
+            let mut subscriptions = match root_quota {
+                Some(root) => match self.queue.root_profile(root) {
+                    Some(profile)
+                        if widget_budget.subscription_declarations()
+                            <= profile.mounted_subscriptions_per_owner() =>
+                    {
+                        SubscriptionSet::__runtime_new_bounded(
+                            widget_budget.subscription_declarations(),
+                        )
+                    }
+                    Some(_) | None => {
+                        self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                        return;
+                    }
+                },
+                None => SubscriptionSet::__runtime_new_bounded(
+                    widget_budget.subscription_declarations(),
+                ),
+            };
+            subscriptions.__runtime_set_widget_budget(widget_budget.work_starts());
+            if self
+                .tree
+                .declare_subscriptions(owner, &mut subscriptions)
+                .is_err()
+            {
+                self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                return;
+            }
+            if let Some(cause) = subscriptions.producer_violation() {
+                self.enter_terminal(RuntimeTerminalReason::ProducerContractViolation(cause), 0);
+                return;
+            }
+            if subscriptions.__runtime_overflowed() {
+                self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                return;
+            }
+            let declarations = subscriptions.__runtime_into_declarations();
+            let mut local_tasks = 0usize;
+            let mut send_tasks = 0usize;
+            for declaration in &declarations {
+                match &declaration.source {
+                    runenui_core::__runtime::SubscriptionSource::Local(_) => {
+                        let Some(count) = local_tasks.checked_add(1) else {
+                            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                            return;
+                        };
+                        local_tasks = count;
+                    }
+                    runenui_core::__runtime::SubscriptionSource::Send { .. } => {
+                        let Some(count) = send_tasks.checked_add(1) else {
+                            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                            return;
+                        };
+                        send_tasks = count;
+                    }
+                }
+            }
+            let starts = widget_budget.work_starts();
+            if local_tasks > starts.for_family(runenui_core::WorkFamily::LocalTask)
+                || send_tasks > starts.for_family(runenui_core::WorkFamily::SendTask)
+            {
+                self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                return;
+            }
+            declarations
+        };
         self.reconcile_subscriptions(
             &WorkOwner::Mounted(owner.clone()),
             declarations,
             Some(sequence),
             causal_parent,
+            root_quota,
         );
+    }
+
+    pub(in crate::runtime) fn validate_subscription_residency(
+        &self,
+        root: Option<crate::queue::RootQuotaId>,
+        invalidated: &[crate::work::WorkGeneration],
+        starts: usize,
+        phase: runenui_core::ProducerPhase,
+    ) -> Result<(), RuntimeTerminalReason> {
+        let Some(root) = root else {
+            return Ok(());
+        };
+        let invalidated = invalidated.iter().copied().collect();
+        let required = self
+            .work
+            .resident_family_requirement(
+                crate::work::WorkFamily::Subscription,
+                &invalidated,
+                starts,
+                Some(root),
+            )
+            .ok_or(RuntimeTerminalReason::Poisoned)?;
+        let declared = self
+            .queue
+            .root_work_residency(root, crate::work::WorkFamily::Subscription)
+            .ok_or(RuntimeTerminalReason::Poisoned)?;
+        if required > declared {
+            return Err(RuntimeTerminalReason::ProducerContractViolation(
+                runenui_core::ProducerContractViolation {
+                    kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                    phase,
+                    component: runenui_core::BudgetComponent::SubscriptionResidency,
+                    declared,
+                    attempted: Some(required),
+                },
+            ));
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines)]
@@ -55,23 +158,42 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         declarations: Vec<Subscription<Action>>,
         work_sequence: Option<WorkSequence>,
         transaction_parent: Option<TraceSequence>,
+        root_quota: Option<crate::queue::RootQuotaId>,
     ) {
         let SubscriptionDiff {
             invalidated,
             starts,
             duplicate_keys,
         } = self.derive_subscription_diff(owner, declarations);
+        if let Err(reason) = self.validate_subscription_residency(
+            root_quota,
+            &invalidated,
+            starts.len(),
+            runenui_core::ProducerPhase::Widget(runenui_core::WidgetProducerPhase::Subscriptions),
+        ) {
+            self.enter_terminal(reason, 0);
+            return;
+        }
         let invalidated_set: HashSet<_> = invalidated.iter().copied().collect();
         let Ok((generations, next_generation)) = self.work.preview_generations(starts.len()) else {
             self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
             return;
         };
         let sequenced = invalidated.len().checked_add(starts.len());
-        if sequenced.is_none_or(|count| self.queue.preflight_commit(count).is_err())
-            || self
-                .work
-                .preflight_subscriptions(&invalidated_set, starts.len())
-                .is_err()
+        if sequenced.is_none_or(|count| {
+            root_quota.map_or_else(
+                || self.queue.preflight_commit(count).is_err(),
+                |root| self.queue.preflight_root_commit(root, count).is_err(),
+            )
+        }) || self
+            .work
+            .preflight_subscriptions(&invalidated_set, starts.len(), &self.queue, root_quota)
+            .is_err()
+            || root_quota.is_some_and(|root| {
+                self.queue
+                    .preflight_root_work_leases(root, starts.len())
+                    .is_err()
+            })
         {
             self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
             return;
@@ -119,8 +241,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let start_generations = generations.clone();
         for (generation, declaration) in generations.into_iter().zip(starts) {
             let key = declaration.key.clone();
+            if let Some(root_quota) = root_quota {
+                self.queue
+                    .retain_root_work_lease(root_quota)
+                    .unwrap_or_else(|_| unreachable!("subscription root leases were preflighted"));
+            }
             self.work
-                .commit_subscription_record(generation, owner.clone(), key);
+                .commit_subscription_record(generation, owner.clone(), key, root_quota);
             self.subscriptions.push(LiveSubscription::new(
                 generation,
                 owner.clone(),
@@ -143,14 +270,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .get(&generation.get())
                 .cloned()
                 .unwrap_or_else(|| unreachable!("cancelled subscription retains trace lineage"));
-            self.queue
-                .push_cancellation(generation, identity, parent)
-                .unwrap_or_else(|_| unreachable!("subscription diff was preflighted"));
+            if let Some(root_quota) = root_quota {
+                self.queue
+                    .push_cancellation_rooted(generation, identity, parent, root_quota)
+                    .unwrap_or_else(|_| unreachable!("subscription root quota was preflighted"));
+            } else {
+                self.queue
+                    .push_cancellation(generation, identity, parent)
+                    .unwrap_or_else(|_| unreachable!("subscription diff was preflighted"));
+            }
         }
         for generation in start_generations {
-            self.queue
-                .push_effect_start(generation)
-                .unwrap_or_else(|_| unreachable!("subscription diff was preflighted"));
+            if let Some(root_quota) = root_quota {
+                self.queue
+                    .push_effect_start_rooted(generation, root_quota)
+                    .unwrap_or_else(|_| unreachable!("subscription root quota was preflighted"));
+            } else {
+                self.queue
+                    .push_effect_start(generation)
+                    .unwrap_or_else(|_| unreachable!("subscription diff was preflighted"));
+            }
         }
     }
 

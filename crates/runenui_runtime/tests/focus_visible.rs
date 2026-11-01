@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use runenui_core::{
     Brush, Color, CommandOrigin, Element, ElementId, FocusScope, HitContribution,
@@ -23,7 +35,37 @@ enum Action {
 
 struct App;
 
+impl App {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // This fixed view has 4 mounted owners and event allowances at most
+        // one per callback. Cover four focus and two ordinary-route visits,
+        // activation/default outputs, and reconciliation across every state.
+        runenui_core::ProducerBudget::new(31, 26)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            // Pointer routes synchronize one cursor service; this fixture has
+            // no editable session or drag/drop offer.
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+}
+
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = ();
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -53,6 +95,22 @@ impl UiApp for App {
 struct TextInputProbe;
 
 impl<AnyAction> Widget<AnyAction> for TextInputProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -98,14 +156,27 @@ fn settle<Application: UiApp>(runtime: &mut AppRuntime<Application>) {
             .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned()
-            .is_quiescent()
+            .is_quiescent(),
+        "status={:?}; recent trace={:?}",
+        runtime.status(),
+        runtime
+            .trace()
+            .records()
+            .skip(runtime.trace().len().saturating_sub(12))
+            .collect::<Vec<_>>()
     );
 }
 
-fn mount() -> AppRuntime<App> {
-    let mut runtime = AppRuntime::<App>::mount(());
+fn mount() -> Option<AppRuntime<App>> {
+    let result = AppRuntime::<App>::mount(());
+    assert!(
+        result.is_ok(),
+        "runtime mount rejected: {:?}",
+        result.as_ref().err()
+    );
+    let Ok(mut runtime) = result else { return None };
     settle(&mut runtime);
-    runtime
+    Some(runtime)
 }
 
 fn mounted_id<Application: UiApp>(
@@ -199,13 +270,13 @@ fn pointer_focus<Application: UiApp>(
 
 #[test]
 fn pointer_focus_is_hidden_for_button_but_visible_for_custom_text_input() {
-    let mut app = mount();
+    let Some(mut app) = mount() else { return };
     let ordinary = mounted_id(&mut app, "ordinary");
     pointer_focus(&mut app, "ordinary", 1);
     assert_eq!(app.focus().focused_node(), Some(&ordinary));
     assert!(!app.focus().focus_visible());
 
-    let mut custom = mount();
+    let Some(mut custom) = mount() else { return };
     let editable = mounted_id(&mut custom, "editable");
     pointer_focus(&mut custom, "editable", 2);
     assert_eq!(custom.focus().focused_node(), Some(&editable));
@@ -214,7 +285,7 @@ fn pointer_focus_is_hidden_for_button_but_visible_for_custom_text_input() {
 
 #[test]
 fn source_aware_transfers_and_stable_owner_promotion_are_distinct() {
-    let mut app = mount();
+    let Some(mut app) = mount() else { return };
     let ordinary = mounted_id(&mut app, "ordinary");
     let other = mounted_id(&mut app, "other");
 
@@ -225,7 +296,7 @@ fn source_aware_transfers_and_stable_owner_promotion_are_distinct() {
     assert!(app.focus().focus_visible());
 
     // Pointer-acquired focus is hidden and programmatic transfer inherits hidden.
-    let mut hidden = mount();
+    let Some(mut hidden) = mount() else { return };
     let first = mounted_id(&mut hidden, "ordinary");
     let next = mounted_id(&mut hidden, "other");
     pointer_focus(&mut hidden, "ordinary", 3);
@@ -273,19 +344,19 @@ fn source_aware_transfers_and_stable_owner_promotion_are_distinct() {
 #[test]
 fn nonpointing_focus_sources_and_automation_inheritance_use_canonical_modality() {
     for origin in [CommandOrigin::controller(), CommandOrigin::accessibility()] {
-        let mut app = mount();
+        let Some(mut app) = mount() else { return };
         let ordinary = mounted_id(&mut app, "ordinary");
         focus(&mut app, &ordinary, origin);
         assert!(app.focus().focus_visible());
     }
 
-    let mut app = mount();
+    let Some(mut app) = mount() else { return };
     let ordinary = mounted_id(&mut app, "ordinary");
     focus(&mut app, &ordinary, CommandOrigin::automation());
     assert!(app.focus().focus_visible());
 
     // Automation does not invent visible indication when transferring hidden focus.
-    let mut app = mount();
+    let Some(mut app) = mount() else { return };
     let other = mounted_id(&mut app, "other");
     pointer_focus(&mut app, "ordinary", 9);
     assert!(!app.focus().focus_visible());
@@ -295,7 +366,7 @@ fn nonpointing_focus_sources_and_automation_inheritance_use_canonical_modality()
 
 #[test]
 fn semantic_action_request_focus_uses_accessibility_ingress_and_typed_trace() {
-    let mut app = mount();
+    let Some(mut app) = mount() else { return };
     let environment = StyleEnvironment::default();
     let size =
         LogicalSize::try_new(260.0, 180.0).unwrap_or_else(|_| unreachable!("finite surface"));
@@ -327,7 +398,7 @@ fn semantic_action_request_focus_uses_accessibility_ingress_and_typed_trace() {
 
 #[test]
 fn shutdown_clears_focus_indication_with_real_focus_authority() {
-    let mut app = mount();
+    let Some(mut app) = mount() else { return };
     let ordinary = mounted_id(&mut app, "ordinary");
     focus(&mut app, &ordinary, CommandOrigin::controller());
     assert!(app.focus().focus_visible());
@@ -339,7 +410,7 @@ fn shutdown_clears_focus_indication_with_real_focus_authority() {
 
 #[test]
 fn keyboard_traversal_promotes_pointer_focus_and_tracks_canonical_target() {
-    let mut app = mount();
+    let Some(mut app) = mount() else { return };
     pointer_focus(&mut app, "ordinary", 12);
     assert!(!app.focus().focus_visible());
     let event = KeyboardEvent::new(
@@ -361,7 +432,7 @@ fn keyboard_traversal_promotes_pointer_focus_and_tracks_canonical_target() {
 
 #[test]
 fn pointer_activity_does_not_demote_visible_focus_without_owner_transfer() {
-    let mut app = mount();
+    let Some(mut app) = mount() else { return };
     let ordinary = mounted_id(&mut app, "ordinary");
     pointer_focus(&mut app, "ordinary", 13);
     assert!(!app.focus().focus_visible());
@@ -393,7 +464,34 @@ fn pointer_activity_does_not_demote_visible_focus_without_owner_transfer() {
 
 struct DisabledApp;
 
+impl DisabledApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // This fixed view has 1 mounted owners and event allowances at most
+        // one per callback. Cover four focus and two ordinary-route visits,
+        // activation/default outputs, and reconciliation across every state.
+        runenui_core::ProducerBudget::new(10, 8)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+}
+
 impl UiApp for DisabledApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = bool;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -412,7 +510,7 @@ impl UiApp for DisabledApp {
 
 #[test]
 fn disablement_retires_focus_and_its_visibility_latch_together() {
-    let mut app = AppRuntime::<DisabledApp>::mount(true);
+    let mut app = admitted!(AppRuntime::<DisabledApp>::mount(true));
     let id = ElementId::new("retire").unwrap_or_else(|_| unreachable!("known id"));
     let target = app
         .index()
@@ -453,7 +551,35 @@ fn disablement_retires_focus_and_its_visibility_latch_together() {
 
 struct RestoreApp;
 
+impl RestoreApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // This fixed view has 4 mounted owners and event allowances at most
+        // one per callback. Cover four focus and two ordinary-route visits,
+        // activation/default outputs, and reconciliation across every state.
+        runenui_core::ProducerBudget::new(31, 26)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+}
+
 impl UiApp for RestoreApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -481,7 +607,7 @@ impl UiApp for RestoreApp {
 
 #[test]
 fn remembered_restoration_obeys_canonical_source_not_focus_reason() {
-    let mut app = AppRuntime::<RestoreApp>::mount(());
+    let mut app = admitted!(AppRuntime::<RestoreApp>::mount(()));
     settle(&mut app);
     let inner = mounted_id(&mut app, "remember");
     let outer = mounted_id(&mut app, "outside");
@@ -525,7 +651,35 @@ fn remembered_restoration_obeys_canonical_source_not_focus_reason() {
 
 struct StyledApp;
 
+impl StyledApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // This fixed view has 3 mounted owners and event allowances at most
+        // one per callback. Cover four focus and two ordinary-route visits,
+        // activation/default outputs, and reconciliation across every state.
+        runenui_core::ProducerBudget::new(24, 20)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+}
+
 impl UiApp for StyledApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -624,7 +778,7 @@ fn stable_owner_promotion_republishes_focus_visible_recipe_without_focus_transfe
     let size =
         LogicalSize::try_new(240.0, 100.0).unwrap_or_else(|_| unreachable!("finite publication"));
     let context = SurfaceBuildContext::tight(&environment, size);
-    let mut app = AppRuntime::<StyledApp>::mount(());
+    let mut app = admitted!(AppRuntime::<StyledApp>::mount(()));
     settle(&mut app);
 
     let initial = app

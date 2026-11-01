@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -111,6 +123,23 @@ struct InteractionProbe {
 }
 
 impl Widget<InteractionAction> for InteractionProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(3),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -127,7 +156,7 @@ impl Widget<InteractionAction> for InteractionProbe {
         if let Some(command) = event.as_semantic_command() {
             match command.command() {
                 SemanticCommand::PresentationDismiss(reason) => {
-                    event_context.emit(InteractionAction::Dismissed {
+                    let _ = event_context.try_emit(InteractionAction::Dismissed {
                         name: self.name,
                         reason,
                     });
@@ -140,7 +169,7 @@ impl Widget<InteractionAction> for InteractionProbe {
         }
         if let UiEvent::Pointer(pointer) = event {
             if self.capture_on_down && pointer.phase() == PointerPhase::Down {
-                event_context.capture_pointer();
+                let _ = event_context.try_capture_pointer();
             }
             if self.capture_on_down && pointer.phase() == PointerPhase::Move {
                 self.moves.borrow_mut().push((
@@ -149,7 +178,7 @@ impl Widget<InteractionAction> for InteractionProbe {
                 ));
             }
             if self.outside && pointer.phase() == PointerPhase::Down {
-                event_context.emit(InteractionAction::OutsidePressed);
+                let _ = event_context.try_emit(InteractionAction::OutsidePressed);
             }
         }
         WidgetEventOutput::none()
@@ -220,6 +249,38 @@ fn presentation_probe(
 }
 
 impl UiApp for InteractionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Across reachable states, this tree has at most 6 mounted owners.
+        runenui_core::ProducerBudget::new(6, 0)
+            .with_reconciliation(6, 0, 6)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Pure app reconciliation can mount the bounded owner set and queue
+        // one restoration command when its presentation retires.
+        runenui_core::ProducerBudget::new(7, 0)
+            .with_reconciliation(6, 6, 6)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event budgets sum to 9 across the authored owners. Bound two
+        // ordinary route passes, two boundary passes, four focus passes,
+        // and four activation/default outputs. Keep owner reconciliation
+        // and one cursor service outcome/cancel pair in the same frontier.
+        runenui_core::ProducerBudget::new(85, 76)
+            .with_application_outputs(0)
+            .with_reconciliation(6, 6, 6)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = InteractionState;
     type Action = InteractionAction;
     type HostProtocol = NoHostProtocol;
@@ -314,9 +375,9 @@ fn outside_down(runtime: &mut AppRuntime<InteractionApp>) {
 
 #[test]
 fn outside_pointer_policies_are_exact_and_never_click_through_after_dismissal() {
-    let mut ignore = AppRuntime::<InteractionApp>::mount(interaction_state(
+    let mut ignore = admitted!(AppRuntime::<InteractionApp>::mount(interaction_state(
         PresentationOutsidePointerPolicy::Ignore,
-    ));
+    )));
     outside_down(&mut ignore);
     assert_eq!(ignore.state().outside_presses, 1);
     assert_eq!(ignore.state().dismissals.len(), 0);
@@ -326,17 +387,17 @@ fn outside_pointer_policies_are_exact_and_never_click_through_after_dismissal() 
         "Ignore + nonmodal + default Preserve must permit a Tooltip-style nonfocusable presentation without proxy focus"
     );
 
-    let mut block = AppRuntime::<InteractionApp>::mount(interaction_state(
+    let mut block = admitted!(AppRuntime::<InteractionApp>::mount(interaction_state(
         PresentationOutsidePointerPolicy::Block,
-    ));
+    )));
     outside_down(&mut block);
     assert_eq!(block.state().outside_presses, 0);
     assert_eq!(block.state().dismissals.len(), 0);
     assert!(block.state().a.open);
 
-    let mut dismiss = AppRuntime::<InteractionApp>::mount(interaction_state(
+    let mut dismiss = admitted!(AppRuntime::<InteractionApp>::mount(interaction_state(
         PresentationOutsidePointerPolicy::DismissAndBlock,
-    ));
+    )));
     outside_down(&mut dismiss);
     assert_eq!(dismiss.state().outside_presses, 0);
     assert_eq!(
@@ -350,7 +411,7 @@ fn outside_pointer_policies_are_exact_and_never_click_through_after_dismissal() 
 fn modal_ignore_still_blocks_ordinary_outside_pointer_without_dismissal() {
     let mut state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
     state.a.modal = true;
-    let mut runtime = AppRuntime::<InteractionApp>::mount(state);
+    let mut runtime = admitted!(AppRuntime::<InteractionApp>::mount(state));
     outside_down(&mut runtime);
     assert_eq!(runtime.state().outside_presses, 0);
     assert_eq!(runtime.state().dismissals.len(), 0);
@@ -372,10 +433,10 @@ fn assert_modal_outside_claims_with_trace_capacity(trace_capacity: usize) {
     ] {
         let mut state = interaction_state(policy);
         state.a.modal = modal;
-        let mut runtime = AppRuntime::<InteractionApp>::mount_with_config(
+        let mut runtime = admitted!(AppRuntime::<InteractionApp>::mount_with_config(
             state,
             RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
-        );
+        ));
         let environment = StyleEnvironment::default();
         let publication = runtime
             .publish_surface(&context(&environment, 100, 60))
@@ -440,10 +501,10 @@ fn stationary_rehit_respects_modal_pointer_barrier_without_background_boundaries
     let environment = StyleEnvironment::default();
     let mut modal_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
     modal_state.a.modal = true;
-    let mut modal = AppRuntime::<InteractionApp>::mount_with_config(
+    let mut modal = admitted!(AppRuntime::<InteractionApp>::mount_with_config(
         modal_state,
         RuntimeConfig::default().with_trace_config(TraceConfig::new(2048)),
-    );
+    ));
     let first = modal
         .publish_surface(&context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("modal baseline publishes"));
@@ -478,10 +539,10 @@ fn stationary_rehit_respects_modal_pointer_barrier_without_background_boundaries
         "stationary re-hit cannot bypass the same modal barrier"
     );
 
-    let mut nonmodal = AppRuntime::<InteractionApp>::mount_with_config(
+    let mut nonmodal = admitted!(AppRuntime::<InteractionApp>::mount_with_config(
         interaction_state(PresentationOutsidePointerPolicy::Ignore),
         RuntimeConfig::default().with_trace_config(TraceConfig::new(2048)),
-    );
+    ));
     let ordinary = nonmodal
         .publish_surface(&context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("nonmodal baseline publishes"));
@@ -509,7 +570,7 @@ fn visually_topmost_eligible_presentation_owns_outside_decision() {
     let mut state = interaction_state(PresentationOutsidePointerPolicy::Block);
     state.b.open = true;
     state.b.policy = PresentationOutsidePointerPolicy::DismissAndBlock;
-    let mut runtime = AppRuntime::<InteractionApp>::mount(state);
+    let mut runtime = admitted!(AppRuntime::<InteractionApp>::mount(state));
     outside_down(&mut runtime);
     assert_eq!(runtime.state().outside_presses, 0);
     assert_eq!(
@@ -526,7 +587,7 @@ fn cancel_or_back_claim_is_suppressed_by_prior_routed_prevent_default() {
 
     let mut unprevented_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
     unprevented_state.a.cancel = true;
-    let mut unprevented = AppRuntime::<InteractionApp>::mount(unprevented_state);
+    let mut unprevented = admitted!(AppRuntime::<InteractionApp>::mount(unprevented_state));
     let publication = unprevented
         .publish_surface(&context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("cancel publication is admitted"));
@@ -548,7 +609,7 @@ fn cancel_or_back_claim_is_suppressed_by_prior_routed_prevent_default() {
     topmost_state.b.open = true;
     topmost_state.a.cancel = true;
     topmost_state.b.cancel = true;
-    let mut topmost = AppRuntime::<InteractionApp>::mount(topmost_state);
+    let mut topmost = admitted!(AppRuntime::<InteractionApp>::mount(topmost_state));
     let publication = topmost
         .publish_surface(&context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("topmost cancel publication is admitted"));
@@ -572,7 +633,7 @@ fn cancel_or_back_claim_is_suppressed_by_prior_routed_prevent_default() {
     let mut prevented_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
     prevented_state.a.cancel = true;
     prevented_state.prevent_cancel = true;
-    let mut prevented = AppRuntime::<InteractionApp>::mount(prevented_state);
+    let mut prevented = admitted!(AppRuntime::<InteractionApp>::mount(prevented_state));
     let publication = prevented
         .publish_surface(&context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("prevented cancel publication is admitted"));
@@ -589,7 +650,7 @@ fn cancel_or_back_claim_is_suppressed_by_prior_routed_prevent_default() {
     assert!(prevented.state().a.open);
 
     let fallback_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
-    let mut fallback = AppRuntime::<InteractionApp>::mount(fallback_state);
+    let mut fallback = admitted!(AppRuntime::<InteractionApp>::mount(fallback_state));
     let publication = fallback
         .publish_surface(&context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("fallback cancel publication is admitted"));
@@ -626,6 +687,41 @@ struct FocusModel {
 struct FocusLifecycleApp;
 
 impl UiApp for FocusLifecycleApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Across reachable states, this tree has at most 7 mounted owners.
+        runenui_core::ProducerBudget::new(7, 0)
+            .with_reconciliation(7, 0, 7)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Pure app reconciliation can mount the bounded owner set and queue
+        // one restoration command when its presentation retires. Its routed
+        // allowance covers four passes over 4 event budgets plus two
+        // defaults; application/reconciliation output remains independently zero.
+        runenui_core::ProducerBudget::new(26, 18)
+            .with_application_outputs(0)
+            .with_reconciliation(7, 7, 7)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event budgets sum to 4 across the authored owners. Bound two
+        // ordinary route passes, two boundary passes, four focus passes,
+        // and four activation/default outputs. Keep owner reconciliation
+        // and one cursor service outcome/cancel pair in the same frontier.
+        runenui_core::ProducerBudget::new(46, 36)
+            .with_application_outputs(0)
+            .with_reconciliation(7, 7, 7)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = FocusModel;
     type Action = FocusAction;
     type HostProtocol = NoHostProtocol;
@@ -724,12 +820,12 @@ fn open_and_publish(
 #[test]
 fn preserve_focus_never_moves_real_focus_when_presentation_activates() {
     let environment = StyleEnvironment::default();
-    let mut runtime = AppRuntime::<FocusLifecycleApp>::mount(FocusModel {
+    let mut runtime = admitted!(AppRuntime::<FocusLifecycleApp>::mount(FocusModel {
         open: false,
         policy: PresentationFocusPolicy::Preserve,
         duplicate_preferred: false,
         preferred: true,
-    });
+    }));
     focus_trigger(&mut runtime, &environment);
     let trigger = runtime
         .focus()
@@ -743,12 +839,12 @@ fn preserve_focus_never_moves_real_focus_when_presentation_activates() {
 #[test]
 fn enter_and_restore_uses_preferred_focus_and_exact_restoration() {
     let environment = StyleEnvironment::default();
-    let mut runtime = AppRuntime::<FocusLifecycleApp>::mount(FocusModel {
+    let mut runtime = admitted!(AppRuntime::<FocusLifecycleApp>::mount(FocusModel {
         open: false,
         policy: PresentationFocusPolicy::EnterAndRestore,
         duplicate_preferred: false,
         preferred: true,
-    });
+    }));
     focus_trigger(&mut runtime, &environment);
     let trigger = runtime
         .focus()
@@ -773,12 +869,12 @@ fn enter_and_restore_uses_preferred_focus_and_exact_restoration() {
 #[test]
 fn enter_and_restore_falls_back_to_first_eligible_when_no_preferred_target_is_authored() {
     let environment = StyleEnvironment::default();
-    let mut runtime = AppRuntime::<FocusLifecycleApp>::mount(FocusModel {
+    let mut runtime = admitted!(AppRuntime::<FocusLifecycleApp>::mount(FocusModel {
         open: false,
         policy: PresentationFocusPolicy::EnterAndRestore,
         duplicate_preferred: false,
         preferred: false,
-    });
+    }));
     focus_trigger(&mut runtime, &environment);
     let publication = open_and_publish(&mut runtime, &environment);
     let first = node_id(&publication, "focus-first");
@@ -792,12 +888,12 @@ fn enter_and_restore_falls_back_to_first_eligible_when_no_preferred_target_is_au
 #[test]
 fn duplicate_preferred_focus_fails_closed_and_diagnoses() {
     let environment = StyleEnvironment::default();
-    let mut runtime = AppRuntime::<FocusLifecycleApp>::mount(FocusModel {
+    let mut runtime = admitted!(AppRuntime::<FocusLifecycleApp>::mount(FocusModel {
         open: false,
         policy: PresentationFocusPolicy::EnterAndRestore,
         duplicate_preferred: true,
         preferred: true,
-    });
+    }));
     focus_trigger(&mut runtime, &environment);
     let trigger = runtime
         .focus()
@@ -824,12 +920,12 @@ fn duplicate_preferred_focus_fails_closed_and_diagnoses() {
 #[test]
 fn intentional_focus_move_outside_is_not_stolen_back_when_presentation_closes() {
     let environment = StyleEnvironment::default();
-    let mut runtime = AppRuntime::<FocusLifecycleApp>::mount(FocusModel {
+    let mut runtime = admitted!(AppRuntime::<FocusLifecycleApp>::mount(FocusModel {
         open: false,
         policy: PresentationFocusPolicy::EnterAndRestore,
         duplicate_preferred: false,
         preferred: true,
-    });
+    }));
     focus_trigger(&mut runtime, &environment);
     let publication = open_and_publish(&mut runtime, &environment);
     let outside = node_id(&publication, "focus-outside");
@@ -874,6 +970,23 @@ enum AnchorAction {
 struct AnchorProbe;
 
 impl Widget<AnchorAction> for AnchorProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -892,7 +1005,7 @@ impl Widget<AnchorAction> for AnchorProbe {
                     )
             })
         {
-            event_context.emit(AnchorAction::Requested);
+            let _ = event_context.try_emit(AnchorAction::Requested);
         }
         WidgetEventOutput::none()
     }
@@ -905,6 +1018,38 @@ impl Widget<AnchorAction> for AnchorProbe {
 struct AnchorUnavailableApp;
 
 impl UiApp for AnchorUnavailableApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Across reachable states, this tree has at most 2 mounted owners.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Pure app reconciliation can mount the bounded owner set and queue
+        // one restoration command when its presentation retires.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event budgets sum to 1 across the authored owners. Bound two
+        // ordinary route passes, two boundary passes, four focus passes,
+        // and four activation/default outputs. Keep owner reconciliation
+        // and one cursor service outcome/cancel pair in the same frontier.
+        runenui_core::ProducerBudget::new(17, 12)
+            .with_application_outputs(0)
+            .with_reconciliation(2, 2, 2)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = AnchorState;
     type Action = AnchorAction;
     type HostProtocol = NoHostProtocol;
@@ -931,7 +1076,9 @@ impl UiApp for AnchorUnavailableApp {
 #[test]
 fn anchor_unavailable_dismiss_request_is_emitted_once_per_exact_lifetime() {
     let environment = StyleEnvironment::default();
-    let mut runtime = AppRuntime::<AnchorUnavailableApp>::mount(AnchorState { requests: 0 });
+    let mut runtime = admitted!(AppRuntime::<AnchorUnavailableApp>::mount(AnchorState {
+        requests: 0
+    }));
     for _ in 0..3 {
         let _ = runtime
             .publish_surface(&context(&environment, 80, 60))
@@ -955,6 +1102,38 @@ struct CaptureState {
 struct CaptureModalApp;
 
 impl UiApp for CaptureModalApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Across reachable states, this tree has at most 4 mounted owners.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Pure app reconciliation can mount the bounded owner set and queue
+        // one restoration command when its presentation retires.
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event budgets sum to 6 across the authored owners. Bound two
+        // ordinary route passes, two boundary passes, four focus passes,
+        // and four activation/default outputs. Keep owner reconciliation
+        // and one cursor service outcome/cancel pair in the same frontier.
+        runenui_core::ProducerBudget::new(59, 52)
+            .with_application_outputs(0)
+            .with_reconciliation(4, 4, 4)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = CaptureState;
     type Action = CaptureAction;
     type HostProtocol = NoHostProtocol;
@@ -1023,10 +1202,10 @@ impl UiApp for CaptureModalApp {
 fn active_pointer_capture_remains_authoritative_after_modal_presentation_opens() {
     let environment = StyleEnvironment::default();
     let moves = Rc::new(RefCell::new(Vec::new()));
-    let mut runtime = AppRuntime::<CaptureModalApp>::mount(CaptureState {
+    let mut runtime = admitted!(AppRuntime::<CaptureModalApp>::mount(CaptureState {
         open: false,
         moves: Rc::clone(&moves),
-    });
+    }));
     let first = runtime
         .publish_surface(&context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("capture baseline publishes"));
@@ -1092,6 +1271,23 @@ struct CompositionPresentationProbe {
 }
 
 impl Widget<CompositionPresentationAction> for CompositionPresentationProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -1111,7 +1307,7 @@ impl Widget<CompositionPresentationAction> for CompositionPresentationProbe {
                 )
             })
         {
-            event_context.emit(CompositionPresentationAction::Dismissed);
+            let _ = event_context.try_emit(CompositionPresentationAction::Dismissed);
         }
         WidgetEventOutput::none()
     }
@@ -1146,6 +1342,38 @@ struct CompositionPresentationState {
 struct CompositionPresentationApp;
 
 impl UiApp for CompositionPresentationApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Across reachable states, this tree has at most 3 mounted owners.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Pure app reconciliation can mount the bounded owner set and queue
+        // one restoration command when its presentation retires.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event budgets sum to 2 across the authored owners. Bound two
+        // ordinary route passes, two boundary passes, four focus passes,
+        // and four activation/default outputs. Keep owner reconciliation
+        // and one cursor service outcome/cancel pair in the same frontier.
+        runenui_core::ProducerBudget::new(26, 20)
+            .with_application_outputs(0)
+            .with_reconciliation(3, 3, 3)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = CompositionPresentationState;
     type Action = CompositionPresentationAction;
     type HostProtocol = NoHostProtocol;
@@ -1198,11 +1426,12 @@ impl UiApp for CompositionPresentationApp {
 #[test]
 fn composition_active_escape_remains_text_owned_and_does_not_dismiss_presentation() {
     let environment = StyleEnvironment::default();
-    let mut runtime =
-        AppRuntime::<CompositionPresentationApp>::mount(CompositionPresentationState {
+    let mut runtime = admitted!(AppRuntime::<CompositionPresentationApp>::mount(
+        CompositionPresentationState {
             open: true,
             dismissals: 0,
-        });
+        }
+    ));
     let publication = runtime
         .publish_surface(&context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("composition presentation publishes"));
@@ -1250,6 +1479,38 @@ struct NestedInteractionState {
 struct NestedInteractionApp;
 
 impl UiApp for NestedInteractionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Across reachable states, this tree has at most 7 mounted owners.
+        runenui_core::ProducerBudget::new(7, 0)
+            .with_reconciliation(7, 0, 7)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Pure app reconciliation can mount the bounded owner set and queue
+        // one restoration command when its presentation retires.
+        runenui_core::ProducerBudget::new(8, 0)
+            .with_reconciliation(7, 7, 7)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event budgets sum to 9 across the authored owners. Bound two
+        // ordinary route passes, two boundary passes, four focus passes,
+        // and four activation/default outputs. Keep owner reconciliation
+        // and one cursor service outcome/cancel pair in the same frontier.
+        runenui_core::ProducerBudget::new(86, 76)
+            .with_application_outputs(0)
+            .with_reconciliation(7, 7, 7)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = NestedInteractionState;
     type Action = InteractionAction;
     type HostProtocol = NoHostProtocol;
@@ -1327,12 +1588,14 @@ impl UiApp for NestedInteractionApp {
 #[test]
 fn nested_presentation_owner_chain_is_inside_and_unrelated_content_dismisses_only_topmost() {
     let environment = StyleEnvironment::default();
-    let mut runtime = AppRuntime::<NestedInteractionApp>::mount(NestedInteractionState {
-        inner_open: true,
-        interaction_presses: 0,
-        dismissals: Vec::new(),
-        moves: Rc::new(RefCell::new(Vec::new())),
-    });
+    let mut runtime = admitted!(AppRuntime::<NestedInteractionApp>::mount(
+        NestedInteractionState {
+            inner_open: true,
+            interaction_presses: 0,
+            dismissals: Vec::new(),
+            moves: Rc::new(RefCell::new(Vec::new())),
+        }
+    ));
     let publication = runtime
         .publish_surface(&context(&environment, 110, 80))
         .unwrap_or_else(|_| unreachable!("nested interaction publication is admitted"));
@@ -1415,6 +1678,23 @@ struct ClickThroughState {
 struct ClickThroughDismissProbe;
 
 impl Widget<ClickThroughAction> for ClickThroughDismissProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -1433,7 +1713,7 @@ impl Widget<ClickThroughAction> for ClickThroughDismissProbe {
                     )
             })
         {
-            context.emit(ClickThroughAction::Dismiss);
+            let _ = context.try_emit(ClickThroughAction::Dismiss);
         }
         WidgetEventOutput::none()
     }
@@ -1446,6 +1726,38 @@ impl Widget<ClickThroughAction> for ClickThroughDismissProbe {
 struct ClickThroughApp;
 
 impl UiApp for ClickThroughApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Across reachable states, this tree has at most 4 mounted owners.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // Pure app reconciliation can mount the bounded owner set and queue
+        // one restoration command when its presentation retires.
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event budgets sum to 2 across the authored owners. Bound two
+        // ordinary route passes, two boundary passes, four focus passes,
+        // and four activation/default outputs. Keep owner reconciliation
+        // and one cursor service outcome/cancel pair in the same frontier.
+        runenui_core::ProducerBudget::new(27, 20)
+            .with_application_outputs(0)
+            .with_reconciliation(4, 4, 4)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = ClickThroughState;
     type Action = ClickThroughAction;
     type HostProtocol = NoHostProtocol;
@@ -1494,10 +1806,10 @@ impl UiApp for ClickThroughApp {
 #[test]
 fn dismissed_outside_pointer_stream_cannot_activate_underlying_button_on_matching_up() {
     let environment = StyleEnvironment::default();
-    let mut runtime = AppRuntime::<ClickThroughApp>::mount(ClickThroughState {
+    let mut runtime = admitted!(AppRuntime::<ClickThroughApp>::mount(ClickThroughState {
         open: true,
         activations: 0,
-    });
+    }));
     let first = runtime
         .publish_surface(&context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("click-through baseline publishes"));
@@ -1527,10 +1839,10 @@ fn dismissed_outside_pointer_stream_cannot_activate_underlying_button_on_matchin
 fn presentation_lifecycle_trace_export_uses_bounded_stable_tokens() {
     let trace_config = || RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
 
-    let mut outside = AppRuntime::<InteractionApp>::mount_with_config(
+    let mut outside = admitted!(AppRuntime::<InteractionApp>::mount_with_config(
         interaction_state(PresentationOutsidePointerPolicy::DismissAndBlock),
         trace_config(),
-    );
+    ));
     outside_down(&mut outside);
     let outside_json = outside.trace().export_jsonl();
     assert!(outside_json.contains("presentation_outside_decision"));
@@ -1540,7 +1852,10 @@ fn presentation_lifecycle_trace_export_uses_bounded_stable_tokens() {
 
     let mut cancel_state = interaction_state(PresentationOutsidePointerPolicy::Ignore);
     cancel_state.a.cancel = true;
-    let mut cancel = AppRuntime::<InteractionApp>::mount_with_config(cancel_state, trace_config());
+    let mut cancel = admitted!(AppRuntime::<InteractionApp>::mount_with_config(
+        cancel_state,
+        trace_config()
+    ));
     let environment = StyleEnvironment::default();
     let publication = cancel
         .publish_surface(&context(&environment, 100, 60))
@@ -1559,7 +1874,7 @@ fn presentation_lifecycle_trace_export_uses_bounded_stable_tokens() {
     assert!(cancel_json.contains("\"claimed\":true"));
     assert!(cancel_json.contains("cancel_or_back"));
 
-    let mut focus = AppRuntime::<FocusLifecycleApp>::mount_with_config(
+    let mut focus = admitted!(AppRuntime::<FocusLifecycleApp>::mount_with_config(
         FocusModel {
             open: false,
             policy: PresentationFocusPolicy::EnterAndRestore,
@@ -1567,7 +1882,7 @@ fn presentation_lifecycle_trace_export_uses_bounded_stable_tokens() {
             preferred: true,
         },
         trace_config(),
-    );
+    ));
     focus_trigger(&mut focus, &environment);
     let _ = open_and_publish(&mut focus, &environment);
     focus
@@ -1581,10 +1896,10 @@ fn presentation_lifecycle_trace_export_uses_bounded_stable_tokens() {
     assert!(focus_json.contains("\"outcome\":\"exact\""));
     assert!(focus_json.contains("presentation_restoration"));
 
-    let mut anchor = AppRuntime::<AnchorUnavailableApp>::mount_with_config(
+    let mut anchor = admitted!(AppRuntime::<AnchorUnavailableApp>::mount_with_config(
         AnchorState { requests: 0 },
         trace_config(),
-    );
+    ));
     let _ = anchor
         .publish_surface(&context(&environment, 80, 60))
         .unwrap_or_else(|_| unreachable!("trace unavailable-anchor surface publishes"));

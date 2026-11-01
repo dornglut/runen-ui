@@ -11,7 +11,8 @@ use crate::{
     ScrollChrome, ScrollControlBinding, ScrollControlSnapshot, SemanticContribution,
     SemanticContributionContext, ShortcutBinding, StyleIntent, SubscriptionSet,
     SurfacePresentation, UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetMountContext,
-    WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
+    WidgetProducerBudget, WidgetProducerPhase, WidgetUnmountContext, WidgetUpdateContext,
+    WorkSequence,
 };
 use core::{any::Any, fmt};
 
@@ -19,6 +20,11 @@ pub trait ErasedWidget<Action>: fmt::Debug {
     fn widget_type_id(&self) -> WidgetTypeId;
     fn widget_type_name(&self) -> &'static str;
     fn state_type_id(&self) -> WidgetStateTypeId;
+    fn producer_budget(
+        &self,
+        state: &dyn Any,
+        phase: WidgetProducerPhase,
+    ) -> Result<WidgetProducerBudget, WidgetBridgeError>;
     fn create_state(&self) -> Box<dyn Any>;
     fn mount(
         &self,
@@ -99,6 +105,16 @@ where
 
     fn state_type_id(&self) -> WidgetStateTypeId {
         WidgetStateTypeId::of::<Implementation::State>()
+    }
+
+    fn producer_budget(
+        &self,
+        state: &dyn Any,
+        phase: WidgetProducerPhase,
+    ) -> Result<WidgetProducerBudget, WidgetBridgeError> {
+        Ok(self
+            .0
+            .producer_budget(phase, downcast_ref::<Implementation::State>(state)?))
     }
 
     fn create_state(&self) -> Box<dyn Any> {
@@ -182,9 +198,17 @@ where
         state: &mut dyn Any,
         context: &mut WidgetActivationContext<Action>,
     ) -> Result<WidgetActivationOutput<Action>, WidgetBridgeError> {
-        Ok(self
+        let output = self
             .0
-            .activate(downcast_mut::<Implementation::State>(state)?, context))
+            .activate(downcast_mut::<Implementation::State>(state)?, context);
+        if output.action_ref().is_some() && context.__runtime_try_reserve_output().is_err() {
+            return Ok(if output.state_changed() {
+                WidgetActivationOutput::changed()
+            } else {
+                WidgetActivationOutput::none()
+            });
+        }
+        Ok(output)
     }
     fn measure(
         &self,
@@ -288,6 +312,13 @@ impl<Action> MountedWidget<Action> {
     pub fn state_type_id(&self) -> WidgetStateTypeId {
         self.inner.state_type_id()
     }
+    pub fn producer_budget(
+        &self,
+        state: &MountedWidgetState,
+        phase: WidgetProducerPhase,
+    ) -> Result<WidgetProducerBudget, WidgetBridgeError> {
+        self.inner.producer_budget(state.value.as_ref(), phase)
+    }
     #[must_use]
     pub fn create_state(&self) -> MountedWidgetState {
         MountedWidgetState {
@@ -360,7 +391,9 @@ impl<Action> MountedWidget<Action> {
         ),
         WidgetBridgeError,
     > {
-        let context = EventContext::new_with_scroll_control(
+        let producer_budget = self.producer_budget(state, WidgetProducerPhase::Event)?;
+        let output_allowance = output_allowance.min(producer_budget.outputs());
+        let mut context = EventContext::new_with_scroll_control(
             phase,
             original_target,
             current_target,
@@ -375,6 +408,7 @@ impl<Action> MountedWidget<Action> {
             propagation_stopped,
             output_allowance,
         );
+        context.set_work_starts(producer_budget.work_starts());
         self.event_with_context(state, event, context)
     }
 
@@ -408,7 +442,9 @@ impl<Action> MountedWidget<Action> {
         ),
         WidgetBridgeError,
     > {
-        let context = EventContext::new_pointer_with_scroll_control(
+        let producer_budget = self.producer_budget(state, WidgetProducerPhase::Event)?;
+        let output_allowance = output_allowance.min(producer_budget.outputs());
+        let mut context = EventContext::new_pointer_with_scroll_control(
             phase,
             original_target,
             current_target,
@@ -428,6 +464,7 @@ impl<Action> MountedWidget<Action> {
             propagation_stopped,
             output_allowance,
         );
+        context.set_work_starts(producer_budget.work_starts());
         self.event_with_context(state, event, context)
     }
 
@@ -701,6 +738,23 @@ mod tests {
     struct Probe(Rc<Cell<usize>>);
 
     impl Widget<()> for Probe {
+        fn producer_budget(
+            &self,
+            phase: crate::WidgetProducerPhase,
+            _state: &Self::State,
+        ) -> crate::WidgetProducerBudget {
+            match phase {
+                crate::WidgetProducerPhase::Publication
+                | crate::WidgetProducerPhase::Event
+                | crate::WidgetProducerPhase::Activation
+                | crate::WidgetProducerPhase::Mount
+                | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+                crate::WidgetProducerPhase::Subscriptions => {
+                    crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+                }
+            }
+        }
+
         type State = u8;
         fn create_state(&self) -> Self::State {
             0

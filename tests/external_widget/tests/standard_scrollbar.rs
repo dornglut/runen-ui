@@ -40,6 +40,22 @@ struct Content {
 }
 
 impl Widget<Action> for Content {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -61,6 +77,34 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(7, 0)
+            .with_reconciliation(7, 0, 7)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let (queue_credits, mounted, updated, dirty_subscription_owners) = match action {
+            Action::SetContentHeight(_) | Action::SetVertical(false) => (1, 0, 2, 0),
+            Action::SetVertical(true) => (2, 2, 2, 2),
+        };
+        runenui_core::ProducerBudget::new(queue_credits, 0)
+            .with_reconciliation(mounted, updated, dirty_subscription_owners)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(16, 16)
+            .with_reconciliation(0, 2, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -127,18 +171,21 @@ impl UiApp for App {
 }
 
 fn settle(runtime: &mut AppRuntime<App>) {
+    let report = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|error| unreachable!("pump observation: {error:?}"))
+        .report()
+        .to_owned();
     assert!(
-        runtime
-            .pump(PumpBudget::new(
-                usize::MAX,
-                usize::MAX,
-                usize::MAX,
-                usize::MAX,
-            ))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .is_quiescent()
+        report.is_quiescent(),
+        "status={:?}; report={report:?}; trace={:?}",
+        runtime.status(),
+        runtime.trace().kinds().collect::<Vec<_>>()
     );
 }
 
@@ -286,7 +333,8 @@ fn scrollable_vertical_runtime() -> AppRuntime<App> {
         horizontal: false,
         vertical: true,
         always: false,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     runtime
 }
@@ -298,7 +346,8 @@ fn scrollable_horizontal_runtime() -> AppRuntime<App> {
         horizontal: true,
         vertical: false,
         always: false,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     runtime
 }
@@ -723,7 +772,8 @@ fn standard_track_click_pages_once_toward_pointer_without_warping() {
         horizontal: false,
         vertical: true,
         always: false,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     let environment = StyleEnvironment::default();
     let initial = runtime
@@ -1023,7 +1073,8 @@ fn automatic_reserved_bars_reach_the_two_axis_fixed_point_when_one_bar_causes_th
         horizontal: true,
         vertical: true,
         always: false,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     let environment = StyleEnvironment::default();
     let publication = runtime
@@ -1061,7 +1112,8 @@ fn standard_scroll_container_keeps_zero_range_bar_nonfocusable_and_composes_noni
         horizontal: false,
         vertical: true,
         always: true,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut zero);
     let environment = StyleEnvironment::default();
     let zero_publication = zero
@@ -1097,7 +1149,8 @@ fn standard_scroll_container_keeps_zero_range_bar_nonfocusable_and_composes_noni
         horizontal: true,
         vertical: true,
         always: true,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut both);
     let both_publication = both
         .publish_surface(&build(&environment))

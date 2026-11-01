@@ -7,6 +7,9 @@ This document describes the **conceptual ownership and invariants** of RunenUI's
 `runenui_core` owns host-neutral public values and protocols that must be usable without a live runtime or platform/backend dependency. Its responsibilities include:
 
 - `UiApp` application state/action/update and host-neutral effect/subscription protocol values;
+- finite application/widget producer profiles and owned `EmitError<T>` / typed
+  first-violation vocabulary; live reservation authority remains in runtime,
+  under [ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md#qualified-producer-admission-and-owned-failure);
 - validated authored identity, host-neutral style properties/tokens/themes/recipes/variants/preferences/resolution vocabulary, geometry, normalized layout container/sizing/positioning/overflow values, transient `View`/`Element` authoring, and typed built-in view vocabulary;
 - state-aware open widget/lifecycle/event contracts, bounded renderer-neutral `WidgetMeasure` input/result vocabulary, geometry-neutral child-bearing participation, and typed action mapping;
 - runtime-local opaque protocol identity types such as mounted/semantic/surface/work identities, without allocation authority;

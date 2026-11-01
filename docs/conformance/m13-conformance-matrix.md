@@ -38,6 +38,13 @@ These rows extend—not replace—M4 canonical routing, M7 host embedding, M10 e
 
 ## Gate and proof custody
 
+Producer-contract failure follows
+[ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md#qualified-producer-admission-and-owned-failure).
+M13ARB-05/07 must distinguish the failed input's truthful Aborted settlement,
+earlier Committed input and one terminal scope retirement, including with trace
+disabled. A typed producer failure supplies no new permission to retarget input,
+invent settlements or repeat physical qualification on another source revision.
+
 The accepted RunenUI runtime/API slice qualifies `M13ARB-01`–`M13ARB-07`; `M13ARB-08`–`M13ARB-10` additionally require independently owned Runenwerk/native/external proof. No row is `owner-accepted` merely because this matrix or its ADR is merged. Before changing any status, qualify the complete positive, negative and diagnostic/trace evidence required by that row on the exact reviewed feature head, independent critical review, canonical validation, guarded merge and accepted-main verification. [Current status](../status.md) owns capability maturity; this matrix owns the exact observable and proof obligations.
 
 ## Accepted framework proof

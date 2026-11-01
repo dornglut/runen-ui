@@ -122,6 +122,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         else {
             return self.pointer_runtime_outcome();
         };
+        let input_method_default = self.input_method_service_may_be_staged();
+        // Cursor synchronization is also runtime-owned service work. A native
+        // drag offer can add one host reply; both must share the declared start
+        // and future-credit plan before pointer callbacks run.
+        let framework_starts =
+            1 + usize::from(input_method_default) + usize::from(work.event.drag_drop().is_some());
         let facts = RoutedIngressFacts::new(
             work.sequence,
             anchor.clone(),
@@ -134,7 +140,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             ),
             parent,
             TraceReservation::continuation(),
-        );
+        )
+        .with_default_output_budget(usize::from(
+            (work.event.phase() == PointerPhase::Wheel && routed_target.is_some())
+                // Primary release can enqueue Activate independently of every
+                // widget event allowance. Callbacks may alter eligibility, so
+                // reserve this runtime default before invoking them.
+                || (work.event.phase() == PointerPhase::Up
+                    && work.event.changed_button() == Some(PointerButton::Primary)),
+        ))
+        .with_default_queue_start_outputs(framework_starts)
+        .with_default_work_starts(runenui_core::WorkStartBudget::new(
+            0,
+            0,
+            0,
+            0,
+            framework_starts,
+        ));
+        let facts = if let Some(root) = work.root_quota {
+            facts.with_root_quota(root)
+        } else {
+            facts
+        };
         let Some(mut transaction) = self.begin_pointer_routed_transaction(
             facts,
             routed_target.is_some(),

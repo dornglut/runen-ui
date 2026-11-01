@@ -32,6 +32,19 @@ struct SemanticProbe {
 }
 
 impl Widget<()> for SemanticProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -52,7 +65,34 @@ impl Widget<()> for SemanticProbe {
 
 struct StateApp;
 
+impl StateApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 1 mounted owner in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 1;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+    }
+}
+
 impl UiApp for StateApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = Availability;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -91,7 +131,9 @@ fn disabled_and_inert_nodes_remain_queryable_but_fail_action_admission() {
         (Availability::Disabled, probe_query().with_disabled(true)),
         (Availability::Inert, probe_query().with_inert(true)),
     ] {
-        let mut harness = TestHarness::<StateApp>::mount(availability);
+        let mut harness = TestHarness::<StateApp>::mount(availability).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         assert!(harness.publish().is_ok());
         let Ok(target) = harness.unique_semantic_target(&query) else {
             unreachable!("disabled or inert probe must be uniquely queryable");
@@ -107,7 +149,8 @@ fn disabled_and_inert_nodes_remain_queryable_but_fail_action_admission() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn hidden_nodes_are_absent_from_the_committed_semantic_snapshot() {
-    let mut harness = TestHarness::<StateApp>::mount(Availability::Hidden);
+    let mut harness = TestHarness::<StateApp>::mount(Availability::Hidden)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     let Ok(matches) = harness.query_semantics(&probe_query()) else {
@@ -118,7 +161,8 @@ fn hidden_nodes_are_absent_from_the_committed_semantic_snapshot() {
 
 #[test]
 fn enabled_action_is_accepted_but_snapshot_scope_cannot_cross_runtimes() {
-    let mut first = TestHarness::<StateApp>::mount(Availability::Enabled);
+    let mut first = TestHarness::<StateApp>::mount(Availability::Enabled)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(first.publish().is_ok());
     let Ok(target) = first.unique_semantic_target(&probe_query()) else {
         unreachable!("enabled probe must be uniquely queryable");
@@ -133,7 +177,8 @@ fn enabled_action_is_accepted_but_snapshot_scope_cannot_cross_runtimes() {
         SettleOutcome::Idle
     );
 
-    let mut foreign = TestHarness::<StateApp>::mount(Availability::Enabled);
+    let mut foreign = TestHarness::<StateApp>::mount(Availability::Enabled)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(foreign.publish().is_ok());
     assert!(
         foreign

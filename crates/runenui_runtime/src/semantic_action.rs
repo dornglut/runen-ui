@@ -11,6 +11,8 @@ use crate::RuntimeTerminalReason;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SubmitSemanticActionErrorKind {
     Full,
+    WorkCapacity(crate::WorkCapacityFamily),
+    InvalidProducerProfile,
     Closed,
     Terminal(RuntimeTerminalReason),
     ForeignSurface,
@@ -76,6 +78,14 @@ impl fmt::Display for SubmitSemanticActionError {
             SubmitSemanticActionErrorKind::Full => {
                 formatter.write_str("runtime work queue is full")
             }
+            SubmitSemanticActionErrorKind::WorkCapacity(family) => {
+                write!(
+                    formatter,
+                    "runtime {family:?} capacity is reserved or occupied"
+                )
+            }
+            SubmitSemanticActionErrorKind::InvalidProducerProfile => formatter
+                .write_str("application interaction producer profile does not cover the command"),
             SubmitSemanticActionErrorKind::Closed => formatter.write_str("runtime is closed"),
             SubmitSemanticActionErrorKind::Terminal(reason) => {
                 write!(formatter, "runtime is terminal: {reason}")

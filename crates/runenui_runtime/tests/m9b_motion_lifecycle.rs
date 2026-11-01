@@ -30,6 +30,29 @@ enum LifecycleAction {
 struct LifecycleApp;
 
 impl UiApp for LifecycleApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = LifecycleState;
     type Action = LifecycleAction;
     type HostProtocol = NoHostProtocol;
@@ -120,7 +143,8 @@ fn accepted_absence_then_readd_starts_a_new_timeline_lifetime() {
     let mut runtime = AppRuntime::<LifecycleApp>::mount(LifecycleState {
         present: true,
         duration: Duration::from_millis(100),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
 
     assert_eq!(opacity(&publish(&mut runtime)), 0.0);
     advance(&runtime, 50);
@@ -149,7 +173,8 @@ fn same_id_changed_spec_is_exact_replacement_from_authored_keyframe_zero() {
     let mut runtime = AppRuntime::<LifecycleApp>::mount(LifecycleState {
         present: true,
         duration: Duration::from_millis(100),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
 
     assert_eq!(opacity(&publish(&mut runtime)), 0.0);
     advance(&runtime, 50);

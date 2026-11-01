@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use runenui_core::{
     Element, FontFamilyName, GenericFontFamily, LogicalLength, NoHostProtocol, StyleEnvironment,
@@ -27,6 +39,28 @@ const CONTENT: &str = "AV O8 responsive production text سلام क्षि wr
 struct IntegrationApp;
 
 impl UiApp for IntegrationApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -195,7 +229,7 @@ fn assert_publication_correlation(publication: &SurfacePublication) {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn public_m8d_corpus_correlates_layout_text_paint_and_semantics() {
-    let mut runtime = AppRuntime::<IntegrationApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<IntegrationApp>::mount(()));
     register_controlled_fonts(&mut runtime);
     let environment = StyleEnvironment::default();
 

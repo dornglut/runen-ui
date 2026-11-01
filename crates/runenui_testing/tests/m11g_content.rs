@@ -13,7 +13,37 @@ struct State {
 
 struct ContentApp;
 
+impl ContentApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 4 mounted owners in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 4;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+    }
+}
+
 impl UiApp for ContentApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = State;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -62,7 +92,8 @@ fn state(meaningful: bool) -> (State, ResourceRef) {
 #[test]
 fn semantic_separator_and_meaningful_image_publish_via_ordinary_runtime() {
     let (state, resource) = state(true);
-    let mut harness = TestHarness::<ContentApp>::mount(state);
+    let mut harness = TestHarness::<ContentApp>::mount(state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = harness
         .publish()
         .unwrap_or_else(|_| unreachable!("content publication succeeds"));
@@ -132,7 +163,8 @@ fn semantic_separator_and_meaningful_image_publish_via_ordinary_runtime() {
 #[test]
 fn decorative_image_remains_painted_without_a_false_semantic_node() {
     let (state, resource) = state(false);
-    let mut harness = TestHarness::<ContentApp>::mount(state);
+    let mut harness = TestHarness::<ContentApp>::mount(state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = harness
         .publish()
         .unwrap_or_else(|_| unreachable!("decorative image publishes"));

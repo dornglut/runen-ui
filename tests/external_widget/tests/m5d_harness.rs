@@ -38,6 +38,22 @@ struct FocusState {
 struct FocusApp;
 
 impl UiApp for FocusApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The outer column, three-node focus panel and outside leaf never emit work.
+        runenui_core::ProducerBudget::new(5, 0).with_reconciliation(5, 5, 5)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 0).with_reconciliation(5, 5, 5)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 0).with_reconciliation(5, 5, 5)
+    }
+
     type State = FocusState;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -69,7 +85,8 @@ fn public_harness_drives_downstream_controller_traversal_and_remembered_restorat
     let log = Rc::new(RefCell::new(Vec::new()));
     let mut harness = TestHarness::<FocusApp>::mount(FocusState {
         log: Rc::clone(&log),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
 
     let Some((root, a, b, outside)) = (|| {
         let publication = harness.publish().ok()?;
@@ -161,6 +178,22 @@ struct InputState {
 struct InputApp;
 
 impl UiApp for InputApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Two fixed owners; the child can emit one action per event phase, including focus allowances.
+        runenui_core::ProducerBudget::new(9, 6).with_reconciliation(2, 2, 2)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(9, 6).with_reconciliation(2, 2, 2)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(9, 6).with_reconciliation(2, 2, 2)
+    }
+
     type State = InputState;
     type Action = InputAction;
     type HostProtocol = NoHostProtocol;
@@ -209,7 +242,8 @@ fn public_harness_delivers_downstream_keyboard_text_and_composition_ingress() {
     let mut harness = TestHarness::<InputApp>::mount(InputState {
         facts: Rc::clone(&facts),
         actions: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
 
     let Some(target) = (|| {
         let publication = harness.publish().ok()?;

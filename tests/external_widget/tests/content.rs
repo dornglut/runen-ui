@@ -12,6 +12,22 @@ use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 struct DownstreamSeparator;
 
 impl Widget<()> for DownstreamSeparator {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -34,6 +50,22 @@ struct DownstreamImage {
 }
 
 impl Widget<()> for DownstreamImage {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ImageDescriptor;
 
     fn create_state(&self) -> Self::State {
@@ -73,6 +105,30 @@ impl Widget<()> for DownstreamImage {
 struct ContentParityApp;
 
 impl UiApp for ContentParityApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(5, 5, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(5, 5, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = ImageDescriptor;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -109,7 +165,8 @@ fn downstream_standard_content_parity_requires_no_builtin_runtime_path() {
         ImageIntrinsicSize::new(24, 12).unwrap_or_else(|| unreachable!("fixture pixels nonzero"));
     let descriptor = ImageDescriptor::new(resource.clone(), intrinsic)
         .unwrap_or_else(|_| unreachable!("fixture resource image-kind"));
-    let mut runtime = AppRuntime::<ContentParityApp>::mount(descriptor);
+    let mut runtime = AppRuntime::<ContentParityApp>::mount(descriptor)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(

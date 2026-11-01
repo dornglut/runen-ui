@@ -12,6 +12,32 @@ use runenui_winit::controller_input::{
 struct HostApp;
 
 impl UiApp for HostApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One button: four focus notifications, routing, activation, and
+        // the command default; its action reconciles the same single owner.
+        runenui_core::ProducerBudget::new(9, 7)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -48,7 +74,8 @@ fn host_target(runtime: &mut AppRuntime<HostApp>) -> runenui_runtime::MountedNod
 fn reference_host_normalizes_controller_transitions_through_public_runtime()
 -> Result<(), SubmitCommandError> {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(128));
-    let mut runtime = AppRuntime::<HostApp>::mount_with_config(0, config);
+    let mut runtime = AppRuntime::<HostApp>::mount_with_config(0, config)
+        .unwrap_or_else(|_| unreachable!("controller fixture runtime admission is valid"));
     let target = host_target(&mut runtime);
     let mut controller = ControllerInputState::new(ControllerInputProfile::Navigation);
 

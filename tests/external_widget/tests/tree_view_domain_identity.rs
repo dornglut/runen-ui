@@ -19,6 +19,37 @@ enum Action {
 }
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let newly_mounted_owners = match action {
+            Action::Rebuild | Action::Request(TreeItemRequest::Select(_)) => 2,
+            Action::Request(_) => 0,
+        };
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 3, newly_mounted_owners)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(21, 21)
+            .with_reconciliation(3, 3, 2)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -69,7 +100,8 @@ fn mounted(runtime: &mut AppRuntime<App>, generation: u8) -> MountedNodeId {
 }
 #[test]
 fn domain_selection_survives_rebuild_with_new_mounted_identity() {
-    let mut runtime = AppRuntime::<App>::mount(State::default());
+    let mut runtime = AppRuntime::<App>::mount(State::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     pump(&mut runtime);
     let original = mounted(&mut runtime, 0);
     runtime

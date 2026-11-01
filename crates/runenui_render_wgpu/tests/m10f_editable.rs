@@ -50,6 +50,19 @@ struct EditorWidget {
 }
 
 impl Widget<EditorAction> for EditorWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -134,6 +147,27 @@ impl Widget<EditorAction> for EditorWidget {
 struct EditableApp;
 
 impl UiApp for EditableApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The sole editor uses runtime editing defaults and at most clipboard/IME service pairs.
+        runenui_core::ProducerBudget::new(8, 4)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(8, 4)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(8, 4)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = EditorState;
     type Action = EditorAction;
     type HostProtocol = NoHostProtocol;
@@ -356,7 +390,7 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
         text: TEXT.to_owned(),
         revision: 0,
         image: ResourceRef::new(ResourceKind::Image),
-    });
+    })?;
     runtime.register_text_font_bytes(FONT_BYTES.to_vec())?;
     let family = FontFamilyName::new("Cantarell")?;
     runtime.set_text_generic_family_mapping(GenericFontFamily::SansSerif, &[family])?;

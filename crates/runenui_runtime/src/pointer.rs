@@ -11,6 +11,8 @@ use crate::RuntimeTerminalReason;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SubmitPointerErrorKind {
     Full,
+    WorkCapacity(crate::WorkCapacityFamily),
+    InvalidProducerProfile,
     Closed,
     Terminal(RuntimeTerminalReason),
     WorkSequenceExhausted,
@@ -56,6 +58,13 @@ impl fmt::Display for SubmitPointerError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind {
             SubmitPointerErrorKind::Full => formatter.write_str("runtime work queue is full"),
+            SubmitPointerErrorKind::WorkCapacity(family) => write!(
+                formatter,
+                "runtime {family:?} capacity is reserved or occupied"
+            ),
+            SubmitPointerErrorKind::InvalidProducerProfile => {
+                formatter.write_str("pointer producer profile cannot fit runtime limits")
+            }
             SubmitPointerErrorKind::Closed => formatter.write_str("runtime is closed"),
             SubmitPointerErrorKind::Terminal(reason) => {
                 write!(formatter, "runtime is terminal: {reason}")

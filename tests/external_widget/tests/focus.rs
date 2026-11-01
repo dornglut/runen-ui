@@ -26,6 +26,26 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = State;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -172,7 +192,8 @@ fn downstream_focus_scope_events_reasons_and_focus_within_use_only_public_apis()
     let log = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<App>::mount(State {
         log: Rc::clone(&log),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(FULL_PUMP)
         .unwrap_or_else(|_| unreachable!("pump observation"));
@@ -273,6 +294,26 @@ fn downstream_focus_scope_events_reasons_and_focus_within_use_only_public_apis()
 struct PreventApp;
 
 impl UiApp for PreventApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = Rc<RefCell<Vec<ExternalFocusFact>>>;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -293,7 +334,8 @@ impl UiApp for PreventApp {
 #[allow(clippy::assert_is_empty)]
 fn prevented_initiating_command_changes_modality_but_commits_no_focus_notification() {
     let log = Rc::new(RefCell::new(Vec::new()));
-    let mut runtime = AppRuntime::<PreventApp>::mount(Rc::clone(&log));
+    let mut runtime = AppRuntime::<PreventApp>::mount(Rc::clone(&log))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let target = runtime.index().nodes()[0].id().clone();
     runtime
         .submit_command(
@@ -320,6 +362,26 @@ fn prevented_initiating_command_changes_modality_but_commits_no_focus_notificati
 struct ExternalGroupApp;
 
 impl UiApp for ExternalGroupApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(7, 0)
+            .with_reconciliation(7, 0, 7)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = Rc<RefCell<Vec<ExternalFocusFact>>>;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -393,7 +455,8 @@ fn group_character(character: &str) -> KeyboardEvent {
 #[test]
 fn downstream_widgets_author_and_use_focus_groups_through_public_contracts() {
     let log = Rc::new(RefCell::new(Vec::new()));
-    let mut runtime = AppRuntime::<ExternalGroupApp>::mount(Rc::clone(&log));
+    let mut runtime = AppRuntime::<ExternalGroupApp>::mount(Rc::clone(&log))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(FULL_PUMP)
         .unwrap_or_else(|_| unreachable!("pump observation"));

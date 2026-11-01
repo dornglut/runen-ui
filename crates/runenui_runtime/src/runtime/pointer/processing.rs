@@ -31,6 +31,7 @@ use notifications::{
 
 pub(super) struct PointerWork {
     pub(super) sequence: WorkSequence,
+    pub(super) root_quota: Option<crate::queue::RootQuotaId>,
     pub(super) event: PointerEvent,
     pub(super) instant: MonotonicInstant,
     pub(super) causal_parent: Option<TraceSequence>,
@@ -39,6 +40,7 @@ pub(super) struct PointerWork {
 
 pub(super) struct PointerRehitWork {
     pub(super) sequence: WorkSequence,
+    pub(super) root_quota: Option<crate::queue::RootQuotaId>,
     pub(super) context: SurfaceInputContext,
     pub(super) instant: MonotonicInstant,
     pub(super) causal_parent: Option<TraceSequence>,
@@ -132,6 +134,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) {
         let PointerEnvelope {
             sequence,
+            root_quota,
             payload,
             instant,
             causal_parent,
@@ -142,6 +145,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 self.begin_external_pointer_input();
                 let outcome = self.process_pointer_work(PointerWork {
                     sequence,
+                    root_quota,
                     event,
                     instant,
                     causal_parent,
@@ -152,6 +156,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             PointerEnvelopePayload::StationaryRehit(context) => {
                 let work = PointerRehitWork {
                     sequence,
+                    root_quota,
                     context,
                     instant,
                     causal_parent,

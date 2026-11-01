@@ -24,6 +24,30 @@ enum RetentionAction {
 struct RetentionApp;
 
 impl UiApp for RetentionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 4 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 5)
+            .with_application_outputs(0)
+            .with_reconciliation(4, 4, 4)
+    }
+
     type State = RetentionState;
     type Action = RetentionAction;
     type HostProtocol = NoHostProtocol;
@@ -133,7 +157,8 @@ fn every_configured_retained_generation_uses_its_own_geometry() {
     let retention = NonZeroUsize::new(3).unwrap_or_else(|| unreachable!());
     let config = RuntimeConfig::default().with_surface_snapshot_retention(retention);
     let mut runtime =
-        AppRuntime::<RetentionApp>::mount_with_config(RetentionState::default(), config);
+        AppRuntime::<RetentionApp>::mount_with_config(RetentionState::default(), config)
+            .unwrap_or_else(|_| unreachable!("retention fixture runtime admission is valid"));
     pump_all(&mut runtime);
 
     let first = publish(&mut runtime);

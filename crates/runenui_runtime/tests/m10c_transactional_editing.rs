@@ -13,26 +13,30 @@ use runenui_core::{
     CommittedTextEvent, EditChangeMap, EditGroupHint, EditIntent, EditKind, EditRequestId,
     EditResolution, EditableContribution, Effects, Element, EventContext, FrameworkServiceFailure,
     FrameworkServiceRequest, FrameworkServiceResponse, FrameworkServiceResponseKind,
-    HitContribution, HitContributionContext, KeyLocation, KeyModifiers, KeyboardCompositionState,
-    KeyboardEvent, KeyboardPhase, LayoutDimension, LayoutStyle, LogicalDelta, LogicalKey,
-    LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, OverflowPolicy, OverflowStyle,
-    PhysicalKey, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
-    PointerPhase, SemanticAction, SemanticCommand, SemanticContribution,
-    SemanticContributionContext, SemanticEditable, SemanticNodeContribution, SemanticRole,
-    SemanticState, StyleEnvironment, SurfaceInputContext, TextAffinity, TextDocumentId,
-    TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextRange, TextSelection,
-    TextSensitivity, UiApp, UiEvent, UpdateOutput, Widget, WidgetActivation, WidgetEventOutput,
-    WidgetMeasure, WidgetMeasureInput, WidgetTextInput,
+    HitContribution, HitContributionContext, IntoEffects, IntoUpdateOutput, KeyLocation,
+    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LayoutDimension,
+    LayoutStyle, LogicalDelta, LogicalKey, LogicalLength, LogicalPoint, LogicalRect,
+    NoHostProtocol, OverflowPolicy, OverflowStyle, PhysicalKey, PointerButton, PointerButtons,
+    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction, SemanticCommand,
+    SemanticContribution, SemanticContributionContext, SemanticEditable, SemanticNodeContribution,
+    SemanticRole, SemanticState, StyleEnvironment, SubscriptionSet, SurfaceInputContext,
+    TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,
+    TextRange, TextSelection, TextSensitivity, UiApp, UiEvent, UpdateOutput, View, Widget,
+    WidgetActivation, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, WidgetTextInput,
 };
 use runenui_runtime::{
     AppRuntime, FontFamilyName, GenericFontFamily, InputArbitrationRecord, LogicalSize, PumpBudget,
-    RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason,
+    RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason, SubmitCommandErrorKind,
     SubmitSemanticActionErrorKind, SubmitTextErrorKind, SurfaceBuildContext, TraceConfig,
     TraceFrameworkServiceKind, TraceFrameworkServiceOutcome, TracePayloadCapture, TraceRecordKind,
     TraceReplay, UiInputClaimReason, UiInputConflict, UiInputFinality,
 };
 
 const CANTARELL: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/Cantarell-Regular.ttf");
+
+thread_local! {
+    static PUBLICATION_CAPABILITY_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 
 #[derive(Debug)]
 struct Editor;
@@ -84,6 +88,22 @@ impl PartialEq for Action {
 impl Eq for Action {}
 
 impl Widget<Action> for Editor {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -114,6 +134,22 @@ struct BoundEditor {
 }
 
 impl Widget<Action> for BoundEditor {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -177,6 +213,7 @@ impl Widget<Action> for BoundEditor {
     }
 
     fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+        PUBLICATION_CAPABILITY_CALLS.with(|calls| calls.set(calls.get() + 1));
         let editable = SemanticEditable::new(
             self.snapshot,
             &self.text,
@@ -213,9 +250,87 @@ impl Widget<Action> for BoundEditor {
 
 struct App;
 
+struct UnderfundedClipboardApp;
+
+impl UiApp for UnderfundedClipboardApp {
+    type State = Document;
+    type Action = Action;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        <App as UiApp>::root(state)
+    }
+
+    fn initial_effects(state: &Self::State) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+        <App as UiApp>::initial_effects(state)
+    }
+
+    fn update(
+        state: &mut Self::State,
+        action: Self::Action,
+    ) -> impl IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        <App as UiApp>::update(state, action)
+    }
+
+    fn subscriptions(state: &Self::State, subscriptions: &mut SubscriptionSet<Self::Action>) {
+        <App as UiApp>::subscriptions(state, subscriptions);
+    }
+
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        <App as UiApp>::initial_producer_budget(state)
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        <App as UiApp>::action_producer_budget(state, action)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Deliberately underdeclares the clipboard response/cancellation
+        // frontier for the pre-sequence refusal regression below.
+        runenui_core::ProducerBudget::new(2, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+}
+
 struct SameNodeScrollApp;
 
 impl UiApp for SameNodeScrollApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The single mounted editor owner has one mandatory initial subscription
+        // reconciliation; it declares no outputs, subscriptions, or work starts.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let outputs =
+            usize::from(state.emit_equal_ordinary_after_edit && matches!(action, Action::Edit(_)));
+        let mounted_nodes = usize::from(matches!(action, Action::RemoveEditor));
+        runenui_core::ProducerBudget::new(1, outputs)
+            .with_reconciliation(mounted_nodes, 0, mounted_nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One routed turn may emit one ordinary action or LogicalScroll,
+        // stage Clipboard and InputMethod framework services, and retain one
+        // response/cancellation pair for each live service generation.
+        runenui_core::ProducerBudget::new(8, 4)
+            .with_reconciliation(1, 0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = Document;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -278,6 +393,51 @@ fn editor_root(state: &Document) -> Element<Action> {
 }
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The single mounted editor owner has one mandatory initial subscription
+        // reconciliation; it declares no outputs, subscriptions, or work starts.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        // The editor is the sole mounted owner. An edit can emit the one
+        // ordinary follow-up action selected by this fixture, and every root
+        // transition may reconcile that one owner (including removal).
+        let outputs =
+            usize::from(state.emit_equal_ordinary_after_edit && matches!(action, Action::Edit(_)));
+        let queue_credits = if matches!(action, Action::RemoveEditor) {
+            // Removing the sole editor can retire the active edit authority,
+            // cancel a captured pointer selection, and reconcile its owner in
+            // the same transaction (three distinct queued obligations).
+            3
+        } else {
+            1
+        };
+        runenui_core::ProducerBudget::new(queue_credits, outputs)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        // A live text editor can stage both input-method synchronization and
+        // clipboard service work. Each service keeps response and cancellation
+        // obligations in the same causal frontier.
+        runenui_core::ProducerBudget::new(
+            8,
+            usize::from(state.emit_equal_ordinary_after_edit).max(4),
+        )
+        .with_reconciliation(1, 0, 1)
+        .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+        .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = Document;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -476,6 +636,7 @@ fn mounted() -> AppRuntime<App> {
         emit_equal_ordinary_after_edit: false,
         equal_action_value_observed: false,
     })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"))
 }
 
 fn focus_generic<TestApp>(runtime: &mut AppRuntime<TestApp>)
@@ -489,7 +650,7 @@ where
             SemanticCommand::RequestFocus,
             CommandOrigin::programmatic(),
         )
-        .unwrap_or_else(|_| unreachable!("live editor accepts focus"));
+        .unwrap_or_else(|error| panic!("live editor interaction profile covers focus: {error:?}"));
     let _ = runtime
         .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -533,6 +694,143 @@ fn publish_editor(runtime: &mut AppRuntime<App>) -> SurfaceInputContext {
         .unwrap_or_else(|error| panic!("editable surface publishes: {error:?}"))
         .input_context()
         .clone()
+}
+
+struct PublicationPressureApp;
+
+impl UiApp for PublicationPressureApp {
+    type State = Document;
+    type Action = Action;
+    type HostProtocol = NoHostProtocol;
+
+    fn initial_producer_budget(state: &Document) -> runenui_core::ProducerBudget {
+        App::initial_producer_budget(state)
+    }
+    fn action_producer_budget(state: &Document, action: &Action) -> runenui_core::ProducerBudget {
+        if matches!(action, Action::Ordinary) {
+            // Deliberately conservative but closed: this queued producer uses
+            // none of its two reserved service slots and has no descendants.
+            runenui_core::ProducerBudget::new(3, 0)
+                .with_reconciliation(1, 0, 1)
+                .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+        } else {
+            App::action_producer_budget(state, action)
+        }
+    }
+    fn interaction_producer_budget(state: &Document) -> runenui_core::ProducerBudget {
+        App::interaction_producer_budget(state)
+    }
+    fn root(state: &Document) -> impl View<Action> {
+        App::root(state)
+    }
+    fn update(state: &mut Document, action: Action) -> UpdateOutput<Action, NoHostProtocol> {
+        App::update(state, action)
+    }
+}
+
+#[test]
+fn publication_service_pressure_refuses_before_retained_publication_and_preserves_predecessor() {
+    for trace in [512, 0] {
+        let state = mounted().into_state();
+        let mut runtime = AppRuntime::<PublicationPressureApp>::mount_with_config(
+            state,
+            RuntimeConfig::default()
+                .with_limits(RuntimeLimits::default().with_framework_services(2))
+                .with_trace_config(TraceConfig::new(trace)),
+        )
+        .unwrap_or_else(|error| panic!("pure initial tree fits: {error}"));
+        install_controlled_font(&mut runtime);
+        focus_generic(&mut runtime);
+        assert_eq!(runtime.status(), RuntimeStatus::Running);
+        assert!(
+            runtime.pending_framework_services().is_empty(),
+            "before the first publication IME has no candidate geometry"
+        );
+        runtime
+            .submit_action(Action::Ordinary)
+            .expect("queued predecessor reserves both framework slots");
+        let before = runtime
+            .trace()
+            .kinds()
+            .filter(|kind| matches!(kind, TraceRecordKind::SurfacePublished))
+            .count();
+        let capabilities_before = PUBLICATION_CAPABILITY_CALLS.with(std::cell::Cell::get);
+        let environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::tight(
+            &environment,
+            LogicalSize::try_new(200.0, 40.0).unwrap_or_else(|_| unreachable!()),
+        );
+        let refused = runtime.publish_surface(&context);
+        assert_eq!(
+            PUBLICATION_CAPABILITY_CALLS.with(std::cell::Cell::get),
+            capabilities_before,
+            "known service pressure must refuse before publication capability callbacks"
+        );
+        assert!(
+            matches!(
+                refused,
+                Err(runenui_runtime::PublishSurfaceError::WorkCapacity(
+                    runenui_runtime::WorkCapacityFamily::FrameworkService
+                ))
+            ),
+            "the publication's mandatory IME service cannot use the predecessor's slots: {refused:?}"
+        );
+        let after = runtime
+            .trace()
+            .kinds()
+            .filter(|kind| matches!(kind, TraceRecordKind::SurfacePublished))
+            .count();
+        assert_eq!(
+            runtime.status(),
+            RuntimeStatus::Running,
+            "ordinary service pressure must refuse publication before irreversible mutation; published before={before}, after={after}"
+        );
+        assert_eq!(
+            runtime.state().ordinary_count,
+            0,
+            "publication must not execute or overtake its predecessor"
+        );
+        assert_eq!(
+            runtime
+                .trace()
+                .kinds()
+                .filter(|kind| matches!(kind, TraceRecordKind::SurfacePublished))
+                .count(),
+            before,
+            "a refused publication must not retain or announce a new surface"
+        );
+        let _ = runtime
+            .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!());
+        assert_eq!(runtime.state().ordinary_count, 1);
+        runtime.publish_surface(&context).unwrap_or_else(|error| {
+            panic!("after predecessor completion service capacity is available: {error:?}")
+        });
+        assert_eq!(runtime.status(), RuntimeStatus::Running);
+        runtime
+            .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!());
+        let token = pending_service(&runtime, |request| {
+            matches!(request, FrameworkServiceRequest::InputMethod { .. })
+        })
+        .token();
+        runtime
+            .complete_framework_service(&token, FrameworkServiceResponse::InputMethod(Ok(())))
+            .unwrap_or_else(|error| {
+                panic!("the exact publication-owned request accepts its acknowledgement: {error:?}")
+            });
+        runtime
+            .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!());
+        runtime.submit_action(Action::Ordinary).expect(
+            "completed publication service releases its family claim for another two-slot producer",
+        );
+        runtime
+            .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!());
+        assert_eq!(runtime.state().ordinary_count, 2);
+        assert_eq!(runtime.status(), RuntimeStatus::Running);
+    }
 }
 
 fn select_all(runtime: &mut AppRuntime<App>) {
@@ -657,7 +955,8 @@ fn equal_opaque_edit_and_effect_action_values_keep_their_private_envelope_origin
     let mut runtime = AppRuntime::<App>::mount(Document {
         emit_equal_ordinary_after_edit: true,
         ..mounted().state().clone()
-    });
+    })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     focus(&mut runtime);
     runtime
         .submit_text(
@@ -722,7 +1021,8 @@ fn logical_character_keys_do_not_insert_and_prevented_committed_text_enqueues_no
     let mut prevented = AppRuntime::<App>::mount(Document {
         prevent_default: true,
         ..mounted().state().clone()
-    });
+    })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     focus(&mut prevented);
     prevented
         .submit_text(
@@ -943,12 +1243,89 @@ fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_reva
 }
 
 #[test]
+fn queued_framework_service_response_keeps_its_rooted_cancellation_credit() {
+    let mut runtime = mounted();
+    install_controlled_font(&mut runtime);
+    focus(&mut runtime);
+    publish_editor(&mut runtime);
+    let owner = runtime.index().nodes()[0].id().clone();
+    runtime
+        .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
+        .unwrap_or_else(|error| panic!("paste is routed: {error:?}"));
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
+    let token = pending_service(&runtime, |request| {
+        matches!(request, FrameworkServiceRequest::ClipboardReadText { .. })
+    })
+    .token();
+
+    runtime
+        .complete_framework_service(
+            &token,
+            FrameworkServiceResponse::ClipboardReadText(Ok(ClipboardText::new(
+                "cancelled",
+                ClipboardClassification::Public,
+            ))),
+        )
+        .unwrap_or_else(|error| {
+            panic!("response is accepted into its rooted queue slot: {error:?}")
+        });
+    runtime
+        .cancel_framework_service(&token)
+        .unwrap_or_else(|error| {
+            panic!("live cancellation retains its separate rooted slot: {error:?}")
+        });
+
+    assert_eq!(runtime.state().text, "ab");
+    let _ = runtime
+        .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
+        .unwrap_or_else(|_| unreachable!("pump observation"))
+        .report()
+        .to_owned();
+    assert_eq!(runtime.state().text, "ab");
+    assert_eq!(
+        runtime.state().observed_edits.as_slice(),
+        &[] as &[ObservedEdit]
+    );
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn underdeclared_clipboard_frontier_returns_the_exact_command_before_sequence_admission() {
+    let state = mounted().state().clone();
+    let mut runtime = AppRuntime::<UnderfundedClipboardApp>::mount(state)
+        .unwrap_or_else(|error| panic!("initial application profile is valid: {error}"));
+    let target = runtime.index().nodes()[0].id().clone();
+    let sequence_before = runtime.__routed_sequence_state_for_test();
+
+    let error = runtime
+        .submit_command(
+            target.clone(),
+            SemanticCommand::Paste,
+            CommandOrigin::programmatic(),
+        )
+        .expect_err("two credits cannot cover a service response and its cancellation");
+
+    assert_eq!(error.kind(), SubmitCommandErrorKind::InvalidProducerProfile);
+    let (returned_target, returned_command, returned_origin) = error.into_unaccepted().into_parts();
+    assert_eq!(returned_target, target);
+    assert_eq!(returned_command, SemanticCommand::Paste);
+    assert_eq!(returned_origin, CommandOrigin::programmatic());
+    assert_eq!(runtime.__routed_sequence_state_for_test(), sequence_before);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+#[test]
 #[allow(clippy::assert_is_empty)]
 fn clipboard_copy_is_suppressed_secret_and_unclassified_paste_is_rejected() {
     let mut secret = AppRuntime::<App>::mount(Document {
         sensitivity: TextSensitivity::Secret,
         ..mounted().state().clone()
-    });
+    })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     install_controlled_font(&mut secret);
     focus(&mut secret);
     publish_editor(&mut secret);
@@ -1000,7 +1377,10 @@ fn clipboard_copy_is_suppressed_secret_and_unclassified_paste_is_rejected() {
         .report()
         .to_owned();
     assert_eq!(runtime.state().text, "ab");
-    assert!(runtime.state().observed_edits.is_empty());
+    assert_eq!(
+        runtime.state().observed_edits.as_slice(),
+        &[] as &[ObservedEdit]
+    );
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 }
 
@@ -1080,7 +1460,8 @@ fn sensitive_clipboard_payload_can_only_enter_secret_document() {
     let mut secret = AppRuntime::<App>::mount(Document {
         sensitivity: TextSensitivity::Secret,
         ..mounted().state().clone()
-    });
+    })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     install_controlled_font(&mut secret);
     focus(&mut secret);
     publish_editor(&mut secret);
@@ -1336,7 +1717,8 @@ fn same_node_scroll_moves_committed_ime_candidate_area_with_content_not_viewport
             equal_action_value_observed: false,
         },
         RuntimeConfig::default().with_trace_config(TraceConfig::new(256)),
-    );
+    )
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     install_controlled_font(&mut runtime);
     focus_generic(&mut runtime);
 
@@ -1469,7 +1851,8 @@ fn assert_pointer_selection_conflict(
 #[test]
 fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
-    let mut runtime = AppRuntime::<App>::mount_with_config(mounted().state().clone(), config);
+    let mut runtime = AppRuntime::<App>::mount_with_config(mounted().state().clone(), config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     install_controlled_font(&mut runtime);
     focus(&mut runtime);
     let surface_context = publish_editor(&mut runtime);
@@ -1635,7 +2018,8 @@ fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal()
 fn default_prevented_pointer_down_suppresses_selection_start() {
     let mut down_state = mounted().state().clone();
     down_state.prevent_pointer_down = true;
-    let mut down_runtime = AppRuntime::<App>::mount(down_state);
+    let mut down_runtime = AppRuntime::<App>::mount(down_state)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     install_controlled_font(&mut down_runtime);
     focus(&mut down_runtime);
     let down_context = publish_editor(&mut down_runtime);
@@ -1670,7 +2054,8 @@ fn default_prevented_pointer_down_suppresses_selection_start() {
 fn shift_primary_click_preserves_selection_anchor_across_the_active_endpoint() {
     let mut state = mounted().state().clone();
     state.selection = 2;
-    let mut runtime = AppRuntime::<App>::mount(state);
+    let mut runtime = AppRuntime::<App>::mount(state)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     install_controlled_font(&mut runtime);
     focus(&mut runtime);
     let surface_context = publish_editor(&mut runtime);
@@ -1740,7 +2125,8 @@ fn shift_primary_click_preserves_selection_anchor_across_the_active_endpoint() {
 #[test]
 fn touch_text_selection_wins_only_after_its_validated_threshold_and_uses_displayed_map() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
-    let mut runtime = AppRuntime::<App>::mount_with_config(mounted().state().clone(), config);
+    let mut runtime = AppRuntime::<App>::mount_with_config(mounted().state().clone(), config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     install_controlled_font(&mut runtime);
     focus(&mut runtime);
     let surface_context = publish_editor(&mut runtime);
@@ -1877,7 +2263,8 @@ fn undo_and_redo_are_application_owned_transactions_over_committed_history_only(
     let mut rejected = AppRuntime::<App>::mount(Document {
         reject_next: true,
         ..mounted().state().clone()
-    });
+    })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     focus(&mut rejected);
     rejected
         .submit_text(
@@ -2121,7 +2508,8 @@ fn editable_vertical_keys_move_and_extend_without_retargeting_focus_navigation()
     let mut state = mounted().state().clone();
     state.text = "one two\nthree four\nfive six".to_owned();
     state.selection = 2;
-    let mut runtime = AppRuntime::<App>::mount(state);
+    let mut runtime = AppRuntime::<App>::mount(state)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     install_controlled_font(&mut runtime);
     focus(&mut runtime);
     publish_editor(&mut runtime);
@@ -2273,7 +2661,8 @@ fn rejected_prefix_restores_authoritative_projection_without_mutating_document()
     let mut runtime = AppRuntime::<App>::mount(Document {
         reject_next: true,
         ..mounted().state().clone()
-    });
+    })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     focus(&mut runtime);
     runtime
         .submit_text(
@@ -2296,7 +2685,8 @@ fn burst_edits_keep_fifo_predecessors_and_rejected_suffix_drains_without_retarge
     let mut runtime = AppRuntime::<App>::mount(Document {
         reject_next: true,
         ..mounted().state().clone()
-    });
+    })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     focus(&mut runtime);
     for text in ["x", "y"] {
         runtime
@@ -2328,7 +2718,8 @@ fn transformed_prefix_rebases_a_non_overlapping_dependent_suffix() {
     let mut runtime = AppRuntime::<App>::mount(Document {
         transform_next: true,
         ..mounted().state().clone()
-    });
+    })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     focus(&mut runtime);
     for text in ["x", "y"] {
         runtime
@@ -2354,7 +2745,8 @@ fn inverse_and_grouping_hints_are_deterministic_but_history_remains_application_
     let mut runtime = AppRuntime::<App>::mount(Document {
         transform_next: true,
         ..mounted().state().clone()
-    });
+    })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     focus(&mut runtime);
     for text in ["x", "y"] {
         runtime
@@ -2387,7 +2779,8 @@ fn inverse_and_grouping_hints_are_deterministic_but_history_remains_application_
     let mut rejected = AppRuntime::<App>::mount(Document {
         reject_next: true,
         ..mounted().state().clone()
-    });
+    })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     focus(&mut rejected);
     rejected
         .submit_text(
@@ -2410,6 +2803,27 @@ fn inverse_and_grouping_hints_are_deterministic_but_history_remains_application_
 fn ordinary_action_cannot_return_an_edit_resolution() {
     struct InvalidApp;
     impl UiApp for InvalidApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            // The single editor widget has one initial owner reconciliation.
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_reconciliation(1, 0, 1)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+        }
+
         type State = ();
         type Action = Action;
         type HostProtocol = NoHostProtocol;
@@ -2430,7 +2844,8 @@ fn ordinary_action_cannot_return_an_edit_resolution() {
         }
     }
 
-    let mut runtime = AppRuntime::<InvalidApp>::mount(());
+    let mut runtime = AppRuntime::<InvalidApp>::mount(())
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     runtime
         .submit_action(Action::Ordinary)
         .unwrap_or_else(|_| unreachable!("ordinary action is queued"));
@@ -2449,6 +2864,29 @@ fn ordinary_action_cannot_return_an_edit_resolution() {
 fn missing_edit_resolution_poisons_after_application_mutation_without_claiming_rollback() {
     struct MissingResolutionApp;
     impl UiApp for MissingResolutionApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            // The single editor widget has one initial owner reconciliation.
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_reconciliation(1, 0, 1)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+            // The same editor route needs the ordinary edit/service frontier.
+            // Only the returned resolution is intentionally invalid here.
+            <App as UiApp>::interaction_producer_budget(state)
+        }
+
         type State = Document;
         type Action = Action;
         type HostProtocol = NoHostProtocol;
@@ -2476,7 +2914,8 @@ fn missing_edit_resolution_poisons_after_application_mutation_without_claiming_r
         }
     }
 
-    let mut runtime = AppRuntime::<MissingResolutionApp>::mount(mounted().state().clone());
+    let mut runtime = AppRuntime::<MissingResolutionApp>::mount(mounted().state().clone())
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     focus_generic(&mut runtime);
     runtime
         .submit_text(
@@ -2501,6 +2940,27 @@ fn missing_edit_resolution_poisons_after_application_mutation_without_claiming_r
 fn inconsistent_resolution_refuses_effect_commit_before_terminal_poison() {
     struct InconsistentResolutionApp;
     impl UiApp for InconsistentResolutionApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            // The single editor widget has one initial owner reconciliation.
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_reconciliation(1, 0, 1)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+        }
+
         type State = Document;
         type Action = Action;
         type HostProtocol = NoHostProtocol;
@@ -2532,7 +2992,8 @@ fn inconsistent_resolution_refuses_effect_commit_before_terminal_poison() {
         }
     }
 
-    let mut runtime = AppRuntime::<InconsistentResolutionApp>::mount(mounted().state().clone());
+    let mut runtime = AppRuntime::<InconsistentResolutionApp>::mount(mounted().state().clone())
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     focus_generic(&mut runtime);
     runtime
         .submit_text(
@@ -2557,6 +3018,29 @@ fn inconsistent_resolution_refuses_effect_commit_before_terminal_poison() {
 fn foreign_resolution_request_poisons_after_application_mutation() {
     struct ForeignResolutionApp;
     impl UiApp for ForeignResolutionApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            // The single editor widget has one initial owner reconciliation.
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_reconciliation(1, 0, 1)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+            // The same editor route needs the ordinary edit/service frontier.
+            // Only the returned resolution is intentionally invalid here.
+            <App as UiApp>::interaction_producer_budget(state)
+        }
+
         type State = Document;
         type Action = Action;
         type HostProtocol = NoHostProtocol;
@@ -2595,7 +3079,8 @@ fn foreign_resolution_request_poisons_after_application_mutation() {
         }
     }
 
-    let mut runtime = AppRuntime::<ForeignResolutionApp>::mount(mounted().state().clone());
+    let mut runtime = AppRuntime::<ForeignResolutionApp>::mount(mounted().state().clone())
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     focus_generic(&mut runtime);
     for text in ["x", "y"] {
         runtime
@@ -2761,7 +3246,8 @@ fn read_only_and_disabled_editable_admission_fail_closed() {
     let mut read_only = AppRuntime::<App>::mount(Document {
         read_only: true,
         ..mounted().state().clone()
-    });
+    })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     install_controlled_font(&mut read_only);
     focus(&mut read_only);
     let rejected_text = read_only
@@ -2806,7 +3292,8 @@ fn read_only_and_disabled_editable_admission_fail_closed() {
     let mut disabled = AppRuntime::<App>::mount(Document {
         disabled: true,
         ..mounted().state().clone()
-    });
+    })
+    .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     install_controlled_font(&mut disabled);
     let publication = disabled
         .publish_surface(&context)
@@ -3014,7 +3501,8 @@ fn owner_removal_cancels_preedit_without_a_document_mutation() {
 fn pending_capacity_accounts_for_already_queued_committed_text_without_partial_work() {
     let config =
         RuntimeConfig::default().with_limits(RuntimeLimits::default().with_pending_edits(1));
-    let mut runtime = AppRuntime::<App>::mount_with_config(mounted().state().clone(), config);
+    let mut runtime = AppRuntime::<App>::mount_with_config(mounted().state().clone(), config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     focus(&mut runtime);
     runtime
         .submit_text(
@@ -3083,7 +3571,8 @@ fn secret_edit_and_preedit_payloads_stay_absent_from_full_capture_trace_and_repl
     let config = RuntimeConfig::default().with_trace_config(
         TraceConfig::new(512).with_payload_capture(TracePayloadCapture::FullText),
     );
-    let mut runtime = AppRuntime::<App>::mount_with_config(state, config);
+    let mut runtime = AppRuntime::<App>::mount_with_config(state, config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     install_controlled_font(&mut runtime);
     focus(&mut runtime);
     let start = runtime
@@ -3158,7 +3647,8 @@ fn secret_unicode_navigation_and_backspace_reuse_the_masked_m10_source_map() {
     state.text = "aé漢".to_owned();
     state.selection = state.text.len();
     state.sensitivity = TextSensitivity::Secret;
-    let mut runtime = AppRuntime::<App>::mount(state);
+    let mut runtime = AppRuntime::<App>::mount(state)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     install_controlled_font(&mut runtime);
     focus(&mut runtime);
     let environment = StyleEnvironment::default();
@@ -3212,7 +3702,8 @@ fn secret_mouse_hit_uses_source_coordinates_from_the_retained_mask() {
     state.text = "aé漢".to_owned();
     state.selection = state.text.len();
     state.sensitivity = TextSensitivity::Secret;
-    let mut runtime = AppRuntime::<App>::mount(state);
+    let mut runtime = AppRuntime::<App>::mount(state)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     install_controlled_font(&mut runtime);
     focus(&mut runtime);
     let context = publish_editor(&mut runtime);

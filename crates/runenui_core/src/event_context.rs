@@ -65,7 +65,10 @@ pub struct EventContextOutput<Action> {
     pub host_input_claimed: bool,
     pub accepted_drag_drop: bool,
     pub overflowed: bool,
+    pub producer_violation: Option<crate::ProducerContractViolation>,
+    pub work_start_used: [usize; 5],
     pub remaining_outputs: usize,
+    pub used_outputs: usize,
 }
 
 /// Borrowed facts and provisional output surface for one routed callback.
@@ -100,7 +103,12 @@ pub struct EventContext<'a, Action> {
     ordered: Vec<RoutedEventOutput<Action>>,
     mounted_work: WidgetWorkCollector<Action>,
     remaining_outputs: usize,
+    used_outputs: usize,
     overflowed: bool,
+    producer_violation: Option<crate::ProducerContractViolation>,
+    output_limit: usize,
+    work_start_declared: [usize; 5],
+    work_start_used: [usize; 5],
 }
 
 impl<Action> fmt::Debug for EventContext<'_, Action> {
@@ -166,19 +174,25 @@ impl<'a, Action> EventContext<'a, Action> {
 
     /// Requests admission of the current hover/drop offer from its physical hit target.
     /// This never exposes payload contents or native host handles.
-    pub fn accept_drag_drop(&mut self) {
+    /// # Errors
+    /// Returns the first sticky declaration violation before staging a request.
+    pub fn try_accept_drag_drop(&mut self) -> Result<(), crate::ProducerContractViolation> {
+        if let Some(cause) = self.producer_violation {
+            return Err(cause);
+        }
+
         let Some(event) = self.drag_drop else {
-            return;
+            return Ok(());
         };
         if self.phase != EventPhase::Target
             || self.accepted_drag_drop
             || !matches!(event.phase(), DragDropPhase::Hover | DragDropPhase::Drop)
         {
-            return;
+            return Ok(());
         }
-        if self.reserve_output() {
-            self.accepted_drag_drop = true;
-        }
+        self.try_reserve()?;
+        self.accepted_drag_drop = true;
+        Ok(())
     }
 
     /// Returns the current pointer-stream identity for pointer event families.
@@ -238,22 +252,6 @@ impl<'a, Action> EventContext<'a, Action> {
         self.propagation_stopped
     }
 
-    pub fn emit(&mut self, action: Action) {
-        if self.reserve_output() {
-            self.ordered.push(RoutedEventOutput::Action(action));
-        }
-    }
-
-    pub fn emit_command(&mut self, command: SemanticCommand) {
-        if self.reserve_output() {
-            self.ordered.push(RoutedEventOutput::Command {
-                target: self.current_target.clone(),
-                command,
-                origin: CommandOrigin::delegated(self.origin.source()),
-            });
-        }
-    }
-
     /// Requests standard #344 `ScrollIntoView` for one uniquely mounted, enabled
     /// descendant of the routed owner. Runtime resolves its exact generation
     /// *within this event transaction*; absent, ambiguous or disabled children
@@ -261,25 +259,21 @@ impl<'a, Action> EventContext<'a, Action> {
     /// retargets an authored ID after the command reaches the FIFO.
     ///
     /// A child mounted by a later application action is not eligible here.
-    pub fn emit_scroll_into_view_descendant(&mut self, authored_id: &ElementId) {
-        if self.reserve_output() {
-            self.ordered.push(RoutedEventOutput::DescendantScroll {
-                owner: self.current_target.clone(),
-                authored_id: authored_id.clone(),
-                origin: CommandOrigin::delegated(self.origin.source()),
-            });
+    /// # Errors
+    /// Returns the owned authored identity before resolution on declaration failure.
+    pub fn try_emit_scroll_into_view_descendant(
+        &mut self,
+        authored_id: ElementId,
+    ) -> Result<(), crate::EmitError<ElementId>> {
+        if let Err(cause) = self.try_reserve() {
+            return Err(crate::EmitError::new(authored_id, cause));
         }
-    }
-
-    /// Stages one contextual application command for later FIFO processing.
-    pub fn emit_application_command(&mut self, command: ApplicationCommandId) {
-        if self.reserve_output() {
-            self.ordered.push(RoutedEventOutput::ApplicationCommand {
-                target: self.original_target.clone(),
-                command,
-                origin: CommandOrigin::delegated(self.origin.source()),
-            });
-        }
+        self.ordered.push(RoutedEventOutput::DescendantScroll {
+            owner: self.current_target.clone(),
+            authored_id,
+            origin: CommandOrigin::delegated(self.origin.source()),
+        });
+        Ok(())
     }
 
     /// Consumes the current routed application command with one typed scope disposition.
@@ -299,111 +293,45 @@ impl<'a, Action> EventContext<'a, Action> {
     }
 
     /// Stages capture of the current pointer by the current routed node.
-    pub fn capture_pointer(&mut self) {
-        let Some(pointer_id) = self.pointer_id else {
-            return;
-        };
-        if self.reserve_output() {
-            self.pointer_capture.push(PointerCaptureRequest::Capture {
-                pointer_id,
-                target: self.current_target.clone(),
-            });
+    /// # Errors
+    /// Returns the first sticky declaration violation before staging a request.
+    pub fn try_capture_pointer(&mut self) -> Result<(), crate::ProducerContractViolation> {
+        if let Some(cause) = self.producer_violation {
+            return Err(cause);
         }
+
+        let Some(pointer_id) = self.pointer_id else {
+            return Ok(());
+        };
+        self.try_reserve()?;
+        self.pointer_capture.push(PointerCaptureRequest::Capture {
+            pointer_id,
+            target: self.current_target.clone(),
+        });
+        Ok(())
     }
 
     /// Stages release of the current pointer when the current node owns capture.
-    pub fn release_pointer_capture(&mut self) {
-        let Some(pointer_id) = self.pointer_id else {
-            return;
-        };
-        if self.reserve_output() {
-            self.pointer_capture.push(PointerCaptureRequest::Release {
-                pointer_id,
-                target: self.current_target.clone(),
-            });
+    /// # Errors
+    /// Returns the first sticky declaration violation before staging a request.
+    pub fn try_release_pointer_capture(&mut self) -> Result<(), crate::ProducerContractViolation> {
+        if let Some(cause) = self.producer_violation {
+            return Err(cause);
         }
+
+        let Some(pointer_id) = self.pointer_id else {
+            return Ok(());
+        };
+        self.try_reserve()?;
+        self.pointer_capture.push(PointerCaptureRequest::Release {
+            pointer_id,
+            target: self.current_target.clone(),
+        });
+        Ok(())
     }
 
     pub fn invalidate(&mut self, invalidation: WidgetInvalidation) {
         self.invalidation |= invalidation;
-    }
-
-    pub const fn invalidate_subscriptions(&mut self) {
-        if !self.subscription_invalidation {
-            if self.remaining_outputs == 0 {
-                self.overflowed = true;
-                return;
-            }
-            self.remaining_outputs -= 1;
-            self.subscription_invalidation = true;
-        }
-    }
-
-    pub fn local_task(&mut self, future: impl Future<Output = Option<Action>> + 'static) {
-        if self.reserve_output() {
-            self.mounted_work.local_task(future);
-        }
-    }
-
-    pub fn keyed_local_task(
-        &mut self,
-        key: WorkKey,
-        future: impl Future<Output = Option<Action>> + 'static,
-    ) {
-        if self.reserve_output() {
-            self.mounted_work.keyed_local_task(key, future);
-        }
-    }
-
-    pub fn send_task<Output>(
-        &mut self,
-        future: impl Future<Output = Output> + Send + 'static,
-        map: impl FnOnce(Output) -> Action + 'static,
-    ) where
-        Output: Send + 'static,
-    {
-        if self.reserve_output() {
-            self.mounted_work.send_task(future, map);
-        }
-    }
-
-    pub fn keyed_send_task<Output>(
-        &mut self,
-        key: WorkKey,
-        future: impl Future<Output = Output> + Send + 'static,
-        map: impl FnOnce(Output) -> Action + 'static,
-    ) where
-        Output: Send + 'static,
-    {
-        if self.reserve_output() {
-            self.mounted_work.keyed_send_task(key, future, map);
-        }
-    }
-
-    pub fn send_task_with_failure<Output>(
-        &mut self,
-        future: impl Future<Output = Output> + Send + 'static,
-        map: impl FnOnce(Output) -> Action + 'static,
-        start_failure: impl FnOnce(SendTaskStartFailure) -> Action + 'static,
-    ) where
-        Output: Send + 'static,
-    {
-        if self.reserve_output() {
-            self.mounted_work
-                .send_task_with_failure(future, map, start_failure);
-        }
-    }
-
-    pub fn timer(&mut self, timer: TimerEffect<Action>) {
-        if self.reserve_output() {
-            self.mounted_work.timer(timer);
-        }
-    }
-
-    pub fn cancel(&mut self, family: WorkFamily, key: WorkKey) {
-        if self.reserve_output() {
-            self.mounted_work.cancel(family, key);
-        }
     }
 
     /// Explicitly claims this routed input against a concurrently embedded host.
@@ -431,16 +359,6 @@ impl<'a, Action> EventContext<'a, Action> {
         }
     }
 
-    const fn reserve_output(&mut self) -> bool {
-        if self.remaining_outputs == 0 {
-            self.overflowed = true;
-            false
-        } else {
-            self.remaining_outputs -= 1;
-            true
-        }
-    }
-
     pub(crate) const fn mapped_child<ChildAction>(&self) -> EventContext<'a, ChildAction> {
         let mut child = EventContext::new_with_pointer_facts(
             self.phase,
@@ -463,6 +381,10 @@ impl<'a, Action> EventContext<'a, Action> {
             self.remaining_outputs,
         );
         child.host_input_claimed = self.host_input_claimed;
+        child.producer_violation = self.producer_violation;
+        child.output_limit = self.output_limit;
+        child.work_start_declared = self.work_start_declared;
+        child.work_start_used = self.work_start_used;
         child
     }
 
@@ -483,8 +405,14 @@ impl<'a, Action> EventContext<'a, Action> {
         if child.application_command_disposition.is_some() {
             self.application_command_disposition = child.application_command_disposition;
         }
+        self.work_start_used = child.work_start_used;
         self.overflowed |= child.overflowed;
+        self.producer_violation = self.producer_violation.or(child.producer_violation);
         self.remaining_outputs = child.remaining_outputs;
+        self.used_outputs += child.used_outputs;
+        if self.producer_violation.is_some() {
+            return;
+        }
         for output in child.ordered.drain(..) {
             self.ordered.push(match output {
                 RoutedEventOutput::Action(action) => RoutedEventOutput::Action(mapper(action)),
@@ -730,7 +658,12 @@ impl<'a, Action> EventContext<'a, Action> {
             ordered: Vec::new(),
             mounted_work: WidgetWorkCollector::new(),
             remaining_outputs: output_allowance,
+            used_outputs: 0,
             overflowed: false,
+            producer_violation: None,
+            output_limit: output_allowance,
+            work_start_declared: [0; 5],
+            work_start_used: [0; 5],
         }
     }
 
@@ -748,8 +681,265 @@ impl<'a, Action> EventContext<'a, Action> {
             host_input_claimed: self.host_input_claimed,
             accepted_drag_drop: self.accepted_drag_drop,
             overflowed: self.overflowed,
+            producer_violation: self.producer_violation,
+            work_start_used: self.work_start_used,
             remaining_outputs: self.remaining_outputs,
+            used_outputs: self.used_outputs,
         }
+    }
+}
+
+impl<Action> EventContext<'_, Action> {
+    /// Requests one coalesced subscription pass within this invocation.
+    ///
+    /// # Errors
+    /// Returns the first sticky declaration violation.
+    pub const fn try_invalidate_subscriptions(
+        &mut self,
+    ) -> Result<(), crate::ProducerContractViolation> {
+        if let Some(cause) = self.producer_violation {
+            return Err(cause);
+        }
+        if !self.subscription_invalidation {
+            match self.try_reserve() {
+                Ok(()) => self.subscription_invalidation = true,
+                Err(cause) => return Err(cause),
+            }
+        }
+        Ok(())
+    }
+    /// Returns the sticky violation, independently of optional trace.
+    #[must_use]
+    pub const fn producer_violation(&self) -> Option<crate::ProducerContractViolation> {
+        self.producer_violation
+    }
+    const fn try_reserve(&mut self) -> Result<(), crate::ProducerContractViolation> {
+        if let Some(cause) = self.producer_violation {
+            return Err(cause);
+        }
+        if self.remaining_outputs == 0 {
+            let cause = crate::ProducerContractViolation::output(
+                crate::ProducerPhase::Widget(crate::WidgetProducerPhase::Event),
+                self.output_limit,
+            );
+            self.producer_violation = Some(cause);
+            self.overflowed = true;
+            return Err(cause);
+        }
+        self.remaining_outputs -= 1;
+        self.used_outputs += 1;
+        Ok(())
+    }
+    /// Stages one owned operation before erasure.
+    ///
+    /// # Errors
+    /// Returns the original request and the sticky declaration violation.
+    pub fn try_emit(&mut self, action: Action) -> Result<(), crate::EmitError<Action>> {
+        if let Err(cause) = self.try_reserve() {
+            return Err(crate::EmitError::new(action, cause));
+        }
+        self.ordered.push(RoutedEventOutput::Action(action));
+        Ok(())
+    }
+    /// Stages one owned operation before erasure.
+    ///
+    /// # Errors
+    /// Returns the original request and the sticky declaration violation.
+    pub fn try_emit_command(
+        &mut self,
+        command: SemanticCommand,
+    ) -> Result<(), crate::EmitError<SemanticCommand>> {
+        if let Err(cause) = self.try_reserve() {
+            return Err(crate::EmitError::new(command, cause));
+        }
+        self.ordered.push(RoutedEventOutput::Command {
+            target: self.current_target.clone(),
+            command,
+            origin: CommandOrigin::delegated(self.origin.source()),
+        });
+        Ok(())
+    }
+    /// Stages one owned operation before erasure.
+    ///
+    /// # Errors
+    /// Returns the original request and the sticky declaration violation.
+    pub fn try_emit_application_command(
+        &mut self,
+        command: ApplicationCommandId,
+    ) -> Result<(), crate::EmitError<ApplicationCommandId>> {
+        if let Err(cause) = self.try_reserve() {
+            return Err(crate::EmitError::new(command, cause));
+        }
+        self.ordered.push(RoutedEventOutput::ApplicationCommand {
+            target: self.original_target.clone(),
+            command,
+            origin: CommandOrigin::delegated(self.origin.source()),
+        });
+        Ok(())
+    }
+    /// Stages one owned operation before erasure.
+    ///
+    /// # Errors
+    /// Returns the original request and the sticky declaration violation.
+    pub fn try_local_task<F: Future<Output = Option<Action>> + 'static>(
+        &mut self,
+        future: F,
+    ) -> Result<(), crate::EmitError<F>> {
+        if let Err(cause) = self.try_reserve_work(WorkFamily::LocalTask) {
+            return Err(crate::EmitError::new(future, cause));
+        }
+        self.mounted_work.local_task(future);
+        Ok(())
+    }
+    /// Stages one owned operation before erasure.
+    ///
+    /// # Errors
+    /// Returns the original request and the sticky declaration violation.
+    pub fn try_keyed_local_task<F: Future<Output = Option<Action>> + 'static>(
+        &mut self,
+        key: WorkKey,
+        future: F,
+    ) -> Result<(), crate::EmitError<(WorkKey, F)>> {
+        if let Err(cause) = self.try_reserve_work(WorkFamily::LocalTask) {
+            return Err(crate::EmitError::new((key, future), cause));
+        }
+        self.mounted_work.keyed_local_task(key, future);
+        Ok(())
+    }
+    /// Stages one owned operation before erasure.
+    ///
+    /// # Errors
+    /// Returns the original request and the sticky declaration violation.
+    pub fn try_send_task<I, F, M>(
+        &mut self,
+        future: F,
+        map: M,
+    ) -> Result<(), crate::EmitError<(F, M)>>
+    where
+        I: Send + 'static,
+        F: Future<Output = I> + Send + 'static,
+        M: FnOnce(I) -> Action + 'static,
+    {
+        if let Err(cause) = self.try_reserve_work(WorkFamily::SendTask) {
+            return Err(crate::EmitError::new((future, map), cause));
+        }
+        self.mounted_work.send_task(future, map);
+        Ok(())
+    }
+    /// Stages one owned operation before erasure.
+    ///
+    /// # Errors
+    /// Returns the original request and the sticky declaration violation.
+    pub fn try_keyed_send_task<I, F, M>(
+        &mut self,
+        key: WorkKey,
+        future: F,
+        map: M,
+    ) -> Result<(), crate::EmitError<(WorkKey, F, M)>>
+    where
+        I: Send + 'static,
+        F: Future<Output = I> + Send + 'static,
+        M: FnOnce(I) -> Action + 'static,
+    {
+        if let Err(cause) = self.try_reserve_work(WorkFamily::SendTask) {
+            return Err(crate::EmitError::new((key, future, map), cause));
+        }
+        self.mounted_work.keyed_send_task(key, future, map);
+        Ok(())
+    }
+    /// Stages one owned operation before erasure.
+    ///
+    /// # Errors
+    /// Returns the original request and the sticky declaration violation.
+    pub fn try_send_task_with_failure<I, F, M, E>(
+        &mut self,
+        future: F,
+        map: M,
+        start_failure: E,
+    ) -> Result<(), crate::EmitError<(F, M, E)>>
+    where
+        I: Send + 'static,
+        F: Future<Output = I> + Send + 'static,
+        M: FnOnce(I) -> Action + 'static,
+        E: FnOnce(SendTaskStartFailure) -> Action + 'static,
+    {
+        if let Err(cause) = self.try_reserve_work(WorkFamily::SendTask) {
+            return Err(crate::EmitError::new((future, map, start_failure), cause));
+        }
+        self.mounted_work
+            .send_task_with_failure(future, map, start_failure);
+        Ok(())
+    }
+    /// Stages one owned operation before erasure.
+    ///
+    /// # Errors
+    /// Returns the original request and the sticky declaration violation.
+    pub fn try_timer(
+        &mut self,
+        timer: TimerEffect<Action>,
+    ) -> Result<(), crate::EmitError<TimerEffect<Action>>> {
+        if let Err(cause) = self.try_reserve_work(WorkFamily::Timer) {
+            return Err(crate::EmitError::new(timer, cause));
+        }
+        self.mounted_work.timer(timer);
+        Ok(())
+    }
+    /// Stages one owned operation before erasure.
+    ///
+    /// # Errors
+    /// Returns the original request and the sticky declaration violation.
+    pub fn try_cancel(
+        &mut self,
+        family: WorkFamily,
+        key: WorkKey,
+    ) -> Result<(), crate::EmitError<(WorkFamily, WorkKey)>> {
+        if let Err(cause) = self.try_reserve() {
+            return Err(crate::EmitError::new((family, key), cause));
+        }
+        self.mounted_work.cancel(family, key);
+        Ok(())
+    }
+}
+
+impl<Action> EventContext<'_, Action> {
+    pub(crate) const fn set_work_starts(&mut self, budget: crate::WorkStartBudget) {
+        self.work_start_declared = [
+            budget.for_family(WorkFamily::LocalTask),
+            budget.for_family(WorkFamily::SendTask),
+            budget.for_family(WorkFamily::Timer),
+            budget.for_family(WorkFamily::HostRequest),
+            budget.for_family(WorkFamily::FrameworkService),
+        ];
+    }
+    fn try_reserve_work(
+        &mut self,
+        family: WorkFamily,
+    ) -> Result<(), crate::ProducerContractViolation> {
+        if let Some(cause) = self.producer_violation {
+            return Err(cause);
+        }
+        let index = match family {
+            WorkFamily::LocalTask => 0,
+            WorkFamily::SendTask => 1,
+            WorkFamily::Timer => 2,
+            WorkFamily::HostRequest => 3,
+            WorkFamily::FrameworkService => 4,
+        };
+        if self.work_start_used[index] >= self.work_start_declared[index] {
+            let cause = crate::ProducerContractViolation {
+                kind: crate::ProducerViolationKind::DeclarationExceeded,
+                phase: crate::ProducerPhase::Widget(crate::WidgetProducerPhase::Event),
+                component: crate::BudgetComponent::WorkStarts(family),
+                declared: self.work_start_declared[index],
+                attempted: self.work_start_used[index].checked_add(1),
+            };
+            self.producer_violation = Some(cause);
+            self.overflowed = true;
+            return Err(cause);
+        }
+        self.try_reserve()?;
+        self.work_start_used[index] += 1;
+        Ok(())
     }
 }
 
@@ -795,6 +985,7 @@ mod tests {
             4,
         );
         assert_eq!(context.phase(), EventPhase::Bubble);
+        context.set_work_starts(crate::WorkStartBudget::new(1, 0, 0, 0, 0));
         assert_eq!(context.original_target(), &original);
         assert_eq!(context.current_target(), &current);
         assert_eq!(context.related_target(), None);
@@ -809,11 +1000,11 @@ mod tests {
         assert!(!context.propagation_is_stopped());
         assert!(!context.host_input_is_claimed());
 
-        context.emit(String::from("first"));
-        context.emit_command(SemanticCommand::OpenMenu);
+        let _ = context.try_emit(String::from("first"));
+        let _ = context.try_emit_command(SemanticCommand::OpenMenu);
         context.invalidate(WidgetInvalidation::PAINT);
-        context.invalidate_subscriptions();
-        context.local_task(async { Some(String::from("later")) });
+        let _ = context.try_invalidate_subscriptions();
+        let _ = context.try_local_task(async { Some(String::from("later")) });
         context.stop_propagation();
         context.prevent_default();
         context.claim_host_input();
@@ -871,8 +1062,8 @@ mod tests {
         assert_eq!(context.pointer_id(), Some(pointer_id));
         assert_eq!(context.physical_target(), Some(&target));
         assert_eq!(context.physical_path(), path.as_slice());
-        context.capture_pointer();
-        context.release_pointer_capture();
+        let _ = context.try_capture_pointer();
+        let _ = context.try_release_pointer_capture();
         let output = context.into_output();
         assert_eq!(
             output.pointer_capture,
@@ -916,7 +1107,7 @@ mod tests {
             false,
             1,
         );
-        bubbling.accept_drag_drop();
+        let _ = bubbling.try_accept_drag_drop();
         assert!(!bubbling.into_output().accepted_drag_drop);
 
         let cancel = DragDropEvent::new(DragDropPhase::Cancel, payload);
@@ -937,7 +1128,7 @@ mod tests {
             false,
             1,
         );
-        target_cancel.accept_drag_drop();
+        let _ = target_cancel.try_accept_drag_drop();
         assert!(!target_cancel.into_output().accepted_drag_drop);
 
         let mut target_drop = EventContext::<()>::new_pointer(
@@ -957,8 +1148,8 @@ mod tests {
             false,
             1,
         );
-        target_drop.accept_drag_drop();
-        target_drop.accept_drag_drop();
+        let _ = target_drop.try_accept_drag_drop();
+        let _ = target_drop.try_accept_drag_drop();
         let output = target_drop.into_output();
         assert!(output.accepted_drag_drop);
         assert!(!output.overflowed);
@@ -989,8 +1180,8 @@ mod tests {
             2,
         );
         let mut child = parent.mapped_child::<()>();
-        child.capture_pointer();
-        child.release_pointer_capture();
+        let _ = child.try_capture_pointer();
+        let _ = child.try_release_pointer_capture();
         let mapper: Rc<dyn Fn(()) -> String> = Rc::new(|()| String::new());
 
         parent.absorb_mapped(child.into_output(), &mapper);
@@ -1030,9 +1221,9 @@ mod tests {
         parent.claim_host_input();
         let mut child = parent.mapped_child::<NonClone>();
         assert!(child.host_input_is_claimed());
-        child.emit(NonClone(9));
-        child.emit_command(SemanticCommand::CancelOrBack);
-        child.emit_application_command(
+        let _ = child.try_emit(NonClone(9));
+        let _ = child.try_emit_command(SemanticCommand::CancelOrBack);
+        let _ = child.try_emit_application_command(
             ApplicationCommandId::from_static("save")
                 .unwrap_or_else(|_| unreachable!("test command id is valid")),
         );
@@ -1083,8 +1274,8 @@ mod tests {
             false,
             1,
         );
-        context.emit(1);
-        context.emit(2);
+        let _ = context.try_emit(1);
+        let _ = context.try_emit(2);
         let output = context.into_output();
         assert_eq!(output.ordered.len(), 1);
         assert!(output.overflowed);

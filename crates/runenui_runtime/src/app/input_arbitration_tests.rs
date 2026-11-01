@@ -19,6 +19,19 @@ struct HostClaimProbe {
 enum ProbeAction {}
 
 impl Widget<ProbeAction> for HostClaimProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
 
@@ -42,6 +55,32 @@ impl Widget<ProbeAction> for HostClaimProbe {
 
 struct ProbeApp;
 impl UiApp for ProbeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One mounted owner in every reachable state. Actionable probes allow
+        // four focus notifications, routing, activation, and one default.
+        runenui_core::ProducerBudget::new(3, 1)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = bool;
     type Action = ProbeAction;
     type HostProtocol = NoHostProtocol;
@@ -63,7 +102,8 @@ fn focused_runtime(claim: bool) -> AppRuntime<ProbeApp> {
 }
 
 fn focused_runtime_with_config(claim: bool, config: crate::RuntimeConfig) -> AppRuntime<ProbeApp> {
-    let mut app = AppRuntime::<ProbeApp>::mount_with_config(claim, config);
+    let mut app = AppRuntime::<ProbeApp>::mount_with_config(claim, config)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let budget = PumpBudget::new(16, 16, 16, 16);
     let _ = app.pump(budget);
     let id = ElementId::new("probe").unwrap_or_else(|_| unreachable!("fixture id"));
@@ -206,7 +246,8 @@ fn direct_publications_return_contiguous_transitions_without_claiming_present() 
     use crate::{LogicalSize, SurfaceBuildContext};
     use runenui_core::StyleEnvironment;
 
-    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let mut app = AppRuntime::<SpaceApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
     let before = app
         .input_ownership()
@@ -347,7 +388,8 @@ fn publication_after_pending_composition_keeps_the_unknown_prelude_unproven() {
     use crate::{LogicalSize, SurfaceBuildContext};
     use runenui_core::StyleEnvironment;
 
-    let mut app = AppRuntime::<TextOwnershipApp>::mount(());
+    let mut app = AppRuntime::<TextOwnershipApp>::mount(())
+        .unwrap_or_else(|_| unreachable!("fixture admission"));
     let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
     let target = app
         .index()
@@ -395,7 +437,8 @@ fn publication_transition_cannot_bridge_a_completed_composition_aba() {
     use crate::{LogicalSize, SurfaceBuildContext};
     use runenui_core::StyleEnvironment;
 
-    let mut app = AppRuntime::<TextOwnershipApp>::mount(());
+    let mut app = AppRuntime::<TextOwnershipApp>::mount(())
+        .unwrap_or_else(|_| unreachable!("fixture admission"));
     let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
     let target = app
         .index()
@@ -464,7 +507,8 @@ fn publication_observation_capacity_is_preflighted_before_retained_context_chang
     use crate::{LogicalSize, PublishSurfaceError, SurfaceBuildContext};
     use runenui_core::StyleEnvironment;
 
-    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let mut app =
+        AppRuntime::<SpaceApp>::mount(0).unwrap_or_else(|_| unreachable!("fixture admission"));
     let environment = StyleEnvironment::default();
     let size = LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("viewport"));
     let build = SurfaceBuildContext::tight(&environment, size);
@@ -501,7 +545,8 @@ fn consuming_surface_product_extractions_preserve_direct_ownership_observation()
     use crate::{LogicalSize, SurfaceBuildContext};
     use runenui_core::StyleEnvironment;
 
-    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let mut app =
+        AppRuntime::<SpaceApp>::mount(0).unwrap_or_else(|_| unreachable!("fixture admission"));
     let _ = app
         .input_ownership()
         .unwrap_or_else(|_| unreachable!("materialized baseline"));
@@ -537,7 +582,8 @@ fn trace_disabled_keeps_exact_host_receipt_and_explicit_widget_conflict() {
     let mut app = AppRuntime::<ProbeApp>::mount_with_config(
         true,
         RuntimeConfig::default().with_trace_config(TraceConfig::new(0)),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let budget = PumpBudget::new(16, 16, 16, 16);
     let _ = app.pump(budget);
     let id = ElementId::new("probe").unwrap_or_else(|_| unreachable!("fixture identity"));
@@ -720,7 +766,8 @@ fn initial_checkpoint_capacity_shortage_preserves_prior_ownership_observation_an
 
 #[test]
 fn initial_snapshot_revision_after_direct_composition_admission_survives_capacity_pause() {
-    let mut app = AppRuntime::<TextOwnershipApp>::mount(());
+    let mut app = AppRuntime::<TextOwnershipApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
     let target = app
         .index()
@@ -957,6 +1004,36 @@ fn terminal_reason_is_not_rewritten_as_shutdown_when_retirement_is_observed_late
 struct SpaceApp;
 
 impl UiApp for SpaceApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One mounted owner in every reachable state. Actionable probes allow
+        // four focus notifications, routing, activation, and one default.
+        // A release can retain the old cursor outcome pair while preflighting
+        // six routed/default outputs and the replacement outcome pair.
+        runenui_core::ProducerBudget::new(11, 7)
+            .with_application_outputs(0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = usize;
     type Action = usize;
     type HostProtocol = NoHostProtocol;
@@ -1005,7 +1082,8 @@ fn keyboard_default_claim_reasons_distinguish_navigation_and_activation() {
             UiInputClaimReason::ActivationDefault,
         ),
     ] {
-        let mut app = AppRuntime::<SpaceApp>::mount(0);
+        let mut app = AppRuntime::<SpaceApp>::mount(0)
+            .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
         let budget = PumpBudget::new(32, 32, 32, 32);
         let _ = app
             .pump(budget)
@@ -1074,7 +1152,8 @@ fn keyboard_default_claim_reasons_distinguish_navigation_and_activation() {
 
 #[test]
 fn space_press_ownership_is_source_qualified_through_other_device_and_own_release() {
-    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let mut app = AppRuntime::<SpaceApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
     let target = app
         .index()
@@ -1150,7 +1229,8 @@ fn exhausted_direct_publication_preflights_before_commit_and_exposes_last_termin
     use crate::{LogicalSize, PublishSurfaceError, SurfaceBuildContext};
     use runenui_core::StyleEnvironment;
 
-    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let mut app = AppRuntime::<SpaceApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
     let original = app
         .input_ownership()
@@ -1203,7 +1283,8 @@ fn rev20_unchanged_running_ownership_at_penultimate_revision_remains_observable(
     use crate::{LogicalSize, SurfaceBuildContext};
     use runenui_core::StyleEnvironment;
 
-    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let mut app = AppRuntime::<SpaceApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
     let _ = app
         .input_ownership()
@@ -1304,7 +1385,8 @@ fn rev20_pump_exhaustion_retires_scope_without_inventing_input_settlement() {
 
 #[test]
 fn rev20_explicit_shutdown_uses_last_revision_without_phantom_boundary() {
-    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let mut app = AppRuntime::<SpaceApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
     let _ = app
         .input_ownership()
@@ -1329,7 +1411,8 @@ fn rev20_explicit_shutdown_uses_last_revision_without_phantom_boundary() {
 
 #[test]
 fn failed_second_shutdown_reservation_preserves_pending_composition_revision() {
-    let mut app = AppRuntime::<TextOwnershipApp>::mount(());
+    let mut app = AppRuntime::<TextOwnershipApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let budget = PumpBudget::new(32, 32, 32, 32);
     let _ = app.pump(budget);
     let target = app
@@ -1402,7 +1485,8 @@ fn failed_second_shutdown_reservation_preserves_pending_composition_revision() {
 
 #[test]
 fn already_terminal_max_revision_can_shutdown_and_retire_without_wrap() {
-    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let mut app = AppRuntime::<SpaceApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = app.pump(PumpBudget::new(16, 16, 16, 16));
     let _ = app
         .input_ownership()
@@ -1458,7 +1542,8 @@ fn already_terminal_max_revision_can_shutdown_and_retire_without_wrap() {
 
 #[test]
 fn revision_exhaustion_retains_committed_receipt_and_terminalizes_with_exact_final_snapshot() {
-    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let mut app = AppRuntime::<SpaceApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
     let target = app
         .index()
@@ -1525,6 +1610,20 @@ fn revision_exhaustion_retains_committed_receipt_and_terminalizes_with_exact_fin
 struct OverflowProbe;
 
 impl Widget<u8> for OverflowProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -1541,11 +1640,11 @@ impl Widget<u8> for OverflowProbe {
             && context.phase() == EventPhase::Target
         {
             context.claim_host_input();
-            context.emit(1);
-            // A second output exceeds the admitted one-output transaction.
+            let _ = context.try_emit(1);
+            // A second output exceeds the declared one-output callback.
             // Even the explicit UI claim must not turn an aborted route
             // into a successful exclusive settlement.
-            context.emit(2);
+            let _ = context.try_emit(2);
         }
         WidgetEventOutput::none()
     }
@@ -1554,6 +1653,32 @@ impl Widget<u8> for OverflowProbe {
 struct OverflowApp;
 
 impl UiApp for OverflowApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One mounted owner in every reachable state. Actionable probes allow
+        // four focus notifications, routing, activation, and one default.
+        runenui_core::ProducerBudget::new(9, 7)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = usize;
     type Action = u8;
     type HostProtocol = NoHostProtocol;
@@ -1586,7 +1711,17 @@ fn assert_overflow_settlement_and_retirement(
     assert_eq!(batch.final_ownership().scope(), scope);
     assert_eq!(
         batch.final_ownership().status(),
-        crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned),
+        crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::ProducerContractViolation(
+            runenui_core::ProducerContractViolation {
+                kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                phase: runenui_core::ProducerPhase::Widget(
+                    runenui_core::WidgetProducerPhase::Event
+                ),
+                component: runenui_core::BudgetComponent::Outputs,
+                declared: 1,
+                attempted: Some(2),
+            }
+        )),
     );
 
     let settlements: Vec<_> = batch
@@ -1623,15 +1758,26 @@ fn assert_overflow_settlement_and_retirement(
     assert_eq!(retirement.scope(), scope);
     assert_eq!(
         retirement.reason(),
-        crate::InputScopeRetirementReason::Terminal(crate::RuntimeTerminalReason::Poisoned),
+        crate::InputScopeRetirementReason::Terminal(
+            crate::RuntimeTerminalReason::ProducerContractViolation(
+                runenui_core::ProducerContractViolation {
+                    kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                    phase: runenui_core::ProducerPhase::Widget(
+                        runenui_core::WidgetProducerPhase::Event
+                    ),
+                    component: runenui_core::BudgetComponent::Outputs,
+                    declared: 1,
+                    attempted: Some(2),
+                }
+            )
+        ),
     );
 }
 
 fn assert_overflow_aborts_with_trace(trace_config: crate::TraceConfig) {
-    let config = crate::RuntimeConfig::default()
-        .with_limits(crate::RuntimeLimits::default().with_transaction_outputs(1))
-        .with_trace_config(trace_config);
-    let mut app = AppRuntime::<OverflowApp>::mount_with_config(0, config);
+    let config = crate::RuntimeConfig::default().with_trace_config(trace_config);
+    let mut app = AppRuntime::<OverflowApp>::mount_with_config(0, config)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let budget = PumpBudget::new(16, 16, 16, 16);
     app.pump(budget)
         .unwrap_or_else(|_| unreachable!("initial readiness must be observable"));
@@ -1703,10 +1849,9 @@ fn overflowing_widget_callback_aborts_reached_input_and_retires_pending_receipts
 #[test]
 fn semantic_callback_poison_reports_cancelled_native_input_without_phantom_settlement() {
     for trace_config in [crate::TraceConfig::default(), crate::TraceConfig::new(0)] {
-        let config = crate::RuntimeConfig::default()
-            .with_limits(crate::RuntimeLimits::default().with_transaction_outputs(1))
-            .with_trace_config(trace_config);
-        let mut app = AppRuntime::<OverflowApp>::mount_with_config(0, config);
+        let config = crate::RuntimeConfig::default().with_trace_config(trace_config);
+        let mut app = AppRuntime::<OverflowApp>::mount_with_config(0, config)
+            .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
         let budget = PumpBudget::new(32, 32, 32, 32);
         app.pump(budget)
             .unwrap_or_else(|_| unreachable!("initial mount is observable"));
@@ -1754,7 +1899,19 @@ fn semantic_callback_poison_reports_cancelled_native_input_without_phantom_settl
         );
         assert_eq!(
             batch.final_ownership().status(),
-            crate::RuntimeStatus::Terminal(crate::RuntimeTerminalReason::Poisoned)
+            crate::RuntimeStatus::Terminal(
+                crate::RuntimeTerminalReason::ProducerContractViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                        phase: runenui_core::ProducerPhase::Widget(
+                            runenui_core::WidgetProducerPhase::Event
+                        ),
+                        component: runenui_core::BudgetComponent::Outputs,
+                        declared: 1,
+                        attempted: Some(2),
+                    }
+                )
+            )
         );
         assert_eq!(
             batch
@@ -1778,6 +1935,10 @@ fn semantic_callback_poison_reports_cancelled_native_input_without_phantom_settl
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one complete negative processing settlement and no-replay proof"
+)]
 fn nonterminal_pointer_routed_capacity_refusal_is_processing_rejected_not_aborted() {
     use crate::{LogicalSize, RuntimeConfig, SurfaceBuildContext, TraceConfig};
     use runenui_core::{
@@ -1785,15 +1946,20 @@ fn nonterminal_pointer_routed_capacity_refusal_is_processing_rejected_not_aborte
         PointerPhase, StyleEnvironment,
     };
 
-    // Routed callback preflight reserves the accepted transaction's maximum
-    // possible follow-up envelopes. Ingress still fits this smaller FIFO.
-    // With trace disabled, arbitration cannot borrow an optional trace result.
+    // Producer credits protect ordinary FIFO capacity. Retain this negative
+    // processing-finality proof using the independent per-transaction output
+    // limit: the complete routed allowance exceeds one, before callbacks run.
     let mut app = AppRuntime::<SpaceApp>::mount_with_config(
         0,
         RuntimeConfig::default()
-            .with_queue_capacity(64)
+            .with_limits(
+                crate::RuntimeLimits::default()
+                    .with_waiting_envelopes(64)
+                    .with_transaction_outputs(1),
+            )
             .with_trace_config(TraceConfig::new(0)),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     app.pump(PumpBudget::new(64, 64, 64, 64))
         .unwrap_or_else(|_| unreachable!("initial public mount settles"));
     let environment = StyleEnvironment::default();
@@ -1828,6 +1994,15 @@ fn nonterminal_pointer_routed_capacity_refusal_is_processing_rejected_not_aborte
         .submit_pointer(down)
         .unwrap_or_else(|_| unreachable!("host-native Down is queue-admitted"))
         .sequence();
+    let mut followers = 0;
+    while app.submit_action(0).is_ok() {
+        followers += 1;
+        assert!(followers <= 64, "finite FIFO must refuse a follower");
+    }
+    assert!(
+        followers > 0,
+        "real queued followers occupy the remaining capacity"
+    );
     let batch = app
         .pump(PumpBudget::new(1, 0, 0, 0))
         .unwrap_or_else(|_| unreachable!("pointer preflight refusal is observable"));
@@ -1883,7 +2058,8 @@ fn pointer_release_remains_ui_owned_after_press_state_is_cleared() {
         PointerPhase, StyleEnvironment,
     };
 
-    let mut app = AppRuntime::<SpaceApp>::mount(0);
+    let mut app = AppRuntime::<SpaceApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let size = LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("finite size"));
     let publication = app
@@ -1968,6 +2144,19 @@ fn pointer_release_remains_ui_owned_after_press_state_is_cleared() {
 struct TextOwnershipProbe;
 
 impl Widget<()> for TextOwnershipProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -1980,6 +2169,32 @@ impl Widget<()> for TextOwnershipProbe {
 struct TextOwnershipApp;
 
 impl UiApp for TextOwnershipApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One mounted owner in every reachable state. Actionable probes allow
+        // four focus notifications, routing, activation, and one default.
+        runenui_core::ProducerBudget::new(3, 1)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -1996,7 +2211,8 @@ impl UiApp for TextOwnershipApp {
 
 #[test]
 fn direct_composition_start_preflights_last_revision_without_binding_a_pending_owner() {
-    let mut app = AppRuntime::<TextOwnershipApp>::mount(());
+    let mut app = AppRuntime::<TextOwnershipApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
     let target = app
         .index()
@@ -2052,7 +2268,8 @@ fn direct_composition_start_preflights_last_revision_without_binding_a_pending_o
 
 #[test]
 fn accepted_composition_start_publishes_pending_ownership_without_pumping() {
-    let mut app = AppRuntime::<TextOwnershipApp>::mount(());
+    let mut app = AppRuntime::<TextOwnershipApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = app.pump(PumpBudget::new(32, 32, 32, 32));
     let target = app
         .index()
@@ -2126,7 +2343,8 @@ fn prepare_unavailable_context_pressed_pointer(
     if phase == PointerPhase::Cancel {
         config = config.with_trace_config(crate::TraceConfig::new(0));
     }
-    let mut app = AppRuntime::<SpaceApp>::mount_with_config(0, config);
+    let mut app = AppRuntime::<SpaceApp>::mount_with_config(0, config)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let first_size =
         LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("finite first size"));
@@ -2318,7 +2536,8 @@ fn initial_observation_capacity_error_rearms_wake_without_fifo_work() {
 #[test]
 fn a1_composition_active_space_release_retires_ownership_without_activating() {
     for (active_down, active_up) in [(true, true), (false, true)] {
-        let mut app = AppRuntime::<SpaceApp>::mount(0);
+        let mut app = AppRuntime::<SpaceApp>::mount(0)
+            .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
         let full = PumpBudget::new(32, 32, 32, 32);
         app.pump(full).unwrap_or_else(|_| unreachable!("mount"));
         let authored = ElementId::new("space").unwrap_or_else(|_| unreachable!());

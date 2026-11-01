@@ -27,6 +27,31 @@ struct ObservedPointer {
 
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Two event producers: eight focus visits, ordinary/boundary/capture
+        // callbacks, scroll and cursor; both cursor outcomes and retry access.
+        runenui_core::ProducerBudget::new(18, 14)
+            .with_application_outputs(0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = Rc<RefCell<Vec<ObservedPointer>>>;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -58,6 +83,23 @@ struct Probe {
     observed: Rc<RefCell<Vec<ObservedPointer>>>,
 }
 impl Widget<()> for Probe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn activation(&self, (): &()) -> WidgetActivation {
@@ -84,7 +126,7 @@ impl Widget<()> for Probe {
                 UiEvent::PointerBoundary(boundary)
                     if self.transfer_on_enter && boundary.kind() == PointerBoundaryKind::Enter =>
                 {
-                    context.capture_pointer();
+                    let _ = context.try_capture_pointer();
                 }
                 UiEvent::Pointer(pointer) => self.observed.borrow_mut().push(ObservedPointer {
                     phase: pointer.phase(),
@@ -113,7 +155,8 @@ fn fixture(trace_capacity: usize) -> Fixture {
     let mut runtime = AppRuntime::<App>::mount_with_config(
         Rc::clone(&observed),
         RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     runtime.pump(FULL).unwrap_or_else(|_| unreachable!("mount"));
     let environment = StyleEnvironment::default();
     let publication = runtime

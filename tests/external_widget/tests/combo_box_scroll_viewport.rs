@@ -14,6 +14,7 @@ use runenui_runtime::{
 enum Action {
     Popup(ComboBoxRequest),
     Choose(u8),
+    Noop,
 }
 #[derive(Default)]
 struct State {
@@ -24,6 +25,73 @@ struct State {
 }
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let initial_nodes = if state.open { 23 } else { 2 };
+        // An initially open ComboBox publishes one exact-option reveal. The
+        // ListBox and ComboBox ancestors each reserve two event phases.
+        let outputs = if state.open && state.chosen >= 4 {
+            4
+        } else {
+            0
+        };
+        runenui_core::ProducerBudget::new(initial_nodes, outputs)
+            .with_application_outputs(0)
+            .with_reconciliation(initial_nodes, 0, initial_nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let next_open = match action {
+            Action::Popup(request) => matches!(request, ComboBoxRequest::Open),
+            Action::Choose(_) => false,
+            Action::Noop => state.open,
+        };
+        let changed = state.open != next_open;
+        let old_nodes: usize = if state.open { 23 } else { 2 };
+        let new_nodes: usize = if next_open { 23 } else { 2 };
+        let mounted_nodes = new_nodes.saturating_sub(old_nodes);
+        let dirty_owners = if changed { new_nodes } else { 0 };
+        let retained_updates = if changed { old_nodes.min(new_nodes) } else { 0 };
+        let opening = changed && next_open;
+        // Opening publishes one exact-option reveal (one command envelope),
+        // whose ListBox and ComboBox ancestor callbacks can each emit twice.
+        let outputs = if opening { 4 } else { 0 };
+        // Opening adds the full popup tree, then publication queues one reveal
+        // command whose exact ListBox/ComboBox route can emit four outputs.
+        let publication_descendants = if opening { 1 + outputs } else { 0 };
+        let queue_credits = dirty_owners + usize::from(changed) + publication_descendants;
+        runenui_core::ProducerBudget::new(queue_credits.max(1), outputs)
+            .with_application_outputs(0)
+            .with_reconciliation(mounted_nodes, retained_updates, dirty_owners)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        // Focus commands include one ordinary owner callback plus four
+        // notifications for each of the two event-producing owners when
+        // closed, and the ListBox joins that focus route when open.
+        let outputs = if state.open { 18 } else { 5 };
+        // A closed Expand command queues one application action, which then
+        // publishes one reveal command; the latter's exact route has four
+        // bounded ListBox/ComboBox callback outputs.
+        let (queue_credits, mounted_nodes, retained_updates, dirty_owners) = if state.open {
+            (outputs, 0, 2, 2)
+        } else {
+            // A closed Expand command emits one App action. Its exact producer
+            // profile must fit: 23 dirty owners + the action envelope + the
+            // publication reveal and its four routed outputs.
+            (29, 21, 2, 23)
+        };
+        runenui_core::ProducerBudget::new(queue_credits, outputs)
+            .with_application_outputs(0)
+            .with_reconciliation(mounted_nodes, retained_updates, dirty_owners)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -61,21 +129,30 @@ impl UiApp for App {
                 state.chosen = index;
                 state.open = false;
             }
+            Action::Noop => {}
         }
     }
 }
 
 fn settle(app: &mut AppRuntime<App>) {
-    assert!(
-        app.pump(PumpBudget::new(
+    let batch = app
+        .pump(PumpBudget::new(
             usize::MAX,
             usize::MAX,
             usize::MAX,
-            usize::MAX
+            usize::MAX,
         ))
-        .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"))
-        .report()
-        .is_quiescent()
+        .unwrap_or_else(|error| unreachable!("ComboBox pump: {error:?}"));
+    let report = batch.report();
+    let failures = app
+        .trace()
+        .records()
+        .map(|record| format!("{:?} work={:?}", record.kind(), record.work_sequence()))
+        .collect::<Vec<_>>();
+    assert!(
+        report.is_quiescent(),
+        "{report:?}; {:?}; {failures:?}",
+        app.status()
     );
 }
 fn id(app: &mut AppRuntime<App>, text: &str) -> MountedNodeId {
@@ -90,7 +167,7 @@ fn id(app: &mut AppRuntime<App>, text: &str) -> MountedNodeId {
 }
 fn command(app: &mut AppRuntime<App>, node: MountedNodeId, request: SemanticCommand) {
     app.submit_command(node, request, CommandOrigin::programmatic())
-        .unwrap_or_else(|_| unreachable!("live semantic command admitted"));
+        .unwrap_or_else(|error| unreachable!("live semantic command {request:?}: {error:?}"));
     settle(app);
 }
 fn publish(app: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
@@ -103,7 +180,8 @@ fn publish(app: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
 
 #[test]
 fn long_combo_popup_is_bounded_and_ordinary_exact_option_reveal_preserves_owner_focus() {
-    let mut app = AppRuntime::<App>::mount(State::default());
+    let mut app = AppRuntime::<App>::mount(State::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
@@ -208,7 +286,8 @@ fn long_combo_popup_is_bounded_and_ordinary_exact_option_reveal_preserves_owner_
 
 #[test]
 fn closed_popup_unmounts_both_listbox_and_its_scroll_viewport() {
-    let mut app = AppRuntime::<App>::mount(State::default());
+    let mut app = AppRuntime::<App>::mount(State::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     assert!(app.index().nodes().iter().all(|node| {
         node.authored_id()
@@ -225,7 +304,8 @@ fn closed_popup_rejects_retired_exact_option_scroll_without_retargeting_reopened
     let mut app = AppRuntime::<App>::mount(State {
         open: true,
         ..State::default()
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
@@ -297,8 +377,10 @@ fn exact_option_scroll_from_another_runtime_fails_closed_without_stealing_focus(
         open: true,
         ..State::default()
     };
-    let mut app = AppRuntime::<App>::mount(state());
-    let mut foreign = AppRuntime::<App>::mount(state());
+    let mut app = AppRuntime::<App>::mount(state())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
+    let mut foreign = AppRuntime::<App>::mount(state())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     settle(&mut foreign);
     let owner = id(&mut app, "viewport.owner");
@@ -344,9 +426,10 @@ fn full_public_command_queue_rejects_exact_option_reveal_without_alternate_scrol
         RuntimeConfig::default().with_limits(
             runenui_runtime::RuntimeLimits::default()
                 .with_waiting_envelopes(64)
-                .with_transaction_outputs(1),
+                .with_transaction_outputs(18),
         ),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
@@ -363,12 +446,8 @@ fn full_public_command_queue_rejects_exact_option_reveal_without_alternate_scrol
     // Settle it before explicitly filling all ordinary command slots.
     settle(&mut app);
     for _ in 0..64 {
-        app.submit_command(
-            owner.clone(),
-            SemanticCommand::ScrollIntoView,
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("all configured public FIFO slots available"));
+        app.submit_action(Action::Noop)
+            .unwrap_or_else(|_| unreachable!("all configured one-credit FIFO slots available"));
     }
     let Err(error) = app.submit_command(
         last.clone(),
@@ -423,7 +502,8 @@ fn sparse_enabled_candidates_navigate_without_disabled_or_out_of_range_active_ta
         open: true,
         navigation_with_disabled_holes: true,
         ..State::default()
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
@@ -460,7 +540,8 @@ fn all_disabled_options_have_no_active_descendant_or_keyboard_selection_action()
         open: true,
         all_disabled: true,
         ..State::default()
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
@@ -492,7 +573,8 @@ fn mounted_popup_navigation_routes_exact_active_option_reveal_through_standard_s
     let mut app = AppRuntime::<App>::mount(State {
         open: true,
         ..State::default()
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);
@@ -558,7 +640,8 @@ fn first_published_open_combo_reveals_deep_selected_option_after_mount_and_geome
         open: true,
         chosen: 17,
         ..State::default()
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     let popup_list = id(&mut app, "viewport.list");
     let viewport = app
@@ -643,7 +726,8 @@ fn close_and_reopen_before_an_intermediate_publication_reveals_new_option_genera
         open: true,
         chosen: 17,
         ..State::default()
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     let old_option = id(&mut app, "viewport.option.17");
     let _ = publish(&mut app);
@@ -690,7 +774,8 @@ fn queued_reveal_is_never_retargeted_after_original_option_is_retired() {
     let mut app = AppRuntime::<App>::mount(State {
         open: true,
         ..State::default()
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut app);
     let owner = id(&mut app, "viewport.owner");
     command(&mut app, owner.clone(), SemanticCommand::RequestFocus);

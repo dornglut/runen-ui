@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use runenui_core::{__runtime::Effect, HostProtocol, WorkFamily as AuthoredWorkFamily, WorkKey};
 
-use crate::{MountedNodeId, RuntimeLimits, TraceSequence};
+use crate::{MountedNodeId, RuntimeLimits, TraceSequence, queue::RootQuotaId};
 
 pub(crate) mod framework_service;
 pub(crate) mod host_request;
@@ -22,14 +22,38 @@ pub(crate) enum WorkOwner {
     Mounted(MountedNodeId),
 }
 
+/// Independently bounded resident work in the runtime registry.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) enum WorkFamily {
+pub enum WorkFamily {
     LocalTask,
     SendTask,
     Timer,
     Subscription,
     HostRequest,
     FrameworkService,
+}
+
+impl WorkFamily {
+    pub(crate) const ALL: [Self; 6] = [
+        Self::LocalTask,
+        Self::SendTask,
+        Self::Timer,
+        Self::Subscription,
+        Self::HostRequest,
+        Self::FrameworkService,
+    ];
+
+    pub(crate) const fn residency(self, budget: runenui_core::WorkResidencyBudget) -> usize {
+        match self {
+            Self::LocalTask => budget.for_family(AuthoredWorkFamily::LocalTask),
+            Self::SendTask => budget.for_family(AuthoredWorkFamily::SendTask),
+            Self::Timer => budget.for_family(AuthoredWorkFamily::Timer),
+            Self::Subscription => budget.subscriptions(),
+            Self::HostRequest => budget.for_family(AuthoredWorkFamily::HostRequest),
+            Self::FrameworkService => budget.for_family(AuthoredWorkFamily::FrameworkService),
+        }
+    }
 }
 
 impl From<AuthoredWorkFamily> for WorkFamily {
@@ -83,6 +107,7 @@ pub(crate) struct WorkRecord<Action, Protocol: HostProtocol> {
     pub(crate) effect: Option<Effect<Action, Protocol>>,
     pub(crate) request_trace: Option<TraceSequence>,
     pub(crate) latest_trace: Option<TraceSequence>,
+    pub(crate) root_quota: Option<RootQuotaId>,
 }
 
 pub(crate) struct WorkRegistry<Action, Protocol: HostProtocol> {
@@ -126,6 +151,83 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
     #[cfg(feature = "internal-test-seams")]
     pub(crate) fn live_record_count_for_test(&self) -> usize {
         self.records.len()
+    }
+
+    /// Checks a new producer against claims of all accepted predecessor roots.
+    /// Root-owned records are represented by their claim, never counted twice.
+    pub(crate) fn preflight_producer_residency(
+        &self,
+        queue: &crate::queue::WorkQueue<Action>,
+        profile: runenui_core::ProducerBudget,
+    ) -> Result<(), WorkFamily> {
+        for family in WorkFamily::ALL {
+            let unrooted = self
+                .records
+                .values()
+                .filter(|record| record.family == family && record.root_quota.is_none())
+                .count();
+            if queue
+                .work_residency_claims(family)
+                .and_then(|claims| claims.checked_add(unrooted))
+                .and_then(|occupied| {
+                    occupied.checked_add(family.residency(profile.work_residency()))
+                })
+                .is_none_or(|required| required > self.family_limit(family))
+            {
+                return Err(family);
+            }
+        }
+        Ok(())
+    }
+
+    fn preflight_resident_family(
+        &self,
+        family: WorkFamily,
+        invalidated: &HashSet<WorkGeneration>,
+        added: usize,
+        queue: &crate::queue::WorkQueue<Action>,
+        root: Option<RootQuotaId>,
+    ) -> Result<(), RegistryInsertError> {
+        let required = self
+            .resident_family_requirement(family, invalidated, added, root)
+            .ok_or(RegistryInsertError::Full)?;
+        let fits = root.map_or_else(
+            || {
+                queue
+                    .work_residency_claims(family)
+                    .and_then(|claims| claims.checked_add(required))
+                    .is_some_and(|occupied| occupied <= self.family_limit(family))
+            },
+            |root| {
+                queue
+                    .root_work_residency(root, family)
+                    .is_some_and(|claim| required <= claim)
+            },
+        );
+        if fits {
+            Ok(())
+        } else {
+            Err(RegistryInsertError::Full)
+        }
+    }
+
+    pub(crate) fn resident_family_requirement(
+        &self,
+        family: WorkFamily,
+        invalidated: &HashSet<WorkGeneration>,
+        added: usize,
+        root: Option<RootQuotaId>,
+    ) -> Option<usize> {
+        let retained = self
+            .records
+            .iter()
+            .filter(|(generation, record)| {
+                record.family == family
+                    && record.root_quota == root
+                    && !invalidated.contains(generation)
+            })
+            .count();
+        retained.checked_add(added)
     }
 
     pub(crate) fn current(
@@ -180,6 +282,30 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
         Ok(())
     }
 
+    /// The root already owns its maximum resident registry footprint. Do not
+    /// add all provisional starts to current live work: keyed replacement can
+    /// invalidate an old generation in the same atomic plan. That plan checks
+    /// actual retained records plus starts against the root's reserved claim.
+    pub(crate) fn preflight_rooted_callback_generations(
+        &self,
+        budget: runenui_core::WorkStartBudget,
+    ) -> Result<(), MountedCallbackPreflightError> {
+        let generation_count = budget
+            .total()
+            .ok_or(MountedCallbackPreflightError::GenerationExhausted)?;
+        if generation_count != 0 {
+            let next = self
+                .next_generation
+                .ok_or(MountedCallbackPreflightError::GenerationExhausted)?;
+            let additional = u64::try_from(generation_count - 1)
+                .map_err(|_| MountedCallbackPreflightError::GenerationExhausted)?;
+            next.get()
+                .checked_add(additional)
+                .ok_or(MountedCallbackPreflightError::GenerationExhausted)?;
+        }
+        Ok(())
+    }
+
     pub(crate) const fn commit_generation_reservation(&mut self, next: Option<NonZeroU64>) {
         self.next_generation = next;
     }
@@ -193,6 +319,8 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
         &self,
         invalidated: &HashSet<WorkGeneration>,
         starts: &(impl Iterator<Item = (WorkGeneration, WorkFamily)> + Clone),
+        queue: &crate::queue::WorkQueue<Action>,
+        root: Option<RootQuotaId>,
     ) -> Result<(), RegistryInsertError> {
         for family in [
             WorkFamily::LocalTask,
@@ -202,25 +330,13 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
             WorkFamily::HostRequest,
             WorkFamily::FrameworkService,
         ] {
-            let retained = self
-                .records
-                .iter()
-                .filter(|(generation, record)| {
-                    record.family == family && !invalidated.contains(generation)
-                })
-                .count();
             let added = starts
                 .clone()
                 .filter(|(generation, start_family)| {
                     *start_family == family && !invalidated.contains(generation)
                 })
                 .count();
-            if retained
-                .checked_add(added)
-                .is_none_or(|count| count > self.family_limit(family))
-            {
-                return Err(RegistryInsertError::Full);
-            }
+            self.preflight_resident_family(family, invalidated, added, queue, root)?;
         }
         Ok(())
     }
@@ -242,6 +358,7 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
         family: WorkFamily,
         key: Option<WorkKey>,
         effect: Effect<Action, Protocol>,
+        root_quota: Option<RootQuotaId>,
     ) {
         if let Some(key) = key.as_ref() {
             self.keyed.insert(
@@ -263,12 +380,17 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
                 effect: Some(effect),
                 request_trace: None,
                 latest_trace: None,
+                root_quota,
             },
         );
     }
 
-    pub(crate) fn invalidate(&mut self, generation: WorkGeneration) -> Option<WorkFamily> {
+    pub(crate) fn invalidate(
+        &mut self,
+        generation: WorkGeneration,
+    ) -> Option<(WorkFamily, Option<RootQuotaId>)> {
         let record = self.records.remove(&generation)?;
+        let root_quota = record.root_quota;
         if let Some(key) = record.key.as_ref() {
             let identity = KeyIdentity {
                 owner: record.owner,
@@ -279,7 +401,7 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
                 self.keyed.remove(&identity);
             }
         }
-        Some(record.family)
+        Some((record.family, root_quota))
     }
 
     #[cfg(test)]
@@ -324,6 +446,7 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
                 effect: Some(effect),
                 request_trace: None,
                 latest_trace: None,
+                root_quota: None,
             },
         );
         Ok((generation, replaced))
@@ -333,21 +456,10 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
         &self,
         invalidated: &HashSet<WorkGeneration>,
         added: usize,
+        queue: &crate::queue::WorkQueue<Action>,
+        root: Option<RootQuotaId>,
     ) -> Result<(), RegistryInsertError> {
-        let retained = self
-            .records
-            .iter()
-            .filter(|(generation, record)| {
-                record.family == WorkFamily::Subscription && !invalidated.contains(generation)
-            })
-            .count();
-        if retained
-            .checked_add(added)
-            .is_none_or(|count| count > self.family_limit(WorkFamily::Subscription))
-        {
-            return Err(RegistryInsertError::Full);
-        }
-        Ok(())
+        self.preflight_resident_family(WorkFamily::Subscription, invalidated, added, queue, root)
     }
 
     pub(crate) fn commit_subscription_record(
@@ -355,6 +467,7 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
         generation: WorkGeneration,
         owner: WorkOwner,
         key: WorkKey,
+        root_quota: Option<RootQuotaId>,
     ) {
         let identity = KeyIdentity {
             owner: owner.clone(),
@@ -372,8 +485,13 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
                 effect: None,
                 request_trace: None,
                 latest_trace: None,
+                root_quota,
             },
         );
+    }
+
+    pub(crate) fn root_quota(&self, generation: WorkGeneration) -> Option<RootQuotaId> {
+        self.records.get(&generation)?.root_quota
     }
 
     pub(crate) fn generation_with_value(&self, value: u64) -> Option<WorkGeneration> {
@@ -403,6 +521,10 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
             .get(&generation)
             .filter(|record| record.state == WorkState::PendingStart)
             .map(|record| record.family)
+    }
+
+    pub(crate) fn family_for_generation(&self, generation: WorkGeneration) -> Option<WorkFamily> {
+        self.records.get(&generation).map(|record| record.family)
     }
 
     pub(crate) fn trace_identity(&self, generation: WorkGeneration) -> Option<WorkTraceIdentity> {

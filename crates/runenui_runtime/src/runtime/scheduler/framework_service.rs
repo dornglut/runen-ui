@@ -1,7 +1,7 @@
 use super::{
     Arc, FrameworkServiceCancelError, FrameworkServiceRef, FrameworkServiceResponseCompletion,
-    FrameworkServiceResponseError, FrameworkServiceToken, MandatoryTracePlan, QueueCommitError,
-    Runtime, RuntimeStatus, RuntimeTerminalReason, TraceRecordKind, WorkFamily, WorkSequence,
+    FrameworkServiceResponseError, FrameworkServiceToken, MandatoryTracePlan, Runtime,
+    RuntimeStatus, RuntimeTerminalReason, TraceRecordKind, WorkFamily, WorkSequence,
 };
 use crate::{
     TraceActionIdentity, TraceContext,
@@ -16,10 +16,32 @@ use runenui_core::{
 };
 
 impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action, Protocol> {
+    pub(in crate::runtime) fn publication_input_method_may_be_staged(&self) -> bool {
+        self.has_unresolved_enabled_input_method()
+            || self.focus.focused_node().is_some_and(|owner| {
+                self.editing
+                    .input_method_context(owner)
+                    .is_some_and(|context| context.enabled)
+            })
+    }
+
+    pub(in crate::runtime) fn input_method_service_may_be_staged(&self) -> bool {
+        self.surface_publication
+            .current_surface_input_context()
+            .is_some()
+            && (self.framework_ime_may_be_enabled
+                || self
+                    .tree
+                    .publication_preorder_ids()
+                    .iter()
+                    .any(|owner| self.editing.input_method_context(owner).is_some()))
+    }
+
     pub(crate) fn synchronize_input_method_after_publication(
         &mut self,
         causal_parent: Option<crate::TraceSequence>,
         instant: runenui_core::MonotonicInstant,
+        root_quota: Option<crate::queue::RootQuotaId>,
     ) {
         if let Some((owner, effect)) = self.current_input_method_service()
             && self.prepare_framework_service(&effect.request, &effect.binding)
@@ -31,7 +53,12 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
                 self.framework_ime_may_be_enabled = true;
             }
             if self
-                .commit_framework_service_effects(vec![(owner, effect)], causal_parent, instant)
+                .commit_framework_service_effects(
+                    vec![(owner, effect)],
+                    causal_parent,
+                    instant,
+                    root_quota,
+                )
                 .is_err()
             {
                 self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
@@ -42,29 +69,31 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
     pub(crate) fn stage_committed_framework_services(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
-    ) {
-        if let Some((owner, effect)) = self.current_input_method_service()
-            && transaction.consume_mandatory_default_output().is_ok()
-            && self.prepare_framework_service(&effect.request, &effect.binding)
-        {
-            if matches!(
-                &effect.request,
-                FrameworkServiceRequest::InputMethod { enabled: true, .. }
-            ) {
-                self.framework_ime_may_be_enabled = true;
-            }
+    ) -> Result<(), ()> {
+        if let Some((owner, effect)) = self.current_input_method_service() {
             transaction
-                .mounted_work
-                .push((owner, MountedEffect::FrameworkService(effect)));
+                .consume_mandatory_default_output()
+                .map_err(|_| ())?;
+            if self.prepare_framework_service(&effect.request, &effect.binding) {
+                if matches!(
+                    &effect.request,
+                    FrameworkServiceRequest::InputMethod { enabled: true, .. }
+                ) {
+                    self.framework_ime_may_be_enabled = true;
+                }
+                transaction
+                    .mounted_work
+                    .push((owner, MountedEffect::FrameworkService(effect)));
+            }
         }
 
         // Cursor policy follows committed physical hit facts only. Focus-only and
         // automation routes must not manufacture pointer cursor transitions.
         if transaction.origin.source() != EventSource::Pointer {
-            return;
+            return Ok(());
         }
         let Some(surface_context) = transaction.pointer_surface_context.clone() else {
-            return;
+            return Ok(());
         };
         if self
             .surface_publication
@@ -72,21 +101,22 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
             .as_ref()
             != Some(&surface_context)
         {
-            return;
+            return Ok(());
         }
         let Some((owner, effect)) =
             self.cursor_service_for(transaction.pointer_cursor_target.as_ref(), &surface_context)
         else {
-            return;
+            return Ok(());
         };
-        if transaction.consume_mandatory_default_output().is_ok()
-            && self.prepare_framework_service(&effect.request, &effect.binding)
-        {
+        transaction
+            .consume_mandatory_default_output()
+            .map_err(|_| ())?;
+        if self.prepare_framework_service(&effect.request, &effect.binding) {
             transaction
                 .mounted_work
                 .push((owner, MountedEffect::FrameworkService(effect)));
         }
-        self.stage_drag_drop_service(transaction, &surface_context);
+        self.stage_drag_drop_service(transaction, &surface_context)
     }
 
     fn cursor_service_for(
@@ -132,20 +162,20 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
         surface_context: &runenui_core::SurfaceInputContext,
-    ) {
+    ) -> Result<(), ()> {
         let Some(offer) = transaction.drag_drop_offer else {
-            return;
+            return Ok(());
         };
         let accepted = transaction.drag_drop_acceptor.is_some();
         if !matches!(offer.phase(), DragDropPhase::Hover | DragDropPhase::Cancel) && !accepted {
-            return;
+            return Ok(());
         }
         let Some(owner) = transaction.pointer_cursor_target.clone() else {
-            return;
+            return Ok(());
         };
         let editing = self.editing.framework_service_context(&owner);
         if self.editing.has_owner(&owner) && editing.is_none() {
-            return;
+            return Ok(());
         }
         let composition = (self.composition.owner() == Some(&owner))
             .then(|| self.composition.generation().cloned())
@@ -165,9 +195,10 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
             payload: offer.payload(),
             accepted,
         };
-        if transaction.consume_mandatory_default_output().is_ok()
-            && self.prepare_framework_service(&request, &binding)
-        {
+        transaction
+            .consume_mandatory_default_output()
+            .map_err(|_| ())?;
+        if self.prepare_framework_service(&request, &binding) {
             transaction.mounted_work.push((
                 owner,
                 MountedEffect::FrameworkService(FrameworkServiceEffect::__runtime_new(
@@ -175,6 +206,7 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
                 )),
             ));
         }
+        Ok(())
     }
 
     fn current_input_method_service(
@@ -511,6 +543,17 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
             self.record_work_fact(TraceRecordKind::FrameworkServiceResponseRejected, identity);
             return Err(FrameworkServiceResponseError::MismatchedKind(response));
         }
+        if let Some(root) = self.work.root_quota(token.generation)
+            && self
+                .queue
+                .preflight_root_framework_service_response(root, token.generation)
+                .is_err()
+        {
+            // The response credit is consumed as soon as one completion is
+            // queued. A duplicate direct completion is a stale payload, not a
+            // reason to poison the runtime or consume a second FIFO slot.
+            return Err(FrameworkServiceResponseError::Stale(response));
+        }
         if !self.callback_output_preflight(
             Some((token.generation, WorkFamily::FrameworkService)),
             MandatoryTracePlan::framework_service_completion(),
@@ -536,15 +579,27 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
             TraceRecordKind::FrameworkServiceResponseQueued,
             identity.clone(),
         );
-        let sequence = self
-            .queue
-            .push_framework_service_response(
-                token.generation,
-                response,
-                identity,
-                queued.or_else(|| self.work.trace_parent(token.generation)),
-            )
-            .unwrap_or_else(|_| unreachable!("framework service response was preflighted"));
+        let causal_parent = queued.or_else(|| self.work.trace_parent(token.generation));
+        let sequence = if let Some(root) = self.work.root_quota(token.generation) {
+            self.queue
+                .push_framework_service_response_rooted(
+                    token.generation,
+                    response,
+                    identity,
+                    causal_parent,
+                    root,
+                )
+                .unwrap_or_else(|_| unreachable!("framework service response was preflighted"))
+        } else {
+            self.queue
+                .push_framework_service_response(
+                    token.generation,
+                    response,
+                    identity,
+                    causal_parent,
+                )
+                .unwrap_or_else(|_| unreachable!("framework service response was preflighted"))
+        };
         self.external_queue_commit_accepted();
         Ok(sequence)
     }
@@ -622,14 +677,28 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
         {
             return Err(FrameworkServiceCancelError::Stale);
         }
-        match self.queue.preflight_commit(1) {
-            Ok(()) => {}
-            Err(QueueCommitError::Full) => return Err(FrameworkServiceCancelError::Full),
-            Err(QueueCommitError::SequenceExhausted) => {
-                let reason = RuntimeTerminalReason::WorkSequenceExhausted;
+        let root_quota = self.work.root_quota(token.generation);
+        if root_quota.is_some() && !self.queue.has_sequence() {
+            let reason = RuntimeTerminalReason::WorkSequenceExhausted;
+            self.enter_terminal(reason, 0);
+            return Err(FrameworkServiceCancelError::Terminal(reason));
+        }
+        let capacity = if let Some(root) = root_quota {
+            if self
+                .queue
+                .preflight_root_framework_service_cancellation(root, token.generation)
+                .is_err()
+            {
+                let reason = RuntimeTerminalReason::Poisoned;
                 self.enter_terminal(reason, 0);
                 return Err(FrameworkServiceCancelError::Terminal(reason));
             }
+            true
+        } else {
+            self.queue.preflight_commit(1).is_ok()
+        };
+        if !capacity {
+            return Err(FrameworkServiceCancelError::Full);
         }
         if !self
             .trace
@@ -650,10 +719,20 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
             .get(&token.generation.get())
             .cloned()
             .unwrap_or_else(|| unreachable!("service cancellation retains trace lineage"));
-        let sequence = self
-            .queue
-            .push_cancellation(token.generation, identity, parent)
-            .unwrap_or_else(|_| unreachable!("service cancellation was preflighted"));
+        let sequence = if let Some(root) = root_quota {
+            self.queue
+                .push_framework_service_cancellation_rooted(
+                    root,
+                    token.generation,
+                    identity,
+                    parent,
+                )
+                .unwrap_or_else(|_| unreachable!("service cancellation root was preflighted"))
+        } else {
+            self.queue
+                .push_cancellation(token.generation, identity, parent)
+                .unwrap_or_else(|_| unreachable!("service cancellation was preflighted"))
+        };
         self.invalidate_generation_now(token.generation);
         self.external_queue_commit_accepted();
         Ok(sequence)
@@ -669,6 +748,7 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
             response,
             trace_identity,
             causal_parent,
+            root_quota,
         } = envelope;
         if !self
             .work
@@ -733,9 +813,19 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
                     return None;
                 }
             };
-        let action_envelope = prepared.map(|prepared| {
-            self.framework_service_edit_action_envelope(sequence, accepted, &binding, prepared)
-        });
+        let action_envelope = match prepared {
+            Some(prepared) => match self.framework_service_edit_action_envelope(
+                sequence, accepted, &binding, prepared, root_quota,
+            ) {
+                Ok(envelope) => Some(envelope),
+                Err(reason) => {
+                    self.enter_terminal(reason, 0);
+                    self.revoke_generation(generation);
+                    return None;
+                }
+            },
+            None => None,
+        };
         self.record_work_fact_with_parent(
             TraceRecordKind::WorkCompletionMapped,
             accepted.or(causal_parent),
@@ -819,7 +909,34 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
         accepted: Option<crate::TraceSequence>,
         binding: &FrameworkServiceBinding,
         prepared: crate::editing::PreparedEdit<Action>,
-    ) -> ApplicationActionEnvelope<Action> {
+        root_quota: Option<crate::queue::RootQuotaId>,
+    ) -> Result<ApplicationActionEnvelope<Action>, RuntimeTerminalReason> {
+        let producer_budget = self.action_producer_budget.map_or_else(
+            || runenui_core::ProducerBudget::new(1, 0),
+            |profile| profile(self.state(), &prepared.action),
+        );
+        if producer_budget.queue_credits() == 0 {
+            return Err(RuntimeTerminalReason::Poisoned);
+        }
+        let root_quota = if let Some(root_quota) = root_quota {
+            if !self
+                .queue
+                .root_covers_action_budget(root_quota, producer_budget)
+            {
+                return Err(RuntimeTerminalReason::Poisoned);
+            }
+            self.queue
+                .begin_root_activity(root_quota)
+                .map_err(|_| RuntimeTerminalReason::Poisoned)?;
+            root_quota
+        } else {
+            let reservation = self
+                .reserve_producer(producer_budget)
+                .map_err(|_| RuntimeTerminalReason::Poisoned)?;
+            self.queue
+                .begin_root_action(&reservation)
+                .map_err(|_| RuntimeTerminalReason::Poisoned)?
+        };
         let target = self.tree.trace_target(binding.owner());
         let action_label = if self.trace.is_enabled() {
             self.trace_action_labeler
@@ -840,13 +957,15 @@ impl<State, Action, Protocol: runenui_core::HostProtocol> Runtime<State, Action,
             .with_causal_parent(accepted)
             .with_target(Some(target.clone())),
         );
-        ApplicationActionEnvelope {
+        Ok(ApplicationActionEnvelope {
             sequence,
             action: prepared.action,
+            producer_budget,
+            root_quota,
             causal_parent: action_accepted.or(accepted),
             target: Some(target),
             origin: ApplicationActionOrigin::Edit(prepared.origin),
-        }
+        })
     }
 
     fn note_framework_service_response(

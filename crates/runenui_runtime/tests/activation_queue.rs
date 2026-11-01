@@ -22,6 +22,29 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // A button contributes one routed Event allowance and one Activation
+        // output allowance; its mounted lifetime remains retained afterward.
+        runenui_core::ProducerBudget::new(2, 2).with_reconciliation(1, 1, 1)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -66,7 +89,8 @@ fn settle(runtime: &mut AppRuntime<App>) {
 #[test]
 fn exact_target_activate_routes_then_appends_its_action() {
     let calls = Rc::new(Cell::new(0));
-    let mut runtime = AppRuntime::<App>::mount(state(&calls));
+    let mut runtime = AppRuntime::<App>::mount(state(&calls))
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     settle(&mut runtime);
     let target = runtime.index().nodes()[0].id().clone();
     let submission = runtime
@@ -103,7 +127,8 @@ fn full_and_closed_submission_recover_without_invoking_the_factory() {
     let mut full = AppRuntime::<App>::mount_with_config(
         state(&full_calls),
         RuntimeConfig::default().with_queue_capacity(1),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     settle(&mut full);
     let target = full.index().nodes()[0].id().clone();
     full.submit_action(Action)
@@ -120,7 +145,8 @@ fn full_and_closed_submission_recover_without_invoking_the_factory() {
     assert_eq!(full_calls.get(), 0);
 
     let closed_calls = Rc::new(Cell::new(0));
-    let mut closed = AppRuntime::<App>::mount(state(&closed_calls));
+    let mut closed = AppRuntime::<App>::mount(state(&closed_calls))
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let target = closed.index().nodes()[0].id().clone();
     let _ = closed
         .shutdown()
@@ -143,6 +169,28 @@ fn disabled_and_non_actionable_targets_route_without_activation_factory_output()
     #[derive(Debug)]
     struct NoopApp;
     impl UiApp for NoopApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            // The root, disabled button, and text leaf each own one initial
+            // mounted-subscription reconciliation obligation.
+            runenui_core::ProducerBudget::new(3, 0)
+                .with_reconciliation(3, 0, 3)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(3, 2).with_reconciliation(3, 0, 3)
+        }
+
         type State = ();
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -160,7 +208,8 @@ fn disabled_and_non_actionable_targets_route_without_activation_factory_output()
         }
         fn update((): &mut Self::State, (): Self::Action) {}
     }
-    let mut runtime = AppRuntime::<NoopApp>::mount(());
+    let mut runtime = AppRuntime::<NoopApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -185,7 +234,7 @@ fn disabled_and_non_actionable_targets_route_without_activation_factory_output()
                 SemanticCommand::Activate,
                 CommandOrigin::accessibility(),
             )
-            .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
+            .unwrap_or_else(|error| unreachable!("the exact live target is accepted: {error:?}"));
     }
     let _ = runtime
         .pump(PumpBudget::new(2, 0, 0, 0))
@@ -212,6 +261,27 @@ struct LinkState {
 struct LinkApp;
 
 impl UiApp for LinkApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 1).with_reconciliation(1, 1, 1)
+    }
+
     type State = LinkState;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -241,7 +311,8 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
         enabled: true,
         updates: 0,
         calls: Rc::clone(&calls),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = enabled
         .pump(PumpBudget::new(
             usize::MAX,
@@ -283,7 +354,8 @@ fn link_activates_only_via_m4_application_action_queue_and_respects_disabled_sta
         enabled: false,
         updates: 0,
         calls: Rc::clone(&disabled_calls),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = disabled
         .pump(PumpBudget::new(
             usize::MAX,

@@ -361,6 +361,15 @@ widget has at most one framework event capability per phase invocation.
 Actions are moved into the output ledger and do not require `Clone`. Recursive
 action mapping maps every emitted child action into the parent action type.
 
+Owned output uses the fallible `try_*` context surface. Refusal returns the
+original payload before mapping or erasure and latches a typed first violation,
+including when the individual Result is ignored. Event, lifecycle, activation
+and subscription mapping preserve that same budget authority. The complete
+producer and failure contract is owned by
+[ADR 0006](0006-effects-scheduling-and-trace-v2.md#qualified-producer-admission-and-owned-failure).
+Composition cancellation and FocusOut retain independent routed C/T/B allowances;
+sharing a funded causal root does not collapse their maxima or alter ordering.
+
 ### Propagation, ordered outputs, and default behavior
 
 RunenUI does not use one ambiguous `handled` bit:

@@ -144,6 +144,25 @@ struct ProbeWidget {
 }
 
 impl Widget<ProbeAction> for ProbeWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(
+                usize::from(self.config.callback == CallbackMode::DelegateContextMenu),
+            ),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -240,7 +259,7 @@ fn apply_callback_mode(
             if command.command() == SemanticCommand::OpenContextMenu
                 && command.semantic_action_target().is_some() =>
         {
-            context.emit_command(SemanticCommand::OpenMenu);
+            let _ = context.try_emit_command(SemanticCommand::OpenMenu);
         }
         CallbackMode::InvalidateLayout if command.command() == SemanticCommand::OpenMenu => {
             context.invalidate(WidgetInvalidation::LAYOUT);
@@ -257,6 +276,22 @@ fn apply_callback_mode(
 struct ReplacementWidget;
 
 impl Widget<ProbeAction> for ReplacementWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -283,6 +318,35 @@ struct ProbeState {
 struct ProbeApp;
 
 impl UiApp for ProbeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let newly_mounted_owners =
+            usize::from(state.present && matches!(action, ProbeAction::ReplaceOwner));
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, newly_mounted_owners)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 1)
+            .with_reconciliation(1, 1, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = ProbeState;
     type Action = ProbeAction;
     type HostProtocol = NoHostProtocol;
@@ -335,10 +399,12 @@ struct PublishedTargets {
 
 fn runtime(config: ProbeConfig) -> AppRuntime<ProbeApp> {
     AppRuntime::<ProbeApp>::mount(initial_state(config))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"))
 }
 
 fn runtime_with_config(config: ProbeConfig, runtime_config: RuntimeConfig) -> AppRuntime<ProbeApp> {
     AppRuntime::<ProbeApp>::mount_with_config(initial_state(config), runtime_config)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"))
 }
 
 fn initial_state(config: ProbeConfig) -> ProbeState {

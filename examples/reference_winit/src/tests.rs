@@ -5,13 +5,13 @@ use super::{
     MAX_EDITOR_HISTORY_ENTRIES, NATIVE_RELEASE_RETRY_INTERVAL, NativeMapping, PendingFrame,
     PointIngressDiagnostic, RAW_MOTION_PROBE_TIMEOUT, ReferenceDocumentPreset,
     STRESS_DOCUMENT_LINES, SemanticAdapter, SemanticCommand, StyleEnvironment, SurfaceBuildContext,
-    earliest_host_deadline, native_release_retry_due, push_editor_history,
-    raw_motion_probe_expired, translate_modifiers,
+    earliest_host_deadline, mount_demo_runtime_for_test, mount_demo_runtime_with_config_for_test,
+    native_release_retry_due, push_editor_history, raw_motion_probe_expired, translate_modifiers,
 };
 use runenui_core::{
     InputDeviceId, KeyModifiers, KeyboardPhase, LogicalPoint, PointerButton, PointerPhase,
 };
-use runenui_runtime::{FontSourcePolicy, LogicalSize, RuntimeConfig};
+use runenui_runtime::{FontSourcePolicy, InitialAdmissionErrorKind, LogicalSize, RuntimeConfig};
 use runenui_winit::mouse_input::{
     MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
     translate_mouse_button,
@@ -390,7 +390,7 @@ fn input_device(value: u64) -> InputDeviceId {
 }
 
 fn displayed_frame(mapping: NativeMapping) -> DisplayedFrame {
-    let mut runtime = AppRuntime::<DemoApp>::mount(DemoState::default());
+    let mut runtime = mount_demo_runtime_for_test(DemoState::default());
     let _ = runtime
         .pump(HOST_PUMP_BUDGET)
         .unwrap_or_else(|_| unreachable!("test pump observation"))
@@ -409,9 +409,56 @@ fn displayed_frame(mapping: NativeMapping) -> DisplayedFrame {
 }
 
 #[test]
+fn initial_producer_profile_covers_the_single_mounted_editor_owner() {
+    let state = DemoState::default();
+    let profile = <DemoApp as runenui_core::UiApp>::initial_producer_budget(&state);
+
+    assert_eq!(profile.queue_credits(), 1);
+    assert_eq!(profile.outputs(), 0);
+    assert_eq!(profile.mounted_nodes(), 1);
+    assert_eq!(profile.retained_updates(), 0);
+    assert_eq!(profile.dirty_subscription_owners(), 1);
+    assert_eq!(profile.application_subscriptions(), 0);
+    assert_eq!(profile.mounted_subscriptions_per_owner(), 0);
+    assert_eq!(
+        profile.work_starts(),
+        runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0)
+    );
+}
+
+#[test]
+fn initial_admission_refusal_returns_the_original_editor_state_and_config() {
+    let state = DemoState::default();
+    let original_text = state.text.clone();
+    let original_revision = state.revision;
+    let original_selection = state.selection_seed;
+    let original_undo = state.undo.len();
+    let original_redo = state.redo.len();
+    let config = RuntimeConfig::default().with_queue_capacity(0);
+
+    let Err(error) = AppRuntime::<DemoApp>::mount_with_config(state, config) else {
+        unreachable!("zero queue capacity must refuse initial runtime admission")
+    };
+
+    assert_eq!(error.kind(), InitialAdmissionErrorKind::Capacity);
+    assert_eq!(error.state().text, original_text);
+    assert_eq!(error.state().revision, original_revision);
+    assert_eq!(error.state().selection_seed, original_selection);
+    assert_eq!(error.state().undo.len(), original_undo);
+    assert_eq!(error.state().redo.len(), original_redo);
+    assert_eq!(error.config().queue_capacity(), 0);
+
+    let (state, config) = error.into_parts();
+    assert_eq!(state.text, original_text);
+    assert_eq!(state.revision, original_revision);
+    assert_eq!(state.selection_seed, original_selection);
+    assert_eq!(config.queue_capacity(), 0);
+}
+
+#[test]
 #[allow(clippy::assert_is_empty)]
 fn reference_editor_publishes_visible_editable_text_and_accepts_commits() {
-    let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+    let mut runtime = mount_demo_runtime_with_config_for_test(
         DemoState::default(),
         RuntimeConfig::default().with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
     );
@@ -466,6 +513,16 @@ fn reference_editor_publishes_visible_editable_text_and_accepts_commits() {
         .unwrap_or_else(|_| unreachable!("test pump observation"))
         .report()
         .to_owned();
+    assert_eq!(
+        runtime.status(),
+        runenui_runtime::RuntimeStatus::Running,
+        "focus pump trace: {:?}",
+        runtime
+            .trace()
+            .records()
+            .map(|record| format!("{:?}", record.kind()))
+            .collect::<Vec<_>>()
+    );
     runtime
         .submit_text(
             CommittedTextEvent::new("!", None)
@@ -492,7 +549,7 @@ fn native_mouse_drag_selects_preloaded_text_before_keyboard_input() {
 
     let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
         .unwrap_or_else(|| unreachable!("fixture native mapping is valid"));
-    let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+    let mut runtime = mount_demo_runtime_with_config_for_test(
         DemoState::default(),
         RuntimeConfig::default().with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
     );
@@ -823,7 +880,7 @@ fn native_mouse_drag_selects_preloaded_text_before_keyboard_input() {
 )]
 #[allow(clippy::assert_is_empty)]
 fn reference_editor_undo_and_redo_restore_application_owned_text_history() {
-    let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+    let mut runtime = mount_demo_runtime_with_config_for_test(
         DemoState::default(),
         RuntimeConfig::default().with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
     );
@@ -922,7 +979,7 @@ fn reference_editor_undo_and_redo_restore_application_owned_text_history() {
             SemanticCommand::Undo,
             CommandOrigin::programmatic(),
         )
-        .unwrap_or_else(|_| unreachable!("reference editor accepts undo"));
+        .unwrap_or_else(|error| panic!("reference editor accepts undo: {error:?}"));
     let _ = runtime
         .pump(HOST_PUMP_BUDGET)
         .unwrap_or_else(|_| unreachable!("test pump observation"))
@@ -1012,7 +1069,7 @@ fn issue_261_responsiveness_measurements() {
         ("fixture_40_lines", 40),
         ("long", 80),
     ] {
-        let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+        let mut runtime = mount_demo_runtime_with_config_for_test(
             DemoState::default(),
             RuntimeConfig::default()
                 .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
@@ -1107,7 +1164,7 @@ fn issue_261_responsiveness_measurements() {
             "issue261_measurement label={name}.text_layout_decisions reshaped={reshaped} relinebroken={relinebroken} reused={reused}"
         );
 
-        let mut drag_runtime = AppRuntime::<DemoApp>::mount_with_config(
+        let mut drag_runtime = mount_demo_runtime_with_config_for_test(
             DemoState::default(),
             RuntimeConfig::default()
                 .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
@@ -1239,7 +1296,7 @@ fn issue_261_bulk_paste_measurements() {
         let text = fixture.repeat(lines);
         let bytes = text.len();
         for _ in 0..3 {
-            let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+            let mut runtime = mount_demo_runtime_with_config_for_test(
                 DemoState::default(),
                 RuntimeConfig::default()
                     .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
@@ -1468,7 +1525,7 @@ fn issue_263_large_document_publication_profile() {
         let mut replacement_profiles = Vec::with_capacity(SAMPLE_COUNT);
 
         for _ in 0..SAMPLE_COUNT {
-            let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+            let mut runtime = mount_demo_runtime_with_config_for_test(
                 DemoState::default(),
                 RuntimeConfig::default()
                     .with_text_font_source_policy(FontSourcePolicy::BundledOnly),

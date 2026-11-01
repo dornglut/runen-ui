@@ -411,7 +411,16 @@ pub(crate) fn pump_recorded<App: UiApp>(
             return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
         };
         let sequence = envelope.sequence();
-        let (result, settled) = match envelope {
+        let root_quota = envelope.root_quota();
+        let application_action = matches!(&envelope, WorkEnvelope::ApplicationAction(_));
+        let pointer_source = match &envelope {
+            WorkEnvelope::Pointer(work) => match &work.payload {
+                crate::queue::PointerEnvelopePayload::Event(event) => Some(event.pointer_id()),
+                crate::queue::PointerEnvelopePayload::StationaryRehit(_) => None,
+            },
+            _ => None,
+        };
+        let (mut result, settled) = match envelope {
             WorkEnvelope::ApplicationAction(envelope) => {
                 (process_application_action::<App>(runtime, envelope), None)
             }
@@ -504,18 +513,56 @@ pub(crate) fn pump_recorded<App: UiApp>(
                 None,
             ),
             WorkEnvelope::TimerFiring(work) => {
-                runtime.process_timer_firing(work.sequence, work.generation);
+                runtime.process_timer_firing(work.sequence, work.generation, work.root_quota);
                 (ProcessApplicationActionOutcome::Completed, None)
             }
             WorkEnvelope::MountedSubscriptionReconcile {
                 sequence,
                 owner,
                 causal_parent,
+                root_quota,
             } => {
-                runtime.process_mounted_subscription_reconcile(sequence, &owner, causal_parent);
+                runtime.process_mounted_subscription_reconcile(
+                    sequence,
+                    &owner,
+                    causal_parent,
+                    root_quota,
+                );
                 (ProcessApplicationActionOutcome::Completed, None)
             }
         };
+        if matches!(runtime.status(), RuntimeStatus::Running)
+            && settled
+                .as_ref()
+                .is_some_and(|input| matches!(input.finality, crate::UiInputFinality::Committed(_)))
+            && let (Some(pointer), Some(root)) = (pointer_source, root_quota)
+            && runtime
+                .bind_reached_pointer_continuations(root, sequence, pointer)
+                .is_err()
+        {
+            runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+        }
+        if matches!(runtime.status(), RuntimeStatus::Running)
+            && let Some(root) = root_quota
+            && runtime
+                .bind_reached_space_continuation(root, sequence)
+                .is_err()
+        {
+            runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+        }
+        runtime.retire_input_continuation_claims();
+        if !application_action
+            && matches!(runtime.status(), RuntimeStatus::Running)
+            && let Some(root_quota) = root_quota
+            && runtime.queue.finish_root_envelope(root_quota).is_err()
+        {
+            let reason = RuntimeTerminalReason::Poisoned;
+            let terminal_cancelled = runtime.enter_terminal(reason, 0);
+            result = ProcessApplicationActionOutcome::Terminal {
+                reason,
+                cancelled: terminal_cancelled,
+            };
+        }
         processed += 1;
         observed.processed_through = Some(sequence);
         observed.observe(runtime, settled);
@@ -637,6 +684,26 @@ mod tests {
     struct App;
 
     impl UiApp for App {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_reconciliation(1, 0, 1)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+        }
+
         type State = usize;
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -652,7 +719,27 @@ mod tests {
 
     #[test]
     fn processed_fence_and_shutdown_retirement_are_exact_and_nonrepeating() {
-        let mut runtime = Runtime::mount(0, App::root, RuntimeConfig::default());
+        let mut runtime = Runtime::mount(
+            0,
+            App::root,
+            RuntimeConfig::default(),
+            App::initial_producer_budget(&0),
+            |_, _| {
+                Ok(crate::runtime::PreparedInitialApplicationWork {
+                    application: crate::transaction::TransactionLedger::from_outputs(Vec::new(), 0)
+                        .unwrap_or_else(|_| unreachable!("empty initial ledger fits")),
+                    subscriptions: Vec::new(),
+                })
+            },
+        )
+        .unwrap_or_else(|_| unreachable!("internal test mount inputs are valid"));
+        runtime.initialize_application_work();
+        let mounted = super::pump_recorded::<App>(
+            &mut runtime,
+            PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
+        )
+        .unwrap_or_else(|_| unreachable!("initial mounted work settles before the action fence"));
+        assert!(mounted.report().is_quiescent());
         let receipt = runtime
             .submit_action((), TraceActionCategory::DirectSubmission, None, None)
             .unwrap_or_else(|_| unreachable!("bounded action ingress succeeds"));
@@ -677,7 +764,21 @@ mod tests {
 
     #[test]
     fn one_checkpoint_authority_runs_before_and_at_the_final_boundary() {
-        let mut runtime = Runtime::mount(0, App::root, RuntimeConfig::default());
+        let mut runtime = Runtime::mount(
+            0,
+            App::root,
+            RuntimeConfig::default(),
+            App::initial_producer_budget(&0),
+            |_, _| {
+                Ok(crate::runtime::PreparedInitialApplicationWork {
+                    application: crate::transaction::TransactionLedger::from_outputs(Vec::new(), 0)
+                        .unwrap_or_else(|_| unreachable!("empty initial ledger fits")),
+                    subscriptions: Vec::new(),
+                })
+            },
+        )
+        .unwrap_or_else(|_| unreachable!("internal test mount inputs are valid"));
+        runtime.initialize_application_work();
         runtime
             .submit_action((), TraceActionCategory::DirectSubmission, None, None)
             .unwrap_or_else(|_| unreachable!());

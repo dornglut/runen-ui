@@ -121,6 +121,23 @@ struct ToolbarWidget {
 }
 
 impl<Action> Widget<Action> for ToolbarWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = ToolbarState;
 
     fn create_state(&self) -> Self::State {
@@ -179,7 +196,7 @@ impl<Action> Widget<Action> for ToolbarWidget {
             }
             context.prevent_default();
             context.stop_propagation();
-            context.emit_command(command);
+            let _ = context.try_emit_command(command);
         }
         WidgetEventOutput::none()
     }

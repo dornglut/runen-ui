@@ -16,8 +16,37 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         due.sort_unstable();
         let mut promoted = 0;
         for (_deadline, generation) in due {
-            if promoted >= limit || self.queue.is_full() {
+            if promoted >= limit {
                 break;
+            }
+            let root_quota = self.work.root_quota(generation);
+            let queue_available = if let Some(root) = root_quota {
+                if self
+                    .queue
+                    .preflight_root_timer_firing(root, generation)
+                    .is_err()
+                {
+                    self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                    return promoted;
+                }
+                true
+            } else {
+                self.queue.preflight_commit(1).is_ok()
+            };
+            if !queue_available {
+                break;
+            }
+            if let Some(root) = root_quota
+                && let Err(error) = self.queue.preflight_root_sequence(root, 1)
+            {
+                let reason = match error {
+                    crate::queue::QueueReservationError::SequenceExhausted => {
+                        RuntimeTerminalReason::WorkSequenceExhausted
+                    }
+                    _ => RuntimeTerminalReason::Poisoned,
+                };
+                self.enter_terminal(reason, 0);
+                return promoted;
             }
             if !self.trace.can_admit(MandatoryTracePlan::one_fact()) {
                 self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
@@ -26,7 +55,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             let Some(identity) = self.trace_work_identity(generation) else {
                 continue;
             };
-            if self.queue.push_timer_firing(generation).is_err() {
+            let queued = if let Some(root) = root_quota {
+                self.queue
+                    .push_timer_firing_rooted(generation, root)
+                    .is_ok()
+            } else {
+                self.queue.push_timer_firing(generation).is_ok()
+            };
+            if !queued {
                 self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
                 return promoted;
             }
@@ -85,6 +121,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         sequence: WorkSequence,
         generation: crate::work::WorkGeneration,
+        root_quota: Option<crate::queue::RootQuotaId>,
     ) {
         if !self.callback_output_preflight(
             Some((generation, WorkFamily::Timer)),
@@ -114,27 +151,32 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             TimerFireOutcome::Rescheduled => TimerFiringOutcome::Rescheduled,
             TimerFireOutcome::RepeatDeadlineOverflow => TimerFiringOutcome::RepeatDeadlineOverflow,
         });
-        let mut action_parent = firing_parent;
-        if outcome != TimerFireOutcome::Rescheduled {
-            let outcome = match outcome {
-                TimerFireOutcome::Completed => TraceTimerTerminalOutcome::Completed,
-                TimerFireOutcome::RepeatDeadlineOverflow => {
-                    TraceTimerTerminalOutcome::RepeatDeadlineOverflow
-                }
-                TimerFireOutcome::Rescheduled => unreachable!(),
-            };
-            action_parent = self.record_work_fact_from_envelope(
-                TraceRecordKind::TimerTerminated { outcome },
-                sequence,
-                identity,
-            );
-            self.timers.remove(index);
+        let (action_parent, terminate_generation) = match outcome {
+            TimerFireOutcome::Rescheduled => (firing_parent, false),
+            TimerFireOutcome::Completed | TimerFireOutcome::RepeatDeadlineOverflow => {
+                let outcome = match outcome {
+                    TimerFireOutcome::Completed => TraceTimerTerminalOutcome::Completed,
+                    TimerFireOutcome::RepeatDeadlineOverflow => {
+                        TraceTimerTerminalOutcome::RepeatDeadlineOverflow
+                    }
+                    TimerFireOutcome::Rescheduled => unreachable!(),
+                };
+                let action_parent = self.record_work_fact_from_envelope(
+                    TraceRecordKind::TimerTerminated { outcome },
+                    sequence,
+                    identity,
+                );
+                self.timers.remove(index);
+                (action_parent, true)
+            }
+        };
+        if let Some(root_quota) = root_quota.or_else(|| self.work.root_quota(generation)) {
+            self.queue_timer_callback_action(action, action_parent, root_quota, generation);
+        } else {
+            self.queue_callback_action(action, action_parent);
+        }
+        if terminate_generation {
             self.revoke_generation(generation);
         }
-        if self.queue.is_full() {
-            self.enter_terminal(RuntimeTerminalReason::Poisoned, 1);
-            return;
-        }
-        self.queue_callback_action(action, action_parent);
     }
 }
