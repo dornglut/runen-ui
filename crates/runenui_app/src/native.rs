@@ -77,14 +77,14 @@ const NATIVE_LINE_SCROLL_LOGICAL_UNITS: f64 = 48.0;
 fn parse_native_render_faults(spec: &str) -> VecDeque<PublicationRenderError> {
     spec.split(',')
         .filter(|token| !token.is_empty())
-        .map(|token| match token {
-            "timeout" => PublicationRenderError::SurfaceTimeout,
-            "occluded" => PublicationRenderError::SurfaceOccluded,
-            "outdated" => PublicationRenderError::SurfaceOutdated,
-            "suboptimal" => PublicationRenderError::SurfaceSuboptimal,
-            "not-configured" => PublicationRenderError::SurfaceNotConfigured,
-            "lost" => PublicationRenderError::SurfaceLost,
-            _ => panic!("unknown native render test fault: {token}"),
+        .filter_map(|token| match token {
+            "timeout" => Some(PublicationRenderError::SurfaceTimeout),
+            "occluded" => Some(PublicationRenderError::SurfaceOccluded),
+            "outdated" => Some(PublicationRenderError::SurfaceOutdated),
+            "suboptimal" => Some(PublicationRenderError::SurfaceSuboptimal),
+            "not-configured" => Some(PublicationRenderError::SurfaceNotConfigured),
+            "lost" => Some(PublicationRenderError::SurfaceLost),
+            _ => None,
         })
         .collect()
 }
@@ -1038,6 +1038,31 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         self.request_pending_redraw();
     }
 
+    /// One presentation attempt; the debug-only injection seam enters the same
+    /// typed failure policy without changing the default native renderer.
+    fn render_native_frame(
+        &mut self,
+        pending: &PendingFrame,
+        window: &Window,
+    ) -> Result<runenui_render_wgpu::PublicationObservation, PublicationRenderError> {
+        #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
+        if let Some(error) = self.test_render_faults.pop_front() {
+            if self.test_first_pending.is_none() {
+                self.test_first_pending = Some(pending.publication.clone());
+            }
+            eprintln!("RUNENUI_NATIVE_TEST_RENDER_FAULT={error:?}");
+            return Err(error);
+        }
+        self.renderer
+            .as_mut()
+            .ok_or(PublicationRenderError::SurfaceUnavailable)?
+            .render_surface_publication(
+                pending.publication.paint_publication(),
+                self.resources.as_ref(),
+                || window.pre_present_notify(),
+            )
+    }
+
     fn render_pending(&mut self, event_loop: &ActiveEventLoop) {
         self.pump_runtime_once();
         if let Err(error) = self.publish_if_needed() {
@@ -1059,9 +1084,6 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         if self.presentation_suppressed || !self.presentation_retry.is_due(Instant::now()) {
             return;
         }
-        let Some(window) = self.window.as_ref() else {
-            return;
-        };
         #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
         if self
             .test_first_pending
@@ -1074,38 +1096,10 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             );
             return;
         }
-        let render_result = {
-            #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
-            if let Some(error) = self.test_render_faults.pop_front() {
-                if self.test_first_pending.is_none() {
-                    self.test_first_pending = Some(pending.publication.clone());
-                }
-                eprintln!("RUNENUI_NATIVE_TEST_RENDER_FAULT={error:?}");
-                Err(error)
-            } else {
-                self.renderer
-                    .as_mut()
-                    .ok_or(PublicationRenderError::SurfaceUnavailable)
-                    .and_then(|renderer| {
-                        renderer.render_surface_publication(
-                            pending.publication.paint_publication(),
-                            self.resources.as_ref(),
-                            || window.pre_present_notify(),
-                        )
-                    })
-            }
-            #[cfg(not(all(debug_assertions, feature = "internal-test-seams")))]
-            self.renderer
-                .as_mut()
-                .ok_or(PublicationRenderError::SurfaceUnavailable)
-                .and_then(|renderer| {
-                    renderer.render_surface_publication(
-                        pending.publication.paint_publication(),
-                        self.resources.as_ref(),
-                        || window.pre_present_notify(),
-                    )
-                })
+        let Some(window) = self.window.clone() else {
+            return;
         };
+        let render_result = self.render_native_frame(&pending, &window);
         match render_result {
             Ok(observation) => {
                 if !observation.presented() {
