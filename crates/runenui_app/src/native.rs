@@ -77,17 +77,17 @@ const NATIVE_LINE_SCROLL_LOGICAL_UNITS: f64 = 48.0;
 fn parse_native_render_faults(spec: &str) -> VecDeque<PublicationRenderError> {
     spec.split(',')
         .filter(|token| !token.is_empty())
-        .filter_map(|token| match token {
-            "timeout" => Some(PublicationRenderError::SurfaceTimeout),
-            "occluded" => Some(PublicationRenderError::SurfaceOccluded),
-            "outdated" => Some(PublicationRenderError::SurfaceOutdated),
-            "suboptimal" => Some(PublicationRenderError::SurfaceSuboptimal),
-            "not-configured" => Some(PublicationRenderError::SurfaceNotConfigured),
-            "lost" => Some(PublicationRenderError::SurfaceLost),
-            "validation" => Some(PublicationRenderError::SurfaceValidation),
+        .map(|token| match token {
+            "timeout" => PublicationRenderError::SurfaceTimeout,
+            "occluded" => PublicationRenderError::SurfaceOccluded,
+            "outdated" => PublicationRenderError::SurfaceOutdated,
+            "suboptimal" => PublicationRenderError::SurfaceSuboptimal,
+            "not-configured" => PublicationRenderError::SurfaceNotConfigured,
+            "lost" => PublicationRenderError::SurfaceLost,
+            "validation" => PublicationRenderError::SurfaceValidation,
             // An unknown test directive must fail closed through the host's
             // existing typed fatal path rather than silently skipping proof.
-            _ => Some(PublicationRenderError::SurfaceValidation),
+            _ => PublicationRenderError::SurfaceValidation,
         })
         .collect()
 }
