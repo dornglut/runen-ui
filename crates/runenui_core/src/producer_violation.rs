@@ -104,3 +104,52 @@ pub const fn family_index(family: WorkFamily) -> usize {
         WorkFamily::FrameworkService => 4,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{BudgetComponent, ProducerContractViolation, ProducerPhase, ProducerViolationKind, family_index};
+    use crate::WorkFamily;
+
+    #[test]
+    fn every_work_family_has_one_stable_credit_index_and_typed_overrun() {
+        for (index, family) in [
+            WorkFamily::LocalTask,
+            WorkFamily::SendTask,
+            WorkFamily::Timer,
+            WorkFamily::HostRequest,
+            WorkFamily::FrameworkService,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_eq!(family_index(family), index);
+            assert_eq!(
+                ProducerContractViolation::work_start(
+                    ProducerPhase::ApplicationUpdate,
+                    family,
+                    index,
+                    index,
+                ),
+                ProducerContractViolation {
+                    kind: ProducerViolationKind::DeclarationExceeded,
+                    phase: ProducerPhase::ApplicationUpdate,
+                    component: BudgetComponent::WorkStarts(family),
+                    declared: index,
+                    attempted: Some(index + 1),
+                },
+            );
+        }
+
+        assert_eq!(
+            ProducerContractViolation::work_start(
+                ProducerPhase::ApplicationUpdate,
+                WorkFamily::Timer,
+                usize::MAX,
+                usize::MAX,
+            )
+            .attempted,
+            None,
+            "overrun diagnostics must not wrap usize",
+        );
+    }
+}
