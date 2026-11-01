@@ -18,6 +18,7 @@ RunenUI/
 │   └── runenui_testing/
 ├── examples/
 │   ├── counter/
+│   ├── fluent_counter/
 │   └── reference_winit/
 ├── tests/
 │   ├── external_host/
@@ -35,6 +36,7 @@ RunenUI/
 | `runenui_winit` | reusable winit input/device translation and AccessKit semantic/editable projection/action translation proven by the reference host and native Counter | window/event-loop ownership, runtime pumping, redraw/publication policy, displayed-frame authority, renderer/presentation lifecycle, document or editing-session authority, application behavior |
 | `runenui_app` | opt-in single-window native application composition, fluent typed configuration, native event loop, exact public runtime/renderer/AccessKit bridge, confirmed displayed mapping and truthful exit | UI mounted/state/scheduler/semantic/layout authority, embedded hosts and game loops, multiple logical UI runtimes or Runenwerk dependencies |
 | `runenui_testing` | public deterministic headless testing over ordinary `runenui_core` + `runenui_runtime` contracts | runtime behavior, private mutation seams, identity/sequence fabrication, parallel expected state, native host behavior |
+| `fluent_counter` | independent single-window public fluent API consumer with one self-state `UiApp`, rendered text/button and native executable | renderer/event-loop reimplementation, private runtime seams or Runenwerk dependency |
 | `counter` | application-owned state/action/update/UI plus the bounded native M7 application host composition and deterministic headless proof | framework internals, reusable native translation authority, renderer internals, generic host/facade ownership |
 | `reference_winit` | specialized native conformance host: winit window/event-loop mechanics, displayed native mapping, runtime wake/redraw driving, renderer presentation/recovery, editable document, public controller normalization proof, and proof logging | framework/runtime behavior, widget semantics, renderer internals, reusable native translation/accessibility authority, generic platform abstraction |
 | `runenui_external_host_conformance` | non-publishable winit-free downstream host proof over public core/runtime/renderer contracts; caller-owned submit/pump/redraw/publish/ack/render/present sequencing and retained-publication resource retry | native host/accessibility dependencies, testing convenience, direct wgpu ownership, private runtime seams, hidden framework loop, generic host/facade authority |
