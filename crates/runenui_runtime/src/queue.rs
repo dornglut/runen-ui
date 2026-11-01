@@ -488,6 +488,9 @@ pub(crate) struct WorkQueue<Action> {
     waiting: VecDeque<WorkEnvelope<Action>>,
     reserved: usize,
     root_quotas: HashMap<RootQuotaId, RootQuotaState>,
+    // Checked sums derived from live root residency profiles. The root map
+    // remains the ownership authority; admission need not rescan every root.
+    root_residency_claims: [usize; 6],
     input_continuations: HashMap<InputContinuationKey, RootQuotaId>,
     claimed_input_continuations: HashMap<WorkSequence, (InputContinuationKey, RootQuotaId)>,
     next_root_quota: Option<NonZeroU64>,
@@ -504,6 +507,7 @@ impl<Action> WorkQueue<Action> {
             waiting: VecDeque::new(),
             reserved: 0,
             root_quotas: HashMap::new(),
+            root_residency_claims: [0; 6],
             input_continuations: HashMap::new(),
             claimed_input_continuations: HashMap::new(),
             next_root_quota: NonZeroU64::new(1),
@@ -610,6 +614,14 @@ impl<Action> WorkQueue<Action> {
         &mut self,
         profile: ProducerBudget,
     ) -> Result<QueueReservation, QueueReservationError> {
+        // Compute all six sums before allocating a new root. Overflow cannot
+        // consume queue credits or partially update the residency claims.
+        let mut next_claims = self.root_residency_claims;
+        for (index, family) in crate::work::WorkFamily::ALL.into_iter().enumerate() {
+            next_claims[index] = next_claims[index]
+                .checked_add(family.residency(profile.work_residency()))
+                .ok_or(QueueReservationError::WorkCapacity(family))?;
+        }
         let reservation = self.reserve(profile.queue_credits())?;
         let quota = self
             .root_quotas
@@ -618,14 +630,16 @@ impl<Action> WorkQueue<Action> {
         quota.limit = profile.queue_credits();
         quota.remaining = profile.queue_credits();
         quota.profile = profile;
+        self.root_residency_claims = next_claims;
         Ok(reservation)
     }
 
     /// Resident claims stay with their canonical roots through queued and live work.
     pub(crate) fn work_residency_claims(&self, family: crate::work::WorkFamily) -> Option<usize> {
-        self.root_quotas.values().try_fold(0usize, |total, root| {
-            total.checked_add(family.residency(root.profile.work_residency()))
-        })
+        crate::work::WorkFamily::ALL
+            .iter()
+            .position(|candidate| *candidate == family)
+            .map(|index| self.root_residency_claims[index])
     }
 
     pub(crate) fn root_work_residency(
@@ -2043,8 +2057,16 @@ impl<Action> WorkQueue<Action> {
         if self.reserved < quota.remaining {
             return Err(QueueReservationError::Stale);
         }
+        // Preserve the root intact if its derived accounting is malformed.
+        let mut next_claims = self.root_residency_claims;
+        for (index, family) in crate::work::WorkFamily::ALL.into_iter().enumerate() {
+            next_claims[index] = next_claims[index]
+                .checked_sub(family.residency(quota.profile.work_residency()))
+                .ok_or(QueueReservationError::Stale)?;
+        }
         self.reserved -= quota.remaining;
         self.root_quotas.remove(&root);
+        self.root_residency_claims = next_claims;
         Ok(())
     }
 
@@ -2955,6 +2977,7 @@ impl<Action> WorkQueue<Action> {
         self.waiting.clear();
         self.reserved = 0;
         self.root_quotas.clear();
+        self.root_residency_claims = [0; 6];
         self.input_continuations.clear();
         self.claimed_input_continuations.clear();
         self.reservation_epoch = Arc::new(());
@@ -3776,6 +3799,100 @@ mod reservation_tests {
         assert_eq!(queue.reserved, 0);
         assert!(queue.is_empty());
         assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(65));
+    }
+
+    #[test]
+    fn residency_claim_sums_follow_queued_active_and_terminal_roots() {
+        use crate::work::WorkFamily;
+        use runenui_core::WorkResidencyBudget;
+
+        let mut queue = WorkQueue::<u8>::new(4);
+        let check = |queue: &WorkQueue<u8>, expected: [usize; 6]| {
+            for (family, value) in WorkFamily::ALL.into_iter().zip(expected) {
+                assert_eq!(
+                    queue.work_residency_claims(family),
+                    Some(value),
+                    "{family:?} retains its exact root claims"
+                );
+            }
+        };
+        let plain = queue.reserve(1).expect("plain reservation has zero residency");
+        let first = queue
+            .reserve_for_producer(
+                ProducerBudget::new(1, 0)
+                    .with_work_residency(WorkResidencyBudget::new(1, 2, 3, 4, 5, 6)),
+            )
+            .expect("first rooted residency fits");
+        let second = queue
+            .reserve_for_producer(
+                ProducerBudget::new(1, 0)
+                    .with_work_residency(WorkResidencyBudget::new(2, 3, 4, 5, 6, 7)),
+            )
+            .expect("second rooted residency fits");
+        check(&queue, [3, 5, 7, 9, 11, 13]);
+
+        queue
+            .push_reserved_with_remainder(&first, |sequence, root| {
+                action_envelope(sequence, 1, root)
+            })
+            .expect("the first root funds its queued action");
+        check(&queue, [3, 5, 7, 9, 11, 13]);
+        let Some(WorkEnvelope::ApplicationAction(work)) = queue.pop() else {
+            panic!("the queued root action must be popped");
+        };
+        check(&queue, [3, 5, 7, 9, 11, 13]);
+        queue
+            .finish_root_action(work.root_quota)
+            .expect("completing the root retires its residency");
+        check(&queue, [2, 3, 4, 5, 6, 7]);
+
+        queue
+            .release_reservation(&plain)
+            .expect("a zero-residency root closes without changing totals");
+        check(&queue, [2, 3, 4, 5, 6, 7]);
+        assert!(queue.root_quotas.contains_key(&second.quota()));
+        queue.cancel_all();
+        check(&queue, [0; 6]);
+    }
+
+    #[test]
+    fn residency_aggregate_overflow_preserves_both_reservation_and_credit_owner() {
+        use crate::work::WorkFamily;
+        use runenui_core::WorkResidencyBudget;
+
+        let mut queue = WorkQueue::<u8>::new(2);
+        let first = queue
+            .reserve_for_producer(
+                ProducerBudget::new(1, 0)
+                    .with_work_residency(WorkResidencyBudget::new(usize::MAX, 0, 0, 0, 0, 0)),
+            )
+            .expect("initial maximum claim fits usize");
+        assert!(matches!(
+            queue.reserve_for_producer(
+                ProducerBudget::new(1, 0)
+                    .with_work_residency(WorkResidencyBudget::new(1, 0, 0, 0, 0, 0)),
+            ),
+            Err(QueueReservationError::WorkCapacity(WorkFamily::LocalTask))
+        ));
+        assert_eq!(queue.root_quotas.len(), 1);
+        assert_eq!(queue.reserved, 1);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+        assert_eq!(
+            queue.work_residency_claims(WorkFamily::LocalTask),
+            Some(usize::MAX)
+        );
+        queue
+            .release_reservation(&first)
+            .expect("closing the first root returns its entire claim");
+        assert_eq!(queue.work_residency_claims(WorkFamily::LocalTask), Some(0));
+        assert_eq!(queue.reserved, 0);
+        queue
+            .reserve_for_producer(
+                ProducerBudget::new(1, 0)
+                    .with_work_residency(WorkResidencyBudget::new(1, 0, 0, 0, 0, 0)),
+            )
+            .expect("subsequent reservation succeeds after retirement");
+        assert_eq!(queue.work_residency_claims(WorkFamily::LocalTask), Some(1));
     }
 
     #[test]
