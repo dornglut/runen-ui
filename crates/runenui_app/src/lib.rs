@@ -265,6 +265,17 @@ mod tests {
     }
 
     #[test]
+    fn explicit_initial_focus_is_unmounted_application_intent() {
+        let target = ElementId::new("counter.activate")
+            .unwrap_or_else(|_| unreachable!("fixed test identifier is valid"));
+        let app = App::new()
+            .window("Counter")
+            .ui(Minimal { value: 0 })
+            .initial_focus(target);
+        assert!(app.initial_focus.is_some());
+    }
+
+    #[test]
     fn typed_fluent_application_is_not_mounted_during_configuration() {
         let model = App::new().window("Counter").ui(Minimal { value: 42 });
         assert_eq!(model.title.as_deref(), Some("Counter"));
