@@ -495,7 +495,10 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
                     .runtime
                     .submit_automation_command(target, SemanticCommand::RequestFocus)
                 {
-                    self.fail(event_loop, &format!("initial focus target rejected: {error:?}"));
+                    self.fail(
+                        event_loop,
+                        &format!("initial focus target rejected: {error:?}"),
+                    );
                     return;
                 }
                 self.pump_runtime_once();
@@ -1102,7 +1105,15 @@ pub fn run_native<A: UiApp<HostProtocol = NoHostProtocol>>(
         .map_err(|error| NativeAppError::EventLoop(error.to_string()))?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
-    let mut host = NativeHost::<A>::new(proxy, title, state, environment, initial_focus, resources, config);
+    let mut host = NativeHost::<A>::new(
+        proxy,
+        title,
+        state,
+        environment,
+        initial_focus,
+        resources,
+        config,
+    );
     if let RuntimeStatus::Terminal(reason) = host.runtime.status() {
         host.shutdown_runtime_checked();
         return NativeAppError::combine_exit(
