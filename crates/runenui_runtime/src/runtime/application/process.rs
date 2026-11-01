@@ -28,15 +28,30 @@ pub(crate) fn process_application_action<App: UiApp>(
     envelope: ApplicationActionEnvelope<App::Action>,
 ) -> ProcessApplicationActionOutcome {
     let root_quota = envelope.root_quota;
+    if let Err(reason) = runtime.preflight_application_turn_identity(envelope.producer_budget) {
+        let cancelled = runtime.enter_terminal(reason, 1);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
+    let trace_plan = runtime.application_turn_trace_plan(
+        envelope.producer_budget,
+        matches!(&envelope.origin, ApplicationActionOrigin::Edit(_)),
+    );
+    if !trace_plan.is_some_and(|plan| runtime.trace.begin_application_turn(plan)) {
+        let reason = RuntimeTerminalReason::TraceSequenceExhausted;
+        let cancelled = runtime.enter_terminal(reason, 1);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
     let outcome = process_application_action_inner::<App>(runtime, envelope);
     runtime.retire_input_continuation_claims();
     if matches!(runtime.status, RuntimeStatus::Running)
         && runtime.queue.finish_root_action(root_quota).is_err()
     {
+        runtime.trace.finish_application_turn();
         let reason = RuntimeTerminalReason::Poisoned;
         let cancelled = runtime.enter_terminal(reason, 0);
         return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
     }
+    runtime.trace.finish_application_turn();
     outcome
 }
 

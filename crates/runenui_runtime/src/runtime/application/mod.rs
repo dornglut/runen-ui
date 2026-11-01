@@ -13,6 +13,7 @@ use super::{
 };
 use runenui_core::IntoUpdateOutput;
 
+mod admission;
 mod helpers;
 mod initial;
 mod process;

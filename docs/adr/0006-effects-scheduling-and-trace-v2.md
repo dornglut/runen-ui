@@ -308,6 +308,16 @@ be funded. Applicable identity, generation, bridge and mandatory trace admission
 remain checked before their mutation boundaries. Exhaustion never wraps or
 reuses identity; existing hard-exhaustion integrity policy is not ordinary Full.
 
+New mounts plus retained update callbacks form a conservative live-identity peak;
+admission cannot speculate that opaque reconciliation will retire a usable slot.
+Known last-generation slots are charged as permanently retiring. Whole-turn
+trace demand composes the existing route, focus, composition, pointer, lifecycle
+and scheduler plans before application mutation. Optional diagnostics cannot
+spend that protected demand. Future outcome reservations transfer their credit
+and survive the turn; unused step demand is released when the turn finishes.
+Hard counters are rechecked at the FIFO head after predecessors, rather than
+promising unbounded trace or identity history from one finite frontier quota.
+
 This guarantee is conditional on an enforceable finite producer contract. It is
 not universal admission of opaque callbacks. At default C=4096 and R=1024,
 unrestricted independent outputs requiring 1+4R positions cannot be promised.

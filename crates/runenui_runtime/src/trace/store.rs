@@ -20,6 +20,7 @@ pub struct Trace {
     records: VecDeque<Arc<TraceRecord>>,
     next_sequence: Option<NonZeroU64>,
     reserved_records: usize,
+    application_turn_remaining: Option<usize>,
     dropped_before_sequence: Option<TraceSequence>,
     sink: Option<TraceSink>,
 }
@@ -33,6 +34,10 @@ impl fmt::Debug for Trace {
             .field("records", &self.records)
             .field("next_sequence", &self.next_sequence)
             .field("reserved_records", &self.reserved_records)
+            .field(
+                "application_turn_remaining",
+                &self.application_turn_remaining,
+            )
             .field("dropped_before_sequence", &self.dropped_before_sequence)
             .field(
                 "sink_open",
@@ -50,6 +55,7 @@ impl PartialEq for Trace {
             && self.records == other.records
             && self.next_sequence == other.next_sequence
             && self.reserved_records == other.reserved_records
+            && self.application_turn_remaining == other.application_turn_remaining
             && self.dropped_before_sequence == other.dropped_before_sequence
             && match (&self.sink, &other.sink) {
                 (Some(left), Some(right)) => left.state_eq(right),
@@ -79,6 +85,7 @@ impl Trace {
             records: VecDeque::new(),
             next_sequence: NonZeroU64::new(1),
             reserved_records: 0,
+            application_turn_remaining: None,
             dropped_before_sequence: None,
             sink,
         }
@@ -97,7 +104,27 @@ impl Trace {
     }
 
     pub(crate) fn can_admit(&self, plan: MandatoryTracePlan) -> bool {
-        self.can_admit_with_reserved(plan, self.reserved_records)
+        !self.is_enabled()
+            || (self
+                .application_turn_remaining
+                .is_none_or(|remaining| plan.records <= remaining)
+                && self.can_admit_with_reserved(plan, self.reserved_records))
+    }
+
+    /// Protects a complete qualified turn from intervening optional diagnostics.
+    /// This lends the trace store's existing sequence authority; it creates no
+    /// trace buffer or second sequence allocator. Future outcome reservations
+    /// transfer one unit out of this budget into `reserved_records`.
+    pub(crate) fn begin_application_turn(&mut self, plan: MandatoryTracePlan) -> bool {
+        if self.application_turn_remaining.is_some() || !self.can_admit(plan) {
+            return false;
+        }
+        self.application_turn_remaining = Some(plan.records);
+        true
+    }
+
+    pub(crate) const fn finish_application_turn(&mut self) {
+        self.application_turn_remaining = None;
     }
 
     fn can_admit_with_reserved(&self, plan: MandatoryTracePlan, reserved: usize) -> bool {
@@ -149,11 +176,22 @@ impl Trace {
         if !self.is_enabled() {
             return Some(TraceReservation::DISABLED);
         }
+        if self.application_turn_remaining.is_some_and(|remaining| {
+            prefix
+                .records
+                .checked_add(1)
+                .is_none_or(|required| required > remaining)
+        }) {
+            return None;
+        }
         let reserved = self.reserved_records.checked_add(1)?;
         if !self.can_admit_with_reserved(prefix, reserved) {
             return None;
         }
         self.reserved_records = reserved;
+        if let Some(remaining) = &mut self.application_turn_remaining {
+            *remaining -= 1;
+        }
         Some(TraceReservation::ACTIVE)
     }
 
@@ -259,6 +297,44 @@ impl Trace {
         if !self.can_admit(MandatoryTracePlan::one_fact()) {
             return None;
         }
+        if let Some(remaining) = &mut self.application_turn_remaining {
+            *remaining -= 1;
+        }
+        self.record_admitted_draft(draft)
+    }
+
+    pub(crate) fn record_optional(
+        &mut self,
+        kind: TraceRecordKind,
+        work_sequence: Option<WorkSequence>,
+        causal_parent: Option<TraceSequence>,
+        target: Option<TraceTarget>,
+    ) -> Option<TraceSequence> {
+        let mut draft = TraceRecordDraft::new(kind);
+        draft.work_sequence = work_sequence;
+        draft.causal_parent = causal_parent;
+        draft.target = target;
+        self.record_optional_draft(draft)
+    }
+
+    fn record_optional_draft(&mut self, draft: TraceRecordDraft) -> Option<TraceSequence> {
+        if !self.is_enabled() {
+            return None;
+        }
+        let required = self
+            .application_turn_remaining
+            .unwrap_or(0)
+            .checked_add(1)?;
+        if !self.can_admit_with_reserved(
+            MandatoryTracePlan::planned_scheduler_transaction(required),
+            self.reserved_records,
+        ) {
+            return None;
+        }
+        self.record_admitted_draft(draft)
+    }
+
+    fn record_admitted_draft(&mut self, draft: TraceRecordDraft) -> Option<TraceSequence> {
         let sequence = TraceSequence::new(self.next_sequence?);
         self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
         if self.records.len() == self.capacity
@@ -409,5 +485,61 @@ impl Trace {
             Some(sequence) => Some(sequence.get()),
             None => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod application_turn_tests {
+    use super::*;
+
+    #[test]
+    fn optional_records_cannot_spend_the_whole_turn_floor() {
+        let mut trace =
+            Trace::new_for_runtime(TraceConfig::new(16), RuntimeNamespace::__runtime_new());
+        trace.next_sequence = NonZeroU64::new(u64::MAX - 4);
+        assert!(trace.begin_application_turn(MandatoryTracePlan::planned_scheduler_transaction(4)));
+        assert!(
+            trace
+                .record_optional_draft(TraceRecordDraft::new(TraceRecordKind::RuntimeMounted))
+                .is_some()
+        );
+        assert!(
+            trace
+                .record_optional_draft(TraceRecordDraft::new(TraceRecordKind::RuntimeMounted))
+                .is_none()
+        );
+        for _ in 0..4 {
+            assert!(
+                trace
+                    .record_draft(TraceRecordDraft::new(TraceRecordKind::RuntimeMounted))
+                    .is_some()
+            );
+        }
+        assert!(trace.next_sequence.is_none());
+        trace.finish_application_turn();
+        assert!(trace.application_turn_remaining.is_none());
+    }
+
+    #[test]
+    fn an_outcome_transfers_its_credit_and_survives_the_turn() {
+        let mut trace =
+            Trace::new_for_runtime(TraceConfig::new(16), RuntimeNamespace::__runtime_new());
+        assert!(trace.begin_application_turn(MandatoryTracePlan::planned_scheduler_transaction(5)));
+        let outcome = trace
+            .reserve_command_outcome()
+            .unwrap_or_else(|| unreachable!("funded future outcome"));
+        assert_eq!(trace.application_turn_remaining, Some(4));
+        assert_eq!(trace.reserved_records, 1);
+        trace.finish_application_turn();
+        assert_eq!(trace.reserved_records, 1);
+        assert!(
+            trace
+                .record_reserved_draft(
+                    outcome,
+                    TraceRecordDraft::new(TraceRecordKind::RuntimeMounted)
+                )
+                .is_some()
+        );
+        assert_eq!(trace.reserved_records, 0);
     }
 }

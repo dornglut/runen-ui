@@ -147,6 +147,19 @@ pub(crate) struct MountedTree<Action> {
 }
 
 impl<Action> MountedTree<Action> {
+    pub(crate) fn preflight_producer_identity(
+        &self,
+        profile: runenui_core::ProducerBudget,
+        public_slot_limit: u64,
+    ) -> Result<(), MountedIdentityExhausted> {
+        self.arena
+            .preflight_producer_peak(
+                profile.mounted_nodes(),
+                profile.retained_updates(),
+                public_slot_limit,
+            )
+            .map_err(|_| MountedIdentityExhausted)
+    }
     pub(crate) fn empty() -> Self {
         Self {
             runtime: RuntimeNamespace::__runtime_new(),

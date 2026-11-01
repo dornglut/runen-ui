@@ -717,3 +717,25 @@ fn queued_predecessor_cannot_use_the_current_zero_callback_budget_as_admission_p
         assert_eq!(app.state().log.borrow().last(), Some(&Fact::AppOutput));
     }
 }
+
+#[cfg(feature = "internal-test-seams")]
+#[test]
+fn whole_turn_trace_shortage_precedes_qualified_update() {
+    let mut app = focused_held_runtime(32, 512, OutputMode::Honest);
+    app.submit_action(Action::Disable)
+        .unwrap_or_else(|_| unreachable!());
+    // This is a fault model for the counter state left by predecessors, not
+    // ordinary trace retention pressure. The base action plan alone still fits.
+    app.__seed_next_trace_sequence_for_test(u64::MAX - 12);
+    app.pump(PumpBudget::new(1, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!());
+    assert!(
+        app.state().eligible,
+        "whole-turn refusal precedes irreversible update"
+    );
+    assert!(app.state().log.borrow().is_empty());
+    assert_eq!(
+        app.status(),
+        RuntimeStatus::Terminal(runenui_runtime::RuntimeTerminalReason::TraceSequenceExhausted)
+    );
+}

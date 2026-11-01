@@ -330,8 +330,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             RuntimeStatus::Running => {}
         }
-        if !self.application_output_budget_fits(budget) {
+        if !self.application_output_budget_fits(budget)
+            || !self.application_identity_budget_fits(budget)
+        {
             return Err(SubmitActionError::InvalidProducerProfile(action));
+        }
+        if let Err(reason) = self.preflight_application_turn_identity(budget) {
+            self.enter_terminal(reason, 0);
+            return Err(SubmitActionError::Terminal { action, reason });
+        }
+        let Some(trace_plan) = self.application_turn_trace_plan(budget, false) else {
+            return Err(SubmitActionError::InvalidProducerProfile(action));
+        };
+        if !self.trace.can_admit(trace_plan) {
+            let reason = RuntimeTerminalReason::TraceSequenceExhausted;
+            self.enter_terminal(reason, 0);
+            return Err(SubmitActionError::Terminal { action, reason });
         }
         let reservation = match self.reserve_producer(budget) {
             Ok(reservation) => reservation,

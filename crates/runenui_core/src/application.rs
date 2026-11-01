@@ -160,6 +160,9 @@ impl ProducerBudget {
         }
     }
 
+    /// Bounds new mounts, retained update callbacks, and dirty declaration owners.
+    /// New mounts plus retained updates are the conservative live-identity peak
+    /// used for admission; opaque callbacks do not certify slot retirement.
     #[must_use]
     pub const fn with_reconciliation(
         mut self,

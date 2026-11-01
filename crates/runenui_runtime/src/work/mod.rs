@@ -150,6 +150,10 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
 
     #[cfg(feature = "internal-test-seams")]
     pub(crate) fn live_record_count_for_test(&self) -> usize {
+        self.live_record_count()
+    }
+
+    pub(crate) fn live_record_count(&self) -> usize {
         self.records.len()
     }
 

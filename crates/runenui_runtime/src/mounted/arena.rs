@@ -128,6 +128,31 @@ impl<T> GenerationalArena<T> {
         self.preflight_live_count_after_retirement(live_count, 0, public_slot_limit)
     }
 
+    pub(crate) fn preflight_producer_peak(
+        &self,
+        new_mounts: usize,
+        retained_updates: usize,
+        public_slot_limit: u64,
+    ) -> Result<(), ArenaCapacityError> {
+        // An opaque reconciliation can remove any live last-generation slot.
+        // Such a slot is permanently retired, never reusable by a new mount.
+        let retiring = self
+            .slots
+            .iter()
+            .filter(|slot| slot.value.is_some() && slot.generation == u64::MAX)
+            .count();
+        // A last-generation live owner occupies its slot whether it survives
+        // or retires. Count it once, and retain at most the other live owners.
+        let ordinary_live = self
+            .live_count
+            .checked_sub(retiring)
+            .ok_or(ArenaCapacityError)?;
+        let live_count = new_mounts
+            .checked_add(retained_updates.min(ordinary_live))
+            .ok_or(ArenaCapacityError)?;
+        self.preflight_live_count_after_retirement(live_count, retiring, public_slot_limit)
+    }
+
     pub(crate) fn preflight_live_count_after_retirement(
         &self,
         live_count: usize,
@@ -396,5 +421,38 @@ mod tests {
         assert_eq!(planner.allocate(2), Ok((1, 1)));
         assert_eq!(planner.allocate(2), Err(ArenaCapacityError));
         assert_eq!(arena.live_count(), 0);
+    }
+}
+
+#[cfg(test)]
+mod producer_peak_tests {
+    use super::{ArenaCapacityError, GenerationalArena};
+
+    #[test]
+    fn last_generation_owner_is_charged_once_whether_retained_or_retired() {
+        let mut arena = GenerationalArena::new();
+        arena.seed_vacant(u64::MAX);
+        arena
+            .insert_with_public_slot_limit(1, |_, _| "last generation")
+            .unwrap_or_else(|_| unreachable!("initial slot"));
+        assert_eq!(arena.preflight_producer_peak(0, 1, 1), Ok(()));
+        assert_eq!(
+            arena.preflight_producer_peak(1, 0, 1),
+            Err(ArenaCapacityError)
+        );
+        assert_eq!(arena.preflight_producer_peak(1, 1, 2), Ok(()));
+        arena
+            .insert_with_public_slot_limit(2, |_, _| "ordinary generation")
+            .unwrap_or_else(|_| unreachable!("second slot"));
+        assert_eq!(
+            arena.preflight_producer_peak(1, 1, 2),
+            Err(ArenaCapacityError)
+        );
+        assert_eq!(arena.preflight_producer_peak(1, 1, 3), Ok(()));
+        assert_eq!(
+            arena.live_count(),
+            2,
+            "preflight allocates or retires nothing"
+        );
     }
 }
