@@ -260,7 +260,7 @@ mod tests {
             )),
         );
         let Err(NativeAppError::Multiple { primary, secondary }) = combined else {
-            panic!("both failures must be returned as separate typed facts");
+            unreachable!("both failures must be returned as separate typed facts");
         };
         assert!(matches!(*primary, NativeAppError::EventLoop(_)));
         assert!(
