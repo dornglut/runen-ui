@@ -3816,7 +3816,9 @@ mod reservation_tests {
                 );
             }
         };
-        let plain = queue.reserve(1).expect("plain reservation has zero residency");
+        let plain = queue
+            .reserve(1)
+            .expect("plain reservation has zero residency");
         let first = queue
             .reserve_for_producer(
                 ProducerBudget::new(1, 0)
@@ -3863,8 +3865,14 @@ mod reservation_tests {
         let mut queue = WorkQueue::<u8>::new(2);
         let first = queue
             .reserve_for_producer(
-                ProducerBudget::new(1, 0)
-                    .with_work_residency(WorkResidencyBudget::new(usize::MAX, 0, 0, 0, 0, 0)),
+                ProducerBudget::new(1, 0).with_work_residency(WorkResidencyBudget::new(
+                    usize::MAX,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                )),
             )
             .expect("initial maximum claim fits usize");
         assert!(matches!(
