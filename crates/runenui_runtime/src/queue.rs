@@ -655,13 +655,13 @@ impl<Action> WorkQueue<Action> {
         let sequence = WorkSequence::__runtime_new(next);
         let root = reservation.quota;
         let envelope = envelope(sequence);
+        self.note_rooted_enqueued(root, &envelope)?;
         self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
         self.reserved -= 1;
         self.root_quotas
             .get_mut(&root)
             .ok_or(QueueReservationError::Stale)?
             .remaining -= 1;
-        self.note_rooted_enqueued(root, &envelope)?;
         self.waiting.push_back(envelope);
         Ok(sequence)
     }
@@ -693,13 +693,13 @@ impl<Action> WorkQueue<Action> {
         let sequence = WorkSequence::__runtime_new(next);
         let mut envelope = envelope(sequence, root);
         Self::bind_root(&mut envelope, root)?;
+        self.note_rooted_enqueued(root, &envelope)?;
         self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
         self.reserved -= 1;
         self.root_quotas
             .get_mut(&root)
             .ok_or(QueueReservationError::Stale)?
             .remaining -= 1;
-        self.note_rooted_enqueued(root, &envelope)?;
         self.waiting.push_back(envelope);
         Ok(sequence)
     }
@@ -3075,6 +3075,41 @@ mod reservation_tests {
                 framework_services: 0,
             },
         }
+    }
+
+    #[test]
+    fn foreign_reserved_envelope_refusal_preserves_sequence_and_both_root_credits() {
+        let mut queue = WorkQueue::<u8>::new(2);
+        let first = queue.reserve(1).expect("first root fits");
+        let second = queue.reserve(1).expect("second root fits");
+
+        assert_eq!(
+            queue.push_reserved(&first, |sequence| {
+                action_envelope(sequence, 7, second.quota())
+            }),
+            Err(QueueReservationError::Foreign),
+        );
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+        assert_eq!(queue.root_remaining(first.quota()), Ok(1));
+        assert_eq!(queue.root_remaining(second.quota()), Ok(1));
+        assert_eq!(queue.len(), 0);
+
+        assert_eq!(
+            queue
+                .push_reserved_with_remainder(&first, |sequence, root| {
+                    action_envelope(sequence, 8, root)
+                })
+                .map(WorkSequence::get),
+            Ok(1),
+        );
+        assert_eq!(
+            queue
+                .push_reserved_with_remainder(&second, |sequence, root| {
+                    action_envelope(sequence, 9, root)
+                })
+                .map(WorkSequence::get),
+            Ok(2),
+        );
     }
 
     #[test]
