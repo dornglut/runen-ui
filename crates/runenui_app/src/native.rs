@@ -484,28 +484,35 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             self.fail(event_loop, &format!("runtime terminal: {reason:?}"));
             return;
         }
-        if self
+        // Consume this one-time intent on the first genuinely focused
+        // native window, even if the app already chose a runtime focus target.
+        // Do not replay an obsolete initial intent after focus is lost.
+        let initial_focus_target = if self
             .window
             .as_ref()
             .is_some_and(|window| window.has_focus())
-            && let Some(target) = self.initial_focus.take()
         {
-            if self.runtime.focus().focused_node().is_none() {
-                if let Err(error) = self
-                    .runtime
-                    .submit_automation_command(target, SemanticCommand::RequestFocus)
-                {
-                    self.fail(
-                        event_loop,
-                        &format!("initial focus target rejected: {error:?}"),
-                    );
-                    return;
-                }
-                self.pump_runtime_once();
-                if let RuntimeStatus::Terminal(reason) = self.runtime.status() {
-                    self.fail(event_loop, &format!("initial focus terminal: {reason:?}"));
-                    return;
-                }
+            self.initial_focus.take()
+        } else {
+            None
+        };
+        if let Some(target) = initial_focus_target
+            && self.runtime.focus().focused_node().is_none()
+        {
+            if let Err(error) = self
+                .runtime
+                .submit_automation_command(target, SemanticCommand::RequestFocus)
+            {
+                self.fail(
+                    event_loop,
+                    &format!("initial focus target rejected: {error:?}"),
+                );
+                return;
+            }
+            self.pump_runtime_once();
+            if let RuntimeStatus::Terminal(reason) = self.runtime.status() {
+                self.fail(event_loop, &format!("initial focus terminal: {reason:?}"));
+                return;
             }
         }
         self.collect_redraw_request();
