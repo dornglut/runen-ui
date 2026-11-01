@@ -1175,10 +1175,12 @@ mod tests {
     fn native_pixel_wheel_fails_closed_on_invalid_display_scale() {
         let wheel = MouseScrollDelta::PixelDelta(PhysicalPosition::new(5.0, 7.0));
         assert!(normalize_wheel_delta(wheel, 0.0).is_none());
-        assert!(normalize_wheel_delta(
-            MouseScrollDelta::PixelDelta(PhysicalPosition::new(5.0, 7.0)),
-            f64::NAN,
-        )
-        .is_none());
+        assert!(
+            normalize_wheel_delta(
+                MouseScrollDelta::PixelDelta(PhysicalPosition::new(5.0, 7.0)),
+                f64::NAN,
+            )
+            .is_none()
+        );
     }
 }
