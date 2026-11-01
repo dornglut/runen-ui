@@ -50,7 +50,12 @@ impl UiApp for StatusUi {
     ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             StatusAction::ToggleRunning => state.running = !state.running,
-            StatusAction::InitialTimerFired => state.timer_fired = true,
+            StatusAction::InitialTimerFired => {
+                state.timer_fired = true;
+                // Observable application event for the independent native
+                // deadline/idle smoke; never a framework-side clock.
+                eprintln!("RUNENUI_FLUENT_STATUS_TIMER_FIRED");
+            }
         }
     }
 }
