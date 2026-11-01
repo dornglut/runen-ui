@@ -12,6 +12,7 @@ members = [
 
     "examples/counter",
     "examples/fluent_counter",
+    "examples/fluent_status",
     "examples/reference_winit",
 
     "tests/external_widget",
