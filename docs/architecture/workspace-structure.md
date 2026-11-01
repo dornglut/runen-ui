@@ -14,6 +14,7 @@ RunenUI/
 │   ├── runenui_runtime/
 │   ├── runenui_render_wgpu/
 │   ├── runenui_winit/
+│   ├── runenui_app/
 │   └── runenui_testing/
 ├── examples/
 │   ├── counter/
@@ -32,6 +33,7 @@ RunenUI/
 | `runenui_runtime` | generational mounted/semantic/editing-session authority; reconciliation/lifecycle; canonical queue/scheduler and private edit origins/chains; focus/input/selection/preedit state; clocks/tasks/timers/subscriptions/host requests; wake/redraw; trace/replay; style/text orchestration; production layout over exact mounted topology through private low-level Taffy algorithms; final logical geometry/extents; staged surface/semantic publication | application document/domain policy or durable undo history, testing convenience authority, native platform implementations, concrete renderers, text-shaping/font-algorithm authority, retained Taffy topology/identity authority, ECS/legacy dependencies |
 | `runenui_render_wgpu` | reusable renderer edge over ordinary public paint publications; external-image resource-provider contract; retained shaped-text consumption; renderer-owned successful-publication lineage, SDF/MSDF/image realization/cache/backend work, readback, and renderer observations | native event loop, accessibility, widget/semantic/mounted/layout authority, runtime mutation, application resource registry, shaping/line breaking/font discovery, winit/AccessKit ownership |
 | `runenui_winit` | reusable winit input/device translation and AccessKit semantic/editable projection/action translation proven by the reference host and native Counter | window/event-loop ownership, runtime pumping, redraw/publication policy, displayed-frame authority, renderer/presentation lifecycle, document or editing-session authority, application behavior |
+| `runenui_app` | opt-in single-window native application composition, fluent typed configuration, native event loop, exact public runtime/renderer/AccessKit bridge, confirmed displayed mapping and truthful exit | UI mounted/state/scheduler/semantic/layout authority, embedded hosts and game loops, multiple logical UI runtimes or Runenwerk dependencies |
 | `runenui_testing` | public deterministic headless testing over ordinary `runenui_core` + `runenui_runtime` contracts | runtime behavior, private mutation seams, identity/sequence fabrication, parallel expected state, native host behavior |
 | `counter` | application-owned state/action/update/UI plus the bounded native M7 application host composition and deterministic headless proof | framework internals, reusable native translation authority, renderer internals, generic host/facade ownership |
 | `reference_winit` | specialized native conformance host: winit window/event-loop mechanics, displayed native mapping, runtime wake/redraw driving, renderer presentation/recovery, editable document, public controller normalization proof, and proof logging | framework/runtime behavior, widget semantics, renderer internals, reusable native translation/accessibility authority, generic platform abstraction |
@@ -47,6 +49,7 @@ runenui_text        -> runenui_core
 runenui_runtime     -> runenui_core + runenui_text
 runenui_render_wgpu -> runenui_core + runenui_runtime + runenui_text
 runenui_winit       -> runenui_core + runenui_runtime
+runenui_app         -> runenui_core + runenui_runtime + runenui_render_wgpu + runenui_winit
 runenui_testing     -> runenui_core + runenui_runtime
 ```
 
@@ -61,6 +64,8 @@ Taffy is an exact private dependency of `runenui_runtime`, not a workspace autho
 `runenui_render_wgpu` consumes public core/runtime paint-publication contracts plus the exact retained `runenui_text` shaped-resource facts needed for already-shaped outline realization. External images still use the caller-owned complete-`ResourceRef` provider contract. Runtime-shaped text does not: its immutable binding is retained by publication, while field generation, quality classes, atlas pages, GPU textures, and cache lifetime are disposable renderer-owned state. The renderer has no shaping, line-breaking, fallback, or font-discovery authority.
 
 `runenui_winit` is the targeted adapter boundary justified by the second real winit consumer in M7. It consumes ordinary public core/runtime contracts plus winit/AccessKit types and owns only loss-preserving native translation/projection mechanics. It deliberately has no renderer dependency and no run-loop API. Moving a substantial accepted adapter into one Cargo-owned source prevents Counter from copying the specialized reference application while leaving application-specific host policy visible.
+
+`runenui_app` is an opt-in desktop composition consumer of public native and renderer contracts, not an alternate mounted runtime or a dependency of neutral crates. The basic native profile currently requires `NoHostProtocol` and exactly one declared window. Embedded/headless users continue using ordinary public `AppRuntime` integration; no implicit headless event loop is provided by this native-only package.
 
 `reference_winit` remains the specialized conformance host; Counter is the bounded application showcase. Both consume `runenui_render_wgpu` and `runenui_winit`, but each owns its own winit event loop, runtime pumping, redraw/publication acknowledgement, displayed-frame mapping, renderer recovery, and presentation policy. This does not establish a generic RunenUI host facade.
 
