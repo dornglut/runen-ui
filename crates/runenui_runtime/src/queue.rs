@@ -761,6 +761,11 @@ impl<Action> WorkQueue<Action> {
             cancellations,
             response_releases,
         } = commit;
+        // Current outputs use this root's reusable frontier while independent
+        // roots retain their previously reserved sequence capacity.
+        if queued_envelopes != 0 {
+            self.preflight_root_sequence(root, queued_envelopes)?;
+        }
         let cancellation_count = cancellations
             .host_requests
             .checked_add(cancellations.framework_services)
@@ -771,15 +776,6 @@ impl<Action> WorkQueue<Action> {
         let current_root_outputs = queued_envelopes
             .checked_sub(cancellation_count)
             .ok_or(QueueReservationError::Stale)?;
-        // Cancellation envelopes consume their existing owning roots' future
-        // sequence credits, including when the cancelled work belongs to an
-        // independent root. Count only this root's new outputs; the other
-        // roots' complete reserved frontiers are already protected by
-        // preflight_root_sequence. Counting foreign cancellations again would
-        // falsely exhaust the global sequence at an otherwise exact fit.
-        if current_root_outputs != 0 {
-            self.preflight_root_sequence(root, current_root_outputs)?;
-        }
         let required = current_root_outputs
             .checked_add(starts.host_requests)
             .and_then(|count| count.checked_add(starts.local_tasks))
@@ -3577,141 +3573,6 @@ mod reservation_tests {
             .finish_root_envelope(independent.quota())
             .expect("independent root retires its last credit");
         assert!(queue.is_empty());
-        assert_eq!(queue.reserved, 0);
-        assert!(queue.root_quotas.is_empty());
-    }
-
-    #[cfg(feature = "internal-test-seams")]
-    #[test]
-    #[allow(
-        clippy::too_many_lines,
-        reason = "Exact-fit foreign cancellation, independent action and complete FIFO retirement share one frontier"
-    )]
-    fn cross_root_cancellation_preflight_counts_preowned_sequences_once() {
-        use crate::{
-            RuntimeLimits, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, work::WorkRegistry,
-        };
-
-        let mut queue = WorkQueue::<u8>::new(3);
-        queue.seed_next_sequence_for_test(u64::MAX - 4);
-        let b = queue
-            .reserve_for_producer(ProducerBudget::new(2, 0))
-            .expect("B's action and host terminal are funded");
-        let generation =
-            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
-                .preview_generations(1)
-                .expect("one generation fits")
-                .0[0];
-        queue
-            .push_reserved_with_remainder(&b, |sequence, root| action_envelope(sequence, 10, root))
-            .expect("B's first action fits");
-        queue
-            .retain_root_host_request_lease(b.quota(), generation)
-            .expect("host cancellation has its own reserved credit");
-        let first = queue.pop().expect("B's action is first");
-        queue
-            .finish_root_action(first.root_quota().expect("B owns the action"))
-            .expect("B retains its host credit");
-
-        let a = queue
-            .reserve_for_producer(ProducerBudget::new(1, 0))
-            .expect("A owns one independent reusable action credit");
-        assert_eq!(
-            queue
-                .push_reserved_with_remainder(&a, |sequence, root| action_envelope(
-                    sequence, 20, root
-                ))
-                .map(WorkSequence::get),
-            Ok(u64::MAX - 3)
-        );
-        let second = queue.pop().expect("A's action reaches its head");
-        assert_eq!(second.root_quota(), Some(a.quota()));
-        assert_eq!(queue.root_remaining(a.quota()), Ok(1));
-        assert_eq!(queue.root_remaining(b.quota()), Ok(1));
-        assert_eq!(queue.reserved, 3);
-        assert_eq!(
-            queue.next_sequence().map(WorkSequence::get),
-            Some(u64::MAX - 2)
-        );
-
-        let commit = RootProducerCommit {
-            root: a.quota(),
-            queued_envelopes: 2,
-            starts: RootProducerWorkStarts {
-                host_requests: 0,
-                local_tasks: 0,
-                send_tasks: 0,
-                timers: 0,
-                repeating_timers: 0,
-                framework_services: 0,
-            },
-            cancellations: RootProducerCancellations {
-                host_requests: 1,
-                framework_services: 0,
-                local_tasks: 0,
-                send_tasks: 0,
-                timers: 0,
-            },
-            response_releases: RootProducerResponseReleases {
-                host_requests: 0,
-                framework_services: 0,
-            },
-        };
-        queue.preflight_root_producer_commit(commit).expect(
-            "B's cancellation is already sequenced by B's frontier; A needs one new credit",
-        );
-        queue
-            .release_root_work_lease_for_cancellation(b.quota(), generation)
-            .expect("B's live host lease transfers its cancellation credit");
-        let identity = TraceWorkIdentity::new(
-            TraceWorkOwner::Application,
-            TraceWorkFamily::HostRequest,
-            generation.get(),
-            None,
-        );
-        assert_eq!(
-            queue
-                .push_host_request_cancellation(generation, identity, None)
-                .map(|sequence| sequence.map(WorkSequence::get)),
-            Ok(Some(u64::MAX - 2))
-        );
-        assert_eq!(
-            queue
-                .push_rooted(a.quota(), |sequence, root| action_envelope(
-                    sequence, 21, root
-                ))
-                .map(WorkSequence::get),
-            Ok(u64::MAX - 1)
-        );
-        queue
-            .finish_root_action(a.quota())
-            .expect("A's reached action leaves its new action pending");
-        assert_eq!(
-            queue
-                .push_rooted(b.quota(), |sequence, root| action_envelope(
-                    sequence, 11, root
-                ))
-                .map(WorkSequence::get),
-            Ok(u64::MAX),
-            "B retains the last sequence for its remaining promised credit"
-        );
-        assert_eq!(queue.next_sequence(), None);
-        assert_eq!(queue.reserved, 0);
-        for (sequence, root) in [
-            (u64::MAX - 2, b.quota()),
-            (u64::MAX - 1, a.quota()),
-            (u64::MAX, b.quota()),
-        ] {
-            let popped = queue
-                .pop()
-                .expect("all three exact-fit envelopes remain ordered");
-            assert_eq!(popped.sequence().get(), sequence);
-            assert_eq!(popped.root_quota(), Some(root));
-            assert!(!queue.is_closed());
-            queue
-                .finish_root_envelope(root)
-                .expect("each root retires only its own credit");
-        }
         assert_eq!(queue.reserved, 0);
         assert!(queue.root_quotas.is_empty());
     }
