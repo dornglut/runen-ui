@@ -1147,3 +1147,38 @@ pub fn run_native<A: UiApp<HostProtocol = NoHostProtocol>>(
     let primary = NativeAppError::combine_exit(primary, event_loop_error).err();
     NativeAppError::combine_exit(primary, host.cleanup_error.map(NativeAppError::Shutdown))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_line_wheel_uses_documented_logical_units() {
+        let event = normalize_wheel_delta(MouseScrollDelta::LineDelta(0.0, -1.0), 2.0)
+            .unwrap_or_else(|| unreachable!("finite line delta must be representable"));
+        assert_eq!(event.x(), 0.0);
+        assert_eq!(event.y(), -48.0);
+    }
+
+    #[test]
+    fn native_pixel_wheel_uses_displayed_scale() {
+        let event = normalize_wheel_delta(
+            MouseScrollDelta::PixelDelta(PhysicalPosition::new(40.0, -20.0)),
+            2.0,
+        )
+        .unwrap_or_else(|| unreachable!("finite pixel delta must be representable"));
+        assert_eq!(event.x(), 20.0);
+        assert_eq!(event.y(), -10.0);
+    }
+
+    #[test]
+    fn native_pixel_wheel_fails_closed_on_invalid_display_scale() {
+        let wheel = MouseScrollDelta::PixelDelta(PhysicalPosition::new(5.0, 7.0));
+        assert!(normalize_wheel_delta(wheel, 0.0).is_none());
+        assert!(normalize_wheel_delta(
+            MouseScrollDelta::PixelDelta(PhysicalPosition::new(5.0, 7.0)),
+            f64::NAN,
+        )
+        .is_none());
+    }
+}
