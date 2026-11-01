@@ -35,14 +35,8 @@ impl<App: UiApp> AppRuntime<App> {
     /// Mounts with explicit runtime configuration.
     #[must_use]
     pub fn mount_with_config(state: App::State, config: RuntimeConfig) -> Self {
-        let mut runtime = Runtime::mount(state, |state| App::root(state).into_element(), config);
-        runtime.trace_action_labeler = Some(App::trace_action_label);
-        runtime.initialize_application_work::<App>();
-        runtime.rearm_wake_if_needed();
-        Self {
-            runtime,
-            _app: PhantomData,
-        }
+        let runtime = Runtime::mount(state, |state| App::root(state).into_element(), config);
+        Self::finish_mount(runtime)
     }
 
     /// Mounts an externally hosted application with its monotonic clock and
@@ -65,6 +59,12 @@ impl<App: UiApp> AppRuntime<App> {
         let mut runtime = Runtime::mount(state, |state| App::root(state).into_element(), config);
         runtime.set_monotonic_clock(clock);
         runtime.set_wake_transport(wake);
+        Self::finish_mount(runtime)
+    }
+
+    fn finish_mount(
+        mut runtime: Runtime<App::State, App::Action, App::HostProtocol>,
+    ) -> Self {
         runtime.trace_action_labeler = Some(App::trace_action_label);
         runtime.initialize_application_work::<App>();
         runtime.rearm_wake_if_needed();
