@@ -102,12 +102,12 @@ impl FluentApp {
         Self::default()
     }
 
-    fn window(mut self, title: &'static str) -> Self {
+    const fn window(mut self, title: &'static str) -> Self {
         self.window_title = Some(title);
         self
     }
 
-    fn ui<A: UiApp<State = A>>(self, state: A) -> ConfiguredUi<A> {
+    const fn ui<A: UiApp<State = A>>(self, state: A) -> ConfiguredUi<A> {
         ConfiguredUi {
             window_title: self.window_title,
             state,
