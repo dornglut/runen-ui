@@ -140,12 +140,14 @@ pub enum NativeAppError {
     EventLoop(String),
     /// Native host, renderer, runtime or required shutdown failed.
     Fatal(String),
-    /// A primary failure occurred and the required cleanup also failed.
-    PrimaryAndCleanup {
-        /// The original failure that initiated native termination.
+    /// Required runtime shutdown observation failed.
+    Shutdown(String),
+    /// Two distinct failures occurred; neither may be silently discarded.
+    Multiple {
+        /// Original failure.
         primary: Box<Self>,
-        /// The separate cleanup failure; its observation must not be hidden.
-        cleanup: String,
+        /// Additional observed failure.
+        secondary: Box<Self>,
     },
 }
 
@@ -158,8 +160,9 @@ impl fmt::Display for NativeAppError {
             Self::WindowTitleEmpty => write!(f, "native application window title must be nonempty"),
             Self::EventLoop(detail) => write!(f, "native event-loop failure: {detail}"),
             Self::Fatal(detail) => write!(f, "native application failure: {detail}"),
-            Self::PrimaryAndCleanup { primary, cleanup } => {
-                write!(f, "{primary}; cleanup also failed: {cleanup}")
+            Self::Shutdown(detail) => write!(f, "native shutdown failure: {detail}"),
+            Self::Multiple { primary, secondary } => {
+                write!(f, "{primary}; additionally: {secondary}")
             }
         }
     }
@@ -168,23 +171,20 @@ impl fmt::Display for NativeAppError {
 impl std::error::Error for NativeAppError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::PrimaryAndCleanup { primary, .. } => Some(primary.as_ref()),
+            Self::Multiple { primary, .. } => Some(primary.as_ref()),
             _ => None,
         }
     }
 }
 
 impl NativeAppError {
-    fn combine_exit(primary: Option<Self>, cleanup: Option<String>) -> Result<(), Self> {
-        match (primary, cleanup) {
+    fn combine_exit(primary: Option<Self>, secondary: Option<Self>) -> Result<(), Self> {
+        match (primary, secondary) {
             (None, None) => Ok(()),
-            (Some(primary), None) => Err(primary),
-            (None, Some(cleanup)) => Err(Self::Fatal(format!(
-                "native shutdown observation unavailable: {cleanup}"
-            ))),
-            (Some(primary), Some(cleanup)) => Err(Self::PrimaryAndCleanup {
+            (Some(error), None) | (None, Some(error)) => Err(error),
+            (Some(primary), Some(secondary)) => Err(Self::Multiple {
                 primary: Box::new(primary),
-                cleanup,
+                secondary: Box::new(secondary),
             }),
         }
     }
@@ -242,13 +242,13 @@ mod tests {
     fn native_exit_preserves_primary_and_cleanup_failures_separately() {
         let combined = NativeAppError::combine_exit(
             Some(NativeAppError::EventLoop("event loop failed".to_owned())),
-            Some("shutdown observation failed".to_owned()),
+            Some(NativeAppError::Shutdown("shutdown observation failed".to_owned())),
         );
-        let Err(NativeAppError::PrimaryAndCleanup { primary, cleanup }) = combined else {
+        let Err(NativeAppError::Multiple { primary, secondary }) = combined else {
             panic!("both failures must be returned as separate typed facts");
         };
         assert!(matches!(*primary, NativeAppError::EventLoop(_)));
-        assert_eq!(cleanup, "shutdown observation failed");
+        assert!(matches!(*secondary, NativeAppError::Shutdown(ref error) if error == "shutdown observation failed"));
     }
 
     #[test]
