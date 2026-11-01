@@ -121,7 +121,10 @@ pub const fn family_index(family: WorkFamily) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{BudgetComponent, ProducerContractViolation, ProducerPhase, ProducerViolationKind, family_index};
+    use super::{
+        BudgetComponent, ProducerContractViolation, ProducerPhase, ProducerViolationKind,
+        family_index,
+    };
     use crate::WorkFamily;
 
     #[test]
