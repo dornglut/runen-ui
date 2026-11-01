@@ -1,6 +1,6 @@
 //! #541 research-only compile probe for the existing independent `UiApp` contract.
 //!
-//! This probes a type-safe fluent UI facade shape against the real UiApp
+//! This probes a type-safe fluent UI facade shape against the real `UiApp`
 //! associated-type contract. The local facade deliberately has NO native
 //! run implementation and is not a shipped API.
 
