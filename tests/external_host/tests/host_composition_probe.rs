@@ -1,4 +1,4 @@
-//! #541 research-only compile probe for the existing independent UiApp contract.
+//! #541 research-only compile probe for the existing independent `UiApp` contract.
 //!
 //! This does not implement a native application host or assert a proposed API
 //! exists. The local descriptor is disposable until the owner accepts a design.
