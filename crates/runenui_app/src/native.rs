@@ -13,8 +13,8 @@ use std::{
 };
 
 use runenui_core::{
-    InputDeviceId, KeyModifiers, KeyboardCompositionState, LogicalDelta, NoHostProtocol,
-    PointerEvent, StyleEnvironment, SurfaceInputContext, UiApp,
+    ElementId, InputDeviceId, KeyModifiers, KeyboardCompositionState, LogicalDelta, NoHostProtocol,
+    PointerEvent, SemanticCommand, StyleEnvironment, SurfaceInputContext, UiApp,
 };
 use runenui_render_wgpu::{PublicationRenderError, Renderer, RendererOptions, ResourceProvider};
 use runenui_runtime::{
@@ -216,6 +216,7 @@ struct NativeHost<A: UiApp<HostProtocol = NoHostProtocol>> {
     resources: Box<dyn ResourceProvider>,
     fatal: Option<String>,
     cleanup_error: Option<String>,
+    initial_focus: Option<ElementId>,
     runtime: AppRuntime<A>,
     style_environment: StyleEnvironment,
     event_loop_proxy: EventLoopProxy<HostEvent>,
@@ -241,6 +242,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         title: String,
         model: A::State,
         style_environment: StyleEnvironment,
+        initial_focus: Option<ElementId>,
         resources: Box<dyn ResourceProvider>,
         config: RuntimeConfig,
     ) -> Self {
@@ -255,6 +257,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             resources,
             fatal: None,
             cleanup_error: None,
+            initial_focus,
             runtime,
             style_environment,
             event_loop_proxy: proxy,
@@ -480,6 +483,27 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         if let RuntimeStatus::Terminal(reason) = self.runtime.status() {
             self.fail(event_loop, &format!("runtime terminal: {reason:?}"));
             return;
+        }
+        if self
+            .window
+            .as_ref()
+            .is_some_and(|window| window.has_focus())
+            && let Some(target) = self.initial_focus.take()
+        {
+            if self.runtime.focus().focused_node().is_none() {
+                if let Err(error) = self
+                    .runtime
+                    .submit_automation_command(target, SemanticCommand::RequestFocus)
+                {
+                    self.fail(event_loop, &format!("initial focus target rejected: {error:?}"));
+                    return;
+                }
+                self.pump_runtime_once();
+                if let RuntimeStatus::Terminal(reason) = self.runtime.status() {
+                    self.fail(event_loop, &format!("initial focus terminal: {reason:?}"));
+                    return;
+                }
+            }
         }
         self.collect_redraw_request();
     }
@@ -1069,6 +1093,7 @@ pub fn run_native<A: UiApp<HostProtocol = NoHostProtocol>>(
     title: String,
     state: A::State,
     environment: StyleEnvironment,
+    initial_focus: Option<ElementId>,
     resources: Box<dyn ResourceProvider>,
     config: RuntimeConfig,
 ) -> Result<(), NativeAppError> {
@@ -1077,7 +1102,7 @@ pub fn run_native<A: UiApp<HostProtocol = NoHostProtocol>>(
         .map_err(|error| NativeAppError::EventLoop(error.to_string()))?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
-    let mut host = NativeHost::<A>::new(proxy, title, state, environment, resources, config);
+    let mut host = NativeHost::<A>::new(proxy, title, state, environment, initial_focus, resources, config);
     if let RuntimeStatus::Terminal(reason) = host.runtime.status() {
         host.shutdown_runtime_checked();
         return NativeAppError::combine_exit(
