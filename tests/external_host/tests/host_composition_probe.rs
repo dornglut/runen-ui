@@ -90,7 +90,6 @@ fn ordinary_external_host_can_drive_and_close_without_a_native_dependency() {
     assert_eq!(runtime.status(), RuntimeStatus::Closed);
 }
 
-
 // A local *type-checking* facade only. It deliberately does not create a window,
 // provide a scheduler, or pretend a native run method exists.
 #[derive(Default)]
