@@ -152,6 +152,18 @@ fn normalize_wheel_delta(
     LogicalDelta::new(logical_x as f32, logical_y as f32).ok()
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct NativeVisibility {
+    suspended: bool,
+    occluded: bool,
+}
+
+impl NativeVisibility {
+    const fn suppresses_presentation(self) -> bool {
+        self.suspended || self.occluded
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PointIngressDiagnostic {
     NoDisplayedFrame,
@@ -330,7 +342,7 @@ struct NativeHost<A: UiApp<HostProtocol = NoHostProtocol>> {
     keyboard: KeyboardInputState,
     modifiers: KeyModifiers,
     mapping_publication_needed: bool,
-    presentation_suppressed: bool,
+    visibility: NativeVisibility,
 }
 
 impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
@@ -381,7 +393,10 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             keyboard: KeyboardInputState::default(),
             modifiers: KeyModifiers::NONE,
             mapping_publication_needed: false,
-            presentation_suppressed: false,
+            visibility: NativeVisibility {
+                suspended: true,
+                occluded: false,
+            },
         }
     }
 
@@ -685,7 +700,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
     }
 
     fn request_pending_redraw(&self) {
-        if self.presentation_suppressed || !self.presentation_retry.is_due(Instant::now()) {
+        if self.visibility.suppresses_presentation() || !self.presentation_retry.is_due(Instant::now()) {
             return;
         }
         if (self.pending_frame.is_some()
@@ -1028,7 +1043,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
     }
 
     fn handle_native_occlusion(&mut self, event_loop: &ActiveEventLoop, occluded: bool) {
-        self.presentation_suppressed = occluded;
+        self.visibility.occluded = occluded;
         if occluded {
             // Even without a separate Focused(false), cancel live native key
             // and pointer lifetimes before processing any hidden-window input.
@@ -1039,8 +1054,8 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
                 return;
             }
             self.modifiers = KeyModifiers::NONE;
-        } else {
-            // Visibility restoration permits a fresh native presentation retry.
+        } else if !self.visibility.suspended {
+            // Unocclusion alone cannot reactivate a suspended renderer/input.
             self.presentation_retry.reset();
             self.drive_runtime(event_loop);
             self.request_pending_redraw();
@@ -1103,7 +1118,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             }
             return;
         }
-        if self.presentation_suppressed || !self.presentation_retry.is_due(Instant::now()) {
+        if self.visibility.suppresses_presentation() || !self.presentation_retry.is_due(Instant::now()) {
             return;
         }
         #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
@@ -1207,7 +1222,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
             self.fail(event_loop, &error);
             return;
         }
-        self.presentation_suppressed = false;
+        self.visibility.suspended = false;
         self.drive_runtime(event_loop);
         self.request_pending_redraw();
     }
@@ -1216,6 +1231,8 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
         if self.exit_requested {
             return;
         }
+        // Fence new ingress and Present before cancelling native lifetimes.
+        self.visibility.suspended = true;
         if !self.cancel_keyboard_authority(event_loop) {
             return;
         }
@@ -1229,7 +1246,6 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
         self.displayed_frame = None;
         self.presentation_retry.reset();
         self.mapping_publication_needed = false;
-        self.presentation_suppressed = true;
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: HostEvent) {
@@ -1283,10 +1299,10 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
             WindowEvent::CursorMoved {
                 device_id,
                 position,
-            } if !self.presentation_suppressed => {
+            } if !self.visibility.suppresses_presentation() => {
                 self.handle_cursor_moved(event_loop, device_id, position);
             }
-            WindowEvent::CursorLeft { .. } if !self.presentation_suppressed => {
+            WindowEvent::CursorLeft { .. } if !self.visibility.suppresses_presentation() => {
                 let _ = self
                     .handle_native_point_authority_loss(event_loop, "native cursor left window");
             }
@@ -1294,22 +1310,22 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
                 device_id,
                 state,
                 button,
-            } if !self.presentation_suppressed => {
+            } if !self.visibility.suppresses_presentation() => {
                 self.handle_mouse_input(event_loop, device_id, state, button);
             }
             WindowEvent::MouseWheel {
                 device_id, delta, ..
-            } if !self.presentation_suppressed => {
+            } if !self.visibility.suppresses_presentation() => {
                 self.handle_mouse_wheel(event_loop, device_id, delta);
             }
             WindowEvent::KeyboardInput {
                 device_id,
                 event,
                 is_synthetic,
-            } if !self.presentation_suppressed => {
+            } if !self.visibility.suppresses_presentation() => {
                 self.handle_keyboard_input(event_loop, device_id, &event, is_synthetic);
             }
-            WindowEvent::ModifiersChanged(modifiers) if !self.presentation_suppressed => {
+            WindowEvent::ModifiersChanged(modifiers) if !self.visibility.suppresses_presentation() => {
                 self.modifiers = translate_modifiers(modifiers.state());
             }
             WindowEvent::Focused(false) => {
@@ -1359,7 +1375,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
         // A recoverable presentation failure schedules a native-only wake.
         // It never re-enters the runtime, invents a publication, or polls
         // continuously while a surface is occluded or timing out.
-        let presentation_deadline = if self.presentation_suppressed || self.pending_frame.is_none()
+        let presentation_deadline = if self.visibility.suppresses_presentation() || self.pending_frame.is_none()
         {
             None
         } else {
@@ -1468,6 +1484,31 @@ mod tests {
             parse_native_render_faults("unrecognized").pop_front(),
             Some(PublicationRenderError::SurfaceValidation)
         );
+    }
+
+    #[test]
+    fn native_occlusion_cannot_resume_a_suspended_surface() {
+        let mut visibility = NativeVisibility {
+            suspended: true,
+            occluded: false,
+        };
+        assert!(visibility.suppresses_presentation());
+
+        visibility.occluded = true;
+        visibility.suspended = false;
+        assert!(visibility.suppresses_presentation());
+
+        visibility.suspended = true;
+        visibility.occluded = false;
+        assert!(visibility.suppresses_presentation());
+
+        visibility.suspended = false;
+        assert!(!visibility.suppresses_presentation());
+
+        visibility.occluded = true;
+        assert!(visibility.suppresses_presentation());
+        visibility.occluded = false;
+        assert!(!visibility.suppresses_presentation());
     }
 
     #[test]

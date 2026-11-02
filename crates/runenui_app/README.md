@@ -51,7 +51,9 @@ exit after OS close under Xvfb and software Vulkan. For `fluent_status`,
 it additionally interrupts a held Space key by unmapping the native X11
 window, verifies that its release causes no hidden-window activation,
 remaps the same window, and requires a fresh OS keyboard-triggered action
-following restoration. A separate Counter
+following restoration. Suspension and occlusion are tracked
+independently: unocclusion cannot readmit input or presentation while the host
+is still suspended. A separate Counter
 window then receives OS focus while Status has a held Space key; the test
 asserts no unfocused release activation and confirms new keyboard input after
 focus returns, without manipulating runtime internals. An additional debug-only,
