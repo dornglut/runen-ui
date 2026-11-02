@@ -136,9 +136,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &self.queue,
             state,
             self.action_producer_budget,
-            root_quota,
-            producer_budget,
-            phase,
+            crate::transaction::TransactionProducerContext {
+                root_quota,
+                producer_budget,
+                phase,
+            },
         )
         .map_err(CommitError::from)?;
         self.commit_planned_application_transaction(plan, context)

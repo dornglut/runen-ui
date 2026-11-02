@@ -108,9 +108,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &self.queue,
             self.state(),
             self.action_producer_budget,
-            root_quota,
-            producer_budget,
-            runenui_core::ProducerPhase::Widget(runenui_core::WidgetProducerPhase::Event),
+            crate::transaction::TransactionProducerContext {
+                root_quota,
+                producer_budget,
+                phase: runenui_core::ProducerPhase::Widget(
+                    runenui_core::WidgetProducerPhase::Event,
+                ),
+            },
         )
         .map_err(CommitError::from)
     }

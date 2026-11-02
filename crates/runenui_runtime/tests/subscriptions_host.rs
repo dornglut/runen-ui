@@ -745,10 +745,13 @@ impl UiApp for MixedApp {
             MixedAction::Cancel | MixedAction::Poison => runenui_core::ProducerBudget::new(8, 5)
                 .with_reconciliation(0, 1, 0)
                 .with_subscriptions(1, 0),
-            MixedAction::Wide => runenui_core::ProducerBudget::new(25, 0),
-            MixedAction::Undercovered => runenui_core::ProducerBudget::new(25, 0),
+            MixedAction::Wide | MixedAction::Undercovered => {
+                runenui_core::ProducerBudget::new(25, 0)
+            }
             MixedAction::Survivor | MixedAction::Unexpected => {
-                runenui_core::ProducerBudget::new(1, 0).with_subscriptions(1, 0)
+                runenui_core::ProducerBudget::new(1, 0)
+                    .with_reconciliation(0, 1, 0)
+                    .with_subscriptions(1, 0)
             }
         }
     }
@@ -1169,7 +1172,7 @@ fn rooted_non_host_completion_undercoverage_is_a_typed_terminal_violation() {
                 )),
                 "family={family}, trace_capacity={trace_capacity}"
             );
-            assert!(fixture.runtime.state().events.is_empty());
+            assert_eq!(fixture.runtime.state().events.len(), 0);
             if trace_capacity > 0 {
                 assert!(fixture.runtime.trace().kinds().any(|kind| matches!(
                     kind,

@@ -63,9 +63,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &self.queue,
             self.state(),
             self.action_producer_budget,
-            Some(root_quota),
-            Some(producer_budget),
-            runenui_core::ProducerPhase::InitialEffects,
+            crate::transaction::TransactionProducerContext {
+                root_quota: Some(root_quota),
+                producer_budget: Some(producer_budget),
+                phase: runenui_core::ProducerPhase::InitialEffects,
+            },
         ) {
             Ok(plan) => plan,
             Err(error) => {

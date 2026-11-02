@@ -372,6 +372,13 @@ struct RootProducerPreflight<'a, Action, Protocol: HostProtocol> {
     phase: runenui_core::ProducerPhase,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct TransactionProducerContext {
+    pub(crate) root_quota: Option<RootQuotaId>,
+    pub(crate) producer_budget: Option<ProducerBudget>,
+    pub(crate) phase: runenui_core::ProducerPhase,
+}
+
 fn root_work_start_counts(
     starts: impl Iterator<Item = (WorkGeneration, WorkFamily, bool)> + Clone,
     invalidated: &HashSet<WorkGeneration>,
@@ -480,10 +487,13 @@ impl<Action, Protocol: HostProtocol> PlannedApplicationTransaction<Action, Proto
         queue: &WorkQueue<Action>,
         state: &State,
         action_budgeter: Option<fn(&State, &Action) -> ProducerBudget>,
-        root_quota: Option<RootQuotaId>,
-        producer_budget: Option<ProducerBudget>,
-        phase: runenui_core::ProducerPhase,
+        producer: TransactionProducerContext,
     ) -> Result<Self, TransactionPlanError> {
+        let TransactionProducerContext {
+            root_quota,
+            producer_budget,
+            phase,
+        } = producer;
         let prepared = PreparedApplicationTransaction::new(input);
         let start_count = prepared.start_count()?;
         if let Some(producer_budget) = producer_budget {
@@ -951,10 +961,10 @@ impl<Action, Protocol: HostProtocol> TransactionLedger<Action, Protocol> {
                         },
                     )
                 }
-                crate::queue::RootProducerCommitError::FrontierInsufficient { .. } => {
+                crate::queue::RootProducerCommitError::FrontierInsufficient { .. }
+                | crate::queue::RootProducerCommitError::Reservation(_) => {
                     crate::RuntimeTerminalReason::Poisoned
                 }
-                _ => crate::RuntimeTerminalReason::Poisoned,
             })?;
         context
             .queue

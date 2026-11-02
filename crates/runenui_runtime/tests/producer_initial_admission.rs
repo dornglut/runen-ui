@@ -230,7 +230,7 @@ fn mounted_work_frontier_one_short_is_an_owned_typed_initial_refusal() {
         let result = AppRuntime::<RootedMountApp>::mount_with_config(state, config);
         let error = match result {
             Err(error) => error,
-            Ok(runtime) => panic!(
+            Ok(runtime) => unreachable!(
                 "one-short initial root frontier was not refused: status={:?}, mount_calls={}, accepted_tasks={}",
                 runtime.status(),
                 mount_calls.get(),
@@ -241,6 +241,8 @@ fn mounted_work_frontier_one_short_is_an_owned_typed_initial_refusal() {
             error.kind(),
             InitialAdmissionErrorKind::ProducerContractViolation(
                 runenui_core::ProducerContractViolation {
+                    kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                    phase: runenui_core::ProducerPhase::InitialEffects,
                     component: runenui_core::BudgetComponent::QueueFrontier,
                     declared: 2,
                     attempted: Some(3),
@@ -269,7 +271,7 @@ fn mounted_work_frontier_exact_fit_admits_and_runs_task() {
         let task_polls = Rc::clone(&state.task_polls);
         let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
         let mut runtime = AppRuntime::<RootedMountApp>::mount_with_config(state, config)
-            .unwrap_or_else(|error| panic!("exact initial root frontier fits: {error}"));
+            .unwrap_or_else(|_| unreachable!("exact initial root frontier fits"));
         assert_eq!(runtime.status(), RuntimeStatus::Running);
         runtime
             .pump(PumpBudget::new(16, 16, 1, 16))
@@ -311,25 +313,25 @@ impl UiApp for MountActionApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn initial_producer_budget(_: &()) -> ProducerBudget {
+    fn initial_producer_budget((): &()) -> ProducerBudget {
         ProducerBudget::new(2, 1)
             .with_reconciliation(1, 0, 1)
             .with_subscriptions(0, 0)
     }
 
-    fn action_producer_budget(_: &(), (): &()) -> ProducerBudget {
+    fn action_producer_budget((): &(), (): &()) -> ProducerBudget {
         ProducerBudget::new(3, 1).with_subscriptions(0, 0)
     }
 
-    fn interaction_producer_budget(_: &()) -> ProducerBudget {
+    fn interaction_producer_budget((): &()) -> ProducerBudget {
         ProducerBudget::new(1, 0)
     }
 
-    fn root(_: &()) -> impl View<()> {
+    fn root((): &()) -> impl View<()> {
         Element::new(MountAction)
     }
 
-    fn update(_: &mut (), (): ()) {}
+    fn update((): &mut (), (): ()) {}
 }
 
 #[test]
@@ -438,7 +440,7 @@ fn mounted_update_child_profile_reports_update_phase() {
             },
             config,
         )
-        .unwrap_or_else(|error| panic!("initial profile fits: {error}"));
+        .unwrap_or_else(|_| unreachable!("initial profile fits"));
         runtime
             .submit_action(PhaseAction::Trigger)
             .unwrap_or_else(|_| unreachable!("the causal root is admitted"));
@@ -449,10 +451,7 @@ fn mounted_update_child_profile_reports_update_phase() {
             runenui_runtime::RuntimeTerminalReason::ProducerContractViolation(cause),
         ) = runtime.status()
         else {
-            panic!(
-                "undercovered mounted child should terminalize with a typed violation: {:?}",
-                runtime.status()
-            );
+            unreachable!("undercovered mounted child terminalizes with a typed violation");
         };
         assert_eq!(
             cause.kind,
