@@ -204,8 +204,8 @@ pub enum HostResponseError<Response> {
         response: Response,
         reason: RuntimeTerminalReason,
     },
-    /// The host mapper consumed the response before its action failed
-    /// descendant admission. The original response cannot be recovered.
+    /// The host mapper consumed the response before its action could be
+    /// admitted. Carries the terminal reason, not the consumed response.
     MappedActionTerminal(RuntimeTerminalReason),
 }
 

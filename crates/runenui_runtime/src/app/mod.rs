@@ -569,12 +569,15 @@ impl<App: UiApp> AppRuntime<App> {
         self.runtime.pending_host_requests()
     }
 
-    /// Queues one validated host response for later non-reentrant mapping.
+    /// Maps one validated host response and queues its action for later FIFO processing.
     ///
     /// # Errors
     ///
-    /// Returns the exact response when the token is foreign or stale, the
-    /// response kind mismatches, the queue is full, or the runtime cannot accept work.
+    /// Before mapping, returns the original response when the token is foreign
+    /// or stale, the kind mismatches, capacity is unavailable, or the runtime
+    /// is closed or terminal. Once the mapper consumes the response, a failed
+    /// mapped-action admission returns `MappedActionTerminal(reason)` instead:
+    /// the terminal reason is retained, but the response cannot be recovered.
     pub fn complete_host_request(
         &mut self,
         token: &crate::HostRequestToken,
