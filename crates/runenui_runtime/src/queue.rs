@@ -3279,9 +3279,15 @@ mod reservation_tests {
                     queue
                         .retain_root_host_request_lease(root.quota(), generation)
                         .expect("host request retained");
-                    let quota = queue.root_quotas.get_mut(&root.quota()).expect("root exists");
+                    let quota = queue
+                        .root_quotas
+                        .get_mut(&root.quota())
+                        .expect("root exists");
                     quota.remaining -= 1;
-                    let credits = quota.host_requests.get_mut(&generation).expect("host credits");
+                    let credits = quota
+                        .host_requests
+                        .get_mut(&generation)
+                        .expect("host credits");
                     credits.start_pending = false;
                     credits.response = true;
                 }
