@@ -1021,7 +1021,11 @@ fn mixed_public_committed_host_child_precedes_later_cancellation_and_survivor() 
             "later cancellation does not roll back an already committed host child"
         );
         assert_eq!(fixture.runtime.status(), RuntimeStatus::Running);
-        let job = fixture.jobs.borrow_mut().pop().unwrap_or_else(|| unreachable!());
+        let job = fixture
+            .jobs
+            .borrow_mut()
+            .pop()
+            .unwrap_or_else(|| unreachable!());
         assert!(matches!(
             mixed_run_ready(job),
             Err(SendTaskCompletionError::Stale(_))
