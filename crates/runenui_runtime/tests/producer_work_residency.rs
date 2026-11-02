@@ -461,7 +461,10 @@ fn mixed_predecessor_roots_keep_work_and_owned_refusals_isolated() {
             accepted_before,
             "refusal must not accept a sequence or disturb prior acceptance"
         );
-        assert!(app.state().started.is_empty(), "all refusals precede update");
+        assert!(
+            app.state().started.is_empty(),
+            "all refusals precede update"
+        );
 
         app.submit_action(Action::Noop)
             .unwrap_or_else(|_| unreachable!("work-free follower is admissible"));
