@@ -44,16 +44,24 @@ with a fixed Rust toolchain, runner/hardware identity, and feature set:
 cargo +stable test --release --locked --all-features -p runenui_runtime --test m10_semantic_integrity bench_u475_accumulated_noop_root_admission_scaling -- --ignored --nocapture
 cargo +stable test --release --locked --all-features -p runenui_runtime --lib bench_u475_keyed_generation_release_scaling -- --ignored --nocapture
 cargo +stable test --release --locked --all-features -p runenui_runtime --lib bench_u475_cross_root_cancellation_preflight_scaling -- --ignored --nocapture
+cargo +stable test --release --locked --all-features -p runenui_runtime --test scheduling_work bench_u475_mixed_public_cancellation_and_fifo_cycle -- --ignored --nocapture
 ```
 
-Each diagnostic uses 30 independent repetitions at root sizes 32, 256, 1024,
-and 2048. Admission covers trace disabled/enabled (0/512), while retirement
-compares sequential and batched keyed lease release. Cross-root cancellation
-preflight compares sparse (one host generation) and dense (all mixed host,
+The three scaling diagnostics use 30 independent repetitions at root sizes 32,
+256, 1024, and 2048. Admission covers trace disabled/enabled (0/512), while
+retirement compares sequential and batched keyed lease release. Cross-root
+cancellation preflight compares K0 (no invalidated generations while roots
+remain live), sparse (one host generation), and dense (all mixed host,
 framework-service, local task, send task, and repeating timer generations)
-invalidations at the same root sizes. Each `U475_METRIC` line reports
-the phase, trace mode, roots, repetitions, p50/p95/maximum total batch time in
-microseconds, and the largest observed process VmRSS in KiB when available.
+invalidations at the same root sizes. The mixed public application cycle uses
+30 repetitions with trace off and on in two modes: an ordinary application
+update with no work invalidation, and a cancellation transaction followed by
+an independent FIFO action. Fixture mounting and work startup occur outside the
+timed interval, which covers submissions and both bounded pump calls. Its
+reported batch size is one measured application cycle, not a count of live
+roots. Each `U475_METRIC` line reports the phase, trace mode, batch size,
+repetitions, p50/p95/maximum elapsed microseconds, and the largest observed
+process VmRSS in KiB when available.
 VmRSS is a process-wide snapshot, not a per-root allocation or an isolated
 peak-memory measurement.
 

@@ -373,13 +373,15 @@ fn every_two_root_family_subset_preserves_exact_cancellation_and_response_demand
 fn bench_u475_cross_root_cancellation_preflight_scaling() {
     use std::time::Instant;
     const REPEATS: usize = 30;
-    for mode in ["sparse", "dense"] {
+    for mode in ["none", "sparse", "dense"] {
         for size in [32usize, 256, 1024, 2048] {
             let mut samples = Vec::with_capacity(REPEATS);
             let mut max_rss_kib = 0usize;
             for _ in 0..REPEATS {
                 let fixture = fixture(size);
-                let invalidated = if mode == "sparse" {
+                let invalidated = if mode == "none" {
+                    &fixture.generations[..0]
+                } else if mode == "sparse" {
                     &fixture.generations[..1]
                 } else {
                     &fixture.generations[..]
@@ -391,12 +393,19 @@ fn bench_u475_cross_root_cancellation_preflight_scaling() {
                     .expect("mixed cancellation set remains valid");
                 samples.push(started.elapsed().as_micros());
                 let other = if mode == "dense" { size } else { 0 };
-                assert_eq!(counts.host_requests, if mode == "dense" { size } else { 1 });
+                assert_eq!(
+                    counts.host_requests,
+                    if mode == "dense" {
+                        size
+                    } else {
+                        usize::from(mode == "sparse")
+                    }
+                );
                 assert_eq!(counts.framework_services, other);
                 assert_eq!(counts.local_tasks, other);
                 assert_eq!(counts.send_tasks, other);
                 assert_eq!(counts.timers, other);
-                assert_eq!(released.host_requests, 1);
+                assert_eq!(released.host_requests, usize::from(mode != "none"));
                 assert_eq!(released.framework_services, usize::from(mode == "dense"));
                 if let Ok(status) = std::fs::read_to_string("/proc/self/status")
                     && let Some(kib) = status

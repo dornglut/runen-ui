@@ -11,7 +11,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
     task::{Context, Waker},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use runenui_core::{
@@ -671,6 +671,7 @@ enum MixedAction {
     Survivor,
     Wide,
     Unexpected,
+    Undercovered,
 }
 
 struct MixedSource {
@@ -711,6 +712,9 @@ struct MixedState {
     events: Vec<&'static str>,
     sink: Arc<Mutex<Option<SendSubscriptionSink<Arc<u8>>>>>,
     local_polls: Rc<Cell<usize>>,
+    local_ready: Rc<Cell<bool>>,
+    local_waker: Rc<RefCell<Option<Waker>>>,
+    undercovered: Rc<Cell<bool>>,
     send_maps: Rc<Cell<usize>>,
     subscription_maps: Rc<Cell<usize>>,
     timer_fires: Rc<Cell<usize>>,
@@ -742,10 +746,9 @@ impl UiApp for MixedApp {
                 .with_reconciliation(0, 1, 0)
                 .with_subscriptions(1, 0),
             MixedAction::Wide => runenui_core::ProducerBudget::new(25, 0),
+            MixedAction::Undercovered => runenui_core::ProducerBudget::new(25, 0),
             MixedAction::Survivor | MixedAction::Unexpected => {
-                runenui_core::ProducerBudget::new(1, 0)
-                    .with_reconciliation(0, 1, 0)
-                    .with_subscriptions(1, 0)
+                runenui_core::ProducerBudget::new(1, 0).with_subscriptions(1, 0)
             }
         }
     }
@@ -760,16 +763,30 @@ impl UiApp for MixedApp {
 
     fn initial_effects(state: &Self::State) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
         let local_polls = Rc::clone(&state.local_polls);
+        let local_ready = Rc::clone(&state.local_ready);
+        let local_waker = Rc::clone(&state.local_waker);
+        let undercovered = Rc::clone(&state.undercovered);
         let send_maps = Rc::clone(&state.send_maps);
+        let send_undercovered = Rc::clone(&state.undercovered);
         let timer_fires = Rc::clone(&state.timer_fires);
+        let timer_undercovered = Rc::clone(&state.undercovered);
         Effects::host_request(Some(key("mixed.host")), Command::Number(1), |_| {
             MixedAction::Unexpected
         })
         .then(Effects::keyed_local_task(
             key("mixed.local"),
-            std::future::poll_fn(move |_| {
+            std::future::poll_fn(move |context| {
                 local_polls.set(local_polls.get() + 1);
-                Poll::Pending
+                *local_waker.borrow_mut() = Some(context.waker().clone());
+                if local_ready.get() {
+                    Poll::Ready(Some(if undercovered.get() {
+                        MixedAction::Undercovered
+                    } else {
+                        MixedAction::Unexpected
+                    }))
+                } else {
+                    Poll::Pending
+                }
             }),
         ))
         .then(Effects::keyed_send_task(
@@ -777,13 +794,21 @@ impl UiApp for MixedApp {
             async { 9_u8 },
             move |_| {
                 send_maps.set(send_maps.get() + 1);
-                MixedAction::Unexpected
+                if send_undercovered.get() {
+                    MixedAction::Undercovered
+                } else {
+                    MixedAction::Unexpected
+                }
             },
         ))
         .then(Effects::timer(
             TimerEffect::once(Duration::from_millis(20), move || {
                 timer_fires.set(timer_fires.get() + 1);
-                MixedAction::Unexpected
+                if timer_undercovered.get() {
+                    MixedAction::Undercovered
+                } else {
+                    MixedAction::Unexpected
+                }
             })
             .keyed(key("mixed.timer")),
         ))
@@ -794,6 +819,7 @@ impl UiApp for MixedApp {
             return;
         }
         let subscription_maps = Rc::clone(&state.subscription_maps);
+        let subscription_undercovered = Rc::clone(&state.undercovered);
         assert!(
             subscriptions
                 .try_send(
@@ -804,7 +830,11 @@ impl UiApp for MixedApp {
                     },
                     move |_| {
                         subscription_maps.set(subscription_maps.get() + 1);
-                        MixedAction::Unexpected
+                        if subscription_undercovered.get() {
+                            MixedAction::Undercovered
+                        } else {
+                            MixedAction::Unexpected
+                        }
                     },
                 )
                 .is_ok()
@@ -852,6 +882,10 @@ impl UiApp for MixedApp {
                 state.events.push("unexpected");
                 Effects::none()
             }
+            MixedAction::Undercovered => {
+                state.events.push("undercovered");
+                Effects::none()
+            }
         }
     }
 }
@@ -862,6 +896,9 @@ struct MixedFixture {
     sink: SendSubscriptionSink<Arc<u8>>,
     token: runenui_runtime::HostRequestToken,
     local_polls: Rc<Cell<usize>>,
+    local_ready: Rc<Cell<bool>>,
+    local_waker: Rc<RefCell<Option<Waker>>>,
+    undercovered: Rc<Cell<bool>>,
     send_maps: Rc<Cell<usize>>,
     subscription_maps: Rc<Cell<usize>>,
     timer_fires: Rc<Cell<usize>>,
@@ -870,6 +907,9 @@ struct MixedFixture {
 fn mixed_fixture(trace_capacity: usize) -> MixedFixture {
     let sink = Arc::new(Mutex::new(None));
     let local_polls = Rc::new(Cell::new(0));
+    let local_ready = Rc::new(Cell::new(false));
+    let local_waker = Rc::new(RefCell::new(None));
+    let undercovered = Rc::new(Cell::new(false));
     let send_maps = Rc::new(Cell::new(0));
     let subscription_maps = Rc::new(Cell::new(0));
     let timer_fires = Rc::new(Cell::new(0));
@@ -880,6 +920,9 @@ fn mixed_fixture(trace_capacity: usize) -> MixedFixture {
             events: Vec::new(),
             sink: Arc::clone(&sink),
             local_polls: Rc::clone(&local_polls),
+            local_ready: Rc::clone(&local_ready),
+            local_waker: Rc::clone(&local_waker),
+            undercovered: Rc::clone(&undercovered),
             send_maps: Rc::clone(&send_maps),
             subscription_maps: Rc::clone(&subscription_maps),
             timer_fires: Rc::clone(&timer_fires),
@@ -895,7 +938,7 @@ fn mixed_fixture(trace_capacity: usize) -> MixedFixture {
     .unwrap_or_else(|error| unreachable!("initial mixed work profile fits: {error}"));
     runtime.set_send_task_executor(MixedSendExecutor(Rc::clone(&jobs)));
     runtime
-        .pump(PumpBudget::new(16, 0, 0, 0))
+        .pump(PumpBudget::new(16, 0, 1, 0))
         .unwrap_or_else(|_| unreachable!("initial mixed work starts"));
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.pending_host_requests().len(), 1);
@@ -912,6 +955,9 @@ fn mixed_fixture(trace_capacity: usize) -> MixedFixture {
         sink,
         token,
         local_polls,
+        local_ready,
+        local_waker,
+        undercovered,
         send_maps,
         subscription_maps,
         timer_fires,
@@ -972,7 +1018,7 @@ fn mixed_public_cancellation_preserves_independent_fifo_root_and_stales_sources(
         assert_eq!(fixture.send_maps.get(), 0);
         assert_eq!(fixture.subscription_maps.get(), 0);
         assert_eq!(fixture.timer_fires.get(), 0);
-        assert_eq!(fixture.local_polls.get(), 0);
+        assert_eq!(fixture.local_polls.get(), 1);
         if trace_capacity > 0 {
             assert_eq!(
                 fixture
@@ -1049,6 +1095,180 @@ fn mixed_public_committed_host_child_precedes_later_cancellation_and_survivor() 
                 "host callback, later cancel, and independent survivor were accepted"
             );
         }
+    }
+}
+
+#[test]
+fn rooted_non_host_completion_undercoverage_is_a_typed_terminal_violation() {
+    for trace_capacity in [0, 256] {
+        for family in ["local", "send", "timer", "subscription"] {
+            let mut fixture = mixed_fixture(trace_capacity);
+            fixture.undercovered.set(true);
+            match family {
+                "local" => {
+                    fixture.local_ready.set(true);
+                    fixture
+                        .local_waker
+                        .borrow()
+                        .as_ref()
+                        .unwrap_or_else(|| unreachable!("pending local task registered waker"))
+                        .wake_by_ref();
+                    fixture
+                        .runtime
+                        .pump(PumpBudget::new(8, 0, 1, 0))
+                        .unwrap_or_else(|_| unreachable!("local task poll is observed"));
+                    assert_eq!(fixture.local_polls.get(), 2);
+                }
+                "send" => {
+                    let job = fixture
+                        .jobs
+                        .borrow_mut()
+                        .pop()
+                        .unwrap_or_else(|| unreachable!());
+                    assert!(mixed_run_ready(job).is_ok());
+                    fixture
+                        .runtime
+                        .pump(PumpBudget::new(8, 8, 0, 0))
+                        .unwrap_or_else(|_| unreachable!("send completion is observed"));
+                    assert_eq!(fixture.send_maps.get(), 1);
+                }
+                "timer" => {
+                    fixture
+                        .runtime
+                        .advance_time(Duration::from_millis(25))
+                        .unwrap_or_else(|_| unreachable!("finite timer advance"));
+                    fixture
+                        .runtime
+                        .pump(PumpBudget::new(8, 8, 0, 8))
+                        .unwrap_or_else(|_| unreachable!("timer completion is observed"));
+                    assert_eq!(fixture.timer_fires.get(), 1);
+                }
+                "subscription" => {
+                    fixture
+                        .sink
+                        .try_send(Arc::new(5_u8))
+                        .unwrap_or_else(|_| unreachable!("active subscription accepts item"));
+                    fixture
+                        .runtime
+                        .pump(PumpBudget::new(8, 8, 0, 0))
+                        .unwrap_or_else(|_| unreachable!("subscription completion is observed"));
+                    assert_eq!(fixture.subscription_maps.get(), 1);
+                }
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                fixture.runtime.status(),
+                RuntimeStatus::Terminal(RuntimeTerminalReason::ProducerContractViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
+                        phase: runenui_core::ProducerPhase::ApplicationUpdate,
+                        component: runenui_core::BudgetComponent::QueueFrontier,
+                        declared: 24,
+                        attempted: Some(25),
+                    }
+                )),
+                "family={family}, trace_capacity={trace_capacity}"
+            );
+            assert!(fixture.runtime.state().events.is_empty());
+            if trace_capacity > 0 {
+                assert!(fixture.runtime.trace().kinds().any(|kind| matches!(
+                    kind,
+                    TraceRecordKind::RuntimeTerminal {
+                        reason: RuntimeTerminalReason::ProducerContractViolation(_)
+                    }
+                )));
+                assert!(
+                    !fixture
+                        .runtime
+                        .trace()
+                        .kinds()
+                        .any(|kind| matches!(kind, TraceRecordKind::ActionSubmissionAccepted))
+                );
+            }
+            assert!(fixture.runtime.pending_host_requests().is_empty());
+        }
+    }
+}
+
+#[test]
+fn rooted_non_host_completion_covered_children_keep_fifo_and_trace_causality() {
+    for family in ["local", "send", "timer", "subscription"] {
+        let mut fixture = mixed_fixture(256);
+        fixture
+            .runtime
+            .submit_action(MixedAction::Survivor)
+            .unwrap_or_else(|_| unreachable!("independent FIFO action is admitted"));
+        match family {
+            "local" => {
+                fixture.local_ready.set(true);
+                fixture
+                    .local_waker
+                    .borrow()
+                    .as_ref()
+                    .unwrap_or_else(|| unreachable!("pending local task registered waker"))
+                    .wake_by_ref();
+            }
+            "send" => {
+                let job = fixture
+                    .jobs
+                    .borrow_mut()
+                    .pop()
+                    .unwrap_or_else(|| unreachable!());
+                assert!(mixed_run_ready(job).is_ok());
+            }
+            "timer" => {
+                fixture
+                    .runtime
+                    .advance_time(Duration::from_millis(25))
+                    .unwrap_or_else(|_| unreachable!("finite timer advance"));
+            }
+            "subscription" => {
+                fixture
+                    .sink
+                    .try_send(Arc::new(6_u8))
+                    .unwrap_or_else(|_| unreachable!("active subscription accepts item"));
+            }
+            _ => unreachable!(),
+        }
+        fixture
+            .runtime
+            .pump(PumpBudget::new(1, 8, 1, 8))
+            .unwrap_or_else(|_| unreachable!("first FIFO action is observed"));
+        assert_eq!(fixture.runtime.status(), RuntimeStatus::Running);
+        assert_eq!(fixture.runtime.state().events, ["survivor"]);
+        fixture
+            .runtime
+            .pump(PumpBudget::new(8, 8, 1, 8))
+            .unwrap_or_else(|_| unreachable!("rooted completion child processes"));
+        assert_eq!(fixture.runtime.state().events, ["survivor", "unexpected"]);
+        let accepted: Vec<_> = fixture
+            .runtime
+            .trace()
+            .records()
+            .filter(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted))
+            .collect();
+        assert_eq!(accepted.len(), 2, "family={family}");
+        let completion_parent = accepted[1]
+            .causal_parent()
+            .unwrap_or_else(|| unreachable!("completion action retains its causal trace parent"));
+        assert!(
+            fixture
+                .runtime
+                .trace()
+                .records()
+                .any(|record| { record.sequence() == completion_parent }),
+            "family={family}"
+        );
+        assert_eq!(fixture.send_maps.get(), usize::from(family == "send"));
+        assert_eq!(
+            fixture.subscription_maps.get(),
+            usize::from(family == "subscription")
+        );
+        assert_eq!(fixture.timer_fires.get(), usize::from(family == "timer"));
+        assert_eq!(
+            fixture.local_polls.get(),
+            1 + usize::from(family == "local")
+        );
     }
 }
 
@@ -1136,6 +1356,74 @@ fn mixed_public_postmutation_failure_discards_provisional_cancellations_and_pend
             .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
             .unwrap_or_else(|_| unreachable!("terminal queue is inert"));
         assert_eq!(fixture.runtime.state().events, ["poison"]);
+    }
+}
+
+/// Opt-in end-to-end diagnostic for an application turn that cancels live work
+/// and leaves an independently admitted FIFO action behind it.
+#[test]
+#[ignore = "opt-in release-mode U475 mixed application transaction measurement"]
+fn bench_u475_mixed_public_cancellation_and_fifo_cycle() {
+    const REPEATS: usize = 30;
+    for mode in ["no-invalidation", "cancel-fifo"] {
+        for trace_capacity in [0, 512] {
+            let mut samples = Vec::with_capacity(REPEATS);
+            let mut max_rss_kib = 0usize;
+            for _ in 0..REPEATS {
+                let mut fixture = mixed_fixture(trace_capacity);
+                let started = Instant::now();
+                if mode == "cancel-fifo" {
+                    fixture
+                        .runtime
+                        .submit_action(MixedAction::Cancel)
+                        .unwrap_or_else(|_| unreachable!("cancellation root is admitted"));
+                }
+                fixture
+                    .runtime
+                    .submit_action(MixedAction::Survivor)
+                    .unwrap_or_else(|_| unreachable!("independent FIFO root is admitted"));
+                fixture
+                    .runtime
+                    .pump(PumpBudget::new(1, 0, 0, 0))
+                    .unwrap_or_else(|_| unreachable!("first transaction processes"));
+                fixture
+                    .runtime
+                    .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
+                    .unwrap_or_else(|_| unreachable!("remaining FIFO work processes"));
+                samples.push(started.elapsed().as_micros());
+                assert_eq!(
+                    fixture.runtime.state().events,
+                    if mode == "cancel-fifo" {
+                        ["cancel", "survivor"].as_slice()
+                    } else {
+                        ["survivor"].as_slice()
+                    }
+                );
+                assert_eq!(fixture.runtime.status(), RuntimeStatus::Running);
+                if mode == "no-invalidation" {
+                    assert_eq!(fixture.runtime.pending_host_requests().len(), 1);
+                    assert!(fixture.local_polls.get() >= 1);
+                } else {
+                    assert!(fixture.runtime.pending_host_requests().is_empty());
+                }
+                if let Ok(status) = std::fs::read_to_string("/proc/self/status")
+                    && let Some(kib) = status
+                        .lines()
+                        .find_map(|line| line.strip_prefix("VmRSS:"))
+                        .and_then(|value| value.split_whitespace().next())
+                        .and_then(|value| value.parse::<usize>().ok())
+                {
+                    max_rss_kib = max_rss_kib.max(kib);
+                }
+            }
+            samples.sort_unstable();
+            println!(
+                "U475_METRIC,mixed-public-{mode},{trace_capacity},1,{REPEATS},{},{},{},{max_rss_kib}",
+                samples[REPEATS / 2],
+                samples[(95 * REPEATS).div_ceil(100) - 1],
+                samples[REPEATS - 1]
+            );
+        }
     }
 }
 

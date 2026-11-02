@@ -4,6 +4,37 @@ use super::{
 use crate::queue::RootQuotaId;
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    fn rooted_callback_budget(
+        &mut self,
+        action: &Action,
+        root_quota: RootQuotaId,
+    ) -> Option<runenui_core::ProducerBudget> {
+        let Some(profile) = self.action_producer_budget else {
+            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+            return None;
+        };
+        let producer_budget = profile(self.state(), action);
+        if let Some(parent) = self.queue.root_profile(root_quota)
+            && let Some((component, declared, attempted)) =
+                crate::transaction::uncovered_component(parent, producer_budget)
+        {
+            self.enter_terminal(
+                RuntimeTerminalReason::ProducerContractViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
+                        phase: runenui_core::ProducerPhase::ApplicationUpdate,
+                        component,
+                        declared,
+                        attempted: Some(attempted),
+                    },
+                ),
+                0,
+            );
+            return None;
+        }
+        Some(producer_budget)
+    }
+
     pub(in crate::runtime) fn queue_callback_action(
         &mut self,
         action: Action,
@@ -32,11 +63,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         causal_parent: Option<TraceSequence>,
         root_quota: RootQuotaId,
     ) -> Option<WorkSequence> {
-        let Some(profile) = self.action_producer_budget else {
-            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
-            return None;
-        };
-        let producer_budget = profile(self.state(), &action);
+        let producer_budget = self.rooted_callback_budget(&action, root_quota)?;
         let result = self.commit_preflighted_action_from_root(
             action,
             producer_budget,
@@ -62,11 +89,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         root_quota: RootQuotaId,
         generation: crate::work::WorkGeneration,
     ) -> Option<WorkSequence> {
-        let Some(profile) = self.action_producer_budget else {
-            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
-            return None;
-        };
-        let producer_budget = profile(self.state(), &action);
+        let producer_budget = self.rooted_callback_budget(&action, root_quota)?;
         self.commit_preflighted_timer_action_from_root(
             action,
             producer_budget,
@@ -108,11 +131,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Some(root_quota) = self.work.root_quota(generation) else {
             return self.queue_callback_action(action, causal_parent);
         };
-        let Some(profile) = self.action_producer_budget else {
-            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
-            return None;
-        };
-        let producer_budget = profile(self.state(), &action);
+        let producer_budget = self.rooted_callback_budget(&action, root_quota)?;
         self.commit_preflighted_local_task_action_from_root(
             action,
             producer_budget,
@@ -140,11 +159,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Some(root_quota) = self.work.root_quota(generation) else {
             return self.queue_callback_action(action, causal_parent);
         };
-        let Some(profile) = self.action_producer_budget else {
-            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
-            return None;
-        };
-        let producer_budget = profile(self.state(), &action);
+        let producer_budget = self.rooted_callback_budget(&action, root_quota)?;
         self.commit_preflighted_send_task_action_from_root(
             action,
             producer_budget,
@@ -172,29 +187,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Some(root_quota) = self.work.root_quota(generation) else {
             return self.queue_callback_action(action, causal_parent);
         };
-        let Some(profile) = self.action_producer_budget else {
-            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
-            return None;
-        };
-        let producer_budget = profile(self.state(), &action);
-        if let Some(parent) = self.queue.root_profile(root_quota)
-            && let Some((component, declared, attempted)) =
-                crate::transaction::uncovered_component(parent, producer_budget)
-        {
-            self.enter_terminal(
-                RuntimeTerminalReason::ProducerContractViolation(
-                    runenui_core::ProducerContractViolation {
-                        kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
-                        phase: runenui_core::ProducerPhase::ApplicationUpdate,
-                        component,
-                        declared,
-                        attempted: Some(attempted),
-                    },
-                ),
-                0,
-            );
-            return None;
-        }
+        let producer_budget = self.rooted_callback_budget(&action, root_quota)?;
         self.commit_preflighted_host_response_action_from_root(
             action,
             producer_budget,
