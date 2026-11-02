@@ -1257,11 +1257,16 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                 self.handle_mapping_change(event_loop);
             }
+            // Native device ingress is fenced during occlusion/suspension.
+            // A hidden window must not acquire new pressed-key/cursor authority
+            // after existing lifetimes were cancelled.
             WindowEvent::CursorMoved {
                 device_id,
                 position,
-            } => self.handle_cursor_moved(event_loop, device_id, position),
-            WindowEvent::CursorLeft { .. } => {
+            } if !self.presentation_suppressed => {
+                self.handle_cursor_moved(event_loop, device_id, position);
+            }
+            WindowEvent::CursorLeft { .. } if !self.presentation_suppressed => {
                 let _ = self
                     .handle_native_point_authority_loss(event_loop, "native cursor left window");
             }
@@ -1269,16 +1274,22 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
                 device_id,
                 state,
                 button,
-            } => self.handle_mouse_input(event_loop, device_id, state, button),
+            } if !self.presentation_suppressed => {
+                self.handle_mouse_input(event_loop, device_id, state, button);
+            }
             WindowEvent::MouseWheel {
                 device_id, delta, ..
-            } => self.handle_mouse_wheel(event_loop, device_id, delta),
+            } if !self.presentation_suppressed => {
+                self.handle_mouse_wheel(event_loop, device_id, delta);
+            }
             WindowEvent::KeyboardInput {
                 device_id,
                 event,
                 is_synthetic,
-            } => self.handle_keyboard_input(event_loop, device_id, &event, is_synthetic),
-            WindowEvent::ModifiersChanged(modifiers) => {
+            } if !self.presentation_suppressed => {
+                self.handle_keyboard_input(event_loop, device_id, &event, is_synthetic);
+            }
+            WindowEvent::ModifiersChanged(modifiers) if !self.presentation_suppressed => {
                 self.modifiers = translate_modifiers(modifiers.state());
             }
             WindowEvent::Focused(false) => {
@@ -1296,9 +1307,24 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
             }
             WindowEvent::Occluded(occluded) => {
                 self.presentation_suppressed = occluded;
-                if !occluded {
+                if occluded {
+                    // Even if the OS does not also issue Focused(false), all
+                    // active native key and pointer lifetimes must be retired
+                    // before later hidden-window events can reach the runtime.
+                    if !self.cancel_keyboard_authority(event_loop) {
+                        return;
+                    }
+                    if !self.handle_native_point_authority_loss(
+                        event_loop,
+                        "native window occluded",
+                    ) {
+                        return;
+                    }
+                    self.modifiers = KeyModifiers::NONE;
+                } else {
                     // An OS visibility transition permits an immediate retry.
                     self.presentation_retry.reset();
+                    self.drive_runtime(event_loop);
                     self.request_pending_redraw();
                 }
             }

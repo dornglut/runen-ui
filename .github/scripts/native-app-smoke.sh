@@ -166,9 +166,23 @@ for entry in "fluent_counter:Counter" "fluent_status:Status"; do
     # Hide and restore the SAME X11 window without terminating the app or
     # rebuilding its UI runtime. A restored native window must remain able to
     # receive genuine OS input after focus and surface visibility transitions.
-    pre_restore_toggles="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+    xdotool windowactivate --sync "$window_id"
+    xdotool keydown --clearmodifiers space
+    sleep 0.15
+    before_hide_release="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
     xdotool windowunmap "$window_id"
     sleep 0.3
+    # Up is delivered after this window lost visibility/focus; it must never
+    # complete the old key lifetime as a fresh button activation.
+    xdotool keyup --clearmodifiers space
+    sleep 0.2
+    after_hide_release="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+    if (( after_hide_release != before_hide_release )); then
+      echo "Native hidden-window Space release completed a retired key lifetime" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    pre_restore_toggles="$after_hide_release"
     if ! kill -0 "$app_pid" 2>/dev/null; then
       echo "Native process died while X11 window was unmapped" >&2
       cat "$log" >&2

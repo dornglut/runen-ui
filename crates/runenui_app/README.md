@@ -48,8 +48,10 @@ actions and an initial 1500-ms timer. The
 [Native X11 Smoke](../../.github/workflows/native-x11-smoke.yml)
 workflow builds both and checks that visible native windows start, resize and
 exit after OS close under Xvfb and software Vulkan. For `fluent_status`,
-it additionally unmaps and remaps the same native X11 window, then requires
-a new OS keyboard-triggered action following restoration. A separate Counter
+it additionally interrupts a held Space key by unmapping the native X11
+window, verifies that its release causes no hidden-window activation,
+remaps the same window, and requires a fresh OS keyboard-triggered action
+following restoration. A separate Counter
 window then receives OS focus while Status has a held Space key; the test
 asserts no unfocused release activation and confirms new keyboard input after
 focus returns, without manipulating runtime internals. An additional debug-only,
