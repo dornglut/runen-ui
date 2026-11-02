@@ -4,8 +4,8 @@ use crate::ReconciliationDiagnostic;
 
 use super::{
     MountedNodeId,
-    reconcile::ReconciliationApplyError,
     node::state_is_corrupted,
+    reconcile::ReconciliationApplyError,
     tree::{MountedTree, ReconcileStats},
 };
 
