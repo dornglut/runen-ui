@@ -120,3 +120,71 @@ jobs:
             ${{ runner.temp }}/runenui-openbox.log
           if-no-files-found: warn
           retention-days: 7
+
+  native-compile:
+    name: Native App public API compile (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - name: Resolve exact revision
+        id: revision
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SHA: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request) expected_revision="$PR_HEAD_SHA" ;;
+            push|workflow_dispatch) expected_revision="$EVENT_SHA" ;;
+            *) echo "Unsupported event: $EVENT_NAME" >&2; exit 1 ;;
+          esac
+          test -n "$expected_revision"
+          echo "expected_revision=$expected_revision" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact native feature head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ steps.revision.outputs.expected_revision }}
+          clean: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate checkout identity
+        shell: bash
+        env:
+          EXPECTED_REVISION: ${{ steps.revision.outputs.expected_revision }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_REVISION"
+
+      - name: Install stable Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+
+      - name: Compile default native API and both consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +stable check --locked --all-targets -p runenui_app -p fluent_counter -p fluent_status
+
+      - name: Compile explicit debug-only native test seams
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +stable check --locked --all-targets -p runenui_app -p fluent_counter -p fluent_status --features runenui_app/internal-test-seams
+
+      - name: Confirm checkout unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test -z "$(git status --short)"

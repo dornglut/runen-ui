@@ -68,9 +68,9 @@ driver validation incident. This is Linux X11 virtual
 display evidence, **not** Windows/macOS, physical input, IME, accessibility
 or arbitrary device-loss qualification.
 
-The [Native Desktop Compile](../../.github/workflows/native-desktop-compile.yml)
-workflow separately checks the public examples, native crate and test-only
-feature for **Windows and macOS compilation** on hosted runners. Successful
+The [Native X11 Smoke workflow](../../.github/workflows/native-x11-smoke.yml)
+also runs independent Windows/macOS compile jobs for the public examples,
+native crate and test-only feature on hosted runners. Successful
 cross-platform compilation is not evidence that a physical native OS window
 ran or that its platform input/accessibility and GPU-loss behavior is qualified.
 
