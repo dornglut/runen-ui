@@ -25,7 +25,8 @@ that final M4 authority reconciliation, every then-existing M4 Required row was
 `31889342640` and was guarded-squash-merged in PR #62 as
 `846c4e6adfdcd9236586f1b9978f63e71ff4fb86`; reviewed head and squash share
 exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, and accepted-main push CI
-#1171 / `31903354382` passed at that exact squash:
+#1171 / `31903354382` passed at that exact squash. At that time, the matrix
+contained 245 rows, and all were owner-accepted. The current inventory is:
 
 ```text
 251 total unique rows
