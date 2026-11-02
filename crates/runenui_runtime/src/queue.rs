@@ -3394,10 +3394,7 @@ mod reservation_tests {
         queue
             .retain_root_local_task_lease(root.quota(), generation)
             .expect("one keyed terminal credit fits");
-        assert_eq!(
-            queue.work_residency_claims(WorkFamily::LocalTask),
-            Some(1)
-        );
+        assert_eq!(queue.work_residency_claims(WorkFamily::LocalTask), Some(1));
         assert_eq!(queue.root_remaining(root.quota()), Ok(0));
 
         // Corruption is test-only; production paths maintain the aggregate.
@@ -3406,7 +3403,10 @@ mod reservation_tests {
             queue.release_root_work_leases(root.quota(), &[generation]),
             Err(QueueReservationError::Stale)
         );
-        let quota = queue.root_quotas.get(&root.quota()).expect("root preserved");
+        let quota = queue
+            .root_quotas
+            .get(&root.quota())
+            .expect("root preserved");
         assert_eq!(quota.remaining, 0);
         assert_eq!(quota.live_work_leases, 1);
         assert!(quota.local_tasks.contains_key(&generation));
@@ -3420,10 +3420,7 @@ mod reservation_tests {
             .expect("valid aggregate permits retirement");
         assert!(!queue.root_quotas.contains_key(&root.quota()));
         assert_eq!(queue.reserved, 1);
-        assert_eq!(
-            queue.work_residency_claims(WorkFamily::LocalTask),
-            Some(0)
-        );
+        assert_eq!(queue.work_residency_claims(WorkFamily::LocalTask), Some(0));
         assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
     }
 
