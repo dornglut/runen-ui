@@ -49,8 +49,9 @@ cargo +stable test --release --locked --all-features -p runenui_runtime --lib be
 Each diagnostic uses 30 independent repetitions at root sizes 32, 256, 1024,
 and 2048. Admission covers trace disabled/enabled (0/512), while retirement
 compares sequential and batched keyed lease release. Cross-root cancellation
-preflight also covers mixed host, framework-service, local task, send task,
-and repeating timer generations at the same root sizes. Each `U475_METRIC` line reports
+preflight compares sparse (one host generation) and dense (all mixed host,
+framework-service, local task, send task, and repeating timer generations)
+invalidations at the same root sizes. Each `U475_METRIC` line reports
 the phase, trace mode, roots, repetitions, p50/p95/maximum total batch time in
 microseconds, and the largest observed process VmRSS in KiB when available.
 VmRSS is a process-wide snapshot, not a per-root allocation or an isolated

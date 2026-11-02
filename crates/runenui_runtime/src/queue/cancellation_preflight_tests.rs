@@ -373,40 +373,48 @@ fn every_two_root_family_subset_preserves_exact_cancellation_and_response_demand
 fn bench_u475_cross_root_cancellation_preflight_scaling() {
     use std::time::Instant;
     const REPEATS: usize = 30;
-    for size in [32usize, 256, 1024, 2048] {
-        let mut samples = Vec::with_capacity(REPEATS);
-        let mut max_rss_kib = 0usize;
-        for _ in 0..REPEATS {
-            let fixture = fixture(size);
-            let started = Instant::now();
-            let (counts, released) = fixture
-                .queue
-                .preflight_root_cancellations(&fixture.generations, fixture.roots[0])
-                .expect("mixed cancellation set remains valid");
-            samples.push(started.elapsed().as_micros());
-            assert_eq!(counts.host_requests, size);
-            assert_eq!(counts.framework_services, size);
-            assert_eq!(counts.local_tasks, size);
-            assert_eq!(counts.send_tasks, size);
-            assert_eq!(counts.timers, size);
-            assert_eq!(released.host_requests, 1);
-            assert_eq!(released.framework_services, 1);
-            if let Ok(status) = std::fs::read_to_string("/proc/self/status")
-                && let Some(kib) = status
-                    .lines()
-                    .find_map(|line| line.strip_prefix("VmRSS:"))
-                    .and_then(|line| line.split_whitespace().next())
-                    .and_then(|value| value.parse::<usize>().ok())
-            {
-                max_rss_kib = max_rss_kib.max(kib);
+    for mode in ["sparse", "dense"] {
+        for size in [32usize, 256, 1024, 2048] {
+            let mut samples = Vec::with_capacity(REPEATS);
+            let mut max_rss_kib = 0usize;
+            for _ in 0..REPEATS {
+                let fixture = fixture(size);
+                let invalidated = if mode == "sparse" {
+                    &fixture.generations[..1]
+                } else {
+                    &fixture.generations[..]
+                };
+                let started = Instant::now();
+                let (counts, released) = fixture
+                    .queue
+                    .preflight_root_cancellations(invalidated, fixture.roots[0])
+                    .expect("mixed cancellation set remains valid");
+                samples.push(started.elapsed().as_micros());
+                let other = if mode == "dense" { size } else { 0 };
+                assert_eq!(counts.host_requests, if mode == "dense" { size } else { 1 });
+                assert_eq!(counts.framework_services, other);
+                assert_eq!(counts.local_tasks, other);
+                assert_eq!(counts.send_tasks, other);
+                assert_eq!(counts.timers, other);
+                assert_eq!(released.host_requests, 1);
+                assert_eq!(released.framework_services, usize::from(mode == "dense"));
+                if let Ok(status) = std::fs::read_to_string("/proc/self/status")
+                    && let Some(kib) = status
+                        .lines()
+                        .find_map(|line| line.strip_prefix("VmRSS:"))
+                        .and_then(|line| line.split_whitespace().next())
+                        .and_then(|value| value.parse::<usize>().ok())
+                {
+                    max_rss_kib = max_rss_kib.max(kib);
+                }
             }
+            samples.sort_unstable();
+            println!(
+                "U475_METRIC,cross-root-cancellation-{mode},off,{size},{REPEATS},{},{},{},{max_rss_kib}",
+                samples[REPEATS / 2],
+                samples[(95 * REPEATS).div_ceil(100) - 1],
+                samples[REPEATS - 1]
+            );
         }
-        samples.sort_unstable();
-        println!(
-            "U475_METRIC,cross-root-cancellation,off,{size},{REPEATS},{},{},{},{max_rss_kib}",
-            samples[REPEATS / 2],
-            samples[(95 * REPEATS).div_ceil(100) - 1],
-            samples[REPEATS - 1]
-        );
     }
 }
