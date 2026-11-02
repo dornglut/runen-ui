@@ -36,20 +36,51 @@ struct OutputWidget {
 }
 
 impl Widget<Action> for OutputWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(1, 1, 1, 0, 0)),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(2)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(1, 1, 1, 0, 0))
+            }
+            runenui_core::WidgetProducerPhase::Mount => runenui_core::WidgetProducerBudget::new(4)
+                .with_work_starts(runenui_core::WorkStartBudget::new(1, 1, 1, 0, 0)),
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            runenui_core::WidgetProducerPhase::Update => {
+                runenui_core::WidgetProducerBudget::new(usize::from(self.emit_update))
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
 
     fn mount(&self, (): &mut Self::State, context: &mut WidgetMountContext<Action>) {
-        context.emit(Action::Mounted);
-        context.keyed_local_task(key("mounted.local"), async { Some(Action::Local) });
-        context.timer(TimerEffect::once(Duration::ZERO, || Action::Timer));
-        context.send_task_with_failure(async { 7_u8 }, |_| unreachable!(), |_| Action::SendRefused);
+        let _ = context.try_emit(Action::Mounted);
+        {
+            let _ =
+                context.try_keyed_local_task(key("mounted.local"), async { Some(Action::Local) });
+        };
+        let _ = context.try_timer(TimerEffect::once(Duration::ZERO, || Action::Timer));
+        let _ = context.try_send_task_with_failure(
+            async { 7_u8 },
+            |_| unreachable!(),
+            |_| Action::SendRefused,
+        );
     }
 
     fn update(&self, (): &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         if self.emit_update {
-            context.emit(Action::Updated);
+            let _ = context.try_emit(Action::Updated);
         }
     }
 
@@ -62,7 +93,7 @@ impl Widget<Action> for OutputWidget {
         (): &mut Self::State,
         context: &mut WidgetActivationContext<Action>,
     ) -> WidgetActivationOutput<Action> {
-        context.emit(Action::ActivationEmitted);
+        let _ = context.try_emit(Action::ActivationEmitted);
         WidgetActivationOutput::action(Action::ActivationReturned)
     }
 }
@@ -76,6 +107,34 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Two initial actions, three starts, one dirty-owner reconciliation,
+        // and one cancellation credit for each live work generation. The
+        // Timer start's own Q becomes its first firing credit.
+        runenui_core::ProducerBudget::new(9, 5)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 1, 1, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 1, 1, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, usize::from(matches!(action, Action::TriggerUpdate)))
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The routed command profile includes the target Event and Activation
+        // phase maxima; each phase may emit two actions and start local, send,
+        // and timer work. The frontier includes their cleanup/outcome credits.
+        runenui_core::ProducerBudget::new(18, 8)
+            .with_work_starts(runenui_core::WorkStartBudget::new(2, 2, 2, 0, 0))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -131,14 +190,35 @@ fn submit_activate<Application: UiApp>(
             SemanticCommand::Activate,
             CommandOrigin::programmatic(),
         )
-        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"))
+        .unwrap_or_else(|error| {
+            unreachable!(
+                "the exact live target is accepted: {error:?}; status={:?}, trace={:?}",
+                runtime.status(),
+                runtime
+                    .trace()
+                    .records()
+                    .map(runenui_runtime::TraceRecord::kind)
+                    .collect::<Vec<_>>(),
+            )
+        })
         .sequence()
 }
 
 #[test]
 fn mounted_callbacks_emit_exact_owner_work_through_the_canonical_scheduler() {
-    let mut runtime = AppRuntime::<App>::mount(State::default());
+    let mut runtime = AppRuntime::<App>::mount(State::default())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     drain(&mut runtime);
+    assert!(
+        matches!(runtime.status(), runenui_runtime::RuntimeStatus::Running),
+        "mounted output profile must fund its complete frontier; status={:?}, trace={:#?}",
+        runtime.status(),
+        runtime
+            .trace()
+            .records()
+            .map(runenui_runtime::TraceRecord::kind)
+            .collect::<Vec<_>>()
+    );
     assert_eq!(
         runtime.state().actions[0..2],
         [Action::Initial, Action::Mounted]
@@ -151,7 +231,16 @@ fn mounted_callbacks_emit_exact_owner_work_through_the_canonical_scheduler() {
         .submit_action(Action::TriggerUpdate)
         .unwrap_or_else(|_| unreachable!());
     drain(&mut runtime);
-    assert!(runtime.state().actions.contains(&Action::Updated));
+    assert!(
+        runtime.state().actions.contains(&Action::Updated),
+        "status: {:?}; trace: {:#?}",
+        runtime.status(),
+        runtime
+            .trace()
+            .records()
+            .map(runenui_runtime::TraceRecord::kind)
+            .collect::<Vec<_>>()
+    );
 
     let target = runtime.index().nodes()[0].id().clone();
     submit_activate(&mut runtime, target);
@@ -181,6 +270,27 @@ struct ActivationOrderWidget {
 }
 
 impl Widget<ActivationOrderAction> for ActivationOrderWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event | runenui_core::WidgetProducerPhase::Mount => {
+                runenui_core::WidgetProducerBudget::new(0)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            }
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(4)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(1)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = usize;
 
     fn create_state(&self) -> Self::State {
@@ -197,9 +307,9 @@ impl Widget<ActivationOrderAction> for ActivationOrderWidget {
         context: &mut WidgetActivationContext<ActivationOrderAction>,
     ) -> WidgetActivationOutput<ActivationOrderAction> {
         *state += 1;
-        context.invalidate_subscriptions();
-        context.emit(ActivationOrderAction::Auxiliary);
-        context.local_task(async { Some(ActivationOrderAction::Task) });
+        let _ = context.try_invalidate_subscriptions();
+        let _ = context.try_emit(ActivationOrderAction::Auxiliary);
+        let _ = context.try_local_task(async { Some(ActivationOrderAction::Task) });
         WidgetActivationOutput::changed_with_action(ActivationOrderAction::Primary)
     }
 
@@ -211,6 +321,33 @@ impl Widget<ActivationOrderAction> for ActivationOrderWidget {
 struct ActivationOrderApp;
 
 impl UiApp for ActivationOrderApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The target Event and Activation maxima include four activation
+        // outputs and one local start per phase; reconciliation retains one
+        // dirty subscription owner.
+        runenui_core::ProducerBudget::new(8, 6)
+            .with_reconciliation(0, 0, 1)
+            .with_subscriptions(0, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(2, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
     type State = (Rc<RefCell<Vec<usize>>>, Vec<ActivationOrderAction>);
     type Action = ActivationOrderAction;
     type HostProtocol = NoHostProtocol;
@@ -228,11 +365,11 @@ impl UiApp for ActivationOrderApp {
 }
 
 #[test]
-#[allow(clippy::assert_is_empty)]
 fn routed_activation_commits_subscription_then_primary_and_auxiliary_actions() {
     let declarations = Rc::new(RefCell::new(Vec::new()));
     let mut runtime =
-        AppRuntime::<ActivationOrderApp>::mount((Rc::clone(&declarations), Vec::new()));
+        AppRuntime::<ActivationOrderApp>::mount((Rc::clone(&declarations), Vec::new()))
+            .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"))
@@ -263,7 +400,7 @@ fn routed_activation_commits_subscription_then_primary_and_auxiliary_actions() {
         "subscription reconciliation receives sequence 3"
     );
     assert_eq!(&*declarations.borrow(), &[0]);
-    assert!(runtime.state().1.is_empty());
+    assert_eq!(runtime.state().1, Vec::<ActivationOrderAction>::new());
 
     let _ = runtime
         .pump(PumpBudget::new(1, usize::MAX, 0, usize::MAX))
@@ -271,7 +408,7 @@ fn routed_activation_commits_subscription_then_primary_and_auxiliary_actions() {
         .report()
         .to_owned();
     assert_eq!(&*declarations.borrow(), &[0, 1]);
-    assert!(runtime.state().1.is_empty());
+    assert_eq!(runtime.state().1, Vec::<ActivationOrderAction>::new());
 
     drain(&mut runtime);
     assert_eq!(
@@ -289,6 +426,27 @@ fn routed_activation_commits_subscription_then_primary_and_auxiliary_actions() {
 struct RoutedOutputWidget;
 
 impl Widget<()> for RoutedOutputWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event | runenui_core::WidgetProducerPhase::Mount => {
+                runenui_core::WidgetProducerBudget::new(0)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 1, 0, 0))
+            }
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(4)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 1, 0, 0))
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = usize;
 
     fn create_state(&self) -> Self::State {
@@ -305,10 +463,18 @@ impl Widget<()> for RoutedOutputWidget {
         context: &mut WidgetActivationContext<()>,
     ) -> WidgetActivationOutput<()> {
         match *state {
-            0 => context.emit(()),
-            1 => context.local_task(async { None }),
-            2 => context.timer(TimerEffect::once(Duration::from_secs(1), || ())),
-            3 => context.invalidate_subscriptions(),
+            0 => {
+                let _ = context.try_emit(());
+            }
+            1 => {
+                let _ = context.try_local_task(async { None });
+            }
+            2 => {
+                let _ = context.try_timer(TimerEffect::once(Duration::from_secs(1), || ()));
+            }
+            3 => {
+                let _ = context.try_invalidate_subscriptions();
+            }
             4 => context.invalidate(WidgetInvalidation::PAINT),
             _ => return WidgetActivationOutput::none(),
         }
@@ -320,6 +486,33 @@ impl Widget<()> for RoutedOutputWidget {
 struct RoutedOutputApp;
 
 impl UiApp for RoutedOutputApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(1, 0, 1, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event and Activation phase maxima each permit four outputs, one
+        // local task, and one timer, with their future obligations retained.
+        runenui_core::ProducerBudget::new(16, 8)
+            .with_reconciliation(0, 0, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(2, 0, 2, 0, 0))
+            // Each activation takes one state-selected branch, so this root
+            // retains at most one task or one timer across its descendants.
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 1, 0, 0, 0))
+    }
+
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -335,7 +528,8 @@ impl UiApp for RoutedOutputApp {
 
 #[test]
 fn routed_activation_separates_scheduler_wake_from_redraw() {
-    let mut runtime = AppRuntime::<RoutedOutputApp>::mount(0);
+    let mut runtime = AppRuntime::<RoutedOutputApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     drain(&mut runtime);
     let initial_redraw = runtime
         .take_redraw_request()
@@ -359,6 +553,11 @@ fn routed_activation_separates_scheduler_wake_from_redraw() {
         .to_owned();
     assert!(runtime.take_redraw_request().is_none());
     drain(&mut runtime);
+    assert_eq!(
+        runtime.status(),
+        runenui_runtime::RuntimeStatus::Running,
+        "status after routed action child"
+    );
     let action_redraw = runtime
         .take_redraw_request()
         .unwrap_or_else(|| unreachable!("the routed auxiliary action updates application state"));
@@ -401,6 +600,22 @@ fn routed_activation_separates_scheduler_wake_from_redraw() {
 struct CoalescedInvalidationWidget;
 
 impl Widget<()> for CoalescedInvalidationWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -414,7 +629,7 @@ impl Widget<()> for CoalescedInvalidationWidget {
         (): &mut Self::State,
         context: &mut WidgetActivationContext<()>,
     ) -> WidgetActivationOutput<()> {
-        context.invalidate_subscriptions();
+        let _ = context.try_invalidate_subscriptions();
         WidgetActivationOutput::none()
     }
 }
@@ -422,6 +637,28 @@ impl Widget<()> for CoalescedInvalidationWidget {
 struct CoalescedInvalidationApp;
 
 impl UiApp for CoalescedInvalidationApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // A coalesced invalidation can enqueue one mounted subscription
+        // reconciliation after the activation envelope is popped.
+        runenui_core::ProducerBudget::new(2, 1).with_reconciliation(0, 0, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -435,7 +672,8 @@ impl UiApp for CoalescedInvalidationApp {
 
 #[test]
 fn coalesced_subscription_invalidation_is_an_effect_not_no_effect() {
-    let mut runtime = AppRuntime::<CoalescedInvalidationApp>::mount(());
+    let mut runtime = AppRuntime::<CoalescedInvalidationApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     drain(&mut runtime);
     let target = runtime.index().nodes()[0].id().clone();
     submit_activate(&mut runtime, target.clone());
@@ -452,6 +690,12 @@ fn coalesced_subscription_invalidation_is_an_effect_not_no_effect() {
             .filter(|kind| matches!(kind, TraceRecordKind::MountedSubscriptionInvalidated))
             .count(),
         2,
-        "both callbacks report invalidation while queue reconciliation coalesces"
+        "both callbacks report invalidation while queue reconciliation coalesces; status={:?}, trace={:?}",
+        runtime.status(),
+        runtime
+            .trace()
+            .records()
+            .map(runenui_runtime::TraceRecord::kind)
+            .collect::<Vec<_>>(),
     );
 }

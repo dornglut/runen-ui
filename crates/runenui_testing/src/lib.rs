@@ -34,7 +34,8 @@ mod settle;
 mod surface;
 
 pub use harness::{
-    HarnessSemanticQueryError, HarnessSurfaceCommandError, MissingPublication, TestHarness,
+    HarnessMountError, HarnessSemanticQueryError, HarnessSurfaceCommandError, MissingPublication,
+    TestHarness,
 };
 pub use semantic::{
     SemanticQuery, SemanticQueryMatches, SemanticTarget, SemanticTargetError,

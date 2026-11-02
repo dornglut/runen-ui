@@ -105,6 +105,8 @@ impl fmt::Debug for UnacceptedSurfaceCommand {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SubmitSurfaceCommandErrorKind {
     Full,
+    WorkCapacity(crate::WorkCapacityFamily),
+    InvalidProducerProfile,
     Closed,
     Terminal(RuntimeTerminalReason),
     ForeignSurfaceContext,
@@ -172,6 +174,15 @@ impl fmt::Display for SubmitSurfaceCommandError {
         match self.kind {
             SubmitSurfaceCommandErrorKind::Full => {
                 formatter.write_str("runtime work queue is full")
+            }
+            SubmitSurfaceCommandErrorKind::WorkCapacity(family) => {
+                write!(
+                    formatter,
+                    "runtime {family:?} capacity is reserved or occupied"
+                )
+            }
+            SubmitSurfaceCommandErrorKind::InvalidProducerProfile => {
+                formatter.write_str("interaction producer profile is invalid")
             }
             SubmitSurfaceCommandErrorKind::Closed => formatter.write_str("runtime is closed"),
             SubmitSurfaceCommandErrorKind::Terminal(reason) => {

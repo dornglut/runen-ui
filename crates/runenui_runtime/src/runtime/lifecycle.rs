@@ -139,17 +139,42 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         (cancelled_queued, cancelled_live, pointer_parent)
     }
 
-    pub(crate) fn shutdown(&mut self) -> ShutdownReport {
-        if matches!(self.status, RuntimeStatus::Closed) {
-            return ShutdownReport {
-                already_complete: true,
-                cancelled_queued_envelopes: 0,
-                unmounted_lifetimes: 0,
-                cancelled_live_work: WorkCancellationCounts::default(),
-            };
+    fn prepare_composition_shutdown(
+        &mut self,
+        logical_time: runenui_core::MonotonicInstant,
+    ) -> (InputLifetimeCleanupCause, usize) {
+        // The required synchronous cancellation can reuse slots occupied by
+        // this lifetime's queued descendants: shutdown is cancelling those
+        // envelopes, never executing them ahead of older FIFO work. Keep the
+        // root itself alive through the callback/output commit and final close.
+        let mut cancelled_before_cleanup = 0;
+        let composition_root = self.composition.generation().and_then(|generation| {
+            self.queue
+                .input_continuation_root(&crate::queue::InputContinuationKey::Composition(
+                    generation.clone(),
+                ))
+        });
+        if matches!(self.status, RuntimeStatus::Running)
+            && let Some(root) = composition_root
+        {
+            let cancelled = self
+                .queue
+                .begin_root_activity(root)
+                .and_then(|()| self.queue.cancel_root_pending_for_shutdown(root));
+            match cancelled {
+                Ok(cancelled) => {
+                    cancelled_before_cleanup = cancelled.envelopes;
+                    self.trace.release_reservations(
+                        cancelled.command_trace_reservations
+                            + cancelled.pointer_trace_reservations
+                            + cancelled.input_trace_reservations,
+                    );
+                }
+                Err(_) => {
+                    self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                }
+            }
         }
-        let logical_time = self.now();
-        self.focus_group_type_ahead.clear();
         let initial_parent = if matches!(self.status, RuntimeStatus::Terminal(_)) {
             self.trace.latest_runtime_terminal_sequence()
         } else {
@@ -161,6 +186,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             logical_time,
             CommandOrigin::programmatic(),
         );
+        let cleanup_cause = match composition_root {
+            Some(root) if matches!(self.status, RuntimeStatus::Running) => {
+                cleanup_cause.with_root_quota(root)
+            }
+            _ => cleanup_cause,
+        };
+        (cleanup_cause, cancelled_before_cleanup)
+    }
+
+    pub(crate) fn shutdown(&mut self) -> ShutdownReport {
+        if matches!(self.status, RuntimeStatus::Closed) {
+            return ShutdownReport {
+                already_complete: true,
+                cancelled_queued_envelopes: 0,
+                unmounted_lifetimes: 0,
+                cancelled_live_work: WorkCancellationCounts::default(),
+            };
+        }
+        let logical_time = self.now();
+        self.focus_group_type_ahead.clear();
+        let (cleanup_cause, cancelled_before_cleanup) =
+            self.prepare_composition_shutdown(logical_time);
         let composition_parent = self
             .cancel_composition_while_live(
                 runenui_core::CompositionCancelReason::Shutdown,
@@ -193,6 +240,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let shutdown_parent = self.clear_focus_for_shutdown(space_parent, logical_time);
         let (cancelled_queued_envelopes, cancelled_live_work, final_parent) =
             self.close_scheduling_authority(shutdown_parent);
+        let cancelled_queued_envelopes =
+            cancelled_queued_envelopes.saturating_add(cancelled_before_cleanup);
         self.editing.shutdown();
         let stats = self.tree.shutdown();
         self.surface_publication.clear_motion_for_shutdown();
@@ -229,8 +278,36 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.revoke_generation(generation);
     }
 
+    pub(super) fn invalidate_generation_for_transaction(
+        &mut self,
+        generation: crate::work::WorkGeneration,
+    ) {
+        self.revoke_generation_with_cancellation(generation, true);
+    }
+
     pub(super) fn revoke_generation(&mut self, generation: crate::work::WorkGeneration) {
-        revoke_generation_authority(
+        self.revoke_generation_with_cancellation(generation, false);
+    }
+
+    fn revoke_generation_with_cancellation(
+        &mut self,
+        generation: crate::work::WorkGeneration,
+        transaction_cancellation: bool,
+    ) {
+        let future_task = self
+            .work
+            .family_for_generation(generation)
+            .is_some_and(|family| {
+                matches!(
+                    family,
+                    crate::work::WorkFamily::LocalTask
+                        | crate::work::WorkFamily::SendTask
+                        | crate::work::WorkFamily::Timer
+                        | crate::work::WorkFamily::HostRequest
+                        | crate::work::WorkFamily::FrameworkService
+                )
+            });
+        let root_quota = revoke_generation_authority(
             generation,
             &mut self.work,
             &self.completion_ingress,
@@ -241,6 +318,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &mut self.host_requests,
             &mut self.framework_services,
         );
+        if let Some(root_quota) = root_quota {
+            let released = if transaction_cancellation && future_task {
+                self.queue
+                    .release_root_work_lease_for_cancellation(root_quota, generation)
+            } else {
+                self.queue.release_root_work_lease(root_quota, generation)
+            };
+            if released.is_err() && matches!(self.status, RuntimeStatus::Running) {
+                self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+            }
+        }
     }
 }
 
@@ -261,8 +349,10 @@ pub(in crate::runtime) fn revoke_generation_authority<Action, Protocol: HostProt
     subscriptions: &mut Vec<LiveSubscription<Action>>,
     host_requests: &mut Vec<LiveHostRequest<Action, Protocol>>,
     framework_services: &mut Vec<LiveFrameworkService>,
-) {
-    let _ = work.invalidate(generation);
+) -> Option<crate::queue::RootQuotaId> {
+    let root_quota = work
+        .invalidate(generation)
+        .and_then(|(_, root_quota)| root_quota);
     let _ = completion_ingress.revoke_generation(generation);
     local_tasks.retain(|task| task.generation != generation);
     timers.retain(|timer| timer.generation != generation);
@@ -270,4 +360,5 @@ pub(in crate::runtime) fn revoke_generation_authority<Action, Protocol: HostProt
     subscriptions.retain(|subscription| subscription.generation != generation);
     host_requests.retain(|request| request.generation != generation);
     framework_services.retain(|request| request.generation != generation);
+    root_quota
 }

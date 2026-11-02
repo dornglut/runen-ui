@@ -30,6 +30,27 @@ enum Action {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // At most 1 mounted owners; event allowance <= 2 each, six route/focus visits, plus activation/defaults.
+        // Two framework-service response/cancellation pairs cover clipboard and IME defaults.
+        runenui_core::ProducerBudget::new(22, 16)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(22, 16)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(22, 16)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -116,7 +137,8 @@ fn masked_standard_password_renders_with_real_wgpu_and_reclassifies_without_sour
         Err(RendererInitError::AdapterUnavailable { .. }) => return Ok(()),
         Err(error) => return Err(error.into()),
     };
-    let mut runtime = AppRuntime::<App>::mount(State { masked: true });
+    let mut runtime = AppRuntime::<App>::mount(State { masked: true })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     runtime.register_text_font_bytes(FONT.to_vec())?;
     runtime.set_text_generic_family_mapping(
         GenericFontFamily::SansSerif,
@@ -191,6 +213,27 @@ struct PlaceholderState {
 struct PlaceholderApp;
 
 impl UiApp for PlaceholderApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // At most 1 mounted owners; event allowance <= 2 each, six route/focus visits, plus activation/defaults.
+        // Two framework-service response/cancellation pairs cover clipboard and IME defaults.
+        runenui_core::ProducerBudget::new(22, 16)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(22, 16)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(22, 16)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+
     type State = PlaceholderState;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -236,7 +279,8 @@ fn placeholder_publication(
     let mut runtime = AppRuntime::<PlaceholderApp>::mount(PlaceholderState {
         source: source.to_owned(),
         hint,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     runtime.register_text_font_bytes(FONT.to_vec())?;
     runtime.set_text_generic_family_mapping(
         GenericFontFamily::SansSerif,

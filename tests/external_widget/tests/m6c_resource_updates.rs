@@ -26,6 +26,22 @@ struct ResourceOwner {
 }
 
 impl Widget<Action> for ResourceOwner {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = OwnerState;
 
     fn create_state(&self) -> Self::State {
@@ -74,6 +90,26 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -123,7 +159,8 @@ fn foreground_only_change_reuses_ref_while_logical_content_replacement_uses_a_ne
     let mut runtime = AppRuntime::<App>::mount(State {
         shaped: original_ref.clone(),
         foreground: initial_foreground,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let environment = StyleEnvironment::default();
     let initial_pump = runtime
         .pump(PumpBudget::new(

@@ -10,6 +10,29 @@ use runenui_runtime::{
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 1 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -37,7 +60,8 @@ fn published_count(runtime: &AppRuntime<App>) -> usize {
 fn exhausted_paint_revision_does_not_block_unchanged_renderer_publication() {
     let style_environment = StyleEnvironment::default();
     let context = SurfaceBuildContext::tight(&style_environment, size(16, 16));
-    let mut runtime = AppRuntime::<App>::mount(());
+    let mut runtime = AppRuntime::<App>::mount(())
+        .unwrap_or_else(|_| unreachable!("paint revision fixture admission is valid"));
     let first = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("initial paint publication is admitted"));
@@ -60,7 +84,8 @@ fn exhausted_paint_revision_does_not_block_unchanged_renderer_publication() {
 #[test]
 fn paint_revision_max_is_issued_once_then_changed_publication_fails_before_commit() {
     let style_environment = StyleEnvironment::default();
-    let mut runtime = AppRuntime::<App>::mount(());
+    let mut runtime = AppRuntime::<App>::mount(())
+        .unwrap_or_else(|_| unreachable!("paint revision fixture admission is valid"));
     runtime
         .publish_surface(&SurfaceBuildContext::tight(
             &style_environment,

@@ -24,7 +24,34 @@ struct State {
 
 struct ButtonApp;
 
+impl ButtonApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 1 mounted owner in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 1;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+    }
+}
+
 impl UiApp for ButtonApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -92,7 +119,8 @@ const fn initial_state(pressed: Option<SemanticPressedState>) -> State {
 
 #[test]
 fn button_without_authored_pressed_state_remains_momentary() {
-    let mut harness = TestHarness::<ButtonApp>::mount(initial_state(None));
+    let mut harness = TestHarness::<ButtonApp>::mount(initial_state(None))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     assert_pressed(&harness, None);
     let target = harness
@@ -116,7 +144,10 @@ fn button_without_authored_pressed_state_remains_momentary() {
 #[test]
 fn button_pressed_semantics_follow_only_application_authored_updates() {
     let mut harness =
-        TestHarness::<ButtonApp>::mount(initial_state(Some(SemanticPressedState::Unpressed)));
+        TestHarness::<ButtonApp>::mount(initial_state(Some(SemanticPressedState::Unpressed)))
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
     assert!(harness.publish().is_ok());
     assert_pressed(&harness, Some(SemanticPressedState::Unpressed));
     let original_revision = harness
@@ -194,7 +225,10 @@ fn button_pressed_semantics_follow_only_application_authored_updates() {
 #[test]
 fn disabled_pressed_button_stays_semantic_and_rejects_activation() {
     let mut harness =
-        TestHarness::<ButtonApp>::mount(initial_state(Some(SemanticPressedState::Pressed)));
+        TestHarness::<ButtonApp>::mount(initial_state(Some(SemanticPressedState::Pressed)))
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
     assert!(harness.submit_action(Action::Enable(false)).is_ok());
     assert_eq!(
         harness.run_until_idle(budget()).outcome(),
@@ -225,6 +259,19 @@ struct DownstreamPressed {
 }
 
 impl Widget<Action> for DownstreamPressed {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -240,7 +287,34 @@ impl Widget<Action> for DownstreamPressed {
 
 struct ParityApp;
 
+impl ParityApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 3 mounted owners in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 3;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+    }
+}
+
 impl UiApp for ParityApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = SemanticPressedState;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -261,7 +335,8 @@ impl UiApp for ParityApp {
 
 #[test]
 fn downstream_custom_widget_uses_identical_public_pressed_semantic_contract() {
-    let mut harness = TestHarness::<ParityApp>::mount(SemanticPressedState::Mixed);
+    let mut harness = TestHarness::<ParityApp>::mount(SemanticPressedState::Mixed)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     let snapshot = harness
         .semantic_snapshot()

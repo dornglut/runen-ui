@@ -34,6 +34,22 @@ struct DownstreamOption {
 }
 
 impl Widget<Action> for DownstreamOption {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = bool;
 
     fn create_state(&self) -> Self::State {
@@ -79,6 +95,23 @@ impl Widget<Action> for DownstreamOption {
 struct DownstreamListBox;
 
 impl Widget<Action> for DownstreamListBox {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -106,7 +139,7 @@ impl Widget<Action> for DownstreamListBox {
         if let Some(delegated) = delegated {
             context.prevent_default();
             context.stop_propagation();
-            context.emit_command(delegated);
+            let _ = context.try_emit_command(delegated);
         }
         WidgetEventOutput::none()
     }
@@ -131,6 +164,30 @@ impl ChildBearingWidget<Action> for DownstreamListBox {}
 struct DownstreamApp;
 
 impl UiApp for DownstreamApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(6, 6)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -223,7 +280,8 @@ fn command<App: UiApp>(
 
 #[test]
 fn downstream_list_box_matches_public_focus_semantic_and_application_selection_contracts() {
-    let mut runtime = AppRuntime::<DownstreamApp>::mount(State { selected: 1 });
+    let mut runtime = AppRuntime::<DownstreamApp>::mount(State { selected: 1 })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     let one = id(&mut runtime, "downstream.option.1");
     let two = id(&mut runtime, "downstream.option.2");
@@ -260,6 +318,30 @@ struct StandardState;
 struct StandardScrollApp;
 
 impl UiApp for StandardScrollApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(5, 5, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(7, 7)
+            .with_reconciliation(5, 5, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = StandardState;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -303,7 +385,8 @@ impl UiApp for StandardScrollApp {
 
 #[test]
 fn standard_list_box_navigation_reveals_through_existing_scroll_container_authority() {
-    let mut runtime = AppRuntime::<StandardScrollApp>::mount(StandardState);
+    let mut runtime = AppRuntime::<StandardScrollApp>::mount(StandardState)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     let environment = runenui_core::StyleEnvironment::default();
     runtime

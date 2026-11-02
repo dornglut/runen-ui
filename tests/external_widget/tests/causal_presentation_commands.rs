@@ -37,6 +37,109 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        // The root and P trigger are always present. Each open menu adds its
+        // Menu and MenuItem; Q also adds its own trigger.
+        let mounted_nodes = 2 + if state.p_open { 2 } else { 0 } + if state.q_open { 3 } else { 0 };
+        runenui_core::ProducerBudget::new(mounted_nodes, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(mounted_nodes, 0, mounted_nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let mut queue_credits = 1;
+        let mut outputs = 0;
+        let mut mounted_nodes = 0;
+        let mut retained_updates = 0;
+        let mut dirty_owners = 0;
+        // Actions can wait behind other admitted actions. Reserve the largest
+        // exact route/reconciliation reachable for this action, rather than
+        // profiling only the state at submission time.
+        for old_p in [false, true] {
+            for old_q in [false, true] {
+                let (new_p, new_q) = match action {
+                    Action::ShowQ => (old_p, true),
+                    Action::HideQ | Action::DismissQ => (old_p, false),
+                    Action::ShowP => (true, old_q),
+                    Action::HideP | Action::DismissP => (false, old_q),
+                    Action::Noop => (old_p, old_q),
+                };
+                let changed = new_p != old_p || new_q != old_q;
+                let old_nodes: usize = 2 + if old_p { 2 } else { 0 } + if old_q { 3 } else { 0 };
+                let new_nodes: usize = 2 + if new_p { 2 } else { 0 } + if new_q { 3 } else { 0 };
+                let added_nodes = new_nodes.saturating_sub(old_nodes);
+                let old_widget_events = 1 + if old_p { 4 } else { 0 } + if old_q { 5 } else { 0 };
+                let new_widget_events = 1 + if new_p { 4 } else { 0 } + if new_q { 5 } else { 0 };
+                let restore_route_outputs =
+                    4 * new_widget_events + if new_p || new_q { 9 } else { 1 };
+                let route_outputs = if changed {
+                    (4 * old_widget_events + 1).max(restore_route_outputs)
+                } else {
+                    0
+                };
+                let candidate_queue_credits = (added_nodes
+                    + usize::from(changed)
+                    + if changed { restore_route_outputs } else { 0 })
+                .max(1);
+                queue_credits = queue_credits.max(candidate_queue_credits);
+                outputs = outputs.max(route_outputs);
+                mounted_nodes = mounted_nodes.max(added_nodes);
+                retained_updates = retained_updates.max(old_nodes.min(new_nodes));
+                dirty_owners = dirty_owners.max(added_nodes);
+            }
+        }
+        runenui_core::ProducerBudget::new(queue_credits, outputs)
+            .with_application_outputs(0)
+            .with_reconciliation(mounted_nodes, retained_updates, dirty_owners)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let widget_events = 1 + if state.p_open { 4 } else { 0 } + if state.q_open { 5 } else { 0 };
+        let max_route_outputs = if state.p_open || state.q_open { 9 } else { 1 };
+        let interaction_outputs = 4 * widget_events + 2 * max_route_outputs + 1;
+        let routed_actions = [Action::DismissP, Action::DismissQ, Action::Noop]
+            .map(|action| Self::action_producer_budget(state, &action));
+        let routed_queue_credits = routed_actions
+            .iter()
+            .map(|profile| profile.queue_credits())
+            .max()
+            .unwrap_or(1);
+        let routed_outputs = routed_actions
+            .iter()
+            .map(|profile| profile.outputs())
+            .max()
+            .unwrap_or(0);
+        let mounted_nodes = routed_actions
+            .iter()
+            .map(|profile| profile.mounted_nodes())
+            .max()
+            .unwrap_or(0);
+        let retained_updates = routed_actions
+            .iter()
+            .map(|profile| profile.retained_updates())
+            .max()
+            .unwrap_or(0);
+        let dirty_owners = routed_actions
+            .iter()
+            .map(|profile| profile.dirty_subscription_owners())
+            .max()
+            .unwrap_or(0);
+        let queue_credits = interaction_outputs.max(routed_queue_credits);
+        let outputs = interaction_outputs.max(routed_outputs);
+        runenui_core::ProducerBudget::new(queue_credits, outputs)
+            .with_application_outputs(0)
+            .with_reconciliation(mounted_nodes, retained_updates, dirty_owners)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -109,7 +212,8 @@ fn delayed_escape_from_p_must_not_dismiss_newly_published_q() {
         q_open: false,
         p_dismissals: 0,
         q_dismissals: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("P publication"));
@@ -279,7 +383,8 @@ fn c2_stable_p_origin_dismisses_once_only_after_queued_action() {
         &environment,
         LogicalSize::new(320_u16.into(), 240_u16.into()),
     );
-    let mut runtime = AppRuntime::<App>::mount(initial_state());
+    let mut runtime = AppRuntime::<App>::mount(initial_state())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     publish(&mut runtime, &context);
     pump_full(&mut runtime);
     runtime
@@ -306,7 +411,8 @@ fn c3_retired_p_republished_before_delayed_command_never_dismisses_successor() {
         &environment,
         LogicalSize::new(320_u16.into(), 240_u16.into()),
     );
-    let mut runtime = AppRuntime::<App>::mount(initial_state());
+    let mut runtime = AppRuntime::<App>::mount(initial_state())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     publish(&mut runtime, &context);
     pump_full(&mut runtime);
     runtime
@@ -335,7 +441,8 @@ fn c5_transient_q_no_longer_topmost_allows_retained_p_to_dismiss() {
         &environment,
         LogicalSize::new(320_u16.into(), 240_u16.into()),
     );
-    let mut runtime = AppRuntime::<App>::mount(initial_state());
+    let mut runtime = AppRuntime::<App>::mount(initial_state())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     publish(&mut runtime, &context);
     pump_full(&mut runtime);
     runtime
@@ -366,7 +473,8 @@ fn c8_composing_keyboard_escape_does_not_derive_a_presentation_dismissal() {
         &environment,
         LogicalSize::new(320_u16.into(), 240_u16.into()),
     );
-    let mut runtime = AppRuntime::<App>::mount(initial_state());
+    let mut runtime = AppRuntime::<App>::mount(initial_state())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     publish(&mut runtime, &context);
     pump_full(&mut runtime);
     let commands_before = runtime
@@ -401,7 +509,8 @@ fn c10_pending_focus_entry_precedes_escape_and_restores_original_trigger() {
     );
     let mut state = initial_state();
     state.p_open = false;
-    let mut runtime = AppRuntime::<App>::mount(state);
+    let mut runtime = AppRuntime::<App>::mount(state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     publish(&mut runtime, &context);
     pump_full(&mut runtime);
     let trigger = authored_node(&mut runtime, "p-trigger");
@@ -464,7 +573,8 @@ fn c9_direct_unbound_cancel_uses_current_topmost_and_no_presentation_fallback() 
     );
     let mut state = initial_state();
     state.q_open = true;
-    let mut runtime = AppRuntime::<App>::mount(state);
+    let mut runtime = AppRuntime::<App>::mount(state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     publish(&mut runtime, &context);
     pump_full(&mut runtime);
     let routing_target = authored_node(&mut runtime, "q-item");
@@ -488,7 +598,8 @@ fn c9_direct_unbound_cancel_uses_current_topmost_and_no_presentation_fallback() 
         q_open: false,
         p_dismissals: 0,
         q_dismissals: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     publish(&mut empty, &context);
     pump_full(&mut empty);
     let target = authored_node(&mut empty, "p-trigger");
@@ -515,7 +626,8 @@ fn c11_causal_finality_survives_trace_disabled_and_zero_budget() {
     let mut runtime = AppRuntime::<App>::mount_with_config(
         initial_state(),
         RuntimeConfig::default().with_trace_config(TraceConfig::new(0)),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     publish(&mut runtime, &context);
     pump_full(&mut runtime);
     let scope = runtime
@@ -589,7 +701,8 @@ fn c12_keyboard_escape_with_no_eligible_origin_does_not_dismiss_later_q() {
         q_open: false,
         p_dismissals: 0,
         q_dismissals: 0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     publish(&mut runtime, &context);
     pump_full(&mut runtime);
 

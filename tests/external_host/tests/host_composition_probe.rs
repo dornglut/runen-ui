@@ -6,7 +6,7 @@
 
 use core::marker::PhantomData;
 
-use runenui_core::{NoHostProtocol, UiApp, View, text};
+use runenui_core::{NoHostProtocol, ProducerBudget, UiApp, View, text};
 use runenui_runtime::{AppRuntime, PumpBudget, RuntimeConfig, RuntimeStatus};
 
 struct PreparedApp<A: UiApp> {
@@ -26,12 +26,32 @@ impl<A: UiApp> PreparedApp<A> {
 
     fn mount(self) -> AppRuntime<A> {
         AppRuntime::<A>::mount_with_config(self.state, self.config)
+            .expect("declared one-text-leaf initial producer fits the default limits")
     }
+}
+
+// Each probe has one text leaf, no subscriptions, and no work starts.
+// Four queue credits and two reconciliation identities bound every callback
+// without inventing a second runtime or an unbounded producer contract.
+const fn probe_budget() -> ProducerBudget {
+    ProducerBudget::new(4, 0).with_reconciliation(2, 2, 2)
 }
 
 struct NumberApp;
 
 impl UiApp for NumberApp {
+    fn initial_producer_budget(_: &Self::State) -> ProducerBudget {
+        probe_budget()
+    }
+
+    fn action_producer_budget(_: &Self::State, _: &Self::Action) -> ProducerBudget {
+        probe_budget()
+    }
+
+    fn interaction_producer_budget(_: &Self::State) -> ProducerBudget {
+        probe_budget()
+    }
+
     type State = i32;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -50,6 +70,18 @@ impl UiApp for NumberApp {
 struct MessageApp;
 
 impl UiApp for MessageApp {
+    fn initial_producer_budget(_: &Self::State) -> ProducerBudget {
+        probe_budget()
+    }
+
+    fn action_producer_budget(_: &Self::State, _: &Self::Action) -> ProducerBudget {
+        probe_budget()
+    }
+
+    fn interaction_producer_budget(_: &Self::State) -> ProducerBudget {
+        probe_budget()
+    }
+
     type State = &'static str;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -164,6 +196,18 @@ enum CounterAction {
 }
 
 impl UiApp for Counter {
+    fn initial_producer_budget(_: &Self::State) -> ProducerBudget {
+        probe_budget()
+    }
+
+    fn action_producer_budget(_: &Self::State, _: &Self::Action) -> ProducerBudget {
+        probe_budget()
+    }
+
+    fn interaction_producer_budget(_: &Self::State) -> ProducerBudget {
+        probe_budget()
+    }
+
     type State = Self;
     type Action = CounterAction;
     type HostProtocol = NoHostProtocol;
@@ -190,7 +234,8 @@ fn ordinary_self_state_ui_model_infers_app_type_without_a_marker() {
         .into_parts();
     assert_eq!(title, Some("Counter"));
 
-    let mut runtime = AppRuntime::<Counter>::mount(model);
+    let mut runtime = AppRuntime::<Counter>::mount(model)
+        .expect("typed self-state UI model admits its declared initial producer");
     assert_eq!(runtime.state().count, 0);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 

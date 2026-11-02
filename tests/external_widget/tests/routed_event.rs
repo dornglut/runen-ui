@@ -13,7 +13,8 @@ use runenui_core::{
     container,
 };
 use runenui_runtime::{
-    AppRuntime, CommandSubmission, PumpBudget, RuntimeConfig, RuntimeLimits, TraceRecordKind,
+    AppRuntime, CommandSubmission, PumpBudget, RuntimeConfig, RuntimeLimits,
+    SubmitCommandErrorKind, TraceRecordKind,
 };
 
 #[derive(Debug)]
@@ -46,6 +47,22 @@ struct EventAncestor {
 }
 
 impl Widget<Action> for EventAncestor {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -70,6 +87,27 @@ struct EventChild {
 }
 
 impl Widget<ChildAction> for EventChild {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(9)
+                .with_work_starts(runenui_core::WorkStartBudget::new(3, 0, 0, 0, 0)),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(2)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(3, 0, 0, 0, 0))
+            }
+            runenui_core::WidgetProducerPhase::Mount => runenui_core::WidgetProducerBudget::new(0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(3, 0, 0, 0, 0)),
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = usize;
 
     fn create_state(&self) -> Self::State {
@@ -92,13 +130,15 @@ impl Widget<ChildAction> for EventChild {
             SemanticCommand::Activate
                 if command.origin().derivation() == CommandDerivation::Direct =>
             {
-                context.emit(ChildAction(String::from("routed-first")));
-                context.emit_command(SemanticCommand::OpenMenu);
-                context.emit(ChildAction(String::from("routed-second")));
-                context.local_task(async { Some(ChildAction(String::from("routed-mapped-work"))) });
+                let _ = context.try_emit(ChildAction(String::from("routed-first")));
+                let _ = context.try_emit_command(SemanticCommand::OpenMenu);
+                let _ = context.try_emit(ChildAction(String::from("routed-second")));
+                let _ = context.try_local_task(async {
+                    Some(ChildAction(String::from("routed-mapped-work")))
+                });
                 context.invalidate(WidgetInvalidation::PAINT | WidgetInvalidation::SEMANTICS);
-                context.invalidate_subscriptions();
-                context.invalidate_subscriptions();
+                let _ = context.try_invalidate_subscriptions();
+                let _ = context.try_invalidate_subscriptions();
                 WidgetEventOutput::none()
             }
             SemanticCommand::OpenMenu => {
@@ -106,12 +146,13 @@ impl Widget<ChildAction> for EventChild {
                 WidgetEventOutput::changed()
             }
             SemanticCommand::OpenContextMenu => {
-                context.emit(ChildAction(format!("action-only:{state}")));
+                let _ = context.try_emit(ChildAction(format!("action-only:{state}")));
                 WidgetEventOutput::none()
             }
             SemanticCommand::CancelOrBack => {
-                context.emit(ChildAction(format!("routed:{state}")));
-                context.local_task(async { Some(ChildAction(String::from("mapped-work"))) });
+                let _ = context.try_emit(ChildAction(format!("routed:{state}")));
+                let _ = context
+                    .try_local_task(async { Some(ChildAction(String::from("mapped-work"))) });
                 WidgetEventOutput::none()
             }
             _ => WidgetEventOutput::none(),
@@ -136,7 +177,8 @@ impl Widget<ChildAction> for EventChild {
         _state: &mut Self::State,
         context: &mut WidgetActivationContext<ChildAction>,
     ) -> WidgetActivationOutput<ChildAction> {
-        context.local_task(async { Some(ChildAction(String::from("default-mapped-work"))) });
+        let _ = context
+            .try_local_task(async { Some(ChildAction(String::from("default-mapped-work"))) });
         WidgetActivationOutput::action(ChildAction(String::from("semantic-default")))
     }
 }
@@ -168,6 +210,31 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(3, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(0, 2, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(75, 60)
+            .with_application_outputs(0)
+            .with_reconciliation(0, 2, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(15, 0, 0, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(15, 0, 0, 0, 0, 0))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -234,7 +301,8 @@ fn downstream_event_mapping_preserves_facts_state_actions_and_work() {
         observations: Rc::clone(&observations),
         subscription_calls: Rc::new(Cell::new(0)),
         actions: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     observations.borrow_mut().clear();
     let root = runtime.index().nodes()[0].id().clone();
@@ -359,7 +427,8 @@ fn downstream_commit_orders_coalesced_reconciliation_interleaved_outputs_and_lat
         observations: Rc::clone(&observations),
         subscription_calls: Rc::clone(&subscription_calls),
         actions: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     let subscription_baseline = subscription_calls.get();
     observations.borrow_mut().clear();
@@ -429,6 +498,22 @@ struct ControlWidget {
 }
 
 impl Widget<ControlAction> for ControlWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -487,6 +572,27 @@ struct ControlState {
 struct ControlApp;
 
 impl UiApp for ControlApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(0, 2, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 1).with_reconciliation(0, 2, 0)
+    }
+
     type State = ControlState;
     type Action = ControlAction;
     type HostProtocol = NoHostProtocol;
@@ -534,6 +640,7 @@ fn control_runtime(
         },
         config,
     )
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"))
 }
 
 fn control_target(runtime: &mut AppRuntime<ControlApp>) -> MountedNodeId {
@@ -621,20 +728,26 @@ fn downstream_route_only_commands_route_once_without_implicit_default_or_output(
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn downstream_conservative_rejection_runs_no_callback_and_commits_no_partial_output() {
-    let limits = RuntimeLimits::default()
-        .with_transaction_outputs(1)
-        .with_local_tasks(0);
+    let limits = RuntimeLimits::default().with_transaction_outputs(0);
     let mut runtime = control_runtime(false, false, RuntimeConfig::default().with_limits(limits));
     settle_control(&mut runtime);
     runtime.state().log.borrow_mut().clear();
-    submit_control(&mut runtime, SemanticCommand::Activate);
+    let target = control_target(&mut runtime);
+    let Err(error) = runtime.submit_command(
+        target,
+        SemanticCommand::Activate,
+        CommandOrigin::controller(),
+    ) else {
+        unreachable!("an output-producing route cannot enter a zero-output runtime")
+    };
+    assert_eq!(error.kind(), SubmitCommandErrorKind::InvalidProducerProfile);
     assert!(runtime.state().log.borrow().is_empty());
     assert_eq!(runtime.state().actions, 0);
     assert!(
         runtime
             .trace()
             .kinds()
-            .any(|kind| matches!(kind, TraceRecordKind::RoutedEventAdmissionRejected { .. }))
+            .all(|kind| !matches!(kind, TraceRecordKind::CommandSubmissionAccepted))
     );
 }
 

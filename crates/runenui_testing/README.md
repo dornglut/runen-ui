@@ -22,6 +22,14 @@ Semantic actions remain surface-scoped: test targets are produced from an exact 
 
 Settling is explicitly bounded. Idle is reported only after a complete zero-progress pump iteration; dormant future timers, redraw/publication debt, and externally pending work do not cause hidden waits, while self-requeue remains capped by caller-supplied budgets.
 
+Harness construction delegates to fallible runtime admission. `TestHarness::mount`
+and `mount_with_config` return `HarnessMountError` on refusal. Its
+`admission_error()` exposes the runtime reason and owned application state/config;
+`into_parts()` also returns the supplied surface configuration for an explicit
+corrected retry. Constructor cleanup does not roll back callbacks that already
+ran. Refusal creates no partially usable harness and adds no `Clone` or `Debug`
+requirement to application state.
+
 Future scene/testing capabilities must continue to arrive through public runtime/publication contracts rather than granting this crate new live authority.
 
 See [workspace structure](../../docs/architecture/workspace-structure.md) and the [M5 semantics/testing charter](../../docs/conformance/m5-semantics-and-testing-charter.md).

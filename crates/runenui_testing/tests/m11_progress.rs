@@ -21,7 +21,37 @@ fn number(value: f64) -> SemanticNumber {
     SemanticNumber::new(value).unwrap_or_else(|_| unreachable!("fixture finite"))
 }
 
+impl ProgressApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 1 mounted owner in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 1;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+    }
+}
+
 impl UiApp for ProgressApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = Model;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -90,7 +120,8 @@ fn progress_is_application_owned_and_indeterminate_has_no_fabricated_numeric_val
     let mut h = TestHarness::<ProgressApp>::mount(Model {
         current: Some(number(25.0)),
         value_text: Some("One quarter".to_owned()),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(h.publish().is_ok());
     assert_eq!(current(&h), Some(number(25.0)));
     let initial_scene = h

@@ -31,6 +31,29 @@ enum TransitionAction {
 struct TransitionApp;
 
 impl UiApp for TransitionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = TransitionState;
     type Action = TransitionAction;
     type HostProtocol = NoHostProtocol;
@@ -121,7 +144,8 @@ fn dispatch(runtime: &mut AppRuntime<TransitionApp>, action: TransitionAction) {
 
 #[test]
 fn interrupted_transition_reverses_from_the_current_same_clock_sample() {
-    let mut runtime = AppRuntime::<TransitionApp>::mount(initial_state());
+    let mut runtime = AppRuntime::<TransitionApp>::mount(initial_state())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &environment);
@@ -153,7 +177,8 @@ fn interrupted_transition_reverses_from_the_current_same_clock_sample() {
 
 #[test]
 fn removing_policy_keeps_an_unchanged_live_transition_until_completion() {
-    let mut runtime = AppRuntime::<TransitionApp>::mount(initial_state());
+    let mut runtime = AppRuntime::<TransitionApp>::mount(initial_state())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &environment);
@@ -185,7 +210,8 @@ fn removing_policy_keeps_an_unchanged_live_transition_until_completion() {
 
 #[test]
 fn explicit_disabled_policy_cancels_the_live_transition_at_the_current_target() {
-    let mut runtime = AppRuntime::<TransitionApp>::mount(initial_state());
+    let mut runtime = AppRuntime::<TransitionApp>::mount(initial_state())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
 
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 1.0);

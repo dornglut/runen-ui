@@ -21,7 +21,8 @@ fn device(value: u64) -> InputDeviceId {
 }
 
 fn translated_point(position: LogicalPoint, modifiers: KeyModifiers) -> TranslatedPointerPoint {
-    let mut runtime = AppRuntime::<DemoApp>::mount(());
+    let mut runtime = AppRuntime::<DemoApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,

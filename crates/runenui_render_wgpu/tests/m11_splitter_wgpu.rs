@@ -34,6 +34,20 @@ impl ResourceProvider for NoResources {
 struct SplitterApp;
 
 impl UiApp for SplitterApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // At most 1 mounted owners; event allowance <= 5 each, six route/focus visits, plus activation/defaults.
+        runenui_core::ProducerBudget::new(34, 32).with_reconciliation(1, 1, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(34, 32).with_reconciliation(1, 1, 1)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(34, 32).with_reconciliation(1, 1, 1)
+    }
+
     type State = SemanticNumber;
     type Action = SemanticNumber;
     type HostProtocol = NoHostProtocol;
@@ -83,7 +97,8 @@ fn standard_splitter_paints_a_thin_generic_grip_inside_wide_hit_extent()
     };
     let mut runtime = AppRuntime::<SplitterApp>::mount(
         SemanticNumber::new(50.0).unwrap_or_else(|_| unreachable!("finite")),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let provider = NoResources;
     let publication = publish(&mut runtime);
     let items = publication.paint_scene().items();

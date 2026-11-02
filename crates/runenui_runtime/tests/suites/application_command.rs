@@ -8,6 +8,10 @@ mod application_flow;
 mod application_work;
 #[path = "../automation_rejection.rs"]
 mod automation_rejection;
+#[path = "../producer_application_outputs.rs"]
+mod producer_application_outputs;
+#[path = "../producer_initial_admission.rs"]
+mod producer_initial_admission;
 #[path = "../public_consumer.rs"]
 mod public_consumer;
 #[path = "../routed_commands.rs"]

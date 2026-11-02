@@ -47,7 +47,11 @@ fn count_background(publication: &SurfacePublication) -> Brush {
 #[test]
 fn count_background_transition_uses_host_provided_monotonic_time() {
     let host_clock = ManualClock::new();
-    let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+    let mut runtime =
+        AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(Counter::new()))
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
     runtime.set_monotonic_clock(host_clock.clone());
     pump_all(&mut runtime);
 
@@ -93,13 +97,17 @@ fn count_background_transition_uses_host_provided_monotonic_time() {
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("Counter transition terminal sample is admitted"));
     assert_eq!(count_background(&terminal), target_background);
-    assert_eq!(runtime.state(), &Counter { count: 1 });
+    assert_eq!(&runtime.state().counter, &Counter { count: 1 });
 }
 
 #[test]
 fn negative_count_transitions_through_zero_without_palette_wrap() {
     let host_clock = ManualClock::new();
-    let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+    let mut runtime =
+        AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(Counter::new()))
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
     runtime.set_monotonic_clock(host_clock.clone());
     pump_all(&mut runtime);
 
@@ -139,7 +147,7 @@ fn negative_count_transitions_through_zero_without_palette_wrap() {
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("negative transition terminal is admitted"));
     assert_eq!(count_background(&terminal), negative);
-    assert_eq!(runtime.state(), &Counter { count: -1 });
+    assert_eq!(&runtime.state().counter, &Counter { count: -1 });
 
     runtime
         .submit_action(CounterAction::Increment)
@@ -158,7 +166,7 @@ fn negative_count_transitions_through_zero_without_palette_wrap() {
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("return-to-zero terminal is admitted"));
     assert_eq!(count_background(&zero), neutral);
-    assert_eq!(runtime.state(), &Counter::new());
+    assert_eq!(&runtime.state().counter, &Counter::new());
 }
 
 #[test]
@@ -166,7 +174,11 @@ fn count_color_clamps_at_palette_limits() {
     let style_environment = ui::style_environment();
     let context = SurfaceBuildContext::tight(&style_environment, surface_size());
     for count in [-9, -10, i32::MIN] {
-        let mut runtime = AppRuntime::<CounterApp>::mount(Counter { count });
+        let mut runtime =
+            AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(Counter { count }))
+                .unwrap_or_else(|error| {
+                    unreachable!("fixture initial admission must succeed: {error}")
+                });
         pump_all(&mut runtime);
         let publication = runtime
             .publish_surface(&context)
@@ -178,7 +190,11 @@ fn count_color_clamps_at_palette_limits() {
         );
     }
     for count in [9, 10, i32::MAX] {
-        let mut runtime = AppRuntime::<CounterApp>::mount(Counter { count });
+        let mut runtime =
+            AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(Counter { count }))
+                .unwrap_or_else(|error| {
+                    unreachable!("fixture initial admission must succeed: {error}")
+                });
         pump_all(&mut runtime);
         let publication = runtime
             .publish_surface(&context)

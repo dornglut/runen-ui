@@ -2,10 +2,13 @@ use core::num::NonZeroUsize;
 
 use runenui_core::UiApp;
 use runenui_runtime::{
-    AppRuntime, FontSourcePolicy, RuntimeConfig, TraceSinkReceiveError, TraceSinkReceiver,
+    AppRuntime, FontSourcePolicy, InitialAdmissionError, RuntimeConfig, TraceSinkReceiveError,
+    TraceSinkReceiver,
 };
 
 const PROOF_TRACE_SINK_CAPACITY: usize = 4096;
+
+type MountedProofRuntime<App> = (AppRuntime<App>, Option<TraceSinkReceiver>);
 
 /// Mounts one application runtime with the ordinary runtime defaults plus a
 /// subordinate canonical JSONL sink when native proof capture is enabled.
@@ -15,20 +18,20 @@ const PROOF_TRACE_SINK_CAPACITY: usize = 4096;
 pub fn mount<App: UiApp>(
     state: App::State,
     enabled: bool,
-) -> (AppRuntime<App>, Option<TraceSinkReceiver>) {
+) -> Result<MountedProofRuntime<App>, InitialAdmissionError<App::State>> {
     let config =
         RuntimeConfig::default().with_text_font_source_policy(FontSourcePolicy::SystemAndBundled);
     if !enabled {
-        return (AppRuntime::<App>::mount_with_config(state, config), None);
+        return Ok((AppRuntime::<App>::mount_with_config(state, config)?, None));
     }
 
     let sink_capacity = NonZeroUsize::new(PROOF_TRACE_SINK_CAPACITY)
         .unwrap_or_else(|| unreachable!("proof trace sink capacity is non-zero"));
     let trace_config = config.trace_config().with_sink_capacity(sink_capacity);
     let mut runtime =
-        AppRuntime::<App>::mount_with_config(state, config.with_trace_config(trace_config));
+        AppRuntime::<App>::mount_with_config(state, config.with_trace_config(trace_config))?;
     let receiver = runtime.take_trace_sink_receiver();
-    (runtime, receiver)
+    Ok((runtime, receiver))
 }
 
 /// Drains every currently available canonical trace record without blocking.
@@ -55,10 +58,12 @@ mod tests {
 
     #[test]
     fn proof_mode_is_the_only_path_that_exposes_a_trace_sink() {
-        let (_runtime, ordinary_receiver) = mount::<DemoApp>(DemoState::default(), false);
+        let (_runtime, ordinary_receiver) = mount::<DemoApp>(DemoState::default(), false)
+            .unwrap_or_else(|_| unreachable!("demo runtime admission is valid"));
         assert!(ordinary_receiver.is_none());
 
-        let (_runtime, proof_receiver) = mount::<DemoApp>(DemoState::default(), true);
+        let (_runtime, proof_receiver) = mount::<DemoApp>(DemoState::default(), true)
+            .unwrap_or_else(|_| unreachable!("demo runtime admission is valid"));
         assert!(proof_receiver.is_some());
     }
 }

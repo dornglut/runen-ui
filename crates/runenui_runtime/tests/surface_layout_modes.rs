@@ -82,6 +82,22 @@ struct FixedMeasured {
 }
 
 impl Widget<()> for FixedMeasured {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -105,6 +121,28 @@ fn fixed(width: f32, height: f32) -> Element<()> {
 struct FlexAlignmentApp;
 
 impl UiApp for FlexAlignmentApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 3 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(3, 3, 3)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -134,7 +172,8 @@ impl UiApp for FlexAlignmentApp {
 
 #[test]
 fn flex_direction_gap_and_alignment_follow_authored_order() {
-    let mut runtime = AppRuntime::<FlexAlignmentApp>::mount(());
+    let mut runtime = AppRuntime::<FlexAlignmentApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let publication = publish(&mut runtime, 100.0, 60.0);
     let first = frame_node(publication.frame(), "flex.first").bounds();
     let second = frame_node(publication.frame(), "flex.second").bounds();
@@ -147,6 +186,28 @@ fn flex_direction_gap_and_alignment_follow_authored_order() {
 struct FlexSizingApp;
 
 impl UiApp for FlexSizingApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 3 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(3, 3, 3)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -182,7 +243,8 @@ impl UiApp for FlexSizingApp {
 
 #[test]
 fn flex_basis_and_growth_change_final_geometry() {
-    let mut runtime = AppRuntime::<FlexSizingApp>::mount(());
+    let mut runtime = AppRuntime::<FlexSizingApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let publication = publish(&mut runtime, 100.0, 30.0);
     let a = frame_node(publication.frame(), "flex.grow-a").bounds();
     let b = frame_node(publication.frame(), "flex.grow-b").bounds();
@@ -194,6 +256,28 @@ fn flex_basis_and_growth_change_final_geometry() {
 struct FlexWrapApp;
 
 impl UiApp for FlexWrapApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 4 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(4, 4, 4)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -221,7 +305,8 @@ impl UiApp for FlexWrapApp {
 
 #[test]
 fn flex_wrap_places_later_authored_items_on_a_new_line() {
-    let mut runtime = AppRuntime::<FlexWrapApp>::mount(());
+    let mut runtime = AppRuntime::<FlexWrapApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let publication = publish(&mut runtime, 60.0, 60.0);
     let a = frame_node(publication.frame(), "flex.wrap-a").bounds();
     let c = frame_node(publication.frame(), "flex.wrap-c").bounds();
@@ -235,6 +320,28 @@ fn grid_line(line: u16) -> GridLine {
 struct GridApp;
 
 impl UiApp for GridApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 4 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(4, 4, 4)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -283,7 +390,8 @@ impl UiApp for GridApp {
 
 #[test]
 fn grid_tracks_placement_spans_and_intrinsic_contribution_are_published() {
-    let mut runtime = AppRuntime::<GridApp>::mount(());
+    let mut runtime = AppRuntime::<GridApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     register_controlled_text(&mut runtime);
     let publication = publish(&mut runtime, 100.0, 60.0);
     let auto = frame_node(publication.frame(), "grid.auto").bounds();
@@ -298,6 +406,28 @@ fn grid_tracks_placement_spans_and_intrinsic_contribution_are_published() {
 struct GridColumnFlowApp;
 
 impl UiApp for GridColumnFlowApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 4 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(4, 4, 4)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -333,7 +463,8 @@ impl UiApp for GridColumnFlowApp {
 
 #[test]
 fn grid_column_auto_flow_creates_an_implicit_column() {
-    let mut runtime = AppRuntime::<GridColumnFlowApp>::mount(());
+    let mut runtime = AppRuntime::<GridColumnFlowApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let publication = publish(&mut runtime, 70.0, 40.0);
     let a = frame_node(publication.frame(), "grid.column-a").bounds();
     let b = frame_node(publication.frame(), "grid.column-b").bounds();
@@ -345,6 +476,28 @@ fn grid_column_auto_flow_creates_an_implicit_column() {
 struct PositionedApp;
 
 impl UiApp for PositionedApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 2 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(2, 2, 2)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -376,7 +529,8 @@ impl UiApp for PositionedApp {
 
 #[test]
 fn absolute_positioning_uses_authored_containing_block_offsets() {
-    let mut runtime = AppRuntime::<PositionedApp>::mount(());
+    let mut runtime = AppRuntime::<PositionedApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let publication = publish(&mut runtime, 100.0, 80.0);
     let bounds = frame_node(publication.frame(), "absolute.child").bounds();
     assert!((bounds.x() - 11.0).abs() <= f32::EPSILON);
@@ -386,6 +540,28 @@ fn absolute_positioning_uses_authored_containing_block_offsets() {
 struct MarginApp;
 
 impl UiApp for MarginApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 2 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(2, 2, 2)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -413,7 +589,8 @@ impl UiApp for MarginApp {
 
 #[test]
 fn block_margin_contributes_to_positioned_box_geometry() {
-    let mut runtime = AppRuntime::<MarginApp>::mount(());
+    let mut runtime = AppRuntime::<MarginApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let publication = publish(&mut runtime, 100.0, 40.0);
     let bounds = frame_node(publication.frame(), "margin.child").bounds();
     assert!((bounds.x() - 7.0).abs() <= f32::EPSILON);
@@ -423,6 +600,28 @@ fn block_margin_contributes_to_positioned_box_geometry() {
 struct OverlayApp;
 
 impl UiApp for OverlayApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 3 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(3, 3, 3)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -449,7 +648,8 @@ impl UiApp for OverlayApp {
 
 #[test]
 fn overlay_children_share_one_cell_and_keep_alignment_geometry() {
-    let mut runtime = AppRuntime::<OverlayApp>::mount(());
+    let mut runtime = AppRuntime::<OverlayApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let publication = publish(&mut runtime, 100.0, 80.0);
     let small = frame_node(publication.frame(), "overlay.small").bounds();
     let large = frame_node(publication.frame(), "overlay.large").bounds();
@@ -464,6 +664,28 @@ fn overlay_children_share_one_cell_and_keep_alignment_geometry() {
 struct OverflowApp;
 
 impl UiApp for OverflowApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 2 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(2, 2, 2)
+    }
+
     type State = OverflowPolicy;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -503,7 +725,8 @@ fn logical_overflow_reports_box_content_and_scroll_extents_for_each_policy() {
         OverflowPolicy::Clip,
         OverflowPolicy::Scroll,
     ] {
-        let mut runtime = AppRuntime::<OverflowApp>::mount(policy);
+        let mut runtime = AppRuntime::<OverflowApp>::mount(policy)
+            .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
         let publication = publish(&mut runtime, 40.0, 20.0);
         let root = layout_node(publication.layout_report(), "overflow.root");
         assert_eq!(root.layout_extent(), size(40.0, 20.0));

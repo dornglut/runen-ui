@@ -206,6 +206,10 @@ pub(in crate::runtime) struct StagedSurfacePublication<'a> {
 }
 
 impl StagedSurfacePublication<'_> {
+    pub(in crate::runtime) const fn semantic_publication(&self) -> &SemanticPublication {
+        &self.semantic_publication
+    }
+
     pub(in crate::runtime) const fn motion_activity(&self) -> SurfaceMotionActivity {
         self.planned.motion_activity()
     }

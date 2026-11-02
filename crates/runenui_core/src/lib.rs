@@ -221,6 +221,10 @@
 
 #![forbid(unsafe_code)]
 
+mod producer_violation;
+pub use producer_violation::{
+    BudgetComponent, EmitError, ProducerContractViolation, ProducerPhase, ProducerViolationKind,
+};
 mod application;
 mod application_command;
 mod builtins;
@@ -287,7 +291,9 @@ include!("identity_macros.rs");
 include!("token_macros.rs");
 
 pub use application::{
-    HostProtocol, NoHostCommand, NoHostProtocol, NoHostResponse, NoHostResponseKind, UiApp,
+    HostProtocol, NoHostCommand, NoHostProtocol, NoHostResponse, NoHostResponseKind,
+    ProducerBudget, UiApp, WidgetProducerBudget, WidgetProducerPhase, WorkResidencyBudget,
+    WorkStartBudget,
 };
 pub use application_command::{ApplicationCommand, ApplicationCommandDisposition};
 pub use builtins::{

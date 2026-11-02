@@ -15,6 +15,9 @@ use runenui_runtime::{
 
 const FULL: PumpBudget = PumpBudget::new(64, 64, 64, 64);
 const ONE: PumpBudget = PumpBudget::new(1, 0, 0, 0);
+// Worst-case focus preflight for the scrollbar fixture: 25 routed/default
+// callback outputs across its mounted event route and focus notifications.
+const FOCUS_COMMAND_OUTPUTS: usize = 25;
 #[derive(Clone, Copy, Debug)]
 enum Control {
     Slider,
@@ -33,6 +36,40 @@ enum Action {
 }
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let mounted_nodes = match state.control {
+            Control::Slider | Control::Splitter => 1,
+            Control::ScrollBar => 5,
+        };
+        runenui_core::ProducerBudget::new(mounted_nodes, 0)
+            .with_reconciliation(mounted_nodes, 0, mounted_nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let mounted_nodes = match state.control {
+            Control::Slider | Control::Splitter => 1,
+            Control::ScrollBar => 5,
+        };
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(mounted_nodes, 0, mounted_nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let mounted_nodes = match state.control {
+            Control::Slider | Control::Splitter => 1,
+            Control::ScrollBar => 5,
+        };
+        runenui_core::ProducerBudget::new(FOCUS_COMMAND_OUTPUTS, FOCUS_COMMAND_OUTPUTS)
+            .with_reconciliation(mounted_nodes, 0, mounted_nodes)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -106,7 +143,10 @@ fn runtime(control: Control, trace_capacity: usize) -> AppRuntime<App> {
             updates: 0,
         },
         RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
-    );
+    )
+    .unwrap_or_else(|error| {
+        unreachable!("fixture initial {control:?} admission must succeed: {error}")
+    });
     runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
     let environment = StyleEnvironment::default();
     runtime
@@ -123,7 +163,7 @@ fn runtime(control: Control, trace_capacity: usize) -> AppRuntime<App> {
             SemanticCommand::RequestFocus,
             CommandOrigin::programmatic(),
         )
-        .unwrap_or_else(|_| unreachable!());
+        .unwrap_or_else(|error| unreachable!("control focus admission: {:?}", error.kind()));
     runtime.pump(FULL).unwrap_or_else(|_| unreachable!());
     assert_eq!(runtime.focus().focused_node(), Some(&control));
     runtime

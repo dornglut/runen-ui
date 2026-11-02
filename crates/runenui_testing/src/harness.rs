@@ -6,15 +6,15 @@ use runenui_runtime::{
     AppRuntime, AutomationSubmission, CommandSubmission, CommittedTextEvent, CompositionGeneration,
     CompositionRange, CompositionStartSubmission, CompositionSubmission, FocusState,
     FontFamilyName, FontRegistrationError, GenericFamilyMappingError, GenericFontFamily,
-    HostRequestRef, InputDeviceId, KeyboardEvent, KeyboardSubmission, LogicalPoint, ManualClock,
-    MonotonicInstant, MonotonicTimeError, MountedNodeId, PointerDeviceKind, PointerEvent,
-    PointerId, PointerPhase, PointerSubmission, PublishSurfaceError, PumpBudget, PumpReport,
-    ReconciliationReport, RuntimeConfig, SemanticPublication, SemanticRevision, SemanticSnapshot,
-    SemanticUpdateResult, SubmitAutomationError, SubmitCommandError, SubmitCompositionError,
-    SubmitCompositionStartError, SubmitKeyboardError, SubmitPointerError,
-    SubmitSemanticActionError, SubmitSurfaceCommandError, SubmitTextError, SurfaceBuildContext,
-    SurfaceInputContext, SurfacePublication, TextSubmission, TimerFiringOutcome, TimerStartOutcome,
-    Trace, TraceReplay, TraceReplayError,
+    HostRequestRef, InitialAdmissionError, InputDeviceId, KeyboardEvent, KeyboardSubmission,
+    LogicalPoint, ManualClock, MonotonicInstant, MonotonicTimeError, MountedNodeId,
+    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, PointerSubmission,
+    PublishSurfaceError, PumpBudget, PumpReport, ReconciliationReport, RuntimeConfig,
+    SemanticPublication, SemanticRevision, SemanticSnapshot, SemanticUpdateResult,
+    SubmitAutomationError, SubmitCommandError, SubmitCompositionError, SubmitCompositionStartError,
+    SubmitKeyboardError, SubmitPointerError, SubmitSemanticActionError, SubmitSurfaceCommandError,
+    SubmitTextError, SurfaceBuildContext, SurfaceInputContext, SurfacePublication, TextSubmission,
+    TimerFiringOutcome, TimerStartOutcome, Trace, TraceReplay, TraceReplayError,
 };
 
 use crate::{
@@ -85,6 +85,49 @@ impl fmt::Display for HarnessSurfaceCommandError {
 
 impl Error for HarnessSurfaceCommandError {}
 
+/// Initial runtime admission refusal with the unconsumed harness configuration.
+pub struct HarnessMountError<State> {
+    refusal: Box<(InitialAdmissionError<State>, TestSurfaceConfig)>,
+}
+
+impl<State> HarnessMountError<State> {
+    /// Returns the ordinary runtime refusal, including the unchanged app state.
+    #[must_use]
+    pub const fn admission_error(&self) -> &InitialAdmissionError<State> {
+        &self.refusal.0
+    }
+
+    /// Returns the exact surface configuration supplied for this attempt.
+    #[must_use]
+    pub const fn surface_config(&self) -> &TestSurfaceConfig {
+        &self.refusal.1
+    }
+
+    /// Recovers the runtime refusal and surface configuration for a retry.
+    #[must_use]
+    pub fn into_parts(self) -> (InitialAdmissionError<State>, TestSurfaceConfig) {
+        *self.refusal
+    }
+}
+
+impl<State> fmt::Debug for HarnessMountError<State> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HarnessMountError")
+            .field("admission", &self.refusal.0)
+            .field("surface", &self.refusal.1)
+            .finish()
+    }
+}
+
+impl<State> fmt::Display for HarnessMountError<State> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.refusal.0.fmt(formatter)
+    }
+}
+
+impl<State> Error for HarnessMountError<State> {}
+
 /// Public-only deterministic headless harness over one ordinary `AppRuntime`.
 ///
 /// The harness does not maintain a parallel expected state. It delegates all
@@ -99,8 +142,11 @@ pub struct TestHarness<App: UiApp> {
 
 impl<App: UiApp> TestHarness<App> {
     /// Mounts an application using deterministic runtime and surface defaults.
-    #[must_use]
-    pub fn mount(state: App::State) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns the runtime admission refusal and default surface configuration.
+    pub fn mount(state: App::State) -> Result<Self, HarnessMountError<App::State>> {
         Self::mount_with_config(
             state,
             RuntimeConfig::default(),
@@ -109,21 +155,31 @@ impl<App: UiApp> TestHarness<App> {
     }
 
     /// Mounts with explicit runtime limits and deterministic fixed-surface configuration.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns the runtime admission refusal and the supplied surface configuration.
     pub fn mount_with_config(
         state: App::State,
         runtime_config: RuntimeConfig,
         surface: TestSurfaceConfig,
-    ) -> Self {
+    ) -> Result<Self, HarnessMountError<App::State>> {
         let clock = ManualClock::new();
-        let mut runtime = AppRuntime::<App>::mount_with_config(state, runtime_config);
+        let mut runtime = match AppRuntime::<App>::mount_with_config(state, runtime_config) {
+            Ok(runtime) => runtime,
+            Err(admission) => {
+                return Err(HarnessMountError {
+                    refusal: Box::new((admission, surface)),
+                });
+            }
+        };
         runtime.set_monotonic_clock(clock.clone());
-        Self {
+        Ok(Self {
             runtime,
             clock,
             surface,
             publication: None,
-        }
+        })
     }
 
     /// Returns application state owned by the ordinary runtime.

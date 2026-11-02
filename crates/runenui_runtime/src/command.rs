@@ -86,6 +86,8 @@ impl fmt::Debug for UnacceptedCommand {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SubmitCommandErrorKind {
     Full,
+    WorkCapacity(crate::WorkCapacityFamily),
+    InvalidProducerProfile,
     Closed,
     Terminal(RuntimeTerminalReason),
     ForeignTarget,
@@ -139,6 +141,15 @@ impl fmt::Display for SubmitCommandError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind {
             SubmitCommandErrorKind::Full => formatter.write_str("runtime work queue is full"),
+            SubmitCommandErrorKind::WorkCapacity(family) => {
+                write!(
+                    formatter,
+                    "runtime {family:?} capacity is reserved or occupied"
+                )
+            }
+            SubmitCommandErrorKind::InvalidProducerProfile => {
+                formatter.write_str("interaction producer profile is invalid")
+            }
             SubmitCommandErrorKind::Closed => formatter.write_str("runtime is closed"),
             SubmitCommandErrorKind::Terminal(reason) => {
                 write!(formatter, "runtime is terminal: {reason}")

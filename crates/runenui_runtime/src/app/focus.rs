@@ -41,6 +41,19 @@ mod tests {
     }
 
     impl Widget<()> for TextProbe {
+        fn producer_budget(
+            &self,
+            phase: runenui_core::WidgetProducerPhase,
+            _state: &Self::State,
+        ) -> runenui_core::WidgetProducerBudget {
+            match phase {
+                runenui_core::WidgetProducerPhase::Subscriptions => {
+                    runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+                }
+                _ => runenui_core::WidgetProducerBudget::new(0),
+            }
+        }
+
         type State = ();
 
         fn create_state(&self) -> Self::State {}
@@ -57,6 +70,29 @@ mod tests {
     struct App;
 
     impl UiApp for App {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_reconciliation(1, 0, 1)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(3, 1)
+                .with_reconciliation(1, 1, 1)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
         type State = WidgetTextInput;
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -81,7 +117,8 @@ mod tests {
     }
 
     fn project_after_focus(capability: WidgetTextInput) -> WidgetTextInput {
-        let mut runtime = AppRuntime::<App>::mount(capability);
+        let mut runtime = AppRuntime::<App>::mount(capability)
+            .unwrap_or_else(|_| unreachable!("text probe initial admission is feasible"));
         let _ = runtime
             .pump(full_pump())
             .unwrap_or_else(|_| unreachable!("pump observation"))

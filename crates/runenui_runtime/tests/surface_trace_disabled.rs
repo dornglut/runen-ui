@@ -10,6 +10,31 @@ use runenui_runtime::{
 struct TraceDisabledApp;
 
 impl UiApp for TraceDisabledApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One button owner, without initial outputs or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Button event/activation output and its pure application turn.
+        runenui_core::ProducerBudget::new(5, 5)
+            .with_application_outputs(0)
+            .with_reconciliation(1, 1, 1)
+    }
+
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -43,7 +68,8 @@ fn pump_all(runtime: &mut AppRuntime<TraceDisabledApp>) {
 #[allow(clippy::assert_is_empty)]
 fn disabled_trace_preserves_checked_surface_command_behavior() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(0));
-    let mut runtime = AppRuntime::<TraceDisabledApp>::mount_with_config(0, config);
+    let mut runtime = AppRuntime::<TraceDisabledApp>::mount_with_config(0, config)
+        .unwrap_or_else(|_| unreachable!("trace-disabled fixture admission is valid"));
     pump_all(&mut runtime);
 
     let style_environment = StyleEnvironment::default();

@@ -11,6 +11,72 @@ use runenui_core::{
     SurfaceId, SurfaceInputContext, TextPosition,
 };
 
+pub(crate) fn button_transition_is_valid(
+    phase: runenui_core::PointerPhase,
+    changed_button: Option<runenui_core::PointerButton>,
+    buttons: &PointerButtons,
+    previous_buttons: Option<&PointerButtons>,
+) -> bool {
+    use runenui_core::PointerPhase;
+    match phase {
+        PointerPhase::Down => {
+            let Some(changed) = changed_button else {
+                return false;
+            };
+            if !buttons.contains(changed) {
+                return false;
+            }
+            let Some(previous) = previous_buttons else {
+                return true;
+            };
+            if previous.contains(changed) {
+                return false;
+            }
+            buttons == &PointerButtons::new(previous.iter().chain(core::iter::once(changed)))
+        }
+        PointerPhase::Up => {
+            let Some(previous) = previous_buttons else {
+                return false;
+            };
+            let Some(changed) = changed_button else {
+                return false;
+            };
+            previous.contains(changed)
+                && !buttons.contains(changed)
+                && buttons
+                    == &PointerButtons::new(previous.iter().filter(|button| *button != changed))
+        }
+        PointerPhase::Move | PointerPhase::Wheel => {
+            changed_button.is_none() && previous_buttons.is_none_or(|previous| previous == buttons)
+        }
+        PointerPhase::Cancel => true,
+        _ => false,
+    }
+}
+
+pub(crate) fn touch_transition_is_supported(
+    event: &runenui_core::PointerEvent,
+    existing: bool,
+) -> bool {
+    use runenui_core::PointerPhase;
+    let primary = runenui_core::PointerButton::Primary;
+    match event.phase() {
+        PointerPhase::Down => {
+            !existing
+                && event.changed_button() == Some(primary)
+                && event.buttons().iter().eq([primary])
+        }
+        PointerPhase::Move => {
+            existing && event.changed_button().is_none() && event.buttons().iter().eq([primary])
+        }
+        PointerPhase::Up => {
+            existing && event.changed_button() == Some(primary) && event.buttons().is_empty()
+        }
+        PointerPhase::Cancel => existing,
+        _ => false,
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::runtime) struct PointerTextSelectionGesture {
     owner: MountedNodeId,

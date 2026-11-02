@@ -410,8 +410,36 @@ pub(crate) fn pump_recorded<App: UiApp>(
             observed.observe(runtime, None);
             return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
         };
+        if runtime.queue.is_closed() {
+            // Pop detected an invalid root ledger after removing the front
+            // envelope. Do not invoke any mutable application or input callback.
+            // The popped input/command's mandatory trace reservation is no
+            // longer in the queue for terminal cancellation to discover.
+            let reservation = match &envelope {
+                WorkEnvelope::SemanticCommand(work) => Some(work.trace_reservation),
+                WorkEnvelope::ApplicationCommand(work) => Some(work.trace_reservation),
+                WorkEnvelope::Pointer(work) => Some(work.trace_reservation),
+                WorkEnvelope::Input(work) => Some(work.trace_reservation),
+                _ => None,
+            };
+            if let Some(reservation) = reservation {
+                runtime.trace.release_reservation(reservation);
+            }
+            let cancelled = runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 1);
+            observed.observe(runtime, None);
+            return Ok(observed.finish(runtime, budget, processed, cancelled, totals, false));
+        }
         let sequence = envelope.sequence();
-        let (result, settled) = match envelope {
+        let root_quota = envelope.root_quota();
+        let application_action = matches!(&envelope, WorkEnvelope::ApplicationAction(_));
+        let pointer_source = match &envelope {
+            WorkEnvelope::Pointer(work) => match &work.payload {
+                crate::queue::PointerEnvelopePayload::Event(event) => Some(event.pointer_id()),
+                crate::queue::PointerEnvelopePayload::StationaryRehit(_) => None,
+            },
+            _ => None,
+        };
+        let (mut result, settled) = match envelope {
             WorkEnvelope::ApplicationAction(envelope) => {
                 (process_application_action::<App>(runtime, envelope), None)
             }
@@ -504,18 +532,56 @@ pub(crate) fn pump_recorded<App: UiApp>(
                 None,
             ),
             WorkEnvelope::TimerFiring(work) => {
-                runtime.process_timer_firing(work.sequence, work.generation);
+                runtime.process_timer_firing(work.sequence, work.generation, work.root_quota);
                 (ProcessApplicationActionOutcome::Completed, None)
             }
             WorkEnvelope::MountedSubscriptionReconcile {
                 sequence,
                 owner,
                 causal_parent,
+                root_quota,
             } => {
-                runtime.process_mounted_subscription_reconcile(sequence, &owner, causal_parent);
+                runtime.process_mounted_subscription_reconcile(
+                    sequence,
+                    &owner,
+                    causal_parent,
+                    root_quota,
+                );
                 (ProcessApplicationActionOutcome::Completed, None)
             }
         };
+        if matches!(runtime.status(), RuntimeStatus::Running)
+            && settled
+                .as_ref()
+                .is_some_and(|input| matches!(input.finality, crate::UiInputFinality::Committed(_)))
+            && let (Some(pointer), Some(root)) = (pointer_source, root_quota)
+            && runtime
+                .bind_reached_pointer_continuations(root, sequence, pointer)
+                .is_err()
+        {
+            runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+        }
+        if matches!(runtime.status(), RuntimeStatus::Running)
+            && let Some(root) = root_quota
+            && runtime
+                .bind_reached_space_continuation(root, sequence)
+                .is_err()
+        {
+            runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+        }
+        runtime.retire_input_continuation_claims();
+        if !application_action
+            && matches!(runtime.status(), RuntimeStatus::Running)
+            && let Some(root_quota) = root_quota
+            && runtime.queue.finish_root_envelope(root_quota).is_err()
+        {
+            let reason = RuntimeTerminalReason::Poisoned;
+            let terminal_cancelled = runtime.enter_terminal(reason, 0);
+            result = ProcessApplicationActionOutcome::Terminal {
+                reason,
+                cancelled: terminal_cancelled,
+            };
+        }
         processed += 1;
         observed.processed_through = Some(sequence);
         observed.observe(runtime, settled);
@@ -632,11 +698,33 @@ mod tests {
     use runenui_core::{Element, NoHostProtocol, UiApp, View, text};
 
     use super::{PumpBudget, pump_recorded};
-    use crate::{RuntimeConfig, TraceActionCategory, runtime::Runtime};
+    use crate::{
+        RuntimeConfig, RuntimeStatus, RuntimeTerminalReason, TraceActionCategory, runtime::Runtime,
+    };
 
     struct App;
 
     impl UiApp for App {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_reconciliation(1, 0, 1)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+        }
+
         type State = usize;
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -652,7 +740,27 @@ mod tests {
 
     #[test]
     fn processed_fence_and_shutdown_retirement_are_exact_and_nonrepeating() {
-        let mut runtime = Runtime::mount(0, App::root, RuntimeConfig::default());
+        let mut runtime = Runtime::mount(
+            0,
+            App::root,
+            RuntimeConfig::default(),
+            App::initial_producer_budget(&0),
+            |_, _| {
+                Ok(crate::runtime::PreparedInitialApplicationWork {
+                    application: crate::transaction::TransactionLedger::from_outputs(Vec::new(), 0)
+                        .unwrap_or_else(|_| unreachable!("empty initial ledger fits")),
+                    subscriptions: Vec::new(),
+                })
+            },
+        )
+        .unwrap_or_else(|_| unreachable!("internal test mount inputs are valid"));
+        runtime.initialize_application_work();
+        let mounted = super::pump_recorded::<App>(
+            &mut runtime,
+            PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
+        )
+        .unwrap_or_else(|_| unreachable!("initial mounted work settles before the action fence"));
+        assert!(mounted.report().is_quiescent());
         let receipt = runtime
             .submit_action((), TraceActionCategory::DirectSubmission, None, None)
             .unwrap_or_else(|_| unreachable!("bounded action ingress succeeds"));
@@ -676,8 +784,152 @@ mod tests {
     }
 
     #[test]
+    fn invalid_root_pop_closes_before_application_mutation_or_false_processing_receipt() {
+        let mut runtime = Runtime::mount(
+            0,
+            App::root,
+            RuntimeConfig::default(),
+            App::initial_producer_budget(&0),
+            |_, _| {
+                Ok(crate::runtime::PreparedInitialApplicationWork {
+                    application: crate::transaction::TransactionLedger::from_outputs(Vec::new(), 0)
+                        .unwrap_or_else(|_| unreachable!("empty initial ledger fits")),
+                    subscriptions: Vec::new(),
+                })
+            },
+        )
+        .unwrap_or_else(|_| unreachable!("internal test mount inputs are valid"));
+        runtime.initialize_application_work();
+        let mounted = pump_recorded::<App>(
+            &mut runtime,
+            PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
+        )
+        .unwrap_or_else(|_| unreachable!("initial work settles"));
+        assert!(mounted.report().is_quiescent());
+        runtime
+            .submit_action((), TraceActionCategory::DirectSubmission, None, None)
+            .unwrap_or_else(|_| unreachable!("qualified action admission"));
+        runtime.queue.invalidate_front_root_pending_for_test();
+
+        let batch = pump_recorded::<App>(&mut runtime, PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("terminal observation is retained"));
+        assert_eq!(
+            *runtime.state(),
+            0,
+            "invalid pop must not invoke UiApp::update"
+        );
+        assert_eq!(
+            runtime.status(),
+            RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+        );
+        assert_eq!(batch.report().processed_envelopes(), 0);
+        assert_eq!(batch.report().cancelled_by_terminal_transition(), 1);
+        assert_eq!(batch.processed_through(), None);
+    }
+
+    #[test]
+    fn invalid_root_command_pop_releases_trace_reservation_without_false_input_finality() {
+        for trace_capacity in [0, 512] {
+            let mut runtime = Runtime::mount(
+                0,
+                App::root,
+                RuntimeConfig::default().with_trace_config(crate::TraceConfig::new(trace_capacity)),
+                App::initial_producer_budget(&0),
+                |_, _| {
+                    Ok(crate::runtime::PreparedInitialApplicationWork {
+                        application: crate::transaction::TransactionLedger::from_outputs(
+                            Vec::new(),
+                            0,
+                        )
+                        .unwrap_or_else(|_| unreachable!("empty initial ledger fits")),
+                        subscriptions: Vec::new(),
+                    })
+                },
+            )
+            .unwrap_or_else(|_| unreachable!("internal test mount inputs are valid"));
+            runtime.interaction_producer_budget = Some(|_| {
+                runenui_core::ProducerBudget::new(16, 8)
+                    .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+                    .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 4))
+            });
+            runtime.initialize_application_work();
+            let mounted = pump_recorded::<App>(
+                &mut runtime,
+                PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
+            )
+            .unwrap_or_else(|_| unreachable!("initial work settles"));
+            assert!(mounted.report().is_quiescent());
+
+            let target = runtime
+                .tree
+                .root_id()
+                .unwrap_or_else(|| unreachable!("mounted root exists"))
+                .clone();
+            let prior_reservations = runtime.trace.reserved_records_for_test();
+            runtime
+                .submit_command(
+                    target,
+                    runenui_core::SemanticCommand::OpenMenu,
+                    runenui_core::CommandOrigin::programmatic(),
+                )
+                .unwrap_or_else(|error| unreachable!("command admission succeeds: {error:?}"));
+            assert_eq!(
+                runtime.trace.reserved_records_for_test(),
+                prior_reservations + usize::from(trace_capacity != 0),
+                "the queued command owns one additional active trace outcome when enabled"
+            );
+            runtime.queue.invalidate_front_root_pending_for_test();
+
+            let batch = pump_recorded::<App>(&mut runtime, PumpBudget::new(1, 0, 0, 0))
+                .unwrap_or_else(|_| unreachable!("terminal observation is retained"));
+            assert_eq!(*runtime.state(), 0, "invalid pop must not invoke update");
+            assert_eq!(
+                runtime.status(),
+                RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+            );
+            assert_eq!(batch.report().processed_envelopes(), 0);
+            assert_eq!(batch.report().cancelled_by_terminal_transition(), 1);
+            assert_eq!(batch.processed_through(), None);
+            assert!(
+                !batch.ordered_records().iter().any(|record| {
+                    matches!(record, crate::InputArbitrationRecord::InputSettled(_))
+                }),
+                "discarded command cannot fabricate an M13 input settlement"
+            );
+            assert_eq!(
+                runtime.trace.reserved_records_for_test(),
+                prior_reservations,
+                "the popped command releases only its own trace credit"
+            );
+
+            let again = pump_recorded::<App>(&mut runtime, PumpBudget::new(0, 0, 0, 0))
+                .unwrap_or_else(|_| unreachable!("terminal observation is repeatable"));
+            assert_eq!(again.report().cancelled_by_terminal_transition(), 0);
+            assert_eq!(
+                runtime.trace.reserved_records_for_test(),
+                prior_reservations,
+                "repeating observation cannot release an unrelated trace reservation"
+            );
+        }
+    }
+
+    #[test]
     fn one_checkpoint_authority_runs_before_and_at_the_final_boundary() {
-        let mut runtime = Runtime::mount(0, App::root, RuntimeConfig::default());
+        let mut runtime = Runtime::mount(
+            0,
+            App::root,
+            RuntimeConfig::default(),
+            App::initial_producer_budget(&0),
+            |_, _| {
+                Ok(crate::runtime::PreparedInitialApplicationWork {
+                    application: crate::transaction::TransactionLedger::from_outputs(Vec::new(), 0)
+                        .unwrap_or_else(|_| unreachable!("empty initial ledger fits")),
+                    subscriptions: Vec::new(),
+                })
+            },
+        )
+        .unwrap_or_else(|_| unreachable!("internal test mount inputs are valid"));
+        runtime.initialize_application_work();
         runtime
             .submit_action((), TraceActionCategory::DirectSubmission, None, None)
             .unwrap_or_else(|_| unreachable!());

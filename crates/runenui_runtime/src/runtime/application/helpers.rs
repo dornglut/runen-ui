@@ -27,7 +27,7 @@ pub(in crate::runtime) fn required_application_transaction_trace_records_from_pa
     let outputs = application_outputs.iter().chain(mounted_outputs);
     let action_count = outputs
         .clone()
-        .filter(|output| matches!(output, PlannedOutput::Action(_)))
+        .filter(|output| matches!(output, PlannedOutput::Action { .. }))
         .count();
     let redraw_count = outputs
         .filter(|output| matches!(output, PlannedOutput::Redraw))

@@ -214,6 +214,23 @@ impl<Action> fmt::Debug for MenuContainerWidget<Action> {
 }
 
 impl<Action> Widget<Action> for MenuContainerWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(3),
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -229,7 +246,7 @@ impl<Action> Widget<Action> for MenuContainerWidget<Action> {
             && let SemanticCommand::PresentationDismiss(reason) = command.command()
             && let Some(callback) = self.on_dismiss.as_mut()
         {
-            context.emit(callback(reason));
+            let _ = context.try_emit(callback(reason));
             return WidgetEventOutput::none();
         }
 
@@ -243,7 +260,7 @@ impl<Action> Widget<Action> for MenuContainerWidget<Action> {
         {
             context.prevent_default();
             context.stop_propagation();
-            context.emit(callback());
+            let _ = context.try_emit(callback());
             return WidgetEventOutput::none();
         }
         let delegated = if let Some(command) = event.as_semantic_command() {
@@ -281,7 +298,7 @@ impl<Action> Widget<Action> for MenuContainerWidget<Action> {
             }
             context.prevent_default();
             context.stop_propagation();
-            context.emit_command(delegated);
+            let _ = context.try_emit_command(delegated);
         }
         WidgetEventOutput::none()
     }
@@ -579,6 +596,24 @@ impl<Action> fmt::Debug for MenuItemWidget<Action> {
 }
 
 impl<Action> Widget<Action> for MenuItemWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event | crate::WidgetProducerPhase::Activation => {
+                crate::WidgetProducerBudget::new(1)
+            }
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = MenuItemState;
 
     fn create_state(&self) -> Self::State {
@@ -617,7 +652,7 @@ impl<Action> Widget<Action> for MenuItemWidget<Action> {
             return WidgetActivationOutput::none();
         }
         if let Some(command) = self.command.clone() {
-            context.emit_application_command(command);
+            let _ = context.try_emit_application_command(command);
         }
         if let Some(callback) = self.activation.as_mut() {
             return WidgetActivationOutput::action(callback());
@@ -669,7 +704,7 @@ impl<Action> Widget<Action> for MenuItemWidget<Action> {
         if let Some(callback) = callback.as_mut() {
             context.prevent_default();
             context.stop_propagation();
-            context.emit(callback());
+            let _ = context.try_emit(callback());
         }
         WidgetEventOutput::none()
     }

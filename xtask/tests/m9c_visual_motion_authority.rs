@@ -267,7 +267,9 @@ fn assert_rust_tree_omits(directory: &Path, forbidden: &str) -> Result<(), Strin
 }
 
 fn read(path: &Path) -> Result<String, String> {
-    fs::read_to_string(path).map_err(|error| format!("failed to read {}: {error}", path.display()))
+    fs::read_to_string(path)
+        .map(|source| source.replace("\r\n", "\n"))
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))
 }
 
 fn workspace_root() -> Result<std::path::PathBuf, String> {

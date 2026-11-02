@@ -37,6 +37,22 @@ struct Probe {
 }
 
 impl Widget<Action> for Probe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
 
@@ -70,6 +86,32 @@ impl Widget<Action> for Probe {
 
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The row and its two probes remain mounted across capability changes.
+        // Their callbacks only record observations; one slot covers defaults.
+        runenui_core::ProducerBudget::new(5, 1)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -110,7 +152,8 @@ fn mount(trace_capacity: usize) -> AppRuntime<App> {
             log,
         },
         RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
-    );
+    )
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     runtime.pump(FULL).unwrap_or_else(|_| unreachable!("mount"));
     runtime
 }

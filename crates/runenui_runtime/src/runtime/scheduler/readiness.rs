@@ -113,7 +113,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 };
                 let action = map(completion.output);
                 let mapped = self.record_work_fact(TraceRecordKind::WorkCompletionMapped, identity);
-                self.queue_callback_action(action, mapped);
+                self.queue_callback_action_for_work(action, mapped, completion.generation);
                 continue;
             }
             if completion.kind == CompletionKind::HostResponse {
@@ -151,8 +151,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 let request = self.host_requests.remove(request_index);
                 let action = (request.map)(response);
                 let mapped = self.record_work_fact(TraceRecordKind::WorkCompletionMapped, identity);
+                self.queue_host_response_action_for_work(action, mapped, completion.generation);
                 self.revoke_generation(completion.generation);
-                self.queue_callback_action(action, mapped);
                 continue;
             }
             if completion.kind == CompletionKind::FrameworkServiceResponse {
@@ -169,16 +169,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     TraceRecordKind::FrameworkServiceResponseQueued,
                     identity.clone(),
                 );
-                if self
-                    .queue
-                    .push_framework_service_response(
-                        completion.generation,
-                        *response,
-                        identity,
-                        queued.or(completion_parent),
-                    )
-                    .is_err()
-                {
+                let root_quota = self.work.root_quota(completion.generation);
+                let queued_response = if let Some(root) = root_quota {
+                    self.queue
+                        .push_framework_service_response_rooted(
+                            completion.generation,
+                            *response,
+                            identity,
+                            queued.or(completion_parent),
+                            root,
+                        )
+                        .is_ok()
+                } else {
+                    self.queue
+                        .push_framework_service_response(
+                            completion.generation,
+                            *response,
+                            identity,
+                            queued.or(completion_parent),
+                        )
+                        .is_ok()
+                };
+                if !queued_response {
                     self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
                     break;
                 }
@@ -195,8 +207,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             let action = (mapper.map)(completion.output);
             let mapping_trace =
                 self.record_work_fact(TraceRecordKind::WorkCompletionMapped, identity);
+            self.queue_send_task_action(action, mapping_trace, completion.generation);
             self.revoke_generation(completion.generation);
-            self.queue_callback_action(action, mapping_trace);
         }
         imported
     }

@@ -46,6 +46,18 @@ Terminal atomicity is covered separately by an explicitly test-only generation-e
 
 ## Boundaries
 
+`CounterAppState` owns the `Counter` value and the latest arithmetic rejection.
+Increment and Decrement use the full signed-i32 domain: endpoint rejection keeps
+the prior value, later successful actions preserve that feedback, and Reset
+clears it. Hosts and tests access the value through `.counter`; no framework
+error store, compatibility accessor or extra status widget is involved.
+
+The app supplies finite producer profiles covering both ordinary and win screens
+across queued predecessors. Runtime construction is fallible; an admission error
+returns the owned state/configuration for an explicit retry. These profiles and
+the deterministic capacity tests establish bounded behavior, not a numerical
+latency target or native-platform qualification.
+
 Counter owns application state, actions, update logic, transient views, application styling, and its application-specific host-loop policy. It does not own framework runtime state, text shaping or line breaking, renderer internals, native translation semantics, or a second semantic/input/layout/motion authority.
 
 `runenui_winit` supplies only reusable native translation and AccessKit projection mechanics proven by both Counter and the specialized `reference_winit` conformance host. Each application still visibly owns its winit event loop, runtime pumping, redraw/publication acknowledgement, displayed-frame mapping, renderer recovery, and presentation policy.

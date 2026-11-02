@@ -1,5 +1,17 @@
 #![cfg(feature = "internal-test-seams")]
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, Element, EventContext, EventPhase, FocusBoundaryPolicy,
@@ -39,7 +51,36 @@ struct App;
 type Rect = (f32, f32, f32, f32);
 type NamedRect<'a> = (&'a str, Rect);
 
+impl App {
+    fn producer_budget(state: &State) -> runenui_core::ProducerBudget {
+        // Root order is caller-owned but later actions only remove entries;
+        // nested/remembering shapes have five owners in every reachable state.
+        let nodes = state.order.len().saturating_add(1).max(5);
+        let outputs = nodes.saturating_mul(6).saturating_add(2);
+        let credits = nodes.saturating_add(outputs).saturating_add(1);
+        runenui_core::ProducerBudget::new(credits, outputs)
+            .with_reconciliation(nodes, nodes, nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+}
+
 impl UiApp for App {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget(state)
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget(state)
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget(state)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -392,13 +433,13 @@ fn df_01_through_df_09_and_df_13_df_14_df_17_through_df_20_use_public_commands()
     ];
 
     for vector in VECTORS {
-        let mut runtime = AppRuntime::<App>::mount(State {
+        let mut runtime = admitted!(AppRuntime::<App>::mount(State {
             order: vector.order.to_vec(),
             shape: TreeShape::Root,
             disabled: vector.disabled,
             hidden: vector.hidden,
             replacement: false,
-        });
+        }));
         settle(&mut runtime);
         publish_geometry(&mut runtime, vector.geometry);
         let origin = id(&mut runtime, vector.origin);
@@ -459,13 +500,13 @@ fn df_10_df_11_and_df_12_enforce_nested_scope_boundaries() {
         ),
     ];
     for (name, policy, origin_rect, parent_rect, expected) in cases {
-        let mut runtime = AppRuntime::<App>::mount(State {
+        let mut runtime = admitted!(AppRuntime::<App>::mount(State {
             order: Vec::new(),
             shape: TreeShape::Nested(policy),
             disabled: None,
             hidden: None,
             replacement: false,
-        });
+        }));
         settle(&mut runtime);
         let n1_rect = if name == "DF-12" {
             (0., 0., 10., 10.)
@@ -498,13 +539,13 @@ fn df_10_df_11_and_df_12_enforce_nested_scope_boundaries() {
 #[test]
 fn empty_scope_has_no_candidate_and_cannot_escape_or_wrap() {
     for policy in [FocusBoundaryPolicy::Trap, FocusBoundaryPolicy::Stop] {
-        let mut runtime = AppRuntime::<App>::mount(State {
+        let mut runtime = admitted!(AppRuntime::<App>::mount(State {
             order: Vec::new(),
             shape: TreeShape::Empty(policy),
             disabled: None,
             hidden: None,
             replacement: false,
-        });
+        }));
         settle(&mut runtime);
         let scope = id(&mut runtime, "scope");
         command(&mut runtime, scope, SemanticCommand::FocusNext);
@@ -528,13 +569,13 @@ fn empty_scope_has_no_candidate_and_cannot_escape_or_wrap() {
 
 #[test]
 fn removed_scope_clears_exact_focus_and_suppresses_stale_delivery() {
-    let mut runtime = AppRuntime::<App>::mount(State {
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State {
         order: Vec::new(),
         shape: TreeShape::Nested(FocusBoundaryPolicy::Delegate),
         disabled: None,
         hidden: None,
         replacement: false,
-    });
+    }));
     settle(&mut runtime);
     let focused = id(&mut runtime, "o");
     command(&mut runtime, focused.clone(), SemanticCommand::RequestFocus);
@@ -585,13 +626,13 @@ fn removed_scope_clears_exact_focus_and_suppresses_stale_delivery() {
 
 #[test]
 fn df_15_and_df_16_restore_only_exact_live_remembered_generations() {
-    let mut runtime = AppRuntime::<App>::mount(State {
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State {
         order: Vec::new(),
         shape: TreeShape::Remembering,
         disabled: None,
         hidden: None,
         replacement: false,
-    });
+    }));
     settle(&mut runtime);
     publish_geometry(
         &mut runtime,
@@ -640,13 +681,13 @@ fn df_15_and_df_16_restore_only_exact_live_remembered_generations() {
 
 #[test]
 fn logical_scroll_boundary_delegates_through_the_canonical_command_queue() {
-    let mut runtime = AppRuntime::<App>::mount(State {
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State {
         order: Vec::new(),
         shape: TreeShape::Nested(FocusBoundaryPolicy::LogicalScroll),
         disabled: None,
         hidden: None,
         replacement: false,
-    });
+    }));
     settle(&mut runtime);
     publish_geometry(
         &mut runtime,
@@ -702,6 +743,23 @@ struct OrderingWidget {
 }
 
 impl Widget<OrderingFact> for OrderingWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -717,7 +775,7 @@ impl Widget<OrderingFact> for OrderingWidget {
         context: &mut EventContext<'_, OrderingFact>,
     ) -> WidgetEventOutput {
         if let Some(focus) = event.as_focus() {
-            context.emit(OrderingFact::Notification(
+            let _ = context.try_emit(OrderingFact::Notification(
                 focus.kind(),
                 self.name,
                 context.phase(),
@@ -726,7 +784,7 @@ impl Widget<OrderingFact> for OrderingWidget {
             command.command() == SemanticCommand::RequestFocus
                 && context.phase() == EventPhase::Target
         }) {
-            context.emit(OrderingFact::InitiatingOutput);
+            let _ = context.try_emit(OrderingFact::InitiatingOutput);
         }
         WidgetEventOutput::none()
     }
@@ -736,7 +794,33 @@ impl ChildBearingWidget<OrderingFact> for OrderingWidget {}
 
 struct OrderingApp;
 
+impl OrderingApp {
+    const fn producer_budget(_state: &[OrderingFact]) -> runenui_core::ProducerBudget {
+        // Three fixed owners, at most one output per event callback. Include
+        // four focus and two ordinary-route visits plus activation/default.
+        runenui_core::ProducerBudget::new(24, 20)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+}
+
 impl UiApp for OrderingApp {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget(state)
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget(state)
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget(state)
+    }
+
     type State = Vec<OrderingFact>;
     type Action = OrderingFact;
     type HostProtocol = NoHostProtocol;
@@ -775,7 +859,7 @@ impl UiApp for OrderingApp {
 
 #[test]
 fn focus_notification_outputs_precede_the_initiating_command_output() {
-    let mut runtime = AppRuntime::<OrderingApp>::mount(Vec::new());
+    let mut runtime = admitted!(AppRuntime::<OrderingApp>::mount(Vec::new()));
     let a = runtime.index().nodes()[1].id().clone();
     let b = runtime.index().nodes()[2].id().clone();
     for target in [a, b] {

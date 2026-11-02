@@ -6,6 +6,20 @@ use crate::runtime::{ProcessApplicationActionOutcome, Runtime};
 use crate::trace::TraceReservation;
 
 impl PointerRegistry {
+    pub(in crate::runtime) fn publication_pointer_count(
+        &self,
+        queued: impl Iterator<Item = runenui_core::PointerId>,
+    ) -> usize {
+        // Only pointers already live or admitted ahead of the new re-hit can
+        // exist when it reaches the FIFO front. Later ingress cannot overtake it.
+        self.streams
+            .keys()
+            .copied()
+            .chain(queued)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    }
+
     pub(in crate::runtime) fn has_streams(&self) -> bool {
         !self.streams.is_empty()
     }
@@ -28,6 +42,41 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return ProcessApplicationActionOutcome::Completed;
         }
 
+        // Publication already funded one producer frontier per reached pointer.
+        // Reserve any newly required cleanup access before the first boundary
+        // callback: a stationary enter can acquire capture without native input.
+        if let Some(root) = work.root_quota {
+            let guards = streams
+                .iter()
+                .filter(|(pointer, stream)| {
+                    !self
+                        .queue
+                        .has_pointer_continuation(*pointer, stream.registration_sequence())
+                })
+                .map(|(pointer, stream)| {
+                    crate::queue::InputContinuationKey::Pointer(
+                        *pointer,
+                        stream.registration_sequence(),
+                        None,
+                    )
+                })
+                .collect::<Vec<_>>();
+            if self
+                .queue
+                .preflight_root_commit(root, guards.len())
+                .is_err()
+            {
+                let reason = crate::RuntimeTerminalReason::Poisoned;
+                let cancelled = self.enter_terminal(reason, 0);
+                return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+            }
+            for guard in guards {
+                self.queue
+                    .retain_input_continuation(root, guard)
+                    .unwrap_or_else(|_| unreachable!("stationary cleanup access was preflighted"));
+            }
+        }
+
         let mut trace_reservation = work.trace_reservation;
         for (pointer_id, stream) in streams {
             let mut event = PointerEvent::new(
@@ -43,6 +92,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             let outcome = self.process_stationary_pointer_work(PointerWork {
                 sequence: work.sequence,
+                root_quota: work.root_quota,
                 event,
                 instant: work.instant,
                 causal_parent: work.causal_parent,

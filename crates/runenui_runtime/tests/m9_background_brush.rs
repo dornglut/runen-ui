@@ -1,3 +1,16 @@
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
+
 use runenui_core::{
     Brush, Color, GradientStop, GradientStops, LinearGradient, LogicalPoint, NoHostProtocol,
     StyleEnvironment, UiApp, UnitInterval, View, text,
@@ -7,6 +20,28 @@ use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 struct BackgroundBrushApp;
 
 impl UiApp for BackgroundBrushApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -43,7 +78,7 @@ fn background_brush() -> Brush {
 #[test]
 fn non_solid_background_survives_style_resolution_and_paint_publication() {
     let expected = background_brush();
-    let mut runtime = AppRuntime::<BackgroundBrushApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<BackgroundBrushApp>::mount(()));
     let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(

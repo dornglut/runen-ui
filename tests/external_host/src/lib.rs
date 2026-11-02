@@ -52,6 +52,13 @@ mod tests {
     const IMAGE_PIXEL: [u8; 4] = [0xE8, 0xB8, 0x28, 0xFF];
     const HOST_PUMP_BUDGET: PumpBudget = PumpBudget::new(64, 64, 64, 64);
 
+    fn initial_profile(mounted_nodes: usize) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(mounted_nodes, 0)
+            .with_reconciliation(mounted_nodes, 0, mounted_nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     #[derive(Debug)]
     struct HostState {
         image: ResourceRef,
@@ -71,6 +78,22 @@ mod tests {
     }
 
     impl Widget<HostAction> for ExternalHostWidget {
+        fn producer_budget(
+            &self,
+            phase: runenui_core::WidgetProducerPhase,
+            _state: &Self::State,
+        ) -> runenui_core::WidgetProducerBudget {
+            match phase {
+                runenui_core::WidgetProducerPhase::Activation => {
+                    runenui_core::WidgetProducerBudget::new(1)
+                }
+                runenui_core::WidgetProducerPhase::Subscriptions => {
+                    runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+                }
+                _ => runenui_core::WidgetProducerBudget::new(0),
+            }
+        }
+
         type State = ();
 
         fn create_state(&self) -> Self::State {}
@@ -156,6 +179,27 @@ mod tests {
     struct ExternalHostApp;
 
     impl UiApp for ExternalHostApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            initial_profile(1)
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_reconciliation(0, 1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(7, 2)
+                .with_reconciliation(0, 1, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+                .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+        }
+
         type State = HostState;
         type Action = HostAction;
         type HostProtocol = NoHostProtocol;
@@ -186,6 +230,22 @@ mod tests {
     }
 
     impl Widget<()> for ExternalHostDragClaimProbe {
+        fn producer_budget(
+            &self,
+            phase: runenui_core::WidgetProducerPhase,
+            _state: &Self::State,
+        ) -> runenui_core::WidgetProducerBudget {
+            match phase {
+                runenui_core::WidgetProducerPhase::Activation => {
+                    runenui_core::WidgetProducerBudget::new(0)
+                }
+                runenui_core::WidgetProducerPhase::Subscriptions => {
+                    runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+                }
+                _ => runenui_core::WidgetProducerBudget::new(0),
+            }
+        }
+
         type State = ();
 
         fn create_state(&self) -> Self::State {}
@@ -224,6 +284,26 @@ mod tests {
     struct ExternalHostDragClaimApp;
 
     impl UiApp for ExternalHostDragClaimApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            initial_profile(1)
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(10, 2)
+                .with_application_outputs(0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+                .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 4))
+        }
+
         type State = Arc<AtomicBool>;
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -340,6 +420,22 @@ mod tests {
     }
 
     impl Widget<()> for ExternalHostClaimProbe {
+        fn producer_budget(
+            &self,
+            phase: runenui_core::WidgetProducerPhase,
+            _state: &Self::State,
+        ) -> runenui_core::WidgetProducerBudget {
+            match phase {
+                runenui_core::WidgetProducerPhase::Activation => {
+                    runenui_core::WidgetProducerBudget::new(0)
+                }
+                runenui_core::WidgetProducerPhase::Subscriptions => {
+                    runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+                }
+                _ => runenui_core::WidgetProducerBudget::new(0),
+            }
+        }
+
         type State = ();
 
         fn create_state(&self) -> Self::State {}
@@ -362,6 +458,23 @@ mod tests {
     struct ExternalHostClaimApp;
 
     impl UiApp for ExternalHostClaimApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            initial_profile(1)
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+        }
+
         type State = Arc<AtomicBool>;
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -392,6 +505,22 @@ mod tests {
     }
 
     impl Widget<()> for ExternalHostNonclaimProbe {
+        fn producer_budget(
+            &self,
+            phase: runenui_core::WidgetProducerPhase,
+            _state: &Self::State,
+        ) -> runenui_core::WidgetProducerBudget {
+            match phase {
+                runenui_core::WidgetProducerPhase::Activation => {
+                    runenui_core::WidgetProducerBudget::new(0)
+                }
+                runenui_core::WidgetProducerPhase::Subscriptions => {
+                    runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+                }
+                _ => runenui_core::WidgetProducerBudget::new(0),
+            }
+        }
+
         type State = ();
 
         fn create_state(&self) -> Self::State {}
@@ -415,6 +544,23 @@ mod tests {
     struct ExternalHostNonclaimApp;
 
     impl UiApp for ExternalHostNonclaimApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            initial_profile(1)
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+        }
+
         type State = Arc<AtomicBool>;
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -440,6 +586,23 @@ mod tests {
     struct ExternalHostTwoFocusApp;
 
     impl UiApp for ExternalHostTwoFocusApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            initial_profile(3)
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+        }
+
         type State = Arc<AtomicBool>;
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -479,6 +642,25 @@ mod tests {
     }
 
     impl Widget<()> for ExternalHostDerivedFocusProbe {
+        fn producer_budget(
+            &self,
+            phase: runenui_core::WidgetProducerPhase,
+            _state: &Self::State,
+        ) -> runenui_core::WidgetProducerBudget {
+            match phase {
+                runenui_core::WidgetProducerPhase::Event => {
+                    runenui_core::WidgetProducerBudget::new(1)
+                }
+                runenui_core::WidgetProducerPhase::Activation => {
+                    runenui_core::WidgetProducerBudget::new(0)
+                }
+                runenui_core::WidgetProducerPhase::Subscriptions => {
+                    runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+                }
+                _ => runenui_core::WidgetProducerBudget::new(0),
+            }
+        }
+
         type State = ();
 
         fn create_state(&self) -> Self::State {}
@@ -490,7 +672,7 @@ mod tests {
             context: &mut EventContext<'_, ()>,
         ) -> WidgetEventOutput {
             if matches!(event, UiEvent::Keyboard(_)) && context.phase() == EventPhase::Target {
-                context.emit_command(SemanticCommand::FocusNext);
+                let _ = context.try_emit_command(SemanticCommand::FocusNext);
                 self.reached.store(true, Ordering::Relaxed);
             }
             WidgetEventOutput::none()
@@ -500,6 +682,23 @@ mod tests {
     struct ExternalHostDerivedFocusApp;
 
     impl UiApp for ExternalHostDerivedFocusApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            initial_profile(3)
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(5, 5)
+        }
+
         type State = Arc<AtomicBool>;
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -548,6 +747,22 @@ mod tests {
     }
 
     impl Widget<ReplaceHostAction> for ReplaceHostProbe {
+        fn producer_budget(
+            &self,
+            phase: runenui_core::WidgetProducerPhase,
+            _state: &Self::State,
+        ) -> runenui_core::WidgetProducerBudget {
+            match phase {
+                runenui_core::WidgetProducerPhase::Activation => {
+                    runenui_core::WidgetProducerBudget::new(0)
+                }
+                runenui_core::WidgetProducerPhase::Subscriptions => {
+                    runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+                }
+                _ => runenui_core::WidgetProducerBudget::new(0),
+            }
+        }
+
         type State = ();
 
         fn create_state(&self) -> Self::State {}
@@ -568,6 +783,24 @@ mod tests {
     struct ExternalHostReplaceApp;
 
     impl UiApp for ExternalHostReplaceApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            initial_profile(1)
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_reconciliation(1, 0, 1)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+        }
+
         type State = ReplaceHostState;
         type Action = ReplaceHostAction;
         type HostProtocol = NoHostProtocol;
@@ -599,6 +832,23 @@ mod tests {
     struct ExternalHostSiblingClaimApp;
 
     impl UiApp for ExternalHostSiblingClaimApp {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            initial_profile(1)
+        }
+
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0)
+        }
+
         type State = Arc<AtomicBool>;
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -668,7 +918,10 @@ mod tests {
     where
         App: UiApp<State = Arc<AtomicBool>, Action = (), HostProtocol = NoHostProtocol>,
     {
-        let mut runtime = AppRuntime::<App>::mount_with_config(reached, config);
+        let mut runtime =
+            AppRuntime::<App>::mount_with_config(reached, config).unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("fixture mount pump"));
@@ -756,24 +1009,6 @@ mod tests {
         assert_public_shutdown_retires_claimed_scope(runtime);
     }
 
-    fn committed_queue_pressure_claim(settled: &UiInputSettlement) -> bool {
-        match settled.finality() {
-            UiInputFinality::Committed(facts) => {
-                assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
-                assert!(
-                    facts
-                        .reasons()
-                        .contains(&UiInputClaimReason::ExplicitWidgetClaim)
-                );
-                true
-            }
-            UiInputFinality::ProcessingRejected(
-                runenui_runtime::UiInputProcessingRejection::InsufficientTransactionCapacity,
-            ) => false,
-            other => unreachable!("unexpected queue-pressure finality: {other:?}"),
-        }
-    }
-
     #[test]
     fn public_queue_full_keyboard_rejection_has_no_phantom_settlement() {
         // A tiny queue can prevent the fixture's own focus transaction.
@@ -838,20 +1073,19 @@ mod tests {
             })
             .collect();
         assert_eq!(settlements.len(), admitted.len());
-        let mut committed = 0;
         for (settled, sequence) in settlements.iter().zip(admitted) {
             assert_eq!(settled.sequence(), sequence);
             assert_eq!(settled.scope(), &scope);
             assert_eq!(settled.family(), UiInputFamily::Keyboard);
-            if committed_queue_pressure_claim(settled) {
-                committed += 1;
-            }
+            assert!(matches!(
+                settled.finality(),
+                UiInputFinality::Committed(facts)
+                    if facts.conflict() == UiInputConflict::ExclusiveUi
+                        && facts.reasons().contains(&UiInputClaimReason::ExplicitWidgetClaim)
+            ));
         }
-        // A full waiting FIFO can deny routed transaction preflight even for
-        // a receipt already admitted to the queue. Once sufficient space has
-        // drained, later reached inputs can commit their actual UI claim.
-        assert_ne!(committed, 0);
-        assert_ne!(committed, settlements.len());
+        // Admitted receipts retain enough root capacity to deliver their
+        // explicit claims even while later roots occupy the bounded queue.
         assert!(reached.load(Ordering::Relaxed));
 
         let replay = runtime
@@ -868,7 +1102,10 @@ mod tests {
     #[test]
     fn public_rejected_keyboard_ingress_never_fabricates_settlement_or_game_permission() {
         let reached = Arc::new(AtomicBool::new(false));
-        let mut runtime = AppRuntime::<ExternalHostNonclaimApp>::mount(Arc::clone(&reached));
+        let mut runtime = AppRuntime::<ExternalHostNonclaimApp>::mount(Arc::clone(&reached))
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("public mount settles before native input"));
@@ -965,7 +1202,9 @@ mod tests {
     where
         App: UiApp<State = Arc<AtomicBool>, Action = (), HostProtocol = NoHostProtocol>,
     {
-        let mut runtime = AppRuntime::<App>::mount(reached);
+        let mut runtime = AppRuntime::<App>::mount(reached).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("mount completes canonical work"));
@@ -1229,7 +1468,8 @@ mod tests {
         let mut runtime = AppRuntime::<ExternalHostReplaceApp>::mount(ReplaceHostState {
             replaced: false,
             reached: Arc::clone(&reached),
-        });
+        })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("mount work commits"));
@@ -1308,7 +1548,8 @@ mod tests {
         let mut runtime = AppRuntime::<ExternalHostApp>::mount(HostState {
             image: ResourceRef::new(ResourceKind::Image),
             active: false,
-        });
+        })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("mount settles before publication"));
@@ -1391,7 +1632,8 @@ mod tests {
         let mut runtime = AppRuntime::<ExternalHostApp>::mount(HostState {
             image: ResourceRef::new(ResourceKind::Image),
             active: false,
-        });
+        })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("mount settled"));
@@ -1567,7 +1809,8 @@ mod tests {
                 active: false,
             },
             RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0)),
-        );
+        )
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("native host mount settles"));
@@ -1655,7 +1898,8 @@ mod tests {
                 active: false,
             },
             RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0)),
-        );
+        )
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("mount work settles without optional trace"));
@@ -1750,7 +1994,8 @@ mod tests {
         let mut runtime = AppRuntime::<ExternalHostDragClaimApp>::mount_with_config(
             Arc::clone(&reached),
             RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0)),
-        );
+        )
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("drag fixture mount commits"));
@@ -1851,7 +2096,8 @@ mod tests {
         let mut runtime = AppRuntime::<ExternalHostDragClaimApp>::mount_with_config(
             Arc::clone(&reached),
             RuntimeConfig::default().with_trace_config(runenui_runtime::TraceConfig::new(0)),
-        );
+        )
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("drag fixture mounted"));
@@ -1983,7 +2229,8 @@ mod tests {
         let mut runtime = AppRuntime::<ExternalHostApp>::mount(HostState {
             image: ResourceRef::new(ResourceKind::Image),
             active: false,
-        });
+        })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         let _ = runtime
             .pump(HOST_PUMP_BUDGET)
             .unwrap_or_else(|_| unreachable!("initial mount settles"));
@@ -2056,11 +2303,13 @@ mod tests {
         let mut first = AppRuntime::<ExternalHostApp>::mount(HostState {
             image: ResourceRef::new(ResourceKind::Image),
             active: false,
-        });
+        })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         let mut second = AppRuntime::<ExternalHostApp>::mount(HostState {
             image: ResourceRef::new(ResourceKind::Image),
             active: false,
-        });
+        })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         let first_snapshot = first.input_ownership().unwrap_or_else(|_| {
             unreachable!("first runtime can project its initial input ownership")
         });
@@ -2275,7 +2524,8 @@ mod tests {
         let mut runtime = AppRuntime::<ExternalHostApp>::mount(HostState {
             image: image.clone(),
             active: false,
-        });
+        })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
         let style_environment = StyleEnvironment::default();
         let logical_size =
             LogicalSize::try_new(f32::from(SURFACE_EXTENT), f32::from(SURFACE_EXTENT))?;
@@ -2307,7 +2557,6 @@ mod tests {
             .map_err(|error| debug_error("first publication failed", &error))?;
         publication_count += 1;
         let first_revision = first_publication.paint_publication().revision();
-        let semantic_request = semantic_activate_request(&first_publication)?;
 
         steps.push(FrameStep::Acknowledge);
         runtime
@@ -2334,46 +2583,15 @@ mod tests {
         let first_presented = present_and_assert(first_render.readback(), ACTIVE_BACKGROUND);
         assert!(runtime.take_redraw_request().is_none());
 
-        steps.push(FrameStep::SubmitSemanticAction);
-        runtime
-            .submit_semantic_action(semantic_request)
-            .map_err(|error| debug_error("semantic action submission failed", &error))?;
-
-        steps.push(FrameStep::Pump);
-        let _ = runtime
-            .pump(HOST_PUMP_BUDGET)
-            .unwrap_or_else(|_| unreachable!("pump observation"));
-        assert!(!runtime.state().active);
-
-        steps.push(FrameStep::TakeRedraw);
-        let second_redraw = runtime
-            .take_redraw_request()
-            .ok_or_else(|| io::Error::other("semantic action produced no redraw request"))?;
-
-        steps.push(FrameStep::Publish);
-        let second_publication = runtime
-            .publish_surface(&build_context)
-            .map_err(|error| debug_error("second publication failed", &error))?;
-        publication_count += 1;
-        assert_ne!(
-            second_publication.paint_publication().revision(),
-            first_revision
-        );
-
-        steps.push(FrameStep::Acknowledge);
-        runtime
-            .acknowledge_redraw(&second_redraw)
-            .map_err(|error| debug_error("second redraw acknowledgement failed", &error))?;
-
-        steps.push(FrameStep::Render);
-        let second_render = renderer
-            .render_offscreen_publication(second_publication.paint_publication(), &provider)?;
-
-        steps.push(FrameStep::Present);
-        let second_presented = present_and_assert(second_render.readback(), INACTIVE_BACKGROUND);
-        assert_ne!(first_presented, second_presented);
-        assert_eq!(publication_count, 2);
-        assert_eq!(steps, expected_steps());
+        let mut next_frame = NextFrameHarness {
+            runtime: &mut runtime,
+            renderer: &mut renderer,
+            provider: &provider,
+            build_context: &build_context,
+            publication_count: &mut publication_count,
+            steps: &mut steps,
+        };
+        publish_semantic_next_frame(&mut next_frame, &first_publication, &first_presented)?;
 
         let _ = runtime
             .shutdown()
@@ -2383,6 +2601,80 @@ mod tests {
             renderer.diagnostics().adapter_info().name,
             renderer.diagnostics().adapter_info().backend,
         );
+        Ok(())
+    }
+
+    struct NextFrameHarness<'a> {
+        runtime: &'a mut AppRuntime<ExternalHostApp>,
+        renderer: &'a mut Renderer,
+        provider: &'a ImageProvider,
+        build_context: &'a SurfaceBuildContext<'a>,
+        publication_count: &'a mut u8,
+        steps: &'a mut Vec<FrameStep>,
+    }
+
+    fn publish_semantic_next_frame(
+        harness: &mut NextFrameHarness<'_>,
+        first_publication: &SurfacePublication,
+        first_presented: &[u8],
+    ) -> Result<(), Box<dyn Error>> {
+        harness.steps.push(FrameStep::SubmitSemanticAction);
+        harness
+            .runtime
+            .submit_semantic_action(semantic_activate_request(first_publication)?)
+            .map_err(|error| debug_error("semantic action submission failed", &error))?;
+
+        harness.steps.push(FrameStep::Pump);
+        let _ = harness
+            .runtime
+            .pump(HOST_PUMP_BUDGET)
+            .unwrap_or_else(|_| unreachable!("pump observation"));
+        assert!(
+            !harness.runtime.state().active,
+            "semantic activation did not toggle the host state: status={:?}; trace={:?}",
+            harness.runtime.status(),
+            harness
+                .runtime
+                .trace()
+                .records()
+                .map(|record| format!("{:?}", record.kind()))
+                .collect::<Vec<_>>()
+        );
+
+        harness.steps.push(FrameStep::TakeRedraw);
+        let second_redraw = harness
+            .runtime
+            .take_redraw_request()
+            .ok_or_else(|| io::Error::other("semantic action produced no redraw request"))?;
+
+        harness.steps.push(FrameStep::Publish);
+        let second_publication = harness
+            .runtime
+            .publish_surface(harness.build_context)
+            .map_err(|error| debug_error("second publication failed", &error))?;
+        *harness.publication_count += 1;
+        assert_ne!(
+            second_publication.paint_publication().revision(),
+            first_publication.paint_publication().revision()
+        );
+
+        harness.steps.push(FrameStep::Acknowledge);
+        harness
+            .runtime
+            .acknowledge_redraw(&second_redraw)
+            .map_err(|error| debug_error("second redraw acknowledgement failed", &error))?;
+
+        harness.steps.push(FrameStep::Render);
+        let second_render = harness.renderer.render_offscreen_publication(
+            second_publication.paint_publication(),
+            harness.provider,
+        )?;
+
+        harness.steps.push(FrameStep::Present);
+        let second_presented = present_and_assert(second_render.readback(), INACTIVE_BACKGROUND);
+        assert_ne!(first_presented, second_presented);
+        assert_eq!(*harness.publication_count, 2);
+        assert_eq!(harness.steps.as_slice(), expected_steps().as_slice());
         Ok(())
     }
 

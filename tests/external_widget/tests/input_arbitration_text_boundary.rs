@@ -11,6 +11,26 @@ use runenui_runtime::{
 };
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = bool;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -24,6 +44,22 @@ impl UiApp for App {
 #[derive(Debug)]
 struct WithdrawText(bool);
 impl Widget<()> for WithdrawText {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = bool;
     fn create_state(&self) -> bool {
         self.0
@@ -53,7 +89,10 @@ fn keyboard_text_owner_claim_survives_capability_withdrawal_in_its_own_callback(
             let mut runtime = AppRuntime::<App>::mount_with_config(
                 initial_text,
                 RuntimeConfig::default().with_trace_config(TraceConfig::new(capacity)),
-            );
+            )
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
             let full = PumpBudget::new(64, 64, 64, 64);
             runtime.pump(full).unwrap_or_else(|_| unreachable!());
             let target = runtime.index().nodes()[0].id().clone();

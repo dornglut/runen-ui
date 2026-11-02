@@ -192,6 +192,7 @@ pub(super) const fn runtime_terminal_reason(value: RuntimeTerminalReason) -> &'s
             }
             SurfacePublicationCounter::SemanticRevision => "surface_semantic_revision_exhausted",
         },
+        RuntimeTerminalReason::ProducerContractViolation(_) => "producer_contract_violation",
         RuntimeTerminalReason::Poisoned => "poisoned",
     }
 }
@@ -296,7 +297,9 @@ pub(super) const fn target_rejection(value: TraceTargetRejection) -> &'static st
 
 pub(super) const fn semantic_action_rejection(value: TraceSemanticActionRejection) -> &'static str {
     match value {
+        TraceSemanticActionRejection::WorkCapacity => "work_capacity",
         TraceSemanticActionRejection::Closed => "closed",
+        TraceSemanticActionRejection::InvalidProducerProfile => "invalid_producer_profile",
         TraceSemanticActionRejection::Terminal => "terminal",
         TraceSemanticActionRejection::ForeignSurface => "foreign_surface",
         TraceSemanticActionRejection::WrongSurface => "wrong_surface",
@@ -314,6 +317,7 @@ pub(super) const fn semantic_action_rejection(value: TraceSemanticActionRejectio
 
 pub(super) const fn surface_rejection(value: TraceSurfaceRejection) -> &'static str {
     match value {
+        TraceSurfaceRejection::WorkCapacity => "work_capacity",
         TraceSurfaceRejection::ForeignRuntime => "foreign_runtime",
         TraceSurfaceRejection::ForeignSurface => "foreign_surface",
         TraceSurfaceRejection::RetiredGeneration => "retired_generation",
@@ -329,6 +333,7 @@ pub(super) const fn surface_rejection(value: TraceSurfaceRejection) -> &'static 
         TraceSurfaceRejection::RuntimeTerminal => "runtime_terminal",
         TraceSurfaceRejection::WorkSequenceExhausted => "work_sequence_exhausted",
         TraceSurfaceRejection::TraceSequenceExhausted => "trace_sequence_exhausted",
+        TraceSurfaceRejection::InvalidProducerProfile => "invalid_producer_profile",
     }
 }
 
@@ -376,6 +381,7 @@ pub(super) const fn routed_integrity_failure(value: TraceRoutedIntegrityFailure)
         TraceRoutedIntegrityFailure::BrokenTopology => "broken_topology",
         TraceRoutedIntegrityFailure::EventBridgeMismatch => "event_bridge_mismatch",
         TraceRoutedIntegrityFailure::CallbackBridgeFailure => "callback_bridge_failure",
+        TraceRoutedIntegrityFailure::ProducerViolation(_) => "producer_contract_violation",
         TraceRoutedIntegrityFailure::OutputAllowanceExceeded => "output_allowance_exceeded",
         TraceRoutedIntegrityFailure::SemanticDefaultFailure => "semantic_default_failure",
         TraceRoutedIntegrityFailure::CommitInvariantFailure => "commit_invariant_failure",
@@ -392,6 +398,7 @@ pub(super) const fn routed_admission_rejection(
         TraceRoutedAdmissionRejection::SendTasks => "send_tasks",
         TraceRoutedAdmissionRejection::Timers => "timers",
         TraceRoutedAdmissionRejection::FrameworkServices => "framework_services",
+        TraceRoutedAdmissionRejection::HostRequests => "host_requests",
         TraceRoutedAdmissionRejection::WorkSequenceExhausted => "work_sequence_exhausted",
         TraceRoutedAdmissionRejection::WorkGenerationExhausted => "work_generation_exhausted",
         TraceRoutedAdmissionRejection::ReconciliationGenerationExhausted => {

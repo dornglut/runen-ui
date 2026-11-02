@@ -1,8 +1,8 @@
 use super::{
     Arc, HostProtocol, HostRequestCancelError, HostRequestRef, HostRequestToken,
     HostResponseCompletion, HostResponseError, MandatoryTracePlan, MonotonicClock,
-    MonotonicInstant, QueueCommitError, Runtime, RuntimeStatus, RuntimeTerminalReason,
-    TraceRecordKind, WorkFamily, WorkSequence,
+    MonotonicInstant, Runtime, RuntimeStatus, RuntimeTerminalReason, TraceRecordKind, WorkFamily,
+    WorkSequence,
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -90,10 +90,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let request = self.host_requests.remove(request_index);
         let action = (request.map)(response);
         let mapped = self.record_work_fact(TraceRecordKind::WorkCompletionMapped, identity);
+        let sequence = self
+            .queue_host_response_action_for_work(action, mapped, token.generation)
+            .unwrap_or_else(|| unreachable!("host callback output was preflighted"));
         self.revoke_generation(token.generation);
-        let Some(sequence) = self.queue_callback_action(action, mapped) else {
-            unreachable!("host callback output was preflighted")
-        };
         self.external_queue_commit_accepted();
         Ok(sequence)
     }
@@ -177,14 +177,35 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             return Err(HostRequestCancelError::Stale);
         }
-        match self.queue.preflight_commit(1) {
-            Ok(()) => {}
-            Err(QueueCommitError::Full) => return Err(HostRequestCancelError::Full),
-            Err(QueueCommitError::SequenceExhausted) => {
-                let reason = RuntimeTerminalReason::WorkSequenceExhausted;
+        let root_quota = self.work.root_quota(token.generation);
+        if root_quota.is_some() && !self.queue.has_sequence() {
+            let reason = RuntimeTerminalReason::WorkSequenceExhausted;
+            self.enter_terminal(reason, 0);
+            return Err(HostRequestCancelError::Terminal(reason));
+        }
+        let capacity = if let Some(root) = root_quota {
+            // A live sequence does not guarantee room for other roots'
+            // unsequenced reservations. Check before recording cancellation.
+            if let Err(error) = self
+                .queue
+                .preflight_root_host_cancellation(root, token.generation)
+                .and_then(|()| self.queue.preflight_root_sequence(root, 1))
+            {
+                let reason = match error {
+                    crate::queue::QueueReservationError::SequenceExhausted => {
+                        RuntimeTerminalReason::WorkSequenceExhausted
+                    }
+                    _ => RuntimeTerminalReason::Poisoned,
+                };
                 self.enter_terminal(reason, 0);
                 return Err(HostRequestCancelError::Terminal(reason));
             }
+            true
+        } else {
+            self.queue.preflight_commit(1).is_ok()
+        };
+        if !capacity {
+            return Err(HostRequestCancelError::Full);
         }
         if !self
             .trace
@@ -205,10 +226,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .get(&token.generation.get())
             .cloned()
             .unwrap_or_else(|| unreachable!("host cancellation retains trace lineage"));
-        let sequence = self
-            .queue
-            .push_cancellation(token.generation, identity, parent)
-            .unwrap_or_else(|_| unreachable!("host cancellation was preflighted"));
+        let sequence = if let Some(root) = root_quota {
+            self.queue
+                .push_host_cancellation_rooted(root, token.generation, identity, parent)
+                .unwrap_or_else(|_| unreachable!("host cancellation root was preflighted"))
+        } else {
+            self.queue
+                .push_cancellation(token.generation, identity, parent)
+                .unwrap_or_else(|_| unreachable!("host cancellation was preflighted"))
+        };
         self.invalidate_generation_now(token.generation);
         self.external_queue_commit_accepted();
         Ok(sequence)

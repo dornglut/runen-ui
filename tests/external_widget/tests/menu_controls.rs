@@ -84,6 +84,148 @@ fn author_menu_bar(state: &Model) -> MenuBar<Action> {
 }
 
 impl UiApp for MenuApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let mut next = state.clone();
+        match action {
+            Action::Toggle => next.menu.open = !next.menu.open,
+            Action::ToggleCheckbox => next.checkbox = !next.checkbox,
+            Action::SelectRadio => next.radio = true,
+            Action::Selected => next.selected += 1,
+            Action::Saved => next.saved += 1,
+            Action::ExpandSubmenu => next.menu.submenu_open = true,
+            Action::CollapseSubmenu => next.menu.submenu_open = false,
+            Action::ExpandBarMenu => next.menu.bar_open = true,
+            Action::CollapseBarMenu => next.menu.bar_open = false,
+            Action::Dismiss(_) => {
+                next.menu.open = false;
+                next.menu.submenu_open = false;
+            }
+        }
+        let node_count = |model: &Model| -> usize {
+            5 + if model.menu.open { 6 } else { 0 }
+                + if model.menu.open && model.menu.submenu_open {
+                    2
+                } else {
+                    0
+                }
+                + if model.menu.bar_open { 2 } else { 0 }
+        };
+        let event_outputs = |model: &Model| {
+            6 + if model.menu.open { 8 } else { 0 }
+                + if model.menu.open && model.menu.submenu_open {
+                    4
+                } else {
+                    0
+                }
+                + if model.menu.bar_open { 4 } else { 0 }
+        };
+        let route_outputs = |model: &Model| {
+            if model.menu.open && model.menu.submenu_open {
+                17
+            } else if model.menu.open {
+                9
+            } else if model.menu.bar_open {
+                15
+            } else {
+                7
+            }
+        };
+        let old_nodes = node_count(state);
+        let new_nodes = node_count(&next);
+        let changed = old_nodes != new_nodes;
+        let mounted_nodes = new_nodes.saturating_sub(old_nodes);
+        let retained_updates = if changed { old_nodes.min(new_nodes) } else { 0 };
+        let dirty_owners = if changed { new_nodes } else { 0 };
+        let restore_outputs = if changed {
+            4 * event_outputs(&next) + route_outputs(&next)
+        } else {
+            0
+        };
+        let outputs = restore_outputs.max(usize::from(changed));
+        let queue_credits = if changed {
+            dirty_owners + 1 + restore_outputs
+        } else {
+            1
+        };
+        runenui_core::ProducerBudget::new(queue_credits, outputs)
+            .with_application_outputs(0)
+            .with_reconciliation(mounted_nodes, retained_updates, dirty_owners)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let event_outputs = |model: &Model| {
+            6 + if model.menu.open { 8 } else { 0 }
+                + if model.menu.open && model.menu.submenu_open {
+                    4
+                } else {
+                    0
+                }
+                + if model.menu.bar_open { 4 } else { 0 }
+        };
+        let route_outputs = |model: &Model| {
+            if model.menu.open && model.menu.submenu_open {
+                17
+            } else if model.menu.open {
+                9
+            } else if model.menu.bar_open {
+                15
+            } else {
+                7
+            }
+        };
+        let focus_route_outputs = 4 * event_outputs(state) + route_outputs(state);
+        // Each routed callback may enqueue one of these application actions.
+        // Cover the largest child profile, including close/dismiss actions
+        // when a submenu is already mounted and the menubar can open alongside it.
+        let actions = [
+            Action::Toggle,
+            Action::ToggleCheckbox,
+            Action::SelectRadio,
+            Action::Selected,
+            Action::Saved,
+            Action::ExpandSubmenu,
+            Action::CollapseSubmenu,
+            Action::ExpandBarMenu,
+            Action::CollapseBarMenu,
+            Action::Dismiss(PresentationDismissReason::CancelOrBack),
+        ];
+        let mut child_queue_credits = 0;
+        let mut child_outputs = 0;
+        let mut mounted_nodes = 0;
+        let mut retained_updates = 0;
+        let mut dirty_owners = 0;
+        for action in actions {
+            let child = Self::action_producer_budget(state, &action);
+            child_queue_credits = child_queue_credits.max(child.queue_credits());
+            child_outputs = child_outputs.max(child.outputs());
+            mounted_nodes = mounted_nodes.max(child.mounted_nodes());
+            retained_updates = retained_updates.max(child.retained_updates());
+            dirty_owners = dirty_owners.max(child.dirty_subscription_owners());
+        }
+        // A cursor start per turn, two resident outcome pairs across Down/Up,
+        // and protected continuation access accompany these callback outputs.
+        let queue_credits = focus_route_outputs.max(child_queue_credits) + 5;
+        let outputs = (focus_route_outputs + 1).max(child_outputs);
+        runenui_core::ProducerBudget::new(queue_credits, outputs)
+            .with_application_outputs(0)
+            .with_reconciliation(mounted_nodes, retained_updates, dirty_owners)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = Model;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -222,7 +364,8 @@ fn open_menu(harness: &mut TestHarness<MenuApp>) {
 
 #[test]
 fn menu_button_open_close_and_exact_controls_are_application_owned() {
-    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    let mut h = TestHarness::<MenuApp>::mount(Model::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(h.publish().is_ok());
     let closed = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
     let button = closed
@@ -272,7 +415,8 @@ fn menu_button_open_close_and_exact_controls_are_application_owned() {
 
 #[test]
 fn menu_checked_items_and_disabled_discoverability_preserve_app_authority() {
-    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    let mut h = TestHarness::<MenuApp>::mount(Model::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     open_menu(&mut h);
     let snapshot = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
     assert!(snapshot.nodes().iter().any(|n| {
@@ -315,7 +459,8 @@ fn menu_checked_items_and_disabled_discoverability_preserve_app_authority() {
 
 #[test]
 fn menu_command_uses_scoped_fifo_and_submenu_expands_through_app_state() {
-    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    let mut h = TestHarness::<MenuApp>::mount(Model::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     open_menu(&mut h);
     command(&mut h, "save-item", SemanticCommand::Activate);
     assert_eq!(h.state().saved, 1);
@@ -364,7 +509,8 @@ fn menu_command_uses_scoped_fifo_and_submenu_expands_through_app_state() {
 
 #[test]
 fn inline_menu_bar_uses_neutral_horizontal_semantics() {
-    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    let mut h = TestHarness::<MenuApp>::mount(Model::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(h.publish().is_ok());
     let snapshot = h.semantic_snapshot().unwrap_or_else(|_| unreachable!());
     assert!(snapshot.nodes().iter().any(|n| {
@@ -391,7 +537,8 @@ fn inline_menu_bar_uses_neutral_horizontal_semantics() {
 
 #[test]
 fn menu_bar_item_down_opens_submenu_and_restores_exact_focus_on_dismiss() {
-    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    let mut h = TestHarness::<MenuApp>::mount(Model::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(h.publish().is_ok());
     command(&mut h, "bar-tools", SemanticCommand::RequestFocus);
     let trigger = h
@@ -456,7 +603,8 @@ fn menu_bar_item_down_opens_submenu_and_restores_exact_focus_on_dismiss() {
 
 #[test]
 fn menu_type_ahead_reuses_mounted_focus_group_without_activation() {
-    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    let mut h = TestHarness::<MenuApp>::mount(Model::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     open_menu(&mut h);
     command(&mut h, "disabled-item", SemanticCommand::RequestFocus);
     assert!(
@@ -499,7 +647,8 @@ fn assert_focused_menu_name(h: &TestHarness<MenuApp>, expected: &str) {
 
 #[test]
 fn ordinary_menu_uses_group_arrow_and_absolute_keyboard_navigation_without_activation() {
-    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    let mut h = TestHarness::<MenuApp>::mount(Model::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     open_menu(&mut h);
     command(&mut h, "save-item", SemanticCommand::RequestFocus);
     assert_focused_menu_name(&h, "Save");
@@ -539,7 +688,8 @@ fn ordinary_menu_uses_group_arrow_and_absolute_keyboard_navigation_without_activ
 
 #[test]
 fn menu_escape_dismisses_and_restores_the_exact_prior_focus() {
-    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    let mut h = TestHarness::<MenuApp>::mount(Model::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(h.publish().is_ok());
     command(&mut h, "menu-button", SemanticCommand::RequestFocus);
     let original = h
@@ -580,7 +730,8 @@ fn menu_escape_dismisses_and_restores_the_exact_prior_focus() {
 
 #[test]
 fn menu_outside_pointer_dismisses_without_dispatching_menu_activation() {
-    let mut h = TestHarness::<MenuApp>::mount(Model::default());
+    let mut h = TestHarness::<MenuApp>::mount(Model::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     open_menu(&mut h);
     let outside = runenui_core::LogicalPoint::new(790.0, 590.0)
         .unwrap_or_else(|_| unreachable!("finite surface position"));
@@ -624,6 +775,33 @@ fn menu_outside_pointer_dismisses_without_dispatching_menu_activation() {
 struct LongMenuApp;
 
 impl UiApp for LongMenuApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(15, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(15, 0, 15)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_application_outputs(0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The mounted-tree Event budgets contribute 59 focus-notification
+        // outputs; the exact route contributes four more. Focus navigation
+        // can add one standard scroll-reveal output.
+        runenui_core::ProducerBudget::new(64, 64)
+            .with_application_outputs(0)
+            .with_reconciliation(0, 1, 15)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -683,7 +861,8 @@ impl UiApp for LongMenuApp {
 
 #[test]
 fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
-    let mut h = TestHarness::<LongMenuApp>::mount(());
+    let mut h = TestHarness::<LongMenuApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(h.publish().is_ok());
     let first = h
         .publication()
@@ -780,7 +959,8 @@ fn long_menu_items_compose_standard_scroll_container_and_scrollbar() {
 
 #[test]
 fn long_menu_group_navigation_stops_at_last_item_without_hiding_scrollbar() {
-    let mut h = TestHarness::<LongMenuApp>::mount(());
+    let mut h = TestHarness::<LongMenuApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(h.publish().is_ok());
     let frame = h
         .publication()

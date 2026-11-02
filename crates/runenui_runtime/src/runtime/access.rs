@@ -6,8 +6,8 @@ use runenui_text::{
 };
 
 use super::{
-    FocusState, HostProtocol, MandatoryTracePlan, ReconciliationReport, Runtime, RuntimeStatus,
-    Trace, TraceRecordKind, TraceSequence, TraceTarget, WorkSequence,
+    FocusState, HostProtocol, ReconciliationReport, Runtime, RuntimeStatus, Trace, TraceRecordKind,
+    TraceSequence, TraceTarget, WorkSequence,
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -18,10 +18,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         causal_parent: Option<TraceSequence>,
         target: Option<TraceTarget>,
     ) {
-        if self.trace.can_admit(MandatoryTracePlan::one_fact()) {
-            self.trace
-                .record(kind, work_sequence, causal_parent, None, None, target);
-        }
+        self.trace
+            .record_optional(kind, work_sequence, causal_parent, target);
     }
 
     #[must_use]

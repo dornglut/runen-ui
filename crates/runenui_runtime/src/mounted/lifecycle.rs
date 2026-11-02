@@ -90,3 +90,11 @@ impl<Action> MountedTree<Action> {
         stats
     }
 }
+
+// A mounted tree owns its hooks even when runtime construction is refused.
+// Explicit runtime shutdown reaches this same idempotent authority first.
+impl<Action> Drop for MountedTree<Action> {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}

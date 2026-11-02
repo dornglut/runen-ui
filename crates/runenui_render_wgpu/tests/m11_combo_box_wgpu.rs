@@ -38,6 +38,20 @@ impl ResourceProvider for NoResources {
 }
 struct ComboGpuApp;
 impl UiApp for ComboGpuApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // At most 7 mounted owners; event allowance <= 1 each, six route/focus visits, plus activation/defaults.
+        runenui_core::ProducerBudget::new(52, 44).with_reconciliation(7, 7, 7)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(52, 44).with_reconciliation(7, 7, 7)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(52, 44).with_reconciliation(7, 7, 7)
+    }
+
     type State = bool;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -75,7 +89,8 @@ fn block_on<F: Future>(future: F) -> F::Output {
     }
 }
 fn publication(open: bool) -> Result<runenui_runtime::SurfacePublication, Box<dyn Error>> {
-    let mut app = AppRuntime::<ComboGpuApp>::mount(open);
+    let mut app = AppRuntime::<ComboGpuApp>::mount(open)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     // Reconcile initial authored popup content and current option identity
     // before publishing; there is no fake semantic target or test-only hook.
     assert!(
@@ -188,6 +203,27 @@ fn select_only_combo_popup_projects_real_m8_options_and_real_wgpu_pixels()
 
 struct EditableComboGpuApp;
 impl UiApp for EditableComboGpuApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // At most 6 mounted owners; event allowance <= 2 each, six route/focus visits, plus activation/defaults.
+        // Two framework-service response/cancellation pairs cover clipboard and IME defaults.
+        runenui_core::ProducerBudget::new(87, 76)
+            .with_reconciliation(6, 6, 6)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(87, 76)
+            .with_reconciliation(6, 6, 6)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(87, 76)
+            .with_reconciliation(6, 6, 6)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+
     type State = bool;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -232,7 +268,8 @@ impl UiApp for EditableComboGpuApp {
 }
 
 fn editable_publication(open: bool) -> Result<runenui_runtime::SurfacePublication, Box<dyn Error>> {
-    let mut app = AppRuntime::<EditableComboGpuApp>::mount(open);
+    let mut app = AppRuntime::<EditableComboGpuApp>::mount(open)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(
         app.pump(runenui_runtime::PumpBudget::new(
             usize::MAX,
@@ -349,6 +386,20 @@ fn editable_combo_shares_m10_text_pixels_and_projects_current_m5_popup()
 
 struct LongComboGpuApp;
 impl UiApp for LongComboGpuApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // At most 17 mounted owners; event allowance <= 1 each, six route/focus visits, plus activation/defaults.
+        runenui_core::ProducerBudget::new(122, 104).with_reconciliation(17, 17, 17)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(122, 104).with_reconciliation(17, 17, 17)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(122, 104).with_reconciliation(17, 17, 17)
+    }
+
     type State = bool;
     type Action = bool;
     type HostProtocol = NoHostProtocol;
@@ -399,7 +450,8 @@ struct LongComboFixture {
 }
 
 fn prepare_long_combo() -> Result<LongComboFixture, Box<dyn Error>> {
-    let mut app = AppRuntime::<LongComboGpuApp>::mount(false);
+    let mut app = AppRuntime::<LongComboGpuApp>::mount(false)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(
         app.pump(PumpBudget::new(
             usize::MAX,

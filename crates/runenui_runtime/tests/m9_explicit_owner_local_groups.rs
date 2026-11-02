@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use runenui_core::{
     Brush, ChildBearingWidget, Color, ContributionClip, Element, FontFamilyName, GenericFontFamily,
@@ -100,6 +112,22 @@ fn presentation(
 struct NestedExplicitPaint;
 
 impl Widget<()> for NestedExplicitPaint {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -122,6 +150,28 @@ impl Widget<()> for NestedExplicitPaint {
 struct NestedExplicitApp;
 
 impl UiApp for NestedExplicitApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -139,7 +189,7 @@ impl UiApp for NestedExplicitApp {
 
 #[test]
 fn nested_explicit_groups_use_first_member_contraction_without_layer_escape() {
-    let mut runtime = AppRuntime::<NestedExplicitApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<NestedExplicitApp>::mount(()));
     let publication = publish(&mut runtime);
     let scene = publication.paint_scene();
 
@@ -177,6 +227,22 @@ fn nested_explicit_groups_use_first_member_contraction_without_layer_escape() {
 struct ExplicitOwnerContainer;
 
 impl Widget<()> for ExplicitOwnerContainer {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -198,6 +264,22 @@ impl ChildBearingWidget<()> for ExplicitOwnerContainer {}
 struct ForeignChildPaint;
 
 impl Widget<()> for ForeignChildPaint {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -214,6 +296,28 @@ impl Widget<()> for ForeignChildPaint {
 struct ExplicitInsideNodeEffectApp;
 
 impl UiApp for ExplicitInsideNodeEffectApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 2 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(2, 2, 2)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -237,7 +341,7 @@ impl UiApp for ExplicitInsideNodeEffectApp {
 
 #[test]
 fn explicit_owner_group_nests_inside_node_effect_without_capturing_mounted_child_paint() {
-    let mut runtime = AppRuntime::<ExplicitInsideNodeEffectApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<ExplicitInsideNodeEffectApp>::mount(()));
     let publication = publish(&mut runtime);
     let scene = publication.paint_scene();
 
@@ -271,6 +375,22 @@ fn explicit_owner_group_nests_inside_node_effect_without_capturing_mounted_child
 struct TextAndExplicitPaint;
 
 impl Widget<()> for TextAndExplicitPaint {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -291,6 +411,28 @@ impl Widget<()> for TextAndExplicitPaint {
 struct TextAndExplicitApp;
 
 impl UiApp for TextAndExplicitApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -311,7 +453,7 @@ impl UiApp for TextAndExplicitApp {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn runtime_generated_shaped_text_stays_outside_widget_authored_group_but_inside_node_effect() {
-    let mut runtime = AppRuntime::<TextAndExplicitApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<TextAndExplicitApp>::mount(()));
     assert!(runtime.register_text_font_bytes(CANTARELL.to_vec()).is_ok());
     let families = [FontFamilyName::new("Cantarell")
         .unwrap_or_else(|_| unreachable!("controlled font family is valid"))];
@@ -372,6 +514,22 @@ struct ClipGroupOwner {
 }
 
 impl Widget<()> for ClipGroupOwner {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -397,6 +555,28 @@ impl ChildBearingWidget<()> for ClipGroupOwner {}
 struct ClipGroupApp;
 
 impl UiApp for ClipGroupApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ClipGroupState;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -432,7 +612,7 @@ fn group_clip_uses_owner_presentation_path_without_inheriting_child_item_transfo
         item_transform,
         presentation: node_presentation,
     };
-    let mut runtime = AppRuntime::<ClipGroupApp>::mount(state);
+    let mut runtime = admitted!(AppRuntime::<ClipGroupApp>::mount(state));
     let publication = publish(&mut runtime);
     let scene = publication.paint_scene();
     let frame = publication
@@ -472,11 +652,11 @@ fn group_clip_uses_owner_presentation_path_without_inheriting_child_item_transfo
 fn singular_group_clip_is_retained_as_empty_coverage_with_diagnostic_and_no_fallback() {
     let singular = LogicalTransform::try_new(0.0, 0.0, 0.0, 1.0, 0.0, 0.0)
         .unwrap_or_else(|_| unreachable!("controlled singular transform is finite"));
-    let mut runtime = AppRuntime::<ClipGroupApp>::mount(ClipGroupState {
+    let mut runtime = admitted!(AppRuntime::<ClipGroupApp>::mount(ClipGroupState {
         clip_transform: singular,
         item_transform: LogicalTransform::IDENTITY,
         presentation: presentation(0.0, 0.0, 1.0, 1.0),
-    });
+    }));
     let publication = publish(&mut runtime);
     let scene = publication.paint_scene();
 
@@ -500,6 +680,22 @@ fn singular_group_clip_is_retained_as_empty_coverage_with_diagnostic_and_no_fall
 struct OverflowGroupClipOwner;
 
 impl Widget<()> for OverflowGroupClipOwner {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -522,6 +718,28 @@ impl ChildBearingWidget<()> for OverflowGroupClipOwner {}
 struct OverflowGroupClipApp;
 
 impl UiApp for OverflowGroupClipApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has 1 owners and no initial callback output or work.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -541,7 +759,7 @@ impl UiApp for OverflowGroupClipApp {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn non_finite_group_clip_composition_excludes_only_that_explicit_subtree() {
-    let mut runtime = AppRuntime::<OverflowGroupClipApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<OverflowGroupClipApp>::mount(()));
     let publication = publish(&mut runtime);
     let scene = publication.paint_scene();
 

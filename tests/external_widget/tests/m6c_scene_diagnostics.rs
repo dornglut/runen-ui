@@ -82,6 +82,22 @@ struct SceneDiagnosticOwner {
 }
 
 impl Widget<SceneDiagnosticAction> for SceneDiagnosticOwner {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = (bool, bool);
 
     fn create_state(&self) -> Self::State {
@@ -153,6 +169,26 @@ enum SceneDiagnosticAction {
 struct SceneDiagnosticApp;
 
 impl UiApp for SceneDiagnosticApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = SceneDiagnosticState;
     type Action = SceneDiagnosticAction;
     type HostProtocol = NoHostProtocol;
@@ -191,7 +227,8 @@ fn singular_scene_diagnostics_are_public_fail_closed_and_cleared_by_their_owning
     let mut runtime = AppRuntime::<SceneDiagnosticApp>::mount(SceneDiagnosticState {
         paint_singular: true,
         hit_singular: true,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(UNBOUNDED_PUMP_BUDGET)
         .unwrap_or_else(|_| unreachable!("pump observation"));

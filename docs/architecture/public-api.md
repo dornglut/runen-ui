@@ -7,6 +7,9 @@ This document describes the **conceptual ownership and invariants** of RunenUI's
 `runenui_core` owns host-neutral public values and protocols that must be usable without a live runtime or platform/backend dependency. Its responsibilities include:
 
 - `UiApp` application state/action/update and host-neutral effect/subscription protocol values;
+- finite application/widget producer profiles and owned `EmitError<T>` / typed
+  first-violation vocabulary; live reservation authority remains in runtime,
+  under [ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md#qualified-producer-admission-and-owned-failure);
 - validated authored identity, host-neutral style properties/tokens/themes/recipes/variants/preferences/resolution vocabulary, geometry, normalized layout container/sizing/positioning/overflow values, transient `View`/`Element` authoring, and typed built-in view vocabulary;
 - state-aware open widget/lifecycle/event contracts, bounded renderer-neutral `WidgetMeasure` input/result vocabulary, geometry-neutral child-bearing participation, and typed action mapping;
 - runtime-local opaque protocol identity types such as mounted/semantic/surface/work identities, without allocation authority;
@@ -53,6 +56,12 @@ Parley/Fontique/HarfRust/Skrifa/ICU types and the `unicode-segmentation` crate a
 - independent semantic publication/update/diagnostics and exact semantic-action admission/resolution.
 
 Runtime must not own application document contents, validation, persistence, or durable undo history; depend on testing convenience, concrete native platforms, concrete renderer implementations, product state, external resource-provider/payload/cache ownership, font/shaping/line-breaking algorithm authority, SDF/MSDF realization, Lyon/backend tessellation, renderer shadow-mask/raster authority; or create a second action/edit/service/interaction/style/semantic/layout/motion/paint/hit/testing authority. Taffy types, node identity, topology, and caches remain private derived implementation state rather than public or retained framework authority.
+
+Application runtime construction returns an owned `InitialAdmissionError` on
+refusal. Its state/configuration can be recovered without cloning; successful
+construction alone does not accept later original input or guarantee unlimited
+producer capacity. The failure and finite-admission rules remain owned by
+[ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md#qualified-producer-admission-and-owned-failure).
 
 ## `runenui_render_wgpu`
 

@@ -38,6 +38,22 @@ struct HitTarget {
 }
 
 impl Widget<()> for HitTarget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -96,6 +112,32 @@ impl Widget<()> for HitTarget {
 struct NestedScrollApp;
 
 impl UiApp for NestedScrollApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Outer/inner rows and their two content widgets each reconcile once.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Two probe widgets each declare one Event output. Focus transfer may
+        // notify each mounted node through both routes and phases, and FocusDown
+        // can emit one logical-focus-scroll command.
+        runenui_core::ProducerBudget::new(10, 10)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = bool;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -167,6 +209,23 @@ struct TouchProbe {
 }
 
 impl Widget<()> for TouchProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -184,7 +243,7 @@ impl Widget<()> for TouchProbe {
                 .unwrap_or_else(|_| unreachable!("test event log mutex is not poisoned"))
                 .push(pointer.phase());
             if self.capture_on_down && pointer.phase() == PointerPhase::Down {
-                context.capture_pointer();
+                let _ = context.try_capture_pointer();
             }
         }
         WidgetEventOutput::none()
@@ -218,6 +277,34 @@ struct TouchScrollState {
 }
 
 impl UiApp for TouchScrollApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The viewport row and optional touch-probe child are the full topology.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Probe capture: one ordinary/boundary visit and four possible focus
+        // visits, plus one release/scroll default. Cursor retains two credits;
+        // the source protects one continuation. There is no editor or drag offer.
+        runenui_core::ProducerBudget::new(10, 8)
+            .with_application_outputs(0)
+            .with_reconciliation(0, 2, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = TouchScrollState;
     type Action = TouchScrollAction;
     type HostProtocol = NoHostProtocol;
@@ -268,7 +355,8 @@ impl UiApp for TouchScrollApp {
 #[allow(clippy::too_many_lines)] // One route exercises the exact nested wheel chain and resulting geometry.
 fn nested_wheel_consumes_exact_remainder_and_republishes_clipped_geometry() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
-    let mut runtime = AppRuntime::<NestedScrollApp>::mount_with_config(false, config);
+    let mut runtime = AppRuntime::<NestedScrollApp>::mount_with_config(false, config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,
@@ -511,7 +599,8 @@ fn assert_touch_scroll_and_host_claim(trace_capacity: usize) {
         capture_on_down: false,
     };
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
-    let mut runtime = AppRuntime::<TouchScrollApp>::mount_with_config(state.clone(), config);
+    let mut runtime = AppRuntime::<TouchScrollApp>::mount_with_config(state.clone(), config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,
@@ -616,7 +705,8 @@ fn touch_gesture_is_cancelled_once_when_its_origin_is_unmounted() {
         capture_on_down: false,
     };
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
-    let mut runtime = AppRuntime::<TouchScrollApp>::mount_with_config(state, config);
+    let mut runtime = AppRuntime::<TouchScrollApp>::mount_with_config(state, config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,
@@ -681,7 +771,8 @@ fn independent_touch_streams_resolve_scroll_and_tap_without_cross_ownership() {
         capture_on_down: false,
     };
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
-    let mut runtime = AppRuntime::<TouchScrollApp>::mount_with_config(state, config);
+    let mut runtime = AppRuntime::<TouchScrollApp>::mount_with_config(state, config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,
@@ -835,7 +926,8 @@ fn committed_touch_capture_beats_scroll_and_retains_its_original_owner() {
         capture_on_down: true,
     };
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
-    let mut runtime = AppRuntime::<TouchScrollApp>::mount_with_config(state, config);
+    let mut runtime = AppRuntime::<TouchScrollApp>::mount_with_config(state, config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,
@@ -908,7 +1000,8 @@ fn touch_wheel_is_diagnosed_instead_of_creating_a_parallel_stream_profile() {
         capture_on_down: false,
     };
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
-    let mut runtime = AppRuntime::<TouchScrollApp>::mount_with_config(state, config);
+    let mut runtime = AppRuntime::<TouchScrollApp>::mount_with_config(state, config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,
@@ -963,7 +1056,8 @@ fn touch_wheel_is_diagnosed_instead_of_creating_a_parallel_stream_profile() {
 #[test]
 fn prevented_nested_wheel_does_not_partially_commit_scroll() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
-    let mut runtime = AppRuntime::<NestedScrollApp>::mount_with_config(true, config);
+    let mut runtime = AppRuntime::<NestedScrollApp>::mount_with_config(true, config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,
@@ -1014,7 +1108,8 @@ fn prevented_nested_wheel_does_not_partially_commit_scroll() {
 #[test]
 fn logical_focus_scroll_moves_nearest_scroll_owner_and_commits_a_new_publication() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
-    let mut runtime = AppRuntime::<NestedScrollApp>::mount_with_config(false, config);
+    let mut runtime = AppRuntime::<NestedScrollApp>::mount_with_config(false, config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,
@@ -1096,7 +1191,8 @@ fn logical_focus_scroll_moves_nearest_scroll_owner_and_commits_a_new_publication
 #[test]
 fn scroll_into_view_uses_the_exact_target_and_clamps_to_the_nearest_scroll_owner() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
-    let mut runtime = AppRuntime::<NestedScrollApp>::mount_with_config(false, config);
+    let mut runtime = AppRuntime::<NestedScrollApp>::mount_with_config(false, config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     let build = SurfaceBuildContext::tight(
         &environment,

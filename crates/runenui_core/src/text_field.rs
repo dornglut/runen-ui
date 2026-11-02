@@ -395,6 +395,38 @@ fn project_combo_semantics(
 }
 
 impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication => crate::WidgetProducerBudget::new(0)
+                .with_publication_reveals(usize::from(
+                    state.combo.as_ref().is_some_and(|combo| combo.open),
+                )),
+            crate::WidgetProducerPhase::Event => {
+                crate::WidgetProducerBudget::new(if self.combo.is_some() {
+                    2
+                } else {
+                    // Editing proposals are emitted by the runtime default,
+                    // not this callback. Enter submission and spin adjustment
+                    // are mutually exclusive after prevent_default.
+                    usize::from(self.on_submit.is_some() || self.on_adjust.is_some())
+                })
+            }
+            crate::WidgetProducerPhase::Activation => {
+                crate::WidgetProducerBudget::new(usize::from(self.combo.is_some()))
+            }
+            crate::WidgetProducerPhase::Mount | crate::WidgetProducerPhase::Update => {
+                crate::WidgetProducerBudget::new(0)
+            }
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = TextFieldState;
 
     fn create_state(&self) -> Self::State {
@@ -511,7 +543,7 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
             if !key.is_repeat()
                 && let Some(submit) = self.on_submit.as_mut()
             {
-                context.emit(submit());
+                let _ = context.try_emit(submit());
             }
         }
         if context.phase() == EventPhase::Target
@@ -531,7 +563,7 @@ impl<Action: 'static> Widget<Action> for TextFieldWidget<Action> {
                 |command| crate::spin_button::semantic_request(&spin.range, command.command()),
             );
             if let Some(request) = request {
-                context.emit(callback(request));
+                let _ = context.try_emit(callback(request));
                 context.prevent_default();
                 context.stop_propagation();
             }

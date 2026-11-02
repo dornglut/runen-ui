@@ -70,6 +70,21 @@ fn opacity_timeline() -> runenui_core::ExplicitTimeline {
 struct TimingHarnessApp;
 
 impl UiApp for TimingHarnessApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One fixed leaf and its initial mounted-subscription reconciliation.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // This leaf produces no routed outputs or work in any reachable state.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -93,7 +108,8 @@ fn harness_opacity<App: UiApp>(harness: &TestHarness<App>) -> f32 {
 
 #[test]
 fn public_harness_manual_clock_preserves_delay_and_repeat_boundaries() {
-    let mut harness = TestHarness::<TimingHarnessApp>::mount(());
+    let mut harness = TestHarness::<TimingHarnessApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     register_controlled_text(&mut harness);
 
     harness.publish().unwrap_or_else(|_| unreachable!());
@@ -163,6 +179,21 @@ fn width_timeline() -> runenui_core::ExplicitTimeline {
 struct StructuralHarnessApp;
 
 impl UiApp for StructuralHarnessApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One fixed leaf and its initial mounted-subscription reconciliation.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // This leaf produces no routed outputs or work in any reachable state.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -182,7 +213,8 @@ impl UiApp for StructuralHarnessApp {
 
 #[test]
 fn public_harness_structural_motion_reenters_layout_and_text_measurement() {
-    let mut harness = TestHarness::<StructuralHarnessApp>::mount(());
+    let mut harness = TestHarness::<StructuralHarnessApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     register_controlled_text(&mut harness);
     let environment = StyleEnvironment::default();
     let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
@@ -251,6 +283,21 @@ struct TransitionState {
 struct TransitionHarnessApp;
 
 impl UiApp for TransitionHarnessApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One fixed leaf and its initial mounted-subscription reconciliation.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // This leaf produces no routed outputs or work in any reachable state.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+
     type State = TransitionState;
     type Action = bool;
     type HostProtocol = NoHostProtocol;
@@ -289,7 +336,10 @@ fn pump_actions(harness: &mut TestHarness<TransitionHarnessApp>) {
 #[test]
 fn public_harness_transition_replacement_and_preference_change_use_the_same_runtime_clock() {
     let mut harness =
-        TestHarness::<TransitionHarnessApp>::mount(TransitionState { transparent: false });
+        TestHarness::<TransitionHarnessApp>::mount(TransitionState { transparent: false })
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
     register_controlled_text(&mut harness);
     let normal = StyleEnvironment::default();
     let normal_context = SurfaceBuildContext::new(&normal, LayoutConstraints::unbounded());

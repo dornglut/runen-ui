@@ -1,5 +1,28 @@
 //! Standard password `TextField` exercising the accepted M10/M8 secret authority.
 
+macro_rules! admitted {
+    ($result:expr, $fallback:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return $fallback };
+        value
+    }};
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
+
 use runenui_core::Typography;
 use runenui_core::{
     ClipboardClassification, ClipboardText, CommandOrigin, CommittedTextEvent, EditIntent,
@@ -43,6 +66,31 @@ const fn snapshot(revision: u64) -> TextDocumentSnapshot {
 }
 
 impl UiApp for PasswordApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The single password-field widget has one initial owner reconciliation.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // TextField declares two event outputs; the route may also request one
+        // clipboard service, with its response and cancellation obligations.
+        runenui_core::ProducerBudget::new(14, 12)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = PasswordState;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -103,13 +151,16 @@ impl UiApp for PasswordApp {
     }
 }
 
-fn mounted() -> AppRuntime<PasswordApp> {
-    let mut app = AppRuntime::<PasswordApp>::mount(PasswordState {
-        text: SECRET.to_owned(),
-        revision: 0,
-        selection: SECRET.len(),
-        secret: true,
-    });
+fn mounted() -> Option<AppRuntime<PasswordApp>> {
+    let mut app = admitted!(
+        AppRuntime::<PasswordApp>::mount(PasswordState {
+            text: SECRET.to_owned(),
+            revision: 0,
+            selection: SECRET.len(),
+            secret: true,
+        }),
+        None
+    );
     assert!(app.register_text_font_bytes(FONT.to_vec()).is_ok());
     assert!(
         app.set_text_generic_family_mapping(
@@ -118,17 +169,18 @@ fn mounted() -> AppRuntime<PasswordApp> {
         )
         .is_ok()
     );
-    app
+    Some(app)
 }
 
-fn publication(runtime: &mut AppRuntime<PasswordApp>) -> SurfacePublication {
+fn publication(runtime: &mut AppRuntime<PasswordApp>) -> Option<SurfacePublication> {
     let env = StyleEnvironment::default();
-    runtime
-        .publish_surface(&SurfaceBuildContext::tight(
+    Some(admitted!(
+        runtime.publish_surface(&SurfaceBuildContext::tight(
             &env,
             LogicalSize::try_new(280.0, 60.0).unwrap_or_else(|_| unreachable!("geometry is valid")),
-        ))
-        .unwrap_or_else(|_| unreachable!("password surface publishes"))
+        )),
+        None
+    ))
 }
 
 fn glyphs(surface: &SurfacePublication) -> Vec<u32> {
@@ -149,8 +201,10 @@ fn glyphs(surface: &SurfacePublication) -> Vec<u32> {
 
 #[test]
 fn secret_password_publication_masks_shaped_resources_and_semantic_value() {
-    let mut runtime = mounted();
-    let surface = publication(&mut runtime);
+    let Some(mut runtime) = mounted() else { return };
+    let Some(surface) = publication(&mut runtime) else {
+        return;
+    };
     let editable = surface.semantic_publication().snapshot().nodes()[0]
         .editable()
         .unwrap_or_else(|| unreachable!("secret semantics present"));
@@ -200,15 +254,13 @@ fn secret_password_publication_masks_shaped_resources_and_semantic_value() {
 
 #[test]
 fn password_submit_and_public_rebuild_keep_m10_authority_and_shaping_consistent() {
-    let mut runtime = mounted();
+    let Some(mut runtime) = mounted() else { return };
     let owner = runtime.index().nodes()[0].id().clone();
-    runtime
-        .submit_command(
-            owner,
-            SemanticCommand::RequestFocus,
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("focus command is accepted"));
+    admitted!(runtime.submit_command(
+        owner,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    ));
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
@@ -224,7 +276,9 @@ fn password_submit_and_public_rebuild_keep_m10_authority_and_shaping_consistent(
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
     assert_eq!(runtime.state().text, format!("{SECRET}!"));
-    let after_edit = publication(&mut runtime);
+    let Some(after_edit) = publication(&mut runtime) else {
+        return;
+    };
     assert_eq!(
         after_edit.semantic_publication().snapshot().nodes()[0]
             .editable()
@@ -239,7 +293,9 @@ fn password_submit_and_public_rebuild_keep_m10_authority_and_shaping_consistent(
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
-    let public = publication(&mut runtime);
+    let Some(public) = publication(&mut runtime) else {
+        return;
+    };
     let editable = public.semantic_publication().snapshot().nodes()[0]
         .editable()
         .unwrap_or_else(|| unreachable!("public semantics are present"));
@@ -253,7 +309,9 @@ fn password_submit_and_public_rebuild_keep_m10_authority_and_shaping_consistent(
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
-    let secret_again = publication(&mut runtime);
+    let Some(secret_again) = publication(&mut runtime) else {
+        return;
+    };
     let editable = secret_again.semantic_publication().snapshot().nodes()[0]
         .editable()
         .unwrap_or_else(|| unreachable!("secret semantics are restored"));
@@ -265,7 +323,7 @@ fn password_submit_and_public_rebuild_keep_m10_authority_and_shaping_consistent(
 
 #[test]
 fn password_clipboard_copy_cut_suppress_disclosure_and_paste_uses_m10_service() {
-    let mut runtime = mounted();
+    let Some(mut runtime) = mounted() else { return };
     let owner = runtime.index().nodes()[0].id().clone();
     runtime
         .submit_command(
@@ -328,7 +386,9 @@ fn password_clipboard_copy_cut_suppress_disclosure_and_paste_uses_m10_service() 
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
     assert_eq!(runtime.state().text, "new-é🔒");
-    let surface = publication(&mut runtime);
+    let Some(surface) = publication(&mut runtime) else {
+        return;
+    };
     assert_eq!(
         surface.semantic_publication().snapshot().nodes()[0]
             .editable()
@@ -344,7 +404,7 @@ fn password_clipboard_copy_cut_suppress_disclosure_and_paste_uses_m10_service() 
 #[test]
 fn secret_composition_masks_preedit_before_shaping_and_keeps_candidate_geometry() {
     const PREEDIT_SECRET: &str = "秘密preedit🌐";
-    let mut runtime = mounted();
+    let Some(mut runtime) = mounted() else { return };
     let owner = runtime.index().nodes()[0].id().clone();
     runtime
         .submit_command(
@@ -374,7 +434,9 @@ fn secret_composition_masks_preedit_before_shaping_and_keeps_candidate_geometry(
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
-    let during = publication(&mut runtime);
+    let Some(during) = publication(&mut runtime) else {
+        return;
+    };
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
@@ -404,7 +466,9 @@ fn secret_composition_masks_preedit_before_shaping_and_keeps_candidate_geometry(
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
-    let after = publication(&mut runtime);
+    let Some(after) = publication(&mut runtime) else {
+        return;
+    };
     assert_eq!(runtime.state().text, SECRET);
     assert_ne!(glyphs(&after), [] as [u32; 0]);
     assert_eq!(
@@ -418,7 +482,7 @@ fn secret_composition_masks_preedit_before_shaping_and_keeps_candidate_geometry(
 #[test]
 fn sensitive_paste_cannot_cross_secret_to_public_reclassification_at_completion() {
     const PAYLOAD: &str = "late-classified-é🔒";
-    let mut runtime = mounted();
+    let Some(mut runtime) = mounted() else { return };
     let owner = runtime.index().nodes()[0].id().clone();
     runtime
         .submit_command(
@@ -455,7 +519,9 @@ fn sensitive_paste_cannot_cross_secret_to_public_reclassification_at_completion(
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
-    let public = publication(&mut runtime);
+    let Some(public) = publication(&mut runtime) else {
+        return;
+    };
     assert_eq!(
         public.semantic_publication().snapshot().nodes()[0]
             .editable()
@@ -475,11 +541,11 @@ fn sensitive_paste_cannot_cross_secret_to_public_reclassification_at_completion(
     }
     assert_eq!(runtime.state().text, SECRET);
     assert!(!runtime.trace().export_jsonl().contains(PAYLOAD));
+    let Some(public) = publication(&mut runtime) else {
+        return;
+    };
     assert_eq!(
-        publication(&mut runtime)
-            .semantic_publication()
-            .snapshot()
-            .nodes()[0]
+        public.semantic_publication().snapshot().nodes()[0]
             .editable()
             .and_then(|editable| editable.value()),
         Some(SECRET)
@@ -489,7 +555,7 @@ fn sensitive_paste_cannot_cross_secret_to_public_reclassification_at_completion(
 #[test]
 fn password_reclassification_while_composing_restores_a_masked_publication() {
     const PREEDIT: &str = "e\u{301}秘密";
-    let mut runtime = mounted();
+    let Some(mut runtime) = mounted() else { return };
     let owner = runtime.index().nodes()[0].id().clone();
     runtime
         .submit_command(
@@ -515,7 +581,9 @@ fn password_reclassification_while_composing_restores_a_masked_publication() {
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
-    let initially_masked = publication(&mut runtime);
+    let Some(initially_masked) = publication(&mut runtime) else {
+        return;
+    };
     assert!(!format!("{:?}", initially_masked.paint_scene()).contains(PREEDIT));
 
     runtime
@@ -524,7 +592,9 @@ fn password_reclassification_while_composing_restores_a_masked_publication() {
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
-    let public = publication(&mut runtime);
+    let Some(public) = publication(&mut runtime) else {
+        return;
+    };
     assert_eq!(
         public.semantic_publication().snapshot().nodes()[0]
             .editable()
@@ -539,7 +609,9 @@ fn password_reclassification_while_composing_restores_a_masked_publication() {
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
-    let masked_again = publication(&mut runtime);
+    let Some(masked_again) = publication(&mut runtime) else {
+        return;
+    };
     assert_eq!(glyphs(&initially_masked), glyphs(&masked_again));
     for literal in [SECRET, PREEDIT] {
         assert!(!format!("{:?}", masked_again.paint_scene()).contains(literal));
@@ -550,7 +622,9 @@ fn password_reclassification_while_composing_restores_a_masked_publication() {
     runtime
         .pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
-    let after = publication(&mut runtime);
+    let Some(after) = publication(&mut runtime) else {
+        return;
+    };
     assert_eq!(runtime.state().text, SECRET);
     assert_eq!(
         after.semantic_publication().snapshot().nodes()[0]
@@ -562,7 +636,7 @@ fn password_reclassification_while_composing_restores_a_masked_publication() {
 
 #[test]
 fn queued_edit_and_sensitivity_reclassification_follow_one_application_fifo() {
-    let mut runtime = mounted();
+    let Some(mut runtime) = mounted() else { return };
     let owner = runtime.index().nodes()[0].id().clone();
     runtime
         .submit_command(
@@ -588,7 +662,9 @@ fn queued_edit_and_sensitivity_reclassification_follow_one_application_fifo() {
     runtime
         .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
-    let public = publication(&mut runtime);
+    let Some(public) = publication(&mut runtime) else {
+        return;
+    };
     assert_eq!(runtime.state().text, format!("{SECRET}é"));
     assert_eq!(
         public.semantic_publication().snapshot().nodes()[0]
@@ -609,7 +685,9 @@ fn queued_edit_and_sensitivity_reclassification_follow_one_application_fifo() {
     runtime
         .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
         .unwrap_or_else(|_| unreachable!("pump observation"));
-    let secret_again = publication(&mut runtime);
+    let Some(secret_again) = publication(&mut runtime) else {
+        return;
+    };
     assert_eq!(runtime.state().text, format!("{SECRET}é漢"));
     assert_eq!(
         secret_again.semantic_publication().snapshot().nodes()[0]

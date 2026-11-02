@@ -14,6 +14,19 @@ struct RouteWidget {
 }
 
 impl Widget<()> for RouteWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -41,6 +54,29 @@ impl ChildBearingWidget<()> for RouteWidget {}
 struct RouteApp;
 
 impl UiApp for RouteApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The container and target each reconcile once without callback output.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // RequestFocus derives one output-free FocusIn notification.
+        runenui_core::ProducerBudget::new(1, 1).with_application_outputs(0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -91,7 +127,8 @@ fn authored_target(runtime: &mut AppRuntime<RouteApp>, authored_id: &str) -> Mou
 
 #[test]
 fn semantic_command_retains_event_family_and_exact_ordered_route() {
-    let mut runtime = AppRuntime::<RouteApp>::mount_with_config((), RuntimeConfig::default());
+    let mut runtime = AppRuntime::<RouteApp>::mount_with_config((), RuntimeConfig::default())
+        .unwrap_or_else(|_| unreachable!("route fixture runtime admission is valid"));
     settle(&mut runtime);
     let root = authored_target(&mut runtime, "root");
     let target = authored_target(&mut runtime, "target");

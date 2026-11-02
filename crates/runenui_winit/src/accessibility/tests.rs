@@ -197,6 +197,27 @@ fn multiple_error_message_semantics() -> SemanticContribution {
 }
 
 impl Widget<FixtureAction> for Fixture {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Publication => {
+                runenui_core::WidgetProducerBudget::new(0).with_publication_reveals(usize::from(
+                    self.phase >= 3 && self.phase != 5 && self.phase != 6,
+                ))
+            }
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
     fn activation(&self, (): &Self::State) -> WidgetActivation {
@@ -308,6 +329,20 @@ impl Widget<FixtureAction> for Fixture {
 }
 struct FixtureApp;
 impl UiApp for FixtureApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One mounted owner, regardless of the number of projected semantic nodes.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 1).with_reconciliation(1, 1, 1)
+    }
+
     type State = u8;
     type Action = FixtureAction;
     type HostProtocol = NoHostProtocol;
@@ -339,7 +374,8 @@ fn publication(runtime: &mut AppRuntime<FixtureApp>) -> SemanticPublication {
 
 #[test]
 fn initial_tree_maps_roles_text_and_custom_action_without_duplicate_label() {
-    let mut runtime = AppRuntime::<FixtureApp>::mount(0);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = publication(&mut runtime);
     let mut adapter = SemanticAdapter::new();
     let mut activation = adapter.activation_handler();
@@ -499,7 +535,8 @@ fn all_current_roles_map_exactly_and_unsupported_facts_diagnose() {
         Some(Toggled::Mixed)
     );
     assert!(diagnostics.is_empty());
-    let mut runtime = AppRuntime::<FixtureApp>::mount(0);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let mut adapter = SemanticAdapter::new();
     let update = adapter.update(&publication(&mut runtime));
     assert!(
@@ -513,7 +550,8 @@ fn all_current_roles_map_exactly_and_unsupported_facts_diagnose() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn typed_standard_semantics_project_exact_native_properties_and_collection_delta() {
-    let mut runtime = AppRuntime::<FixtureApp>::mount(3);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(3)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let first_publication = publication(&mut runtime);
     let mut adapter = SemanticAdapter::new();
     let first = adapter.update(&first_publication);
@@ -598,7 +636,8 @@ fn typed_standard_semantics_project_exact_native_properties_and_collection_delta
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn range_and_expansion_actions_project_and_round_trip_exact_native_requests() {
-    let mut runtime = AppRuntime::<FixtureApp>::mount(3);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(3)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = publication(&mut runtime);
     let surface = publication.snapshot().surface_id().clone();
     let mut adapter = SemanticAdapter::new();
@@ -705,7 +744,8 @@ fn range_and_expansion_actions_project_and_round_trip_exact_native_requests() {
 
 #[test]
 fn conflicting_collection_sizes_diagnose_and_withhold_native_set_size() {
-    let mut runtime = AppRuntime::<FixtureApp>::mount(5);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(5)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = publication(&mut runtime);
     let mut adapter = SemanticAdapter::new();
     let update = adapter.update(&publication);
@@ -736,7 +776,8 @@ fn conflicting_collection_sizes_diagnose_and_withhold_native_set_size() {
 
 #[test]
 fn multiple_error_messages_diagnose_and_withhold_native_error_target() {
-    let mut runtime = AppRuntime::<FixtureApp>::mount(6);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(6)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = publication(&mut runtime);
     let mut adapter = SemanticAdapter::new();
     let update = adapter.update(&publication);
@@ -765,7 +806,8 @@ fn multiple_error_messages_diagnose_and_withhold_native_error_target() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn exhausted_initial_projection_diagnoses_without_publishing_partial_state() {
-    let mut runtime = AppRuntime::<FixtureApp>::mount(0);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = publication(&mut runtime);
     let mut adapter = SemanticAdapter::new();
     adapter.projection.next_node_id = None;
@@ -791,7 +833,8 @@ fn exhausted_initial_projection_diagnoses_without_publishing_partial_state() {
 
 #[test]
 fn node_id_capacity_preflight_reaches_exact_boundary_without_wrap() {
-    let mut runtime = AppRuntime::<FixtureApp>::mount(2);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(2)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = publication(&mut runtime);
     let mut adapter = SemanticAdapter::new();
     adapter.projection.next_node_id = Some(u64::MAX - 2);
@@ -819,7 +862,8 @@ fn node_id_capacity_preflight_reaches_exact_boundary_without_wrap() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn node_id_exhaustion_preserves_the_last_coherent_projection() {
-    let mut runtime = AppRuntime::<FixtureApp>::mount(0);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let first_publication = publication(&mut runtime);
     let mut adapter = SemanticAdapter::new();
     adapter.update(&first_publication);
@@ -870,13 +914,9 @@ fn node_id_exhaustion_preserves_the_last_coherent_projection() {
         vec![AdapterDiagnostic::NodeIdSpaceExhausted]
     );
     assert!(adapter.projection.next_node_id.is_none());
-    assert_eq!(
-        adapter.projection.semantic_to_accesskit,
-        before_semantic_to_accesskit
-    );
-    assert_eq!(
-        adapter.projection.accesskit_to_semantic,
-        before_accesskit_to_semantic
+    assert!(
+        adapter.projection.semantic_to_accesskit == before_semantic_to_accesskit
+            && adapter.projection.accesskit_to_semantic == before_accesskit_to_semantic
     );
     assert_eq!(adapter.projection.retired_semantic, before_retired_semantic);
     assert_eq!(
@@ -929,7 +969,8 @@ fn node_id_exhaustion_preserves_the_last_coherent_projection() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn exact_delta_and_skipped_revision_resync_keep_ids_stable_and_retired_ids_unused() {
-    let mut runtime = AppRuntime::<FixtureApp>::mount(0);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let first_publication = publication(&mut runtime);
     let mut adapter = SemanticAdapter::new();
     let first = adapter.update(&first_publication);
@@ -993,7 +1034,8 @@ fn exact_delta_and_skipped_revision_resync_keep_ids_stable_and_retired_ids_unuse
 
 #[test]
 fn surface_transition_full_resyncs_and_retires_old_action_ids() {
-    let mut first_runtime = AppRuntime::<FixtureApp>::mount(0);
+    let mut first_runtime = AppRuntime::<FixtureApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let first_publication = publication(&mut first_runtime);
     let first_surface = first_publication.snapshot().surface_id().clone();
     let first_semantic = first_publication.snapshot().roots()[0].clone();
@@ -1011,7 +1053,8 @@ fn surface_transition_full_resyncs_and_retires_old_action_ids() {
         &first_surface
     );
 
-    let mut second_runtime = AppRuntime::<FixtureApp>::mount(0);
+    let mut second_runtime = AppRuntime::<FixtureApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let second_publication = publication(&mut second_runtime);
     let second_surface = second_publication.snapshot().surface_id().clone();
     assert_ne!(first_surface, second_surface);
@@ -1032,14 +1075,16 @@ fn surface_transition_full_resyncs_and_retires_old_action_ids() {
 
 #[test]
 fn surface_transition_retires_synthetic_root_identity() {
-    let mut first_runtime = AppRuntime::<FixtureApp>::mount(2);
+    let mut first_runtime = AppRuntime::<FixtureApp>::mount(2)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let first_publication = publication(&mut first_runtime);
     let mut adapter = SemanticAdapter::new();
     let first = adapter.update(&first_publication);
     assert_eq!(first.mode, UpdateMode::InitialFull);
     let first_root = adapter.projection.synthetic_root.unwrap();
 
-    let mut second_runtime = AppRuntime::<FixtureApp>::mount(2);
+    let mut second_runtime = AppRuntime::<FixtureApp>::mount(2)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let second_publication = publication(&mut second_runtime);
     assert_ne!(
         first_publication.snapshot().surface_id(),
@@ -1054,7 +1099,8 @@ fn surface_transition_retires_synthetic_root_identity() {
 
 #[test]
 fn synthetic_root_retires_when_same_surface_becomes_single_root() {
-    let mut runtime = AppRuntime::<FixtureApp>::mount(2);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(2)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let first_publication = publication(&mut runtime);
     let surface = first_publication.snapshot().surface_id().clone();
     let mut adapter = SemanticAdapter::new();
@@ -1079,7 +1125,8 @@ fn synthetic_root_retires_when_same_surface_becomes_single_root() {
 
 #[test]
 fn action_translation_rejects_wrong_custom_and_foreign_requests() {
-    let mut runtime = AppRuntime::<FixtureApp>::mount(0);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = publication(&mut runtime);
     let surface = publication.snapshot().surface_id().clone();
     let mut adapter = SemanticAdapter::new();
@@ -1168,7 +1215,8 @@ fn action_translation_rejects_wrong_custom_and_foreign_requests() {
 fn adapter_tree_ids_are_not_runtime_id_casts() {
     let namespace = RuntimeNamespace::__runtime_new();
     let surface = namespace.__runtime_surface_id(0, 1);
-    let mut runtime = AppRuntime::<FixtureApp>::mount(0);
+    let mut runtime = AppRuntime::<FixtureApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let publication = publication(&mut runtime);
     assert_ne!(surface, publication.snapshot().surface_id().clone());
     let mut adapter = SemanticAdapter::new();
@@ -1199,6 +1247,19 @@ struct EditableFixture {
 }
 
 impl Widget<EditableAction> for EditableFixture {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -1279,6 +1340,24 @@ impl Widget<EditableAction> for EditableFixture {
 struct EditableApp;
 
 impl UiApp for EditableApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One mounted owner, regardless of the number of projected semantic nodes.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(8, 4)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(8, 4)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+
     type State = EditableState;
     type Action = EditableAction;
     type HostProtocol = NoHostProtocol;
@@ -1340,7 +1419,8 @@ fn editable_publication_for_role(
         sensitivity,
         read_only,
         role,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(runtime.register_text_font_bytes(FONT.to_vec()).unwrap() > 0);
     assert!(
         runtime
@@ -1479,6 +1559,24 @@ enum StandardPasswordAction {
 struct StandardPasswordApp;
 
 impl UiApp for StandardPasswordApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One mounted owner, regardless of the number of projected semantic nodes.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(22, 16)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(22, 16)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+    }
+
     type State = StandardPasswordState;
     type Action = StandardPasswordAction;
     type HostProtocol = NoHostProtocol;
@@ -1592,7 +1690,8 @@ fn standard_password_native_projection_retires_public_text_resources_on_reclassi
     let mut runtime = AppRuntime::<StandardPasswordApp>::mount(StandardPasswordState {
         content: SOURCE.to_owned(),
         sensitivity: TextSensitivity::Secret,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(runtime.register_text_font_bytes(FONT.to_vec()).is_ok());
     assert!(
         runtime

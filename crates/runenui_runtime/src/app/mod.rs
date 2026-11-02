@@ -10,15 +10,156 @@ mod testing;
 use core::marker::PhantomData;
 use std::time::Duration;
 
-use runenui_core::{CommandOrigin, ElementId, SemanticCommand, UiApp, View};
+use runenui_core::__runtime::SubscriptionSource;
+use runenui_core::{
+    CommandOrigin, ElementId, IntoEffects, SemanticCommand, UiApp, View, WorkFamily,
+};
 
 use crate::{
     FocusState, FontFamilyName, FontRegistrationError, FontSourcePolicy, FontSourceSnapshot,
     GenericFamilyMappingError, GenericFontFamily, InputObservationError, InputPumpBatch,
     InputShutdownBatch, MountedNodeId, MountedTreeIndex, PumpBudget, ReconciliationReport,
     RuntimeConfig, RuntimeStatus, SubmitActionResult, SurfaceBuildContext, SurfacePublication,
-    Trace, TraceActionCategory, WorkSequence, pump, runtime::Runtime,
+    Trace, TraceActionCategory, WorkSequence, pump, runtime::PreparedInitialApplicationWork,
+    runtime::Runtime, transaction::TransactionLedger,
 };
+
+/// Why initial application construction failed.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub enum InitialAdmissionErrorKind {
+    /// The configured canonical queue cannot reserve the declared initial frontier.
+    Capacity,
+    /// A declared resident work family cannot fit the configured registry.
+    WorkCapacity(crate::WorkCapacityFamily),
+    /// Canonical work-sequence authority cannot reserve the initial frontier.
+    SequenceExhausted,
+    /// Work-generation authority cannot reserve the declared initial starts.
+    WorkGenerationExhausted,
+    /// The initial producer profile cannot admit its mandatory mounted root work.
+    InvalidProducerProfile,
+    /// Mounted identity authority cannot represent the authored initial tree.
+    MountedIdentityExhausted,
+    /// A callback exceeded its authored declaration after initial admission.
+    ProducerContractViolation(runenui_core::ProducerContractViolation),
+}
+
+/// Owned initial-construction refusal returning the same state value and config.
+///
+/// Capacity and declared resource feasibility are checked before initial
+/// producers run. Producer-profile violations can also be detected while
+/// constructing the authored tree; arbitrary callback effects are not rolled back.
+pub struct InitialAdmissionError<State> {
+    refused: Box<(State, RuntimeConfig)>,
+    kind: InitialAdmissionErrorKind,
+    frontier_requirement: Option<(usize, usize)>,
+}
+
+impl<State> InitialAdmissionError<State> {
+    pub(crate) fn new(
+        state: State,
+        config: RuntimeConfig,
+        kind: InitialAdmissionErrorKind,
+    ) -> Self {
+        Self {
+            refused: Box::new((state, config)),
+            kind,
+            frontier_requirement: None,
+        }
+    }
+
+    pub(crate) const fn with_frontier_requirement(
+        mut self,
+        required: usize,
+        declared: usize,
+    ) -> Self {
+        self.frontier_requirement = Some((required, declared));
+        self
+    }
+
+    /// Returns the pre-admission refusal category.
+    #[must_use]
+    pub const fn kind(&self) -> InitialAdmissionErrorKind {
+        self.kind
+    }
+
+    /// Returns the required and declared root queue credits for a profile refusal.
+    #[must_use]
+    pub const fn frontier_requirement(&self) -> Option<(usize, usize)> {
+        self.frontier_requirement
+    }
+
+    /// Borrows the returned application state.
+    #[must_use]
+    pub const fn state(&self) -> &State {
+        &self.refused.0
+    }
+
+    /// Returns the exact config used for this construction attempt.
+    #[must_use]
+    pub const fn config(&self) -> RuntimeConfig {
+        self.refused.1
+    }
+
+    /// Returns the state and config for a corrected retry.
+    #[must_use]
+    pub fn into_parts(self) -> (State, RuntimeConfig) {
+        *self.refused
+    }
+}
+
+impl<State> core::fmt::Debug for InitialAdmissionError<State> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("InitialAdmissionError")
+            .field("kind", &self.kind)
+            .field("frontier_requirement", &self.frontier_requirement)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<State> core::fmt::Display for InitialAdmissionError<State> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.kind {
+            InitialAdmissionErrorKind::ProducerContractViolation(cause) => write!(
+                formatter,
+                "initial producer declaration violated: {cause:?}"
+            ),
+            InitialAdmissionErrorKind::Capacity => {
+                formatter.write_str("initial work frontier exceeds queue capacity")
+            }
+            InitialAdmissionErrorKind::WorkCapacity(family) => {
+                write!(
+                    formatter,
+                    "initial {family:?} residency exceeds runtime capacity"
+                )
+            }
+            InitialAdmissionErrorKind::SequenceExhausted => {
+                formatter.write_str("initial work sequence authority is exhausted")
+            }
+            InitialAdmissionErrorKind::WorkGenerationExhausted => {
+                formatter.write_str("initial work generation authority is exhausted")
+            }
+            InitialAdmissionErrorKind::InvalidProducerProfile => {
+                formatter.write_str(
+                    "initial producer profile cannot satisfy runtime work requirements",
+                )?;
+                if let Some((required, declared)) = self.frontier_requirement {
+                    write!(
+                        formatter,
+                        " (root queue credits required: {required}; declared: {declared})"
+                    )?;
+                }
+                Ok(())
+            }
+            InitialAdmissionErrorKind::MountedIdentityExhausted => {
+                formatter.write_str("initial mounted identity capacity is exhausted")
+            }
+        }
+    }
+}
+
+impl<State> core::error::Error for InitialAdmissionError<State> {}
 
 pub struct AppRuntime<App: UiApp> {
     runtime: Runtime<App::State, App::Action, App::HostProtocol>,
@@ -27,22 +168,149 @@ pub struct AppRuntime<App: UiApp> {
 
 impl<App: UiApp> AppRuntime<App> {
     /// Mounts with deterministic runtime defaults.
-    #[must_use]
-    pub fn mount(state: App::State) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns the caller-owned state and default configuration in
+    /// [`InitialAdmissionError`] when initial admission fails.
+    pub fn mount(state: App::State) -> Result<Self, InitialAdmissionError<App::State>> {
         Self::mount_with_config(state, RuntimeConfig::default())
     }
 
     /// Mounts with explicit runtime configuration.
-    #[must_use]
-    pub fn mount_with_config(state: App::State, config: RuntimeConfig) -> Self {
-        let mut runtime = Runtime::mount(state, |state| App::root(state).into_element(), config);
+    ///
+    /// # Errors
+    ///
+    /// Returns the caller-owned state and configuration in
+    /// [`InitialAdmissionError`] when the declared initial producer cannot be
+    /// admitted or initial mounted/work setup fails.
+    pub fn mount_with_config(
+        state: App::State,
+        config: RuntimeConfig,
+    ) -> Result<Self, InitialAdmissionError<App::State>> {
+        let initial_producer_budget = App::initial_producer_budget(&state);
+        let mut runtime = Runtime::mount(
+            state,
+            |state| App::root(state).into_element(),
+            config,
+            initial_producer_budget,
+            Self::prepare_initial_application_work,
+        )?;
         runtime.trace_action_labeler = Some(App::trace_action_label);
-        runtime.initialize_application_work::<App>();
+        runtime.action_producer_budget = Some(App::action_producer_budget);
+        runtime.interaction_producer_budget = Some(App::interaction_producer_budget);
+        runtime.initialize_application_work();
+        if let RuntimeStatus::Terminal(crate::RuntimeTerminalReason::ProducerContractViolation(
+            cause,
+        )) = runtime.status
+        {
+            return Err(InitialAdmissionError::new(
+                runtime.into_state(),
+                config,
+                InitialAdmissionErrorKind::ProducerContractViolation(cause),
+            ));
+        }
         runtime.rearm_wake_if_needed();
-        Self {
+        Ok(Self {
             runtime,
             _app: PhantomData,
+        })
+    }
+
+    fn prepare_initial_application_work(
+        state: &App::State,
+        budget: runenui_core::ProducerBudget,
+    ) -> Result<
+        PreparedInitialApplicationWork<App::Action, App::HostProtocol>,
+        InitialAdmissionErrorKind,
+    > {
+        let application = TransactionLedger::collect(
+            App::initial_effects(state).into_effects(),
+            budget.application_outputs(),
+        )
+        .map_err(
+            |crate::transaction::TransactionOutputError::Full { attempted, .. }| {
+                InitialAdmissionErrorKind::ProducerContractViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                        phase: runenui_core::ProducerPhase::InitialEffects,
+                        component: runenui_core::BudgetComponent::ApplicationOutputs,
+                        declared: budget.application_outputs(),
+                        attempted: Some(attempted),
+                    },
+                )
+            },
+        )?;
+        if application.len() > budget.application_outputs() {
+            return Err(InitialAdmissionErrorKind::InvalidProducerProfile);
         }
+        let mut subscriptions = runenui_core::SubscriptionSet::__runtime_new_bounded(
+            budget.application_subscriptions(),
+        );
+        let effect_starts = application
+            .work_start_budget()
+            .ok_or(InitialAdmissionErrorKind::InvalidProducerProfile)?;
+        let _remaining = crate::transaction::remaining_work_starts(
+            budget.work_starts(),
+            effect_starts,
+            runenui_core::ProducerPhase::InitialEffects,
+        )
+        .map_err(InitialAdmissionErrorKind::ProducerContractViolation)?;
+        App::subscriptions(state, &mut subscriptions);
+        if let Some(cause) = subscriptions.producer_violation() {
+            return Err(InitialAdmissionErrorKind::ProducerContractViolation(cause));
+        }
+        if subscriptions.__runtime_overflowed() {
+            return Err(InitialAdmissionErrorKind::InvalidProducerProfile);
+        }
+        let subscriptions = subscriptions.__runtime_into_declarations();
+        if subscriptions.len() > budget.application_subscriptions() {
+            return Err(InitialAdmissionErrorKind::InvalidProducerProfile);
+        }
+        let local_tasks = subscriptions
+            .iter()
+            .filter(|source| matches!(source.source, SubscriptionSource::Local(_)))
+            .count();
+        let send_tasks = subscriptions.len() - local_tasks;
+        let total_starts = runenui_core::WorkStartBudget::new(
+            effect_starts
+                .for_family(WorkFamily::LocalTask)
+                .checked_add(local_tasks)
+                .ok_or(InitialAdmissionErrorKind::InvalidProducerProfile)?,
+            effect_starts
+                .for_family(WorkFamily::SendTask)
+                .checked_add(send_tasks)
+                .ok_or(InitialAdmissionErrorKind::InvalidProducerProfile)?,
+            effect_starts.for_family(WorkFamily::Timer),
+            effect_starts.for_family(WorkFamily::HostRequest),
+            effect_starts.for_family(WorkFamily::FrameworkService),
+        );
+        let promised_starts = budget.work_starts();
+        for family in [
+            WorkFamily::LocalTask,
+            WorkFamily::SendTask,
+            WorkFamily::Timer,
+            WorkFamily::HostRequest,
+            WorkFamily::FrameworkService,
+        ] {
+            let declared = promised_starts.for_family(family);
+            let attempted = total_starts.for_family(family);
+            if attempted > declared {
+                return Err(InitialAdmissionErrorKind::ProducerContractViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                        phase: runenui_core::ProducerPhase::InitialEffects,
+                        component: runenui_core::BudgetComponent::WorkStarts(family),
+                        declared,
+                        attempted: Some(attempted),
+                    },
+                ));
+            }
+        }
+        Ok(PreparedInitialApplicationWork {
+            application,
+            subscriptions,
+        })
     }
 
     /// Registers immutable bundled font bytes with the runtime-owned text authority.
@@ -92,8 +360,14 @@ impl<App: UiApp> AppRuntime<App> {
     /// Returns the exact unaccepted action when the queue is full or the runtime
     /// is closed or terminal.
     pub fn submit_action(&mut self, action: App::Action) -> SubmitActionResult<App::Action> {
-        self.runtime
-            .submit_action(action, TraceActionCategory::DirectSubmission, None, None)
+        let budget = App::action_producer_budget(self.runtime.state(), &action);
+        self.runtime.submit_profiled_action(
+            action,
+            budget,
+            TraceActionCategory::DirectSubmission,
+            None,
+            None,
+        )
     }
 
     /// Appends one exact-target semantic command to the canonical FIFO.

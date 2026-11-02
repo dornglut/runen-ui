@@ -23,6 +23,23 @@ struct EditableProbe {
 }
 
 impl Widget<()> for EditableProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(2),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -63,8 +80,8 @@ impl Widget<()> for EditableProbe {
                 .as_pointer()
                 .is_some_and(|pointer| pointer.phase() == PointerPhase::Down)
         {
-            context.capture_pointer();
-            context.release_pointer_capture();
+            let _ = context.try_capture_pointer();
+            let _ = context.try_release_pointer_capture();
         }
         WidgetEventOutput::none()
     }
@@ -104,6 +121,32 @@ impl Widget<()> for EditableProbe {
 struct PointerApp;
 
 impl UiApp for PointerApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The single mounted editable probe has one initial owner reconciliation.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Two capture requests per callback, at most six callback visits,
+        // cursor/IME claims and one protected continuation envelope.
+        runenui_core::ProducerBudget::new(17, 14)
+            .with_application_outputs(0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 2))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+    }
+
     type State = bool;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -125,7 +168,8 @@ const fn snapshot() -> TextDocumentSnapshot {
 #[test]
 fn explicit_capture_then_release_prevents_selection_default_from_recapturing() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
-    let mut runtime = AppRuntime::<PointerApp>::mount_with_config(true, config);
+    let mut runtime = AppRuntime::<PointerApp>::mount_with_config(true, config)
+        .unwrap_or_else(|error| panic!("unexpected initial admission refusal: {error}"));
     assert!(
         runtime
             .register_text_font_bytes(CANTARELL.to_vec())

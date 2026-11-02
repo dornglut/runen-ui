@@ -16,6 +16,22 @@ struct PublicProgress {
     range: SemanticRange,
 }
 impl Widget<()> for PublicProgress {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -31,6 +47,30 @@ impl Widget<()> for PublicProgress {
 
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
     type State = Option<SemanticNumber>;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -56,7 +96,9 @@ impl UiApp for App {
 #[test]
 fn public_progress_matches_downstream_widget_semantics_without_implicit_actions() {
     for value in [Some(number(4.0)), None] {
-        let mut harness = TestHarness::<App>::mount(value);
+        let mut harness = TestHarness::<App>::mount(value).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         assert!(harness.publish().is_ok());
         let snapshot = harness
             .semantic_snapshot()

@@ -22,6 +22,22 @@ struct SemanticOnlyProbe {
 }
 
 impl Widget<Action> for SemanticOnlyProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = &'static str;
 
     fn create_state(&self) -> Self::State {
@@ -70,6 +86,26 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -145,7 +181,8 @@ impl Consumer {
 fn semantic_only_publication_changes_semantics_without_allocating_a_paint_revision() {
     let environment = StyleEnvironment::default();
     let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
-    let mut runtime = AppRuntime::<App>::mount(State { name: "before" });
+    let mut runtime = AppRuntime::<App>::mount(State { name: "before" })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     drain_mount(&mut runtime);
 
     let initial = publish(&mut runtime, &context);
@@ -199,7 +236,8 @@ fn consumer_without_prior_runenui_state_reprocesses_the_complete_current_snapsho
     let scale_two =
         RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("test raster scale is valid"));
     let scaled_context = base_context.with_raster_scale(scale_two);
-    let mut runtime = AppRuntime::<App>::mount(State { name: "stable" });
+    let mut runtime = AppRuntime::<App>::mount(State { name: "stable" })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     drain_mount(&mut runtime);
 
     let initial = publish(&mut runtime, &base_context);

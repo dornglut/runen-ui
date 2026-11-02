@@ -1,5 +1,28 @@
 //! Mounted production shaping proof for the bounded secret-text layout guard.
 
+macro_rules! admitted {
+    ($result:expr, $fallback:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return $fallback };
+        value
+    }};
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
+
 use runenui_core::{
     EditableContribution, EditingSessionPolicy, Element, FontFamilyName, GenericFontFamily,
     NoHostProtocol, StyleEnvironment, TextAffinity, TextDocumentId, TextDocumentRevision,
@@ -31,6 +54,22 @@ struct EditableSecretLeaf {
 }
 
 impl Widget<()> for EditableSecretLeaf {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -64,6 +103,27 @@ impl Widget<()> for EditableSecretLeaf {
 struct SecretApp;
 
 impl UiApp for SecretApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The single editable secret leaf has one initial owner reconciliation.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = Case;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -83,8 +143,8 @@ impl UiApp for SecretApp {
     }
 }
 
-fn published(case: Case) -> runenui_runtime::SurfacePublication {
-    let mut runtime = AppRuntime::<SecretApp>::mount(case);
+fn published(case: Case) -> Option<runenui_runtime::SurfacePublication> {
+    let mut runtime = admitted!(AppRuntime::<SecretApp>::mount(case), None);
     assert!(runtime.register_text_font_bytes(FONT.to_vec()).is_ok());
     assert!(
         runtime
@@ -96,13 +156,20 @@ fn published(case: Case) -> runenui_runtime::SurfacePublication {
             .is_ok()
     );
     let env = StyleEnvironment::default();
-    runtime
-        .publish_surface(&SurfaceBuildContext::tight(
-            &env,
-            LogicalSize::try_new(260.0, 60.0)
-                .unwrap_or_else(|_| unreachable!("surface size validates")),
-        ))
-        .unwrap_or_else(|_| unreachable!("secret widget publishes a masked surface"))
+    let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
+        &env,
+        LogicalSize::try_new(260.0, 60.0)
+            .unwrap_or_else(|_| unreachable!("surface size validates")),
+    ));
+    assert!(
+        publication.is_ok(),
+        "secret widget publishes a masked surface: {:?}",
+        publication.as_ref().err()
+    );
+    let Ok(publication) = publication else {
+        return None;
+    };
+    Some(publication)
 }
 
 fn glyph_ids(surface: &runenui_runtime::SurfacePublication) -> Vec<u32> {
@@ -124,10 +191,12 @@ fn glyph_ids(surface: &runenui_runtime::SurfacePublication) -> Vec<u32> {
 #[test]
 fn secret_editable_leaf_shaped_resources_match_bullets_not_original_source() {
     let source = "sécret漢字";
-    let surface = published(Case {
+    let Some(surface) = published(Case {
         secret: source,
         displayed: source,
-    });
+    }) else {
+        return;
+    };
     let mask = TextMaskedProjection::document(snapshot(), source)
         .unwrap_or_else(|_| unreachable!("fixture source masks"));
     let mut text = TextSystem::new(FontSourcePolicy::BundledOnly);
@@ -174,10 +243,12 @@ fn secret_editable_leaf_shaped_resources_match_bullets_not_original_source() {
 
 #[test]
 fn foreign_secret_descriptor_cannot_shape_literal_widget_content() {
-    let surface = published(Case {
+    let Some(surface) = published(Case {
         secret: "owner-password",
         displayed: "unauthorized-plaintext",
-    });
+    }) else {
+        return;
+    };
     assert_eq!(glyph_ids(&surface), [] as [u32; 0]);
     let diagnostics = format!("{:?}", surface.layout_report());
     assert!(!diagnostics.contains("owner-password"));

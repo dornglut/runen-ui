@@ -45,10 +45,11 @@ fn settle_budget() -> SettleBudget {
 
 fn counter_harness() -> TestHarness<CounterApp> {
     TestHarness::mount_with_config(
-        Counter::new(),
+        app::CounterAppState::new(Counter::new()),
         RuntimeConfig::default(),
         TestSurfaceConfig::default().with_style_environment(ui::style_environment()),
     )
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"))
 }
 
 fn settle(harness: &mut TestHarness<CounterApp>) {
@@ -133,7 +134,7 @@ fn submit_pointer_activation(harness: &mut TestHarness<CounterApp>, point: Logic
         .submit_pointer(down)
         .unwrap_or_else(|error| unreachable!("Counter pointer down is accepted: {error:?}"));
     settle(harness);
-    assert_eq!(harness.state().count, 0);
+    assert_eq!(harness.state().counter.count, 0);
 
     let up = harness
         .pointer_event(
@@ -262,7 +263,7 @@ fn run_origin(origin: ActivationOrigin) {
     submit_activation(&mut harness, origin, targets);
     settle(&mut harness);
     assert_eq!(
-        harness.state().count,
+        harness.state().counter.count,
         1,
         "origin {origin:?} must update Counter once"
     );

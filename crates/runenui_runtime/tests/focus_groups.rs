@@ -1,5 +1,17 @@
 #![cfg(feature = "internal-test-seams")]
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use runenui_core::{
     ChildBearingWidget, CommandOrigin, Element, EventContext, EventPhase, FocusBoundaryPolicy,
@@ -10,7 +22,7 @@ use runenui_core::{
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, ReconciliationDiagnostic,
     RuntimeConfig, RuntimeLimits, RuntimeStatus, SurfaceBuildContext, TraceConfig, TraceRecordKind,
-    TraceReplay, TraceRoutedAdmissionRejection,
+    TraceReplay,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -66,6 +78,29 @@ enum Action {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(7, 0)
+            .with_reconciliation(7, 0, 7)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(54, 44)
+            .with_reconciliation(7, 7, 7)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -179,7 +214,7 @@ fn publish_geometry(runtime: &mut AppRuntime<App>) {
 
 #[test]
 fn external_traversal_collapses_group_and_uses_preferred_entry() {
-    let mut runtime = AppRuntime::<App>::mount(State::default());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::default()));
     settle(&mut runtime);
     publish_geometry(&mut runtime);
 
@@ -224,10 +259,10 @@ fn external_traversal_collapses_group_and_uses_preferred_entry() {
 
 #[test]
 fn preferred_entry_falls_back_when_preferred_member_is_disabled() {
-    let mut runtime = AppRuntime::<App>::mount(State {
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State {
         preferred_member: PreferredMemberState::Disabled,
         ..State::default()
-    });
+    }));
     settle(&mut runtime);
     let before = id(&mut runtime, "before");
     let fallback = id(&mut runtime, "a");
@@ -238,10 +273,10 @@ fn preferred_entry_falls_back_when_preferred_member_is_disabled() {
 
 #[test]
 fn zero_eligible_group_contributes_no_external_focus_stop() {
-    let mut runtime = AppRuntime::<App>::mount(State {
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State {
         group_members: GroupMemberState::Disabled,
         ..State::default()
-    });
+    }));
     settle(&mut runtime);
 
     let before = id(&mut runtime, "before");
@@ -254,12 +289,12 @@ fn zero_eligible_group_contributes_no_external_focus_stop() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn absolute_group_navigation_selects_first_and_last_eligible_members() {
-    let mut runtime = AppRuntime::<App>::mount(State {
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State {
         activation: FocusGroupActivationPolicy::Manual,
         boundary: FocusGroupBoundaryPolicy::Stop,
         preferred_member: PreferredMemberState::Disabled,
         ..State::default()
-    });
+    }));
     settle(&mut runtime);
 
     let group = id(&mut runtime, "group");
@@ -284,7 +319,7 @@ fn absolute_group_navigation_selects_first_and_last_eligible_members() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn absolute_group_navigation_activates_only_after_focus_commit() {
-    let mut runtime = AppRuntime::<App>::mount(State::default());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::default()));
     settle(&mut runtime);
     let c = id(&mut runtime, "c");
     let a = id(&mut runtime, "a");
@@ -330,7 +365,7 @@ fn absolute_group_navigation_activates_only_after_focus_commit() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn absolute_group_navigation_is_idempotent_at_the_requested_boundary() {
-    let mut runtime = AppRuntime::<App>::mount(State::default());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::default()));
     settle(&mut runtime);
     let a = id(&mut runtime, "a");
 
@@ -352,13 +387,13 @@ fn absolute_group_navigation_is_idempotent_at_the_requested_boundary() {
 
 #[test]
 fn absolute_group_navigation_trace_exports_and_replays_stable_tokens() {
-    let mut runtime = AppRuntime::<App>::mount_with_config(
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
         State {
             activation: FocusGroupActivationPolicy::Manual,
             ..State::default()
         },
         RuntimeConfig::default().with_trace_config(TraceConfig::new(512)),
-    );
+    ));
     settle(&mut runtime);
 
     let group = id(&mut runtime, "group");
@@ -377,7 +412,7 @@ fn absolute_group_navigation_trace_exports_and_replays_stable_tokens() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn internal_navigation_wraps_and_activation_is_deferred_until_after_focus() {
-    let mut runtime = AppRuntime::<App>::mount(State::default());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::default()));
     settle(&mut runtime);
     let b = id(&mut runtime, "b");
     let c = id(&mut runtime, "c");
@@ -425,10 +460,10 @@ fn internal_navigation_wraps_and_activation_is_deferred_until_after_focus() {
 
 #[test]
 fn hidden_preferred_entry_falls_back_and_internal_navigation_skips_ineligible_members() {
-    let mut runtime = AppRuntime::<App>::mount(State {
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State {
         preferred_member: PreferredMemberState::Hidden,
         ..State::default()
-    });
+    }));
     settle(&mut runtime);
 
     let before = id(&mut runtime, "before");
@@ -441,10 +476,10 @@ fn hidden_preferred_entry_falls_back_and_internal_navigation_skips_ineligible_me
     command(&mut runtime, a, SemanticCommand::FocusGroupNext);
     assert_eq!(runtime.focus().focused_node(), Some(&c));
 
-    let mut runtime = AppRuntime::<App>::mount(State {
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State {
         preferred_member: PreferredMemberState::Disabled,
         ..State::default()
-    });
+    }));
     settle(&mut runtime);
     let a = id(&mut runtime, "a");
     let c = id(&mut runtime, "c");
@@ -456,11 +491,11 @@ fn hidden_preferred_entry_falls_back_and_internal_navigation_skips_ineligible_me
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn manual_stop_policy_moves_without_activation_and_stops_at_boundary() {
-    let mut runtime = AppRuntime::<App>::mount(State {
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State {
         activation: FocusGroupActivationPolicy::Manual,
         boundary: FocusGroupBoundaryPolicy::Stop,
         ..State::default()
-    });
+    }));
     settle(&mut runtime);
 
     let b = id(&mut runtime, "b");
@@ -479,7 +514,7 @@ fn manual_stop_policy_moves_without_activation_and_stops_at_boundary() {
 
 #[test]
 fn programmatic_focus_can_target_any_exact_eligible_group_member() {
-    let mut runtime = AppRuntime::<App>::mount(State::default());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::default()));
     settle(&mut runtime);
     let c = id(&mut runtime, "c");
     command(&mut runtime, c.clone(), SemanticCommand::RequestFocus);
@@ -493,6 +528,29 @@ fn programmatic_focus_can_target_any_exact_eligible_group_member() {
 struct NestedApp;
 
 impl UiApp for NestedApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(9, 0)
+            .with_reconciliation(9, 0, 9)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(64, 52)
+            .with_reconciliation(9, 9, 9)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -580,7 +638,7 @@ fn nested_command(
 
 #[test]
 fn nested_groups_use_nearest_ownership_and_outer_group_treats_inner_as_one_member() {
-    let mut runtime = AppRuntime::<NestedApp>::mount(State::default());
+    let mut runtime = admitted!(AppRuntime::<NestedApp>::mount(State::default()));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -634,10 +692,10 @@ fn nested_groups_use_nearest_ownership_and_outer_group_treats_inner_as_one_membe
 
 #[test]
 fn invalid_multiple_preferred_members_diagnose_and_fail_closed() {
-    let mut runtime = AppRuntime::<App>::mount(State {
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State {
         group_authoring: GroupAuthoringState::DuplicatePreferred,
         ..State::default()
-    });
+    }));
     settle(&mut runtime);
 
     assert!(
@@ -679,6 +737,29 @@ fn invalid_multiple_preferred_members_diagnose_and_fail_closed() {
 struct ScopeBoundaryApp;
 
 impl UiApp for ScopeBoundaryApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(7, 0)
+            .with_reconciliation(7, 0, 7)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(46, 36)
+            .with_reconciliation(7, 7, 7)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -737,7 +818,7 @@ fn pump_scope_boundary(runtime: &mut AppRuntime<ScopeBoundaryApp>, budget: PumpB
 
 #[test]
 fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() {
-    let mut runtime = AppRuntime::<ScopeBoundaryApp>::mount(State::default());
+    let mut runtime = admitted!(AppRuntime::<ScopeBoundaryApp>::mount(State::default()));
     let full_budget = PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX);
     pump_scope_boundary(&mut runtime, full_budget);
     let one_budget = PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX);
@@ -845,7 +926,7 @@ fn nested_focus_scope_is_not_absorbed_by_or_escaped_through_outer_focus_group() 
 
 #[test]
 fn absolute_group_navigation_does_not_escape_a_nested_focus_scope() {
-    let mut runtime = AppRuntime::<ScopeBoundaryApp>::mount(State::default());
+    let mut runtime = admitted!(AppRuntime::<ScopeBoundaryApp>::mount(State::default()));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -893,92 +974,97 @@ fn absolute_group_navigation_does_not_escape_a_nested_focus_scope() {
 }
 
 #[test]
-fn manual_group_navigation_does_not_reserve_activate_target_queue_capacity() {
+fn group_navigation_profile_refusal_precedes_focus_commit_for_both_policies() {
     const QUEUE_CAPACITY: usize = 16;
-    const FILLER_ENVELOPES: usize = QUEUE_CAPACITY - 3;
     let limits = RuntimeLimits::default()
         .with_waiting_envelopes(QUEUE_CAPACITY)
         .with_transaction_outputs(1);
 
-    let mut manual = AppRuntime::<App>::mount_with_config(
+    let mut manual = admitted!(AppRuntime::<App>::mount_with_config(
         State {
             activation: FocusGroupActivationPolicy::Manual,
             ..State::default()
         },
         RuntimeConfig::default().with_limits(limits),
-    );
+    ));
     settle(&mut manual);
     assert_eq!(manual.status(), RuntimeStatus::Running);
 
     let manual_group = id(&mut manual, "group");
-    let manual_a = id(&mut manual, "a");
-    manual
-        .submit_command(
-            manual_group,
-            SemanticCommand::FocusGroupNext,
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("manual group command submission is accepted"));
-    for _ in 0..FILLER_ENVELOPES {
-        manual
-            .submit_action(Action::Activated("filler"))
-            .unwrap_or_else(|_| unreachable!("manual filler action is accepted"));
-    }
+    let expected_manual_group = manual_group.clone();
+    let Err(manual_refusal) = manual.submit_command(
+        manual_group,
+        SemanticCommand::FocusGroupNext,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!("manual navigation is refused when its interaction profile cannot fit");
+    };
     assert_eq!(
-        manual
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .processed_envelopes(),
-        1
+        manual_refusal.kind(),
+        runenui_runtime::SubmitCommandErrorKind::Full
     );
-    assert_eq!(manual.focus().focused_node(), Some(&manual_a));
+    let (returned_target, returned_command, returned_origin) =
+        manual_refusal.into_unaccepted().into_parts();
+    assert_eq!(returned_target, expected_manual_group);
+    assert_eq!(returned_command, SemanticCommand::FocusGroupNext);
+    assert_eq!(returned_origin, CommandOrigin::programmatic());
+    assert_eq!(manual.focus().focused_node(), None);
     assert_eq!(manual.status(), RuntimeStatus::Running);
+    assert_eq!(manual.state().activations.as_slice(), &[] as &[&str]);
 
-    let mut activate = AppRuntime::<App>::mount_with_config(
+    let mut activate = admitted!(AppRuntime::<App>::mount_with_config(
         State::default(),
         RuntimeConfig::default().with_limits(limits),
-    );
+    ));
     settle(&mut activate);
     assert_eq!(activate.status(), RuntimeStatus::Running);
 
     let activate_group = id(&mut activate, "group");
-    activate
-        .submit_command(
-            activate_group,
-            SemanticCommand::FocusGroupNext,
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("activate-target group command submission is accepted"));
-    for _ in 0..FILLER_ENVELOPES {
-        activate
-            .submit_action(Action::Activated("filler"))
-            .unwrap_or_else(|_| unreachable!("activate-target filler action is accepted"));
-    }
+    let expected_activate_group = activate_group.clone();
+    let Err(activate_refusal) = activate.submit_command(
+        activate_group,
+        SemanticCommand::FocusGroupNext,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!(
+            "activate-target navigation is refused when its interaction profile cannot fit"
+        );
+    };
     assert_eq!(
-        activate
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .processed_envelopes(),
-        1
+        activate_refusal.kind(),
+        runenui_runtime::SubmitCommandErrorKind::Full
     );
+    let (returned_target, returned_command, returned_origin) =
+        activate_refusal.into_unaccepted().into_parts();
+    assert_eq!(returned_target, expected_activate_group);
+    assert_eq!(returned_command, SemanticCommand::FocusGroupNext);
+    assert_eq!(returned_origin, CommandOrigin::programmatic());
     assert_eq!(activate.focus().focused_node(), None);
     assert_eq!(activate.status(), RuntimeStatus::Running);
-    assert!(activate.trace().kinds().any(|kind| matches!(
-        kind,
-        TraceRecordKind::RoutedEventAdmissionRejected {
-            capacity: TraceRoutedAdmissionRejection::WaitingEnvelopes
-        }
-    )));
+    assert_eq!(activate.state().activations.as_slice(), &[] as &[&str]);
 }
 
 #[derive(Debug)]
 struct OutputPressureGroup;
 
 impl Widget<Action> for OutputPressureGroup {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -1000,7 +1086,7 @@ impl Widget<Action> for OutputPressureGroup {
                 )
             })
         {
-            context.emit(Action::Activated("routed"));
+            let _ = context.try_emit(Action::Activated("routed"));
         }
         WidgetEventOutput::none()
     }
@@ -1011,6 +1097,29 @@ impl ChildBearingWidget<Action> for OutputPressureGroup {}
 struct OutputPressureApp;
 
 impl UiApp for OutputPressureApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(35, 28)
+            .with_reconciliation(4, 4, 4)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -1063,9 +1172,16 @@ fn pressure_id(runtime: &mut AppRuntime<OutputPressureApp>, name: &str) -> Mount
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn absolute_group_navigation_reserves_activation_capacity_before_focus_commit() {
-    let config =
-        RuntimeConfig::default().with_limits(RuntimeLimits::default().with_transaction_outputs(1));
-    let mut runtime = AppRuntime::<OutputPressureApp>::mount_with_config(State::default(), config);
+    const QUEUE_CAPACITY: usize = 35;
+    let config = RuntimeConfig::default().with_limits(
+        RuntimeLimits::default()
+            .with_waiting_envelopes(QUEUE_CAPACITY)
+            .with_transaction_outputs(28),
+    );
+    let mut runtime = admitted!(AppRuntime::<OutputPressureApp>::mount_with_config(
+        State::default(),
+        config
+    ));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1104,6 +1220,10 @@ fn absolute_group_navigation_reserves_activation_capacity_before_focus_commit() 
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("absolute pressure navigation is accepted"));
+    let Err(filler) = runtime.submit_action(Action::Activated("filler")) else {
+        unreachable!("later roots cannot consume the accepted interaction reservation");
+    };
+    assert_eq!(filler.kind(), runenui_runtime::SubmitActionErrorKind::Full);
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
@@ -1130,14 +1250,37 @@ fn absolute_group_navigation_reserves_activation_capacity_before_focus_commit() 
         .to_owned();
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.state().activations, vec!["routed", "b"]);
+    runtime
+        .submit_action(filler.into_action())
+        .unwrap_or_else(|_| {
+            unreachable!("the exact refused filler retries after the reserved interaction settles")
+        });
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("retried filler observation"))
+        .report()
+        .to_owned();
+    assert_eq!(runtime.state().activations, vec!["routed", "b", "filler"]);
 }
 
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn activate_target_reserves_default_command_capacity_beyond_routed_callback_outputs() {
-    let config =
-        RuntimeConfig::default().with_limits(RuntimeLimits::default().with_transaction_outputs(1));
-    let mut runtime = AppRuntime::<OutputPressureApp>::mount_with_config(State::default(), config);
+    const QUEUE_CAPACITY: usize = 35;
+    let config = RuntimeConfig::default().with_limits(
+        RuntimeLimits::default()
+            .with_waiting_envelopes(QUEUE_CAPACITY)
+            .with_transaction_outputs(28),
+    );
+    let mut runtime = admitted!(AppRuntime::<OutputPressureApp>::mount_with_config(
+        State::default(),
+        config
+    ));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1176,6 +1319,10 @@ fn activate_target_reserves_default_command_capacity_beyond_routed_callback_outp
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("pressure group navigation is accepted"));
+    let Err(filler) = runtime.submit_action(Action::Activated("filler")) else {
+        unreachable!("later roots cannot consume the accepted interaction reservation");
+    };
+    assert_eq!(filler.kind(), runenui_runtime::SubmitActionErrorKind::Full);
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
@@ -1202,4 +1349,20 @@ fn activate_target_reserves_default_command_capacity_beyond_routed_callback_outp
         .to_owned();
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.state().activations, vec!["routed", "b"]);
+    runtime
+        .submit_action(filler.into_action())
+        .unwrap_or_else(|_| {
+            unreachable!("the exact refused filler retries after the reserved interaction settles")
+        });
+    let _ = runtime
+        .pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ))
+        .unwrap_or_else(|_| unreachable!("retried filler observation"))
+        .report()
+        .to_owned();
+    assert_eq!(runtime.state().activations, vec!["routed", "b", "filler"]);
 }

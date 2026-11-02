@@ -20,5 +20,17 @@ mod input_lifecycle_cleanup;
 mod input_m4c5;
 #[path = "../keyboard_accelerators.rs"]
 mod keyboard_accelerators;
+#[path = "../producer_capture_retirement.rs"]
+mod producer_capture_retirement;
+#[path = "../producer_composition_cleanup.rs"]
+mod producer_composition_cleanup;
+#[path = "../producer_focus_retirement.rs"]
+mod producer_focus_retirement;
+#[path = "../producer_focus_work_residency.rs"]
+mod producer_focus_work_residency;
+#[path = "../producer_input_admission.rs"]
+mod producer_input_admission;
+#[path = "../producer_input_lifetimes.rs"]
+mod producer_input_lifetimes;
 #[path = "../scroll_control.rs"]
 mod scroll_control;

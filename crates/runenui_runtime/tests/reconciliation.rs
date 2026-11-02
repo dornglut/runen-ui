@@ -56,6 +56,28 @@ struct OrdinalState {
 }
 struct OrdinalApp;
 impl UiApp for OrdinalApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has at most 4 initial owners and no callback output.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(4, 4, 4)
+    }
+
     type State = OrdinalState;
     type Action = OrdinalAction;
     type HostProtocol = NoHostProtocol;
@@ -88,7 +110,8 @@ impl UiApp for OrdinalApp {
 
 #[test]
 fn keyed_insertion_does_not_shift_unkeyed_ordinals_but_unkeyed_insertion_does() {
-    let mut runtime = AppRuntime::<OrdinalApp>::mount(OrdinalState { case: 0 });
+    let mut runtime = AppRuntime::<OrdinalApp>::mount(OrdinalState { case: 0 })
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     let u1 = id_by_authored(&mut runtime, "u1");
     let u2 = id_by_authored(&mut runtime, "u2");
     process_one(&mut runtime, OrdinalAction::KeyedInsert);
@@ -109,6 +132,28 @@ struct MoveState {
 }
 struct MoveApp;
 impl UiApp for MoveApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has at most 4 initial owners and no callback output.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(4, 4, 4)
+    }
+
     type State = MoveState;
     type Action = MoveAction;
     type HostProtocol = NoHostProtocol;
@@ -140,7 +185,8 @@ impl UiApp for MoveApp {
 
 #[test]
 fn cross_parent_keyed_move_remounts() {
-    let mut runtime = AppRuntime::<MoveApp>::mount(MoveState { moved: false });
+    let mut runtime = AppRuntime::<MoveApp>::mount(MoveState { moved: false })
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     let child = id_by_authored(&mut runtime, "child");
     process_one(&mut runtime, MoveAction::Move);
     assert_ne!(id_by_authored(&mut runtime, "child"), child);
@@ -157,6 +203,28 @@ struct DuplicateState {
 }
 struct DuplicateApp;
 impl UiApp for DuplicateApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has at most 3 initial owners and no callback output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(3, 3, 3)
+    }
+
     type State = DuplicateState;
     type Action = DuplicateAction;
     type HostProtocol = NoHostProtocol;
@@ -174,7 +242,8 @@ impl UiApp for DuplicateApp {
 
 #[test]
 fn duplicate_keys_reuse_no_ambiguous_lifetime() {
-    let mut runtime = AppRuntime::<DuplicateApp>::mount(DuplicateState { duplicate: false });
+    let mut runtime = AppRuntime::<DuplicateApp>::mount(DuplicateState { duplicate: false })
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     let old = id_by_authored(&mut runtime, "one");
     process_one(&mut runtime, DuplicateAction::Duplicate);
     assert_ne!(id_by_authored(&mut runtime, "one"), old);
@@ -201,6 +270,28 @@ enum DuplicateTransition {
 struct DuplicateTransitionApp;
 
 impl UiApp for DuplicateTransitionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has at most 3 initial owners and no callback output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(3, 3, 3)
+    }
+
     type State = u8;
     type Action = DuplicateTransition;
     type HostProtocol = NoHostProtocol;
@@ -232,7 +323,8 @@ impl UiApp for DuplicateTransitionApp {
 #[test]
 fn duplicate_diagnostics_include_complete_old_and_new_occurrences() {
     let key = runenui_core::ElementKey::new("same").unwrap_or_else(|_| unreachable!());
-    let mut runtime = AppRuntime::<DuplicateTransitionApp>::mount(0);
+    let mut runtime = AppRuntime::<DuplicateTransitionApp>::mount(0)
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     process_one(&mut runtime, DuplicateTransition::KeepDuplicate);
     assert_eq!(
         runtime.reconciliation_report().diagnostics(),
@@ -254,7 +346,8 @@ fn duplicate_diagnostics_include_complete_old_and_new_occurrences() {
         }]
     );
 
-    let mut disappearing = AppRuntime::<DuplicateTransitionApp>::mount(0);
+    let mut disappearing = AppRuntime::<DuplicateTransitionApp>::mount(0)
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     process_one(&mut disappearing, DuplicateTransition::RemoveAll);
     assert_eq!(
         disappearing.reconciliation_report().diagnostics(),
@@ -275,6 +368,28 @@ enum NestedDuplicateAction {
 struct NestedDuplicateApp;
 
 impl UiApp for NestedDuplicateApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has at most 6 initial owners and no callback output.
+        runenui_core::ProducerBudget::new(6, 0)
+            .with_reconciliation(6, 0, 6)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(6, 0)
+            .with_reconciliation(6, 6, 6)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(6, 6, 6)
+    }
+
     type State = bool;
     type Action = NestedDuplicateAction;
     type HostProtocol = NoHostProtocol;
@@ -315,7 +430,8 @@ impl UiApp for NestedDuplicateApp {
 
 #[test]
 fn nested_duplicate_sets_report_complete_paths_in_deterministic_preorder() {
-    let mut runtime = AppRuntime::<NestedDuplicateApp>::mount(false);
+    let mut runtime = AppRuntime::<NestedDuplicateApp>::mount(false)
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     process_one(&mut runtime, NestedDuplicateAction::Duplicate);
     assert_eq!(
         runtime.reconciliation_report().diagnostics(),
@@ -344,6 +460,28 @@ enum RootAction {
 }
 struct RootApp;
 impl UiApp for RootApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has at most 1 initial owners and no callback output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = bool;
     type Action = RootAction;
     type HostProtocol = NoHostProtocol;
@@ -360,7 +498,8 @@ impl UiApp for RootApp {
 
 #[test]
 fn root_key_change_replaces_while_authored_id_change_alone_does_not_define_identity() {
-    let mut runtime = AppRuntime::<RootApp>::mount(false);
+    let mut runtime = AppRuntime::<RootApp>::mount(false)
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     let old = runtime.index().nodes()[0].id().clone();
     process_one(&mut runtime, RootAction::Replace);
     assert_ne!(runtime.index().nodes()[0].id(), &old);
@@ -374,6 +513,28 @@ enum RenameAction {
 }
 struct RenameApp;
 impl UiApp for RenameApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has at most 1 initial owners and no callback output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = bool;
     type Action = RenameAction;
     type HostProtocol = NoHostProtocol;
@@ -390,7 +551,8 @@ impl UiApp for RenameApp {
 
 #[test]
 fn authored_id_change_preserves_mounted_identity() {
-    let mut runtime = AppRuntime::<RenameApp>::mount(false);
+    let mut runtime = AppRuntime::<RenameApp>::mount(false)
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     let old = runtime.index().nodes()[0].id().clone();
     process_one(&mut runtime, RenameAction::Rename);
     assert_eq!(runtime.index().nodes()[0].id(), &old);
@@ -407,10 +569,36 @@ struct WidgetA;
 #[derive(Debug)]
 struct WidgetB;
 impl Widget<()> for WidgetA {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
 }
 impl Widget<()> for WidgetB {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
     fn create_state(&self) -> Self::State {}
 }
@@ -420,6 +608,28 @@ enum WidgetAction {
 }
 struct WidgetApp;
 impl UiApp for WidgetApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored tree has at most 1 initial owners and no callback output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = bool;
     type Action = WidgetAction;
     type HostProtocol = NoHostProtocol;
@@ -438,7 +648,8 @@ impl UiApp for WidgetApp {
 
 #[test]
 fn same_key_with_incompatible_widget_remounts_even_when_state_type_matches() {
-    let mut runtime = AppRuntime::<WidgetApp>::mount(false);
+    let mut runtime = AppRuntime::<WidgetApp>::mount(false)
+        .unwrap_or_else(|_| unreachable!("fixture runtime admission is valid"));
     let old = runtime.index().nodes()[0].id().clone();
     process_one(&mut runtime, WidgetAction::Replace);
     assert_ne!(runtime.index().nodes()[0].id(), &old);

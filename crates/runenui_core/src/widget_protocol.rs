@@ -7,7 +7,7 @@ use crate::{
     LogicalSize, PaintContribution, PaintContributionContext, SemanticContribution,
     SemanticContributionContext, ShortcutBinding, SubscriptionSet, UiEvent,
     WidgetActivationContext, WidgetEventOutput, WidgetInvalidation, WidgetMountContext,
-    WidgetUnmountContext, WidgetUpdateContext,
+    WidgetProducerBudget, WidgetProducerPhase, WidgetUnmountContext, WidgetUpdateContext,
 };
 
 /// Process-local identity of a concrete widget implementation type.
@@ -487,6 +487,15 @@ impl WidgetActivation {
 pub trait Widget<Action>: fmt::Debug {
     /// Runtime-local state type stored by the mounted runtime.
     type State: 'static;
+
+    /// Declares the maximum output for one callback phase before runtime enters
+    /// that callback. The runtime combines owner-local bounds into the admitted
+    /// producer budget and shares the resulting collector across the turn.
+    fn producer_budget(
+        &self,
+        phase: WidgetProducerPhase,
+        state: &Self::State,
+    ) -> WidgetProducerBudget;
 
     /// Creates initial runtime-local state. Stateless widgets explicitly declare
     /// `State = ()` and return `()` here.

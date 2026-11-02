@@ -19,6 +19,20 @@ struct DemoApp;
 
 #[cfg(test)]
 impl runenui_core::UiApp for DemoApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One mounted owner, regardless of the number of projected semantic nodes.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = runenui_core::NoHostProtocol;

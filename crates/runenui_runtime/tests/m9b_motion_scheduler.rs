@@ -14,6 +14,29 @@ use runenui_runtime::{
 struct DelayedMotionApp;
 
 impl UiApp for DelayedMotionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -64,7 +87,8 @@ fn observe(runtime: &mut AppRuntime<DelayedMotionApp>) -> runenui_runtime::PumpR
 
 #[test]
 fn delayed_motion_uses_the_existing_scheduler_deadline_and_publication_dirty_signal() {
-    let mut runtime = AppRuntime::<DelayedMotionApp>::mount(());
+    let mut runtime = AppRuntime::<DelayedMotionApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
     runtime
         .publish_surface(&SurfaceBuildContext::new(

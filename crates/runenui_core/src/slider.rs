@@ -359,12 +359,29 @@ impl<Action> SliderWidget<Action> {
             return;
         };
         if let Some(callback) = self.on_change.as_mut() {
-            context.emit(callback(value));
+            let _ = context.try_emit(callback(value));
         }
     }
 }
 
 impl<Action> Widget<Action> for SliderWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(4),
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = SliderState;
 
     fn create_state(&self) -> Self::State {
@@ -435,7 +452,7 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
                 || !state.actionable)
         {
             state.drag = None;
-            context.release_pointer_capture();
+            let _ = context.try_release_pointer_capture();
             context.prevent_default();
             context.stop_propagation();
             return WidgetEventOutput::changed();
@@ -482,7 +499,7 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
                     return WidgetEventOutput::none();
                 };
                 state.drag = Some(pointer.pointer_id());
-                context.capture_pointer();
+                let _ = context.try_capture_pointer();
                 self.emit_value(state, geometry.value_at(&state.range, position), context);
                 context.prevent_default();
                 context.stop_propagation();
@@ -494,12 +511,12 @@ impl<Action> Widget<Action> for SliderWidget<Action> {
                     context.pointer_local_size(),
                 ) else {
                     state.drag = None;
-                    context.release_pointer_capture();
+                    let _ = context.try_release_pointer_capture();
                     return WidgetEventOutput::changed();
                 };
                 let Some(geometry) = SliderGeometry::new(size, state.orientation) else {
                     state.drag = None;
-                    context.release_pointer_capture();
+                    let _ = context.try_release_pointer_capture();
                     return WidgetEventOutput::changed();
                 };
                 self.emit_value(state, geometry.value_at(&state.range, position), context);

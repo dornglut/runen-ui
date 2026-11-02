@@ -6,13 +6,30 @@ use runenui_core::{
     Widget, WidgetActivation, WidgetMeasure, children, column,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, PumpBudget, SubmitSurfaceCommandErrorKind, SurfaceBuildContext,
+    AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, SubmitSurfaceCommandErrorKind,
+    SurfaceBuildContext,
 };
 
 #[derive(Debug)]
 struct FocusableNoHit;
 
 impl Widget<()> for FocusableNoHit {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -30,6 +47,22 @@ impl Widget<()> for FocusableNoHit {
 struct HitOnly;
 
 impl Widget<()> for HitOnly {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -49,6 +82,26 @@ impl Widget<()> for HitOnly {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -77,9 +130,29 @@ fn center(rect: LogicalRect) -> LogicalPoint {
     .unwrap_or_else(|_| unreachable!("published logical bounds are finite"))
 }
 
+fn assert_focusability(
+    runtime: &mut AppRuntime<App>,
+    focusable: &MountedNodeId,
+    hit_only: &MountedNodeId,
+) {
+    assert!(
+        runtime
+            .index()
+            .node(focusable)
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
+    );
+    assert!(
+        runtime
+            .index()
+            .node(hit_only)
+            .is_some_and(|node| !node.is_focusable())
+    );
+}
+
 #[test]
 fn hit_regions_membership_and_focusability_are_independent_authorities() {
-    let mut runtime = AppRuntime::<App>::mount(());
+    let mut runtime = AppRuntime::<App>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -108,18 +181,7 @@ fn hit_regions_membership_and_focusability_are_independent_authorities() {
         .unwrap_or_else(|| unreachable!("hit-only probe is mounted"))
         .id()
         .clone();
-    assert!(
-        runtime
-            .index()
-            .node(&focusable)
-            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
-    );
-    assert!(
-        runtime
-            .index()
-            .node(&hit_only)
-            .is_some_and(|node| !node.is_focusable())
-    );
+    assert_focusability(&mut runtime, &focusable, &hit_only);
 
     let style_environment = StyleEnvironment::default();
     let publication = runtime

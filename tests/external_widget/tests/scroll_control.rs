@@ -44,6 +44,22 @@ fn node_id(runtime: &mut AppRuntime<App>, authored: &str) -> MountedNodeId {
 struct ExternalViewport;
 
 impl Widget<()> for ExternalViewport {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -83,6 +99,23 @@ struct ExternalScrollControl {
 }
 
 impl Widget<()> for ExternalScrollControl {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -132,7 +165,7 @@ impl Widget<()> for ExternalScrollControl {
         self.events.borrow_mut().push(snapshot);
         context.prevent_default();
         context.stop_propagation();
-        context.emit_command(SemanticCommand::ScrollControl(request));
+        let _ = context.try_emit_command(SemanticCommand::ScrollControl(request));
         WidgetEventOutput::none()
     }
 
@@ -196,6 +229,27 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(0, 2, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 5).with_reconciliation(0, 2, 0)
+    }
+
     type State = State;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -312,7 +366,8 @@ fn downstream_viewport_and_control_use_public_scroll_binding_snapshot_and_reques
         observed: Rc::clone(&observed),
         events: Rc::clone(&events),
         content_height: 60.0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(FULL_PUMP)
         .unwrap_or_else(|_| unreachable!("pump observation"));
@@ -429,7 +484,8 @@ fn non_scrollable_bound_scrollbar_remains_semantic_but_is_not_a_dead_focus_stop(
         observed,
         events,
         content_height: 30.0,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -513,6 +569,22 @@ struct ChromeContent {
 }
 
 impl Widget<ChromeAction> for ChromeContent {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -526,6 +598,22 @@ impl Widget<ChromeAction> for ChromeContent {
 struct ChromeViewport;
 
 impl Widget<ChromeAction> for ChromeViewport {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -563,6 +651,22 @@ struct ChromeTrack {
 }
 
 impl Widget<ChromeAction> for ChromeTrack {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -621,6 +725,22 @@ struct ChromeThumb {
 }
 
 impl Widget<ChromeAction> for ChromeThumb {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -680,6 +800,27 @@ enum ChromeAction {
 struct ChromeApp;
 
 impl UiApp for ChromeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(0, 4, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ChromeState;
     type Action = ChromeAction;
     type HostProtocol = NoHostProtocol;
@@ -791,6 +932,27 @@ fn chrome_state(
 struct DuplicateChromeApp;
 
 impl UiApp for DuplicateChromeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(0, 4, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ();
     type Action = ChromeAction;
     type HostProtocol = NoHostProtocol;
@@ -846,7 +1008,8 @@ impl UiApp for DuplicateChromeApp {
 
 #[test]
 fn duplicate_scroll_chrome_is_rejected_and_diagnosed_without_losing_mounted_identity() {
-    let mut runtime = AppRuntime::<DuplicateChromeApp>::mount(());
+    let mut runtime = AppRuntime::<DuplicateChromeApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1002,7 +1165,8 @@ fn downstream_reserved_scroll_chrome_is_viewport_attached_and_thumb_moves_in_pre
     );
     let track_callbacks = Rc::clone(&state.track_semantics);
     let thumb_callbacks = Rc::clone(&state.thumb_semantics);
-    let mut runtime = AppRuntime::<ChromeApp>::mount(state);
+    let mut runtime = AppRuntime::<ChromeApp>::mount(state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1099,7 +1263,8 @@ fn downstream_scroll_chrome_clamps_thumb_to_authored_minimum_extent() {
         ScrollBarVisibility::Automatic,
         ScrollBarPlacement::Reserved,
         false,
-    ));
+    ))
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1131,7 +1296,8 @@ fn assert_nonparticipating_reserved_chrome(visibility: ScrollBarVisibility, cont
     );
     let track_callbacks = Rc::clone(&state.track_semantics);
     let thumb_callbacks = Rc::clone(&state.thumb_semantics);
-    let mut runtime = AppRuntime::<ChromeApp>::mount(state);
+    let mut runtime = AppRuntime::<ChromeApp>::mount(state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1186,7 +1352,8 @@ fn assert_overlay_scrollbar_keeps_full_viewport() {
         ScrollBarVisibility::Always,
         ScrollBarPlacement::Overlay,
         false,
-    ));
+    ))
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1215,7 +1382,8 @@ fn assert_present_zero_range_chrome_can_be_explicitly_focusable() {
         ScrollBarVisibility::Always,
         ScrollBarPlacement::Reserved,
         true,
-    ));
+    ))
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1267,7 +1435,8 @@ fn live_chrome_change_clears_focus_before_surface_republication() {
         ScrollBarVisibility::Always,
         ScrollBarPlacement::Reserved,
         true,
-    ));
+    ))
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,

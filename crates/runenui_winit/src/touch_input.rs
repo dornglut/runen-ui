@@ -237,6 +237,26 @@ mod tests {
     struct App;
 
     impl UiApp for App {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            // One mounted owner, regardless of the number of projected semantic nodes.
+            runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1)
+        }
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(1, 0).with_reconciliation(1, 1, 1)
+        }
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            // No widget callback output; include runtime pointer defaults,
+            // cursor outcome coexistence and mandatory continuation access.
+            runenui_core::ProducerBudget::new(6, 2)
+                .with_application_outputs(0)
+                .with_reconciliation(1, 1, 1)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+                .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 2))
+        }
+
         type State = ();
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -258,7 +278,9 @@ mod tests {
 
     #[test]
     fn contacts_keep_unique_pointer_identity_and_translate_terminal_cancellation() {
-        let mut runtime = AppRuntime::<App>::mount(());
+        let mut runtime = AppRuntime::<App>::mount(()).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         let styles = StyleEnvironment::default();
         let surface = runtime
             .publish_surface(&SurfaceBuildContext::new(
@@ -318,7 +340,9 @@ mod tests {
 
     #[test]
     fn touch_pointer_ids_use_the_even_namespace_disjoint_from_mouse_adapter_ids() {
-        let mut runtime = AppRuntime::<App>::mount(());
+        let mut runtime = AppRuntime::<App>::mount(()).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         let styles = StyleEnvironment::default();
         let surface = runtime
             .publish_surface(&SurfaceBuildContext::new(
@@ -342,7 +366,9 @@ mod tests {
 
     #[test]
     fn unrepresentable_terminal_delta_retains_contact_for_explicit_cancellation() {
-        let mut runtime = AppRuntime::<App>::mount(());
+        let mut runtime = AppRuntime::<App>::mount(()).unwrap_or_else(|error| {
+            unreachable!("fixture initial admission must succeed: {error}")
+        });
         let styles = StyleEnvironment::default();
         let surface = runtime
             .publish_surface(&SurfaceBuildContext::new(
@@ -380,7 +406,10 @@ mod tests {
 
     fn traced_runtime_and_context() -> (AppRuntime<App>, SurfaceInputContext) {
         let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(1024));
-        let mut runtime = AppRuntime::<App>::mount_with_config((), config);
+        let mut runtime =
+            AppRuntime::<App>::mount_with_config((), config).unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
         let styles = StyleEnvironment::default();
         let publication = runtime
             .publish_surface(&SurfaceBuildContext::new(
@@ -405,6 +434,12 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("pump observation"))
             .report()
             .to_owned();
+        assert_eq!(
+            runtime.status(),
+            runenui_runtime::RuntimeStatus::Running,
+            "touch processing must remain live: {:?}",
+            runtime.trace()
+        );
     }
 
     fn assert_retired_contact_cannot_continue(

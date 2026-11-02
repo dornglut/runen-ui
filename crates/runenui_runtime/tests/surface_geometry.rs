@@ -59,6 +59,30 @@ fn publish<App: UiApp>(
 struct CompositeApp;
 
 impl UiApp for CompositeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 5 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(5, 5, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 5)
+            .with_application_outputs(0)
+            .with_reconciliation(5, 5, 5)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -82,7 +106,8 @@ impl UiApp for CompositeApp {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn built_in_row_column_measure_arrange_hit_and_debug_through_mounted_publication() {
-    let mut runtime = AppRuntime::<CompositeApp>::mount(());
+    let mut runtime = AppRuntime::<CompositeApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     register_controlled_text(&mut runtime);
     let style_environment = StyleEnvironment::default();
     let publication = publish(
@@ -158,6 +183,29 @@ fn built_in_row_column_measure_arrange_hit_and_debug_through_mounted_publication
 struct StyledApp;
 
 impl UiApp for StyledApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 1 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -179,7 +227,8 @@ fn resolved_padding_and_token_provenance_align_in_one_mounted_publication() {
         .define_color(color_token!("color.text"), Color::WHITE)
         .unwrap_or_else(|_| unreachable!());
     let style_environment = StyleEnvironment::from_tokens(tokens);
-    let mut runtime = AppRuntime::<StyledApp>::mount(());
+    let mut runtime = AppRuntime::<StyledApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     register_controlled_text(&mut runtime);
     let publication = publish(
         &mut runtime,
@@ -218,6 +267,29 @@ fn resolved_padding_and_token_provenance_align_in_one_mounted_publication() {
 struct RetainedTextApp;
 
 impl UiApp for RetainedTextApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 1 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = &'static str;
     type Action = &'static str;
     type HostProtocol = NoHostProtocol;
@@ -234,7 +306,8 @@ impl UiApp for RetainedTextApp {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn retained_paint_publication_keeps_old_shaped_binding_after_text_changes() {
-    let mut runtime = AppRuntime::<RetainedTextApp>::mount("first");
+    let mut runtime = AppRuntime::<RetainedTextApp>::mount("first")
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     register_controlled_text(&mut runtime);
     let environment = StyleEnvironment::default();
     let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
@@ -289,6 +362,28 @@ enum BoundaryCase {
 struct BoundaryApp;
 
 impl UiApp for BoundaryApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 4 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(4, 4, 4)
+    }
+
     type State = BoundaryCase;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -323,7 +418,8 @@ fn derived_geometry_saturates_without_non_finite_bounds_or_maxima() {
         BoundaryCase::Vertical,
         BoundaryCase::Padded,
     ] {
-        let mut runtime = AppRuntime::<BoundaryApp>::mount(case);
+        let mut runtime = AppRuntime::<BoundaryApp>::mount(case)
+            .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
         register_controlled_text(&mut runtime);
         let publication = publish(
             &mut runtime,
@@ -351,7 +447,8 @@ fn derived_geometry_saturates_without_non_finite_bounds_or_maxima() {
 fn invalid_dynamic_sizes_and_tight_constraint_overflow_are_explicit() {
     assert!(LogicalSize::try_new(f32::NAN, 10.0).is_err());
     assert!(LogicalSize::try_new(-1.0, 10.0).is_err());
-    let mut runtime = AppRuntime::<CompositeApp>::mount(());
+    let mut runtime = AppRuntime::<CompositeApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     register_controlled_text(&mut runtime);
     let style_environment = StyleEnvironment::default();
     let publication = publish(
@@ -369,6 +466,29 @@ fn invalid_dynamic_sizes_and_tight_constraint_overflow_are_explicit() {
 struct AuthoredRootBoundsApp;
 
 impl UiApp for AuthoredRootBoundsApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 1 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -389,7 +509,8 @@ impl UiApp for AuthoredRootBoundsApp {
 
 #[test]
 fn root_constraints_preserve_authored_root_bounds() {
-    let mut runtime = AppRuntime::<AuthoredRootBoundsApp>::mount(());
+    let mut runtime = AppRuntime::<AuthoredRootBoundsApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     register_controlled_text(&mut runtime);
     let environment = StyleEnvironment::default();
     let publication = publish(
@@ -450,6 +571,28 @@ fn root_constraints_preserve_authored_root_bounds() {
 struct OutOfRangeGridLineApp;
 
 impl UiApp for OutOfRangeGridLineApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 2 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(2, 2, 2)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -486,7 +629,8 @@ impl UiApp for OutOfRangeGridLineApp {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn out_of_range_grid_line_is_diagnosed_without_saturation() {
-    let mut runtime = AppRuntime::<OutOfRangeGridLineApp>::mount(());
+    let mut runtime = AppRuntime::<OutOfRangeGridLineApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let publication = publish(
         &mut runtime,
         &SurfaceBuildContext::new(&StyleEnvironment::default(), LayoutConstraints::unbounded()),
@@ -537,6 +681,22 @@ struct CorrelatingText {
 }
 
 impl Widget<CorrelationPhase> for CorrelatingText {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -560,6 +720,28 @@ impl Widget<CorrelationPhase> for CorrelatingText {
 struct TextCorrelationApp;
 
 impl UiApp for TextCorrelationApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored root has at most 2 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(2, 2, 2)
+    }
+
     type State = CorrelationState;
     type Action = CorrelationPhase;
     type HostProtocol = NoHostProtocol;
@@ -592,7 +774,8 @@ fn final_text_request_selects_the_matching_artifact_resource() {
     let mut runtime = AppRuntime::<TextCorrelationApp>::mount(CorrelationState {
         phase: Rc::new(Cell::new(CorrelationPhase::Prior)),
         inputs: Rc::clone(&inputs),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     register_controlled_text(&mut runtime);
     let environment = StyleEnvironment::default();
     let first = publish(

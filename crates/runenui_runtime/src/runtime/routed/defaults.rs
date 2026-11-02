@@ -913,19 +913,34 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Ok(());
         }
         let target = transaction.target.clone();
+        let remaining_outputs = transaction.remaining_outputs;
         let subscription_credit = transaction.subscription_credit(&target);
         let activation = self
             .tree
             .activate(
                 &target,
-                transaction.output_allowance(&target),
+                transaction
+                    .remaining_outputs
+                    .checked_add(subscription_credit)
+                    .unwrap_or_else(|| unreachable!("one coalescing credit fits")),
                 transaction.semantic_target.clone(),
             )
             .map_err(|_| TraceRoutedIntegrityFailure::SemanticDefaultFailure)?;
-        transaction.remaining_outputs = activation.remaining_outputs;
+        if let Some(cause) = activation.producer_violation {
+            return Err(TraceRoutedIntegrityFailure::ProducerViolation(cause));
+        }
         if activation.overflowed {
             return Err(TraceRoutedIntegrityFailure::OutputAllowanceExceeded);
         }
+        let coalesced_subscription_credit =
+            usize::from(activation.subscription_invalidation && subscription_credit > 0);
+        let charged_outputs = activation
+            .used_outputs
+            .checked_sub(coalesced_subscription_credit)
+            .ok_or(TraceRoutedIntegrityFailure::OutputAllowanceExceeded)?;
+        transaction.remaining_outputs = remaining_outputs
+            .checked_sub(charged_outputs)
+            .ok_or(TraceRoutedIntegrityFailure::OutputAllowanceExceeded)?;
         self.record_event_mutation(
             transaction,
             &target,

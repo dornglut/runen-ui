@@ -1,5 +1,17 @@
 #![cfg(feature = "internal-test-seams")]
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use runenui_core::{
     CommandOrigin, Element, ElementId, EventContext, FocusEventKind, NoHostProtocol,
@@ -14,6 +26,29 @@ use runenui_runtime::{
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(26, 20)
+            .with_reconciliation(3, 3, 3)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -46,6 +81,23 @@ struct FocusProbe {
 }
 
 impl Widget<()> for FocusProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -61,8 +113,8 @@ impl Widget<()> for FocusProbe {
                 .as_focus()
                 .is_some_and(|focus| focus.kind() == FocusEventKind::Out)
         {
-            context.emit(());
-            context.emit(());
+            let _ = context.try_emit(());
+            let _ = context.try_emit(());
         }
         WidgetEventOutput::none()
     }
@@ -144,7 +196,7 @@ fn assert_causal_ancestor(
 
 #[test]
 fn modality_trace_owns_exact_previous_and_current_endpoints() {
-    let mut runtime = AppRuntime::<App>::mount(());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(()));
     settle(&mut runtime);
     let a = id(&mut runtime, "a");
 
@@ -189,9 +241,11 @@ fn modality_trace_owns_exact_previous_and_current_endpoints() {
 
 #[test]
 fn overflowing_focus_out_callback_never_records_false_delivery() {
-    let limits = RuntimeLimits::default().with_transaction_outputs(1);
-    let mut runtime =
-        AppRuntime::<App>::mount_with_config((), RuntimeConfig::default().with_limits(limits));
+    let limits = RuntimeLimits::default().with_transaction_outputs(20);
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
+        (),
+        RuntimeConfig::default().with_limits(limits)
+    ));
     settle(&mut runtime);
     let a = id(&mut runtime, "a");
     let b = id(&mut runtime, "b");
@@ -229,7 +283,17 @@ fn overflowing_focus_out_callback_never_records_false_delivery() {
         matches!(
             kind,
             TraceRecordKind::RoutedIntegrityFailed {
-                failure: TraceRoutedIntegrityFailure::OutputAllowanceExceeded,
+                failure: TraceRoutedIntegrityFailure::ProducerViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                        phase: runenui_core::ProducerPhase::Widget(
+                            runenui_core::WidgetProducerPhase::Event
+                        ),
+                        component: runenui_core::BudgetComponent::Outputs,
+                        declared: 1,
+                        attempted: Some(2),
+                    }
+                ),
             }
         )
     });

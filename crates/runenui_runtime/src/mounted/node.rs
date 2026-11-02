@@ -3,7 +3,7 @@
 use core::fmt;
 
 use runenui_core::{
-    __runtime::{MountedWidget, MountedWidgetState},
+    __runtime::{MountedWidget, MountedWidgetState, Subscription},
     AuthoringDiagnostic, ElementId, ElementKey, ExplicitTimeline, FocusGroup, FocusGroupEntry,
     FocusScope, Focusability, LayoutStyle, PresentationFocusEntry, ScrollChrome,
     ScrollControlBinding, ShortcutBinding, StyleIntent, SurfacePresentation, WidgetActivation,
@@ -38,6 +38,7 @@ pub(crate) struct MountedNode<Action> {
     pub(crate) authoring_diagnostics: Vec<AuthoringDiagnostic>,
     pub(crate) widget: MountedWidget<Action>,
     pub(crate) state: MountedWidgetState,
+    pub(crate) initial_subscriptions: Option<Vec<Subscription<Action>>>,
     #[cfg(any(test, feature = "internal-test-seams"))]
     pub(crate) state_corrupted: bool,
     pub(crate) interaction: InteractionState,

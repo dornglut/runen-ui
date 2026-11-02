@@ -21,6 +21,22 @@ struct TraceState {
 struct TraceApp;
 
 impl UiApp for TraceApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One button, its routed/focus allowances and an output-only unary follow-up.
+        runenui_core::ProducerBudget::new(9, 7).with_reconciliation(1, 1, 1)
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(9, 7).with_reconciliation(1, 1, 1)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(9, 7).with_reconciliation(1, 1, 1)
+    }
+
     type State = TraceState;
     type Action = OpaqueAction;
     type HostProtocol = NoHostProtocol;
@@ -75,7 +91,8 @@ fn settle(runtime: &mut AppRuntime<TraceApp>) {
 #[allow(clippy::assert_is_empty)]
 fn trace_export_04_public_non_debug_labels_are_optional_and_dormant_when_trace_is_disabled() {
     LABEL_CALLS.store(0, Ordering::Relaxed);
-    let mut runtime = AppRuntime::<TraceApp>::mount(TraceState { updates: 0 });
+    let mut runtime = AppRuntime::<TraceApp>::mount(TraceState { updates: 0 })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
 
     let direct_work = runtime
@@ -135,7 +152,8 @@ fn trace_export_04_public_non_debug_labels_are_optional_and_dormant_when_trace_i
 
     let before_disabled = LABEL_CALLS.load(Ordering::Relaxed);
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(0));
-    let mut disabled = AppRuntime::<TraceApp>::mount_with_config(TraceState { updates: 0 }, config);
+    let mut disabled = AppRuntime::<TraceApp>::mount_with_config(TraceState { updates: 0 }, config)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     disabled
         .submit_action(OpaqueAction {
             emit_follow_up: false,

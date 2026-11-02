@@ -26,6 +26,29 @@ struct TimingState {
 struct TimingApp;
 
 impl UiApp for TimingApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = TimingState;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -100,7 +123,8 @@ fn delay_holds_keyframe_zero_until_the_active_interval_begins() {
         duration: Duration::from_millis(100),
         delay: Duration::from_millis(50),
         repeat: MotionRepeat::ONCE,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
 
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 0.0);
@@ -123,7 +147,8 @@ fn exact_non_final_repeat_boundary_restarts_at_keyframe_zero() {
         duration: Duration::from_millis(100),
         delay: Duration::ZERO,
         repeat,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
 
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 0.0);
@@ -154,7 +179,8 @@ fn zero_duration_positive_delay_completes_atomically_at_the_deadline() {
         duration: Duration::ZERO,
         delay: Duration::from_millis(50),
         repeat: MotionRepeat::ONCE,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
 
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 0.0);
@@ -178,7 +204,8 @@ fn forever_timeline_restarts_each_exact_iteration_boundary_without_completion() 
         duration: Duration::from_millis(100),
         delay: Duration::ZERO,
         repeat: MotionRepeat::Forever,
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = StyleEnvironment::default();
 
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 0.0);

@@ -13,6 +13,28 @@ enum ReplayAction {
 struct ReplayApp;
 
 impl UiApp for ReplayApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One text owner; replay does not introduce a live producer.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = usize;
     type Action = ReplayAction;
     type HostProtocol = NoHostProtocol;
@@ -49,7 +71,8 @@ fn mounted(trace_capacity: usize) -> AppRuntime<ReplayApp> {
     let mut runtime = AppRuntime::<ReplayApp>::mount_with_config(
         0,
         RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
-    );
+    )
+    .unwrap_or_else(|_| unreachable!("replay fixture runtime admission is valid"));
     settle(&mut runtime);
     runtime
 }

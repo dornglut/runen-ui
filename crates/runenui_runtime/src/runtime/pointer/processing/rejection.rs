@@ -588,7 +588,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         owner: &MountedNodeId,
         rejected: Option<TraceSequence>,
     ) -> RoutedIngressFacts {
-        RoutedIngressFacts::new(
+        let facts = RoutedIngressFacts::new(
             work.sequence,
             owner.clone(),
             CommandOrigin::__runtime_pointer(),
@@ -596,7 +596,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             TraceEventContext::new(TraceEventFamily::PointerCapture, false),
             rejected,
             TraceReservation::continuation(),
-        )
+        );
+        if let Some(root) = work.root_quota {
+            facts.with_root_quota(root)
+        } else {
+            facts
+        }
     }
 
     pub(super) fn reject_pointer(

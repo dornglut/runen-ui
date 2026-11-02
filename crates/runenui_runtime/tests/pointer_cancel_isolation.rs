@@ -27,6 +27,36 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The fixture has at most 1 mounted owners and no initial output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Event output budgets sum to 0 across the mounted owners. Bound
+        // ordinary/boundary route passes and four focus passes, plus four
+        // activation/default outputs. Owner reconciliation and the cursor
+        // service outcome/cancel pair stay inside the same finite frontier.
+        runenui_core::ProducerBudget::new(8, 4)
+            .with_application_outputs(0)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -46,6 +76,22 @@ struct Probe {
 }
 
 impl Widget<()> for Probe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -100,7 +146,8 @@ fn harness() -> Harness {
     let observations = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<App>::mount(State {
         observations: Rc::clone(&observations),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let style_environment = StyleEnvironment::default();
     let size = LogicalSize::try_new(64.0, 64.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));

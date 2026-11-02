@@ -238,6 +238,23 @@ struct TreeLabelWidget {
     label: String,
 }
 impl<Action> Widget<Action> for TreeLabelWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Event
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = String;
     fn create_state(&self) -> Self::State {
         self.label.clone()
@@ -290,6 +307,23 @@ impl<Action> fmt::Debug for TreeItemWidget<Action> {
     }
 }
 impl<Action> Widget<Action> for TreeItemWidget<Action> {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(3),
+            crate::WidgetProducerPhase::Activation => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = TreeItemFacts;
     fn create_state(&self) -> Self::State {
         self.facts()
@@ -353,7 +387,7 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
             // The bubbling ancestor is the exact parent focus target, not a guessed identity.
             context.prevent_default();
             context.stop_propagation();
-            context.emit_command(SemanticCommand::RequestFocus);
+            let _ = context.try_emit_command(SemanticCommand::RequestFocus);
             return WidgetEventOutput::none();
         }
         if context.phase() != EventPhase::Target || !self.status.has(TreeItemStatus::ENABLED) {
@@ -376,7 +410,7 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
         };
         if let Some(request) = request {
             if let Some(callback) = self.on_request.as_mut() {
-                context.emit(callback(request));
+                let _ = context.try_emit(callback(request));
                 context.prevent_default();
                 context.stop_propagation();
             }
@@ -388,7 +422,7 @@ impl<Action> Widget<Action> for TreeItemWidget<Action> {
             if self.status.has(TreeItemStatus::EXPANDED)
                 && self.status.has(TreeItemStatus::HAS_VISIBLE_CHILD)
             {
-                context.emit_command(SemanticCommand::FocusGroupNext);
+                let _ = context.try_emit_command(SemanticCommand::FocusGroupNext);
             }
         }
         WidgetEventOutput::none()
@@ -502,6 +536,23 @@ struct TreeViewWidget {
     invalid: Option<TreeAuthoringError>,
 }
 impl<Action> Widget<Action> for TreeViewWidget {
+    fn producer_budget(
+        &self,
+        phase: crate::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> crate::WidgetProducerBudget {
+        match phase {
+            crate::WidgetProducerPhase::Event => crate::WidgetProducerBudget::new(1),
+            crate::WidgetProducerPhase::Publication
+            | crate::WidgetProducerPhase::Activation
+            | crate::WidgetProducerPhase::Mount
+            | crate::WidgetProducerPhase::Update => crate::WidgetProducerBudget::new(0),
+            crate::WidgetProducerPhase::Subscriptions => {
+                crate::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+        }
+    }
+
     type State = Option<TreeAuthoringError>;
     fn create_state(&self) -> Self::State {
         self.invalid
@@ -556,7 +607,7 @@ impl<Action> Widget<Action> for TreeViewWidget {
             }
             context.prevent_default();
             context.stop_propagation();
-            context.emit_command(command);
+            let _ = context.try_emit_command(command);
         } else if event
             .as_semantic_command()
             .is_some_and(|event| event.command() == SemanticCommand::FocusLeft)

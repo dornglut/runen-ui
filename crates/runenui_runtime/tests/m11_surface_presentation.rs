@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -63,6 +75,30 @@ fn owner_translation() -> PresentationTransform {
 struct PlacementApp;
 
 impl UiApp for PlacementApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored presentation tree contains 4 owners with no initial output.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 5)
+            .with_application_outputs(0)
+            .with_reconciliation(4, 4, 4)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -100,7 +136,7 @@ impl UiApp for PlacementApp {
 
 #[test]
 fn presentation_is_out_of_flow_and_fallback_geometry_is_correlated() {
-    let mut runtime = AppRuntime::<PlacementApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<PlacementApp>::mount(()));
     let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&tight_context(&environment, 100, 60))
@@ -158,6 +194,30 @@ fn presentation_is_out_of_flow_and_fallback_geometry_is_correlated() {
 struct AnchorApp;
 
 impl UiApp for AnchorApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored presentation tree contains 2 owners with no initial output.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 5)
+            .with_application_outputs(0)
+            .with_reconciliation(2, 2, 2)
+    }
+
     type State = SurfacePresentationAnchor;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -186,8 +246,9 @@ fn surface_point_and_viewport_anchors_resolve_without_owner_geometry_authority()
 
     let point =
         LogicalPoint::new(70.0, 40.0).unwrap_or_else(|_| unreachable!("fixture point is finite"));
-    let mut point_runtime =
-        AppRuntime::<AnchorApp>::mount(SurfacePresentationAnchor::SurfacePoint(point));
+    let mut point_runtime = admitted!(AppRuntime::<AnchorApp>::mount(
+        SurfacePresentationAnchor::SurfacePoint(point)
+    ));
     let point_publication = point_runtime
         .publish_surface(&tight_context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("point-anchor publication is admitted"));
@@ -201,8 +262,9 @@ fn surface_point_and_viewport_anchors_resolve_without_owner_geometry_authority()
 
     let owner_rect = LogicalRect::try_new(8.0, 12.0, 20.0, 10.0)
         .unwrap_or_else(|_| unreachable!("fixture owner-local rect is valid"));
-    let mut rect_runtime =
-        AppRuntime::<AnchorApp>::mount(SurfacePresentationAnchor::OwnerRect(owner_rect));
+    let mut rect_runtime = admitted!(AppRuntime::<AnchorApp>::mount(
+        SurfacePresentationAnchor::OwnerRect(owner_rect)
+    ));
     let rect_publication = rect_runtime
         .publish_surface(&tight_context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("owner-rect publication is admitted"));
@@ -211,8 +273,9 @@ fn surface_point_and_viewport_anchors_resolve_without_owner_geometry_authority()
         .unwrap_or_else(|| unreachable!("owner rect anchor resolves"));
     assert_eq!(rect_snapshot.anchor_bounds(), owner_rect);
 
-    let mut viewport_runtime =
-        AppRuntime::<AnchorApp>::mount(SurfacePresentationAnchor::SurfaceViewport);
+    let mut viewport_runtime = admitted!(AppRuntime::<AnchorApp>::mount(
+        SurfacePresentationAnchor::SurfaceViewport
+    ));
     let viewport_publication = viewport_runtime
         .publish_surface(&tight_context(&environment, 100, 60))
         .unwrap_or_else(|_| unreachable!("viewport-anchor publication is admitted"));
@@ -232,6 +295,22 @@ struct LayerProbe {
 }
 
 impl<Action> Widget<Action> for LayerProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -261,6 +340,28 @@ impl<Action> ChildBearingWidget<Action> for LayerProbe {}
 struct StackingApp;
 
 impl UiApp for StackingApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored presentation tree contains 3 owners with no initial output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(3, 3, 3)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -293,7 +394,7 @@ impl UiApp for StackingApp {
 
 #[test]
 fn presentation_band_outranks_ordinary_scene_layers_for_paint_and_hit() {
-    let mut runtime = AppRuntime::<StackingApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<StackingApp>::mount(()));
     let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&tight_context(&environment, 80, 80))
@@ -330,6 +431,30 @@ fn singular_presentation() -> PresentationTransform {
 struct SingularAnchorApp;
 
 impl UiApp for SingularAnchorApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored presentation tree contains 2 owners with no initial output.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 5)
+            .with_application_outputs(0)
+            .with_reconciliation(2, 2, 2)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -354,7 +479,7 @@ impl UiApp for SingularAnchorApp {
 
 #[test]
 fn owner_relative_anchor_fails_closed_for_singular_owner_projection() {
-    let mut runtime = AppRuntime::<SingularAnchorApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<SingularAnchorApp>::mount(()));
     let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&tight_context(&environment, 80, 60))
@@ -388,6 +513,22 @@ fn owner_relative_anchor_fails_closed_for_singular_owner_projection() {
 struct ClipProbe;
 
 impl Widget<()> for ClipProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -411,6 +552,28 @@ impl Widget<()> for ClipProbe {
 struct ClipEscapeApp;
 
 impl UiApp for ClipEscapeApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored presentation tree contains 3 owners with no initial output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(3, 3, 3)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -439,7 +602,7 @@ impl UiApp for ClipEscapeApp {
 
 #[test]
 fn presentation_escapes_ancestor_clip_but_preserves_local_clip_and_surface_clip() {
-    let mut runtime = AppRuntime::<ClipEscapeApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<ClipEscapeApp>::mount(()));
     let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&tight_context(&environment, 60, 40))
@@ -483,6 +646,28 @@ fn presentation_escapes_ancestor_clip_but_preserves_local_clip_and_surface_clip(
 struct NestedStackingApp;
 
 impl UiApp for NestedStackingApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored presentation tree contains 3 owners with no initial output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(3, 3, 3)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -529,7 +714,7 @@ impl UiApp for NestedStackingApp {
 
 #[test]
 fn nested_presentation_root_is_an_independent_later_band_above_ancestor() {
-    let mut runtime = AppRuntime::<NestedStackingApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<NestedStackingApp>::mount(()));
     let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&tight_context(&environment, 80, 80))
@@ -561,6 +746,30 @@ enum MovingAction {
 struct MovingPresentationApp;
 
 impl UiApp for MovingPresentationApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored presentation tree contains 2 owners with no initial output.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 5)
+            .with_application_outputs(0)
+            .with_reconciliation(2, 2, 2)
+    }
+
     type State = MovingState;
     type Action = MovingAction;
     type HostProtocol = NoHostProtocol;
@@ -592,7 +801,9 @@ impl UiApp for MovingPresentationApp {
 
 #[test]
 fn placement_rebuild_retains_one_mounted_and_semantic_lifetime() {
-    let mut runtime = AppRuntime::<MovingPresentationApp>::mount(MovingState { x: 20.0 });
+    let mut runtime = admitted!(AppRuntime::<MovingPresentationApp>::mount(MovingState {
+        x: 20.0
+    }));
     let environment = StyleEnvironment::default();
     let first = runtime
         .publish_surface(&tight_context(&environment, 100, 60))
@@ -654,6 +865,34 @@ fn placement_rebuild_retains_one_mounted_and_semantic_lifetime() {
 struct ScrollAnchorApp;
 
 impl UiApp for ScrollAnchorApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored presentation tree contains 4 owners with no initial output.
+        runenui_core::ProducerBudget::new(4, 0)
+            .with_reconciliation(4, 0, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(4, 4, 4)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Focus/scroll callback allowance plus a cursor service's two future
+        // outcomes and its lifetime continuation. No editor or drag offer.
+        runenui_core::ProducerBudget::new(9, 6)
+            .with_application_outputs(0)
+            .with_reconciliation(4, 4, 4)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -688,7 +927,7 @@ impl UiApp for ScrollAnchorApp {
 
 #[test]
 fn owner_anchor_follows_accepted_scroll_without_inflating_scroll_extent() {
-    let mut runtime = AppRuntime::<ScrollAnchorApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<ScrollAnchorApp>::mount(()));
     let environment = StyleEnvironment::default();
     let context = tight_context(&environment, 40, 40);
     let initial = runtime
@@ -773,6 +1012,28 @@ fn sibling_presentation(id: &'static str, color: Color) -> Element<SiblingStackA
 }
 
 impl UiApp for SiblingStackApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored presentation tree contains 3 owners with no initial output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(3, 3, 3)
+    }
+
     type State = bool;
     type Action = SiblingStackAction;
     type HostProtocol = NoHostProtocol;
@@ -796,7 +1057,7 @@ impl UiApp for SiblingStackApp {
 
 #[test]
 fn direct_presentation_siblings_follow_current_keyed_mounted_preorder() {
-    let mut runtime = AppRuntime::<SiblingStackApp>::mount(false);
+    let mut runtime = admitted!(AppRuntime::<SiblingStackApp>::mount(false));
     let environment = StyleEnvironment::default();
     let context = tight_context(&environment, 80, 80);
     let point =
@@ -841,6 +1102,32 @@ fn direct_presentation_siblings_follow_current_keyed_mounted_preorder() {
 struct FocusProjectionApp;
 
 impl UiApp for FocusProjectionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored presentation tree contains 3 owners with no initial output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Two button event budgets across four possible focus passes,
+        // plus the ordinary target and one navigation scroll output.
+        runenui_core::ProducerBudget::new(10, 10)
+            .with_application_outputs(0)
+            .with_reconciliation(3, 3, 3)
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -873,7 +1160,7 @@ impl UiApp for FocusProjectionApp {
 
 #[test]
 fn directional_focus_uses_projected_presentation_geometry() {
-    let mut runtime = AppRuntime::<FocusProjectionApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<FocusProjectionApp>::mount(()));
     let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&tight_context(&environment, 100, 60))
@@ -930,6 +1217,22 @@ struct RouteProbe {
 }
 
 impl Widget<()> for RouteProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -962,6 +1265,28 @@ impl ChildBearingWidget<()> for RouteProbe {}
 struct RouteProjectionApp;
 
 impl UiApp for RouteProjectionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored presentation tree contains 2 owners with no initial output.
+        runenui_core::ProducerBudget::new(2, 0)
+            .with_reconciliation(2, 0, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(2, 2, 2)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(2, 2, 2)
+    }
+
     type State = Rc<RefCell<Vec<RouteFact>>>;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -997,7 +1322,7 @@ impl UiApp for RouteProjectionApp {
 #[test]
 fn projected_target_keeps_ordinary_logical_routed_ancestry() {
     let facts = Rc::new(RefCell::new(Vec::new()));
-    let mut runtime = AppRuntime::<RouteProjectionApp>::mount(Rc::clone(&facts));
+    let mut runtime = admitted!(AppRuntime::<RouteProjectionApp>::mount(Rc::clone(&facts)));
     let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&tight_context(&environment, 100, 60))
@@ -1048,6 +1373,23 @@ struct CaptureProjectionProbe {
 }
 
 impl Widget<()> for CaptureProjectionProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Event => runenui_core::WidgetProducerBudget::new(1),
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -1062,7 +1404,7 @@ impl Widget<()> for CaptureProjectionProbe {
             UiEvent::Pointer(pointer)
                 if self.capture_on_down && pointer.phase() == PointerPhase::Down =>
             {
-                context.capture_pointer();
+                let _ = context.try_capture_pointer();
             }
             UiEvent::Pointer(pointer)
                 if self.capture_on_down && pointer.phase() == PointerPhase::Move =>
@@ -1091,6 +1433,35 @@ impl Widget<()> for CaptureProjectionProbe {
 struct CaptureProjectionApp;
 
 impl UiApp for CaptureProjectionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The authored presentation tree contains 3 owners with no initial output.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Both probes have a capture allowance. Four focus visits each, one
+        // ordinary visit, one boundary visit, cursor start and two future
+        // outcomes, plus the protected continuation envelope.
+        runenui_core::ProducerBudget::new(13, 11)
+            .with_application_outputs(0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+            .with_reconciliation(3, 3, 3)
+    }
+
     type State = Rc<RefCell<Vec<CaptureMoveFact>>>;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -1174,7 +1545,7 @@ fn capture_proof_hit_point(
 #[test]
 fn projected_physical_target_does_not_steal_existing_pointer_capture() {
     let moves = Rc::new(RefCell::new(Vec::new()));
-    let mut runtime = AppRuntime::<CaptureProjectionApp>::mount(Rc::clone(&moves));
+    let mut runtime = admitted!(AppRuntime::<CaptureProjectionApp>::mount(Rc::clone(&moves)));
     let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&tight_context(&environment, 100, 60))

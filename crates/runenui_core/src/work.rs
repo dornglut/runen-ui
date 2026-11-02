@@ -153,6 +153,12 @@ impl<Action> TimerEffect<Action> {
     }
 
     #[doc(hidden)]
+    #[must_use]
+    pub const fn __runtime_is_repeating(&self) -> bool {
+        self.interval.is_some()
+    }
+
+    #[doc(hidden)]
     pub fn __runtime_into_parts(self) -> TimerEffectParts<Action> {
         (self.key, self.delay, self.interval, self.action)
     }

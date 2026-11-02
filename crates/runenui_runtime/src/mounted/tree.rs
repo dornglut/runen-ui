@@ -19,6 +19,25 @@ use super::{
 };
 use crate::ReconciliationDiagnostic;
 
+fn add_work_start_budgets(
+    left: runenui_core::WorkStartBudget,
+    right: runenui_core::WorkStartBudget,
+) -> Option<runenui_core::WorkStartBudget> {
+    use runenui_core::WorkFamily;
+    Some(runenui_core::WorkStartBudget::new(
+        left.for_family(WorkFamily::LocalTask)
+            .checked_add(right.for_family(WorkFamily::LocalTask))?,
+        left.for_family(WorkFamily::SendTask)
+            .checked_add(right.for_family(WorkFamily::SendTask))?,
+        left.for_family(WorkFamily::Timer)
+            .checked_add(right.for_family(WorkFamily::Timer))?,
+        left.for_family(WorkFamily::HostRequest)
+            .checked_add(right.for_family(WorkFamily::HostRequest))?,
+        left.for_family(WorkFamily::FrameworkService)
+            .checked_add(right.for_family(WorkFamily::FrameworkService))?,
+    ))
+}
+
 pub(crate) struct ReconcileStats<Action> {
     pub(crate) mounted: usize,
     pub(crate) updated: usize,
@@ -32,6 +51,8 @@ pub(crate) struct ReconcileStats<Action> {
         MountedNodeId,
         Vec<runenui_core::__runtime::MountedEffect<Action>>,
     )>,
+    pub(crate) producer_overrun: bool,
+    pub(crate) producer_violation: Option<runenui_core::ProducerContractViolation>,
 }
 
 impl<Action> Default for ReconcileStats<Action> {
@@ -46,6 +67,8 @@ impl<Action> Default for ReconcileStats<Action> {
             unmounted_owners: Vec::new(),
             subscription_invalidated: Vec::new(),
             mounted_outputs: Vec::new(),
+            producer_overrun: false,
+            producer_violation: None,
         }
     }
 }
@@ -57,6 +80,13 @@ impl From<ArenaCapacityError> for MountedIdentityExhausted {
     fn from(_: ArenaCapacityError) -> Self {
         Self
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum InitialTreeMountError {
+    IdentityExhausted,
+    ProducerProfileExceeded,
+    ProducerViolation(runenui_core::ProducerContractViolation),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -117,6 +147,19 @@ pub(crate) struct MountedTree<Action> {
 }
 
 impl<Action> MountedTree<Action> {
+    pub(crate) fn preflight_producer_identity(
+        &self,
+        profile: runenui_core::ProducerBudget,
+        public_slot_limit: u64,
+    ) -> Result<(), MountedIdentityExhausted> {
+        self.arena
+            .preflight_producer_peak(
+                profile.mounted_nodes(),
+                profile.retained_updates(),
+                public_slot_limit,
+            )
+            .map_err(|_| MountedIdentityExhausted)
+    }
     pub(crate) fn empty() -> Self {
         Self {
             runtime: RuntimeNamespace::__runtime_new(),
@@ -129,18 +172,95 @@ impl<Action> MountedTree<Action> {
 
     #[cfg(test)]
     pub(crate) fn mount(root: Element<Action>) -> (Self, ReconcileStats<Action>) {
-        Self::mount_with_public_slot_limit(root, u64::from(u32::MAX) + 1)
-            .unwrap_or_else(|_| unreachable!("test tree remains within public identity capacity"))
+        Self::mount_with_public_slot_limit(
+            root,
+            u64::from(u32::MAX) + 1,
+            runenui_core::ProducerBudget::new(usize::MAX, usize::MAX)
+                .with_reconciliation(usize::MAX, usize::MAX, usize::MAX)
+                .with_subscriptions(usize::MAX, usize::MAX)
+                .with_work_starts(runenui_core::WorkStartBudget::new(
+                    usize::MAX,
+                    usize::MAX,
+                    usize::MAX,
+                    usize::MAX,
+                    usize::MAX,
+                )),
+            0,
+            runenui_core::WorkStartBudget::default(),
+        )
+        .unwrap_or_else(|_| unreachable!("test tree remains within public identity capacity"))
     }
 
     pub(crate) fn mount_with_public_slot_limit(
         root: Element<Action>,
         public_slot_limit: u64,
-    ) -> Result<(Self, ReconcileStats<Action>), MountedIdentityExhausted> {
-        let root = IncomingNode::from_element(root);
+        producer_budget: runenui_core::ProducerBudget,
+        initial_application_outputs: usize,
+        initial_application_work_starts: runenui_core::WorkStartBudget,
+    ) -> Result<(Self, ReconcileStats<Action>), InitialTreeMountError> {
+        let mut root = IncomingNode::from_element(root);
+        let node_count = root
+            .node_count()
+            .map_err(|_| InitialTreeMountError::IdentityExhausted)?;
+        let violation = |component, declared, attempted| {
+            InitialTreeMountError::ProducerViolation(runenui_core::ProducerContractViolation {
+                kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
+                phase: runenui_core::ProducerPhase::ApplicationRoot,
+                component,
+                declared,
+                attempted: Some(attempted),
+            })
+        };
+        for (component, declared) in [
+            (
+                runenui_core::BudgetComponent::MountedNodes,
+                producer_budget.mounted_nodes(),
+            ),
+            (
+                runenui_core::BudgetComponent::DirtySubscriptionOwners,
+                producer_budget.dirty_subscription_owners(),
+            ),
+        ] {
+            if node_count > declared {
+                return Err(violation(component, declared, node_count));
+            }
+        }
+        let widget_budget =
+            root.prepare_initial(producer_budget.mounted_subscriptions_per_owner())?;
+        let output_total = initial_application_outputs
+            .checked_add(widget_budget.mount_outputs)
+            .ok_or(InitialTreeMountError::ProducerProfileExceeded)?;
+        let start_total =
+            add_work_start_budgets(initial_application_work_starts, widget_budget.work_starts)
+                .ok_or(InitialTreeMountError::ProducerProfileExceeded)?;
+        if output_total > producer_budget.application_outputs() {
+            return Err(violation(
+                runenui_core::BudgetComponent::ApplicationOutputs,
+                producer_budget.application_outputs(),
+                output_total,
+            ));
+        }
+        for family in [
+            runenui_core::WorkFamily::LocalTask,
+            runenui_core::WorkFamily::SendTask,
+            runenui_core::WorkFamily::Timer,
+            runenui_core::WorkFamily::HostRequest,
+            runenui_core::WorkFamily::FrameworkService,
+        ] {
+            let declared = producer_budget.work_starts().for_family(family);
+            let attempted = start_total.for_family(family);
+            if attempted > declared {
+                return Err(violation(
+                    runenui_core::BudgetComponent::WorkStarts(family),
+                    declared,
+                    attempted,
+                ));
+            }
+        }
         let mut tree = Self::empty();
         tree.arena
-            .preflight_live_count(root.node_count()?, public_slot_limit)?;
+            .preflight_live_count(node_count, public_slot_limit)
+            .map_err(|_| InitialTreeMountError::IdentityExhausted)?;
         let mut stats = ReconcileStats::default();
         collect_focus_group_diagnostics(&root, "root", &mut stats.diagnostics);
         let root_id = tree.mount_incoming(None, root, &mut stats);
@@ -249,6 +369,61 @@ impl<Action> MountedTree<Action> {
             .node(id)
             .ok_or(WidgetBridgeError::StatePayloadMismatch)?;
         node.widget.subscriptions(&node.state, subscriptions)
+    }
+
+    pub(crate) fn subscriptions_budget(
+        &self,
+        id: &MountedNodeId,
+    ) -> Result<runenui_core::WidgetProducerBudget, WidgetBridgeError> {
+        let node = self
+            .node(id)
+            .ok_or(WidgetBridgeError::StatePayloadMismatch)?;
+        node.widget.producer_budget(
+            &node.state,
+            runenui_core::WidgetProducerPhase::Subscriptions,
+        )
+    }
+
+    pub(crate) fn event_budget(
+        &self,
+        id: &MountedNodeId,
+    ) -> Result<runenui_core::WidgetProducerBudget, WidgetBridgeError> {
+        let node = self
+            .node(id)
+            .ok_or(WidgetBridgeError::StatePayloadMismatch)?;
+        node.widget
+            .producer_budget(&node.state, runenui_core::WidgetProducerPhase::Event)
+    }
+
+    pub(crate) fn publication_reveal_bound(&self) -> Option<usize> {
+        self.publication_preorder_ids()
+            .iter()
+            .try_fold(0usize, |total, owner| {
+                let node = self.node(owner)?;
+                let budget = node
+                    .widget
+                    .producer_budget(&node.state, runenui_core::WidgetProducerPhase::Publication)
+                    .ok()?;
+                total.checked_add(budget.publication_reveals())
+            })
+    }
+
+    pub(crate) fn activation_budget(
+        &self,
+        id: &MountedNodeId,
+    ) -> Result<runenui_core::WidgetProducerBudget, WidgetBridgeError> {
+        let node = self
+            .node(id)
+            .ok_or(WidgetBridgeError::StatePayloadMismatch)?;
+        node.widget
+            .producer_budget(&node.state, runenui_core::WidgetProducerPhase::Activation)
+    }
+
+    pub(crate) fn take_initial_subscriptions(
+        &mut self,
+        id: &MountedNodeId,
+    ) -> Option<Vec<runenui_core::__runtime::Subscription<Action>>> {
+        self.node_mut(id)?.initial_subscriptions.take()
     }
     pub(crate) fn node_mut(&mut self, id: &MountedNodeId) -> Option<&mut MountedNode<Action>> {
         let (slot, generation) = self.runtime.__runtime_mounted_parts(id)?;
@@ -434,6 +609,19 @@ mod tests {
     struct UnmountOrderingProbe(Rc<Cell<bool>>);
 
     impl Widget<()> for UnmountOrderingProbe {
+        fn producer_budget(
+            &self,
+            phase: runenui_core::WidgetProducerPhase,
+            _state: &Self::State,
+        ) -> runenui_core::WidgetProducerBudget {
+            match phase {
+                runenui_core::WidgetProducerPhase::Subscriptions => {
+                    runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+                }
+                _ => runenui_core::WidgetProducerBudget::new(0),
+            }
+        }
+
         type State = ();
 
         fn create_state(&self) -> Self::State {}

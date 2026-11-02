@@ -15,7 +15,35 @@ enum Action {
     Other,
 }
 struct App;
+impl App {
+    const fn producer_budget(nodes: usize) -> runenui_core::ProducerBudget {
+        let outputs = 6 * nodes + 2;
+        runenui_core::ProducerBudget::new(outputs + nodes + 1, outputs)
+            .with_reconciliation(nodes, nodes, nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+}
+
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(8, 0)
+            .with_reconciliation(8, 0, 8)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget(8)
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget(8)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -86,7 +114,8 @@ fn leaving_combo_box_real_focus_closes_popup_only_via_application_fifo() {
         open: true,
         committed: 0,
         requests: Vec::new(),
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     settle(&mut runtime);
     let owner = id(&mut runtime, "focus.combo.owner");
     let other = id(&mut runtime, "focus.other");

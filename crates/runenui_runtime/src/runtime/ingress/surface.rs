@@ -231,6 +231,12 @@ const fn map_snapshot_error(error: SurfaceSnapshotError) -> SubmitSurfaceCommand
 const fn map_command_error(error: SubmitCommandErrorKind) -> SubmitSurfaceCommandErrorKind {
     match error {
         SubmitCommandErrorKind::Full => SubmitSurfaceCommandErrorKind::Full,
+        SubmitCommandErrorKind::WorkCapacity(family) => {
+            SubmitSurfaceCommandErrorKind::WorkCapacity(family)
+        }
+        SubmitCommandErrorKind::InvalidProducerProfile => {
+            SubmitSurfaceCommandErrorKind::InvalidProducerProfile
+        }
         SubmitCommandErrorKind::Closed => SubmitSurfaceCommandErrorKind::Closed,
         SubmitCommandErrorKind::Terminal(reason) => SubmitSurfaceCommandErrorKind::Terminal(reason),
         SubmitCommandErrorKind::ForeignTarget => SubmitSurfaceCommandErrorKind::ForeignTarget,
@@ -248,6 +254,10 @@ const fn map_command_error(error: SubmitCommandErrorKind) -> SubmitSurfaceComman
 const fn map_trace_rejection(kind: SubmitSurfaceCommandErrorKind) -> TraceSurfaceRejection {
     match kind {
         SubmitSurfaceCommandErrorKind::Full => TraceSurfaceRejection::QueueFull,
+        SubmitSurfaceCommandErrorKind::WorkCapacity(_) => TraceSurfaceRejection::WorkCapacity,
+        SubmitSurfaceCommandErrorKind::InvalidProducerProfile => {
+            TraceSurfaceRejection::InvalidProducerProfile
+        }
         SubmitSurfaceCommandErrorKind::Closed => TraceSurfaceRejection::RuntimeClosed,
         SubmitSurfaceCommandErrorKind::Terminal(_) => TraceSurfaceRejection::RuntimeTerminal,
         SubmitSurfaceCommandErrorKind::ForeignSurfaceContext => {

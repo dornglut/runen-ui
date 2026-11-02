@@ -254,18 +254,20 @@ struct CounterHost {
 }
 
 impl CounterHost {
-    fn new(proxy: EventLoopProxy<HostEvent>) -> Self {
+    fn new(
+        proxy: EventLoopProxy<HostEvent>,
+    ) -> Result<Self, runenui_runtime::InitialAdmissionError<crate::app::CounterAppState>> {
         let mut runtime = AppRuntime::<CounterApp>::mount_with_config(
-            Counter::new(),
+            crate::app::CounterAppState::new(Counter::new()),
             RuntimeConfig::default()
                 .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
-        );
+        )?;
         runtime.set_monotonic_clock(NativeMonotonicClock::new());
         let wake_proxy = proxy.clone();
         runtime.set_wake_transport(move || {
             let _ = wake_proxy.send_event(HostEvent::Wake);
         });
-        Self {
+        Ok(Self {
             runtime,
             style_environment: ui::style_environment(),
             event_loop_proxy: proxy,
@@ -284,7 +286,7 @@ impl CounterHost {
             mapping_publication_needed: false,
             presentation_suppressed: false,
             window_focused: true,
-        }
+        })
     }
 
     fn fail(&mut self, event_loop: &ActiveEventLoop, detail: &str) {
@@ -443,7 +445,7 @@ impl CounterHost {
         if !self.window_focused || self.runtime.focus().focused_node().is_some() {
             return true;
         }
-        let target = if self.runtime.state().has_won() {
+        let target = if self.runtime.state().counter.has_won() {
             "counter.reset"
         } else {
             "counter.increment"
@@ -1107,7 +1109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_loop = EventLoop::<HostEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
-    let mut host = CounterHost::new(proxy);
+    let mut host = CounterHost::new(proxy)?;
     event_loop.run_app(&mut host)?;
     Ok(())
 }

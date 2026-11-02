@@ -14,6 +14,28 @@ enum Action {
 }
 struct App;
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The fixed root contains a column, value text, and activation button.
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 3, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 2).with_reconciliation(3, 3, 3)
+    }
+
     type State = usize;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -35,7 +57,8 @@ impl UiApp for App {
 
 #[test]
 fn queued_action_reconciles_without_replacing_compatible_nodes() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = AppRuntime::<App>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let ids: Vec<_> = runtime
         .index()
         .nodes()
@@ -75,7 +98,8 @@ fn queued_action_reconciles_without_replacing_compatible_nodes() {
 
 #[test]
 fn routed_activation_queues_fresh_non_clone_actions() {
-    let mut runtime = AppRuntime::<App>::mount(0);
+    let mut runtime = AppRuntime::<App>::mount(0)
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let authored_id = runenui_core::ElementId::new("increment")
         .unwrap_or_else(|_| unreachable!("the test identifier is valid"));
     let target = runtime
@@ -118,6 +142,22 @@ struct NonCloneAction(String);
 #[derive(Debug)]
 struct NonCloneWidget(Option<NonCloneAction>);
 impl Widget<NonCloneAction> for NonCloneWidget {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(1)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = usize;
     fn create_state(&self) -> Self::State {
         0
@@ -146,6 +186,27 @@ impl Widget<NonCloneAction> for NonCloneWidget {
 }
 struct NonCloneApp;
 impl UiApp for NonCloneApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 1).with_reconciliation(1, 1, 1)
+    }
+
     type State = Vec<String>;
     type Action = NonCloneAction;
     type HostProtocol = NoHostProtocol;
@@ -160,7 +221,8 @@ impl UiApp for NonCloneApp {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn non_clone_actions_remain_supported() {
-    let mut runtime = AppRuntime::<NonCloneApp>::mount(Vec::new());
+    let mut runtime = AppRuntime::<NonCloneApp>::mount(Vec::new())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let id = runtime.index().nodes()[0].id().clone();
     runtime
         .submit_command(id, SemanticCommand::Activate, CommandOrigin::programmatic())

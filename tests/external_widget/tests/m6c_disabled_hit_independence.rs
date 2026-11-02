@@ -22,6 +22,26 @@ struct State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -74,7 +94,8 @@ fn publish(
 
 #[test]
 fn disabled_semantic_state_does_not_implicitly_remove_physical_hit_targetability() {
-    let mut runtime = AppRuntime::<App>::mount(State { enabled: true });
+    let mut runtime = AppRuntime::<App>::mount(State { enabled: true })
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,

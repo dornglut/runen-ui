@@ -43,6 +43,85 @@ fn fixed(width: u16, height: u16) -> LayoutStyle {
 }
 
 impl UiApp for PresentationApp {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let initial_nodes = 4
+            + usize::from(state.tooltip_visible)
+            + 2 * usize::from(state.popover_open)
+            + 2 * usize::from(state.dialog_open);
+        runenui_core::ProducerBudget::new(initial_nodes, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(initial_nodes, 0, initial_nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        state: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        let mut next = state.clone();
+        match action {
+            Action::OpenDialog => next.dialog_open = true,
+            Action::ShowTooltip => {
+                next.tooltip_visible = true;
+                next.show_count += 1;
+            }
+            Action::HideTooltip => {
+                next.tooltip_visible = false;
+                next.hide_count += 1;
+            }
+            Action::DismissDialog(_) => next.dialog_open = false,
+            Action::DismissPopover(_) => next.popover_open = false,
+            Action::ActivateBackground => next.background_activations += 1,
+        }
+        let node_count = |model: &Model| {
+            4 + usize::from(model.tooltip_visible)
+                + 2 * usize::from(model.popover_open)
+                + 2 * usize::from(model.dialog_open)
+        };
+        let old_nodes = node_count(state);
+        let new_nodes = node_count(&next);
+        let changed = old_nodes != new_nodes;
+        let mounted_nodes = new_nodes.saturating_sub(old_nodes);
+        let retained_updates = if changed { old_nodes.min(new_nodes) } else { 0 };
+        let dirty_owners = if changed { new_nodes } else { 0 };
+        let queue_credits = if changed { new_nodes + 1 } else { 1 };
+        runenui_core::ProducerBudget::new(queue_credits, 0)
+            .with_application_outputs(0)
+            .with_reconciliation(mounted_nodes, retained_updates, dirty_owners)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let node_count = |model: &Model| {
+            4 + usize::from(model.tooltip_visible)
+                + 2 * usize::from(model.popover_open)
+                + 2 * usize::from(model.dialog_open)
+        };
+        let mounted_nodes = node_count(state);
+        let widget_event_outputs =
+            4 + 2 * usize::from(state.popover_open) + 2 * usize::from(state.dialog_open);
+        // All four focus notifications visit each event-producing owner; the
+        // deepest reachable focus route contributes five callback outputs.
+        let callback_outputs = 4 * widget_event_outputs + 5;
+        // Six focus-route slots may each stage the same keyed Tooltip timer.
+        let timer_starts = 6;
+        let outputs = callback_outputs + timer_starts;
+        // Cursor outcomes and continuation access coexist with Tooltip work.
+        let queue_credits = outputs + 3 * timer_starts + 5;
+        let (reconcile_mounted, retained_updates, dirty_owners) = if state.tooltip_visible {
+            (0, mounted_nodes - 1, mounted_nodes - 1)
+        } else {
+            (1, mounted_nodes, mounted_nodes + 1)
+        };
+        runenui_core::ProducerBudget::new(queue_credits, outputs)
+            .with_application_outputs(0)
+            .with_reconciliation(reconcile_mounted, retained_updates, dirty_owners)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, timer_starts, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 1, 0, 0, 2))
+    }
+
     type State = Model;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -145,15 +224,26 @@ impl UiApp for PresentationApp {
 }
 
 fn settle(harness: &mut TestHarness<PresentationApp>) {
-    assert_eq!(
-        harness
-            .run_until_idle(SettleBudget::new(
-                NonZeroUsize::new(12).unwrap_or(NonZeroUsize::MIN),
-                PumpBudget::new(128, 128, 128, 128),
-            ))
-            .outcome(),
-        SettleOutcome::Idle
-    );
+    let outcome = harness
+        .run_until_idle(SettleBudget::new(
+            NonZeroUsize::new(12).unwrap_or(NonZeroUsize::MIN),
+            PumpBudget::new(128, 128, 128, 128),
+        ))
+        .outcome();
+    let trace = harness
+        .trace()
+        .records()
+        .map(|record| {
+            format!(
+                "{:?} work={:?} target={:?} current={:?}",
+                record.kind(),
+                record.work_sequence(),
+                record.target(),
+                record.current_target()
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(outcome, SettleOutcome::Idle, "trace={trace:?}");
 }
 
 fn node_center(harness: &TestHarness<PresentationApp>, name: &str) -> LogicalPoint {
@@ -193,7 +283,8 @@ fn move_pointer(harness: &mut TestHarness<PresentationApp>, position: LogicalPoi
 
 #[test]
 fn tooltip_delay_is_mounted_and_visibility_remains_app_owned() {
-    let mut harness = TestHarness::<PresentationApp>::mount(Model::default());
+    let mut harness = TestHarness::<PresentationApp>::mount(Model::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     let button = node_center(&harness, "help-button");
     move_pointer(&mut harness, button);
@@ -256,7 +347,8 @@ fn tooltip_delay_is_mounted_and_visibility_remains_app_owned() {
 
 #[test]
 fn tooltip_focus_activation_uses_same_mounted_timer_and_blur_hides() {
-    let mut harness = TestHarness::<PresentationApp>::mount(Model::default());
+    let mut harness = TestHarness::<PresentationApp>::mount(Model::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     let first = harness
         .publication()
@@ -315,7 +407,8 @@ fn tooltip_focus_activation_uses_same_mounted_timer_and_blur_hides() {
 
 #[test]
 fn pointer_leave_cancels_delayed_tooltip_show_without_late_action() {
-    let mut harness = TestHarness::<PresentationApp>::mount(Model::default());
+    let mut harness = TestHarness::<PresentationApp>::mount(Model::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     let point = node_center(&harness, "help-button");
     move_pointer(&mut harness, point);
@@ -331,7 +424,8 @@ fn pointer_leave_cancels_delayed_tooltip_show_without_late_action() {
 
 #[test]
 fn dialog_default_modal_entry_and_exact_focus_restoration_use_shared_runtime() {
-    let mut harness = TestHarness::<PresentationApp>::mount(Model::default());
+    let mut harness = TestHarness::<PresentationApp>::mount(Model::default())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     let trigger = harness
         .publication()
@@ -421,7 +515,8 @@ fn dialog_and_popover_dismissal_actions_are_application_owned() {
     let mut dialog = TestHarness::<PresentationApp>::mount(Model {
         dialog_open: true,
         ..Model::default()
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(dialog.publish().is_ok());
     settle(&mut dialog);
     assert!(dialog.publish().is_ok());
@@ -481,7 +576,8 @@ fn dialog_and_popover_dismissal_actions_are_application_owned() {
     let mut popover = TestHarness::<PresentationApp>::mount(Model {
         popover_open: true,
         ..Model::default()
-    });
+    })
+    .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(popover.publish().is_ok());
     let id = popover
         .publication()

@@ -28,7 +28,34 @@ struct State {
 
 struct App;
 
+impl App {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 10 mounted owners in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 10;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+    }
+}
+
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -161,7 +188,8 @@ const fn key(physical: PhysicalKey, logical: LogicalKey) -> KeyboardEvent {
 
 #[test]
 fn toolbar_is_one_external_stop_with_manual_real_focus_and_stop_boundary() {
-    let mut h = TestHarness::<App>::mount(state());
+    let mut h = TestHarness::<App>::mount(state())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(h.publish().is_ok());
     let node = h
         .semantic_snapshot()
@@ -196,7 +224,8 @@ fn toolbar_is_one_external_stop_with_manual_real_focus_and_stop_boundary() {
 
 #[test]
 fn toolbar_vertical_wrap_home_end_and_disabled_discoverability() {
-    let mut h = TestHarness::<App>::mount(state());
+    let mut h = TestHarness::<App>::mount(state())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(h.publish().is_ok());
     assert!(
         h.submit_action(Action::Configure(
@@ -256,7 +285,8 @@ fn toolbar_vertical_wrap_home_end_and_disabled_discoverability() {
 
 #[test]
 fn explicit_activation_does_not_transfer_selection_or_activate_on_navigation() {
-    let mut h = TestHarness::<App>::mount(state());
+    let mut h = TestHarness::<App>::mount(state())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(h.publish().is_ok());
     command(&mut h, "before", SemanticCommand::RequestFocus);
     command(&mut h, "before", SemanticCommand::FocusNext);

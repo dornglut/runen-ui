@@ -37,6 +37,7 @@ impl FocusGroupTypeAheadState {
         }
     }
 
+    #[cfg(feature = "internal-test-seams")]
     #[must_use]
     pub(crate) const fn is_active(&self) -> bool {
         self.group.is_some()

@@ -2,13 +2,19 @@
 
 #![allow(clippy::redundant_pub_crate)]
 
+mod input_continuations;
+pub(crate) use input_continuations::InputContinuationKey;
+
 use core::{fmt, num::NonZeroU64};
-use std::collections::VecDeque;
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    sync::Arc,
+};
 
 use runenui_core::{
     ApplicationCommandId, CommandOrigin, CommittedTextEvent, CompositionEvent, FocusReason,
-    FrameworkServiceResponse, KeyboardEvent, PointerEvent, SemanticActionTarget, SemanticCommand,
-    SurfaceInputContext,
+    FrameworkServiceResponse, KeyboardEvent, PointerEvent, ProducerBudget, SemanticActionTarget,
+    SemanticCommand, SurfaceInputContext,
 };
 
 use crate::trace::TraceReservation;
@@ -21,6 +27,8 @@ pub use runenui_core::WorkSequence;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SubmitActionErrorKind {
     Full,
+    WorkCapacity(crate::WorkCapacityFamily),
+    InvalidProducerProfile,
     Closed,
     Terminal(RuntimeTerminalReason),
 }
@@ -30,6 +38,11 @@ pub enum SubmitActionErrorKind {
 #[non_exhaustive]
 pub enum SubmitActionError<Action> {
     Full(Action),
+    WorkCapacity {
+        action: Action,
+        family: crate::WorkCapacityFamily,
+    },
+    InvalidProducerProfile(Action),
     Closed(Action),
     Terminal {
         action: Action,
@@ -43,6 +56,8 @@ impl<Action> SubmitActionError<Action> {
     pub const fn kind(&self) -> SubmitActionErrorKind {
         match self {
             Self::Full(_) => SubmitActionErrorKind::Full,
+            Self::WorkCapacity { family, .. } => SubmitActionErrorKind::WorkCapacity(*family),
+            Self::InvalidProducerProfile(_) => SubmitActionErrorKind::InvalidProducerProfile,
             Self::Closed(_) => SubmitActionErrorKind::Closed,
             Self::Terminal { reason, .. } => SubmitActionErrorKind::Terminal(*reason),
         }
@@ -52,7 +67,11 @@ impl<Action> SubmitActionError<Action> {
     #[must_use]
     pub fn into_action(self) -> Action {
         match self {
-            Self::Full(action) | Self::Closed(action) | Self::Terminal { action, .. } => action,
+            Self::Full(action)
+            | Self::InvalidProducerProfile(action)
+            | Self::Closed(action)
+            | Self::WorkCapacity { action, .. }
+            | Self::Terminal { action, .. } => action,
         }
     }
 }
@@ -70,6 +89,15 @@ impl<Action> fmt::Display for SubmitActionError<Action> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind() {
             SubmitActionErrorKind::Full => formatter.write_str("runtime work queue is full"),
+            SubmitActionErrorKind::WorkCapacity(family) => {
+                write!(
+                    formatter,
+                    "runtime {family:?} capacity is reserved or occupied"
+                )
+            }
+            SubmitActionErrorKind::InvalidProducerProfile => {
+                formatter.write_str("application producer profile cannot fit runtime limits")
+            }
             SubmitActionErrorKind::Closed => formatter.write_str("runtime is closed"),
             SubmitActionErrorKind::Terminal(reason) => {
                 write!(formatter, "runtime is terminal: {reason}")
@@ -117,6 +145,16 @@ pub(crate) struct ApplicationCommandEnvelope {
     pub(crate) instant: MonotonicInstant,
     pub(crate) causal_parent: Option<TraceSequence>,
     pub(crate) trace_reservation: TraceReservation,
+    pub(crate) root_quota: RootQuotaId,
+}
+
+pub(crate) struct ApplicationCommandQueuePayload {
+    pub(crate) target: MountedNodeId,
+    pub(crate) command: ApplicationCommandId,
+    pub(crate) origin: CommandOrigin,
+    pub(crate) instant: MonotonicInstant,
+    pub(crate) causal_parent: Option<TraceSequence>,
+    pub(crate) trace_reservation: TraceReservation,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -145,6 +183,7 @@ pub(crate) struct SemanticCommandEnvelope {
     pub(crate) instant: MonotonicInstant,
     pub(crate) causal_parent: Option<TraceSequence>,
     pub(crate) trace_reservation: TraceReservation,
+    pub(crate) root_quota: RootQuotaId,
 }
 
 pub(crate) struct SemanticCommandQueuePayload {
@@ -157,6 +196,7 @@ pub(crate) struct SemanticCommandQueuePayload {
     pub(crate) instant: MonotonicInstant,
     pub(crate) causal_parent: Option<TraceSequence>,
     pub(crate) trace_reservation: TraceReservation,
+    pub(crate) root_quota: RootQuotaId,
 }
 
 pub(crate) enum PointerEnvelopePayload {
@@ -166,6 +206,7 @@ pub(crate) enum PointerEnvelopePayload {
 
 pub(crate) struct PointerEnvelope {
     pub(crate) sequence: WorkSequence,
+    pub(crate) root_quota: Option<RootQuotaId>,
     pub(crate) payload: PointerEnvelopePayload,
     pub(crate) instant: MonotonicInstant,
     pub(crate) causal_parent: Option<TraceSequence>,
@@ -193,6 +234,7 @@ pub(crate) struct InputEnvelope {
     pub(crate) target: MountedNodeId,
     pub(crate) focus_binding: Option<FocusInputBinding>,
     pub(crate) text_revoked: bool,
+    pub(crate) root_quota: Option<RootQuotaId>,
     pub(crate) payload: InputEnvelopePayload,
     pub(crate) instant: MonotonicInstant,
     pub(crate) causal_parent: Option<TraceSequence>,
@@ -202,6 +244,8 @@ pub(crate) struct InputEnvelope {
 pub(crate) struct ApplicationActionEnvelope<Action> {
     pub(crate) sequence: WorkSequence,
     pub(crate) action: Action,
+    pub(crate) producer_budget: ProducerBudget,
+    pub(crate) root_quota: RootQuotaId,
     pub(crate) causal_parent: Option<TraceSequence>,
     pub(crate) target: Option<TraceTarget>,
     pub(crate) origin: ApplicationActionOrigin,
@@ -227,6 +271,7 @@ pub(crate) enum WorkEnvelope<Action> {
         sequence: WorkSequence,
         owner: MountedNodeId,
         causal_parent: Option<TraceSequence>,
+        root_quota: Option<RootQuotaId>,
     },
 }
 
@@ -246,12 +291,27 @@ impl<Action> WorkEnvelope<Action> {
             Self::MountedSubscriptionReconcile { sequence, .. } => *sequence,
         }
     }
+
+    pub(crate) const fn root_quota(&self) -> Option<RootQuotaId> {
+        match self {
+            Self::ApplicationAction(work) => Some(work.root_quota),
+            Self::EffectStart(work) | Self::TimerFiring(work) => work.root_quota,
+            Self::WorkCancellation(work) => work.root_quota,
+            Self::FrameworkServiceResponse(work) => work.root_quota,
+            Self::MountedSubscriptionReconcile { root_quota, .. } => *root_quota,
+            Self::SemanticCommand(work) => Some(work.root_quota),
+            Self::ApplicationCommand(work) => Some(work.root_quota),
+            Self::Input(work) => work.root_quota,
+            Self::Pointer(work) => work.root_quota,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct SequencedWork {
     pub(crate) sequence: WorkSequence,
     pub(crate) generation: WorkGeneration,
+    pub(crate) root_quota: Option<RootQuotaId>,
 }
 
 pub(crate) struct CancellationEnvelope {
@@ -259,6 +319,7 @@ pub(crate) struct CancellationEnvelope {
     pub(crate) generation: WorkGeneration,
     pub(crate) identity: TraceWorkIdentity,
     pub(crate) causal_parent: Option<TraceSequence>,
+    pub(crate) root_quota: Option<RootQuotaId>,
 }
 
 pub(crate) struct FrameworkServiceResponseEnvelope {
@@ -267,12 +328,152 @@ pub(crate) struct FrameworkServiceResponseEnvelope {
     pub(crate) response: FrameworkServiceResponse,
     pub(crate) trace_identity: TraceWorkIdentity,
     pub(crate) causal_parent: Option<TraceSequence>,
+    pub(crate) root_quota: Option<RootQuotaId>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum QueueCommitError {
     Full,
     SequenceExhausted,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum QueueReservationError {
+    Capacity,
+    WorkCapacity(crate::work::WorkFamily),
+    Closed,
+    Foreign,
+    Stale,
+    Exhausted,
+    SequenceExhausted,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct RootProducerWorkStarts {
+    pub(crate) host_requests: usize,
+    pub(crate) local_tasks: usize,
+    pub(crate) send_tasks: usize,
+    pub(crate) timers: usize,
+    pub(crate) repeating_timers: usize,
+    pub(crate) framework_services: usize,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct RootProducerCancellations {
+    pub(crate) host_requests: usize,
+    pub(crate) framework_services: usize,
+    pub(crate) local_tasks: usize,
+    pub(crate) send_tasks: usize,
+    pub(crate) timers: usize,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct RootProducerResponseReleases {
+    pub(crate) host_requests: usize,
+    pub(crate) framework_services: usize,
+}
+
+/// Exact counts needed to preflight one producer's rooted queue commit.
+#[derive(Clone, Copy)]
+pub(crate) struct RootProducerCommit {
+    pub(crate) root: RootQuotaId,
+    pub(crate) queued_envelopes: usize,
+    pub(crate) starts: RootProducerWorkStarts,
+    pub(crate) cancellations: RootProducerCancellations,
+    pub(crate) response_releases: RootProducerResponseReleases,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct RootQuotaId(u64);
+
+/// Unsequenced capacity reserved in the canonical FIFO for later work.
+///
+/// Reservations hold capacity only. A `WorkSequence` is allocated when an
+/// envelope is actually committed through `WorkQueue::push_reserved`.
+pub(crate) struct QueueReservation {
+    quota: RootQuotaId,
+    owner: Arc<()>,
+    epoch: Arc<()>,
+}
+
+impl QueueReservation {
+    pub(crate) const fn quota(&self) -> RootQuotaId {
+        self.quota
+    }
+}
+
+struct RootQuotaState {
+    limit: usize,
+    remaining: usize,
+    input_continuations: usize,
+    pending_envelopes: usize,
+    active_envelopes: usize,
+    live_work_leases: usize,
+    host_requests: HashMap<WorkGeneration, HostRequestCredits>,
+    framework_services: HashMap<WorkGeneration, FrameworkServiceCredits>,
+    local_tasks: HashMap<WorkGeneration, LocalTaskCredits>,
+    send_tasks: HashMap<WorkGeneration, LocalTaskCredits>,
+    timers: HashMap<WorkGeneration, TimerCredits>,
+    timer_callback_actions: HashMap<WorkSequence, WorkGeneration>,
+    profile: ProducerBudget,
+}
+
+#[derive(Clone, Copy)]
+struct HostRequestCredits {
+    start_pending: bool,
+    response: bool,
+    cancellation: bool,
+}
+
+#[derive(Clone, Copy)]
+struct FrameworkServiceCredits {
+    response: bool,
+    cancellation: bool,
+}
+
+#[derive(Clone, Copy)]
+struct LocalTaskCredits {
+    start_pending: bool,
+    completion: LocalTaskCompletionCredits,
+    invalidated: bool,
+}
+
+#[derive(Clone, Copy)]
+struct LocalTaskCompletionCredits {
+    outcome: bool,
+    cancellation: bool,
+}
+
+#[derive(Clone, Copy)]
+struct TimerCredits {
+    start_pending: bool,
+    activity: TimerActivityCredits,
+    repeating: bool,
+    invalidated: bool,
+}
+
+#[derive(Clone, Copy)]
+struct TimerActivityCredits {
+    firing: bool,
+    callback: bool,
+    cancellation: bool,
+}
+
+#[derive(Clone, Copy, Default)]
+struct PoppedRootCredits {
+    host_start: Option<WorkGeneration>,
+    local_start: Option<WorkGeneration>,
+    send_start: Option<WorkGeneration>,
+    timer_start: Option<WorkGeneration>,
+    timer_firing: Option<WorkGeneration>,
+    timer_callback: Option<WorkGeneration>,
+}
+
+#[derive(Clone, Copy)]
+enum TimerCreditKind {
+    Firing,
+    Callback,
+    Cancellation,
 }
 
 pub(crate) struct CancelledQueue {
@@ -285,42 +486,1627 @@ pub(crate) struct CancelledQueue {
 pub(crate) struct WorkQueue<Action> {
     capacity: usize,
     waiting: VecDeque<WorkEnvelope<Action>>,
+    reserved: usize,
+    root_quotas: HashMap<RootQuotaId, RootQuotaState>,
+    // Checked sums derived from live root residency profiles. The root map
+    // remains the ownership authority; admission need not rescan every root.
+    root_residency_claims: [usize; 6],
+    input_continuations: HashMap<InputContinuationKey, RootQuotaId>,
+    claimed_input_continuations: HashMap<WorkSequence, (InputContinuationKey, RootQuotaId)>,
+    next_root_quota: Option<NonZeroU64>,
+    identity: Arc<()>,
+    reservation_epoch: Arc<()>,
+    closed: bool,
     next_sequence: Option<NonZeroU64>,
 }
 
 impl<Action> WorkQueue<Action> {
-    pub(crate) const fn new(capacity: usize) -> Self {
+    pub(crate) fn new(capacity: usize) -> Self {
         Self {
             capacity,
             waiting: VecDeque::new(),
+            reserved: 0,
+            root_quotas: HashMap::new(),
+            root_residency_claims: [0; 6],
+            input_continuations: HashMap::new(),
+            claimed_input_continuations: HashMap::new(),
+            next_root_quota: NonZeroU64::new(1),
+            identity: Arc::new(()),
+            reservation_epoch: Arc::new(()),
+            closed: false,
             next_sequence: NonZeroU64::new(1),
         }
     }
 
     pub(crate) fn is_full(&self) -> bool {
-        self.waiting.len() >= self.capacity
+        self.closed
+            || self
+                .waiting
+                .len()
+                .checked_add(self.reserved)
+                .is_none_or(|occupied| occupied >= self.capacity)
     }
 
     pub(crate) fn preflight_commit(&self, count: usize) -> Result<(), QueueCommitError> {
+        if self.closed {
+            return Err(QueueCommitError::Full);
+        }
         if self
             .waiting
             .len()
-            .checked_add(count)
+            .checked_add(self.reserved)
+            .and_then(|occupied| occupied.checked_add(count))
             .is_none_or(|required| required > self.capacity)
         {
             return Err(QueueCommitError::Full);
         }
-        if count == 0 {
+        let sequenced = self
+            .reserved
+            .checked_add(count)
+            .ok_or(QueueCommitError::SequenceExhausted)?;
+        if sequenced == 0 {
             return Ok(());
         }
         let next = self
             .next_sequence
             .ok_or(QueueCommitError::SequenceExhausted)?;
         let additional =
-            u64::try_from(count - 1).map_err(|_| QueueCommitError::SequenceExhausted)?;
+            u64::try_from(sequenced - 1).map_err(|_| QueueCommitError::SequenceExhausted)?;
         next.get()
             .checked_add(additional)
             .ok_or(QueueCommitError::SequenceExhausted)?;
+        Ok(())
+    }
+
+    /// Checks a new root without allocating its identity or assigning a sequence.
+    pub(crate) fn preflight_reservation(&self, count: usize) -> Result<(), QueueReservationError> {
+        if self.closed {
+            return Err(QueueReservationError::Closed);
+        }
+        self.preflight_commit(count).map_err(|error| match error {
+            QueueCommitError::Full => QueueReservationError::Capacity,
+            QueueCommitError::SequenceExhausted => QueueReservationError::SequenceExhausted,
+        })?;
+        self.next_root_quota
+            .ok_or(QueueReservationError::Exhausted)?;
+        Ok(())
+    }
+
+    /// Reserves FIFO and sequence capacity without assigning a sequence.
+    pub(crate) fn reserve(
+        &mut self,
+        count: usize,
+    ) -> Result<QueueReservation, QueueReservationError> {
+        self.preflight_reservation(count)?;
+        let quota = RootQuotaId(
+            self.next_root_quota
+                .ok_or(QueueReservationError::Exhausted)?
+                .get(),
+        );
+        self.next_root_quota = quota.0.checked_add(1).and_then(NonZeroU64::new);
+        self.reserved += count;
+        self.root_quotas.insert(
+            quota,
+            RootQuotaState {
+                limit: count,
+                remaining: count,
+                input_continuations: 0,
+                pending_envelopes: 0,
+                active_envelopes: 0,
+                live_work_leases: 0,
+                host_requests: HashMap::new(),
+                framework_services: HashMap::new(),
+                local_tasks: HashMap::new(),
+                send_tasks: HashMap::new(),
+                timers: HashMap::new(),
+                timer_callback_actions: HashMap::new(),
+                profile: ProducerBudget::new(count, 0),
+            },
+        );
+        Ok(QueueReservation {
+            quota,
+            owner: Arc::clone(&self.identity),
+            epoch: Arc::clone(&self.reservation_epoch),
+        })
+    }
+
+    pub(crate) fn reserve_for_producer(
+        &mut self,
+        profile: ProducerBudget,
+    ) -> Result<QueueReservation, QueueReservationError> {
+        // Compute all six sums before allocating a new root. Overflow cannot
+        // consume queue credits or partially update the residency claims.
+        let mut next_claims = self.root_residency_claims;
+        for (index, family) in crate::work::WorkFamily::ALL.into_iter().enumerate() {
+            next_claims[index] = next_claims[index]
+                .checked_add(family.residency(profile.work_residency()))
+                .ok_or(QueueReservationError::WorkCapacity(family))?;
+        }
+        let reservation = self.reserve(profile.queue_credits())?;
+        let quota = self
+            .root_quotas
+            .get_mut(&reservation.quota)
+            .ok_or(QueueReservationError::Stale)?;
+        quota.limit = profile.queue_credits();
+        quota.remaining = profile.queue_credits();
+        quota.profile = profile;
+        self.root_residency_claims = next_claims;
+        Ok(reservation)
+    }
+
+    /// Resident claims stay with their canonical roots through queued and live work.
+    pub(crate) fn work_residency_claims(&self, family: crate::work::WorkFamily) -> Option<usize> {
+        crate::work::WorkFamily::ALL
+            .iter()
+            .position(|candidate| *candidate == family)
+            .map(|index| self.root_residency_claims[index])
+    }
+
+    pub(crate) fn root_work_residency(
+        &self,
+        root: RootQuotaId,
+        family: crate::work::WorkFamily,
+    ) -> Option<usize> {
+        self.root_quotas
+            .get(&root)
+            .map(|quota| family.residency(quota.profile.work_residency()))
+    }
+
+    /// Commits one envelope against a prior reservation.
+    pub(crate) fn push_reserved(
+        &mut self,
+        reservation: &QueueReservation,
+        envelope: impl FnOnce(WorkSequence) -> WorkEnvelope<Action>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.validate_reservation(reservation)?;
+        if self.root_remaining(reservation.quota)? == 0 || self.reserved == 0 {
+            return Err(QueueReservationError::Exhausted);
+        }
+        self.preflight_root_sequence(reservation.quota, 1)?;
+        let next = self
+            .next_sequence
+            .ok_or(QueueReservationError::SequenceExhausted)?;
+        let sequence = WorkSequence::__runtime_new(next);
+        let root = reservation.quota;
+        let envelope = envelope(sequence);
+        self.note_rooted_enqueued(root, &envelope)?;
+        self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
+        self.reserved -= 1;
+        self.root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .remaining -= 1;
+        self.waiting.push_back(envelope);
+        Ok(sequence)
+    }
+
+    /// Commits one FIFO envelope as a member of the shared causal-root quota.
+    /// The sequence consumes one pre-reserved frontier credit without assigning
+    /// a sequence to any unmaterialized credit.
+    pub(crate) fn push_reserved_with_remainder(
+        &mut self,
+        reservation: &QueueReservation,
+        envelope: impl FnOnce(WorkSequence, RootQuotaId) -> WorkEnvelope<Action>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.validate_reservation(reservation)?;
+        self.push_rooted(reservation.quota, envelope)
+    }
+
+    pub(crate) fn push_rooted(
+        &mut self,
+        root: RootQuotaId,
+        envelope: impl FnOnce(WorkSequence, RootQuotaId) -> WorkEnvelope<Action>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        if self.closed || self.root_remaining(root)? == 0 || self.reserved == 0 {
+            return Err(QueueReservationError::Exhausted);
+        }
+        self.preflight_root_sequence(root, 1)?;
+        let next = self
+            .next_sequence
+            .ok_or(QueueReservationError::SequenceExhausted)?;
+        let sequence = WorkSequence::__runtime_new(next);
+        let mut envelope = envelope(sequence, root);
+        Self::bind_root(&mut envelope, root)?;
+        self.note_rooted_enqueued(root, &envelope)?;
+        self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
+        self.reserved -= 1;
+        self.root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .remaining -= 1;
+        self.waiting.push_back(envelope);
+        Ok(sequence)
+    }
+
+    pub(crate) fn preflight_root_commit(
+        &self,
+        root: RootQuotaId,
+        count: usize,
+    ) -> Result<(), QueueReservationError> {
+        if self.closed {
+            return Err(QueueReservationError::Closed);
+        }
+        if self.root_remaining(root)? < count {
+            return Err(QueueReservationError::Exhausted);
+        }
+        if count != 0 {
+            self.preflight_root_sequence(root, count)?;
+        }
+        Ok(())
+    }
+
+    /// A root may spend its own reusable frontier, but must leave every other
+    /// root's unsequenced credits available. No sequence is assigned here.
+    pub(crate) fn preflight_root_sequence(
+        &self,
+        root: RootQuotaId,
+        count: usize,
+    ) -> Result<(), QueueReservationError> {
+        if self.closed {
+            return Err(QueueReservationError::Closed);
+        }
+        let quota = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        if count == 0 {
+            return Ok(());
+        }
+        let owned = future_credit_count(quota)
+            .and_then(|future| quota.remaining.checked_add(future))
+            .and_then(|owned| owned.checked_sub(quota.input_continuations))
+            .ok_or(QueueReservationError::Stale)?;
+        let required = self
+            .reserved
+            .checked_sub(owned)
+            .and_then(|other_roots| other_roots.checked_add(count))
+            .ok_or(QueueReservationError::Stale)?;
+        self.preflight_sequence_capacity(required)
+    }
+
+    pub(crate) fn preflight_root_producer_commit(
+        &self,
+        commit: RootProducerCommit,
+    ) -> Result<(), QueueReservationError> {
+        let RootProducerCommit {
+            root,
+            queued_envelopes,
+            starts,
+            cancellations,
+            response_releases,
+        } = commit;
+        // Current outputs use this root's reusable frontier while independent
+        // roots retain their previously reserved sequence capacity.
+        if queued_envelopes != 0 {
+            self.preflight_root_sequence(root, queued_envelopes)?;
+        }
+        let cancellation_count = cancellations
+            .host_requests
+            .checked_add(cancellations.framework_services)
+            .and_then(|count| count.checked_add(cancellations.local_tasks))
+            .and_then(|count| count.checked_add(cancellations.send_tasks))
+            .and_then(|count| count.checked_add(cancellations.timers))
+            .ok_or(QueueReservationError::Exhausted)?;
+        let current_root_outputs = queued_envelopes
+            .checked_sub(cancellation_count)
+            .ok_or(QueueReservationError::Stale)?;
+        let required = current_root_outputs
+            .checked_add(starts.host_requests)
+            .and_then(|count| count.checked_add(starts.local_tasks))
+            .and_then(|count| count.checked_add(starts.send_tasks))
+            .and_then(|count| count.checked_add(starts.timers))
+            .and_then(|count| count.checked_add(starts.repeating_timers))
+            .and_then(|count| count.checked_add(starts.framework_services.checked_mul(2)?))
+            .ok_or(QueueReservationError::Exhausted)?;
+        let available = self
+            .root_remaining(root)?
+            .checked_add(response_releases.host_requests)
+            .and_then(|count| count.checked_add(response_releases.framework_services))
+            .ok_or(QueueReservationError::Exhausted)?;
+        if self.closed {
+            return Err(QueueReservationError::Closed);
+        }
+        if available < required {
+            return Err(QueueReservationError::Exhausted);
+        }
+        Ok(())
+    }
+
+    fn preflight_sequence_capacity(&self, count: usize) -> Result<(), QueueReservationError> {
+        if count == 0 {
+            return Ok(());
+        }
+        let next = self
+            .next_sequence
+            .ok_or(QueueReservationError::SequenceExhausted)?;
+        let additional =
+            u64::try_from(count - 1).map_err(|_| QueueReservationError::SequenceExhausted)?;
+        next.get()
+            .checked_add(additional)
+            .ok_or(QueueReservationError::SequenceExhausted)?;
+        Ok(())
+    }
+
+    pub(crate) fn preflight_host_request_cancellations(
+        &self,
+        generations: &[WorkGeneration],
+        root: RootQuotaId,
+    ) -> Result<(usize, usize), QueueReservationError> {
+        generations
+            .iter()
+            .try_fold((0usize, 0usize), |(count, released), generation| {
+                let matching = self.root_quotas.iter().find_map(|(owner, quota)| {
+                    quota
+                        .host_requests
+                        .get(generation)
+                        .map(|credits| (*owner, credits))
+                });
+                match matching {
+                    Some((owner, credits)) if credits.cancellation => Ok((
+                        count
+                            .checked_add(1)
+                            .ok_or(QueueReservationError::Exhausted)?,
+                        released
+                            .checked_add(usize::from(owner == root && credits.response))
+                            .ok_or(QueueReservationError::Exhausted)?,
+                    )),
+                    Some(_) => Err(QueueReservationError::Stale),
+                    None => Ok((count, released)),
+                }
+            })
+    }
+
+    pub(crate) fn preflight_local_task_cancellations(
+        &self,
+        generations: &[WorkGeneration],
+    ) -> Result<usize, QueueReservationError> {
+        generations.iter().try_fold(0usize, |count, generation| {
+            let matching = self
+                .root_quotas
+                .values()
+                .find_map(|quota| quota.local_tasks.get(generation));
+            match matching {
+                Some(credits)
+                    if !credits.invalidated
+                        && (credits.completion.outcome || credits.completion.cancellation) =>
+                {
+                    count.checked_add(1).ok_or(QueueReservationError::Exhausted)
+                }
+                Some(_) => Err(QueueReservationError::Stale),
+                None => Ok(count),
+            }
+        })
+    }
+
+    pub(crate) fn preflight_framework_service_cancellations(
+        &self,
+        generations: &[WorkGeneration],
+        root: RootQuotaId,
+    ) -> Result<(usize, usize), QueueReservationError> {
+        generations
+            .iter()
+            .try_fold((0usize, 0usize), |(count, released), generation| {
+                let matching = self.root_quotas.iter().find_map(|(owner, quota)| {
+                    quota
+                        .framework_services
+                        .get(generation)
+                        .map(|credits| (*owner, credits))
+                });
+                match matching {
+                    Some((owner, credits)) if credits.cancellation => Ok((
+                        count
+                            .checked_add(1)
+                            .ok_or(QueueReservationError::Exhausted)?,
+                        released
+                            .checked_add(usize::from(owner == root && credits.response))
+                            .ok_or(QueueReservationError::Exhausted)?,
+                    )),
+                    Some(_) => Err(QueueReservationError::Stale),
+                    None => Ok((count, released)),
+                }
+            })
+    }
+
+    pub(crate) fn preflight_send_task_cancellations(
+        &self,
+        generations: &[WorkGeneration],
+    ) -> Result<usize, QueueReservationError> {
+        generations.iter().try_fold(0usize, |count, generation| {
+            let matching = self
+                .root_quotas
+                .values()
+                .find_map(|quota| quota.send_tasks.get(generation));
+            match matching {
+                Some(credits)
+                    if !credits.invalidated
+                        && (credits.completion.outcome || credits.completion.cancellation) =>
+                {
+                    count.checked_add(1).ok_or(QueueReservationError::Exhausted)
+                }
+                Some(_) => Err(QueueReservationError::Stale),
+                None => Ok(count),
+            }
+        })
+    }
+
+    pub(crate) fn preflight_timer_cancellations(
+        &self,
+        generations: &[WorkGeneration],
+    ) -> Result<usize, QueueReservationError> {
+        generations.iter().try_fold(0usize, |count, generation| {
+            let matching = self
+                .root_quotas
+                .values()
+                .find_map(|quota| quota.timers.get(generation));
+            match matching {
+                Some(credits) if !credits.invalidated && credits.activity.cancellation => {
+                    count.checked_add(1).ok_or(QueueReservationError::Exhausted)
+                }
+                Some(_) => Err(QueueReservationError::Stale),
+                None => Ok(count),
+            }
+        })
+    }
+
+    pub(crate) fn preflight_root_host_response(
+        &self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        let credits = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .host_requests
+            .get(&generation)
+            .ok_or(QueueReservationError::Stale)?;
+        if credits.response {
+            Ok(())
+        } else {
+            Err(QueueReservationError::Exhausted)
+        }
+    }
+
+    pub(crate) fn preflight_root_host_cancellation(
+        &self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        let credits = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .host_requests
+            .get(&generation)
+            .ok_or(QueueReservationError::Stale)?;
+        if credits.cancellation {
+            Ok(())
+        } else {
+            Err(QueueReservationError::Exhausted)
+        }
+    }
+
+    pub(crate) fn preflight_root_framework_service_response(
+        &self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        let credits = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .framework_services
+            .get(&generation)
+            .ok_or(QueueReservationError::Stale)?;
+        if credits.response {
+            Ok(())
+        } else {
+            Err(QueueReservationError::Exhausted)
+        }
+    }
+
+    pub(crate) fn preflight_root_framework_service_cancellation(
+        &self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        let credits = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .framework_services
+            .get(&generation)
+            .ok_or(QueueReservationError::Stale)?;
+        if credits.cancellation {
+            Ok(())
+        } else {
+            Err(QueueReservationError::Exhausted)
+        }
+    }
+
+    pub(crate) fn preflight_root_local_task_outcome(
+        &self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        let credits = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .local_tasks
+            .get(&generation)
+            .ok_or(QueueReservationError::Stale)?;
+        if credits.completion.outcome && !credits.invalidated {
+            Ok(())
+        } else {
+            Err(QueueReservationError::Exhausted)
+        }
+    }
+
+    pub(crate) fn preflight_root_send_task_outcome(
+        &self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        let credits = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .send_tasks
+            .get(&generation)
+            .ok_or(QueueReservationError::Stale)?;
+        if credits.completion.outcome && !credits.invalidated {
+            Ok(())
+        } else {
+            Err(QueueReservationError::Exhausted)
+        }
+    }
+
+    pub(crate) fn preflight_root_timer_firing(
+        &self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        let credits = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .timers
+            .get(&generation)
+            .ok_or(QueueReservationError::Stale)?;
+        if credits.activity.firing && !credits.invalidated {
+            Ok(())
+        } else {
+            Err(QueueReservationError::Exhausted)
+        }
+    }
+
+    pub(crate) fn preflight_root_timer_callback(
+        &self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        let credits = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .timers
+            .get(&generation)
+            .ok_or(QueueReservationError::Stale)?;
+        if credits.activity.callback && !credits.invalidated {
+            Ok(())
+        } else {
+            Err(QueueReservationError::Exhausted)
+        }
+    }
+
+    pub(crate) fn root_covers_action_budget(
+        &self,
+        root: RootQuotaId,
+        budget: ProducerBudget,
+    ) -> bool {
+        !self.closed
+            && budget.queue_credits() > 0
+            && self.root_quotas.get(&root).is_some_and(|quota| {
+                budget.queue_credits() <= quota.limit && quota.profile.covers(budget)
+            })
+    }
+
+    pub(crate) fn root_profile(&self, root: RootQuotaId) -> Option<ProducerBudget> {
+        self.root_quotas.get(&root).map(|quota| quota.profile)
+    }
+
+    pub(crate) fn begin_root_action(
+        &mut self,
+        reservation: &QueueReservation,
+    ) -> Result<RootQuotaId, QueueReservationError> {
+        self.validate_reservation(reservation)?;
+        self.begin_root_activity(reservation.quota)?;
+        Ok(reservation.quota)
+    }
+
+    pub(crate) fn begin_root_activity(
+        &mut self,
+        root: RootQuotaId,
+    ) -> Result<(), QueueReservationError> {
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        quota.active_envelopes = quota
+            .active_envelopes
+            .checked_add(1)
+            .ok_or(QueueReservationError::Exhausted)?;
+        Ok(())
+    }
+
+    /// Releases an unused root quota. A root with queued or active application
+    /// actions is released only by `finish_root_action`.
+    pub(crate) fn release_reservation(
+        &mut self,
+        reservation: &QueueReservation,
+    ) -> Result<(), QueueReservationError> {
+        self.validate_reservation(reservation)?;
+        let quota = self
+            .root_quotas
+            .get(&reservation.quota)
+            .ok_or(QueueReservationError::Stale)?;
+        if quota.pending_envelopes != 0
+            || quota.active_envelopes != 0
+            || quota.live_work_leases != 0
+            || !quota.host_requests.is_empty()
+            || !quota.framework_services.is_empty()
+            || !quota.local_tasks.is_empty()
+            || !quota.send_tasks.is_empty()
+        {
+            return Err(QueueReservationError::Stale);
+        }
+        self.close_root(reservation.quota)
+    }
+
+    /// Ends direct producer admission. Queued descendants and live work keep
+    /// the same root funded; a producer that emitted nothing releases it now.
+    pub(crate) fn finish_reservation(
+        &mut self,
+        reservation: &QueueReservation,
+    ) -> Result<(), QueueReservationError> {
+        self.validate_reservation(reservation)?;
+        self.close_idle_root(reservation.quota)
+    }
+
+    fn validate_reservation(
+        &self,
+        reservation: &QueueReservation,
+    ) -> Result<(), QueueReservationError> {
+        if !Arc::ptr_eq(&reservation.owner, &self.identity) {
+            return Err(QueueReservationError::Foreign);
+        }
+        if !Arc::ptr_eq(&reservation.epoch, &self.reservation_epoch) || self.closed {
+            return Err(QueueReservationError::Stale);
+        }
+        if !self.root_quotas.contains_key(&reservation.quota) {
+            return Err(QueueReservationError::Exhausted);
+        }
+        Ok(())
+    }
+
+    fn root_remaining(&self, root: RootQuotaId) -> Result<usize, QueueReservationError> {
+        self.root_quotas
+            .get(&root)
+            .and_then(|quota| quota.remaining.checked_sub(quota.input_continuations))
+            .ok_or(QueueReservationError::Stale)
+    }
+
+    fn bind_root(
+        envelope: &mut WorkEnvelope<Action>,
+        root: RootQuotaId,
+    ) -> Result<(), QueueReservationError> {
+        match envelope {
+            WorkEnvelope::Input(work) => {
+                if work.root_quota.replace(root).is_some() {
+                    return Err(QueueReservationError::Foreign);
+                }
+                Ok(())
+            }
+            WorkEnvelope::ApplicationAction(work) if work.root_quota == root => Ok(()),
+            WorkEnvelope::SemanticCommand(work) if work.root_quota == root => Ok(()),
+            WorkEnvelope::ApplicationCommand(work) if work.root_quota == root => Ok(()),
+            WorkEnvelope::Pointer(work) if work.root_quota == Some(root) => Ok(()),
+            WorkEnvelope::EffectStart(work) | WorkEnvelope::TimerFiring(work) => {
+                if work.root_quota.replace(root).is_some() {
+                    return Err(QueueReservationError::Foreign);
+                }
+                Ok(())
+            }
+            WorkEnvelope::WorkCancellation(work) => {
+                if work.root_quota.replace(root).is_some() {
+                    return Err(QueueReservationError::Foreign);
+                }
+                Ok(())
+            }
+            WorkEnvelope::FrameworkServiceResponse(work) => {
+                if work.root_quota.replace(root).is_some() {
+                    return Err(QueueReservationError::Foreign);
+                }
+                Ok(())
+            }
+            WorkEnvelope::MountedSubscriptionReconcile { root_quota, .. } => {
+                if root_quota.replace(root).is_some() {
+                    return Err(QueueReservationError::Foreign);
+                }
+                Ok(())
+            }
+            WorkEnvelope::ApplicationAction(_)
+            | WorkEnvelope::SemanticCommand(_)
+            | WorkEnvelope::ApplicationCommand(_)
+            | WorkEnvelope::Pointer(_) => Err(QueueReservationError::Foreign),
+        }
+    }
+
+    fn note_rooted_enqueued(
+        &mut self,
+        root: RootQuotaId,
+        envelope: &WorkEnvelope<Action>,
+    ) -> Result<(), QueueReservationError> {
+        match envelope.root_quota() {
+            Some(envelope_root) if envelope_root == root => {
+                let quota = self
+                    .root_quotas
+                    .get_mut(&root)
+                    .ok_or(QueueReservationError::Stale)?;
+                quota.pending_envelopes = quota
+                    .pending_envelopes
+                    .checked_add(1)
+                    .ok_or(QueueReservationError::Exhausted)?;
+            }
+            Some(_) => return Err(QueueReservationError::Foreign),
+            None => {}
+        }
+        Ok(())
+    }
+
+    pub(crate) fn finish_root_envelope(
+        &mut self,
+        root: RootQuotaId,
+    ) -> Result<(), QueueReservationError> {
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        if quota.active_envelopes == 0 {
+            return Err(QueueReservationError::Stale);
+        }
+        quota.active_envelopes -= 1;
+        self.close_idle_root(root)
+    }
+
+    pub(crate) fn retain_root_work_lease(
+        &mut self,
+        root: RootQuotaId,
+    ) -> Result<(), QueueReservationError> {
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        quota.live_work_leases = quota
+            .live_work_leases
+            .checked_add(1)
+            .ok_or(QueueReservationError::Exhausted)?;
+        Ok(())
+    }
+
+    pub(crate) fn retain_root_host_request_lease(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        if quota.remaining == 0 || quota.host_requests.contains_key(&generation) {
+            return Err(QueueReservationError::Exhausted);
+        }
+        quota.live_work_leases = quota
+            .live_work_leases
+            .checked_add(1)
+            .ok_or(QueueReservationError::Exhausted)?;
+        quota.remaining -= 1;
+        quota.host_requests.insert(
+            generation,
+            HostRequestCredits {
+                start_pending: true,
+                response: false,
+                cancellation: true,
+            },
+        );
+        Ok(())
+    }
+
+    pub(crate) fn retain_root_framework_service_lease(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        if quota.remaining < 2 || quota.framework_services.contains_key(&generation) {
+            return Err(QueueReservationError::Exhausted);
+        }
+        quota.live_work_leases = quota
+            .live_work_leases
+            .checked_add(1)
+            .ok_or(QueueReservationError::Exhausted)?;
+        quota.remaining -= 2;
+        quota.framework_services.insert(
+            generation,
+            FrameworkServiceCredits {
+                response: true,
+                cancellation: true,
+            },
+        );
+        Ok(())
+    }
+
+    pub(crate) fn retain_root_local_task_lease(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        if quota.remaining == 0 || quota.local_tasks.contains_key(&generation) {
+            return Err(QueueReservationError::Exhausted);
+        }
+        quota.live_work_leases = quota
+            .live_work_leases
+            .checked_add(1)
+            .ok_or(QueueReservationError::Exhausted)?;
+        quota.remaining -= 1;
+        quota.local_tasks.insert(
+            generation,
+            LocalTaskCredits {
+                start_pending: true,
+                completion: LocalTaskCompletionCredits {
+                    outcome: false,
+                    cancellation: true,
+                },
+                invalidated: false,
+            },
+        );
+        Ok(())
+    }
+
+    pub(crate) fn retain_root_send_task_lease(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        if quota.remaining == 0 || quota.send_tasks.contains_key(&generation) {
+            return Err(QueueReservationError::Exhausted);
+        }
+        quota.live_work_leases = quota
+            .live_work_leases
+            .checked_add(1)
+            .ok_or(QueueReservationError::Exhausted)?;
+        quota.remaining -= 1;
+        quota.send_tasks.insert(
+            generation,
+            LocalTaskCredits {
+                start_pending: true,
+                completion: LocalTaskCompletionCredits {
+                    outcome: false,
+                    cancellation: true,
+                },
+                invalidated: false,
+            },
+        );
+        Ok(())
+    }
+
+    pub(crate) fn retain_root_timer_lease(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+        repeating: bool,
+    ) -> Result<(), QueueReservationError> {
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        let future = 1usize + usize::from(repeating); // cancel, plus repeating callback
+        if quota.remaining < future || quota.timers.contains_key(&generation) {
+            return Err(QueueReservationError::Exhausted);
+        }
+        quota.live_work_leases = quota
+            .live_work_leases
+            .checked_add(1)
+            .ok_or(QueueReservationError::Exhausted)?;
+        quota.remaining -= future;
+        quota.timers.insert(
+            generation,
+            TimerCredits {
+                start_pending: true,
+                activity: TimerActivityCredits {
+                    firing: false,
+                    callback: repeating,
+                    cancellation: true,
+                },
+                repeating,
+                invalidated: false,
+            },
+        );
+        Ok(())
+    }
+
+    pub(crate) fn release_root_work_lease(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        self.release_root_work_leases(root, &[generation])
+    }
+
+    /// Retires one mounted owner's generations together. This checks future
+    /// terminal credits once per root, rather than rescanning every remaining
+    /// generation on each individual lease release.
+    ///
+    /// All credit and global-reservation checks precede mutation. A malformed
+    /// source ledger cannot partially retire a generation.
+    pub(crate) fn release_root_work_leases(
+        &mut self,
+        root: RootQuotaId,
+        generations: &[WorkGeneration],
+    ) -> Result<(), QueueReservationError> {
+        if generations.is_empty() {
+            return Ok(());
+        }
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        let retained_leases = quota
+            .live_work_leases
+            .checked_sub(generations.len())
+            .ok_or(QueueReservationError::Stale)?;
+
+        if generations.len() > 1 {
+            let mut unique = HashSet::with_capacity(generations.len());
+            if generations
+                .iter()
+                .any(|generation| !unique.insert(*generation))
+            {
+                return Err(QueueReservationError::Stale);
+            }
+        }
+
+        let mut released = 0usize;
+        for generation in generations {
+            let credits = quota
+                .host_requests
+                .get(generation)
+                .map(|credits| usize::from(credits.response) + usize::from(credits.cancellation))
+                .or_else(|| {
+                    quota.framework_services.get(generation).map(|credits| {
+                        usize::from(credits.response) + usize::from(credits.cancellation)
+                    })
+                })
+                .or_else(|| {
+                    quota.local_tasks.get(generation).map(|credits| {
+                        usize::from(credits.completion.outcome)
+                            + usize::from(credits.completion.cancellation)
+                    })
+                })
+                .or_else(|| {
+                    quota.send_tasks.get(generation).map(|credits| {
+                        usize::from(credits.completion.outcome)
+                            + usize::from(credits.completion.cancellation)
+                    })
+                })
+                .or_else(|| {
+                    quota.timers.get(generation).map(|credits| {
+                        usize::from(credits.activity.firing)
+                            + usize::from(credits.activity.callback)
+                            + usize::from(credits.activity.cancellation)
+                    })
+                })
+                .unwrap_or(0);
+            // Subscription work is rooted but has no keyed terminal map.
+            released = released
+                .checked_add(credits)
+                .ok_or(QueueReservationError::Exhausted)?;
+        }
+        let future_after = future_credit_count(quota)
+            .and_then(|future| future.checked_sub(released))
+            .ok_or(QueueReservationError::Stale)?;
+        let remaining = quota
+            .remaining
+            .checked_add(released)
+            .ok_or(QueueReservationError::Exhausted)?;
+        if quota
+            .pending_envelopes
+            .checked_add(remaining)
+            .and_then(|occupied| occupied.checked_add(future_after))
+            .is_none_or(|occupied| occupied > quota.limit)
+        {
+            return Err(QueueReservationError::Stale);
+        }
+
+        // A malformed global reservation or root residency aggregate must
+        // not make idle-root closure fail after generation credits are removed.
+        // Both are checked before the first mutation; closing the root later
+        // repeats the same guard when it actually reaches the idle frontier.
+        if self.reserved < remaining {
+            return Err(QueueReservationError::Stale);
+        }
+        for (index, family) in crate::work::WorkFamily::ALL.into_iter().enumerate() {
+            self.root_residency_claims[index]
+                .checked_sub(family.residency(quota.profile.work_residency()))
+                .ok_or(QueueReservationError::Stale)?;
+        }
+
+        for generation in generations {
+            if quota.host_requests.remove(generation).is_none()
+                && quota.framework_services.remove(generation).is_none()
+                && quota.local_tasks.remove(generation).is_none()
+                && quota.send_tasks.remove(generation).is_none()
+            {
+                quota.timers.remove(generation);
+            }
+        }
+        quota.remaining = remaining;
+        quota.live_work_leases = retained_leases;
+        self.close_idle_root(root)
+    }
+
+    pub(crate) fn release_root_work_lease_for_cancellation(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+    ) -> Result<(), QueueReservationError> {
+        let Some(quota) = self.root_quotas.get_mut(&root) else {
+            return Err(QueueReservationError::Stale);
+        };
+        if let Some(credits) = quota.host_requests.get_mut(&generation) {
+            if quota.live_work_leases == 0 || !credits.cancellation {
+                return Err(QueueReservationError::Stale);
+            }
+            quota.remaining = quota
+                .remaining
+                .checked_add(usize::from(credits.response))
+                .ok_or(QueueReservationError::Exhausted)?;
+            credits.response = false;
+            quota.live_work_leases -= 1;
+            return Ok(());
+        }
+        if let Some(credits) = quota.framework_services.get_mut(&generation) {
+            if quota.live_work_leases == 0 || !credits.cancellation {
+                return Err(QueueReservationError::Stale);
+            }
+            quota.remaining = quota
+                .remaining
+                .checked_add(usize::from(credits.response))
+                .ok_or(QueueReservationError::Exhausted)?;
+            credits.response = false;
+            quota.live_work_leases -= 1;
+            return Ok(());
+        }
+        if let Some(credits) = quota.local_tasks.get_mut(&generation) {
+            if quota.live_work_leases == 0
+                || credits.invalidated
+                || !(credits.completion.outcome || credits.completion.cancellation)
+            {
+                return Err(QueueReservationError::Stale);
+            }
+            credits.invalidated = true;
+            quota.live_work_leases -= 1;
+            return Ok(());
+        }
+        if let Some(credits) = quota.send_tasks.get_mut(&generation) {
+            if quota.live_work_leases == 0
+                || credits.invalidated
+                || !(credits.completion.outcome || credits.completion.cancellation)
+            {
+                return Err(QueueReservationError::Stale);
+            }
+            credits.invalidated = true;
+            quota.live_work_leases -= 1;
+            return Ok(());
+        }
+        if let Some(credits) = quota.timers.get_mut(&generation) {
+            if quota.live_work_leases == 0 || credits.invalidated || !credits.activity.cancellation
+            {
+                return Err(QueueReservationError::Stale);
+            }
+            let released =
+                usize::from(credits.activity.firing) + usize::from(credits.activity.callback);
+            quota.remaining = quota
+                .remaining
+                .checked_add(released)
+                .ok_or(QueueReservationError::Exhausted)?;
+            credits.activity.firing = false;
+            credits.activity.callback = false;
+            credits.invalidated = true;
+            quota.live_work_leases -= 1;
+            return Ok(());
+        }
+        self.release_root_work_lease(root, generation)
+    }
+
+    pub(crate) fn push_host_response_action_rooted(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+        envelope: impl FnOnce(WorkSequence, RootQuotaId) -> WorkEnvelope<Action>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_rooted_from_host_credit(root, generation, true, envelope)
+    }
+
+    pub(crate) fn push_local_task_outcome_action_rooted(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+        envelope: impl FnOnce(WorkSequence, RootQuotaId) -> WorkEnvelope<Action>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_rooted_from_local_credit(root, generation, false, envelope)
+    }
+
+    pub(crate) fn push_send_task_outcome_action_rooted(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+        envelope: impl FnOnce(WorkSequence, RootQuotaId) -> WorkEnvelope<Action>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_rooted_from_send_task_credit(root, generation, false, envelope)
+    }
+
+    pub(crate) fn push_local_task_cancellation(
+        &mut self,
+        generation: WorkGeneration,
+        identity: TraceWorkIdentity,
+        causal_parent: Option<TraceSequence>,
+    ) -> Result<Option<WorkSequence>, QueueReservationError> {
+        let root = self
+            .root_quotas
+            .iter()
+            .find_map(|(root, quota)| quota.local_tasks.contains_key(&generation).then_some(*root));
+        let Some(root) = root else {
+            return Ok(None);
+        };
+        self.push_rooted_from_local_credit(root, generation, true, |sequence, _| {
+            WorkEnvelope::WorkCancellation(CancellationEnvelope {
+                sequence,
+                generation,
+                identity,
+                causal_parent,
+                root_quota: None,
+            })
+        })
+        .map(Some)
+    }
+
+    pub(crate) fn push_send_task_cancellation(
+        &mut self,
+        generation: WorkGeneration,
+        identity: TraceWorkIdentity,
+        causal_parent: Option<TraceSequence>,
+    ) -> Result<Option<WorkSequence>, QueueReservationError> {
+        let root = self
+            .root_quotas
+            .iter()
+            .find_map(|(root, quota)| quota.send_tasks.contains_key(&generation).then_some(*root));
+        let Some(root) = root else {
+            return Ok(None);
+        };
+        self.push_rooted_from_send_task_credit(root, generation, true, |sequence, _| {
+            WorkEnvelope::WorkCancellation(CancellationEnvelope {
+                sequence,
+                generation,
+                identity,
+                causal_parent,
+                root_quota: None,
+            })
+        })
+        .map(Some)
+    }
+
+    pub(crate) fn push_timer_cancellation(
+        &mut self,
+        generation: WorkGeneration,
+        identity: TraceWorkIdentity,
+        causal_parent: Option<TraceSequence>,
+    ) -> Result<Option<WorkSequence>, QueueReservationError> {
+        let root = self
+            .root_quotas
+            .iter()
+            .find_map(|(root, quota)| quota.timers.contains_key(&generation).then_some(*root));
+        let Some(root) = root else {
+            return Ok(None);
+        };
+        self.push_rooted_from_timer_credit(
+            root,
+            generation,
+            TimerCreditKind::Cancellation,
+            |sequence, _| {
+                WorkEnvelope::WorkCancellation(CancellationEnvelope {
+                    sequence,
+                    generation,
+                    identity,
+                    causal_parent,
+                    root_quota: None,
+                })
+            },
+        )
+        .map(Some)
+    }
+
+    fn push_rooted_from_local_credit(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+        cancellation: bool,
+        envelope: impl FnOnce(WorkSequence, RootQuotaId) -> WorkEnvelope<Action>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        if self.closed {
+            return Err(QueueReservationError::Closed);
+        }
+        let credits = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .local_tasks
+            .get(&generation)
+            .copied()
+            .ok_or(QueueReservationError::Stale)?;
+        if if cancellation {
+            !credits.invalidated || !(credits.completion.outcome || credits.completion.cancellation)
+        } else {
+            credits.invalidated || !credits.completion.outcome
+        } {
+            return Err(QueueReservationError::Exhausted);
+        }
+        if self.reserved == 0 {
+            return Err(QueueReservationError::Stale);
+        }
+        self.preflight_root_sequence(root, 1)?;
+        let next = self
+            .next_sequence
+            .ok_or(QueueReservationError::SequenceExhausted)?;
+        let sequence = WorkSequence::__runtime_new(next);
+        let mut envelope = envelope(sequence, root);
+        Self::bind_root(&mut envelope, root)?;
+        self.note_rooted_enqueued(root, &envelope)?;
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        let credits = quota
+            .local_tasks
+            .get_mut(&generation)
+            .ok_or(QueueReservationError::Stale)?;
+        credits.completion.outcome = false;
+        if cancellation {
+            credits.completion.cancellation = false;
+            if !credits.start_pending {
+                quota.local_tasks.remove(&generation);
+            }
+        }
+        self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
+        self.reserved -= 1;
+        self.waiting.push_back(envelope);
+        Ok(sequence)
+    }
+
+    fn push_rooted_from_send_task_credit(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+        cancellation: bool,
+        envelope: impl FnOnce(WorkSequence, RootQuotaId) -> WorkEnvelope<Action>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        if self.closed {
+            return Err(QueueReservationError::Closed);
+        }
+        let credits = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .send_tasks
+            .get(&generation)
+            .copied()
+            .ok_or(QueueReservationError::Stale)?;
+        if if cancellation {
+            !credits.invalidated || !(credits.completion.outcome || credits.completion.cancellation)
+        } else {
+            credits.invalidated || !credits.completion.outcome
+        } {
+            return Err(QueueReservationError::Exhausted);
+        }
+        if self.reserved == 0 {
+            return Err(QueueReservationError::Stale);
+        }
+        self.preflight_root_sequence(root, 1)?;
+        let next = self
+            .next_sequence
+            .ok_or(QueueReservationError::SequenceExhausted)?;
+        let sequence = WorkSequence::__runtime_new(next);
+        let mut envelope = envelope(sequence, root);
+        Self::bind_root(&mut envelope, root)?;
+        self.note_rooted_enqueued(root, &envelope)?;
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        let credits = quota
+            .send_tasks
+            .get_mut(&generation)
+            .ok_or(QueueReservationError::Stale)?;
+        credits.completion.outcome = false;
+        if cancellation {
+            credits.completion.cancellation = false;
+            if !credits.start_pending {
+                quota.send_tasks.remove(&generation);
+            }
+        }
+        self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
+        self.reserved -= 1;
+        self.waiting.push_back(envelope);
+        Ok(sequence)
+    }
+
+    pub(crate) fn push_host_cancellation_rooted(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+        identity: TraceWorkIdentity,
+        causal_parent: Option<TraceSequence>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_rooted_from_host_credit(root, generation, false, |sequence, _| {
+            WorkEnvelope::WorkCancellation(CancellationEnvelope {
+                sequence,
+                generation,
+                identity,
+                causal_parent,
+                root_quota: None,
+            })
+        })
+    }
+
+    pub(crate) fn push_host_request_cancellation(
+        &mut self,
+        generation: WorkGeneration,
+        identity: TraceWorkIdentity,
+        causal_parent: Option<TraceSequence>,
+    ) -> Result<Option<WorkSequence>, QueueReservationError> {
+        let root = self.root_quotas.iter().find_map(|(root, quota)| {
+            quota
+                .host_requests
+                .contains_key(&generation)
+                .then_some(*root)
+        });
+        let Some(root) = root else {
+            return Ok(None);
+        };
+        let sequence =
+            self.push_host_cancellation_rooted(root, generation, identity, causal_parent)?;
+        self.root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .host_requests
+            .remove(&generation);
+        Ok(Some(sequence))
+    }
+
+    fn push_rooted_from_host_credit(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+        response: bool,
+        envelope: impl FnOnce(WorkSequence, RootQuotaId) -> WorkEnvelope<Action>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        if self.closed {
+            return Err(QueueReservationError::Closed);
+        }
+        let credits = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .host_requests
+            .get(&generation)
+            .copied()
+            .ok_or(QueueReservationError::Stale)?;
+        if if response {
+            !credits.response
+        } else {
+            !credits.cancellation
+        } {
+            return Err(QueueReservationError::Exhausted);
+        }
+        if self.reserved == 0 {
+            return Err(QueueReservationError::Stale);
+        }
+        self.preflight_root_sequence(root, 1)?;
+        let next = self
+            .next_sequence
+            .ok_or(QueueReservationError::SequenceExhausted)?;
+        let sequence = WorkSequence::__runtime_new(next);
+        let mut envelope = envelope(sequence, root);
+        Self::bind_root(&mut envelope, root)?;
+        self.note_rooted_enqueued(root, &envelope)?;
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        let credits = quota
+            .host_requests
+            .get_mut(&generation)
+            .ok_or(QueueReservationError::Stale)?;
+        if response {
+            credits.response = false;
+        } else {
+            credits.cancellation = false;
+        }
+        self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
+        self.reserved -= 1;
+        self.waiting.push_back(envelope);
+        Ok(sequence)
+    }
+
+    fn push_rooted_from_timer_credit(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+        kind: TimerCreditKind,
+        envelope: impl FnOnce(WorkSequence, RootQuotaId) -> WorkEnvelope<Action>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        if self.closed {
+            return Err(QueueReservationError::Closed);
+        }
+        let credits = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .timers
+            .get(&generation)
+            .copied()
+            .ok_or(QueueReservationError::Stale)?;
+        let available = match kind {
+            TimerCreditKind::Firing => credits.activity.firing && !credits.invalidated,
+            TimerCreditKind::Callback => credits.activity.callback && !credits.invalidated,
+            TimerCreditKind::Cancellation => credits.activity.cancellation && credits.invalidated,
+        };
+        if !available {
+            return Err(QueueReservationError::Exhausted);
+        }
+        if self.reserved == 0 {
+            return Err(QueueReservationError::Stale);
+        }
+        self.preflight_root_sequence(root, 1)?;
+        let next = self
+            .next_sequence
+            .ok_or(QueueReservationError::SequenceExhausted)?;
+        let sequence = WorkSequence::__runtime_new(next);
+        let mut envelope = envelope(sequence, root);
+        Self::bind_root(&mut envelope, root)?;
+        if matches!(kind, TimerCreditKind::Callback)
+            && !matches!(&envelope, WorkEnvelope::ApplicationAction(_))
+        {
+            return Err(QueueReservationError::Stale);
+        }
+        self.note_rooted_enqueued(root, &envelope)?;
+        {
+            let quota = self
+                .root_quotas
+                .get_mut(&root)
+                .ok_or(QueueReservationError::Stale)?;
+            let credits = quota
+                .timers
+                .get_mut(&generation)
+                .ok_or(QueueReservationError::Stale)?;
+            match kind {
+                TimerCreditKind::Firing => credits.activity.firing = false,
+                TimerCreditKind::Callback => credits.activity.callback = false,
+                TimerCreditKind::Cancellation => {
+                    credits.activity.cancellation = false;
+                    quota.timers.remove(&generation);
+                }
+            }
+        }
+        self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
+        self.reserved -= 1;
+        if matches!(kind, TimerCreditKind::Callback) {
+            self.root_quotas
+                .get_mut(&root)
+                .ok_or(QueueReservationError::Stale)?
+                .timer_callback_actions
+                .insert(sequence, generation);
+        }
+        self.waiting.push_back(envelope);
+        Ok(sequence)
+    }
+
+    pub(crate) fn preflight_root_work_leases(
+        &self,
+        root: RootQuotaId,
+        count: usize,
+    ) -> Result<(), QueueReservationError> {
+        self.root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .live_work_leases
+            .checked_add(count)
+            .ok_or(QueueReservationError::Exhausted)?;
+        Ok(())
+    }
+
+    pub(crate) fn finish_root_action(
+        &mut self,
+        root: RootQuotaId,
+    ) -> Result<(), QueueReservationError> {
+        self.finish_root_envelope(root)
+    }
+
+    fn close_idle_root(&mut self, root: RootQuotaId) -> Result<(), QueueReservationError> {
+        let quota = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        if quota.pending_envelopes == 0
+            && quota.active_envelopes == 0
+            && quota.input_continuations == 0
+            && quota.live_work_leases == 0
+            && quota.host_requests.is_empty()
+            && quota.framework_services.is_empty()
+            && quota.local_tasks.is_empty()
+            && quota.send_tasks.is_empty()
+            && quota.timers.is_empty()
+            && quota.timer_callback_actions.is_empty()
+        {
+            self.close_root(root)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn close_root(&mut self, root: RootQuotaId) -> Result<(), QueueReservationError> {
+        let quota = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        if quota.pending_envelopes != 0
+            || quota.active_envelopes != 0
+            || quota.input_continuations != 0
+            || quota.live_work_leases != 0
+            || !quota.host_requests.is_empty()
+            || !quota.framework_services.is_empty()
+            || !quota.local_tasks.is_empty()
+            || !quota.send_tasks.is_empty()
+            || !quota.timers.is_empty()
+            || !quota.timer_callback_actions.is_empty()
+        {
+            return Err(QueueReservationError::Stale);
+        }
+        if self.reserved < quota.remaining {
+            return Err(QueueReservationError::Stale);
+        }
+        // Preserve the root intact if its derived accounting is malformed.
+        let mut next_claims = self.root_residency_claims;
+        for (index, family) in crate::work::WorkFamily::ALL.into_iter().enumerate() {
+            next_claims[index] = next_claims[index]
+                .checked_sub(family.residency(quota.profile.work_residency()))
+                .ok_or(QueueReservationError::Stale)?;
+        }
+        self.reserved -= quota.remaining;
+        self.root_quotas.remove(&root);
+        self.root_residency_claims = next_claims;
         Ok(())
     }
 
@@ -332,6 +2118,7 @@ impl<Action> WorkQueue<Action> {
         self.next_sequence.map(WorkSequence::__runtime_new)
     }
 
+    #[cfg(test)]
     pub(crate) fn push_preflighted(
         &mut self,
         action: Action,
@@ -339,20 +2126,41 @@ impl<Action> WorkQueue<Action> {
         target: Option<TraceTarget>,
         origin: ApplicationActionOrigin,
     ) -> Result<WorkSequence, Action> {
-        let Some(next_sequence) = self.next_sequence else {
+        let Ok(reservation) = self.reserve(1) else {
             return Err(action);
         };
-        let sequence = WorkSequence::__runtime_new(next_sequence);
-        self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
-        self.waiting
-            .push_back(WorkEnvelope::ApplicationAction(ApplicationActionEnvelope {
+        self.push_preflighted_with_reservation(
+            action,
+            causal_parent,
+            target,
+            origin,
+            ProducerBudget::new(1, 0),
+            &reservation,
+        )
+    }
+
+    pub(crate) fn push_preflighted_with_reservation(
+        &mut self,
+        action: Action,
+        causal_parent: Option<TraceSequence>,
+        target: Option<TraceTarget>,
+        origin: ApplicationActionOrigin,
+        producer_budget: ProducerBudget,
+        reservation: &QueueReservation,
+    ) -> Result<WorkSequence, Action> {
+        let mut action = Some(action);
+        self.push_reserved_with_remainder(reservation, |sequence, root_quota| {
+            WorkEnvelope::ApplicationAction(ApplicationActionEnvelope {
                 sequence,
-                action,
+                action: action.take().unwrap_or_else(|| unreachable!()),
+                producer_budget,
+                root_quota,
                 causal_parent,
                 target,
                 origin,
-            }));
-        Ok(sequence)
+            })
+        })
+        .map_err(|_| action.take().unwrap_or_else(|| unreachable!()))
     }
 
     pub(crate) fn push_effect_start(
@@ -363,6 +2171,21 @@ impl<Action> WorkQueue<Action> {
             WorkEnvelope::EffectStart(SequencedWork {
                 sequence,
                 generation,
+                root_quota: None,
+            })
+        })
+    }
+
+    pub(crate) fn push_effect_start_rooted(
+        &mut self,
+        generation: WorkGeneration,
+        root: RootQuotaId,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_rooted(root, |sequence, _| {
+            WorkEnvelope::EffectStart(SequencedWork {
+                sequence,
+                generation,
+                root_quota: None,
             })
         })
     }
@@ -370,7 +2193,8 @@ impl<Action> WorkQueue<Action> {
     pub(crate) fn push_command_preflighted(
         &mut self,
         payload: SemanticCommandQueuePayload,
-    ) -> Result<WorkSequence, QueueCommitError> {
+        reservation: &QueueReservation,
+    ) -> Result<WorkSequence, QueueReservationError> {
         let SemanticCommandQueuePayload {
             queued_target,
             command,
@@ -380,12 +2204,13 @@ impl<Action> WorkQueue<Action> {
             instant,
             causal_parent,
             trace_reservation,
+            root_quota: _,
         } = payload;
         let SemanticCommandQueueTarget {
             target,
             semantic_target,
         } = queued_target;
-        self.push_control(|sequence| {
+        self.push_reserved_with_remainder(reservation, |sequence, root_quota| {
             WorkEnvelope::SemanticCommand(SemanticCommandEnvelope {
                 sequence,
                 target,
@@ -397,20 +2222,61 @@ impl<Action> WorkQueue<Action> {
                 instant,
                 causal_parent,
                 trace_reservation,
+                root_quota,
+            })
+        })
+    }
+
+    pub(crate) fn push_command_rooted(
+        &mut self,
+        payload: SemanticCommandQueuePayload,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        let SemanticCommandQueuePayload {
+            queued_target,
+            command,
+            origin,
+            focus_request_override,
+            presentation_cancel_origin,
+            instant,
+            causal_parent,
+            trace_reservation,
+            root_quota,
+        } = payload;
+        let SemanticCommandQueueTarget {
+            target,
+            semantic_target,
+        } = queued_target;
+        self.push_rooted(root_quota, |sequence, root_quota| {
+            WorkEnvelope::SemanticCommand(SemanticCommandEnvelope {
+                sequence,
+                target,
+                command,
+                origin,
+                semantic_target,
+                focus_request_override,
+                presentation_cancel_origin,
+                instant,
+                causal_parent,
+                trace_reservation,
+                root_quota,
             })
         })
     }
 
     pub(crate) fn push_application_command_preflighted(
         &mut self,
-        target: MountedNodeId,
-        command: ApplicationCommandId,
-        origin: CommandOrigin,
-        instant: MonotonicInstant,
-        causal_parent: Option<TraceSequence>,
-        trace_reservation: TraceReservation,
-    ) -> Result<WorkSequence, QueueCommitError> {
-        self.push_control(|sequence| {
+        reservation: &QueueReservation,
+        payload: ApplicationCommandQueuePayload,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        let ApplicationCommandQueuePayload {
+            target,
+            command,
+            origin,
+            instant,
+            causal_parent,
+            trace_reservation,
+        } = payload;
+        self.push_reserved_with_remainder(reservation, |sequence, root_quota| {
             WorkEnvelope::ApplicationCommand(ApplicationCommandEnvelope {
                 sequence,
                 target,
@@ -419,51 +2285,51 @@ impl<Action> WorkQueue<Action> {
                 instant,
                 causal_parent,
                 trace_reservation,
+                root_quota,
+            })
+        })
+    }
+
+    pub(crate) fn push_application_command_rooted(
+        &mut self,
+        root_quota: RootQuotaId,
+        payload: ApplicationCommandQueuePayload,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        let ApplicationCommandQueuePayload {
+            target,
+            command,
+            origin,
+            instant,
+            causal_parent,
+            trace_reservation,
+        } = payload;
+        self.push_rooted(root_quota, |sequence, root_quota| {
+            WorkEnvelope::ApplicationCommand(ApplicationCommandEnvelope {
+                sequence,
+                target,
+                command,
+                origin,
+                instant,
+                causal_parent,
+                trace_reservation,
+                root_quota,
             })
         })
     }
 
     pub(crate) fn push_pointer_preflighted(
         &mut self,
+        reservation: &QueueReservation,
         event: PointerEvent,
         instant: MonotonicInstant,
         causal_parent: Option<TraceSequence>,
         trace_reservation: TraceReservation,
-    ) -> Result<WorkSequence, QueueCommitError> {
-        self.push_pointer_payload_preflighted(
-            PointerEnvelopePayload::Event(event),
-            instant,
-            causal_parent,
-            trace_reservation,
-        )
-    }
-
-    pub(crate) fn push_pointer_rehit_preflighted(
-        &mut self,
-        context: SurfaceInputContext,
-        instant: MonotonicInstant,
-        causal_parent: Option<TraceSequence>,
-        trace_reservation: TraceReservation,
-    ) -> Result<WorkSequence, QueueCommitError> {
-        self.push_pointer_payload_preflighted(
-            PointerEnvelopePayload::StationaryRehit(context),
-            instant,
-            causal_parent,
-            trace_reservation,
-        )
-    }
-
-    fn push_pointer_payload_preflighted(
-        &mut self,
-        payload: PointerEnvelopePayload,
-        instant: MonotonicInstant,
-        causal_parent: Option<TraceSequence>,
-        trace_reservation: TraceReservation,
-    ) -> Result<WorkSequence, QueueCommitError> {
-        self.push_control(|sequence| {
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_reserved_with_remainder(reservation, |sequence, root| {
             WorkEnvelope::Pointer(PointerEnvelope {
                 sequence,
-                payload,
+                root_quota: Some(root),
+                payload: PointerEnvelopePayload::Event(event),
                 instant,
                 causal_parent,
                 trace_reservation,
@@ -471,22 +2337,43 @@ impl<Action> WorkQueue<Action> {
         })
     }
 
-    pub(crate) fn push_input_preflighted(
+    pub(crate) fn push_pointer_rehit_rooted(
         &mut self,
-        target: MountedNodeId,
-        payload: InputEnvelopePayload,
-        focus_binding: Option<FocusInputBinding>,
+        root: RootQuotaId,
+        context: SurfaceInputContext,
         instant: MonotonicInstant,
         causal_parent: Option<TraceSequence>,
         trace_reservation: TraceReservation,
-    ) -> Result<WorkSequence, QueueCommitError> {
-        self.push_control(|sequence| {
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_rooted(root, |sequence, root| {
+            WorkEnvelope::Pointer(PointerEnvelope {
+                sequence,
+                root_quota: Some(root),
+                payload: PointerEnvelopePayload::StationaryRehit(context),
+                instant,
+                causal_parent,
+                trace_reservation,
+            })
+        })
+    }
+
+    pub(crate) fn push_composition_preflighted(
+        &mut self,
+        reservation: &QueueReservation,
+        target: MountedNodeId,
+        event: CompositionEvent,
+        instant: MonotonicInstant,
+        causal_parent: Option<TraceSequence>,
+        trace_reservation: TraceReservation,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_reserved_with_remainder(reservation, |sequence, _| {
             WorkEnvelope::Input(InputEnvelope {
                 sequence,
                 target,
-                focus_binding,
+                focus_binding: None,
                 text_revoked: false,
-                payload,
+                root_quota: None,
+                payload: InputEnvelopePayload::Composition(event),
                 instant,
                 causal_parent,
                 trace_reservation,
@@ -506,6 +2393,25 @@ impl<Action> WorkQueue<Action> {
                 generation,
                 identity,
                 causal_parent,
+                root_quota: None,
+            })
+        })
+    }
+
+    pub(crate) fn push_cancellation_rooted(
+        &mut self,
+        generation: WorkGeneration,
+        identity: TraceWorkIdentity,
+        causal_parent: Option<TraceSequence>,
+        root: RootQuotaId,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_rooted(root, |sequence, _| {
+            WorkEnvelope::WorkCancellation(CancellationEnvelope {
+                sequence,
+                generation,
+                identity,
+                causal_parent,
+                root_quota: None,
             })
         })
     }
@@ -518,8 +2424,37 @@ impl<Action> WorkQueue<Action> {
             WorkEnvelope::TimerFiring(SequencedWork {
                 sequence,
                 generation,
+                root_quota: None,
             })
         })
+    }
+
+    pub(crate) fn push_timer_firing_rooted(
+        &mut self,
+        generation: WorkGeneration,
+        root: RootQuotaId,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_rooted_from_timer_credit(
+            root,
+            generation,
+            TimerCreditKind::Firing,
+            |sequence, _| {
+                WorkEnvelope::TimerFiring(SequencedWork {
+                    sequence,
+                    generation,
+                    root_quota: None,
+                })
+            },
+        )
+    }
+
+    pub(crate) fn push_timer_callback_action_rooted(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+        envelope: impl FnOnce(WorkSequence, RootQuotaId) -> WorkEnvelope<Action>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_rooted_from_timer_credit(root, generation, TimerCreditKind::Callback, envelope)
     }
 
     pub(crate) fn push_framework_service_response(
@@ -536,8 +2471,130 @@ impl<Action> WorkQueue<Action> {
                 response,
                 trace_identity,
                 causal_parent,
+                root_quota: None,
             })
         })
+    }
+
+    pub(crate) fn push_framework_service_response_rooted(
+        &mut self,
+        generation: WorkGeneration,
+        response: FrameworkServiceResponse,
+        trace_identity: TraceWorkIdentity,
+        causal_parent: Option<TraceSequence>,
+        root: RootQuotaId,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_rooted_from_framework_service_credit(root, generation, true, |sequence, _| {
+            WorkEnvelope::FrameworkServiceResponse(FrameworkServiceResponseEnvelope {
+                sequence,
+                generation,
+                response,
+                trace_identity,
+                causal_parent,
+                root_quota: None,
+            })
+        })
+    }
+
+    pub(crate) fn push_framework_service_cancellation_rooted(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+        identity: TraceWorkIdentity,
+        causal_parent: Option<TraceSequence>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_rooted_from_framework_service_credit(root, generation, false, |sequence, _| {
+            WorkEnvelope::WorkCancellation(CancellationEnvelope {
+                sequence,
+                generation,
+                identity,
+                causal_parent,
+                root_quota: None,
+            })
+        })
+    }
+
+    pub(crate) fn push_framework_service_request_cancellation(
+        &mut self,
+        generation: WorkGeneration,
+        identity: TraceWorkIdentity,
+        causal_parent: Option<TraceSequence>,
+    ) -> Result<Option<WorkSequence>, QueueReservationError> {
+        let root = self.root_quotas.iter().find_map(|(root, quota)| {
+            quota
+                .framework_services
+                .contains_key(&generation)
+                .then_some(*root)
+        });
+        let Some(root) = root else {
+            return Ok(None);
+        };
+        let sequence = self.push_framework_service_cancellation_rooted(
+            root,
+            generation,
+            identity,
+            causal_parent,
+        )?;
+        self.root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .framework_services
+            .remove(&generation);
+        Ok(Some(sequence))
+    }
+
+    fn push_rooted_from_framework_service_credit(
+        &mut self,
+        root: RootQuotaId,
+        generation: WorkGeneration,
+        response: bool,
+        envelope: impl FnOnce(WorkSequence, RootQuotaId) -> WorkEnvelope<Action>,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        if self.closed {
+            return Err(QueueReservationError::Closed);
+        }
+        let credits = self
+            .root_quotas
+            .get(&root)
+            .ok_or(QueueReservationError::Stale)?
+            .framework_services
+            .get(&generation)
+            .copied()
+            .ok_or(QueueReservationError::Stale)?;
+        if if response {
+            !credits.response
+        } else {
+            !credits.cancellation
+        } {
+            return Err(QueueReservationError::Exhausted);
+        }
+        if self.reserved == 0 {
+            return Err(QueueReservationError::Stale);
+        }
+        self.preflight_root_sequence(root, 1)?;
+        let next = self
+            .next_sequence
+            .ok_or(QueueReservationError::SequenceExhausted)?;
+        let mut envelope = envelope(WorkSequence::__runtime_new(next), root);
+        Self::bind_root(&mut envelope, root)?;
+        self.note_rooted_enqueued(root, &envelope)?;
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .ok_or(QueueReservationError::Stale)?;
+        let credits = quota
+            .framework_services
+            .get_mut(&generation)
+            .ok_or(QueueReservationError::Stale)?;
+        if response {
+            credits.response = false;
+        } else {
+            credits.cancellation = false;
+        }
+        self.next_sequence = next.get().checked_add(1).and_then(NonZeroU64::new);
+        self.reserved -= 1;
+        self.waiting.push_back(envelope);
+        Ok(WorkSequence::__runtime_new(next))
     }
 
     pub(crate) fn push_mounted_subscription_reconcile(
@@ -549,6 +2606,23 @@ impl<Action> WorkQueue<Action> {
             sequence,
             owner,
             causal_parent,
+            root_quota: None,
+        })
+    }
+
+    pub(crate) fn push_mounted_subscription_reconcile_rooted(
+        &mut self,
+        owner: MountedNodeId,
+        causal_parent: Option<TraceSequence>,
+        root: RootQuotaId,
+    ) -> Result<WorkSequence, QueueReservationError> {
+        self.push_rooted(root, |sequence, _| {
+            WorkEnvelope::MountedSubscriptionReconcile {
+                sequence,
+                owner,
+                causal_parent,
+                root_quota: None,
+            }
         })
     }
 
@@ -556,20 +2630,241 @@ impl<Action> WorkQueue<Action> {
         &mut self,
         envelope: impl FnOnce(WorkSequence) -> WorkEnvelope<Action>,
     ) -> Result<WorkSequence, QueueCommitError> {
-        if self.is_full() {
-            return Err(QueueCommitError::Full);
+        let reservation = self.reserve(1).map_err(|error| match error {
+            QueueReservationError::Capacity | QueueReservationError::Closed => {
+                QueueCommitError::Full
+            }
+            QueueReservationError::SequenceExhausted => QueueCommitError::SequenceExhausted,
+            QueueReservationError::Foreign
+            | QueueReservationError::Stale
+            | QueueReservationError::WorkCapacity(_)
+            | QueueReservationError::Exhausted => {
+                unreachable!("fresh queue reservation has valid ownership")
+            }
+        })?;
+        let result = self
+            .push_reserved(&reservation, envelope)
+            .map_err(|error| match error {
+                QueueReservationError::Capacity | QueueReservationError::Closed => {
+                    QueueCommitError::Full
+                }
+                QueueReservationError::SequenceExhausted => QueueCommitError::SequenceExhausted,
+                QueueReservationError::Foreign
+                | QueueReservationError::Stale
+                | QueueReservationError::WorkCapacity(_)
+                | QueueReservationError::Exhausted => {
+                    unreachable!("fresh queue reservation remains valid")
+                }
+            });
+        if result.is_ok() {
+            self.release_reservation(&reservation)
+                .unwrap_or_else(|_| unreachable!("control append root remains valid"));
         }
-        let next = self
-            .next_sequence
-            .ok_or(QueueCommitError::SequenceExhausted)?;
-        let sequence = WorkSequence::__runtime_new(next);
-        self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
-        self.waiting.push_back(envelope(sequence));
-        Ok(sequence)
+        result
+    }
+
+    fn classify_popped_root_credits(
+        quota: &RootQuotaState,
+        envelope: &WorkEnvelope<Action>,
+    ) -> PoppedRootCredits {
+        let WorkEnvelope::EffectStart(start) = envelope else {
+            let timer_firing = match envelope {
+                WorkEnvelope::TimerFiring(firing)
+                    if quota.timers.get(&firing.generation).is_some_and(|credits| {
+                        !credits.invalidated && !credits.activity.firing
+                    }) =>
+                {
+                    Some(firing.generation)
+                }
+                _ => None,
+            };
+            return PoppedRootCredits {
+                timer_firing,
+                timer_callback: quota
+                    .timer_callback_actions
+                    .get(&envelope.sequence())
+                    .copied()
+                    .filter(|generation| {
+                        quota.timers.get(generation).is_some_and(|credits| {
+                            credits.repeating && !credits.invalidated && !credits.activity.callback
+                        })
+                    }),
+                ..PoppedRootCredits::default()
+            };
+        };
+        PoppedRootCredits {
+            host_start: quota
+                .host_requests
+                .get(&start.generation)
+                .is_some_and(|credits| credits.start_pending)
+                .then_some(start.generation),
+            local_start: quota
+                .local_tasks
+                .get(&start.generation)
+                .is_some_and(|credits| credits.start_pending)
+                .then_some(start.generation),
+            send_start: quota
+                .send_tasks
+                .get(&start.generation)
+                .is_some_and(|credits| credits.start_pending)
+                .then_some(start.generation),
+            timer_start: quota
+                .timers
+                .get(&start.generation)
+                .is_some_and(|credits| credits.start_pending)
+                .then_some(start.generation),
+            ..PoppedRootCredits::default()
+        }
+    }
+
+    fn commit_popped_root_credits(
+        &mut self,
+        root: RootQuotaId,
+        envelope: &WorkEnvelope<Action>,
+        credits: PoppedRootCredits,
+    ) -> bool {
+        let Some(quota) = self.root_quotas.get(&root) else {
+            return false;
+        };
+        let host_start = credits.host_start.is_some();
+        let timer_start = credits.timer_start.is_some_and(|generation| {
+            quota
+                .timers
+                .get(&generation)
+                .is_some_and(|credits| !credits.invalidated)
+        });
+        let timer_firing = credits.timer_firing.is_some();
+        let timer_callback = credits.timer_callback.is_some();
+        let protect_future_credit = host_start || timer_start || timer_firing || timer_callback;
+        let remaining = if protect_future_credit {
+            Some(quota.remaining)
+        } else {
+            quota.remaining.checked_add(1)
+        };
+        let pending = quota.pending_envelopes.checked_sub(1);
+        let future = future_credit_count(quota)
+            .and_then(|count| count.checked_add(usize::from(host_start)))
+            .and_then(|count| count.checked_add(usize::from(timer_start)))
+            .and_then(|count| count.checked_add(usize::from(timer_firing)))
+            .and_then(|count| count.checked_add(usize::from(timer_callback)));
+        let Some((reserved, remaining, active, pending, future)) = self
+            .reserved
+            .checked_add(1)
+            .zip(remaining)
+            .zip(quota.active_envelopes.checked_add(1))
+            .zip(pending)
+            .zip(future)
+            .map(|((((reserved, remaining), active), pending), future)| {
+                (reserved, remaining, active, pending, future)
+            })
+        else {
+            return false;
+        };
+        if pending
+            .checked_add(remaining)
+            .and_then(|occupied| occupied.checked_add(future))
+            .is_none_or(|occupied| occupied > quota.limit)
+        {
+            return false;
+        }
+
+        self.reserved = reserved;
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .unwrap_or_else(|| unreachable!("popped root quota was preflighted"));
+        quota.remaining = remaining;
+        quota.active_envelopes = active;
+        quota.pending_envelopes = pending;
+        Self::activate_popped_root_credits(quota, credits);
+        quota.timer_callback_actions.remove(&envelope.sequence());
+        true
+    }
+
+    fn activate_popped_root_credits(quota: &mut RootQuotaState, credits: PoppedRootCredits) {
+        if let Some(generation) = credits.host_start {
+            let work = quota
+                .host_requests
+                .get_mut(&generation)
+                .unwrap_or_else(|| unreachable!("host start credit was preflighted"));
+            work.start_pending = false;
+            work.response = true;
+        }
+        Self::activate_popped_local_task(quota, credits.local_start, false);
+        Self::activate_popped_local_task(quota, credits.send_start, true);
+        if let Some(generation) = credits.timer_start {
+            let timer = quota
+                .timers
+                .get_mut(&generation)
+                .unwrap_or_else(|| unreachable!("timer start credit was preflighted"));
+            timer.start_pending = false;
+            if !timer.invalidated {
+                timer.activity.firing = true;
+            }
+        }
+        if let Some(generation) = credits.timer_firing {
+            let timer = quota
+                .timers
+                .get_mut(&generation)
+                .unwrap_or_else(|| unreachable!("timer firing credit was preflighted"));
+            if timer.repeating {
+                timer.activity.firing = true;
+            } else {
+                timer.activity.callback = true;
+            }
+        }
+        if let Some(generation) = credits.timer_callback {
+            quota
+                .timers
+                .get_mut(&generation)
+                .unwrap_or_else(|| unreachable!("timer callback credit was preflighted"))
+                .activity
+                .callback = true;
+        }
+    }
+
+    fn activate_popped_local_task(
+        quota: &mut RootQuotaState,
+        generation: Option<WorkGeneration>,
+        send: bool,
+    ) {
+        let Some(generation) = generation else {
+            return;
+        };
+        let tasks = if send {
+            &mut quota.send_tasks
+        } else {
+            &mut quota.local_tasks
+        };
+        let work = tasks
+            .get_mut(&generation)
+            .unwrap_or_else(|| unreachable!("task start credit was preflighted"));
+        work.start_pending = false;
+        if work.invalidated {
+            tasks.remove(&generation);
+        } else {
+            work.completion.outcome = true;
+            work.completion.cancellation = false;
+        }
     }
 
     pub(crate) fn pop(&mut self) -> Option<WorkEnvelope<Action>> {
-        self.waiting.pop_front()
+        let envelope = self.waiting.pop_front()?;
+        if let Some(root) = envelope.root_quota() {
+            let valid = if self.closed {
+                false
+            } else if let Some(quota) = self.root_quotas.get(&root) {
+                let credits = Self::classify_popped_root_credits(quota, &envelope);
+                self.commit_popped_root_credits(root, &envelope, credits)
+                    && self
+                        .rearm_reached_input_continuation(envelope.sequence())
+                        .is_ok()
+            } else {
+                false
+            };
+            self.closed |= !valid;
+        }
+        Some(envelope)
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -578,6 +2873,32 @@ impl<Action> WorkQueue<Action> {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.waiting.is_empty()
+    }
+
+    /// A failed root-credit transfer closes the queue. Pump must not execute
+    /// the removed envelope after that internal integrity failure.
+    pub(crate) const fn is_closed(&self) -> bool {
+        self.closed
+    }
+
+    #[cfg(test)]
+    pub(crate) fn invalidate_front_root_pending_for_test(&mut self) {
+        let root = self
+            .waiting
+            .front()
+            .and_then(WorkEnvelope::root_quota)
+            .unwrap_or_else(|| unreachable!("fixture has a rooted pending envelope"));
+        let quota = self
+            .root_quotas
+            .get_mut(&root)
+            .unwrap_or_else(|| unreachable!("fixture has a live root"));
+        quota.pending_envelopes = 0;
+    }
+
+    /// Existing envelopes and retained causal roots can still run arbitrary
+    /// producer code before a newly submitted interaction reaches its route.
+    pub(crate) fn has_unfinished_producers(&self) -> bool {
+        !self.waiting.is_empty() || !self.root_quotas.is_empty()
     }
 
     pub(crate) fn has_keyboard_input_before(&self, deadline: MonotonicInstant) -> bool {
@@ -597,6 +2918,16 @@ impl<Action> WorkQueue<Action> {
         self.waiting
             .iter()
             .any(|envelope| matches!(envelope, WorkEnvelope::Pointer(_)))
+    }
+
+    pub(crate) fn queued_pointer_ids(&self) -> impl Iterator<Item = runenui_core::PointerId> + '_ {
+        self.waiting.iter().filter_map(|envelope| match envelope {
+            WorkEnvelope::Pointer(PointerEnvelope {
+                payload: PointerEnvelopePayload::Event(event),
+                ..
+            }) => Some(event.pointer_id()),
+            _ => None,
+        })
     }
 
     pub(crate) fn invalidate_queued_text_for(&mut self, owner: &MountedNodeId) {
@@ -684,6 +3015,13 @@ impl<Action> WorkQueue<Action> {
         }).count();
         let envelopes = self.waiting.len();
         self.waiting.clear();
+        self.reserved = 0;
+        self.root_quotas.clear();
+        self.root_residency_claims = [0; 6];
+        self.input_continuations.clear();
+        self.claimed_input_continuations.clear();
+        self.reservation_epoch = Arc::new(());
+        self.closed = true;
         CancelledQueue {
             envelopes,
             command_trace_reservations,
@@ -695,5 +3033,1158 @@ impl<Action> WorkQueue<Action> {
     #[cfg(feature = "internal-test-seams")]
     pub(crate) const fn seed_next_sequence_for_test(&mut self, next: u64) {
         self.next_sequence = NonZeroU64::new(next);
+    }
+}
+
+fn future_credit_count(quota: &RootQuotaState) -> Option<usize> {
+    let host = quota
+        .host_requests
+        .values()
+        .try_fold(0usize, |count, credits| {
+            count
+                .checked_add(usize::from(credits.response))?
+                .checked_add(usize::from(credits.cancellation))
+        })?;
+    let framework = quota
+        .framework_services
+        .values()
+        .try_fold(host, |count, credits| {
+            count
+                .checked_add(usize::from(credits.response))?
+                .checked_add(usize::from(credits.cancellation))
+        })?;
+    let local = quota
+        .local_tasks
+        .values()
+        .try_fold(framework, |count, credits| {
+            count
+                .checked_add(usize::from(credits.completion.outcome))?
+                .checked_add(usize::from(credits.completion.cancellation))
+        })?;
+    let send = quota
+        .send_tasks
+        .values()
+        .try_fold(local, |count, credits| {
+            count
+                .checked_add(usize::from(credits.completion.outcome))?
+                .checked_add(usize::from(credits.completion.cancellation))
+        })?;
+    quota.timers.values().try_fold(send, |count, credits| {
+        count
+            .checked_add(usize::from(credits.activity.firing))?
+            .checked_add(usize::from(credits.activity.callback))?
+            .checked_add(usize::from(credits.activity.cancellation))
+    })
+}
+
+#[cfg(test)]
+mod reservation_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Queue unit tests assert exact invariant failure messages at their fixtures"
+    )]
+
+    use super::{
+        ApplicationActionEnvelope, ApplicationActionOrigin, ProducerBudget, QueueCommitError,
+        QueueReservationError, RootProducerCancellations, RootProducerCommit,
+        RootProducerResponseReleases, RootProducerWorkStarts, RootQuotaId, WorkEnvelope, WorkQueue,
+        WorkSequence,
+    };
+
+    fn action_envelope(
+        sequence: WorkSequence,
+        action: u8,
+        root_quota: RootQuotaId,
+    ) -> WorkEnvelope<u8> {
+        WorkEnvelope::ApplicationAction(ApplicationActionEnvelope {
+            sequence,
+            action,
+            producer_budget: ProducerBudget::new(1, 0),
+            root_quota,
+            causal_parent: None,
+            target: None,
+            origin: ApplicationActionOrigin::Ordinary,
+        })
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    fn root_commit(
+        root: RootQuotaId,
+        queued_envelopes: usize,
+        local_cancellations: usize,
+    ) -> RootProducerCommit {
+        RootProducerCommit {
+            root,
+            queued_envelopes,
+            starts: RootProducerWorkStarts {
+                host_requests: 0,
+                local_tasks: 0,
+                send_tasks: 0,
+                timers: 0,
+                repeating_timers: 0,
+                framework_services: 0,
+            },
+            cancellations: RootProducerCancellations {
+                host_requests: 0,
+                framework_services: 0,
+                local_tasks: local_cancellations,
+                send_tasks: 0,
+                timers: 0,
+            },
+            response_releases: RootProducerResponseReleases {
+                host_requests: 0,
+                framework_services: 0,
+            },
+        }
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[test]
+    fn quota_violation_during_lease_release_keeps_all_credits_and_generation_intact() {
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        let mut queue = WorkQueue::<u8>::new(1);
+        let reservation = queue.reserve(1).expect("one credit");
+        let generation =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(1)
+                .expect("one generation")
+                .0[0];
+        queue
+            .retain_root_local_task_lease(reservation.quota(), generation)
+            .expect("lease owns its terminal credit");
+        queue
+            .root_quotas
+            .get_mut(&reservation.quota())
+            .expect("root remains live")
+            .pending_envelopes = 1;
+
+        assert_eq!(
+            queue.release_root_work_lease(reservation.quota(), generation),
+            Err(QueueReservationError::Stale),
+            "a malformed occupied frontier cannot consume work ownership",
+        );
+        let quota = queue
+            .root_quotas
+            .get(&reservation.quota())
+            .expect("failed release must retain root");
+        assert_eq!(quota.remaining, 0);
+        assert_eq!(quota.pending_envelopes, 1);
+        assert_eq!(quota.live_work_leases, 1);
+        assert!(quota.local_tasks.contains_key(&generation));
+        assert_eq!(queue.reserved, 1);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[test]
+    fn stale_work_lease_release_preserves_generation_credits_and_root_capacity() {
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        let mut queue = WorkQueue::<u8>::new(1);
+        let reservation = queue.reserve(1).expect("one owned terminal credit fits");
+        let generation =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(1)
+                .expect("one work generation fits")
+                .0[0];
+        queue
+            .retain_root_local_task_lease(reservation.quota(), generation)
+            .expect("the live local task owns its terminal credit");
+
+        // Deliberately corrupt only the lease count to test an internal stale
+        // release. A refused operation must not corrupt the independent credits.
+        queue
+            .root_quotas
+            .get_mut(&reservation.quota())
+            .expect("root exists")
+            .live_work_leases = 0;
+        assert_eq!(
+            queue.release_root_work_lease(reservation.quota(), generation),
+            Err(QueueReservationError::Stale),
+        );
+        let quota = queue
+            .root_quotas
+            .get(&reservation.quota())
+            .expect("stale release leaves the root unchanged");
+        assert_eq!(quota.remaining, 0);
+        assert!(quota.local_tasks.contains_key(&generation));
+        assert_eq!(quota.live_work_leases, 0);
+        assert_eq!(queue.reserved, 1);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+    }
+
+    #[test]
+    fn all_five_keyed_work_families_return_only_their_unused_root_credits() {
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        let mut queue = WorkQueue::<u8>::new(8);
+        let root = queue.reserve(7).expect("all five family credits fit");
+        let independent = queue.reserve(1).expect("other root remains owned");
+        let generations =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(5)
+                .expect("five unique generations")
+                .0;
+        queue
+            .retain_root_host_request_lease(root.quota(), generations[0])
+            .expect("host terminal credit");
+        queue
+            .retain_root_framework_service_lease(root.quota(), generations[1])
+            .expect("framework response and cancellation");
+        queue
+            .retain_root_local_task_lease(root.quota(), generations[2])
+            .expect("local task terminal credit");
+        queue
+            .retain_root_send_task_lease(root.quota(), generations[3])
+            .expect("send task terminal credit");
+        queue
+            .retain_root_timer_lease(root.quota(), generations[4], true)
+            .expect("repeating timer callback and cancellation");
+        assert_eq!(queue.root_remaining(root.quota()), Ok(0));
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        assert_eq!(queue.root_quotas[&root.quota()].live_work_leases, 5);
+
+        for (index, generation) in generations.iter().enumerate() {
+            queue
+                .release_root_work_lease(root.quota(), *generation)
+                .expect("each keyed lease returns exactly its remaining credits");
+            if index < 4 {
+                let returned = [1, 2, 1, 1, 2][..=index].iter().sum::<usize>();
+                assert_eq!(queue.root_remaining(root.quota()), Ok(returned));
+                assert_eq!(queue.root_quotas[&root.quota()].live_work_leases, 4 - index);
+            }
+            assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        }
+        // The last lease closes this idle root atomically, rather than leaving
+        // an extra reservation that must be explicitly released.
+        assert!(!queue.root_quotas.contains_key(&root.quota()));
+        assert_eq!(queue.reserved, 1);
+        queue
+            .release_reservation(&independent)
+            .expect("unrelated root retains release right");
+        assert_eq!(queue.reserved, 0);
+    }
+
+    #[test]
+    fn batch_lease_retirement_conserves_all_five_families_and_foreign_root() {
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        let mut queue = WorkQueue::<u8>::new(8);
+        let root = queue.reserve(7).expect("five work-family credits fit");
+        let independent = queue.reserve(1).expect("unrelated root stays funded");
+        let generations =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(5)
+                .expect("five unique generations")
+                .0;
+        queue
+            .retain_root_host_request_lease(root.quota(), generations[0])
+            .expect("host credit");
+        queue
+            .retain_root_framework_service_lease(root.quota(), generations[1])
+            .expect("framework response and cancellation");
+        queue
+            .retain_root_local_task_lease(root.quota(), generations[2])
+            .expect("local task");
+        queue
+            .retain_root_send_task_lease(root.quota(), generations[3])
+            .expect("send task");
+        queue
+            .retain_root_timer_lease(root.quota(), generations[4], true)
+            .expect("repeating timer");
+        assert_eq!(queue.root_remaining(root.quota()), Ok(0));
+        queue
+            .release_root_work_leases(root.quota(), &generations)
+            .expect("atomic release of all five keyed generations");
+        assert!(!queue.root_quotas.contains_key(&root.quota()));
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        assert_eq!(queue.reserved, 1);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+    }
+
+    #[test]
+    fn batch_lease_retirement_rejects_duplicates_and_invalid_frontier_before_mutation() {
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        let mut queue = WorkQueue::<u8>::new(4);
+        let root = queue.reserve(3).expect("three keyed terminal credits");
+        let independent = queue.reserve(1).expect("independent root credit");
+        let generations =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(2)
+                .expect("two generations")
+                .0;
+        queue
+            .retain_root_local_task_lease(root.quota(), generations[0])
+            .expect("local terminal credit");
+        queue
+            .retain_root_framework_service_lease(root.quota(), generations[1])
+            .expect("framework terminal pair");
+        assert_eq!(
+            queue.release_root_work_leases(root.quota(), &[generations[0], generations[0]]),
+            Err(QueueReservationError::Stale)
+        );
+        let quota = queue
+            .root_quotas
+            .get_mut(&root.quota())
+            .expect("root lives");
+        quota.pending_envelopes = 1; // Deliberately malformed internal ledger.
+        assert_eq!(
+            queue.release_root_work_leases(root.quota(), &generations),
+            Err(QueueReservationError::Stale)
+        );
+        let quota = queue
+            .root_quotas
+            .get(&root.quota())
+            .expect("refused root remains");
+        assert_eq!(quota.remaining, 0);
+        assert_eq!(quota.live_work_leases, 2);
+        assert!(quota.local_tasks.contains_key(&generations[0]));
+        assert!(quota.framework_services.contains_key(&generations[1]));
+        assert_eq!(queue.reserved, 4);
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+        queue
+            .root_quotas
+            .get_mut(&root.quota())
+            .expect("test restores internal ledger")
+            .pending_envelopes = 0;
+        queue.reserved = 2; // Deliberately malformed global reservation.
+        assert_eq!(
+            queue.release_root_work_leases(root.quota(), &generations),
+            Err(QueueReservationError::Stale),
+            "unreserved final credits cannot partially close the root"
+        );
+        let quota = queue
+            .root_quotas
+            .get(&root.quota())
+            .expect("root unchanged");
+        assert_eq!(quota.remaining, 0);
+        assert_eq!(quota.live_work_leases, 2);
+        assert!(quota.local_tasks.contains_key(&generations[0]));
+        assert!(quota.framework_services.contains_key(&generations[1]));
+        assert_eq!(queue.reserved, 2);
+        queue.reserved = 4;
+        queue
+            .release_root_work_leases(root.quota(), &generations)
+            .expect("restored conservation permits a complete release");
+        assert_eq!(queue.reserved, 1);
+    }
+
+    #[test]
+    fn batch_lease_retirement_rejects_corrupt_residency_totals_before_mutation() {
+        use crate::{RuntimeLimits, work::WorkFamily, work::WorkRegistry};
+        use runenui_core::WorkResidencyBudget;
+
+        let mut queue = WorkQueue::<u8>::new(2);
+        let root = queue
+            .reserve_for_producer(
+                ProducerBudget::new(1, 0)
+                    .with_work_residency(WorkResidencyBudget::new(1, 0, 0, 0, 0, 0)),
+            )
+            .expect("root reserves its local-task residency");
+        let independent = queue.reserve(1).expect("foreign root remains funded");
+        let generation =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(1)
+                .expect("one generation fits")
+                .0[0];
+        queue
+            .retain_root_local_task_lease(root.quota(), generation)
+            .expect("one keyed terminal credit fits");
+        assert_eq!(queue.work_residency_claims(WorkFamily::LocalTask), Some(1));
+        assert_eq!(queue.root_remaining(root.quota()), Ok(0));
+
+        // Corruption is test-only; production paths maintain the aggregate.
+        queue.root_residency_claims[0] = 0;
+        assert_eq!(
+            queue.release_root_work_leases(root.quota(), &[generation]),
+            Err(QueueReservationError::Stale)
+        );
+        let quota = queue
+            .root_quotas
+            .get(&root.quota())
+            .expect("root preserved");
+        assert_eq!(quota.remaining, 0);
+        assert_eq!(quota.live_work_leases, 1);
+        assert!(quota.local_tasks.contains_key(&generation));
+        assert_eq!(queue.reserved, 2);
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+
+        queue.root_residency_claims[0] = 1;
+        queue
+            .release_root_work_leases(root.quota(), &[generation])
+            .expect("valid aggregate permits retirement");
+        assert!(!queue.root_quotas.contains_key(&root.quota()));
+        assert_eq!(queue.reserved, 1);
+        assert_eq!(queue.work_residency_claims(WorkFamily::LocalTask), Some(0));
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+    }
+
+    #[test]
+    fn foreign_reserved_envelope_refusal_preserves_sequence_and_both_root_credits() {
+        let mut queue = WorkQueue::<u8>::new(2);
+        let first = queue.reserve(1).expect("first root fits");
+        let second = queue.reserve(1).expect("second root fits");
+
+        assert_eq!(
+            queue.push_reserved(&first, |sequence| {
+                action_envelope(sequence, 7, second.quota())
+            }),
+            Err(QueueReservationError::Foreign),
+        );
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+        assert_eq!(queue.root_remaining(first.quota()), Ok(1));
+        assert_eq!(queue.root_remaining(second.quota()), Ok(1));
+        assert_eq!(queue.len(), 0);
+
+        assert_eq!(
+            queue
+                .push_reserved_with_remainder(&first, |sequence, root| {
+                    action_envelope(sequence, 8, root)
+                })
+                .map(WorkSequence::get),
+            Ok(1),
+        );
+        assert_eq!(
+            queue
+                .push_reserved_with_remainder(&second, |sequence, root| {
+                    action_envelope(sequence, 9, root)
+                })
+                .map(WorkSequence::get),
+            Ok(2),
+        );
+    }
+
+    #[test]
+    fn reservations_and_waiting_envelopes_share_one_capacity_bound() {
+        let mut queue = WorkQueue::<u8>::new(3);
+        let reserved = queue.reserve(2).expect("two slots fit");
+
+        assert_eq!(queue.len(), 0);
+        assert!(!queue.is_full());
+        assert_eq!(queue.preflight_commit(2), Err(QueueCommitError::Full));
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+
+        queue
+            .push_preflighted(10, None, None, ApplicationActionOrigin::Ordinary)
+            .expect("unreserved slot remains available");
+        assert!(queue.is_full());
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(2));
+
+        assert_eq!(
+            queue
+                .push_reserved_with_remainder(&reserved, |seq, root| action_envelope(seq, 11, root))
+                .map(WorkSequence::get),
+            Ok(2)
+        );
+        assert_eq!(queue.len(), 2);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(3));
+        assert!(queue.is_full());
+
+        assert_eq!(
+            queue
+                .push_reserved_with_remainder(&reserved, |seq, root| action_envelope(seq, 12, root))
+                .map(WorkSequence::get),
+            Ok(3)
+        );
+        assert_eq!(queue.len(), 3);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(4));
+        assert!(queue.is_full());
+        assert_eq!(queue.preflight_commit(1), Err(QueueCommitError::Full));
+    }
+
+    #[test]
+    fn releasing_unused_reservation_returns_capacity_without_consuming_sequence() {
+        let mut queue = WorkQueue::<u8>::new(1);
+        let reserved = queue.reserve(1).expect("one slot fits");
+        assert!(queue.is_full());
+
+        queue
+            .release_reservation(&reserved)
+            .expect("reservation releases once");
+        assert_eq!(
+            queue.release_reservation(&reserved),
+            Err(QueueReservationError::Exhausted)
+        );
+
+        assert!(!queue.is_full());
+        assert_eq!(queue.len(), 0);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+        assert_eq!(queue.preflight_commit(1), Ok(()));
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[test]
+    fn sequence_capacity_is_reserved_without_early_sequence_assignment() {
+        let mut queue = WorkQueue::<u8>::new(4);
+        queue.seed_next_sequence_for_test(u64::MAX - 1);
+        let reserved = queue.reserve(2).expect("two sequence values fit");
+
+        assert_eq!(
+            queue.next_sequence().map(WorkSequence::get),
+            Some(u64::MAX - 1)
+        );
+        assert_eq!(
+            queue.preflight_commit(1),
+            Err(QueueCommitError::SequenceExhausted)
+        );
+        assert_eq!(
+            queue.push_preflighted(7, None, None, ApplicationActionOrigin::Ordinary),
+            Err(7),
+            "an ordinary append cannot consume a reserved sequence"
+        );
+        assert_eq!(
+            queue
+                .push_reserved_with_remainder(&reserved, |seq, root| action_envelope(seq, 1, root))
+                .map(WorkSequence::get),
+            Ok(u64::MAX - 1)
+        );
+        assert_eq!(
+            queue
+                .push_reserved_with_remainder(&reserved, |seq, root| action_envelope(seq, 2, root))
+                .map(WorkSequence::get),
+            Ok(u64::MAX)
+        );
+        assert_eq!(queue.next_sequence(), None);
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[test]
+    fn recycled_root_frontier_preserves_another_roots_reserved_sequence() {
+        let mut queue = WorkQueue::<u8>::new(2);
+        queue.seed_next_sequence_for_test(u64::MAX - 2);
+
+        // B owns one future envelope credit. It is already included in
+        // WorkQueue::reserved when the independent unary A root is admitted.
+        let future_b = queue
+            .reserve_for_producer(ProducerBudget::new(1, 0))
+            .expect("B's finite future envelope fits");
+        let unary_a = queue
+            .reserve_for_producer(ProducerBudget::new(1, 0))
+            .expect("A's first envelope and B's future credit fit the sequence frontier");
+        assert_eq!(
+            queue
+                .push_reserved_with_remainder(&unary_a, |sequence, root| {
+                    action_envelope(sequence, 1, root)
+                })
+                .map(WorkSequence::get),
+            Ok(u64::MAX - 2)
+        );
+
+        let Some(WorkEnvelope::ApplicationAction(first_a)) = queue.pop() else {
+            panic!("A's initial action is the FIFO head");
+        };
+        assert_eq!(queue.root_remaining(future_b.quota()), Ok(1));
+        assert_eq!(queue.root_remaining(first_a.root_quota), Ok(1));
+        queue
+            .preflight_root_producer_commit(root_commit(first_a.root_quota, 1, 0))
+            .expect("A's first unary renewal sees one next sequence");
+        assert_eq!(
+            queue
+                .push_rooted(first_a.root_quota, |sequence, root| {
+                    action_envelope(sequence, 2, root)
+                })
+                .map(WorkSequence::get),
+            Ok(u64::MAX - 1)
+        );
+        queue
+            .finish_root_action(first_a.root_quota)
+            .expect("A's first action transfers to its queued child");
+
+        let Some(WorkEnvelope::ApplicationAction(second_a)) = queue.pop() else {
+            panic!("A's first renewal is the FIFO head");
+        };
+        assert_eq!(queue.root_remaining(future_b.quota()), Ok(1));
+        assert_eq!(queue.root_remaining(second_a.root_quota), Ok(1));
+        assert_eq!(
+            queue.preflight_root_producer_commit(root_commit(second_a.root_quota, 1, 0),),
+            Err(QueueReservationError::SequenceExhausted),
+            "A must fail before consuming B's remaining sequence tail"
+        );
+        assert_eq!(
+            queue.push_rooted(second_a.root_quota, |sequence, root| {
+                action_envelope(sequence, 3, root)
+            }),
+            Err(QueueReservationError::SequenceExhausted),
+            "the append boundary independently preserves B's sequence"
+        );
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(u64::MAX));
+        assert_eq!(queue.root_remaining(future_b.quota()), Ok(1));
+        queue
+            .finish_root_action(second_a.root_quota)
+            .expect("A's rejected callback retires and releases its unused frontier");
+        assert_eq!(
+            queue.reserved, 1,
+            "B's exact future credit remains reserved"
+        );
+        assert_eq!(
+            queue
+                .push_rooted(future_b.quota(), |sequence, root| {
+                    action_envelope(sequence, 4, root)
+                })
+                .map(WorkSequence::get),
+            Ok(u64::MAX)
+        );
+        assert_eq!(queue.next_sequence(), None);
+        assert_eq!(queue.reserved, 0);
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[test]
+    fn zero_output_root_can_retire_without_spending_another_roots_last_sequence() {
+        let mut queue = WorkQueue::<u8>::new(2);
+        queue.seed_next_sequence_for_test(u64::MAX - 1);
+        let future_b = queue
+            .reserve_for_producer(ProducerBudget::new(1, 0))
+            .expect("B's future envelope fits");
+        let a = queue
+            .reserve_for_producer(ProducerBudget::new(1, 0))
+            .expect("A's admitted envelope fits beside B");
+        queue
+            .push_reserved_with_remainder(&a, |sequence, root| action_envelope(sequence, 1, root))
+            .expect("A receives the penultimate sequence");
+        let Some(WorkEnvelope::ApplicationAction(action)) = queue.pop() else {
+            panic!("A is the FIFO head");
+        };
+        queue
+            .preflight_root_producer_commit(root_commit(action.root_quota, 0, 0))
+            .expect("an empty output batch allocates no new sequence");
+        queue
+            .finish_root_action(action.root_quota)
+            .expect("A retires its unused recycled credit");
+        assert_eq!(queue.reserved, 1);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(u64::MAX));
+        assert_eq!(
+            queue
+                .push_rooted(future_b.quota(), |sequence, root| {
+                    action_envelope(sequence, 2, root)
+                })
+                .map(WorkSequence::get),
+            Ok(u64::MAX),
+            "B retains the last sequence after A's output-free completion"
+        );
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "One cross-family cancellation fixture proves the entire last-sequence FIFO frontier and drain"
+    )]
+    fn host_framework_and_timer_cancellations_preserve_an_independent_last_sequence() {
+        use crate::{
+            RuntimeLimits, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, work::WorkRegistry,
+        };
+
+        let mut queue = WorkQueue::<u8>::new(5);
+        queue.seed_next_sequence_for_test(u64::MAX - 4);
+        let root = queue
+            .reserve_for_producer(ProducerBudget::new(4, 0))
+            .expect("three terminal credits and one returned credit");
+        let independent = queue
+            .reserve_for_producer(ProducerBudget::new(1, 0))
+            .expect("independent root retains the final sequence");
+        let generations =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(3)
+                .expect("three work generations fit")
+                .0;
+        let framework = generations[0];
+        let host = generations[1];
+        let timer = generations[2];
+        queue
+            .retain_root_framework_service_lease(root.quota(), framework)
+            .expect("framework response and cancellation each own one credit");
+        queue
+            .retain_root_host_request_lease(root.quota(), host)
+            .expect("unstarted host request owns its cancellation credit");
+        queue
+            .retain_root_timer_lease(root.quota(), timer, false)
+            .expect("one-shot timer owns its cancellation credit");
+        assert_eq!(queue.root_remaining(root.quota()), Ok(0));
+
+        queue
+            .release_root_work_lease_for_cancellation(root.quota(), framework)
+            .expect("unused framework response returns exactly one credit");
+        queue
+            .release_root_work_lease_for_cancellation(root.quota(), host)
+            .expect("host cancellation keeps its own exact terminal credit");
+        queue
+            .release_root_work_lease_for_cancellation(root.quota(), timer)
+            .expect("timer cancellation keeps its own exact terminal credit");
+        assert_eq!(queue.root_remaining(root.quota()), Ok(1));
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        assert_eq!(queue.root_quotas[&root.quota()].live_work_leases, 0);
+        assert_eq!(queue.reserved, 5);
+        assert_eq!(
+            queue.next_sequence().map(WorkSequence::get),
+            Some(u64::MAX - 4)
+        );
+
+        let identity = |family, generation: crate::work::WorkGeneration| {
+            TraceWorkIdentity::new(TraceWorkOwner::Application, family, generation.get(), None)
+        };
+        assert_eq!(
+            queue
+                .push_framework_service_request_cancellation(
+                    framework,
+                    identity(TraceWorkFamily::FrameworkService, framework),
+                    None,
+                )
+                .map(|sequence| sequence.map(WorkSequence::get)),
+            Ok(Some(u64::MAX - 4))
+        );
+        assert_eq!(
+            queue
+                .push_host_request_cancellation(
+                    host,
+                    identity(TraceWorkFamily::HostRequest, host),
+                    None,
+                )
+                .map(|sequence| sequence.map(WorkSequence::get)),
+            Ok(Some(u64::MAX - 3))
+        );
+        assert_eq!(
+            queue
+                .push_timer_cancellation(timer, identity(TraceWorkFamily::Timer, timer), None,)
+                .map(|sequence| sequence.map(WorkSequence::get)),
+            Ok(Some(u64::MAX - 2))
+        );
+        assert_eq!(
+            queue
+                .push_rooted(root.quota(), |sequence, owner| {
+                    action_envelope(sequence, 1, owner)
+                })
+                .map(WorkSequence::get),
+            Ok(u64::MAX - 1),
+            "only the owning root reuses its released framework response credit"
+        );
+        assert_eq!(
+            queue
+                .push_rooted(independent.quota(), |sequence, owner| {
+                    action_envelope(sequence, 2, owner)
+                })
+                .map(WorkSequence::get),
+            Ok(u64::MAX),
+            "the unrelated root retains the last available global sequence"
+        );
+        assert_eq!(queue.next_sequence(), None);
+        assert_eq!(queue.reserved, 0);
+        assert_eq!(queue.len(), 5);
+
+        for expected in [u64::MAX - 4, u64::MAX - 3, u64::MAX - 2, u64::MAX - 1] {
+            let envelope = queue.pop().expect("root work retains FIFO order");
+            assert_eq!(envelope.sequence().get(), expected);
+            assert_eq!(envelope.root_quota(), Some(root.quota()));
+            assert!(!queue.is_closed());
+            queue
+                .finish_root_envelope(root.quota())
+                .expect("rooted completion retires only its own credits");
+        }
+        assert!(!queue.root_quotas.contains_key(&root.quota()));
+        let last = queue.pop().expect("independent root remains queued");
+        assert_eq!(last.sequence().get(), u64::MAX);
+        assert_eq!(last.root_quota(), Some(independent.quota()));
+        queue
+            .finish_root_envelope(independent.quota())
+            .expect("independent root retires its last credit");
+        assert!(queue.is_empty());
+        assert_eq!(queue.reserved, 0);
+        assert!(queue.root_quotas.is_empty());
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[test]
+    fn cross_root_cancellation_credit_remains_sequenced_after_recycled_root_refusal() {
+        use crate::{
+            RuntimeLimits, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, work::WorkRegistry,
+        };
+
+        let mut queue = WorkQueue::<u8>::new(3);
+        queue.seed_next_sequence_for_test(u64::MAX - 3);
+        let b = queue
+            .reserve_for_producer(ProducerBudget::new(2, 0))
+            .expect("B reserves its current root and future terminal credits");
+        let generation =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(1)
+                .expect("one work generation fits")
+                .0[0];
+        queue
+            .push_reserved_with_remainder(&b, |sequence, root| action_envelope(sequence, 10, root))
+            .expect("B's current action receives the first sequence");
+        queue
+            .retain_root_local_task_lease(b.quota(), generation)
+            .expect("B retains its exact task cancellation credit");
+        let Some(WorkEnvelope::ApplicationAction(b_action)) = queue.pop() else {
+            panic!("B's current action is the FIFO head");
+        };
+        queue
+            .finish_root_action(b_action.root_quota)
+            .expect("B action settles while its local-task terminal remains live");
+
+        let a = queue
+            .reserve_for_producer(ProducerBudget::new(1, 0))
+            .expect("A's first envelope fits beside B's reserved terminal");
+        assert_eq!(
+            queue
+                .push_reserved_with_remainder(&a, |sequence, root| {
+                    action_envelope(sequence, 20, root)
+                })
+                .map(WorkSequence::get),
+            Ok(u64::MAX - 2)
+        );
+        let Some(WorkEnvelope::ApplicationAction(a_action)) = queue.pop() else {
+            panic!("A's current action is the FIFO head");
+        };
+        assert_eq!(queue.root_remaining(b.quota()), Ok(1));
+        assert_eq!(queue.root_remaining(a_action.root_quota), Ok(1));
+
+        assert_eq!(
+            queue.preflight_root_producer_commit(root_commit(a_action.root_quota, 2, 1),),
+            Err(QueueReservationError::SequenceExhausted),
+            "A's output cannot spend B's local-task cancellation sequence"
+        );
+        queue
+            .finish_root_action(a_action.root_quota)
+            .expect("rejected A callback retires its unused root credit");
+        queue
+            .release_root_work_lease_for_cancellation(b.quota(), generation)
+            .expect("B's exact local-task lease is invalidated for cancellation");
+        let identity = TraceWorkIdentity::new(
+            TraceWorkOwner::Application,
+            TraceWorkFamily::LocalTask,
+            generation.get(),
+            None,
+        );
+        assert_eq!(
+            queue
+                .push_local_task_cancellation(generation, identity, None)
+                .map(|sequence| sequence.map(WorkSequence::get)),
+            Ok(Some(u64::MAX - 1)),
+            "B can still materialize its exact cancellation at the preserved sequence"
+        );
+        assert_eq!(
+            queue
+                .push_rooted(b.quota(), |sequence, root| action_envelope(
+                    sequence, 11, root
+                ))
+                .map(WorkSequence::get),
+            Ok(u64::MAX),
+            "B's other terminal credit also remains usable"
+        );
+        assert_eq!(queue.next_sequence(), None);
+        assert_eq!(queue.reserved, 0);
+        let Some(WorkEnvelope::WorkCancellation(cancellation)) = queue.pop() else {
+            panic!("B's exact cancellation is the FIFO head");
+        };
+        assert_eq!(cancellation.generation, generation);
+        assert_eq!(cancellation.sequence.get(), u64::MAX - 1);
+        queue
+            .finish_root_action(
+                cancellation
+                    .root_quota
+                    .expect("cancellation retains B's root"),
+            )
+            .expect("B's cancellation settles before its later rooted action");
+        let Some(WorkEnvelope::ApplicationAction(terminal_action)) = queue.pop() else {
+            panic!("B's rooted terminal action remains in FIFO");
+        };
+        assert_eq!(terminal_action.sequence.get(), u64::MAX);
+        queue
+            .finish_root_action(terminal_action.root_quota)
+            .expect("B's final root action closes its quota");
+    }
+
+    #[test]
+    fn foreign_reservation_cannot_be_consumed_or_released_by_another_queue() {
+        let mut owner = WorkQueue::<u8>::new(1);
+        let mut foreign = WorkQueue::<u8>::new(1);
+        let reservation = owner.reserve(1).expect("one slot fits");
+
+        assert_eq!(
+            foreign.push_reserved_with_remainder(&reservation, |seq, root| action_envelope(
+                seq, 1, root
+            )),
+            Err(QueueReservationError::Foreign)
+        );
+        assert_eq!(
+            foreign.release_reservation(&reservation),
+            Err(QueueReservationError::Foreign)
+        );
+        assert!(owner.is_full());
+        assert!(!foreign.is_full());
+        assert_eq!(
+            owner
+                .push_reserved_with_remainder(&reservation, |seq, root| action_envelope(
+                    seq, 1, root
+                ))
+                .map(WorkSequence::get),
+            Ok(1)
+        );
+    }
+
+    #[test]
+    fn consumed_reservation_cannot_be_reused_or_released_twice() {
+        let mut queue = WorkQueue::<u8>::new(2);
+        let reservation = queue.reserve(1).expect("one slot fits");
+        queue
+            .push_reserved_with_remainder(&reservation, |seq, root| action_envelope(seq, 1, root))
+            .expect("reserved commit succeeds");
+
+        assert_eq!(
+            queue.push_reserved_with_remainder(&reservation, |seq, root| action_envelope(
+                seq, 2, root
+            )),
+            Err(QueueReservationError::Exhausted)
+        );
+        assert_eq!(
+            queue.release_reservation(&reservation),
+            Err(QueueReservationError::Stale)
+        );
+        let Some(WorkEnvelope::ApplicationAction(work)) = queue.pop() else {
+            panic!("accepted action remains queued");
+        };
+        queue
+            .finish_root_action(work.root_quota)
+            .expect("the final action releases its exact root quota");
+        assert_eq!(
+            queue.release_reservation(&reservation),
+            Err(QueueReservationError::Exhausted)
+        );
+        assert_eq!(queue.len(), 0);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(2));
+    }
+
+    #[test]
+    fn causal_root_lease_reuses_popped_credit_for_a_unary_chain() {
+        let mut queue = WorkQueue::<u8>::new(1);
+        let root = queue.reserve(1).expect("one frontier credit fits");
+        queue
+            .push_reserved_with_remainder(&root, |seq, lease| action_envelope(seq, 1, lease))
+            .expect("first action uses the root credit");
+        assert!(queue.is_full());
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(2));
+
+        for action in 2..=64 {
+            let Some(WorkEnvelope::ApplicationAction(work)) = queue.pop() else {
+                panic!("the causal action remains at the FIFO head");
+            };
+            assert_eq!(work.action, action - 1);
+            assert_eq!(queue.reserved, 1, "pop transfers Q to root P");
+            queue
+                .push_rooted(work.root_quota, |seq, root| {
+                    action_envelope(seq, action, root)
+                })
+                .expect("unary output reuses the popped frontier credit");
+            queue
+                .finish_root_action(work.root_quota)
+                .expect("processing action transfers to the queued child");
+            assert_eq!(queue.len(), 1);
+            assert_eq!(queue.reserved, 0);
+        }
+        let Some(WorkEnvelope::ApplicationAction(final_work)) = queue.pop() else {
+            panic!("last action remains queued");
+        };
+        queue
+            .finish_root_action(final_work.root_quota)
+            .expect("terminal action returns its unused frontier credit");
+        assert_eq!(queue.reserved, 0);
+        assert!(queue.is_empty());
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(65));
+    }
+
+    /// Opt-in release-mode diagnostic, not a timing assertion or acceptance limit.
+    #[test]
+    #[ignore = "opt-in release-mode U475 keyed-credit cost measurements"]
+    fn bench_u475_keyed_generation_release_scaling() {
+        use std::time::Instant;
+
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        const REPEATS: usize = 30;
+        for mode in ["sequential", "batched"] {
+            for size in [32usize, 256, 1024, 2048] {
+                let mut timings = Vec::with_capacity(REPEATS);
+                let mut max_rss_kib = 0usize;
+                for _ in 0..REPEATS {
+                    let mut queue = WorkQueue::<u8>::new(size);
+                    let reservation = queue
+                        .reserve(size)
+                        .expect("finite local-task terminal frontier fits");
+                    let generations = WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(
+                        RuntimeLimits::default(),
+                    )
+                    .preview_generations(size)
+                    .expect("the benchmark generations fit")
+                    .0;
+                    for generation in &generations {
+                        queue
+                            .retain_root_local_task_lease(reservation.quota(), *generation)
+                            .expect("generation reserves exactly one terminal credit");
+                    }
+                    assert_eq!(queue.root_remaining(reservation.quota()), Ok(0));
+                    if let Ok(status) = std::fs::read_to_string("/proc/self/status")
+                        && let Some(kib) = status
+                            .lines()
+                            .find_map(|line| line.strip_prefix("VmRSS:"))
+                            .and_then(|value| value.split_whitespace().next())
+                            .and_then(|value| value.parse::<usize>().ok())
+                    {
+                        max_rss_kib = max_rss_kib.max(kib);
+                    }
+                    let start = Instant::now();
+                    if mode == "batched" {
+                        queue
+                            .release_root_work_leases(reservation.quota(), &generations)
+                            .expect("all keyed terminal credits retire atomically");
+                    } else {
+                        for generation in generations {
+                            queue
+                                .release_root_work_lease(reservation.quota(), generation)
+                                .expect("generation returns its unused terminal credit");
+                        }
+                    }
+                    timings.push(start.elapsed().as_micros());
+                    assert!(queue.root_quotas.is_empty());
+                    assert_eq!(queue.reserved, 0);
+                    assert!(queue.is_empty());
+                }
+                timings.sort_unstable();
+                println!(
+                    "U475_METRIC,keyed-release-{mode},off,{size},{REPEATS},{},{},{},{max_rss_kib}",
+                    timings[REPEATS / 2],
+                    timings[(95 * REPEATS).div_ceil(100) - 1],
+                    timings[REPEATS - 1]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn residency_claim_sums_follow_queued_active_and_terminal_roots() {
+        use crate::work::WorkFamily;
+        use runenui_core::WorkResidencyBudget;
+
+        let mut queue = WorkQueue::<u8>::new(4);
+        let check = |queue: &WorkQueue<u8>, expected: [usize; 6]| {
+            for (family, value) in WorkFamily::ALL.into_iter().zip(expected) {
+                assert_eq!(
+                    queue.work_residency_claims(family),
+                    Some(value),
+                    "{family:?} retains its exact root claims"
+                );
+            }
+        };
+        let plain = queue
+            .reserve(1)
+            .expect("plain reservation has zero residency");
+        let first = queue
+            .reserve_for_producer(
+                ProducerBudget::new(1, 0)
+                    .with_work_residency(WorkResidencyBudget::new(1, 2, 3, 4, 5, 6)),
+            )
+            .expect("first rooted residency fits");
+        let second = queue
+            .reserve_for_producer(
+                ProducerBudget::new(1, 0)
+                    .with_work_residency(WorkResidencyBudget::new(2, 3, 4, 5, 6, 7)),
+            )
+            .expect("second rooted residency fits");
+        check(&queue, [3, 5, 7, 9, 11, 13]);
+
+        queue
+            .push_reserved_with_remainder(&first, |sequence, root| {
+                action_envelope(sequence, 1, root)
+            })
+            .expect("the first root funds its queued action");
+        check(&queue, [3, 5, 7, 9, 11, 13]);
+        let Some(WorkEnvelope::ApplicationAction(work)) = queue.pop() else {
+            panic!("the queued root action must be popped");
+        };
+        check(&queue, [3, 5, 7, 9, 11, 13]);
+        queue
+            .finish_root_action(work.root_quota)
+            .expect("completing the root retires its residency");
+        check(&queue, [2, 3, 4, 5, 6, 7]);
+
+        queue
+            .release_reservation(&plain)
+            .expect("a zero-residency root closes without changing totals");
+        check(&queue, [2, 3, 4, 5, 6, 7]);
+        assert!(queue.root_quotas.contains_key(&second.quota()));
+        queue.cancel_all();
+        check(&queue, [0; 6]);
+    }
+
+    #[test]
+    fn residency_aggregate_overflow_preserves_both_reservation_and_credit_owner() {
+        use crate::work::WorkFamily;
+        use runenui_core::WorkResidencyBudget;
+
+        let mut queue = WorkQueue::<u8>::new(2);
+        let first = queue
+            .reserve_for_producer(
+                ProducerBudget::new(1, 0).with_work_residency(WorkResidencyBudget::new(
+                    usize::MAX,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                )),
+            )
+            .expect("initial maximum claim fits usize");
+        assert!(matches!(
+            queue.reserve_for_producer(
+                ProducerBudget::new(1, 0)
+                    .with_work_residency(WorkResidencyBudget::new(1, 0, 0, 0, 0, 0)),
+            ),
+            Err(QueueReservationError::WorkCapacity(WorkFamily::LocalTask))
+        ));
+        assert_eq!(queue.root_quotas.len(), 1);
+        assert_eq!(queue.reserved, 1);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+        assert_eq!(
+            queue.work_residency_claims(WorkFamily::LocalTask),
+            Some(usize::MAX)
+        );
+        queue
+            .release_reservation(&first)
+            .expect("closing the first root returns its entire claim");
+        assert_eq!(queue.work_residency_claims(WorkFamily::LocalTask), Some(0));
+        assert_eq!(queue.reserved, 0);
+        queue
+            .reserve_for_producer(
+                ProducerBudget::new(1, 0)
+                    .with_work_residency(WorkResidencyBudget::new(1, 0, 0, 0, 0, 0)),
+            )
+            .expect("subsequent reservation succeeds after retirement");
+        assert_eq!(queue.work_residency_claims(WorkFamily::LocalTask), Some(1));
+    }
+
+    #[test]
+    fn terminal_queue_cleanup_invalidates_held_reservations() {
+        let mut queue = WorkQueue::<u8>::new(2);
+        let reservation = queue.reserve(2).expect("two slots fit");
+        let cancelled = queue.cancel_all();
+
+        assert_eq!(cancelled.envelopes, 0);
+        assert_eq!(
+            queue.push_reserved_with_remainder(&reservation, |seq, root| action_envelope(
+                seq, 1, root
+            )),
+            Err(QueueReservationError::Stale)
+        );
+        assert_eq!(
+            queue.release_reservation(&reservation),
+            Err(QueueReservationError::Stale)
+        );
+        assert_eq!(queue.reserve(1).err(), Some(QueueReservationError::Closed));
+        assert_eq!(queue.len(), 0);
     }
 }

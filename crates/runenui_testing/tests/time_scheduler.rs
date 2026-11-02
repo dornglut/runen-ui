@@ -15,6 +15,24 @@ enum TimerAction {
 struct TimerApp;
 
 impl UiApp for TimerApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One initial owner plus a timer start and conservative firing/callback/cancel frontier.
+        runenui_core::ProducerBudget::new(5, 1)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 1, 0, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 1, 0, 0, 0))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The text leaf has no event/default output or new work.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+
     type State = u32;
     type Action = TimerAction;
     type HostProtocol = NoHostProtocol;
@@ -48,7 +66,8 @@ fn settle_budget() -> SettleBudget {
 
 #[test]
 fn manual_time_exposes_dormant_future_timer_without_sleeping() {
-    let mut harness = TestHarness::<TimerApp>::mount(0);
+    let mut harness = TestHarness::<TimerApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
 
     let first = harness.run_until_idle(settle_budget());
     assert_eq!(first.outcome(), SettleOutcome::Idle);
@@ -80,6 +99,23 @@ enum LoopAction {
 struct LoopApp;
 
 impl UiApp for LoopApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One initial owner plus one action; every action renews only its own one-slot frontier.
+        runenui_core::ProducerBudget::new(2, 1)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 1).with_reconciliation(0, 1, 0)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The text leaf has no event/default output or new work.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+
     type State = u32;
     type Action = LoopAction;
     type HostProtocol = NoHostProtocol;
@@ -107,7 +143,8 @@ impl UiApp for LoopApp {
 
 #[test]
 fn self_requeue_stops_at_the_explicit_iteration_limit() {
-    let mut harness = TestHarness::<LoopApp>::mount(0);
+    let mut harness = TestHarness::<LoopApp>::mount(0)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     let budget = SettleBudget::new(
         NonZeroUsize::new(3).unwrap_or(NonZeroUsize::MIN),
         PumpBudget::new(1, 1, 1, 1),
@@ -141,6 +178,24 @@ enum PendingAction {
 struct PendingApp;
 
 impl UiApp for PendingApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One initial owner, one host start, and its response/cancellation pair.
+        runenui_core::ProducerBudget::new(4, 1)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 1, 0))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 1, 0))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The text leaf has no event/default output or new work.
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+
     type State = bool;
     type Action = PendingAction;
     type HostProtocol = PendingProtocol;
@@ -165,7 +220,8 @@ impl UiApp for PendingApp {
 
 #[test]
 fn externally_pending_host_work_is_observable_and_does_not_busy_wait() {
-    let mut harness = TestHarness::<PendingApp>::mount(false);
+    let mut harness = TestHarness::<PendingApp>::mount(false)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
 
     let report = harness.run_until_idle(settle_budget());
     assert_eq!(report.outcome(), SettleOutcome::Idle);

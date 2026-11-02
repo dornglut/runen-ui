@@ -119,7 +119,7 @@ fn activate_increment_with_keyboard(
         .submit_keyboard(enter_down())
         .unwrap_or_else(|_| unreachable!("focused increment accepts raw Enter"));
     settle(runtime);
-    assert_eq!(runtime.state().count, 1);
+    assert_eq!(runtime.state().counter.count, 1);
 
     let keyboard_accepted = runtime
         .trace()
@@ -262,7 +262,11 @@ fn assert_update_reconciliation_and_publication(
 
 #[test]
 fn counter_public_trace_reconstructs_automation_keyboard_action_update_and_publication() {
-    let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+    let mut runtime =
+        AppRuntime::<CounterApp>::mount(crate::app::CounterAppState::new(Counter::new()))
+            .unwrap_or_else(|error| {
+                unreachable!("fixture initial admission must succeed: {error}")
+            });
     settle(&mut runtime);
     focus_increment_with_automation(&mut runtime);
     let (action_sequence, action_work) = activate_increment_with_keyboard(&mut runtime);

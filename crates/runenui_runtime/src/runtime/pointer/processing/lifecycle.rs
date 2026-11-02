@@ -7,8 +7,7 @@ use super::super::{PointerRegistry, TouchGestureKind, TouchGestureState};
 use crate::{
     MountedNodeId, TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily,
     TracePointerCleanup, TracePointerContext, TracePointerPath, TraceRecordKind,
-    TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSequence, TraceSurfaceContext,
-    TraceTargetTransition,
+    TraceRouteSnapshot, TraceSequence, TraceSurfaceContext, TraceTargetTransition,
     mounted::TargetStatus,
     runtime::{MandatoryTracePlan, PointerDispatchFacts, RoutedIngressFacts, Runtime},
     trace::{TraceRecordDraft, TraceReservation},
@@ -192,6 +191,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         sequence: WorkSequence,
         mut parent: Option<TraceSequence>,
         unmounted: &[MountedNodeId],
+        root: crate::queue::RootQuotaId,
     ) -> Result<Option<TraceSequence>, ()> {
         let instant = self.now();
         let cleanups = self.plan_reconciled_pointer_cleanup(unmounted);
@@ -218,6 +218,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         instant,
                         &cleanup,
                         notification,
+                        root,
                     )?;
                 } else {
                     let facts = CaptureLossTraceFacts {
@@ -600,6 +601,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         instant: MonotonicInstant,
         cleanup: &PointerCleanup,
         notification: &PointerCaptureNotification,
+        root: crate::queue::RootQuotaId,
     ) -> Result<Option<TraceSequence>, ()> {
         let facts = RoutedIngressFacts::new(
             sequence,
@@ -609,7 +611,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             TraceEventContext::new(TraceEventFamily::PointerCapture, false),
             parent,
             TraceReservation::continuation(),
-        );
+        )
+        // The causing update reserved this complete frontier before entering
+        // mutable application code. Live capture retirement and its outputs
+        // must spend that root rather than compete with queued followers.
+        .with_root_quota(root);
         let Some(mut transaction) = self.begin_pointer_routed_transaction(
             facts,
             false,
@@ -658,10 +664,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.record_capture_loss_resolution(&capture_facts, transaction.parent);
         let resolution = transaction.parent;
         let failure = transaction.failure_facts();
-        if self.commit_routed_transaction(transaction).is_err() {
+        if let Err(error) = self.commit_routed_transaction(transaction) {
             self.poison_routed_event(
                 &failure,
-                TraceRoutedIntegrityFailure::CommitInvariantFailure,
+                error.integrity_failure(),
                 Some(&notification.owner),
             );
             return Err(());

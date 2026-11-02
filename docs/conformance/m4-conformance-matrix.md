@@ -28,11 +28,11 @@ exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, and accepted-main push CI
 #1171 / `31903354382` passed at that exact squash:
 
 ```text
-245 total unique rows
+251 total unique rows
 245 owner-accepted
 0 implementation-complete
 0 proof-complete
-0 blocked
+6 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -85,7 +85,7 @@ rows, and `cargo validate` must pass at the exact reviewed head.
 | ROUTE-08 | Foreign, stale, and missing mounted targets invoke no callback and return distinct structured outcomes without retargeting. | Runtime target-validation integration | Replacement, foreign namespace, vacant slot, and missing-target proof | Processing-rejection trace proof | M4C1 | owner-accepted | Required |
 | ROUTE-09 | Every route node and checked event bridge is validated before the first callback; accepted-work integrity failures preserve causal facts and distinguish broken topology, event-bridge mismatch, callback-bridge failure, output-allowance overflow, semantic-default failure, and commit-invariant failure without partial commit. | `routed_integrity_trace_distinguishes_broken_topology`; structured-failure integration seams | `route_wide_bridge_mismatch_invokes_no_callback`; callback/output/commit failure tests | `routed_integrity_trace_distinguishes_callback_bridge_failure`; `routed_integrity_trace_distinguishes_output_allowance_exceeded`; `routed_integrity_trace_distinguishes_commit_invariant_failure_without_partial_output` | M4C1 | owner-accepted | Required |
 | ROUTE-10 | `WidgetEventOutput` independently reports persistent widget-state mutation, and action mapping preserves that fact and all provisional context output. | Core/runtime/downstream event-output conformance | Authoritative empty output, state-only, action-only, mapped-output, and no-hidden-mutation proof | State-mutation and output trace proof | M4C1 | owner-accepted | Required |
-| ROUTE-11 | One conservative maximum-safe admission plan reserves the complete route and configured aggregate callback/default output allowance across every accessible family, queue/work/generation/reconciliation authority, and mandatory trace before mutation; it does not predict exact callback output. | `routed_queue_admission_has_an_exact_required_boundary`; `every_routed_bounded_authority_rejects_before_the_first_callback` | `no_output_callback_is_rejected_when_conservative_family_reservation_is_unavailable`; zero-output/overflow/sequence/generation no-callback proofs | Routed admission acceptance/rejection trace proof and `trace_capacity_zero_preserves_routed_behavior` | M4C1 | owner-accepted | Required |
+| ROUTE-11 | One conservative maximum-safe admission plan covers the complete route and declared callback/default maximum within each independent configured per-route ceiling, across queue/work/generation/reconciliation authority and mandatory trace before mutation; it does not predict exact callback output. | `routed_queue_admission_has_an_exact_required_boundary`; `every_routed_bounded_authority_rejects_before_the_first_callback` | `no_output_callback_is_rejected_when_conservative_family_reservation_is_unavailable`; zero-output/overflow/sequence/generation no-callback proofs | Routed admission acceptance/rejection trace proof and `trace_capacity_zero_preserves_routed_behavior` | M4C1 | owner-accepted | Required |
 | ROUTE-12 | Commit order is mutation/invalidation, current-slice notifications, coalesced subscription reconciliation, routed outputs, default outputs, then mounted work. | Runtime/downstream transaction-order integration | Saturation, coalescing, stale-owner, and no-partial-commit proof | Commit ledger/queue causal trace proof | M4C1 | owner-accepted | Required |
 | ROUTE-13 | Canonical trace is the sole public accepted-command processing/integrity outcome authority; submission reports acceptance, rejected submission allocates no trace record or sequence, and `PumpReport` remains aggregate. | Public API and routed observation proof | No second result history/polling registry and submission-trace-allocation proof | `routed_trace_links_acceptance_route_default_commit_and_later_action`; `all_eight_submission_rejections_recover_inputs_and_consume_no_authority` | M4C1 | owner-accepted | Required |
 | CMD-01 | Unprevented routed `Activate` re-queries the original target and invokes its enabled/actionable activation capability exactly once as semantic default. | Counter and downstream command conformance | Stale, disabled, non-actionable, and mutation-requery proof | Route-to-default-to-action trace proof | M4C1 | owner-accepted | Required |
@@ -238,6 +238,27 @@ This is a qualification of KEY-01/03/04 and does not change the 245-row
 historical M4 acceptance inventory.
 
 ## M4B — accepted application work and deterministic scheduler
+
+### Qualified producer contract extension
+
+These obligations refine APP/ROUTE/PUMP/WORK/FOCUS under
+[ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md#qualified-producer-admission-and-owned-failure).
+They do not retroactively certify the historical scheduler or weaken its existing
+rows. Acceptance requires the complete production source, positive/negative and
+trace proofs, full review and repository validation; separate device-identity and
+numerical-workload gates do not become framework proof through this extension.
+
+| ID | Required observation | Positive proof owner | Negative proof owner | Trace proof owner | Delivery slice | Status | M4 gate |
+|---|---|---|---|---|---|---|---|
+| APP-09 | A finite predecessor-safe root is funded before original action acceptance; ordinary FIFO pressure returns the same unconsumed payload without callbacks, mutation, accepted sequence or hidden buffering. Admitted work and descendants retain FIFO ordering. | `producer_application_outputs::ordinary_pressure_returns_the_same_nonclone_action_without_acceptance_or_mutation` | Exact owned allocation, contiguous accepted sequence, zero pump, explicit retry; trace0 and default capacity | Same named fixtures with trace0 and retained causal trace | M4B | blocked | Required |
+| APP-10 | The complete returned Effects group is checked before root/reconciliation/live starts; known false declarations produce a typed trace-independent terminal cause, discard all provisional output once and do not roll back app state. | Public `producer_migration` and `producer_owned_emission` | Family/residency/cardinality overrun, mapper/start suppression, earlier M13 Committed plus failing Aborted and one scope retirement | Same named fixtures with trace0 and retained causal trace | M4B | blocked | Required |
+| APP-11 | Initial effects follow successful root mounting; owned constructor refusal after mounting runs mandatory unmount once and never starts provisional work. | `producer_initial_admission::initial_lifecycle_precedes_effects_and_refusal_unmounts_once` | Known resource refusal before producer entry, owned state/config retry, rejected initial output, repeated cleanup | Same named fixtures with trace0 and retained causal trace | M4B | blocked | Required |
+| ROUTE-14 | Owned fallible event/lifecycle/activation/subscription operations retain original non-Clone input and first typed failure through mapping, with atomic family/output charge and one primary activation credit. | Public `producer_migration`, `producer_work_operations`, `producer_subscription_operations` | Ignored Result, nested mapping, no rejected mapper invocation, trace0 and compile-fail legacy output API | Same named fixtures with trace0 and retained causal trace | M4C1 | blocked | Required |
+| FOCUS-17 | Correctly declared focus retirement survives ordinary follower pressure with independent composition-cancel and FocusOut C/T/B maxima; composition and Space retire before live FocusOut. | `producer_focus_retirement::{unchanged_live_route_delivers_non_cancelable_focusout_under_full_follower_pressure,composition_and_space_retire_before_live_focusout_without_losing_independent_outputs}` | C=16/32/39/64/4096, R=3/1024 as applicable; retained/removal/replacement, predecessor changes, typed underdeclaration and trace0 | Same named fixtures with trace0 and retained causal trace | M4C4 | blocked | Required |
+| WORK-53 | Root work residency includes all live descendants and provisional overlap; cancellation and keyed replacement preserve exact generations and fund eventual outcomes/cleanup until retirement. Retained app subscriptions spend no new-start credit. | `producer_work_residency`, `producer_focus_work_residency` and public subscription producer fixtures | Exact fit/one short, replacement/cancel order, duplicate declaration policy, completion no-poll/start and trace0 | Same named fixtures with trace0 and retained causal trace | M4B | blocked | Required |
+
+Historical rows and accepted milestone inventory follow unchanged. New rows stay
+unaccepted until their full production delivery gates are satisfied.
 
 [archive PR #75](../history/public-repository-migration.md#accepted-imported-milestone-history) was owner-accepted and squash-merged as `7a0a5786bb796aeb81d4eac3fe87d254efba540a`.
 The rows below preserve the detailed ADR 0006 acceptance inventory. M4A's

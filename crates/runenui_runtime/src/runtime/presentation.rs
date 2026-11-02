@@ -327,6 +327,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(in crate::runtime) fn synchronize_presentation_lifecycle_after_publication(
         &mut self,
         causal_parent: Option<crate::TraceSequence>,
+        root_quota: Option<crate::queue::RootQuotaId>,
     ) {
         let mut lifecycle = mem::take(&mut self.presentation_lifecycle);
         let published = self
@@ -349,6 +350,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &mut lifecycle,
             published,
             causal_parent,
+            root_quota,
         ) {
             self.presentation_lifecycle = lifecycle;
             return;
@@ -358,6 +360,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             authored,
             &published_roots,
             causal_parent,
+            root_quota,
         );
         self.presentation_lifecycle = lifecycle;
     }
@@ -376,6 +379,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .collect()
     }
 
+    pub(in crate::runtime) fn publication_presentation_command_bound(&self) -> Option<usize> {
+        self.authored_presentations()
+            .iter()
+            .try_fold(0usize, |total, (_, _, presentation)| {
+                // Entry and restoration are mutually exclusive for one lifetime.
+                // An unavailable owner-relative anchor can additionally dismiss it.
+                let focus = usize::from(
+                    presentation.focus_policy() == PresentationFocusPolicy::EnterAndRestore,
+                );
+                let dismiss = usize::from(matches!(
+                    presentation.anchor(),
+                    SurfacePresentationAnchor::OwnerBounds
+                        | SurfacePresentationAnchor::OwnerRect(_)
+                ));
+                total.checked_add(focus)?.checked_add(dismiss)
+            })
+    }
+
     #[allow(
         clippy::too_many_lines,
         reason = "one published presentation lifecycle owns exact entry and restoration synchronization"
@@ -385,6 +406,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         lifecycle: &mut PresentationLifecycleState,
         published: Vec<crate::surface::PresentationInteractionRoot>,
         causal_parent: Option<crate::TraceSequence>,
+        root_quota: Option<crate::queue::RootQuotaId>,
     ) -> bool {
         let mut prospective_focus = self.focus.focused_node().cloned();
         let publication_generation = self
@@ -447,6 +469,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                                     activation_generation: publication_generation,
                                     focused_session_at_request: self.focus.session(),
                                 }),
+                                root_quota,
                             )
                             .is_err()
                         {
@@ -499,6 +522,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         authored: Vec<(MountedNodeId, Option<MountedNodeId>, SurfacePresentation)>,
         published_roots: &HashSet<MountedNodeId>,
         causal_parent: Option<crate::TraceSequence>,
+        root_quota: Option<crate::queue::RootQuotaId>,
     ) -> bool {
         for (root, owner, presentation) in authored {
             if published_roots.contains(&root) {
@@ -552,6 +576,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         FocusReason::PresentationRestoration,
                         causal_parent,
                         None,
+                        root_quota,
                     )
                     .is_err()
                 {
@@ -576,6 +601,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         &root,
                         PresentationDismissReason::AnchorUnavailable,
                         causal_parent,
+                        root_quota,
                     )
                     .is_err()
                 {

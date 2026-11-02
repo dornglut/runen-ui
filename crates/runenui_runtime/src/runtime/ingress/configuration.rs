@@ -1,8 +1,6 @@
 use super::{
-    HostProtocol, MandatoryTracePlan, MonotonicClock, Runtime, RuntimeStatus,
-    RuntimeTerminalReason, SendTaskExecutor, SendTaskStartOutcome, TimerFiringOutcome,
-    TimerStartOutcome, TraceActionCategory, TraceRecordKind, TraceSequence, WorkFamily,
-    WorkSequence,
+    HostProtocol, MonotonicClock, Runtime, RuntimeStatus, SendTaskExecutor, SendTaskStartOutcome,
+    TimerFiringOutcome, TimerStartOutcome, TraceRecordKind,
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -73,54 +71,5 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     pub(crate) fn queue_is_empty(&self) -> bool {
         self.queue.is_empty()
-    }
-
-    pub(in crate::runtime) fn callback_output_preflight(
-        &mut self,
-        work: Option<(crate::work::WorkGeneration, WorkFamily)>,
-        trace_plan: MandatoryTracePlan,
-    ) -> bool {
-        if !matches!(self.status, RuntimeStatus::Running) {
-            return false;
-        }
-        if let Some((generation, family)) = work
-            && !self.work.is_running_family(generation, family)
-        {
-            return false;
-        }
-        if self.queue.is_full() {
-            return false;
-        }
-        if !self.queue.has_sequence() {
-            self.enter_terminal(RuntimeTerminalReason::WorkSequenceExhausted, 0);
-            return false;
-        }
-        if !self.trace.can_admit(trace_plan) {
-            self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
-            return false;
-        }
-        true
-    }
-
-    pub(in crate::runtime) fn queue_callback_action(
-        &mut self,
-        action: Action,
-        causal_parent: Option<TraceSequence>,
-    ) -> Option<WorkSequence> {
-        let instant = self.now();
-        self.commit_preflighted_action(
-            action,
-            causal_parent,
-            None,
-            TraceActionCategory::ApplicationEffect,
-            instant,
-        )
-        .map_or_else(
-            |_| {
-                self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
-                None
-            },
-            Some,
-        )
     }
 }

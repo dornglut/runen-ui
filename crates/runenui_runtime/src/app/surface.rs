@@ -89,11 +89,17 @@ impl<App: UiApp> AppRuntime<App> {
     ///
     /// # Errors
     ///
-    /// Returns [`PublishSurfaceError::Full`] for recoverable stationary-pointer
-    /// re-hit backpressure and [`PublishSurfaceError::InputObservation`] when
-    /// the directly coupled ownership projection cannot be reserved; neither
-    /// commits a new publication. Closed and terminal runtimes return their
-    /// exact status instead of invoking widget capability callbacks.
+    /// Returns [`PublishSurfaceError::Full`] or
+    /// [`PublishSurfaceError::WorkCapacity`] when the canonical queue or a work
+    /// family cannot reserve publication-derived work. An infeasible producer
+    /// declaration returns [`PublishSurfaceError::InvalidProducerProfile`].
+    /// [`PublishSurfaceError::InputObservation`] reports failure to reserve the
+    /// directly coupled ownership projection before publication commits.
+    /// These refusals precede widget capability callbacks and retain the previous
+    /// publication. Staged layout, presentation geometry, or motion failures also
+    /// retain that publication and release unused producer reservations. Closed
+    /// and terminal runtimes return their exact status instead of invoking widget
+    /// capability callbacks.
     pub fn publish_surface(
         &mut self,
         context: &SurfaceBuildContext<'_>,

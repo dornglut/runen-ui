@@ -1,4 +1,16 @@
 #![allow(refining_impl_trait)]
+macro_rules! admitted {
+    ($result:expr) => {{
+        let result = $result;
+        assert!(
+            result.is_ok(),
+            "expected accepted runtime admission, got {:?}",
+            result.as_ref().err()
+        );
+        let Ok(value) = result else { return };
+        value
+    }};
+}
 
 use std::time::Duration;
 
@@ -14,7 +26,6 @@ use runenui_core::{
 use runenui_runtime::{
     AppRuntime, ManualClock, MonotonicInstant, MountedNodeId, PumpBudget, RuntimeConfig,
     RuntimeLimits, RuntimeStatus, TraceConfig, TraceRecordKind, TraceReplay,
-    TraceRoutedAdmissionRejection,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -47,6 +58,31 @@ impl State {
 struct App;
 
 impl UiApp for App {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // One group root, one column, and nine button owners each require a
+        // mounted-node and dirty-owner allowance in the initial frontier.
+        runenui_core::ProducerBudget::new(10, 0)
+            .with_reconciliation(10, 0, 10)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(89, 76)
+            .with_reconciliation(10, 10, 10)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -144,13 +180,11 @@ fn id(runtime: &mut AppRuntime<App>, authored: &str) -> MountedNodeId {
 
 fn focus(runtime: &mut AppRuntime<App>, authored: &str) {
     let target = id(runtime, authored);
-    runtime
-        .submit_command(
-            target,
-            SemanticCommand::RequestFocus,
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("focus request is admitted"));
+    admitted!(runtime.submit_command(
+        target,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    ));
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
@@ -209,7 +243,7 @@ fn type_character(runtime: &mut AppRuntime<App>, character: &str) {
 
 #[test]
 fn first_character_prefix_repeated_character_and_wrap_share_group_order() {
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     settle(&mut runtime);
     focus(&mut runtime, "three");
 
@@ -226,7 +260,7 @@ fn first_character_prefix_repeated_character_and_wrap_share_group_order() {
 
 #[test]
 fn rapid_multi_character_prefix_narrows_only_when_unique_and_miss_retries_current_character() {
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     settle(&mut runtime);
     focus(&mut runtime, "three");
 
@@ -247,7 +281,7 @@ fn rapid_multi_character_prefix_narrows_only_when_unique_and_miss_retries_curren
 
 #[test]
 fn multi_character_extension_prefers_the_current_matching_member() {
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     settle(&mut runtime);
     focus(&mut runtime, "two");
 
@@ -259,7 +293,7 @@ fn multi_character_extension_prefers_the_current_matching_member() {
 
 #[test]
 fn disabled_discoverable_member_uses_canonical_focus_eligibility() {
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     settle(&mut runtime);
     focus(&mut runtime, "three");
 
@@ -284,7 +318,7 @@ fn disabled_discoverable_member_uses_canonical_focus_eligibility() {
 
 #[test]
 fn ordinary_disabled_member_is_skipped_while_discoverable_disabled_remains_searchable() {
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     settle(&mut runtime);
     focus(&mut runtime, "three");
     let beta = id(&mut runtime, "three");
@@ -298,7 +332,7 @@ fn ordinary_disabled_member_is_skipped_while_discoverable_disabled_remains_searc
 
 #[test]
 fn matching_uses_locale_neutral_lowercase_without_canonical_normalization() {
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     settle(&mut runtime);
     focus(&mut runtime, "three");
 
@@ -317,7 +351,7 @@ fn matching_uses_locale_neutral_lowercase_without_canonical_normalization() {
 #[test]
 fn timeout_expires_at_the_exact_deadline_before_the_next_character() {
     let clock = ManualClock::new();
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     runtime.set_monotonic_clock(clock.clone());
     settle(&mut runtime);
     focus(&mut runtime, "three");
@@ -351,7 +385,7 @@ fn timeout_expires_at_the_exact_deadline_before_the_next_character() {
 #[test]
 fn unrepresentable_session_deadline_does_not_retain_the_prefix() {
     let clock = ManualClock::new();
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     runtime.set_monotonic_clock(clock.clone());
     settle(&mut runtime);
     focus(&mut runtime, "three");
@@ -380,7 +414,7 @@ fn unrepresentable_session_deadline_does_not_retain_the_prefix() {
 #[test]
 fn timeout_retires_private_buffer_without_requiring_another_key() {
     let clock = ManualClock::new();
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     runtime.set_monotonic_clock(clock.clone());
     settle(&mut runtime);
     focus(&mut runtime, "three");
@@ -404,7 +438,7 @@ fn timeout_retires_private_buffer_without_requiring_another_key() {
 #[test]
 fn timeout_cleanup_does_not_wait_for_unrelated_queue_to_empty() {
     let clock = ManualClock::new();
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     runtime.set_monotonic_clock(clock.clone());
     settle(&mut runtime);
     focus(&mut runtime, "three");
@@ -431,7 +465,7 @@ fn timeout_cleanup_does_not_wait_for_unrelated_queue_to_empty() {
 #[test]
 fn queued_predeadline_character_keeps_ingress_time_order_across_timeout_wake() {
     let clock = ManualClock::new();
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     runtime.set_monotonic_clock(clock.clone());
     settle(&mut runtime);
     focus(&mut runtime, "three");
@@ -460,7 +494,7 @@ fn queued_predeadline_character_keeps_ingress_time_order_across_timeout_wake() {
 
 #[test]
 fn composition_control_and_meta_suppress_while_shift_and_alt_characters_participate() {
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     settle(&mut runtime);
     focus(&mut runtime, "three");
     let beta = id(&mut runtime, "three");
@@ -493,7 +527,7 @@ fn composition_control_and_meta_suppress_while_shift_and_alt_characters_particip
     settle(&mut runtime);
     assert_focus(&mut runtime, "unicode");
 
-    let mut shifted = AppRuntime::<App>::mount(State::manual());
+    let mut shifted = admitted!(AppRuntime::<App>::mount(State::manual()));
     settle(&mut shifted);
     focus(&mut shifted, "three");
     shifted
@@ -509,10 +543,10 @@ fn composition_control_and_meta_suppress_while_shift_and_alt_characters_particip
 
 #[test]
 fn capacity_accepts_exact_64_scalar_256_byte_boundary() {
-    let mut runtime = AppRuntime::<App>::mount_with_config(
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
         State::manual(),
         RuntimeConfig::default().with_trace_config(TraceConfig::new(1024)),
-    );
+    ));
     settle(&mut runtime);
     focus(&mut runtime, "one");
     let alpha = id(&mut runtime, "one");
@@ -533,10 +567,10 @@ fn capacity_accepts_exact_64_scalar_256_byte_boundary() {
 
 #[test]
 fn capacity_rejection_clears_existing_prefix_and_preserves_focus() {
-    let mut runtime = AppRuntime::<App>::mount_with_config(
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
         State::manual(),
         RuntimeConfig::default().with_trace_config(TraceConfig::new(1024)),
-    );
+    ));
     settle(&mut runtime);
     focus(&mut runtime, "one");
 
@@ -567,7 +601,7 @@ fn capacity_rejection_clears_existing_prefix_and_preserves_focus() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn activate_target_remains_deferred_until_after_focus_transition() {
-    let mut runtime = AppRuntime::<App>::mount(State::activating());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::activating()));
     settle(&mut runtime);
     focus(&mut runtime, "three");
 
@@ -580,56 +614,51 @@ fn activate_target_remains_deferred_until_after_focus_transition() {
 }
 
 #[test]
-fn activate_target_type_ahead_reserves_capacity_before_focus_commit() {
+fn activate_target_type_ahead_profile_refusal_precedes_focus_commit() {
     const QUEUE_CAPACITY: usize = 16;
-    const FILLER_ENVELOPES: usize = QUEUE_CAPACITY - 3;
     let limits = RuntimeLimits::default()
         .with_waiting_envelopes(QUEUE_CAPACITY)
         .with_transaction_outputs(1);
-    let mut runtime = AppRuntime::<App>::mount_with_config(
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
         State::activating(),
         RuntimeConfig::default()
             .with_limits(limits)
             .with_trace_config(TraceConfig::new(1024)),
-    );
+    ));
     settle(&mut runtime);
-    focus(&mut runtime, "three");
-    let beta = id(&mut runtime, "three");
-
-    runtime
-        .submit_keyboard(key("a"))
-        .unwrap_or_else(|_| unreachable!("type-ahead input is admitted"));
-    for _ in 0..FILLER_ENVELOPES {
-        runtime
-            .submit_action(Action::Activated("filler"))
-            .unwrap_or_else(|_| unreachable!("filler action is admitted"));
-    }
-
+    let target = id(&mut runtime, "three");
+    let Err(refused) = runtime.submit_command(
+        target.clone(),
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!("focus is refused when its bounded interaction profile cannot fit");
+    };
     assert_eq!(
-        runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .unwrap_or_else(|_| unreachable!("pump observation"))
-            .report()
-            .to_owned()
-            .processed_envelopes(),
-        1
+        refused.kind(),
+        runenui_runtime::SubmitCommandErrorKind::Full
     );
-    assert_eq!(runtime.focus().focused_node(), Some(&beta));
+    let (returned_target, returned_command, returned_origin) =
+        refused.into_unaccepted().into_parts();
+    assert_eq!(returned_target, target);
+    assert_eq!(returned_command, SemanticCommand::RequestFocus);
+    assert_eq!(returned_origin, CommandOrigin::programmatic());
+    assert_eq!(runtime.focus().focused_node(), None);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
-    assert!(runtime.trace().kinds().any(|kind| matches!(
-        kind,
-        TraceRecordKind::RoutedEventAdmissionRejected {
-            capacity: TraceRoutedAdmissionRejection::WaitingEnvelopes
-        }
-    )));
+    assert!(
+        !runtime
+            .trace()
+            .kinds()
+            .any(|kind| matches!(kind, TraceRecordKind::FocusTransitionCommitted { .. }))
+    );
 }
 
 #[test]
 fn trace_export_remains_redacted_and_replay_compatible() {
-    let mut runtime = AppRuntime::<App>::mount_with_config(
+    let mut runtime = admitted!(AppRuntime::<App>::mount_with_config(
         State::manual(),
         RuntimeConfig::default().with_trace_config(TraceConfig::new(1024)),
-    );
+    ));
     settle(&mut runtime);
     focus(&mut runtime, "three");
     type_character(&mut runtime, "a");
@@ -659,7 +688,7 @@ fn trace_export_remains_redacted_and_replay_compatible() {
 
 #[test]
 fn fresh_prefix_no_match_keeps_focus_stable_until_a_later_character_recovers() {
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     settle(&mut runtime);
     focus(&mut runtime, "three");
     let beta = id(&mut runtime, "three");
@@ -674,7 +703,7 @@ fn fresh_prefix_no_match_keeps_focus_stable_until_a_later_character_recovers() {
 #[cfg(feature = "internal-test-seams")]
 #[test]
 fn terminal_and_shutdown_clear_private_type_ahead_state() {
-    let mut terminal = AppRuntime::<App>::mount(State::manual());
+    let mut terminal = admitted!(AppRuntime::<App>::mount(State::manual()));
     settle(&mut terminal);
     focus(&mut terminal, "three");
     type_character(&mut terminal, "a");
@@ -694,7 +723,7 @@ fn terminal_and_shutdown_clear_private_type_ahead_state() {
     assert!(matches!(terminal.status(), RuntimeStatus::Terminal(_)));
     assert!(!terminal.__focus_group_type_ahead_active_for_test());
 
-    let mut shutdown = AppRuntime::<App>::mount(State::manual());
+    let mut shutdown = admitted!(AppRuntime::<App>::mount(State::manual()));
     settle(&mut shutdown);
     focus(&mut shutdown, "three");
     type_character(&mut shutdown, "a");
@@ -709,7 +738,7 @@ fn terminal_and_shutdown_clear_private_type_ahead_state() {
 
 #[test]
 fn type_ahead_attempt_commits_keyboard_modality_even_without_a_match() {
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     settle(&mut runtime);
     focus(&mut runtime, "three");
     let beta = id(&mut runtime, "three");
@@ -725,7 +754,7 @@ fn type_ahead_attempt_commits_keyboard_modality_even_without_a_match() {
 
 #[test]
 fn repeated_keyboard_events_participate_in_same_character_cycling() {
-    let mut runtime = AppRuntime::<App>::mount(State::manual());
+    let mut runtime = admitted!(AppRuntime::<App>::mount(State::manual()));
     settle(&mut runtime);
     focus(&mut runtime, "three");
 
@@ -818,6 +847,30 @@ struct PolicyResetState {
 struct PolicyResetApp;
 
 impl UiApp for PolicyResetApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(6, 0)
+            .with_reconciliation(5, 5, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(44, 36)
+            .with_reconciliation(5, 5, 5)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = PolicyResetState;
     type Action = PolicyResetAction;
     type HostProtocol = NoHostProtocol;
@@ -922,10 +975,10 @@ fn policy_action(runtime: &mut AppRuntime<PolicyResetApp>, action: PolicyResetAc
 
 #[test]
 fn disabling_or_reauthoring_type_ahead_policy_clears_the_prefix() {
-    let mut runtime = AppRuntime::<PolicyResetApp>::mount(PolicyResetState {
+    let mut runtime = admitted!(AppRuntime::<PolicyResetApp>::mount(PolicyResetState {
         enabled: true,
         timeout_ms: 500,
-    });
+    }));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -959,6 +1012,29 @@ fn disabling_or_reauthoring_type_ahead_policy_clears_the_prefix() {
 struct ResetBoundaryApp;
 
 impl UiApp for ResetBoundaryApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(12, 0)
+            .with_reconciliation(12, 0, 12)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(91, 76)
+            .with_reconciliation(12, 12, 12)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -1016,7 +1092,7 @@ fn reset_character(runtime: &mut AppRuntime<ResetBoundaryApp>, character: &str) 
 
 #[test]
 fn group_transfer_and_focus_departure_clear_the_exact_group_buffer() {
-    let mut runtime = AppRuntime::<ResetBoundaryApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<ResetBoundaryApp>::mount(()));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1049,7 +1125,7 @@ fn group_transfer_and_focus_departure_clear_the_exact_group_buffer() {
 
 #[test]
 fn queued_keyboard_type_ahead_does_not_retarget_after_earlier_focus_move() {
-    let mut runtime = AppRuntime::<ResetBoundaryApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<ResetBoundaryApp>::mount(()));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1097,6 +1173,30 @@ enum ReplacementAction {
 struct ReplacementApp;
 
 impl UiApp for ReplacementApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(6, 0)
+            .with_reconciliation(5, 5, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(44, 36)
+            .with_reconciliation(5, 5, 5)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = bool;
     type Action = ReplacementAction;
     type HostProtocol = NoHostProtocol;
@@ -1172,7 +1272,7 @@ fn replacement_character(runtime: &mut AppRuntime<ReplacementApp>, character: &s
 
 #[test]
 fn owner_replacement_retires_buffer_with_the_old_exact_group_lifetime() {
-    let mut runtime = AppRuntime::<ReplacementApp>::mount(false);
+    let mut runtime = admitted!(AppRuntime::<ReplacementApp>::mount(false));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1215,6 +1315,30 @@ enum RemovalAction {
 struct RemovalApp;
 
 impl UiApp for RemovalApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, 0)
+            .with_reconciliation(5, 0, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(6, 0)
+            .with_reconciliation(5, 5, 5)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(44, 36)
+            .with_reconciliation(5, 5, 5)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = bool;
     type Action = RemovalAction;
     type HostProtocol = NoHostProtocol;
@@ -1293,7 +1417,7 @@ fn removal_character(runtime: &mut AppRuntime<RemovalApp>, character: &str) {
 
 #[test]
 fn owner_removal_and_recreation_cannot_revive_the_old_group_prefix() {
-    let mut runtime = AppRuntime::<RemovalApp>::mount(true);
+    let mut runtime = admitted!(AppRuntime::<RemovalApp>::mount(true));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1346,6 +1470,29 @@ fn owner_removal_and_recreation_cannot_revive_the_old_group_prefix() {
 struct NestedBoundaryApp;
 
 impl UiApp for NestedBoundaryApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(8, 0)
+            .with_reconciliation(8, 0, 8)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(55, 44)
+            .with_reconciliation(8, 8, 8)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -1412,7 +1559,7 @@ fn nested_focus(runtime: &mut AppRuntime<NestedBoundaryApp>, authored: &str) {
 
 #[test]
 fn nested_group_search_enters_existing_target_and_nested_scope_is_not_searchable() {
-    let mut nested = AppRuntime::<NestedBoundaryApp>::mount(());
+    let mut nested = admitted!(AppRuntime::<NestedBoundaryApp>::mount(()));
     let _ = nested
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1435,7 +1582,7 @@ fn nested_group_search_enters_existing_target_and_nested_scope_is_not_searchable
     let nested_first = nested_id(&mut nested, "nested.first");
     assert_eq!(nested.focus().focused_node(), Some(&nested_first));
 
-    let mut scoped = AppRuntime::<NestedBoundaryApp>::mount(());
+    let mut scoped = admitted!(AppRuntime::<NestedBoundaryApp>::mount(()));
     let _ = scoped
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1463,6 +1610,22 @@ fn nested_group_search_enters_existing_target_and_nested_scope_is_not_searchable
 struct EditableTypeAheadProbe;
 
 impl Widget<()> for EditableTypeAheadProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -1493,6 +1656,29 @@ impl Widget<()> for EditableTypeAheadProbe {
 struct EditableTypeAheadApp;
 
 impl UiApp for EditableTypeAheadApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(18, 12)
+            .with_reconciliation(3, 3, 3)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -1529,7 +1715,7 @@ fn editable_id(runtime: &mut AppRuntime<EditableTypeAheadApp>, authored: &str) -
 
 #[test]
 fn editable_owner_keeps_printable_keyboard_precedence_over_type_ahead() {
-    let mut runtime = AppRuntime::<EditableTypeAheadApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<EditableTypeAheadApp>::mount(()));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,
@@ -1574,6 +1760,22 @@ struct PreventingMember {
 }
 
 impl Widget<()> for PreventingMember {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -1594,6 +1796,29 @@ impl Widget<()> for PreventingMember {
 struct PreventApp;
 
 impl UiApp for PreventApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0)
+            .with_reconciliation(3, 0, 3)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(10, 4)
+            .with_reconciliation(3, 3, 3)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -1636,7 +1861,7 @@ fn prevent_id(runtime: &mut AppRuntime<PreventApp>, authored: &str) -> MountedNo
 
 #[test]
 fn routed_prevent_default_suppresses_type_ahead_before_buffer_or_focus_change() {
-    let mut runtime = AppRuntime::<PreventApp>::mount(());
+    let mut runtime = admitted!(AppRuntime::<PreventApp>::mount(()));
     let _ = runtime
         .pump(PumpBudget::new(
             usize::MAX,

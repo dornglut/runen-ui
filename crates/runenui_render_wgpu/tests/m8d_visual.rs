@@ -45,6 +45,20 @@ const WRAP_SAMPLE: &str =
 struct VisualApp;
 
 impl UiApp for VisualApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // This renderer fixture has 8 mounted owners and no callback outputs or work.
+        runenui_core::ProducerBudget::new(8, 0).with_reconciliation(8, 8, 8)
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(8, 0).with_reconciliation(8, 8, 8)
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(8, 0).with_reconciliation(8, 8, 8)
+    }
+
     type State = String;
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -82,6 +96,19 @@ fn typography(size: u16) -> Typography {
 struct CompositionProof;
 
 impl Widget<()> for CompositionProof {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -112,7 +139,8 @@ impl Widget<()> for CompositionProof {
 }
 
 fn visual_runtime(label: &str) -> AppRuntime<VisualApp> {
-    let mut runtime = AppRuntime::<VisualApp>::mount(label.to_owned());
+    let mut runtime = AppRuntime::<VisualApp>::mount(label.to_owned())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     for bytes in [CANTARELL, ARABIC, DEVANAGARI] {
         assert!(runtime.register_text_font_bytes(bytes.to_vec()).is_ok());
     }

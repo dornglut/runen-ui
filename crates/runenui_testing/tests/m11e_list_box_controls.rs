@@ -47,7 +47,43 @@ struct State {
 
 struct ListBoxApp;
 
+impl ListBoxApp {
+    const fn producer_budget() -> runenui_core::ProducerBudget {
+        // Closed fixture: at most 7 mounted owners in every reachable tree.
+        // Each event callback emits at most one output: four focus visits and
+        // two ordinary route visits per owner, plus activation/default output.
+        // New owners add one subscription reconciliation each; descendants
+        // never start work, declare subscriptions, or grow this tree bound.
+        let owners = 7;
+        let outputs = 6 * owners + 2;
+        runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+            .with_reconciliation(owners, owners, owners)
+    }
+}
+
 impl UiApp for ListBoxApp {
+    fn initial_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        let options = if state.second_option == SecondOptionFixture::Removed {
+            2
+        } else {
+            3
+        };
+        let nodes = options + 4;
+        runenui_core::ProducerBudget::new(nodes, 0)
+            .with_reconciliation(nodes, 0, nodes)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        Self::producer_budget()
+    }
+
     type State = State;
     type Action = Action;
     type HostProtocol = NoHostProtocol;
@@ -216,7 +252,8 @@ const fn key(physical: PhysicalKey, logical: LogicalKey, phase: KeyboardPhase) -
 
 #[test]
 fn list_box_publishes_exact_selection_orientation_and_collection_metadata() {
-    let mut harness = TestHarness::<ListBoxApp>::mount(fixture(vec![2]));
+    let mut harness = TestHarness::<ListBoxApp>::mount(fixture(vec![2]))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     let snapshot = harness
         .semantic_snapshot()
@@ -254,7 +291,8 @@ fn list_box_publishes_exact_selection_orientation_and_collection_metadata() {
 #[test]
 #[allow(clippy::assert_is_empty)]
 fn manual_list_box_entry_navigation_home_end_and_type_ahead_do_not_mutate_selection() {
-    let mut harness = TestHarness::<ListBoxApp>::mount(fixture(vec![2]));
+    let mut harness = TestHarness::<ListBoxApp>::mount(fixture(vec![2]))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
 
     command(&mut harness, "before", SemanticCommand::RequestFocus);
@@ -310,7 +348,8 @@ fn manual_list_box_entry_navigation_home_end_and_type_ahead_do_not_mutate_select
 
 #[test]
 fn ordinary_space_activation_emits_only_the_application_selection_action() {
-    let mut harness = TestHarness::<ListBoxApp>::mount(fixture(vec![1]));
+    let mut harness = TestHarness::<ListBoxApp>::mount(fixture(vec![1]))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     command(&mut harness, "option.three", SemanticCommand::RequestFocus);
 
@@ -342,7 +381,8 @@ fn ordinary_space_activation_emits_only_the_application_selection_action() {
 fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority() {
     let mut skipped_state = fixture(vec![1]);
     skipped_state.second_option = SecondOptionFixture::Disabled;
-    let mut skipped = TestHarness::<ListBoxApp>::mount(skipped_state);
+    let mut skipped = TestHarness::<ListBoxApp>::mount(skipped_state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(skipped.publish().is_ok());
     command(&mut skipped, "option.one", SemanticCommand::RequestFocus);
     command(&mut skipped, "option.one", SemanticCommand::FocusDown);
@@ -351,7 +391,8 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
 
     let mut discoverable_state = fixture(vec![1]);
     discoverable_state.second_option = SecondOptionFixture::DisabledDiscoverable;
-    let mut discoverable = TestHarness::<ListBoxApp>::mount(discoverable_state);
+    let mut discoverable = TestHarness::<ListBoxApp>::mount(discoverable_state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(discoverable.publish().is_ok());
     command(
         &mut discoverable,
@@ -365,7 +406,8 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
 
     let mut passive_skipped_state = fixture(vec![1]);
     passive_skipped_state.second_option = SecondOptionFixture::PassiveDisabled;
-    let mut passive_skipped = TestHarness::<ListBoxApp>::mount(passive_skipped_state);
+    let mut passive_skipped = TestHarness::<ListBoxApp>::mount(passive_skipped_state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(passive_skipped.publish().is_ok());
     command(
         &mut passive_skipped,
@@ -382,7 +424,8 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
 
     let mut passive_discoverable_state = fixture(vec![1]);
     passive_discoverable_state.second_option = SecondOptionFixture::PassiveDisabledDiscoverable;
-    let mut passive_discoverable = TestHarness::<ListBoxApp>::mount(passive_discoverable_state);
+    let mut passive_discoverable = TestHarness::<ListBoxApp>::mount(passive_discoverable_state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(passive_discoverable.publish().is_ok());
     command(
         &mut passive_discoverable,
@@ -400,7 +443,8 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
 
     let mut follow_state = fixture(vec![1]);
     follow_state.selection = SelectionFixture::SingleFollowFocus;
-    let mut follow = TestHarness::<ListBoxApp>::mount(follow_state);
+    let mut follow = TestHarness::<ListBoxApp>::mount(follow_state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(follow.publish().is_ok());
     command(&mut follow, "option.one", SemanticCommand::RequestFocus);
     command(&mut follow, "option.one", SemanticCommand::FocusDown);
@@ -414,7 +458,8 @@ fn disabled_discoverability_and_single_follow_focus_use_existing_focus_authority
 fn multi_selection_keeps_first_selected_entry_and_focus_distinct_from_selection() {
     let mut state = fixture(vec![1, 3]);
     state.selection = SelectionFixture::Multiple;
-    let mut harness = TestHarness::<ListBoxApp>::mount(state);
+    let mut harness = TestHarness::<ListBoxApp>::mount(state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     let snapshot = harness
         .semantic_snapshot()
@@ -450,7 +495,8 @@ fn multi_selection_keeps_first_selected_entry_and_focus_distinct_from_selection(
     let mut state = fixture(vec![2, 3]);
     state.selection = SelectionFixture::Multiple;
     state.second_option = SecondOptionFixture::Disabled;
-    let mut harness = TestHarness::<ListBoxApp>::mount(state);
+    let mut harness = TestHarness::<ListBoxApp>::mount(state)
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     command(&mut harness, "before", SemanticCommand::RequestFocus);
     command(&mut harness, "before", SemanticCommand::FocusNext);
@@ -463,7 +509,8 @@ fn multi_selection_keeps_first_selected_entry_and_focus_distinct_from_selection(
 #[test]
 fn removal_and_application_rebuild_recompute_entry_and_collection_metadata_without_rewriting_selection()
  {
-    let mut harness = TestHarness::<ListBoxApp>::mount(fixture(vec![2]));
+    let mut harness = TestHarness::<ListBoxApp>::mount(fixture(vec![2]))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     command(&mut harness, "before", SemanticCommand::RequestFocus);
     command(&mut harness, "before", SemanticCommand::FocusNext);
@@ -509,7 +556,8 @@ fn removal_and_application_rebuild_recompute_entry_and_collection_metadata_witho
 
 #[test]
 fn keyed_replacement_rebuilds_selected_preferred_entry_without_realization_identity() {
-    let mut harness = TestHarness::<ListBoxApp>::mount(fixture(vec![2]));
+    let mut harness = TestHarness::<ListBoxApp>::mount(fixture(vec![2]))
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     command(&mut harness, "before", SemanticCommand::RequestFocus);
     command(&mut harness, "before", SemanticCommand::FocusNext);
@@ -533,7 +581,37 @@ fn keyed_replacement_rebuilds_selected_preferred_entry_without_realization_ident
 #[test]
 fn horizontal_list_box_maps_horizontal_but_not_vertical_directional_commands() {
     struct Horizontal;
+    impl Horizontal {
+        const fn producer_budget() -> runenui_core::ProducerBudget {
+            // Closed fixture: at most 3 mounted owners in every reachable tree.
+            // Each event callback emits at most one output: four focus visits and
+            // two ordinary route visits per owner, plus activation/default output.
+            // New owners add one subscription reconciliation each; descendants
+            // never start work, declare subscriptions, or grow this tree bound.
+            let owners = 3;
+            let outputs = 6 * owners + 2;
+            runenui_core::ProducerBudget::new(outputs + owners + 1, outputs)
+                .with_reconciliation(owners, owners, owners)
+        }
+    }
+
     impl UiApp for Horizontal {
+        fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            runenui_core::ProducerBudget::new(3, 0)
+                .with_reconciliation(3, 0, 3)
+                .with_subscriptions(0, 0)
+                .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+        }
+        fn action_producer_budget(
+            _state: &Self::State,
+            _action: &Self::Action,
+        ) -> runenui_core::ProducerBudget {
+            Self::producer_budget()
+        }
+        fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+            Self::producer_budget()
+        }
+
         type State = ();
         type Action = ();
         type HostProtocol = NoHostProtocol;
@@ -548,7 +626,8 @@ fn horizontal_list_box_maps_horizontal_but_not_vertical_directional_commands() {
         fn update((): &mut Self::State, (): Self::Action) {}
     }
 
-    let mut harness = TestHarness::<Horizontal>::mount(());
+    let mut harness = TestHarness::<Horizontal>::mount(())
+        .unwrap_or_else(|error| unreachable!("fixture initial admission must succeed: {error}"));
     assert!(harness.publish().is_ok());
     harness
         .submit_automation_command(element_id("h.one"), SemanticCommand::RequestFocus)

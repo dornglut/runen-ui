@@ -17,6 +17,22 @@ struct HoverTransitionApp;
 struct HitProbe;
 
 impl Widget<()> for HitProbe {
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        _state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        match phase {
+            runenui_core::WidgetProducerPhase::Activation => {
+                runenui_core::WidgetProducerBudget::new(0)
+            }
+            runenui_core::WidgetProducerPhase::Subscriptions => {
+                runenui_core::WidgetProducerBudget::new(0).with_subscriptions(0)
+            }
+            _ => runenui_core::WidgetProducerBudget::new(0),
+        }
+    }
+
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -34,6 +50,35 @@ impl Widget<()> for HitProbe {
 }
 
 impl UiApp for HoverTransitionApp {
+    fn initial_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // The motion fixture has at most 1 mounted owners; timelines
+        // do not introduce scheduler tasks or application output.
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(
+        _state: &Self::State,
+        _action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 1, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn interaction_producer_budget(_state: &Self::State) -> runenui_core::ProducerBudget {
+        // Pointer defaults can start one cursor service, with outcome/cancel
+        // credits. The hit probe itself emits no callback output.
+        runenui_core::ProducerBudget::new(4, 1)
+            .with_application_outputs(0)
+            .with_reconciliation(1, 1, 1)
+            .with_work_starts(runenui_core::WorkStartBudget::new(0, 0, 0, 0, 1))
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(0, 0, 0, 0, 0, 1))
+    }
+
     type State = ();
     type Action = ();
     type HostProtocol = NoHostProtocol;
@@ -95,7 +140,8 @@ fn pump_all(runtime: &mut AppRuntime<HoverTransitionApp>) {
 
 #[test]
 fn canonical_hover_style_change_starts_the_authored_transition() {
-    let mut runtime = AppRuntime::<HoverTransitionApp>::mount(());
+    let mut runtime = AppRuntime::<HoverTransitionApp>::mount(())
+        .unwrap_or_else(|error| unreachable!("unexpected initial admission refusal: {error}"));
     let environment = environment();
     let size = LogicalSize::try_new(64.0, 64.0)
         .unwrap_or_else(|_| unreachable!("interaction proof surface size is finite"));
