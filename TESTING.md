@@ -47,9 +47,11 @@ cargo +stable test --release --locked --all-features -p runenui_runtime --lib be
 cargo +stable test --release --locked --all-features -p runenui_runtime --test scheduling_work bench_u475_mixed_public_cancellation_and_fifo_cycle -- --ignored --nocapture
 ```
 
-The three scaling diagnostics use 30 independent repetitions at root sizes 32,
-256, 1024, and 2048. Admission covers trace disabled/enabled (0/512), while
-retirement compares sequential and batched keyed lease release. Cross-root
+The three scaling diagnostics use 30 independent repetitions at sizes 32, 256,
+1024, and 2048. Admission and cross-root cancellation preflight use that many
+causal roots; keyed-release uses one causal root with that many keyed
+generations. Admission covers trace disabled/enabled (0/512), while retirement
+compares sequential and batched keyed lease release. Cross-root
 cancellation preflight compares K0 (no invalidated generations while roots
 remain live), sparse (one host generation), and dense (all mixed host,
 framework-service, local task, send task, and repeating timer generations)
