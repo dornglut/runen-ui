@@ -658,7 +658,7 @@ mod tests {
         fn producer_budget(
             &self,
             _: runenui_core::WidgetProducerPhase,
-            _: &Self::State,
+            (): &Self::State,
         ) -> runenui_core::WidgetProducerBudget {
             runenui_core::WidgetProducerBudget::new(0)
         }
