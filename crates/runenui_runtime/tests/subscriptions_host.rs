@@ -463,7 +463,6 @@ fn request(value: u8) -> Effects<HostAction, Protocol> {
     )
 }
 
-
 struct HostMappedProfileState {
     exceeds_root: bool,
     mapped: Rc<Cell<usize>>,
@@ -503,13 +502,17 @@ impl UiApp for HostMappedProfileApp {
 
     fn initial_effects(state: &Self::State) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
         let mapped = Rc::clone(&state.mapped);
-        Effects::host_request(Some(key("host.mapped")), Command::Number(1), move |response| {
-            mapped.set(mapped.get() + 1);
-            match response {
-                Response::Number(value) => HostAction::Value(value),
-                Response::Text(_) => unreachable!("response kind was verified before mapping"),
-            }
-        })
+        Effects::host_request(
+            Some(key("host.mapped")),
+            Command::Number(1),
+            move |response| {
+                mapped.set(mapped.get() + 1);
+                match response {
+                    Response::Number(value) => HostAction::Value(value),
+                    Response::Text(_) => unreachable!("response kind was verified before mapping"),
+                }
+            },
+        )
     }
 
     fn update(
@@ -524,7 +527,10 @@ impl UiApp for HostMappedProfileApp {
     }
 }
 
-fn mapped_host_profile_runtime(exceeds_root: bool, trace_capacity: usize) -> (
+fn mapped_host_profile_runtime(
+    exceeds_root: bool,
+    trace_capacity: usize,
+) -> (
     AppRuntime<HostMappedProfileApp>,
     Rc<Cell<usize>>,
     runenui_runtime::HostRequestToken,
@@ -552,39 +558,57 @@ fn mapped_host_profile_runtime(exceeds_root: bool, trace_capacity: usize) -> (
 #[test]
 fn direct_mapped_host_undercovered_child_terminalizes_without_unwind() {
     for trace_capacity in [0, 256] {
-        let (mut runtime, mapper_calls, token) =
-            mapped_host_profile_runtime(true, trace_capacity);
+        let (mut runtime, mapper_calls, token) = mapped_host_profile_runtime(true, trace_capacity);
         let outcome = runtime.complete_host_request(&token, Response::Number(7));
-        assert!(outcome.is_err(), "the mapped action exceeds the originating root");
+        assert!(
+            outcome.is_err(),
+            "the mapped action exceeds the originating root"
+        );
         assert_eq!(mapper_calls.get(), 1, "mapping consumed the response once");
-        assert!(runtime.state().values.is_empty(), "no child application update executed");
+        assert!(
+            runtime.state().values.is_empty(),
+            "no child application update executed"
+        );
         assert!(matches!(runtime.status(), RuntimeStatus::Terminal(_)));
         assert!(runtime.pending_host_requests().is_empty());
         assert_eq!(runtime.__host_response_slot_count_for_test(), 0);
         if trace_capacity != 0 {
             let kinds: Vec<_> = runtime.trace().kinds().collect();
-            assert!(kinds.contains(&runenui_runtime::TraceRecordKind::HostResponseAccepted));
-            assert!(kinds.contains(&runenui_runtime::TraceRecordKind::WorkCompletionMapped));
+            assert!(kinds.iter().any(|kind| matches!(
+                kind,
+                runenui_runtime::TraceRecordKind::HostResponseAccepted
+            )));
+            assert!(kinds.iter().any(|kind| matches!(
+                kind,
+                runenui_runtime::TraceRecordKind::WorkCompletionMapped
+            )));
             assert!(kinds.iter().any(|kind| matches!(
                 kind,
                 runenui_runtime::TraceRecordKind::RuntimeTerminal { .. }
             )));
-            assert!(!kinds.contains(&runenui_runtime::TraceRecordKind::ActionSubmissionAccepted));
+            assert!(!kinds.iter().any(|kind| matches!(
+                kind,
+                runenui_runtime::TraceRecordKind::ActionSubmissionAccepted
+            )));
         }
-        runtime.shutdown().unwrap_or_else(|_| unreachable!("shutdown cleans terminal work"));
+        runtime
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("shutdown cleans terminal work"));
     }
 }
 
 #[test]
 fn direct_mapped_host_covered_child_commits_and_preserves_trace_chain() {
     for trace_capacity in [0, 256] {
-        let (mut runtime, mapper_calls, token) =
-            mapped_host_profile_runtime(false, trace_capacity);
+        let (mut runtime, mapper_calls, token) = mapped_host_profile_runtime(false, trace_capacity);
         runtime
             .complete_host_request(&token, Response::Number(7))
             .unwrap_or_else(|_| unreachable!("covered mapped child enters FIFO"));
         assert_eq!(mapper_calls.get(), 1);
-        assert!(runtime.state().values.is_empty(), "action has not been pumped yet");
+        assert!(
+            runtime.state().values.is_empty(),
+            "action has not been pumped yet"
+        );
         assert_eq!(runtime.status(), RuntimeStatus::Running);
         runtime
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
@@ -595,15 +619,25 @@ fn direct_mapped_host_covered_child_commits_and_preserves_trace_chain() {
         assert_eq!(runtime.__host_response_slot_count_for_test(), 0);
         if trace_capacity != 0 {
             let records: Vec<_> = runtime.trace().records().collect();
-            let mapped = records.iter().find(|record| {
-                matches!(record.kind(), runenui_runtime::TraceRecordKind::WorkCompletionMapped)
-            }).unwrap_or_else(|| unreachable!("host mapping is recorded"));
+            let mapped = records
+                .iter()
+                .find(|record| {
+                    matches!(
+                        record.kind(),
+                        runenui_runtime::TraceRecordKind::WorkCompletionMapped
+                    )
+                })
+                .unwrap_or_else(|| unreachable!("host mapping is recorded"));
             assert!(records.iter().any(|record| {
-                matches!(record.kind(), runenui_runtime::TraceRecordKind::ActionSubmissionAccepted)
-                    && record.causal_parent() == Some(mapped.sequence())
+                matches!(
+                    record.kind(),
+                    runenui_runtime::TraceRecordKind::ActionSubmissionAccepted
+                ) && record.causal_parent() == Some(mapped.sequence())
             }));
         }
-        runtime.shutdown().unwrap_or_else(|_| unreachable!("normal shutdown"));
+        runtime
+            .shutdown()
+            .unwrap_or_else(|_| unreachable!("normal shutdown"));
     }
 }
 
