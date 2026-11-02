@@ -2,8 +2,12 @@
 
 use core::task::Poll;
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
+    future::Future,
+    pin::Pin,
     rc::Rc,
+    task::{Context, Waker},
+    time::Duration,
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
@@ -11,13 +15,15 @@ use std::{
 };
 
 use runenui_core::{
-    Effects, HostProtocol, IntoEffects, SendSubscriptionSink, SendSubscriptionSource,
-    SendSubscriptionStartOutcome, SubscriptionSet, UiApp, View, WorkKey, text,
+    Effects, HostProtocol, IntoEffects, SendSubscriptionSink, SendSubscriptionSinkError,
+    SendSubscriptionSource, SendSubscriptionStartOutcome, SubscriptionSet, TimerEffect, UiApp,
+    View, WorkFamily, WorkKey, WorkResidencyBudget, WorkStartBudget, text,
 };
 use runenui_runtime::{
     AppRuntime, HostRequestCancelError, HostResponseCompletionError, HostResponseError, PumpBudget,
-    RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason, SubscriptionDiagnostic,
-    SubscriptionOwnerKind,
+    RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason, SendTaskCompletionError,
+    SendTaskExecutor, SendTaskJob, SendTaskStartError, SubscriptionDiagnostic,
+    SubscriptionOwnerKind, TraceConfig, TraceRecordKind,
 };
 
 fn key(value: &str) -> WorkKey {
@@ -655,6 +661,375 @@ fn direct_mapped_host_covered_child_commits_and_preserves_trace_chain() {
         runtime
             .shutdown()
             .unwrap_or_else(|_| unreachable!("normal shutdown"));
+    }
+}
+
+
+#[derive(Clone, Copy, Debug)]
+enum MixedAction {
+    Cancel,
+    Poison,
+    Survivor,
+    Wide,
+    Unexpected,
+}
+
+struct MixedSource {
+    sink: Arc<Mutex<Option<SendSubscriptionSink<Arc<u8>>>>>,
+}
+
+impl SendSubscriptionSource<Arc<u8>> for MixedSource {
+    fn start(self: Box<Self>, sink: SendSubscriptionSink<Arc<u8>>) -> SendSubscriptionStartOutcome {
+        *self.sink.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(sink);
+        SendSubscriptionStartOutcome::Started
+    }
+}
+
+#[derive(Clone)]
+struct MixedSendExecutor(Rc<RefCell<Vec<SendTaskJob>>>);
+
+impl SendTaskExecutor for MixedSendExecutor {
+    fn start(&mut self, job: SendTaskJob) -> Result<(), SendTaskStartError> {
+        self.0.borrow_mut().push(job);
+        Ok(())
+    }
+}
+
+fn mixed_run_ready(job: SendTaskJob) -> Result<(), SendTaskCompletionError> {
+    let mut future = Box::pin(job.run());
+    let mut context = Context::from_waker(Waker::noop());
+    match Pin::new(&mut future).poll(&mut context) {
+        Poll::Ready(result) => result,
+        Poll::Pending => unreachable!("mixed send work is immediately ready"),
+    }
+}
+
+struct MixedState {
+    active: bool,
+    events: Vec<&'static str>,
+    sink: Arc<Mutex<Option<SendSubscriptionSink<Arc<u8>>>>>,
+    local_polls: Rc<Cell<usize>>,
+    send_maps: Rc<Cell<usize>>,
+    subscription_maps: Rc<Cell<usize>>,
+    timer_fires: Rc<Cell<usize>>,
+}
+
+struct MixedApp;
+
+impl UiApp for MixedApp {
+    type State = MixedState;
+    type Action = MixedAction;
+    type HostProtocol = Protocol;
+
+    fn initial_producer_budget(_: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(24, 4)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(1, 0)
+            .with_work_starts(WorkStartBudget::new(1, 2, 1, 1, 0))
+            .with_work_residency(WorkResidencyBudget::new(1, 1, 1, 1, 1, 0))
+    }
+
+    fn action_producer_budget(
+        _: &Self::State,
+        action: &Self::Action,
+    ) -> runenui_core::ProducerBudget {
+        match action {
+            MixedAction::Cancel | MixedAction::Poison => {
+                runenui_core::ProducerBudget::new(8, 5)
+                    .with_reconciliation(0, 1, 0)
+                    .with_subscriptions(1, 0)
+            }
+            MixedAction::Wide => runenui_core::ProducerBudget::new(25, 0),
+            MixedAction::Survivor | MixedAction::Unexpected => {
+                runenui_core::ProducerBudget::new(1, 0)
+                    .with_reconciliation(0, 1, 0)
+                    .with_subscriptions(1, 0)
+            }
+        }
+    }
+
+    fn interaction_producer_budget(_: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+    }
+
+    fn root(_: &Self::State) -> impl View<Self::Action> {
+        text("mixed public work")
+    }
+
+    fn initial_effects(state: &Self::State) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+        let local_polls = Rc::clone(&state.local_polls);
+        let send_maps = Rc::clone(&state.send_maps);
+        let timer_fires = Rc::clone(&state.timer_fires);
+        Effects::host_request(
+            Some(key("mixed.host")),
+            Command::Number(1),
+            |_| MixedAction::Unexpected,
+        )
+        .then(Effects::keyed_local_task(
+            key("mixed.local"),
+            std::future::poll_fn(move |_| {
+                local_polls.set(local_polls.get() + 1);
+                Poll::Pending
+            }),
+        ))
+        .then(Effects::keyed_send_task(
+            key("mixed.send"),
+            async { 9_u8 },
+            move |_| {
+                send_maps.set(send_maps.get() + 1);
+                MixedAction::Unexpected
+            },
+        ))
+        .then(Effects::timer(
+            TimerEffect::once(Duration::from_millis(20), move || {
+                timer_fires.set(timer_fires.get() + 1);
+                MixedAction::Unexpected
+            })
+            .keyed(key("mixed.timer")),
+        ))
+    }
+
+    fn subscriptions(state: &Self::State, subscriptions: &mut SubscriptionSet<Self::Action>) {
+        if !state.active {
+            return;
+        }
+        let subscription_maps = Rc::clone(&state.subscription_maps);
+        assert!(subscriptions
+            .try_send(
+                key("mixed.subscription"),
+                0,
+                MixedSource {
+                    sink: Arc::clone(&state.sink),
+                },
+                move |_| {
+                    subscription_maps.set(subscription_maps.get() + 1);
+                    MixedAction::Unexpected
+                },
+            )
+            .is_ok());
+    }
+
+    fn update(
+        state: &mut Self::State,
+        action: Self::Action,
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        match action {
+            MixedAction::Cancel | MixedAction::Poison => {
+                state.events.push(if matches!(action, MixedAction::Poison) {
+                    "poison"
+                } else {
+                    "cancel"
+                });
+                state.active = false;
+                let cancels = Effects::cancel(WorkFamily::HostRequest, key("mixed.host"))
+                    .then(Effects::cancel(WorkFamily::LocalTask, key("mixed.local")))
+                    .then(Effects::cancel(WorkFamily::SendTask, key("mixed.send")))
+                    .then(Effects::cancel(WorkFamily::Timer, key("mixed.timer")));
+                if matches!(action, MixedAction::Poison) {
+                    cancels.then(Effects::action(MixedAction::Wide))
+                } else {
+                    cancels
+                }
+            }
+            MixedAction::Survivor => {
+                state.events.push("survivor");
+                Effects::none()
+            }
+            MixedAction::Wide | MixedAction::Unexpected => {
+                state.events.push("unexpected");
+                Effects::none()
+            }
+        }
+    }
+}
+
+struct MixedFixture {
+    runtime: AppRuntime<MixedApp>,
+    jobs: Rc<RefCell<Vec<SendTaskJob>>>,
+    sink: SendSubscriptionSink<Arc<u8>>,
+    token: runenui_runtime::HostRequestToken,
+    local_polls: Rc<Cell<usize>>,
+    send_maps: Rc<Cell<usize>>,
+    subscription_maps: Rc<Cell<usize>>,
+    timer_fires: Rc<Cell<usize>>,
+}
+
+fn mixed_fixture(trace_capacity: usize) -> MixedFixture {
+    let sink = Arc::new(Mutex::new(None));
+    let local_polls = Rc::new(Cell::new(0));
+    let send_maps = Rc::new(Cell::new(0));
+    let subscription_maps = Rc::new(Cell::new(0));
+    let timer_fires = Rc::new(Cell::new(0));
+    let jobs = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<MixedApp>::mount_with_config(
+        MixedState {
+            active: true,
+            events: Vec::new(),
+            sink: Arc::clone(&sink),
+            local_polls: Rc::clone(&local_polls),
+            send_maps: Rc::clone(&send_maps),
+            subscription_maps: Rc::clone(&subscription_maps),
+            timer_fires: Rc::clone(&timer_fires),
+        },
+        RuntimeConfig::default()
+            .with_trace_config(TraceConfig::new(trace_capacity))
+            .with_limits(
+                RuntimeLimits::default()
+                    .with_waiting_envelopes(64)
+                    .with_transaction_outputs(16),
+            ),
+    )
+    .unwrap_or_else(|error| unreachable!("initial mixed work profile fits: {error}"));
+    runtime.set_send_task_executor(MixedSendExecutor(Rc::clone(&jobs)));
+    runtime
+        .pump(PumpBudget::new(16, 0, 0, 0))
+        .unwrap_or_else(|_| unreachable!("initial mixed work starts"));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.pending_host_requests().len(), 1);
+    assert_eq!(jobs.borrow().len(), 1);
+    let token = runtime.pending_host_requests()[0].token();
+    let sink = sink
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+        .unwrap_or_else(|| unreachable!("send subscription started"));
+    MixedFixture {
+        runtime,
+        jobs,
+        sink,
+        token,
+        local_polls,
+        send_maps,
+        subscription_maps,
+        timer_fires,
+    }
+}
+
+#[test]
+fn mixed_public_cancellation_preserves_independent_fifo_root_and_stales_sources() {
+    for trace_capacity in [0, 512] {
+        let mut fixture = mixed_fixture(trace_capacity);
+        fixture
+            .runtime
+            .submit_action(MixedAction::Cancel)
+            .unwrap_or_else(|_| unreachable!("cancellation root is independently admitted"));
+        fixture
+            .runtime
+            .submit_action(MixedAction::Survivor)
+            .unwrap_or_else(|_| unreachable!("surviving root is independently admitted"));
+        fixture
+            .runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("cancellation transaction processes"));
+        assert_eq!(fixture.runtime.status(), RuntimeStatus::Running);
+        assert_eq!(fixture.runtime.state().events, ["cancel"]);
+        assert!(fixture.runtime.pending_host_requests().is_empty());
+        assert!(matches!(
+            fixture
+                .runtime
+                .complete_host_request(&fixture.token, Response::Number(7)),
+            Err(HostResponseError::Stale(Response::Number(7)))
+        ));
+        let item = Arc::new(3_u8);
+        let Err(SendSubscriptionSinkError::Stale(recovered)) =
+            fixture.sink.try_send(Arc::clone(&item))
+        else {
+            unreachable!("removed subscription is stale without terminating runtime")
+        };
+        assert!(Arc::ptr_eq(&item, &recovered));
+        let job = fixture.jobs.borrow_mut().pop().unwrap_or_else(|| unreachable!());
+        assert!(matches!(mixed_run_ready(job), Err(SendTaskCompletionError::Stale(_))));
+        fixture
+            .runtime
+            .advance_time(Duration::from_millis(25))
+            .unwrap_or_else(|_| unreachable!("finite timer advance"));
+        fixture
+            .runtime
+            .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("independent root still processes"));
+        assert_eq!(fixture.runtime.state().events, ["cancel", "survivor"]);
+        assert_eq!(fixture.runtime.status(), RuntimeStatus::Running);
+        assert_eq!(fixture.send_maps.get(), 0);
+        assert_eq!(fixture.subscription_maps.get(), 0);
+        assert_eq!(fixture.timer_fires.get(), 0);
+        assert_eq!(fixture.local_polls.get(), 0);
+        if trace_capacity > 0 {
+            assert_eq!(
+                fixture.runtime.trace().kinds().filter(|kind| matches!(
+                    kind,
+                    TraceRecordKind::ActionSubmissionAccepted
+                )).count(),
+                2
+            );
+        }
+    }
+}
+
+#[test]
+fn mixed_public_postmutation_failure_discards_provisional_cancellations_and_pending_root() {
+    for trace_capacity in [0, 512] {
+        let mut fixture = mixed_fixture(trace_capacity);
+        fixture
+            .runtime
+            .submit_action(MixedAction::Poison)
+            .unwrap_or_else(|_| unreachable!("poison producer fits initial admission"));
+        fixture
+            .runtime
+            .submit_action(MixedAction::Survivor)
+            .unwrap_or_else(|_| unreachable!("independent pending root fits"));
+        fixture
+            .runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("terminal pump observation"));
+        assert_eq!(fixture.runtime.state().events, ["poison"], "update is not rolled back");
+        assert_eq!(
+            fixture.runtime.status(),
+            RuntimeStatus::Terminal(RuntimeTerminalReason::ProducerContractViolation(
+                runenui_core::ProducerContractViolation {
+                    kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
+                    phase: runenui_core::ProducerPhase::ApplicationUpdate,
+                    component: runenui_core::BudgetComponent::QueueFrontier,
+                    declared: 8,
+                    attempted: Some(25),
+                }
+            ))
+        );
+        assert!(fixture.runtime.pending_host_requests().is_empty());
+        assert!(matches!(
+            fixture
+                .runtime
+                .complete_host_request(&fixture.token, Response::Number(7)),
+            Err(HostResponseError::Terminal { response: Response::Number(7), .. })
+        ));
+        assert!(matches!(
+            fixture.sink.try_send(Arc::new(8_u8)),
+            Err(SendSubscriptionSinkError::Closed(_) | SendSubscriptionSinkError::Stale(_))
+        ));
+        let job = fixture.jobs.borrow_mut().pop().unwrap_or_else(|| unreachable!());
+        assert!(matches!(mixed_run_ready(job), Err(SendTaskCompletionError::Stale(_)
+            | SendTaskCompletionError::Closed(_))));
+        assert_eq!(fixture.send_maps.get(), 0);
+        assert_eq!(fixture.subscription_maps.get(), 0);
+        assert_eq!(fixture.timer_fires.get(), 0);
+        if trace_capacity > 0 {
+            assert_eq!(
+                fixture.runtime.trace().kinds().filter(|kind| matches!(
+                    kind,
+                    TraceRecordKind::ActionSubmissionAccepted
+                )).count(),
+                2,
+                "only the two independently accepted actions existed"
+            );
+            assert!(!fixture.runtime.trace().kinds().any(|kind| matches!(
+                kind,
+                TraceRecordKind::WorkCancellationBound
+            )), "failed transaction's proposed cancels were never committed");
+        }
+        fixture
+            .runtime
+            .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("terminal queue is inert"));
+        assert_eq!(fixture.runtime.state().events, ["poison"]);
     }
 }
 
