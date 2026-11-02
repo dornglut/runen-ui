@@ -1459,7 +1459,8 @@ impl<Action> WorkQueue<Action> {
     /// terminal credits once per root, rather than rescanning every remaining
     /// generation on each individual lease release.
     ///
-    /// No registry or queue mutation occurs if the combined transfer fails.
+    /// All credit and global-reservation checks precede mutation. A malformed
+    /// source ledger cannot partially retire a generation.
     pub(crate) fn release_root_work_leases(
         &mut self,
         root: RootQuotaId,
@@ -1536,6 +1537,12 @@ impl<Action> WorkQueue<Action> {
             .and_then(|occupied| occupied.checked_add(future_after))
             .is_none_or(|occupied| occupied > quota.limit)
         {
+            return Err(QueueReservationError::Stale);
+        }
+
+        // A malformed global reservation must not make idle-root closure fail
+        // only after the generation maps and credits have been mutated.
+        if self.reserved < remaining {
             return Err(QueueReservationError::Stale);
         }
 
@@ -3337,6 +3344,22 @@ mod reservation_tests {
             .get_mut(&root.quota())
             .expect("test restores internal ledger")
             .pending_envelopes = 0;
+        queue.reserved = 2; // Deliberately malformed global reservation.
+        assert_eq!(
+            queue.release_root_work_leases(root.quota(), &generations),
+            Err(QueueReservationError::Stale),
+            "unreserved final credits cannot partially close the root"
+        );
+        let quota = queue
+            .root_quotas
+            .get(&root.quota())
+            .expect("root unchanged");
+        assert_eq!(quota.remaining, 0);
+        assert_eq!(quota.live_work_leases, 2);
+        assert!(quota.local_tasks.contains_key(&generations[0]));
+        assert!(quota.framework_services.contains_key(&generations[1]));
+        assert_eq!(queue.reserved, 2);
+        queue.reserved = 4;
         queue
             .release_root_work_leases(root.quota(), &generations)
             .expect("restored conservation permits a complete release");
