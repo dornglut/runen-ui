@@ -274,6 +274,78 @@ fn mounted_work_frontier_exact_fit_admits_and_runs_task() {
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 }
 
+#[derive(Debug)]
+struct MountAction;
+
+impl Widget<()> for MountAction {
+    type State = ();
+
+    fn create_state(&self) {}
+
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        (): &(),
+    ) -> runenui_core::WidgetProducerBudget {
+        if phase == runenui_core::WidgetProducerPhase::Mount {
+            runenui_core::WidgetProducerBudget::new(1)
+        } else {
+            runenui_core::WidgetProducerBudget::new(0)
+        }
+    }
+
+    fn mount(&self, (): &mut (), context: &mut WidgetMountContext<()>) {
+        assert!(context.try_emit(()).is_ok());
+    }
+}
+
+struct MountActionApp;
+
+impl UiApp for MountActionApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn initial_producer_budget(_: &()) -> ProducerBudget {
+        ProducerBudget::new(2, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+    }
+
+    fn action_producer_budget(_: &(), (): &()) -> ProducerBudget {
+        ProducerBudget::new(3, 1).with_subscriptions(0, 0)
+    }
+
+    fn interaction_producer_budget(_: &()) -> ProducerBudget {
+        ProducerBudget::new(1, 0)
+    }
+
+    fn root(_: &()) -> impl View<()> {
+        Element::new(MountAction)
+    }
+
+    fn update(_: &mut (), (): ()) {}
+}
+
+#[test]
+fn mounted_initial_action_cannot_exceed_its_causal_root_profile() {
+    let error = AppRuntime::<MountActionApp>::mount(())
+        .err()
+        .unwrap_or_else(|| unreachable!("the mounted action's child profile exceeds its root"));
+    assert!(matches!(
+        error.kind(),
+        InitialAdmissionErrorKind::ProducerContractViolation(
+            runenui_core::ProducerContractViolation {
+                kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
+                phase: runenui_core::ProducerPhase::InitialEffects,
+                component: runenui_core::BudgetComponent::QueueFrontier,
+                declared: 2,
+                attempted: Some(3),
+            }
+        )
+    ));
+}
+
 struct State {
     identity: Box<u64>,
     callbacks: Rc<Cell<usize>>,
