@@ -270,7 +270,7 @@ impl<Action> MountedTree<Action> {
 
     #[cfg(test)]
     pub(crate) fn reconcile(&mut self, root: Element<Action>) -> ReconcileStats<Action> {
-        let mut before_unmount = |_: &MountedNodeId| {};
+        let mut before_unmount = |_: &MountedNodeId| Ok(());
         self.reconcile_with_before_unmount(root, &mut before_unmount)
     }
 
@@ -278,7 +278,7 @@ impl<Action> MountedTree<Action> {
     pub(crate) fn reconcile_with_before_unmount(
         &mut self,
         root: Element<Action>,
-        before_unmount: &mut dyn FnMut(&MountedNodeId),
+        before_unmount: &mut dyn FnMut(&MountedNodeId) -> Result<(), ()>,
     ) -> ReconcileStats<Action> {
         self.reconcile_with_before_unmount_and_public_slot_limit(
             root,
@@ -293,7 +293,7 @@ impl<Action> MountedTree<Action> {
         &mut self,
         root: Element<Action>,
         public_slot_limit: u64,
-        before_unmount: &mut dyn FnMut(&MountedNodeId),
+        before_unmount: &mut dyn FnMut(&MountedNodeId) -> Result<(), ()>,
     ) -> Result<ReconcileStats<Action>, MountedIdentityExhausted> {
         let plan = self.plan_reconciliation(root, public_slot_limit)?;
         self.apply_reconciliation(plan, before_unmount)
@@ -642,8 +642,69 @@ mod tests {
 
         mounted.reconcile_with_before_unmount(text("replacement").into_element(), &mut |_| {
             invalidated.set(true);
+            Ok(())
         });
         assert!(invalidated.get());
+    }
+
+    #[derive(Debug)]
+    struct UnmountAbortProbe(Rc<Cell<usize>>);
+
+    impl Widget<()> for UnmountAbortProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn producer_budget(
+            &self,
+            _: runenui_core::WidgetProducerPhase,
+            _: &Self::State,
+        ) -> runenui_core::WidgetProducerBudget {
+            runenui_core::WidgetProducerBudget::new(0)
+        }
+
+        fn unmount(&self, (): &mut Self::State, _: &mut WidgetUnmountContext) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+
+    #[test]
+    fn failed_owner_retirement_aborts_sibling_unmount_hooks_before_terminal_cleanup() {
+        let unmounted = Rc::new(Cell::new(0));
+        let owners = ["first", "second", "third"]
+            .into_iter()
+            .map(|key| {
+                Element::new(UnmountAbortProbe(Rc::clone(&unmounted)))
+                    .key(key)
+                    .into_element()
+            })
+            .collect::<Vec<_>>();
+        let (mut mounted, _) = mount_tree(column(owners).key("root").into_element());
+        let plan = mounted
+            .plan_reconciliation(
+                column(Vec::<Element<()>>::new()).key("root").into_element(),
+                u64::from(u32::MAX) + 1,
+            )
+            .unwrap_or_else(|_| unreachable!("removal identities fit"));
+
+        let callbacks = Cell::new(0);
+        let result = mounted.apply_reconciliation(plan, &mut |_| {
+            callbacks.set(callbacks.get() + 1);
+            if callbacks.get() == 2 {
+                Err(())
+            } else {
+                Ok(())
+            }
+        });
+        assert!(result.is_err(), "the second owner refuses before its hook");
+        assert_eq!(callbacks.get(), 2, "later siblings cannot run callbacks");
+        assert_eq!(unmounted.get(), 1, "only the accepted owner was unmounted");
+
+        // Terminal cleanup may still run the remaining hooks after the
+        // failed live reconciliation has stopped, without duplicating the
+        // already retired first hook.
+        mounted.shutdown();
+        assert_eq!(unmounted.get(), 3);
     }
 
     #[test]

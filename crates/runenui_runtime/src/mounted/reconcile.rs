@@ -661,7 +661,7 @@ impl<Action> MountedTree<Action> {
     pub(crate) fn apply_reconciliation(
         &mut self,
         plan: ReconciliationPlan<Action>,
-        before_unmount: &mut dyn FnMut(&MountedNodeId),
+        before_unmount: &mut dyn FnMut(&MountedNodeId) -> Result<(), ()>,
     ) -> Result<ReconcileStats<Action>, ReconciliationApplyError> {
         let ReconciliationPlan {
             root,
@@ -683,7 +683,7 @@ impl<Action> MountedTree<Action> {
         &mut self,
         plan: PlannedNode<Action>,
         stats: &mut ReconcileStats<Action>,
-        before_unmount: &mut dyn FnMut(&MountedNodeId),
+        before_unmount: &mut dyn FnMut(&MountedNodeId) -> Result<(), ()>,
     ) -> Result<MountedNodeId, ReconciliationApplyError> {
         match plan {
             PlannedNode::Mount { parent, incoming } => {
@@ -701,7 +701,7 @@ impl<Action> MountedTree<Action> {
                     &path,
                     stats,
                     before_unmount,
-                );
+                )?;
                 Ok(self.mount_incoming(parent, incoming, stats))
             }
             PlannedNode::Retain {
@@ -720,7 +720,7 @@ impl<Action> MountedTree<Action> {
                         &removal.path,
                         stats,
                         before_unmount,
-                    );
+                    )?;
                 }
                 let new_children = children
                     .into_iter()

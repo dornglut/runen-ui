@@ -302,9 +302,11 @@ fn process_application_action_inner<App: UiApp>(
             for (root, retired) in retired_by_root {
                 if queue.release_root_work_leases(root, &retired).is_err() {
                     root_lease_release_failed = true;
+                    return Err(());
                 }
             }
             lifecycle_invalidated.extend(generations);
+            Ok(())
         })
     };
     if root_lease_release_failed {
