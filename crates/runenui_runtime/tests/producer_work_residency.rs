@@ -401,6 +401,95 @@ fn initial_residency_refusal_returns_owned_state_before_initial_producers() {
 }
 
 #[test]
+fn mixed_predecessor_roots_keep_work_and_owned_refusals_isolated() {
+    for trace_capacity in [0, 256] {
+        let ready = Rc::new(Cell::new(false));
+        let wake = Rc::new(RefCell::new(None));
+        let mut app = AppRuntime::<App>::mount_with_config(
+            State {
+                started: Vec::new(),
+                ready: Rc::clone(&ready),
+                wake: Rc::clone(&wake),
+            },
+            RuntimeConfig::default()
+                .with_limits(
+                    RuntimeLimits::default()
+                        .with_waiting_envelopes(16)
+                        .with_transaction_outputs(8)
+                        .with_local_tasks(1)
+                        .with_host_requests(1)
+                        .with_timers(1)
+                        .with_subscriptions(1),
+                )
+                .with_trace_config(TraceConfig::new(trace_capacity)),
+        )
+        .unwrap_or_else(|error| unreachable!("pure initial producer fits: {error}"));
+        app.pump(FULL).unwrap_or_else(|_| unreachable!());
+
+        let host = WorkResidencyBudget::new(0, 0, 0, 0, 1, 0);
+        let timer = WorkResidencyBudget::new(0, 0, 1, 0, 0, 0);
+        let subscription = WorkResidencyBudget::new(0, 0, 0, 1, 0, 0);
+        app.submit_action(Action::Start(Box::new(11)))
+            .unwrap_or_else(|_| unreachable!("predecessor owns a future local task"));
+        for claim in [host, timer, subscription] {
+            app.submit_action(Action::Claim(claim))
+                .unwrap_or_else(|_| unreachable!("distinct family capacity is independent"));
+        }
+        let accepted_before = app
+            .trace()
+            .kinds()
+            .filter(|kind| matches!(kind, TraceRecordKind::ActionSubmissionAccepted))
+            .count();
+
+        refused_start(&mut app, 12);
+        let Err(refusal) = app.submit_action(Action::Claim(host)) else {
+            unreachable!("the queued host root retains its reservation")
+        };
+        assert_eq!(
+            refusal.kind(),
+            SubmitActionErrorKind::WorkCapacity(WorkCapacityFamily::HostRequest)
+        );
+        let Action::Claim(returned) = refusal.into_action() else {
+            unreachable!("the same original claim is returned")
+        };
+        assert_eq!(returned, host);
+        assert_eq!(
+            app.trace()
+                .kinds()
+                .filter(|kind| matches!(kind, TraceRecordKind::ActionSubmissionAccepted))
+                .count(),
+            accepted_before,
+            "refusal must not accept a sequence or disturb prior acceptance"
+        );
+        assert!(app.state().started.is_empty(), "all refusals precede update");
+
+        app.submit_action(Action::Noop)
+            .unwrap_or_else(|_| unreachable!("work-free follower is admissible"));
+        app.pump(FULL).unwrap_or_else(|_| unreachable!());
+        assert_eq!(app.state().started, [11]);
+        assert_eq!(app.status(), RuntimeStatus::Running);
+        refused_start(&mut app, 13);
+
+        app.submit_action(Action::Claim(host))
+            .unwrap_or_else(|_| unreachable!("completed host claim returns capacity"));
+        app.pump(FULL).unwrap_or_else(|_| unreachable!());
+        ready.set(true);
+        wake.borrow_mut()
+            .take()
+            .unwrap_or_else(|| unreachable!("pending predecessor registered a waker"))
+            .wake();
+        app.pump(FULL).unwrap_or_else(|_| unreachable!());
+        app.submit_action(Action::Start(Box::new(14)))
+            .unwrap_or_else(|_| unreachable!("completed local task releases its claim"));
+        app.pump(FULL).unwrap_or_else(|_| unreachable!());
+        assert_eq!(app.state().started, [11, 14]);
+        assert_eq!(app.status(), RuntimeStatus::Running);
+        app.shutdown()
+            .unwrap_or_else(|_| unreachable!("shutdown observation succeeds"));
+    }
+}
+
+#[test]
 fn all_six_family_claims_are_independent_and_released_with_queued_roots() {
     let claims = [
         (
