@@ -3508,7 +3508,10 @@ mod reservation_tests {
             .expect("one local-task terminal credit");
         // Inject a second family credit for the same generation, keeping the
         // root's total future credit count conserved to isolate the alias.
-        let quota = queue.root_quotas.get_mut(&root.quota()).expect("root lives");
+        let quota = queue
+            .root_quotas
+            .get_mut(&root.quota())
+            .expect("root lives");
         quota.remaining -= 1;
         quota.host_requests.insert(
             generation,
@@ -3537,7 +3540,10 @@ mod reservation_tests {
         assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
         assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
 
-        let quota = queue.root_quotas.get_mut(&root.quota()).expect("restore fixture");
+        let quota = queue
+            .root_quotas
+            .get_mut(&root.quota())
+            .expect("restore fixture");
         quota.host_requests.remove(&generation);
         quota.remaining += 1;
         queue
