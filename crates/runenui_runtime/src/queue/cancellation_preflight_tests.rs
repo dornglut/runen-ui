@@ -35,7 +35,7 @@ fn fixture(root_count: usize) -> LedgerFixture {
             .expect("generations fit")
             .0;
     let mut roots = Vec::with_capacity(root_count);
-    for group in generations.chunks_exact(5) {
+    for group in generations.as_chunks::<5>().0 {
         let reservation = queue.reserve(8).expect("eight terminal credits fit");
         let root = reservation.quota();
         queue
@@ -226,7 +226,7 @@ fn cross_family_preflight_rejects_stale_terminal_authority_in_all_five_families(
                     .host_requests
                     .get_mut(&generation)
                     .expect("host")
-                    .cancellation = false
+                    .cancellation = false;
             }
             1 => {
                 quota
@@ -240,21 +240,21 @@ fn cross_family_preflight_rejects_stale_terminal_authority_in_all_five_families(
                     .local_tasks
                     .get_mut(&generation)
                     .expect("local")
-                    .invalidated = true
+                    .invalidated = true;
             }
             3 => {
                 quota
                     .send_tasks
                     .get_mut(&generation)
                     .expect("send")
-                    .invalidated = true
+                    .invalidated = true;
             }
             4 => {
                 quota
                     .timers
                     .get_mut(&generation)
                     .expect("timer")
-                    .invalidated = true
+                    .invalidated = true;
             }
             _ => unreachable!("five families"),
         }
@@ -315,6 +315,56 @@ fn cross_root_or_cross_family_generation_alias_refuses_before_credit_consumption
         assert_preserved(&fixture, 0);
         assert_preserved(&fixture, 1);
     }
+}
+
+#[test]
+fn every_two_root_family_subset_preserves_exact_cancellation_and_response_demand() {
+    let fixture = fixture(2);
+    for root in [fixture.roots[0], fixture.roots[1], fixture.independent] {
+        for mask in 0..(1usize << fixture.generations.len()) {
+            let mut selected = Vec::new();
+            let mut counts = [0usize; 5];
+            let mut releases = [0usize; 2];
+            for (index, generation) in fixture.generations.iter().enumerate() {
+                if mask & (1usize << index) == 0 {
+                    continue;
+                }
+                selected.push(*generation);
+                let family = index % 5;
+                counts[family] += 1;
+                if fixture.roots[index / 5] == root {
+                    if family == 0 {
+                        releases[0] += 1;
+                    } else if family == 1 {
+                        releases[1] += 1;
+                    }
+                }
+            }
+            let (cancelled, returned) = fixture
+                .queue
+                .preflight_root_cancellations(&selected, root)
+                .expect("all valid generation subsets admit");
+            assert_eq!(
+                [
+                    cancelled.host_requests,
+                    cancelled.framework_services,
+                    cancelled.local_tasks,
+                    cancelled.send_tasks,
+                    cancelled.timers,
+                ],
+                counts,
+                "wrong cross-family count for mask {mask}"
+            );
+            assert_eq!(
+                [returned.host_requests, returned.framework_services],
+                releases,
+                "a response credit belongs only to the invoking root"
+            );
+        }
+    }
+    assert_eq!(fixture.queue.reserved, 17);
+    assert_preserved(&fixture, 0);
+    assert_preserved(&fixture, 1);
 }
 
 /// Opt-in current-head release-mode diagnostic; not a latency acceptance limit.
