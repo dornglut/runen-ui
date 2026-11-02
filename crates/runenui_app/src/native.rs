@@ -1314,10 +1314,9 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
                     if !self.cancel_keyboard_authority(event_loop) {
                         return;
                     }
-                    if !self.handle_native_point_authority_loss(
-                        event_loop,
-                        "native window occluded",
-                    ) {
+                    if !self
+                        .handle_native_point_authority_loss(event_loop, "native window occluded")
+                    {
                         return;
                     }
                     self.modifiers = KeyModifiers::NONE;
