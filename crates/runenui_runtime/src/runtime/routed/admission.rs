@@ -594,10 +594,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 None,
             ));
         };
-        let default_nonstart_outputs =
-            mandatory_default_outputs.checked_sub(facts.default_queue_start_outputs);
-        let output_count =
-            default_nonstart_outputs.and_then(|defaults| max_outputs.checked_add(defaults));
+        let output_count = max_outputs.checked_add(mandatory_default_outputs);
         let start_budget_exceeded = [
             runenui_core::WorkFamily::LocalTask,
             runenui_core::WorkFamily::SendTask,
