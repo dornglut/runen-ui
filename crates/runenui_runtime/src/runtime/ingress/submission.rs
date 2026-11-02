@@ -1441,16 +1441,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         )
                         .is_none_or(|required| required > profile.work_starts().for_family(family))
                 });
-        let output_requirement =
-            route_budget
-                .outputs
-                .checked_add(extra_outputs)
-                .and_then(|required| {
-                    route_budget
-                        .starts
-                        .iter()
-                        .try_fold(required, |sum, count| sum.checked_add(*count))
-                });
+        let output_requirement = route_budget.outputs.checked_add(extra_outputs);
         if start_exceeds || output_requirement.is_none_or(|required| required > profile.outputs()) {
             return false;
         }

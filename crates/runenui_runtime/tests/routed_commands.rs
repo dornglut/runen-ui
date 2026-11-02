@@ -1,24 +1,25 @@
 #![allow(refining_impl_trait)]
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
+    time::Duration,
 };
 
 use runenui_core::{
     ChildBearingWidget, CommandDerivation, CommandOrigin, Element, EventContext, EventPhase,
-    NoHostProtocol, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
+    NoHostProtocol, SemanticCommand, TimerEffect, UiApp, UiEvent, View, Widget, WidgetActivation,
     WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetInvalidation,
-    children, container,
+    WorkResidencyBudget, WorkStartBudget, children, container,
 };
 use runenui_runtime::{
     AppRuntime, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason,
-    SubmitCommandErrorKind, TraceConfig, TraceRecordKind, TraceRoutedAdmissionRejection,
-    TraceRoutedIntegrityFailure, TraceTargetRejection,
+    SubmitAutomationErrorKind, SubmitCommandErrorKind, TraceConfig, TraceRecordKind,
+    TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceTargetRejection,
 };
 
 #[derive(Debug)]
@@ -1557,4 +1558,184 @@ fn accepted_command_can_become_stale_before_processing() {
         })
         .unwrap_or_else(|| unreachable!("processing rejection is traced"));
     assert_eq!(processing.causal_parent(), Some(acceptance.sequence()));
+}
+
+#[derive(Debug)]
+struct TimerBudgetProbe {
+    event_calls: Rc<Cell<usize>>,
+    accepted_timers: Rc<Cell<usize>>,
+}
+
+impl Widget<()> for TimerBudgetProbe {
+    type State = ();
+
+    fn create_state(&self) {}
+
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        (): &(),
+    ) -> runenui_core::WidgetProducerBudget {
+        if phase == runenui_core::WidgetProducerPhase::Event {
+            runenui_core::WidgetProducerBudget::new(1)
+                .with_work_starts(WorkStartBudget::new(0, 0, 1, 0, 0))
+        } else {
+            runenui_core::WidgetProducerBudget::new(0)
+        }
+    }
+
+    fn event(
+        &mut self,
+        (): &mut (),
+        event: &UiEvent,
+        context: &mut EventContext<'_, ()>,
+    ) -> WidgetEventOutput {
+        if event
+            .as_semantic_command()
+            .is_some_and(|command| command.command() == SemanticCommand::OpenMenu)
+        {
+            self.event_calls.set(self.event_calls.get() + 1);
+            let accepted_timers = Rc::clone(&self.accepted_timers);
+            if context
+                .try_timer(TimerEffect::once(Duration::from_secs(60), || ()))
+                .is_ok()
+            {
+                accepted_timers.set(accepted_timers.get() + 1);
+            }
+        }
+        WidgetEventOutput::none()
+    }
+}
+
+struct TimerBudgetApp;
+
+struct TimerBudgetState {
+    interaction_outputs: usize,
+    event_calls: Rc<Cell<usize>>,
+    accepted_timers: Rc<Cell<usize>>,
+    updates: usize,
+}
+
+impl UiApp for TimerBudgetApp {
+    type State = TimerBudgetState;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn initial_producer_budget(_: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(WorkStartBudget::new(0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(_: &Self::State, (): &Self::Action) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_subscriptions(0, 0)
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(5, state.interaction_outputs)
+            .with_subscriptions(0, 0)
+            .with_work_starts(WorkStartBudget::new(0, 0, 1, 0, 0))
+            .with_work_residency(WorkResidencyBudget::new(0, 0, 1, 0, 0, 0))
+    }
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        Element::new(TimerBudgetProbe {
+            event_calls: Rc::clone(&state.event_calls),
+            accepted_timers: Rc::clone(&state.accepted_timers),
+        })
+        .id("routed.timer")
+    }
+
+    fn update(state: &mut Self::State, (): Self::Action) {
+        state.updates += 1;
+    }
+}
+
+fn run_timer_budget_profile(interaction_outputs: usize) -> TimerBudgetState {
+    let event_calls = Rc::new(Cell::new(0));
+    let accepted_timers = Rc::new(Cell::new(0));
+    TimerBudgetState {
+        interaction_outputs,
+        event_calls,
+        accepted_timers,
+        updates: 0,
+    }
+}
+
+#[test]
+fn routed_one_output_timer_start_profile_is_admitted_at_exact_authored_bound() {
+    let mut runtime = AppRuntime::<TimerBudgetApp>::mount(run_timer_budget_profile(1))
+        .unwrap_or_else(|error| unreachable!("initial timer-probe mount fits: {error}"));
+    runtime
+        .pump(PumpBudget::new(16, 16, 16, 16))
+        .unwrap_or_else(|_| unreachable!("initial mount settles"));
+    runtime
+        .submit_automation_command(
+            runenui_core::ElementId::new("routed.timer").unwrap_or_else(|_| unreachable!()),
+            SemanticCommand::OpenMenu,
+        )
+        .unwrap_or_else(|error| unreachable!("exact event output and timer start fit: {error}"));
+    runtime
+        .pump(PumpBudget::new(16, 16, 16, 16))
+        .unwrap_or_else(|_| unreachable!("routed timer transaction pumps"));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.state().event_calls.get(), 1);
+    assert_eq!(runtime.state().accepted_timers.get(), 1);
+    runtime
+        .advance_time(Duration::from_secs(61))
+        .unwrap_or_else(|_| unreachable!());
+    runtime
+        .pump(PumpBudget::new(16, 16, 16, 16))
+        .unwrap_or_else(|_| unreachable!("timer callback pumps"));
+    assert_eq!(runtime.state().updates, 1);
+}
+
+#[test]
+fn routed_one_extra_output_control_admits_timer_start_profile() {
+    let mut runtime = AppRuntime::<TimerBudgetApp>::mount(run_timer_budget_profile(2))
+        .unwrap_or_else(|error| unreachable!("initial timer-probe mount fits: {error}"));
+    runtime
+        .pump(PumpBudget::new(16, 16, 16, 16))
+        .unwrap_or_else(|_| unreachable!("initial mount settles"));
+    runtime
+        .submit_automation_command(
+            runenui_core::ElementId::new("routed.timer").unwrap_or_else(|_| unreachable!()),
+            SemanticCommand::OpenMenu,
+        )
+        .unwrap_or_else(|error| unreachable!("extra output covers current preflight: {error}"));
+    runtime
+        .pump(PumpBudget::new(16, 16, 16, 16))
+        .unwrap_or_else(|_| unreachable!("routed timer transaction pumps"));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert_eq!(runtime.state().event_calls.get(), 1);
+    assert_eq!(runtime.state().accepted_timers.get(), 1);
+}
+
+#[test]
+fn routed_zero_output_profile_refuses_before_callback_or_command_acceptance() {
+    let mut runtime = AppRuntime::<TimerBudgetApp>::mount(run_timer_budget_profile(0))
+        .unwrap_or_else(|error| unreachable!("initial timer-probe mount fits: {error}"));
+    runtime
+        .pump(PumpBudget::new(16, 16, 16, 16))
+        .unwrap_or_else(|_| unreachable!("initial mount settles"));
+    let Err(error) = runtime.submit_automation_command(
+        runenui_core::ElementId::new("routed.timer").unwrap_or_else(|_| unreachable!()),
+        SemanticCommand::OpenMenu,
+    ) else {
+        unreachable!("zero-output interaction profile cannot authorize timer output");
+    };
+    assert_eq!(
+        error.kind(),
+        &SubmitAutomationErrorKind::Command(SubmitCommandErrorKind::InvalidProducerProfile)
+    );
+    assert_eq!(runtime.state().event_calls.get(), 0);
+    assert_eq!(runtime.state().accepted_timers.get(), 0);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert!(
+        !runtime
+            .trace()
+            .kinds()
+            .any(|kind| matches!(kind, TraceRecordKind::CommandSubmissionAccepted))
+    );
 }
