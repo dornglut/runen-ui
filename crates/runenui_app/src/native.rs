@@ -700,7 +700,9 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
     }
 
     fn request_pending_redraw(&self) {
-        if self.visibility.suppresses_presentation() || !self.presentation_retry.is_due(Instant::now()) {
+        if self.visibility.suppresses_presentation()
+            || !self.presentation_retry.is_due(Instant::now())
+        {
             return;
         }
         if (self.pending_frame.is_some()
@@ -1118,7 +1120,9 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
             }
             return;
         }
-        if self.visibility.suppresses_presentation() || !self.presentation_retry.is_due(Instant::now()) {
+        if self.visibility.suppresses_presentation()
+            || !self.presentation_retry.is_due(Instant::now())
+        {
             return;
         }
         #[cfg(all(debug_assertions, feature = "internal-test-seams"))]
@@ -1325,7 +1329,9 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
             } if !self.visibility.suppresses_presentation() => {
                 self.handle_keyboard_input(event_loop, device_id, &event, is_synthetic);
             }
-            WindowEvent::ModifiersChanged(modifiers) if !self.visibility.suppresses_presentation() => {
+            WindowEvent::ModifiersChanged(modifiers)
+                if !self.visibility.suppresses_presentation() =>
+            {
                 self.modifiers = translate_modifiers(modifiers.state());
             }
             WindowEvent::Focused(false) => {
@@ -1375,12 +1381,12 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
         // A recoverable presentation failure schedules a native-only wake.
         // It never re-enters the runtime, invents a publication, or polls
         // continuously while a surface is occluded or timing out.
-        let presentation_deadline = if self.visibility.suppresses_presentation() || self.pending_frame.is_none()
-        {
-            None
-        } else {
-            self.presentation_retry.future_deadline(now)
-        };
+        let presentation_deadline =
+            if self.visibility.suppresses_presentation() || self.pending_frame.is_none() {
+                None
+            } else {
+                self.presentation_retry.future_deadline(now)
+            };
         let next_wake = future_deadline
             .into_iter()
             .chain(presentation_deadline)
