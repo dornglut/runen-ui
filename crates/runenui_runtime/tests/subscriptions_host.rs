@@ -560,37 +560,32 @@ fn direct_mapped_host_undercovered_child_terminalizes_without_unwind() {
     for trace_capacity in [0, 256] {
         let (mut runtime, mapper_calls, token) = mapped_host_profile_runtime(true, trace_capacity);
         let outcome = runtime.complete_host_request(&token, Response::Number(7));
+        let expected_reason = RuntimeTerminalReason::ProducerContractViolation(
+            runenui_core::ProducerContractViolation {
+                kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
+                phase: runenui_core::ProducerPhase::ApplicationUpdate,
+                component: runenui_core::BudgetComponent::QueueFrontier,
+                declared: 3,
+                attempted: Some(4),
+            },
+        );
         assert!(matches!(
             outcome,
-            Err(HostResponseError::MappedActionTerminal(
-                RuntimeTerminalReason::ProducerContractViolation(
-                    runenui_core::ProducerContractViolation {
-                        kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
-                        phase: runenui_core::ProducerPhase::ApplicationUpdate,
-                        component: runenui_core::BudgetComponent::QueueFrontier,
-                        declared: 3,
-                        attempted: Some(4),
-                    }
-                )
-            ))
+            Err(HostResponseError::MappedActionTerminal(reason)) if reason == expected_reason
         ));
         assert_eq!(mapper_calls.get(), 1, "mapping consumed the response once");
         assert!(
             runtime.state().values.is_empty(),
             "no child application update executed"
         );
-        assert_eq!(
-            runtime.status(),
-            RuntimeStatus::Terminal(RuntimeTerminalReason::ProducerContractViolation(
-                runenui_core::ProducerContractViolation {
-                    kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
-                    phase: runenui_core::ProducerPhase::ApplicationUpdate,
-                    component: runenui_core::BudgetComponent::QueueFrontier,
-                    declared: 3,
-                    attempted: Some(4),
-                }
-            ))
-        );
+        assert_eq!(runtime.status(), RuntimeStatus::Terminal(expected_reason));
+        assert!(matches!(
+            runtime.complete_host_request(&token, Response::Number(8)),
+            Err(HostResponseError::Terminal {
+                response: Response::Number(8),
+                reason,
+            }) if reason == expected_reason
+        ));
         assert!(runtime.pending_host_requests().is_empty());
         assert_eq!(runtime.__host_response_slot_count_for_test(), 0);
         if trace_capacity != 0 {
@@ -603,9 +598,10 @@ fn direct_mapped_host_undercovered_child_terminalizes_without_unwind() {
                 kind,
                 runenui_runtime::TraceRecordKind::WorkCompletionMapped
             )));
-            assert!(kinds.iter().any(|kind| matches!(
+            assert!(runtime.trace().kinds().any(|kind| matches!(
                 kind,
-                runenui_runtime::TraceRecordKind::RuntimeTerminal { .. }
+                runenui_runtime::TraceRecordKind::RuntimeTerminal { reason }
+                    if *reason == expected_reason
             )));
             assert!(!kinds.iter().any(|kind| matches!(
                 kind,
