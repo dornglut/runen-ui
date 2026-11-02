@@ -26,7 +26,7 @@ impl<A: UiApp> PreparedApp<A> {
 
     fn mount(self) -> AppRuntime<A> {
         AppRuntime::<A>::mount_with_config(self.state, self.config)
-            .expect("declared one-text-leaf initial producer fits the default limits")
+            .unwrap_or_else(|error| unreachable!("declared initial producer must fit: {error}"))
     }
 }
 
@@ -44,7 +44,7 @@ impl UiApp for NumberApp {
         probe_budget()
     }
 
-    fn action_producer_budget(_: &Self::State, _: &Self::Action) -> ProducerBudget {
+    fn action_producer_budget(_: &Self::State, (): &Self::Action) -> ProducerBudget {
         probe_budget()
     }
 
@@ -74,7 +74,7 @@ impl UiApp for MessageApp {
         probe_budget()
     }
 
-    fn action_producer_budget(_: &Self::State, _: &Self::Action) -> ProducerBudget {
+    fn action_producer_budget(_: &Self::State, (): &Self::Action) -> ProducerBudget {
         probe_budget()
     }
 
@@ -235,7 +235,7 @@ fn ordinary_self_state_ui_model_infers_app_type_without_a_marker() {
     assert_eq!(title, Some("Counter"));
 
     let mut runtime = AppRuntime::<Counter>::mount(model)
-        .expect("typed self-state UI model admits its declared initial producer");
+        .unwrap_or_else(|error| unreachable!("self-state initial producer must fit: {error}"));
     assert_eq!(runtime.state().count, 0);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 
