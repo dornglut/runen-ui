@@ -5,7 +5,12 @@ set -euo pipefail
 
 wm_pid=""
 app_pid=""
+focus_peer_pid=""
 cleanup() {
+  if [[ -n "$focus_peer_pid" ]]; then
+    kill "$focus_peer_pid" 2>/dev/null || true
+    wait "$focus_peer_pid" 2>/dev/null || true
+  fi
   if [[ -n "$app_pid" ]]; then
     kill "$app_pid" 2>/dev/null || true
     wait "$app_pid" 2>/dev/null || true
@@ -207,6 +212,84 @@ for entry in "fluent_counter:Counter" "fluent_status:Status"; do
       exit 1
     fi
     echo "Native X11 hide/restore and post-restore keyboard action PASS"
+
+    # A different real native application owns the focus while the original
+    # button's Space Down lifetime is interrupted. This is an OS focus-change
+    # test, not a synthetic runtime cancellation or semantic activation.
+    peer_log="${RUNNER_TEMP:-/tmp}/fluent_counter_focus_peer.log"
+    env -u RUNENUI_NATIVE_TEST_RENDER_FAULTS ./target/debug/fluent_counter >"$peer_log" 2>&1 &
+    focus_peer_pid="$!"
+    peer_id=""
+    for _ in $(seq 1 100); do
+      peer_id="$(xdotool search --onlyvisible --name "^Counter$" 2>/dev/null | head -n 1 || true)"
+      if [[ -n "$peer_id" ]]; then
+        break
+      fi
+      if ! kill -0 "$focus_peer_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$peer_id" ]]; then
+      echo "Independent native focus peer did not open" >&2
+      cat "$peer_log" >&2
+      exit 1
+    fi
+
+    xdotool windowactivate --sync "$window_id"
+    xdotool keydown --clearmodifiers space
+    sleep 0.15
+    held_down_count="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+    xdotool windowactivate --sync "$peer_id"
+    if [[ "$(xdotool getwindowfocus)" != "$peer_id" ]]; then
+      echo "X11 did not transfer focus to the second native process" >&2
+      exit 1
+    fi
+    xdotool keyup --clearmodifiers space
+    sleep 0.3
+    after_release_count="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+    if (( after_release_count != held_down_count )); then
+      echo "Unfocused native app received a stray Space release activation" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+
+    xdotool windowactivate --sync "$window_id"
+    xdotool key --clearmodifiers space
+    focus_recovered=""
+    for _ in $(seq 1 50); do
+      fresh_count="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+      if (( fresh_count > after_release_count )); then
+        focus_recovered=yes
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$focus_recovered" ]]; then
+      echo "Native keyboard lifetime failed to recover after external focus handoff" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    wmctrl -ic "$peer_id"
+    peer_closed=""
+    for _ in $(seq 1 100); do
+      if ! kill -0 "$focus_peer_pid" 2>/dev/null; then
+        peer_closed=yes
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$peer_closed" ]]; then
+      echo "Independent native focus peer did not exit on WM close" >&2
+      cat "$peer_log" >&2
+      exit 1
+    fi
+    wait "$focus_peer_pid" || { cat "$peer_log" >&2; exit 1; }
+    focus_peer_pid=""
+    echo "Native two-process focus handoff, key cancellation and recovery PASS"
   fi
   if ! kill -0 "$app_pid" 2>/dev/null; then
     echo "Native process failed during resize/idle: ${executable}" >&2

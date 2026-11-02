@@ -46,7 +46,10 @@ actions and an initial 1500-ms timer. The
 workflow builds both and checks that visible native windows start, resize and
 exit after OS close under Xvfb and software Vulkan. For `fluent_status`,
 it additionally unmaps and remaps the same native X11 window, then requires
-a new OS keyboard-triggered action following restoration. An additional debug-only,
+a new OS keyboard-triggered action following restoration. A separate Counter
+window then receives OS focus while Status has a held Space key; the test
+asserts no unfocused release activation and confirms new keyboard input after
+focus returns, without manipulating runtime internals. An additional debug-only,
 explicit `internal-test-seams` X11 run injects each recoverable *host-visible*
 surface status (timeout, occlusion, outdated, suboptimal, unconfigured, lost)
 before the first successful Present, then requires the very same immutable
