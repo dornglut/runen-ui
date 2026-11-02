@@ -986,6 +986,65 @@ fn mixed_public_cancellation_preserves_independent_fifo_root_and_stales_sources(
 }
 
 #[test]
+fn mixed_public_committed_host_child_precedes_later_cancellation_and_survivor() {
+    for trace_capacity in [0, 512] {
+        let mut fixture = mixed_fixture(trace_capacity);
+        fixture
+            .runtime
+            .complete_host_request(&fixture.token, Response::Number(7))
+            .unwrap_or_else(|_| unreachable!("host child is covered by its initial root"));
+        assert!(
+            fixture.runtime.state().events.is_empty(),
+            "accepted callback still waits in the FIFO"
+        );
+        fixture
+            .runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("host child executes"));
+        assert_eq!(fixture.runtime.state().events, ["unexpected"]);
+        assert_eq!(fixture.runtime.status(), RuntimeStatus::Running);
+        fixture
+            .runtime
+            .submit_action(MixedAction::Cancel)
+            .unwrap_or_else(|_| unreachable!("independent cancellation root fits"));
+        fixture
+            .runtime
+            .submit_action(MixedAction::Survivor)
+            .unwrap_or_else(|_| unreachable!("independent survivor fits"));
+        fixture
+            .runtime
+            .pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX))
+            .unwrap_or_else(|_| unreachable!("later cancellation preserves committed child"));
+        assert_eq!(
+            fixture.runtime.state().events,
+            ["unexpected", "cancel", "survivor"],
+            "later cancellation does not roll back an already committed host child"
+        );
+        assert_eq!(fixture.runtime.status(), RuntimeStatus::Running);
+        let job = fixture.jobs.borrow_mut().pop().unwrap_or_else(|| unreachable!());
+        assert!(matches!(
+            mixed_run_ready(job),
+            Err(SendTaskCompletionError::Stale(_))
+        ));
+        assert_eq!(fixture.send_maps.get(), 0);
+        assert_eq!(fixture.subscription_maps.get(), 0);
+        assert_eq!(fixture.timer_fires.get(), 0);
+        if trace_capacity > 0 {
+            assert_eq!(
+                fixture
+                    .runtime
+                    .trace()
+                    .kinds()
+                    .filter(|kind| matches!(kind, TraceRecordKind::ActionSubmissionAccepted))
+                    .count(),
+                3,
+                "host callback, later cancel, and independent survivor were accepted"
+            );
+        }
+    }
+}
+
+#[test]
 fn mixed_public_postmutation_failure_discards_provisional_cancellations_and_pending_root() {
     for trace_capacity in [0, 512] {
         let mut fixture = mixed_fixture(trace_capacity);
