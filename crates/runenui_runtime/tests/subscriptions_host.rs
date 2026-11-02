@@ -794,19 +794,21 @@ impl UiApp for MixedApp {
             return;
         }
         let subscription_maps = Rc::clone(&state.subscription_maps);
-        assert!(subscriptions
-            .try_send(
-                key("mixed.subscription"),
-                0,
-                MixedSource {
-                    sink: Arc::clone(&state.sink),
-                },
-                move |_| {
-                    subscription_maps.set(subscription_maps.get() + 1);
-                    MixedAction::Unexpected
-                },
-            )
-            .is_ok());
+        assert!(
+            subscriptions
+                .try_send(
+                    key("mixed.subscription"),
+                    0,
+                    MixedSource {
+                        sink: Arc::clone(&state.sink),
+                    },
+                    move |_| {
+                        subscription_maps.set(subscription_maps.get() + 1);
+                        MixedAction::Unexpected
+                    },
+                )
+                .is_ok()
+        );
     }
 
     fn update(
@@ -823,7 +825,8 @@ impl UiApp for MixedApp {
                 // Submit through a real send-subscription ingress while UiApp::update
                 // is still active. The later cancellation/terminal transition
                 // must prevent this accepted but unmapped item from reentering.
-                let sink = state.sink
+                let sink = state
+                    .sink
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .as_ref()
@@ -947,8 +950,15 @@ fn mixed_public_cancellation_preserves_independent_fifo_root_and_stales_sources(
             unreachable!("removed subscription is stale without terminating runtime")
         };
         assert!(Arc::ptr_eq(&item, &recovered));
-        let job = fixture.jobs.borrow_mut().pop().unwrap_or_else(|| unreachable!());
-        assert!(matches!(mixed_run_ready(job), Err(SendTaskCompletionError::Stale(_))));
+        let job = fixture
+            .jobs
+            .borrow_mut()
+            .pop()
+            .unwrap_or_else(|| unreachable!());
+        assert!(matches!(
+            mixed_run_ready(job),
+            Err(SendTaskCompletionError::Stale(_))
+        ));
         fixture
             .runtime
             .advance_time(Duration::from_millis(25))
@@ -965,10 +975,12 @@ fn mixed_public_cancellation_preserves_independent_fifo_root_and_stales_sources(
         assert_eq!(fixture.local_polls.get(), 0);
         if trace_capacity > 0 {
             assert_eq!(
-                fixture.runtime.trace().kinds().filter(|kind| matches!(
-                    kind,
-                    TraceRecordKind::ActionSubmissionAccepted
-                )).count(),
+                fixture
+                    .runtime
+                    .trace()
+                    .kinds()
+                    .filter(|kind| matches!(kind, TraceRecordKind::ActionSubmissionAccepted))
+                    .count(),
                 2
             );
         }
@@ -991,7 +1003,11 @@ fn mixed_public_postmutation_failure_discards_provisional_cancellations_and_pend
             .runtime
             .pump(PumpBudget::new(1, 0, 0, 0))
             .unwrap_or_else(|_| unreachable!("terminal pump observation"));
-        assert_eq!(fixture.runtime.state().events, ["poison"], "update is not rolled back");
+        assert_eq!(
+            fixture.runtime.state().events,
+            ["poison"],
+            "update is not rolled back"
+        );
         assert_eq!(
             fixture.runtime.status(),
             RuntimeStatus::Terminal(RuntimeTerminalReason::ProducerContractViolation(
@@ -1009,31 +1025,46 @@ fn mixed_public_postmutation_failure_discards_provisional_cancellations_and_pend
             fixture
                 .runtime
                 .complete_host_request(&fixture.token, Response::Number(7)),
-            Err(HostResponseError::Terminal { response: Response::Number(7), .. })
+            Err(HostResponseError::Terminal {
+                response: Response::Number(7),
+                ..
+            })
         ));
         assert!(matches!(
             fixture.sink.try_send(Arc::new(8_u8)),
             Err(SendSubscriptionSinkError::Closed(_) | SendSubscriptionSinkError::Stale(_))
         ));
-        let job = fixture.jobs.borrow_mut().pop().unwrap_or_else(|| unreachable!());
-        assert!(matches!(mixed_run_ready(job), Err(SendTaskCompletionError::Stale(_)
-            | SendTaskCompletionError::Closed(_))));
+        let job = fixture
+            .jobs
+            .borrow_mut()
+            .pop()
+            .unwrap_or_else(|| unreachable!());
+        assert!(matches!(
+            mixed_run_ready(job),
+            Err(SendTaskCompletionError::Stale(_) | SendTaskCompletionError::Closed(_))
+        ));
         assert_eq!(fixture.send_maps.get(), 0);
         assert_eq!(fixture.subscription_maps.get(), 0);
         assert_eq!(fixture.timer_fires.get(), 0);
         if trace_capacity > 0 {
             assert_eq!(
-                fixture.runtime.trace().kinds().filter(|kind| matches!(
-                    kind,
-                    TraceRecordKind::ActionSubmissionAccepted
-                )).count(),
+                fixture
+                    .runtime
+                    .trace()
+                    .kinds()
+                    .filter(|kind| matches!(kind, TraceRecordKind::ActionSubmissionAccepted))
+                    .count(),
                 2,
                 "only the two independently accepted actions existed"
             );
-            assert!(!fixture.runtime.trace().kinds().any(|kind| matches!(
-                kind,
-                TraceRecordKind::WorkCancellationBound
-            )), "failed transaction's proposed cancels were never committed");
+            assert!(
+                !fixture
+                    .runtime
+                    .trace()
+                    .kinds()
+                    .any(|kind| matches!(kind, TraceRecordKind::WorkCancellationBound)),
+                "failed transaction's proposed cancels were never committed"
+            );
         }
         fixture
             .runtime
