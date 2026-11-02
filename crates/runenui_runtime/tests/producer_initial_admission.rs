@@ -122,6 +122,7 @@ use runenui_runtime::{
 
 struct RootedMountState {
     queue_credits: usize,
+    local_residency: usize,
     mount_calls: Rc<Cell<usize>>,
     accepted_tasks: Rc<Cell<usize>>,
     task_polls: Rc<Cell<usize>>,
@@ -185,7 +186,14 @@ impl UiApp for RootedMountApp {
             .with_reconciliation(1, 0, 1)
             .with_subscriptions(0, 0)
             .with_work_starts(WorkStartBudget::new(1, 0, 0, 0, 0))
-            .with_work_residency(WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+            .with_work_residency(WorkResidencyBudget::new(
+                state.local_residency,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ))
     }
 
     fn action_producer_budget(_: &Self::State, (): &()) -> ProducerBudget {
@@ -209,8 +217,16 @@ impl UiApp for RootedMountApp {
 }
 
 fn rooted_mount_state(queue_credits: usize) -> RootedMountState {
+    rooted_mount_state_with_local_residency(queue_credits, 1)
+}
+
+fn rooted_mount_state_with_local_residency(
+    queue_credits: usize,
+    local_residency: usize,
+) -> RootedMountState {
     RootedMountState {
         queue_credits,
+        local_residency,
         mount_calls: Rc::new(Cell::new(0)),
         accepted_tasks: Rc::new(Cell::new(0)),
         task_polls: Rc::new(Cell::new(0)),
@@ -219,9 +235,52 @@ fn rooted_mount_state(queue_credits: usize) -> RootedMountState {
 }
 
 #[test]
-fn mounted_work_frontier_one_short_is_an_owned_typed_initial_refusal() {
+fn mounted_work_residency_one_short_is_an_owned_typed_initial_refusal() {
     for trace_capacity in [0, 256] {
-        let state = rooted_mount_state(2);
+        let state = rooted_mount_state_with_local_residency(3, 0);
+        let mount_calls = Rc::clone(&state.mount_calls);
+        let accepted_tasks = Rc::clone(&state.accepted_tasks);
+        let task_polls = Rc::clone(&state.task_polls);
+        let unmount_calls = Rc::clone(&state.unmount_calls);
+        let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
+        let result = AppRuntime::<RootedMountApp>::mount_with_config(state, config);
+        let error = match result {
+            Err(error) => error,
+            Ok(runtime) => unreachable!(
+                "one-short initial local-task residency was not refused: status={:?}, mount_calls={}, accepted_tasks={}",
+                runtime.status(),
+                mount_calls.get(),
+                accepted_tasks.get()
+            ),
+        };
+        assert!(matches!(
+            error.kind(),
+            InitialAdmissionErrorKind::ProducerContractViolation(
+                runenui_core::ProducerContractViolation {
+                    kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                    phase: runenui_core::ProducerPhase::InitialEffects,
+                    component: runenui_core::BudgetComponent::WorkResidency(
+                        runenui_core::WorkFamily::LocalTask
+                    ),
+                    declared: 0,
+                    attempted: Some(1),
+                }
+            )
+        ));
+        assert_eq!(mount_calls.get(), 1);
+        assert_eq!(accepted_tasks.get(), 1);
+        assert_eq!(task_polls.get(), 0);
+        assert_eq!(unmount_calls.get(), 1);
+        let (_, returned_config) = error.into_parts();
+        assert_eq!(returned_config, config);
+        assert_eq!(unmount_calls.get(), 1);
+    }
+}
+
+#[test]
+fn mounted_work_frontier_one_short_is_an_owned_typed_initial_refusal() {
+    for (queue_credits, trace_capacity) in [(1, 0), (1, 256), (2, 0), (2, 256)] {
+        let state = rooted_mount_state(queue_credits);
         let mount_calls = Rc::clone(&state.mount_calls);
         let accepted_tasks = Rc::clone(&state.accepted_tasks);
         let task_polls = Rc::clone(&state.task_polls);
@@ -244,19 +303,21 @@ fn mounted_work_frontier_one_short_is_an_owned_typed_initial_refusal() {
                     kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
                     phase: runenui_core::ProducerPhase::InitialEffects,
                     component: runenui_core::BudgetComponent::QueueFrontier,
-                    declared: 2,
+                    declared: _,
                     attempted: Some(3),
-                    ..
                 }
             )
         ));
-        assert_eq!(error.state().queue_credits, 2);
+        if let InitialAdmissionErrorKind::ProducerContractViolation(cause) = error.kind() {
+            assert_eq!(cause.declared, queue_credits);
+        }
+        assert_eq!(error.state().queue_credits, queue_credits);
         assert_eq!(mount_calls.get(), 1);
         assert_eq!(accepted_tasks.get(), 1);
         assert_eq!(task_polls.get(), 0);
         assert_eq!(unmount_calls.get(), 1);
         let (state, returned_config) = error.into_parts();
-        assert_eq!(state.queue_credits, 2);
+        assert_eq!(state.queue_credits, queue_credits);
         assert!(Rc::ptr_eq(&state.mount_calls, &mount_calls));
         assert_eq!(returned_config, config);
         drop(state);

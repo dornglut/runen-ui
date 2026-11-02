@@ -530,9 +530,7 @@ impl<Action, Protocol: HostProtocol> PlannedApplicationTransaction<Action, Proto
             .ok_or(TransactionPlanError::QueueFull)?;
         if let Some(producer_budget) = producer_budget {
             let start_budget = producer_budget.work_starts();
-            if sequenced_outputs > producer_budget.queue_credits() {
-                return Err(TransactionPlanError::ProducerQuotaExceeded);
-            }
+            preflight_unrooted_queue_budget(root_quota, sequenced_outputs, producer_budget)?;
             let start_exceeds = [
                 (WorkFamily::LocalTask, runenui_core::WorkFamily::LocalTask),
                 (WorkFamily::SendTask, runenui_core::WorkFamily::SendTask),
@@ -573,11 +571,13 @@ impl<Action, Protocol: HostProtocol> PlannedApplicationTransaction<Action, Proto
         } else {
             queue.preflight_commit(sequenced_outputs)?;
         }
-        work.preflight_planned_families(
+        preflight_transaction_families(
+            work,
             &invalidated_set,
             &starts.iter().map(|start| (start.generation, start.family)),
             queue,
             root_quota,
+            phase,
         )?;
         Ok(Self {
             invalidated,
@@ -590,6 +590,69 @@ impl<Action, Protocol: HostProtocol> PlannedApplicationTransaction<Action, Proto
             semantic_events,
         })
     }
+}
+
+fn preflight_transaction_families<Action, Protocol: HostProtocol>(
+    work: &WorkRegistry<Action, Protocol>,
+    invalidated: &HashSet<WorkGeneration>,
+    starts: &(impl Iterator<Item = (WorkGeneration, WorkFamily)> + Clone),
+    queue: &WorkQueue<Action>,
+    root: Option<RootQuotaId>,
+    phase: runenui_core::ProducerPhase,
+) -> Result<(), TransactionPlanError> {
+    if let Err(error) = work.preflight_planned_families(invalidated, starts, queue, root) {
+        if phase == runenui_core::ProducerPhase::InitialEffects
+            && let crate::work::RegistryInsertError::RootResidencyExceeded {
+                family,
+                declared,
+                attempted,
+            } = error
+        {
+            return Err(root_residency_violation(phase, family, declared, attempted));
+        }
+        return Err(error.into());
+    }
+    Ok(())
+}
+
+const fn preflight_unrooted_queue_budget(
+    root: Option<RootQuotaId>,
+    sequenced_outputs: usize,
+    budget: ProducerBudget,
+) -> Result<(), TransactionPlanError> {
+    if root.is_none() && sequenced_outputs > budget.queue_credits() {
+        return Err(TransactionPlanError::ProducerQuotaExceeded);
+    }
+    Ok(())
+}
+
+const fn root_residency_violation(
+    phase: runenui_core::ProducerPhase,
+    family: WorkFamily,
+    declared: usize,
+    attempted: usize,
+) -> TransactionPlanError {
+    use runenui_core::{
+        BudgetComponent as B, ProducerContractViolation as V, ProducerViolationKind,
+    };
+
+    let component = match family {
+        WorkFamily::Subscription => B::SubscriptionResidency,
+        WorkFamily::LocalTask => B::WorkResidency(runenui_core::WorkFamily::LocalTask),
+        WorkFamily::SendTask => B::WorkResidency(runenui_core::WorkFamily::SendTask),
+        WorkFamily::Timer => B::WorkResidency(runenui_core::WorkFamily::Timer),
+        WorkFamily::HostRequest => B::WorkResidency(runenui_core::WorkFamily::HostRequest),
+        WorkFamily::FrameworkService => {
+            B::WorkResidency(runenui_core::WorkFamily::FrameworkService)
+        }
+    };
+    TransactionPlanError::ProducerViolation(V {
+        kind: ProducerViolationKind::DeclarationExceeded,
+        phase,
+        component,
+        declared,
+        attempted: Some(attempted),
+    })
 }
 
 fn plan_application_subscription_starts<Action, Protocol: HostProtocol>(
@@ -782,7 +845,8 @@ impl From<crate::queue::QueueCommitError> for TransactionPlanError {
 impl From<crate::work::RegistryInsertError> for TransactionPlanError {
     fn from(error: crate::work::RegistryInsertError) -> Self {
         match error {
-            crate::work::RegistryInsertError::Full => Self::RegistryFull,
+            crate::work::RegistryInsertError::Full
+            | crate::work::RegistryInsertError::RootResidencyExceeded { .. } => Self::RegistryFull,
             crate::work::RegistryInsertError::GenerationExhausted => Self::WorkGenerationExhausted,
         }
     }

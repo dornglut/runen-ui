@@ -273,24 +273,27 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
         let required = self
             .resident_family_requirement(family, invalidated, added, root)
             .ok_or(RegistryInsertError::Full)?;
-        let fits = root.map_or_else(
-            || {
-                queue
-                    .work_residency_claims(family)
-                    .and_then(|claims| claims.checked_add(required))
-                    .is_some_and(|occupied| occupied <= self.family_limit(family))
-            },
-            |root| {
-                queue
-                    .root_work_residency(root, family)
-                    .is_some_and(|claim| required <= claim)
-            },
-        );
-        if fits {
-            Ok(())
-        } else {
-            Err(RegistryInsertError::Full)
+        if let Some(root) = root {
+            let claim = queue
+                .root_work_residency(root, family)
+                .ok_or(RegistryInsertError::Full)?;
+            if required > claim {
+                return Err(RegistryInsertError::RootResidencyExceeded {
+                    family,
+                    declared: claim,
+                    attempted: required,
+                });
+            }
+            return Ok(());
         }
+        let occupied = queue
+            .work_residency_claims(family)
+            .and_then(|claims| claims.checked_add(required))
+            .ok_or(RegistryInsertError::Full)?;
+        if occupied > self.family_limit(family) {
+            return Err(RegistryInsertError::Full);
+        }
+        Ok(())
     }
 
     pub(crate) fn resident_family_requirement(
@@ -727,6 +730,11 @@ const fn increment_cancellation_count(counts: &mut WorkCancellationCounts, famil
 pub(crate) enum RegistryInsertError {
     Full,
     GenerationExhausted,
+    RootResidencyExceeded {
+        family: WorkFamily,
+        declared: usize,
+        attempted: usize,
+    },
 }
 
 #[cfg(test)]
