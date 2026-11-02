@@ -650,6 +650,7 @@ fn process_application_action_inner<App: UiApp>(
             Some(root_quota),
         ),
         Some(producer_budget),
+        runenui_core::ProducerPhase::ApplicationUpdate,
     ) {
         let reason = error.terminal_reason();
         let cancelled = runtime.enter_terminal(reason, 0);

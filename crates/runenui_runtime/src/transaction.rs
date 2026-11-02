@@ -482,6 +482,7 @@ impl<Action, Protocol: HostProtocol> PlannedApplicationTransaction<Action, Proto
         action_budgeter: Option<fn(&State, &Action) -> ProducerBudget>,
         root_quota: Option<RootQuotaId>,
         producer_budget: Option<ProducerBudget>,
+        phase: runenui_core::ProducerPhase,
     ) -> Result<Self, TransactionPlanError> {
         let prepared = PreparedApplicationTransaction::new(input);
         let start_count = prepared.start_count()?;
@@ -557,11 +558,7 @@ impl<Action, Protocol: HostProtocol> PlannedApplicationTransaction<Action, Proto
                 sequenced_outputs,
                 application_outputs: &application_outputs,
                 mounted_outputs: &mounted_outputs,
-                phase: if producer_budget.is_some() {
-                    runenui_core::ProducerPhase::InitialEffects
-                } else {
-                    runenui_core::ProducerPhase::ApplicationUpdate
-                },
+                phase,
             })?;
         } else {
             queue.preflight_commit(sequenced_outputs)?;

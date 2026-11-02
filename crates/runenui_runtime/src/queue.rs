@@ -3146,8 +3146,8 @@ mod reservation_tests {
     use super::{
         ApplicationActionEnvelope, ApplicationActionOrigin, ProducerBudget, QueueCommitError,
         QueueReservationError, RootProducerCancellations, RootProducerCommit,
-        RootProducerResponseReleases, RootProducerWorkStarts, RootQuotaId, WorkEnvelope, WorkQueue,
-        WorkSequence,
+        RootProducerCommitError, RootProducerResponseReleases, RootProducerWorkStarts, RootQuotaId,
+        WorkEnvelope, WorkQueue, WorkSequence,
     };
 
     fn action_envelope(

@@ -117,7 +117,7 @@ use runenui_core::{
     WidgetMountContext, WorkResidencyBudget, WorkStartBudget, text,
 };
 use runenui_runtime::{
-    AppRuntime, InitialAdmissionErrorKind, PumpBudget, RuntimeConfig, RuntimeStatus,
+    AppRuntime, InitialAdmissionErrorKind, PumpBudget, RuntimeConfig, RuntimeStatus, TraceConfig,
 };
 
 struct RootedMountState {
@@ -220,58 +220,63 @@ fn rooted_mount_state(queue_credits: usize) -> RootedMountState {
 
 #[test]
 fn mounted_work_frontier_one_short_is_an_owned_typed_initial_refusal() {
-    let state = rooted_mount_state(2);
-    let mount_calls = Rc::clone(&state.mount_calls);
-    let accepted_tasks = Rc::clone(&state.accepted_tasks);
-    let task_polls = Rc::clone(&state.task_polls);
-    let unmount_calls = Rc::clone(&state.unmount_calls);
-    let config = RuntimeConfig::default();
-    let result = AppRuntime::<RootedMountApp>::mount_with_config(state, config);
-    let error = match result {
-        Err(error) => error,
-        Ok(runtime) => panic!(
-            "one-short initial root frontier was not refused: status={:?}, mount_calls={}, accepted_tasks={}",
-            runtime.status(),
-            mount_calls.get(),
-            accepted_tasks.get()
-        ),
-    };
-    assert!(matches!(
-        error.kind(),
-        InitialAdmissionErrorKind::ProducerContractViolation(
-            runenui_core::ProducerContractViolation {
-                component: runenui_core::BudgetComponent::QueueFrontier,
-                declared: 2,
-                attempted: Some(3),
-                ..
-            }
-        )
-    ));
-    assert_eq!(error.state().queue_credits, 2);
-    assert_eq!(mount_calls.get(), 1);
-    assert_eq!(accepted_tasks.get(), 1);
-    assert_eq!(task_polls.get(), 0);
-    assert_eq!(unmount_calls.get(), 1);
-    let (state, returned_config) = error.into_parts();
-    assert_eq!(state.queue_credits, 2);
-    assert!(Rc::ptr_eq(&state.mount_calls, &mount_calls));
-    assert_eq!(returned_config, config);
-    drop(state);
-    assert_eq!(unmount_calls.get(), 1);
+    for trace_capacity in [0, 256] {
+        let state = rooted_mount_state(2);
+        let mount_calls = Rc::clone(&state.mount_calls);
+        let accepted_tasks = Rc::clone(&state.accepted_tasks);
+        let task_polls = Rc::clone(&state.task_polls);
+        let unmount_calls = Rc::clone(&state.unmount_calls);
+        let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
+        let result = AppRuntime::<RootedMountApp>::mount_with_config(state, config);
+        let error = match result {
+            Err(error) => error,
+            Ok(runtime) => panic!(
+                "one-short initial root frontier was not refused: status={:?}, mount_calls={}, accepted_tasks={}",
+                runtime.status(),
+                mount_calls.get(),
+                accepted_tasks.get()
+            ),
+        };
+        assert!(matches!(
+            error.kind(),
+            InitialAdmissionErrorKind::ProducerContractViolation(
+                runenui_core::ProducerContractViolation {
+                    component: runenui_core::BudgetComponent::QueueFrontier,
+                    declared: 2,
+                    attempted: Some(3),
+                    ..
+                }
+            )
+        ));
+        assert_eq!(error.state().queue_credits, 2);
+        assert_eq!(mount_calls.get(), 1);
+        assert_eq!(accepted_tasks.get(), 1);
+        assert_eq!(task_polls.get(), 0);
+        assert_eq!(unmount_calls.get(), 1);
+        let (state, returned_config) = error.into_parts();
+        assert_eq!(state.queue_credits, 2);
+        assert!(Rc::ptr_eq(&state.mount_calls, &mount_calls));
+        assert_eq!(returned_config, config);
+        drop(state);
+        assert_eq!(unmount_calls.get(), 1);
+    }
 }
 
 #[test]
 fn mounted_work_frontier_exact_fit_admits_and_runs_task() {
-    let state = rooted_mount_state(3);
-    let task_polls = Rc::clone(&state.task_polls);
-    let mut runtime = AppRuntime::<RootedMountApp>::mount(state)
-        .unwrap_or_else(|error| panic!("exact initial root frontier fits: {error}"));
-    assert_eq!(runtime.status(), RuntimeStatus::Running);
-    runtime
-        .pump(PumpBudget::new(16, 16, 1, 16))
-        .unwrap_or_else(|_| unreachable!("mounted local task polls"));
-    assert_eq!(task_polls.get(), 1);
-    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    for trace_capacity in [0, 256] {
+        let state = rooted_mount_state(3);
+        let task_polls = Rc::clone(&state.task_polls);
+        let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
+        let mut runtime = AppRuntime::<RootedMountApp>::mount_with_config(state, config)
+            .unwrap_or_else(|error| panic!("exact initial root frontier fits: {error}"));
+        assert_eq!(runtime.status(), RuntimeStatus::Running);
+        runtime
+            .pump(PumpBudget::new(16, 16, 1, 16))
+            .unwrap_or_else(|_| unreachable!("mounted local task polls"));
+        assert_eq!(task_polls.get(), 1);
+        assert_eq!(runtime.status(), RuntimeStatus::Running);
+    }
 }
 
 #[derive(Debug)]
@@ -329,21 +334,143 @@ impl UiApp for MountActionApp {
 
 #[test]
 fn mounted_initial_action_cannot_exceed_its_causal_root_profile() {
-    let error = AppRuntime::<MountActionApp>::mount(())
-        .err()
-        .unwrap_or_else(|| unreachable!("the mounted action's child profile exceeds its root"));
-    assert!(matches!(
-        error.kind(),
-        InitialAdmissionErrorKind::ProducerContractViolation(
-            runenui_core::ProducerContractViolation {
-                kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
-                phase: runenui_core::ProducerPhase::InitialEffects,
-                component: runenui_core::BudgetComponent::QueueFrontier,
-                declared: 2,
-                attempted: Some(3),
-            }
+    for trace_capacity in [0, 256] {
+        let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
+        let error = AppRuntime::<MountActionApp>::mount_with_config((), config)
+            .err()
+            .unwrap_or_else(|| unreachable!("the mounted action's child profile exceeds its root"));
+        assert!(matches!(
+            error.kind(),
+            InitialAdmissionErrorKind::ProducerContractViolation(
+                runenui_core::ProducerContractViolation {
+                    kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
+                    phase: runenui_core::ProducerPhase::InitialEffects,
+                    component: runenui_core::BudgetComponent::QueueFrontier,
+                    declared: 2,
+                    attempted: Some(3),
+                }
+            )
+        ));
+    }
+}
+
+#[derive(Clone, Copy)]
+enum PhaseAction {
+    Trigger,
+    Child,
+}
+
+struct PhaseState {
+    emit_child: bool,
+    child_updates: Rc<Cell<usize>>,
+}
+
+#[derive(Debug)]
+struct PhaseWidget(bool);
+
+impl Widget<PhaseAction> for PhaseWidget {
+    type State = ();
+
+    fn create_state(&self) {}
+
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        (): &(),
+    ) -> runenui_core::WidgetProducerBudget {
+        if phase == runenui_core::WidgetProducerPhase::Update {
+            runenui_core::WidgetProducerBudget::new(1)
+        } else {
+            runenui_core::WidgetProducerBudget::new(0)
+        }
+    }
+
+    fn update(&self, (): &mut (), context: &mut runenui_core::WidgetUpdateContext<PhaseAction>) {
+        if self.0 {
+            let _ = context.try_emit(PhaseAction::Child);
+        }
+    }
+}
+
+struct PhaseApp;
+
+impl UiApp for PhaseApp {
+    type State = PhaseState;
+    type Action = PhaseAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn initial_producer_budget(_: &PhaseState) -> ProducerBudget {
+        ProducerBudget::new(1, 0).with_reconciliation(1, 0, 1)
+    }
+
+    fn action_producer_budget(_: &PhaseState, action: &PhaseAction) -> ProducerBudget {
+        match action {
+            PhaseAction::Trigger => ProducerBudget::new(2, 1).with_reconciliation(0, 1, 0),
+            PhaseAction::Child => ProducerBudget::new(3, 0).with_reconciliation(0, 1, 0),
+        }
+    }
+
+    fn interaction_producer_budget(_: &PhaseState) -> ProducerBudget {
+        ProducerBudget::new(1, 0)
+    }
+
+    fn root(state: &PhaseState) -> impl View<PhaseAction> {
+        Element::new(PhaseWidget(state.emit_child)).key("root")
+    }
+
+    fn update(state: &mut PhaseState, action: PhaseAction) {
+        match action {
+            PhaseAction::Trigger => state.emit_child = true,
+            PhaseAction::Child => state.child_updates.set(state.child_updates.get() + 1),
+        }
+    }
+}
+
+#[test]
+fn mounted_update_child_profile_reports_update_phase() {
+    for trace_capacity in [0, 256] {
+        let child_updates = Rc::new(Cell::new(0));
+        let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
+        let mut runtime = AppRuntime::<PhaseApp>::mount_with_config(
+            PhaseState {
+                emit_child: false,
+                child_updates: Rc::clone(&child_updates),
+            },
+            config,
         )
-    ));
+        .unwrap_or_else(|error| panic!("initial profile fits: {error}"));
+        runtime
+            .submit_action(PhaseAction::Trigger)
+            .unwrap_or_else(|_| unreachable!("the causal root is admitted"));
+        runtime
+            .pump(PumpBudget::new(16, 16, 16, 16))
+            .unwrap_or_else(|_| unreachable!("the root update is processed"));
+        let RuntimeStatus::Terminal(
+            runenui_runtime::RuntimeTerminalReason::ProducerContractViolation(cause),
+        ) = runtime.status()
+        else {
+            panic!(
+                "undercovered mounted child should terminalize with a typed violation: {:?}",
+                runtime.status()
+            );
+        };
+        assert_eq!(
+            cause.kind,
+            runenui_core::ProducerViolationKind::DescendantProfileNotCovered
+        );
+        assert_eq!(cause.phase, runenui_core::ProducerPhase::ApplicationUpdate);
+        assert_eq!(
+            cause.component,
+            runenui_core::BudgetComponent::QueueFrontier
+        );
+        assert_eq!(cause.declared, 2);
+        assert_eq!(cause.attempted, Some(3));
+        assert_eq!(
+            child_updates.get(),
+            0,
+            "the uncovered child is never accepted"
+        );
+    }
 }
 
 struct State {

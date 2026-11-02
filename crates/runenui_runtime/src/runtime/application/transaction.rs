@@ -117,6 +117,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 root_quota,
             ),
             root_quota.and_then(|root| self.queue.root_profile(root)),
+            runenui_core::ProducerPhase::ApplicationUpdate,
         )
     }
 
@@ -125,6 +126,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         input: ApplicationTransactionInput<Action, Protocol>,
         context: ApplicationTransactionCommitContext,
         producer_budget: Option<runenui_core::ProducerBudget>,
+        phase: runenui_core::ProducerPhase,
     ) -> Result<(), CommitError> {
         let root_quota = context.root_quota;
         let state = self.state();
@@ -136,6 +138,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.action_producer_budget,
             root_quota,
             producer_budget,
+            phase,
         )
         .map_err(CommitError::from)?;
         self.commit_planned_application_transaction(plan, context)

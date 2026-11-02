@@ -110,6 +110,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.action_producer_budget,
             root_quota,
             producer_budget,
+            runenui_core::ProducerPhase::Widget(runenui_core::WidgetProducerPhase::Event),
         )
         .map_err(CommitError::from)
     }

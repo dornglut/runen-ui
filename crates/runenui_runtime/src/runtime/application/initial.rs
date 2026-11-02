@@ -65,6 +65,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.action_producer_budget,
             Some(root_quota),
             Some(producer_budget),
+            runenui_core::ProducerPhase::InitialEffects,
         ) {
             Ok(plan) => plan,
             Err(error) => {
