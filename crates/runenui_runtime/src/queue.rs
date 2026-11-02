@@ -2,9 +2,9 @@
 
 #![allow(clippy::redundant_pub_crate)]
 
-mod input_continuations;
 #[cfg(all(test, feature = "internal-test-seams"))]
 mod cancellation_preflight_tests;
+mod input_continuations;
 pub(crate) use input_continuations::InputContinuationKey;
 
 use core::{fmt, num::NonZeroU64};
@@ -851,7 +851,8 @@ impl<Action> WorkQueue<Action> {
         &self,
         generations: &[WorkGeneration],
         root: RootQuotaId,
-    ) -> Result<(RootProducerCancellations, RootProducerResponseReleases), QueueReservationError> {
+    ) -> Result<(RootProducerCancellations, RootProducerResponseReleases), QueueReservationError>
+    {
         let requested: HashSet<_> = generations.iter().copied().collect();
         if requested.len() != generations.len() {
             return Err(QueueReservationError::Stale);

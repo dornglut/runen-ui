@@ -29,10 +29,11 @@ fn fixture(root_count: usize) -> LedgerFixture {
         .and_then(|credits| credits.checked_add(1))
         .expect("fixture has bounded capacity");
     let mut queue = WorkQueue::<u8>::new(total);
-    let generations = WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
-        .preview_generations(root_count * 5)
-        .expect("generations fit")
-        .0;
+    let generations =
+        WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+            .preview_generations(root_count * 5)
+            .expect("generations fit")
+            .0;
     let mut roots = Vec::with_capacity(root_count);
     for group in generations.chunks_exact(5) {
         let reservation = queue.reserve(8).expect("eight terminal credits fit");
@@ -117,7 +118,10 @@ fn mixed_family_preflight_counts_every_root_but_releases_only_the_caller_credit(
     assert_eq!(fixture.queue.root_quotas.len(), 1);
     assert_eq!(fixture.queue.reserved, 1);
     assert_eq!(fixture.queue.root_remaining(fixture.independent), Ok(1));
-    assert_eq!(fixture.queue.next_sequence().map(WorkSequence::get), Some(1));
+    assert_eq!(
+        fixture.queue.next_sequence().map(WorkSequence::get),
+        Some(1)
+    );
 }
 
 #[test]
@@ -199,7 +203,10 @@ fn assert_preserved_except_injected_counter(fixture: &LedgerFixture) {
         assert!(quota.timers.contains_key(&group[4]));
     }
     assert_eq!(fixture.queue.root_remaining(fixture.independent), Ok(1));
-    assert_eq!(fixture.queue.next_sequence().map(WorkSequence::get), Some(1));
+    assert_eq!(
+        fixture.queue.next_sequence().map(WorkSequence::get),
+        Some(1)
+    );
 }
 
 #[test]
@@ -208,9 +215,19 @@ fn cross_family_preflight_rejects_stale_terminal_authority_in_all_five_families(
         let mut fixture = fixture(2);
         let root = fixture.roots[1];
         let generation = fixture.generations[5 + family];
-        let quota = fixture.queue.root_quotas.get_mut(&root).expect("root survives");
+        let quota = fixture
+            .queue
+            .root_quotas
+            .get_mut(&root)
+            .expect("root survives");
         match family {
-            0 => quota.host_requests.get_mut(&generation).expect("host").cancellation = false,
+            0 => {
+                quota
+                    .host_requests
+                    .get_mut(&generation)
+                    .expect("host")
+                    .cancellation = false
+            }
             1 => {
                 quota
                     .framework_services
@@ -218,9 +235,27 @@ fn cross_family_preflight_rejects_stale_terminal_authority_in_all_five_families(
                     .expect("framework")
                     .cancellation = false;
             }
-            2 => quota.local_tasks.get_mut(&generation).expect("local").invalidated = true,
-            3 => quota.send_tasks.get_mut(&generation).expect("send").invalidated = true,
-            4 => quota.timers.get_mut(&generation).expect("timer").invalidated = true,
+            2 => {
+                quota
+                    .local_tasks
+                    .get_mut(&generation)
+                    .expect("local")
+                    .invalidated = true
+            }
+            3 => {
+                quota
+                    .send_tasks
+                    .get_mut(&generation)
+                    .expect("send")
+                    .invalidated = true
+            }
+            4 => {
+                quota
+                    .timers
+                    .get_mut(&generation)
+                    .expect("timer")
+                    .invalidated = true
+            }
             _ => unreachable!("five families"),
         }
         assert!(matches!(
@@ -242,7 +277,8 @@ fn cross_root_or_cross_family_generation_alias_refuses_before_credit_consumption
         let generation = fixture.generations[0];
         match alias {
             "across roots" => {
-                let credits = fixture.queue.root_quotas[&fixture.roots[0]].host_requests[&generation];
+                let credits =
+                    fixture.queue.root_quotas[&fixture.roots[0]].host_requests[&generation];
                 fixture
                     .queue
                     .root_quotas
