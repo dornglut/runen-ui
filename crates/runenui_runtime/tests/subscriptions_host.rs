@@ -724,8 +724,10 @@ impl UiApp for MixedApp {
     type HostProtocol = Protocol;
 
     fn initial_producer_budget(_: &Self::State) -> runenui_core::ProducerBudget {
+        // The mapped host child can retain an existing root node. Cover that
+        // descendant's retained-update profile, not only initial mounting.
         runenui_core::ProducerBudget::new(24, 4)
-            .with_reconciliation(1, 0, 1)
+            .with_reconciliation(1, 1, 1)
             .with_subscriptions(1, 0)
             .with_work_starts(WorkStartBudget::new(1, 2, 1, 1, 0))
             .with_work_residency(WorkResidencyBudget::new(1, 1, 1, 1, 1, 0))
@@ -992,7 +994,9 @@ fn mixed_public_committed_host_child_precedes_later_cancellation_and_survivor() 
         fixture
             .runtime
             .complete_host_request(&fixture.token, Response::Number(7))
-            .unwrap_or_else(|_| unreachable!("host child is covered by its initial root"));
+            .unwrap_or_else(|error| {
+                unreachable!("host child is covered by its initial root: {error:?}")
+            });
         assert!(
             fixture.runtime.state().events.is_empty(),
             "accepted callback still waits in the FIFO"
