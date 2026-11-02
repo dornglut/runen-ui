@@ -1540,10 +1540,17 @@ impl<Action> WorkQueue<Action> {
             return Err(QueueReservationError::Stale);
         }
 
-        // A malformed global reservation must not make idle-root closure fail
-        // only after the generation maps and credits have been mutated.
+        // A malformed global reservation or root residency aggregate must
+        // not make idle-root closure fail after generation credits are removed.
+        // Both are checked before the first mutation; closing the root later
+        // repeats the same guard when it actually reaches the idle frontier.
         if self.reserved < remaining {
             return Err(QueueReservationError::Stale);
+        }
+        for (index, family) in crate::work::WorkFamily::ALL.into_iter().enumerate() {
+            self.root_residency_claims[index]
+                .checked_sub(family.residency(quota.profile.work_residency()))
+                .ok_or(QueueReservationError::Stale)?;
         }
 
         for generation in generations {
@@ -3364,6 +3371,60 @@ mod reservation_tests {
             .release_root_work_leases(root.quota(), &generations)
             .expect("restored conservation permits a complete release");
         assert_eq!(queue.reserved, 1);
+    }
+
+    #[test]
+    fn batch_lease_retirement_rejects_corrupt_residency_totals_before_mutation() {
+        use crate::{RuntimeLimits, work::WorkFamily, work::WorkRegistry};
+        use runenui_core::WorkResidencyBudget;
+
+        let mut queue = WorkQueue::<u8>::new(2);
+        let root = queue
+            .reserve_for_producer(
+                ProducerBudget::new(1, 0)
+                    .with_work_residency(WorkResidencyBudget::new(1, 0, 0, 0, 0, 0)),
+            )
+            .expect("root reserves its local-task residency");
+        let independent = queue.reserve(1).expect("foreign root remains funded");
+        let generation =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(1)
+                .expect("one generation fits")
+                .0[0];
+        queue
+            .retain_root_local_task_lease(root.quota(), generation)
+            .expect("one keyed terminal credit fits");
+        assert_eq!(
+            queue.work_residency_claims(WorkFamily::LocalTask),
+            Some(1)
+        );
+        assert_eq!(queue.root_remaining(root.quota()), Ok(0));
+
+        // Corruption is test-only; production paths maintain the aggregate.
+        queue.root_residency_claims[0] = 0;
+        assert_eq!(
+            queue.release_root_work_leases(root.quota(), &[generation]),
+            Err(QueueReservationError::Stale)
+        );
+        let quota = queue.root_quotas.get(&root.quota()).expect("root preserved");
+        assert_eq!(quota.remaining, 0);
+        assert_eq!(quota.live_work_leases, 1);
+        assert!(quota.local_tasks.contains_key(&generation));
+        assert_eq!(queue.reserved, 2);
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+
+        queue.root_residency_claims[0] = 1;
+        queue
+            .release_root_work_leases(root.quota(), &[generation])
+            .expect("valid aggregate permits retirement");
+        assert!(!queue.root_quotas.contains_key(&root.quota()));
+        assert_eq!(queue.reserved, 1);
+        assert_eq!(
+            queue.work_residency_claims(WorkFamily::LocalTask),
+            Some(0)
+        );
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
     }
 
     #[test]
