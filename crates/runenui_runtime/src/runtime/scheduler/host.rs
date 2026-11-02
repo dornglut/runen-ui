@@ -90,8 +90,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let request = self.host_requests.remove(request_index);
         let action = (request.map)(response);
         let mapped = self.record_work_fact(TraceRecordKind::WorkCompletionMapped, identity);
-        let Some(sequence) = self
-            .queue_host_response_action_for_work(action, mapped, token.generation)
+        let Some(sequence) =
+            self.queue_host_response_action_for_work(action, mapped, token.generation)
         else {
             // The opaque mapper already consumed the response. Its actual child
             // profile is known only now and may exceed the originating root.
