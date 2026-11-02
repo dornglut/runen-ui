@@ -177,6 +177,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return None;
         };
         let producer_budget = profile(self.state(), &action);
+        if let Some(parent) = self.queue.root_profile(root_quota)
+            && let Some((component, declared, attempted)) =
+                crate::transaction::uncovered_component(parent, producer_budget)
+        {
+            self.enter_terminal(
+                RuntimeTerminalReason::ProducerContractViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
+                        phase: runenui_core::ProducerPhase::ApplicationUpdate,
+                        component,
+                        declared,
+                        attempted: Some(attempted),
+                    },
+                ),
+                0,
+            );
+            return None;
+        }
         self.commit_preflighted_host_response_action_from_root(
             action,
             producer_budget,

@@ -90,9 +90,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let request = self.host_requests.remove(request_index);
         let action = (request.map)(response);
         let mapped = self.record_work_fact(TraceRecordKind::WorkCompletionMapped, identity);
-        let sequence = self
+        let Some(sequence) = self
             .queue_host_response_action_for_work(action, mapped, token.generation)
-            .unwrap_or_else(|| unreachable!("host callback output was preflighted"));
+        else {
+            // The opaque mapper already consumed the response. Its actual child
+            // profile is known only now and may exceed the originating root.
+            // Callback admission terminalizes; do not return consumed ownership.
+            let reason = match self.status {
+                RuntimeStatus::Terminal(reason) => reason,
+                RuntimeStatus::Running | RuntimeStatus::Closed => {
+                    self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                    RuntimeTerminalReason::Poisoned
+                }
+            };
+            return Err(HostResponseError::MappedActionTerminal(reason));
+        };
         self.revoke_generation(token.generation);
         self.external_queue_commit_accepted();
         Ok(sequence)

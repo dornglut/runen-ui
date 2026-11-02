@@ -560,16 +560,37 @@ fn direct_mapped_host_undercovered_child_terminalizes_without_unwind() {
     for trace_capacity in [0, 256] {
         let (mut runtime, mapper_calls, token) = mapped_host_profile_runtime(true, trace_capacity);
         let outcome = runtime.complete_host_request(&token, Response::Number(7));
-        assert!(
-            outcome.is_err(),
-            "the mapped action exceeds the originating root"
-        );
+        assert!(matches!(
+            outcome,
+            Err(HostResponseError::MappedActionTerminal(
+                RuntimeTerminalReason::ProducerContractViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
+                        phase: runenui_core::ProducerPhase::ApplicationUpdate,
+                        component: runenui_core::BudgetComponent::QueueFrontier,
+                        declared: 3,
+                        attempted: Some(4),
+                    }
+                )
+            ))
+        ));
         assert_eq!(mapper_calls.get(), 1, "mapping consumed the response once");
         assert!(
             runtime.state().values.is_empty(),
             "no child application update executed"
         );
-        assert!(matches!(runtime.status(), RuntimeStatus::Terminal(_)));
+        assert_eq!(
+            runtime.status(),
+            RuntimeStatus::Terminal(RuntimeTerminalReason::ProducerContractViolation(
+                runenui_core::ProducerContractViolation {
+                    kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
+                    phase: runenui_core::ProducerPhase::ApplicationUpdate,
+                    component: runenui_core::BudgetComponent::QueueFrontier,
+                    declared: 3,
+                    attempted: Some(4),
+                }
+            ))
+        );
         assert!(runtime.pending_host_requests().is_empty());
         assert_eq!(runtime.__host_response_slot_count_for_test(), 0);
         if trace_capacity != 0 {

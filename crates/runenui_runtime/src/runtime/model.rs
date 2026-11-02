@@ -204,6 +204,9 @@ pub enum HostResponseError<Response> {
         response: Response,
         reason: RuntimeTerminalReason,
     },
+    /// The host mapper consumed the response before its action failed
+    /// descendant admission. The original response cannot be recovered.
+    MappedActionTerminal(RuntimeTerminalReason),
 }
 
 pub enum FrameworkServiceResponseError {
@@ -250,6 +253,7 @@ impl<Response> fmt::Debug for HostResponseError<Response> {
             Self::Full(_) => "HostResponseError::Full(..)",
             Self::Closed(_) => "HostResponseError::Closed(..)",
             Self::Terminal { .. } => "HostResponseError::Terminal { .. }",
+            Self::MappedActionTerminal(_) => "HostResponseError::MappedActionTerminal(..)",
         })
     }
 }

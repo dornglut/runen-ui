@@ -1050,7 +1050,7 @@ pub(crate) fn remaining_work_starts(
     ))
 }
 
-fn uncovered_component(
+pub(crate) fn uncovered_component(
     parent: ProducerBudget,
     child: ProducerBudget,
 ) -> Option<(runenui_core::BudgetComponent, usize, usize)> {
