@@ -1027,6 +1027,26 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         Ok(())
     }
 
+    fn handle_native_occlusion(&mut self, event_loop: &ActiveEventLoop, occluded: bool) {
+        self.presentation_suppressed = occluded;
+        if occluded {
+            // Even without a separate Focused(false), cancel live native key
+            // and pointer lifetimes before processing any hidden-window input.
+            if !self.cancel_keyboard_authority(event_loop) {
+                return;
+            }
+            if !self.handle_native_point_authority_loss(event_loop, "native window occluded") {
+                return;
+            }
+            self.modifiers = KeyModifiers::NONE;
+        } else {
+            // Visibility restoration permits a fresh native presentation retry.
+            self.presentation_retry.reset();
+            self.drive_runtime(event_loop);
+            self.request_pending_redraw();
+        }
+    }
+
     fn handle_mapping_change(&mut self, event_loop: &ActiveEventLoop) {
         let changed = self.refresh_mapping();
         if changed && !self.invalidate_mouse_point_authority(event_loop, "native mapping changed") {
@@ -1306,26 +1326,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
                 self.drive_runtime(event_loop);
             }
             WindowEvent::Occluded(occluded) => {
-                self.presentation_suppressed = occluded;
-                if occluded {
-                    // Even if the OS does not also issue Focused(false), all
-                    // active native key and pointer lifetimes must be retired
-                    // before later hidden-window events can reach the runtime.
-                    if !self.cancel_keyboard_authority(event_loop) {
-                        return;
-                    }
-                    if !self
-                        .handle_native_point_authority_loss(event_loop, "native window occluded")
-                    {
-                        return;
-                    }
-                    self.modifiers = KeyModifiers::NONE;
-                } else {
-                    // An OS visibility transition permits an immediate retry.
-                    self.presentation_retry.reset();
-                    self.drive_runtime(event_loop);
-                    self.request_pending_redraw();
-                }
+                self.handle_native_occlusion(event_loop, occluded);
             }
             WindowEvent::RedrawRequested => self.render_pending(event_loop),
             _ => {}
