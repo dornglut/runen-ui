@@ -533,6 +533,186 @@ fn mounted_update_child_profile_reports_update_phase() {
     }
 }
 
+struct UpdateResidencyState {
+    start_task: bool,
+    local_residency: usize,
+    updated: Rc<Cell<bool>>,
+    task_polls: Rc<Cell<usize>>,
+}
+
+#[derive(Debug)]
+struct UpdateResidencyWidget {
+    start_task: bool,
+    task_polls: Rc<Cell<usize>>,
+}
+
+#[derive(Clone, Copy)]
+struct UpdateResidencyAction;
+
+impl Widget<UpdateResidencyAction> for UpdateResidencyWidget {
+    type State = ();
+
+    fn create_state(&self) {}
+
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        (): &(),
+    ) -> runenui_core::WidgetProducerBudget {
+        if phase == runenui_core::WidgetProducerPhase::Update {
+            runenui_core::WidgetProducerBudget::new(1)
+                .with_work_starts(WorkStartBudget::new(1, 0, 0, 0, 0))
+        } else {
+            runenui_core::WidgetProducerBudget::new(0)
+        }
+    }
+
+    fn update(
+        &self,
+        (): &mut (),
+        context: &mut runenui_core::WidgetUpdateContext<UpdateResidencyAction>,
+    ) {
+        if self.start_task {
+            let task_polls = Rc::clone(&self.task_polls);
+            let _ = context.try_local_task(async move {
+                task_polls.set(task_polls.get() + 1);
+                None
+            });
+        }
+    }
+}
+
+struct UpdateResidencyApp;
+
+impl UiApp for UpdateResidencyApp {
+    type State = UpdateResidencyState;
+    type Action = UpdateResidencyAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn initial_producer_budget(state: &Self::State) -> ProducerBudget {
+        ProducerBudget::new(1, 0)
+            .with_reconciliation(1, 0, 1)
+            .with_work_starts(WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(WorkResidencyBudget::new(
+                state.local_residency,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ))
+    }
+
+    fn action_producer_budget(state: &Self::State, _: &Self::Action) -> ProducerBudget {
+        ProducerBudget::new(3, 1)
+            .with_reconciliation(0, 1, 0)
+            .with_work_starts(WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(WorkResidencyBudget::new(
+                state.local_residency,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ))
+    }
+
+    fn interaction_producer_budget(_: &Self::State) -> ProducerBudget {
+        ProducerBudget::new(1, 0)
+    }
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        Element::new(UpdateResidencyWidget {
+            start_task: state.start_task,
+            task_polls: Rc::clone(&state.task_polls),
+        })
+        .key("root")
+    }
+
+    fn update(state: &mut Self::State, _: Self::Action) {
+        state.start_task = true;
+        state.updated.set(true);
+    }
+}
+
+#[test]
+fn mounted_update_work_residency_shortage_reports_update_phase() {
+    for trace_capacity in [0, 256] {
+        let updated = Rc::new(Cell::new(false));
+        let task_polls = Rc::new(Cell::new(0));
+        let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
+        let mut runtime = AppRuntime::<UpdateResidencyApp>::mount_with_config(
+            UpdateResidencyState {
+                start_task: false,
+                local_residency: 0,
+                updated: Rc::clone(&updated),
+                task_polls: Rc::clone(&task_polls),
+            },
+            config,
+        )
+        .unwrap_or_else(|_| unreachable!("initial profile fits"));
+        runtime
+            .pump(PumpBudget::new(16, 16, 16, 16))
+            .unwrap_or_else(|_| unreachable!("initial transaction is accepted"));
+        runtime
+            .submit_action(UpdateResidencyAction)
+            .unwrap_or_else(|_| unreachable!("the causal root is admitted"));
+        runtime
+            .pump(PumpBudget::new(16, 16, 16, 16))
+            .unwrap_or_else(|_| unreachable!("root update is processed"));
+        let RuntimeStatus::Terminal(
+            runenui_runtime::RuntimeTerminalReason::ProducerContractViolation(cause),
+        ) = runtime.status()
+        else {
+            unreachable!("underdeclared mounted task residency is typed");
+        };
+        assert_eq!(
+            cause.kind,
+            runenui_core::ProducerViolationKind::DeclarationExceeded
+        );
+        assert_eq!(cause.phase, runenui_core::ProducerPhase::ApplicationUpdate);
+        assert_eq!(
+            cause.component,
+            runenui_core::BudgetComponent::WorkResidency(runenui_core::WorkFamily::LocalTask)
+        );
+        assert_eq!(cause.declared, 0);
+        assert_eq!(cause.attempted, Some(1));
+        assert!(updated.get(), "application mutation remains committed");
+        assert_eq!(task_polls.get(), 0, "the refused task never polls");
+    }
+}
+
+#[test]
+fn mounted_update_work_residency_exact_fit_runs_task() {
+    for trace_capacity in [0, 256] {
+        let updated = Rc::new(Cell::new(false));
+        let task_polls = Rc::new(Cell::new(0));
+        let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
+        let mut runtime = AppRuntime::<UpdateResidencyApp>::mount_with_config(
+            UpdateResidencyState {
+                start_task: false,
+                local_residency: 1,
+                updated: Rc::clone(&updated),
+                task_polls: Rc::clone(&task_polls),
+            },
+            config,
+        )
+        .unwrap_or_else(|_| unreachable!("initial profile fits"));
+        runtime
+            .pump(PumpBudget::new(16, 16, 16, 16))
+            .unwrap_or_else(|_| unreachable!("initial transaction is accepted"));
+        runtime
+            .submit_action(UpdateResidencyAction)
+            .unwrap_or_else(|_| unreachable!("the causal root is admitted"));
+        runtime
+            .pump(PumpBudget::new(16, 16, 16, 16))
+            .unwrap_or_else(|_| unreachable!("exact-fit task is processed"));
+        assert!(updated.get());
+        assert_eq!(task_polls.get(), 1);
+        assert_eq!(runtime.status(), RuntimeStatus::Running);
+    }
+}
+
 struct State {
     identity: Box<u64>,
     callbacks: Rc<Cell<usize>>,

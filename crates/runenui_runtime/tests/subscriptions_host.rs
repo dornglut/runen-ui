@@ -1607,7 +1607,15 @@ fn host_fanout_profile_overrun_commits_no_child_outputs() {
     assert_eq!(runtime.state().values, Vec::<u8>::new());
     assert_eq!(
         runtime.status(),
-        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+        RuntimeStatus::Terminal(RuntimeTerminalReason::ProducerContractViolation(
+            runenui_core::ProducerContractViolation {
+                kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                phase: runenui_core::ProducerPhase::ApplicationUpdate,
+                component: runenui_core::BudgetComponent::QueueFrontier,
+                declared: 4,
+                attempted: Some(5),
+            }
+        ))
     );
     assert!(runtime.pending_host_requests().is_empty());
     assert_eq!(

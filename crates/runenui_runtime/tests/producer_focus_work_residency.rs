@@ -218,11 +218,25 @@ fn admitted_focus_cleanup_reuses_only_its_reserved_task_footprint() {
             assert!(app.focus().focused_node().is_none());
             assert_eq!(app.index().nodes()[0].id(), &target);
         } else {
+            let RuntimeStatus::Terminal(RuntimeTerminalReason::ProducerContractViolation(cause)) =
+                app.status()
+            else {
+                unreachable!("rooted event residency overrun is a typed producer violation");
+            };
             assert_eq!(
-                app.status(),
-                RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned),
-                "an undeclared second resident is an integrity violation even with spare global capacity"
+                cause.kind,
+                runenui_core::ProducerViolationKind::DeclarationExceeded
             );
+            assert_eq!(
+                cause.phase,
+                runenui_core::ProducerPhase::Widget(WidgetProducerPhase::Event)
+            );
+            assert_eq!(
+                cause.component,
+                runenui_core::BudgetComponent::WorkResidency(runenui_core::WorkFamily::LocalTask)
+            );
+            assert_eq!(cause.declared, 1);
+            assert_eq!(cause.attempted, Some(2));
             if trace != 0 {
                 assert_eq!(
                     app.trace()

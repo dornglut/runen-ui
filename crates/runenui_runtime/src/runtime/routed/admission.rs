@@ -686,13 +686,29 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     TraceRoutedAdmissionRejection::WorkSequenceExhausted,
                     facts,
                 ),
-                crate::queue::RootProducerCommitError::FrontierInsufficient { .. }
-                | crate::queue::RootProducerCommitError::Reservation(_) => self
-                    .poison_routed_facts(
-                        facts,
-                        TraceRoutedIntegrityFailure::OutputAllowanceExceeded,
-                        None,
+                crate::queue::RootProducerCommitError::FrontierInsufficient {
+                    declared,
+                    attempted,
+                } => self.poison_routed_facts(
+                    facts,
+                    TraceRoutedIntegrityFailure::ProducerViolation(
+                        runenui_core::ProducerContractViolation {
+                            kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                            phase: runenui_core::ProducerPhase::Widget(
+                                runenui_core::WidgetProducerPhase::Event,
+                            ),
+                            component: runenui_core::BudgetComponent::QueueFrontier,
+                            declared,
+                            attempted,
+                        },
                     ),
+                    None,
+                ),
+                crate::queue::RootProducerCommitError::Reservation(_) => self.poison_routed_facts(
+                    facts,
+                    TraceRoutedIntegrityFailure::OutputAllowanceExceeded,
+                    None,
+                ),
             });
         }
         Ok(())

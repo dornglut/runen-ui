@@ -437,10 +437,7 @@ fn preflight_root_producer_commit<Action, Protocol: HostProtocol>(
             crate::queue::RootProducerCommitError::FrontierInsufficient {
                 declared,
                 attempted,
-            } => TransactionPlanError::QueueFrontierExceeded {
-                declared,
-                attempted,
-            },
+            } => root_frontier_violation(preflight.phase, declared, attempted),
             crate::queue::RootProducerCommitError::Reservation(_) => {
                 TransactionPlanError::ProducerQuotaExceeded
             }
@@ -478,6 +475,20 @@ fn preflight_root_producer_commit<Action, Protocol: HostProtocol>(
         }
     }
     Ok(())
+}
+
+const fn root_frontier_violation(
+    phase: runenui_core::ProducerPhase,
+    declared: usize,
+    attempted: Option<usize>,
+) -> TransactionPlanError {
+    TransactionPlanError::ProducerViolation(runenui_core::ProducerContractViolation {
+        kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+        phase,
+        component: runenui_core::BudgetComponent::QueueFrontier,
+        declared,
+        attempted,
+    })
 }
 
 impl<Action, Protocol: HostProtocol> PlannedApplicationTransaction<Action, Protocol> {
@@ -601,12 +612,11 @@ fn preflight_transaction_families<Action, Protocol: HostProtocol>(
     phase: runenui_core::ProducerPhase,
 ) -> Result<(), TransactionPlanError> {
     if let Err(error) = work.preflight_planned_families(invalidated, starts, queue, root) {
-        if phase == runenui_core::ProducerPhase::InitialEffects
-            && let crate::work::RegistryInsertError::RootResidencyExceeded {
-                family,
-                declared,
-                attempted,
-            } = error
+        if let crate::work::RegistryInsertError::RootResidencyExceeded {
+            family,
+            declared,
+            attempted,
+        } = error
         {
             return Err(root_residency_violation(phase, family, declared, attempted));
         }
@@ -822,10 +832,6 @@ pub(crate) enum TransactionOutputError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TransactionPlanError {
     ProducerViolation(runenui_core::ProducerContractViolation),
-    QueueFrontierExceeded {
-        declared: usize,
-        attempted: Option<usize>,
-    },
     QueueFull,
     ProducerQuotaExceeded,
     WorkSequenceExhausted,
@@ -1014,19 +1020,16 @@ impl<Action, Protocol: HostProtocol> TransactionLedger<Action, Protocol> {
                 crate::queue::RootProducerCommitError::FrontierInsufficient {
                     declared,
                     attempted,
-                } if context.phase == runenui_core::ProducerPhase::InitialEffects => {
-                    crate::RuntimeTerminalReason::ProducerContractViolation(
-                        runenui_core::ProducerContractViolation {
-                            kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
-                            phase: context.phase,
-                            component: runenui_core::BudgetComponent::QueueFrontier,
-                            declared,
-                            attempted,
-                        },
-                    )
-                }
-                crate::queue::RootProducerCommitError::FrontierInsufficient { .. }
-                | crate::queue::RootProducerCommitError::Reservation(_) => {
+                } => crate::RuntimeTerminalReason::ProducerContractViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                        phase: context.phase,
+                        component: runenui_core::BudgetComponent::QueueFrontier,
+                        declared,
+                        attempted,
+                    },
+                ),
+                crate::queue::RootProducerCommitError::Reservation(_) => {
                     crate::RuntimeTerminalReason::Poisoned
                 }
             })?;

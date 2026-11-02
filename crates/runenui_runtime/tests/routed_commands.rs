@@ -335,6 +335,167 @@ fn submit_single(runtime: &mut AppRuntime<SingleApp>) {
         .to_owned();
 }
 
+struct FrontierEventState {
+    callbacks: Rc<Cell<usize>>,
+    queue_credits: usize,
+}
+
+#[derive(Debug)]
+struct FrontierEventWidget {
+    callbacks: Rc<Cell<usize>>,
+}
+
+impl Widget<()> for FrontierEventWidget {
+    type State = usize;
+
+    fn create_state(&self) -> Self::State {
+        0
+    }
+
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        state: &Self::State,
+    ) -> runenui_core::WidgetProducerBudget {
+        if phase == runenui_core::WidgetProducerPhase::Event && *state < 2 {
+            runenui_core::WidgetProducerBudget::new(2)
+        } else {
+            runenui_core::WidgetProducerBudget::new(0)
+        }
+    }
+
+    fn event(
+        &mut self,
+        state: &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ()>,
+    ) -> WidgetEventOutput {
+        if context.phase() == EventPhase::Target
+            && event
+                .as_semantic_command()
+                .is_some_and(|command| command.command() == SemanticCommand::OpenMenu)
+            && *state < 2
+        {
+            *state += 1;
+            self.callbacks.set(*state);
+            let _ = context.try_emit_command(SemanticCommand::OpenMenu);
+            let _ = context.try_emit_command(SemanticCommand::OpenMenu);
+        }
+        WidgetEventOutput::none()
+    }
+}
+
+struct FrontierEventApp;
+
+impl UiApp for FrontierEventApp {
+    type State = FrontierEventState;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn initial_producer_budget(_: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(3, 0).with_reconciliation(1, 0, 1)
+    }
+
+    fn action_producer_budget(_: &Self::State, (): &Self::Action) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(1, 0).with_reconciliation(0, 1, 0)
+    }
+
+    fn interaction_producer_budget(state: &Self::State) -> runenui_core::ProducerBudget {
+        runenui_core::ProducerBudget::new(state.queue_credits, 2)
+            .with_application_outputs(0)
+            .with_reconciliation(0, 1, 0)
+    }
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        Element::new(FrontierEventWidget {
+            callbacks: Rc::clone(&state.callbacks),
+        })
+    }
+
+    fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+fn frontier_event_runtime(
+    queue_credits: usize,
+    trace_capacity: usize,
+) -> AppRuntime<FrontierEventApp> {
+    AppRuntime::mount_with_config(
+        FrontierEventState {
+            callbacks: Rc::new(Cell::new(0)),
+            queue_credits,
+        },
+        RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity)),
+    )
+    .unwrap_or_else(|error| unreachable!("initial root profile fits: {error}"))
+}
+
+#[test]
+fn routed_finite_frontier_shortage_is_a_typed_event_violation() {
+    for trace_capacity in [0, 256] {
+        let mut runtime = frontier_event_runtime(2, trace_capacity);
+        runtime
+            .pump(PumpBudget::new(16, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("initial transaction is accepted"));
+        let target = runtime.index().nodes()[0].id().clone();
+        runtime
+            .submit_command(
+                target,
+                SemanticCommand::OpenMenu,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("the first event has its declared capacity"));
+        let _ = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("the first queued command is reached"));
+        assert_eq!(runtime.state().callbacks.get(), 1);
+        let _ = runtime
+            .pump(PumpBudget::new(1, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("the second queued command is reached"));
+        let RuntimeStatus::Terminal(RuntimeTerminalReason::ProducerContractViolation(cause)) =
+            runtime.status()
+        else {
+            unreachable!("the routed event's finite frontier shortage is typed");
+        };
+        assert_eq!(
+            cause.kind,
+            runenui_core::ProducerViolationKind::DeclarationExceeded
+        );
+        assert_eq!(
+            cause.phase,
+            runenui_core::ProducerPhase::Widget(runenui_core::WidgetProducerPhase::Event)
+        );
+        assert_eq!(
+            cause.component,
+            runenui_core::BudgetComponent::QueueFrontier
+        );
+        assert_eq!(cause.declared, 2);
+        assert_eq!(cause.attempted, Some(3));
+    }
+}
+
+#[test]
+fn routed_finite_frontier_exact_fit_runs_both_callbacks() {
+    for trace_capacity in [0, 256] {
+        let mut runtime = frontier_event_runtime(3, trace_capacity);
+        runtime
+            .pump(PumpBudget::new(16, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("initial transaction is accepted"));
+        let target = runtime.index().nodes()[0].id().clone();
+        runtime
+            .submit_command(
+                target,
+                SemanticCommand::OpenMenu,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("the first event has its declared capacity"));
+        let _ = runtime
+            .pump(PumpBudget::new(16, 0, 0, 0))
+            .unwrap_or_else(|_| unreachable!("the exact-fit routed frontier drains"));
+        assert_eq!(runtime.state().callbacks.get(), 2);
+        assert_eq!(runtime.status(), RuntimeStatus::Running);
+    }
+}
+
 fn make_runtime(root: Behavior, parent: Behavior, target: Behavior) -> AppRuntime<App> {
     make_runtime_with_config(root, parent, target, RuntimeConfig::default())
 }

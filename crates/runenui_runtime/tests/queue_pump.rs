@@ -1075,7 +1075,7 @@ fn fanout_children_keep_fifo_order_behind_unrelated_admitted_work() {
 }
 
 #[test]
-fn growing_causal_frontier_poisoning_is_atomic_and_clears_root_work() {
+fn growing_causal_frontier_shortage_is_typed_atomic_and_clears_root_work() {
     let mut runtime = AppRuntime::<CausalQueueApp>::mount_with_config(
         Vec::new(),
         RuntimeConfig::default().with_queue_capacity(8),
@@ -1090,13 +1090,25 @@ fn growing_causal_frontier_poisoning_is_atomic_and_clears_root_work() {
 
     let violation = pump_actions(&mut runtime, 1);
     assert_eq!(runtime.state(), &[CausalAction::Grow, CausalAction::Grow]);
+    let RuntimeStatus::Terminal(RuntimeTerminalReason::ProducerContractViolation(cause)) =
+        runtime.status()
+    else {
+        unreachable!("finite authored root frontier shortage is typed");
+    };
     assert_eq!(
-        runtime.status(),
-        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+        cause.kind,
+        runenui_core::ProducerViolationKind::DeclarationExceeded
     );
+    assert_eq!(cause.phase, runenui_core::ProducerPhase::ApplicationUpdate);
+    assert_eq!(
+        cause.component,
+        runenui_core::BudgetComponent::QueueFrontier
+    );
+    assert_eq!(cause.declared, 2);
+    assert_eq!(cause.attempted, Some(3));
     assert_eq!(
         violation.outcome(),
-        PumpOutcome::Terminal(RuntimeTerminalReason::Poisoned)
+        PumpOutcome::Terminal(RuntimeTerminalReason::ProducerContractViolation(cause))
     );
     assert_eq!(violation.remaining_queued_envelopes(), 0);
     let accepted_sequences: Vec<_> = runtime
