@@ -293,7 +293,10 @@ fn process_application_action_inner<App: UiApp>(
                     host_requests,
                     framework_services,
                 ) {
-                    retired_by_root.entry(root_quota).or_default().push(*generation);
+                    retired_by_root
+                        .entry(root_quota)
+                        .or_default()
+                        .push(*generation);
                 }
             }
             for (root, retired) in retired_by_root {

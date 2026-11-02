@@ -1479,7 +1479,10 @@ impl<Action> WorkQueue<Action> {
 
         if generations.len() > 1 {
             let mut unique = HashSet::with_capacity(generations.len());
-            if generations.iter().any(|generation| !unique.insert(*generation)) {
+            if generations
+                .iter()
+                .any(|generation| !unique.insert(*generation))
+            {
                 return Err(QueueReservationError::Stale);
             }
         }
@@ -3309,13 +3312,19 @@ mod reservation_tests {
             queue.release_root_work_leases(root.quota(), &[generations[0], generations[0]]),
             Err(QueueReservationError::Stale)
         );
-        let quota = queue.root_quotas.get_mut(&root.quota()).expect("root lives");
+        let quota = queue
+            .root_quotas
+            .get_mut(&root.quota())
+            .expect("root lives");
         quota.pending_envelopes = 1; // Deliberately malformed internal ledger.
         assert_eq!(
             queue.release_root_work_leases(root.quota(), &generations),
             Err(QueueReservationError::Stale)
         );
-        let quota = queue.root_quotas.get(&root.quota()).expect("refused root remains");
+        let quota = queue
+            .root_quotas
+            .get(&root.quota())
+            .expect("refused root remains");
         assert_eq!(quota.remaining, 0);
         assert_eq!(quota.live_work_leases, 2);
         assert!(quota.local_tasks.contains_key(&generations[0]));
@@ -3926,11 +3935,12 @@ mod reservation_tests {
                     let reservation = queue
                         .reserve(size)
                         .expect("finite local-task terminal frontier fits");
-                    let generations =
-                        WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
-                            .preview_generations(size)
-                            .expect("the benchmark generations fit")
-                            .0;
+                    let generations = WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(
+                        RuntimeLimits::default(),
+                    )
+                    .preview_generations(size)
+                    .expect("the benchmark generations fit")
+                    .0;
                     for generation in &generations {
                         queue
                             .retain_root_local_task_lease(reservation.quota(), *generation)
