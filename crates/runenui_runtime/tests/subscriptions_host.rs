@@ -820,6 +820,16 @@ impl UiApp for MixedApp {
                 } else {
                     "cancel"
                 });
+                // Submit through a real send-subscription ingress while UiApp::update
+                // is still active. The later cancellation/terminal transition
+                // must prevent this accepted but unmapped item from reentering.
+                let sink = state.sink
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .as_ref()
+                    .cloned()
+                    .unwrap_or_else(|| unreachable!("initial send subscription started"));
+                assert!(sink.try_send(Arc::new(6_u8)).is_ok());
                 state.active = false;
                 let cancels = Effects::cancel(WorkFamily::HostRequest, key("mixed.host"))
                     .then(Effects::cancel(WorkFamily::LocalTask, key("mixed.local")))
