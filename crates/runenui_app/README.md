@@ -56,7 +56,9 @@ independently: unocclusion cannot readmit input or presentation while the host
 is still suspended. A separate Counter
 window then receives OS focus while Status has a held Space key; the test
 asserts no unfocused release activation and confirms new keyboard input after
-focus returns, without manipulating runtime internals. An additional debug-only,
+focus returns, without manipulating runtime internals. New native keyboard
+and modifier ingress is also gated by the OS-owned `Window::has_focus()`
+state after focus revocation; pointer movement remains independently handled. An additional debug-only,
 explicit `internal-test-seams` X11 run injects each recoverable *host-visible*
 surface status (timeout, occlusion, outdated, suboptimal, unconfigured, lost)
 before the first successful Present, then requires the very same immutable

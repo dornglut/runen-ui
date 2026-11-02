@@ -162,6 +162,10 @@ impl NativeVisibility {
     const fn suppresses_presentation(self) -> bool {
         self.suspended || self.occluded
     }
+
+    const fn admits_keyboard(self, window_has_focus: bool) -> bool {
+        !self.suppresses_presentation() && window_has_focus
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -982,6 +986,17 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         self.request_pending_redraw();
     }
 
+    fn accepts_native_keyboard(&self) -> bool {
+        // Winit's has_focus() reports the same OS-owned state as Focused.
+        // Source cancellation on focus loss must not be followed by a new
+        // untrusted keyboard lifetime while the native window is unfocused.
+        self.visibility.admits_keyboard(
+            self.window
+                .as_ref()
+                .is_some_and(|window| window.has_focus()),
+        )
+    }
+
     fn handle_keyboard_input(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -1326,12 +1341,10 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> ApplicationHandler<HostEvent> for 
                 device_id,
                 event,
                 is_synthetic,
-            } if !self.visibility.suppresses_presentation() => {
+            } if self.accepts_native_keyboard() => {
                 self.handle_keyboard_input(event_loop, device_id, &event, is_synthetic);
             }
-            WindowEvent::ModifiersChanged(modifiers)
-                if !self.visibility.suppresses_presentation() =>
-            {
+            WindowEvent::ModifiersChanged(modifiers) if self.accepts_native_keyboard() => {
                 self.modifiers = translate_modifiers(modifiers.state());
             }
             WindowEvent::Focused(false) => {
@@ -1515,6 +1528,23 @@ mod tests {
         assert!(visibility.suppresses_presentation());
         visibility.occluded = false;
         assert!(!visibility.suppresses_presentation());
+    }
+
+    #[test]
+    fn native_keyboard_ingress_requires_real_focus_and_unsuppressed_visibility() {
+        let mut visibility = NativeVisibility {
+            suspended: false,
+            occluded: false,
+        };
+        assert!(!visibility.admits_keyboard(false));
+        assert!(visibility.admits_keyboard(true));
+        visibility.occluded = true;
+        assert!(!visibility.admits_keyboard(true));
+        visibility.occluded = false;
+        visibility.suspended = true;
+        assert!(!visibility.admits_keyboard(true));
+        visibility.suspended = false;
+        assert!(visibility.admits_keyboard(true));
     }
 
     #[test]
