@@ -418,6 +418,18 @@ struct RootQuotaState {
     profile: ProducerBudget,
 }
 
+impl RootQuotaState {
+    /// A rooted work generation has at most one keyed terminal-credit owner.
+    /// Subscription generations deliberately have no keyed credit record.
+    fn keyed_family_count(&self, generation: WorkGeneration) -> usize {
+        usize::from(self.host_requests.contains_key(&generation))
+            + usize::from(self.framework_services.contains_key(&generation))
+            + usize::from(self.local_tasks.contains_key(&generation))
+            + usize::from(self.send_tasks.contains_key(&generation))
+            + usize::from(self.timers.contains_key(&generation))
+    }
+}
+
 #[derive(Clone, Copy)]
 struct HostRequestCredits {
     start_pending: bool,
@@ -1304,7 +1316,7 @@ impl<Action> WorkQueue<Action> {
             .root_quotas
             .get_mut(&root)
             .ok_or(QueueReservationError::Stale)?;
-        if quota.remaining == 0 || quota.host_requests.contains_key(&generation) {
+        if quota.remaining == 0 || quota.keyed_family_count(generation) != 0 {
             return Err(QueueReservationError::Exhausted);
         }
         quota.live_work_leases = quota
@@ -1332,7 +1344,7 @@ impl<Action> WorkQueue<Action> {
             .root_quotas
             .get_mut(&root)
             .ok_or(QueueReservationError::Stale)?;
-        if quota.remaining < 2 || quota.framework_services.contains_key(&generation) {
+        if quota.remaining < 2 || quota.keyed_family_count(generation) != 0 {
             return Err(QueueReservationError::Exhausted);
         }
         quota.live_work_leases = quota
@@ -1359,7 +1371,7 @@ impl<Action> WorkQueue<Action> {
             .root_quotas
             .get_mut(&root)
             .ok_or(QueueReservationError::Stale)?;
-        if quota.remaining == 0 || quota.local_tasks.contains_key(&generation) {
+        if quota.remaining == 0 || quota.keyed_family_count(generation) != 0 {
             return Err(QueueReservationError::Exhausted);
         }
         quota.live_work_leases = quota
@@ -1390,7 +1402,7 @@ impl<Action> WorkQueue<Action> {
             .root_quotas
             .get_mut(&root)
             .ok_or(QueueReservationError::Stale)?;
-        if quota.remaining == 0 || quota.send_tasks.contains_key(&generation) {
+        if quota.remaining == 0 || quota.keyed_family_count(generation) != 0 {
             return Err(QueueReservationError::Exhausted);
         }
         quota.live_work_leases = quota
@@ -1423,7 +1435,7 @@ impl<Action> WorkQueue<Action> {
             .get_mut(&root)
             .ok_or(QueueReservationError::Stale)?;
         let future = 1usize + usize::from(repeating); // cancel, plus repeating callback
-        if quota.remaining < future || quota.timers.contains_key(&generation) {
+        if quota.remaining < future || quota.keyed_family_count(generation) != 0 {
             return Err(QueueReservationError::Exhausted);
         }
         quota.live_work_leases = quota
@@ -1486,6 +1498,15 @@ impl<Action> WorkQueue<Action> {
             {
                 return Err(QueueReservationError::Stale);
             }
+        }
+
+        // A generation must never own terminal credits in two work families.
+        // Detect malformed ownership before any map is removed by the batch.
+        if generations
+            .iter()
+            .any(|generation| quota.keyed_family_count(*generation) > 1)
+        {
+            return Err(QueueReservationError::Stale);
         }
 
         let mut released = 0usize;
@@ -1575,6 +1596,9 @@ impl<Action> WorkQueue<Action> {
         let Some(quota) = self.root_quotas.get_mut(&root) else {
             return Err(QueueReservationError::Stale);
         };
+        if quota.keyed_family_count(generation) > 1 {
+            return Err(QueueReservationError::Stale);
+        }
         if let Some(credits) = quota.host_requests.get_mut(&generation) {
             if quota.live_work_leases == 0 || !credits.cancellation {
                 return Err(QueueReservationError::Stale);
@@ -3421,6 +3445,106 @@ mod reservation_tests {
         assert!(!queue.root_quotas.contains_key(&root.quota()));
         assert_eq!(queue.reserved, 1);
         assert_eq!(queue.work_residency_claims(WorkFamily::LocalTask), Some(0));
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+    }
+
+    #[test]
+    fn keyed_generation_cannot_be_retained_across_distinct_work_families() {
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        let mut queue = WorkQueue::<u8>::new(8);
+        let root = queue.reserve(8).expect("one root owns the whole frontier");
+        let generation =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(1)
+                .expect("one generation fits")
+                .0[0];
+        queue
+            .retain_root_local_task_lease(root.quota(), generation)
+            .expect("the first family owns its keyed terminal credit");
+        assert_eq!(
+            queue.retain_root_host_request_lease(root.quota(), generation),
+            Err(QueueReservationError::Exhausted)
+        );
+        assert_eq!(
+            queue.retain_root_framework_service_lease(root.quota(), generation),
+            Err(QueueReservationError::Exhausted)
+        );
+        assert_eq!(
+            queue.retain_root_send_task_lease(root.quota(), generation),
+            Err(QueueReservationError::Exhausted)
+        );
+        assert_eq!(
+            queue.retain_root_timer_lease(root.quota(), generation, true),
+            Err(QueueReservationError::Exhausted)
+        );
+        let quota = queue.root_quotas.get(&root.quota()).expect("root remains");
+        assert_eq!(quota.keyed_family_count(generation), 1);
+        assert_eq!(quota.remaining, 7);
+        assert_eq!(quota.live_work_leases, 1);
+        assert_eq!(queue.reserved, 8);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+        queue
+            .release_root_work_lease(root.quota(), generation)
+            .expect("only the original local-task credit is returned");
+        assert!(!queue.root_quotas.contains_key(&root.quota()));
+        assert_eq!(queue.reserved, 0);
+    }
+
+    #[test]
+    fn malformed_cross_family_generation_alias_refuses_before_mutating_any_credits() {
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        let mut queue = WorkQueue::<u8>::new(3);
+        let root = queue.reserve(2).expect("two root terminal credits");
+        let independent = queue.reserve(1).expect("unrelated root credit");
+        let generation =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(1)
+                .expect("one generation fits")
+                .0[0];
+        queue
+            .retain_root_local_task_lease(root.quota(), generation)
+            .expect("one local-task terminal credit");
+        // Inject a second family credit for the same generation, keeping the
+        // root's total future credit count conserved to isolate the alias.
+        let quota = queue.root_quotas.get_mut(&root.quota()).expect("root lives");
+        quota.remaining -= 1;
+        quota.host_requests.insert(
+            generation,
+            super::HostRequestCredits {
+                start_pending: false,
+                response: false,
+                cancellation: true,
+            },
+        );
+        assert_eq!(quota.keyed_family_count(generation), 2);
+        assert_eq!(
+            queue.release_root_work_leases(root.quota(), &[generation]),
+            Err(QueueReservationError::Stale)
+        );
+        assert_eq!(
+            queue.release_root_work_lease_for_cancellation(root.quota(), generation),
+            Err(QueueReservationError::Stale)
+        );
+        let quota = queue.root_quotas.get(&root.quota()).expect("root intact");
+        assert_eq!(quota.keyed_family_count(generation), 2);
+        assert_eq!(quota.remaining, 0);
+        assert_eq!(quota.live_work_leases, 1);
+        assert!(quota.local_tasks.contains_key(&generation));
+        assert!(quota.host_requests.contains_key(&generation));
+        assert_eq!(queue.reserved, 3);
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+
+        let quota = queue.root_quotas.get_mut(&root.quota()).expect("restore fixture");
+        quota.host_requests.remove(&generation);
+        quota.remaining += 1;
+        queue
+            .release_root_work_lease(root.quota(), generation)
+            .expect("restored single owner returns its credits");
+        assert!(!queue.root_quotas.contains_key(&root.quota()));
+        assert_eq!(queue.reserved, 1);
         assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
     }
 
