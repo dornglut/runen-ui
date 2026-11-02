@@ -350,6 +350,15 @@ pub(crate) enum QueueReservationError {
     SequenceExhausted,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RootProducerCommitError {
+    Reservation(QueueReservationError),
+    FrontierInsufficient {
+        declared: usize,
+        attempted: Option<usize>,
+    },
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct RootProducerWorkStarts {
     pub(crate) host_requests: usize,
@@ -781,7 +790,7 @@ impl<Action> WorkQueue<Action> {
     pub(crate) fn preflight_root_producer_commit(
         &self,
         commit: RootProducerCommit,
-    ) -> Result<(), QueueReservationError> {
+    ) -> Result<(), RootProducerCommitError> {
         let RootProducerCommit {
             root,
             queued_envelopes,
@@ -792,7 +801,8 @@ impl<Action> WorkQueue<Action> {
         // Current outputs use this root's reusable frontier while independent
         // roots retain their previously reserved sequence capacity.
         if queued_envelopes != 0 {
-            self.preflight_root_sequence(root, queued_envelopes)?;
+            self.preflight_root_sequence(root, queued_envelopes)
+                .map_err(RootProducerCommitError::Reservation)?;
         }
         let cancellation_count = cancellations
             .host_requests
@@ -800,10 +810,12 @@ impl<Action> WorkQueue<Action> {
             .and_then(|count| count.checked_add(cancellations.local_tasks))
             .and_then(|count| count.checked_add(cancellations.send_tasks))
             .and_then(|count| count.checked_add(cancellations.timers))
-            .ok_or(QueueReservationError::Exhausted)?;
-        let current_root_outputs = queued_envelopes
-            .checked_sub(cancellation_count)
-            .ok_or(QueueReservationError::Stale)?;
+            .ok_or(RootProducerCommitError::Reservation(
+                QueueReservationError::Exhausted,
+            ))?;
+        let current_root_outputs = queued_envelopes.checked_sub(cancellation_count).ok_or(
+            RootProducerCommitError::Reservation(QueueReservationError::Stale),
+        )?;
         let required = current_root_outputs
             .checked_add(starts.host_requests)
             .and_then(|count| count.checked_add(starts.local_tasks))
@@ -811,17 +823,40 @@ impl<Action> WorkQueue<Action> {
             .and_then(|count| count.checked_add(starts.timers))
             .and_then(|count| count.checked_add(starts.repeating_timers))
             .and_then(|count| count.checked_add(starts.framework_services.checked_mul(2)?))
-            .ok_or(QueueReservationError::Exhausted)?;
+            .ok_or(RootProducerCommitError::Reservation(
+                QueueReservationError::Exhausted,
+            ))?;
         let available = self
-            .root_remaining(root)?
+            .root_remaining(root)
+            .map_err(RootProducerCommitError::Reservation)?
             .checked_add(response_releases.host_requests)
             .and_then(|count| count.checked_add(response_releases.framework_services))
-            .ok_or(QueueReservationError::Exhausted)?;
+            .ok_or(RootProducerCommitError::Reservation(
+                QueueReservationError::Exhausted,
+            ))?;
         if self.closed {
-            return Err(QueueReservationError::Closed);
+            return Err(RootProducerCommitError::Reservation(
+                QueueReservationError::Closed,
+            ));
         }
         if available < required {
-            return Err(QueueReservationError::Exhausted);
+            let Some(quota) = self.root_quotas.get(&root) else {
+                return Err(RootProducerCommitError::Reservation(
+                    QueueReservationError::Stale,
+                ));
+            };
+            if available > quota.limit {
+                return Err(RootProducerCommitError::Reservation(
+                    QueueReservationError::Stale,
+                ));
+            }
+            return Err(RootProducerCommitError::FrontierInsufficient {
+                declared: quota.limit,
+                attempted: quota
+                    .limit
+                    .checked_sub(available)
+                    .and_then(|already_committed| already_committed.checked_add(required)),
+            });
         }
         Ok(())
     }
@@ -3826,7 +3861,9 @@ mod reservation_tests {
         assert_eq!(queue.root_remaining(second_a.root_quota), Ok(1));
         assert_eq!(
             queue.preflight_root_producer_commit(root_commit(second_a.root_quota, 1, 0),),
-            Err(QueueReservationError::SequenceExhausted),
+            Err(RootProducerCommitError::Reservation(
+                QueueReservationError::SequenceExhausted,
+            )),
             "A must fail before consuming B's remaining sequence tail"
         );
         assert_eq!(
@@ -4070,7 +4107,9 @@ mod reservation_tests {
 
         assert_eq!(
             queue.preflight_root_producer_commit(root_commit(a_action.root_quota, 2, 1),),
-            Err(QueueReservationError::SequenceExhausted),
+            Err(RootProducerCommitError::Reservation(
+                QueueReservationError::SequenceExhausted,
+            )),
             "A's output cannot spend B's local-task cancellation sequence"
         );
         queue

@@ -113,12 +113,166 @@ fn initial_lifecycle_precedes_effects_and_refusal_unmounts_once() {
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    Effects, NoHostProtocol, ProducerBudget, SubscriptionSet, UiApp, View, WorkResidencyBudget,
-    WorkStartBudget, text,
+    Effects, Element, NoHostProtocol, ProducerBudget, SubscriptionSet, UiApp, View, Widget,
+    WidgetMountContext, WorkResidencyBudget, WorkStartBudget, text,
 };
 use runenui_runtime::{
     AppRuntime, InitialAdmissionErrorKind, PumpBudget, RuntimeConfig, RuntimeStatus,
 };
+
+struct RootedMountState {
+    queue_credits: usize,
+    mount_calls: Rc<Cell<usize>>,
+    accepted_tasks: Rc<Cell<usize>>,
+    task_polls: Rc<Cell<usize>>,
+    unmount_calls: Rc<Cell<usize>>,
+}
+
+#[derive(Debug)]
+struct RootedMountTask {
+    mount_calls: Rc<Cell<usize>>,
+    accepted_tasks: Rc<Cell<usize>>,
+    task_polls: Rc<Cell<usize>>,
+    unmount_calls: Rc<Cell<usize>>,
+}
+
+impl Widget<()> for RootedMountTask {
+    type State = ();
+
+    fn create_state(&self) {}
+
+    fn producer_budget(
+        &self,
+        phase: runenui_core::WidgetProducerPhase,
+        (): &(),
+    ) -> runenui_core::WidgetProducerBudget {
+        if phase == runenui_core::WidgetProducerPhase::Mount {
+            runenui_core::WidgetProducerBudget::new(1)
+                .with_work_starts(WorkStartBudget::new(1, 0, 0, 0, 0))
+        } else {
+            runenui_core::WidgetProducerBudget::new(0)
+        }
+    }
+
+    fn mount(&self, (): &mut (), context: &mut WidgetMountContext<()>) {
+        self.mount_calls.set(self.mount_calls.get() + 1);
+        let task_polls = Rc::clone(&self.task_polls);
+        if context
+            .try_local_task(async move {
+                task_polls.set(task_polls.get() + 1);
+                None
+            })
+            .is_ok()
+        {
+            self.accepted_tasks.set(self.accepted_tasks.get() + 1);
+        }
+    }
+
+    fn unmount(&self, (): &mut (), _: &mut runenui_core::WidgetUnmountContext) {
+        self.unmount_calls.set(self.unmount_calls.get() + 1);
+    }
+}
+
+struct RootedMountApp;
+
+impl UiApp for RootedMountApp {
+    type State = RootedMountState;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn initial_producer_budget(state: &Self::State) -> ProducerBudget {
+        ProducerBudget::new(state.queue_credits, 1)
+            .with_reconciliation(1, 0, 1)
+            .with_subscriptions(0, 0)
+            .with_work_starts(WorkStartBudget::new(1, 0, 0, 0, 0))
+            .with_work_residency(WorkResidencyBudget::new(1, 0, 0, 0, 0, 0))
+    }
+
+    fn action_producer_budget(_: &Self::State, (): &()) -> ProducerBudget {
+        ProducerBudget::new(1, 0).with_subscriptions(0, 0)
+    }
+
+    fn interaction_producer_budget(_: &Self::State) -> ProducerBudget {
+        ProducerBudget::new(1, 0)
+    }
+
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        Element::new(RootedMountTask {
+            mount_calls: Rc::clone(&state.mount_calls),
+            accepted_tasks: Rc::clone(&state.accepted_tasks),
+            task_polls: Rc::clone(&state.task_polls),
+            unmount_calls: Rc::clone(&state.unmount_calls),
+        })
+    }
+
+    fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+fn rooted_mount_state(queue_credits: usize) -> RootedMountState {
+    RootedMountState {
+        queue_credits,
+        mount_calls: Rc::new(Cell::new(0)),
+        accepted_tasks: Rc::new(Cell::new(0)),
+        task_polls: Rc::new(Cell::new(0)),
+        unmount_calls: Rc::new(Cell::new(0)),
+    }
+}
+
+#[test]
+fn mounted_work_frontier_one_short_is_an_owned_typed_initial_refusal() {
+    let state = rooted_mount_state(2);
+    let mount_calls = Rc::clone(&state.mount_calls);
+    let accepted_tasks = Rc::clone(&state.accepted_tasks);
+    let task_polls = Rc::clone(&state.task_polls);
+    let unmount_calls = Rc::clone(&state.unmount_calls);
+    let config = RuntimeConfig::default();
+    let result = AppRuntime::<RootedMountApp>::mount_with_config(state, config);
+    let error = match result {
+        Err(error) => error,
+        Ok(runtime) => panic!(
+            "one-short initial root frontier was not refused: status={:?}, mount_calls={}, accepted_tasks={}",
+            runtime.status(),
+            mount_calls.get(),
+            accepted_tasks.get()
+        ),
+    };
+    assert!(matches!(
+        error.kind(),
+        InitialAdmissionErrorKind::ProducerContractViolation(
+            runenui_core::ProducerContractViolation {
+                component: runenui_core::BudgetComponent::QueueFrontier,
+                declared: 2,
+                attempted: Some(3),
+                ..
+            }
+        )
+    ));
+    assert_eq!(error.state().queue_credits, 2);
+    assert_eq!(mount_calls.get(), 1);
+    assert_eq!(accepted_tasks.get(), 1);
+    assert_eq!(task_polls.get(), 0);
+    assert_eq!(unmount_calls.get(), 1);
+    let (state, returned_config) = error.into_parts();
+    assert_eq!(state.queue_credits, 2);
+    assert!(Rc::ptr_eq(&state.mount_calls, &mount_calls));
+    assert_eq!(returned_config, config);
+    drop(state);
+    assert_eq!(unmount_calls.get(), 1);
+}
+
+#[test]
+fn mounted_work_frontier_exact_fit_admits_and_runs_task() {
+    let state = rooted_mount_state(3);
+    let task_polls = Rc::clone(&state.task_polls);
+    let mut runtime = AppRuntime::<RootedMountApp>::mount(state)
+        .unwrap_or_else(|error| panic!("exact initial root frontier fits: {error}"));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    runtime
+        .pump(PumpBudget::new(16, 16, 1, 16))
+        .unwrap_or_else(|_| unreachable!("mounted local task polls"));
+    assert_eq!(task_polls.get(), 1);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
 
 struct State {
     identity: Box<u64>,

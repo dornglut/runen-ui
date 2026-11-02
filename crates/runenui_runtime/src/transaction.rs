@@ -369,6 +369,7 @@ struct RootProducerPreflight<'a, Action, Protocol: HostProtocol> {
     sequenced_outputs: usize,
     application_outputs: &'a [PlannedOutput<Action>],
     mounted_outputs: &'a [PlannedOutput<Action>],
+    phase: runenui_core::ProducerPhase,
 }
 
 fn root_work_start_counts(
@@ -424,8 +425,19 @@ fn preflight_root_producer_commit<Action, Protocol: HostProtocol>(
         cancellations,
         response_releases,
     };
-    if queue.preflight_root_producer_commit(root_commit).is_err() {
-        return Err(TransactionPlanError::ProducerQuotaExceeded);
+    if let Err(error) = queue.preflight_root_producer_commit(root_commit) {
+        return Err(match error {
+            crate::queue::RootProducerCommitError::FrontierInsufficient {
+                declared,
+                attempted,
+            } => TransactionPlanError::QueueFrontierExceeded {
+                declared,
+                attempted,
+            },
+            crate::queue::RootProducerCommitError::Reservation(_) => {
+                TransactionPlanError::ProducerQuotaExceeded
+            }
+        });
     }
     queue
         .preflight_root_work_leases(root_quota, live_start_count)
@@ -441,6 +453,20 @@ fn preflight_root_producer_commit<Action, Protocol: HostProtocol>(
         })
     {
         if !queue.root_covers_action_budget(root_quota, producer_budget) {
+            if let Some(parent) = queue.root_profile(root_quota)
+                && let Some((component, declared, attempted)) =
+                    uncovered_component(parent, producer_budget)
+            {
+                return Err(TransactionPlanError::ProducerViolation(
+                    runenui_core::ProducerContractViolation {
+                        kind: runenui_core::ProducerViolationKind::DescendantProfileNotCovered,
+                        phase: preflight.phase,
+                        component,
+                        declared,
+                        attempted: Some(attempted),
+                    },
+                ));
+            }
             return Err(TransactionPlanError::ProducerQuotaExceeded);
         }
     }
@@ -531,6 +557,11 @@ impl<Action, Protocol: HostProtocol> PlannedApplicationTransaction<Action, Proto
                 sequenced_outputs,
                 application_outputs: &application_outputs,
                 mounted_outputs: &mounted_outputs,
+                phase: if producer_budget.is_some() {
+                    runenui_core::ProducerPhase::InitialEffects
+                } else {
+                    runenui_core::ProducerPhase::ApplicationUpdate
+                },
             })?;
         } else {
             queue.preflight_commit(sequenced_outputs)?;
@@ -721,6 +752,10 @@ pub(crate) enum TransactionOutputError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TransactionPlanError {
     ProducerViolation(runenui_core::ProducerContractViolation),
+    QueueFrontierExceeded {
+        declared: usize,
+        attempted: Option<usize>,
+    },
     QueueFull,
     ProducerQuotaExceeded,
     WorkSequenceExhausted,
@@ -902,8 +937,25 @@ impl<Action, Protocol: HostProtocol> TransactionLedger<Action, Protocol> {
                 response_releases,
             })
             .map_err(|error| match error {
-                crate::queue::QueueReservationError::SequenceExhausted => {
-                    crate::RuntimeTerminalReason::WorkSequenceExhausted
+                crate::queue::RootProducerCommitError::Reservation(
+                    crate::queue::QueueReservationError::SequenceExhausted,
+                ) => crate::RuntimeTerminalReason::WorkSequenceExhausted,
+                crate::queue::RootProducerCommitError::FrontierInsufficient {
+                    declared,
+                    attempted,
+                } if context.phase == runenui_core::ProducerPhase::InitialEffects => {
+                    crate::RuntimeTerminalReason::ProducerContractViolation(
+                        runenui_core::ProducerContractViolation {
+                            kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                            phase: context.phase,
+                            component: runenui_core::BudgetComponent::QueueFrontier,
+                            declared,
+                            attempted,
+                        },
+                    )
+                }
+                crate::queue::RootProducerCommitError::FrontierInsufficient { .. } => {
+                    crate::RuntimeTerminalReason::Poisoned
                 }
                 _ => crate::RuntimeTerminalReason::Poisoned,
             })?;

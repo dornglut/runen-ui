@@ -683,16 +683,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         if let Err(error) = self.queue.preflight_root_producer_commit(root_commit) {
             return Err(match error {
-                crate::queue::QueueReservationError::SequenceExhausted => self
-                    .handle_routed_admission_rejection(
-                        TraceRoutedAdmissionRejection::WorkSequenceExhausted,
-                        facts,
-                    ),
-                _ => self.poison_routed_facts(
+                crate::queue::RootProducerCommitError::Reservation(
+                    crate::queue::QueueReservationError::SequenceExhausted,
+                ) => self.handle_routed_admission_rejection(
+                    TraceRoutedAdmissionRejection::WorkSequenceExhausted,
                     facts,
-                    TraceRoutedIntegrityFailure::OutputAllowanceExceeded,
-                    None,
                 ),
+                crate::queue::RootProducerCommitError::FrontierInsufficient { .. }
+                | crate::queue::RootProducerCommitError::Reservation(_) => self
+                    .poison_routed_facts(
+                        facts,
+                        TraceRoutedIntegrityFailure::OutputAllowanceExceeded,
+                        None,
+                    ),
             });
         }
         Ok(())

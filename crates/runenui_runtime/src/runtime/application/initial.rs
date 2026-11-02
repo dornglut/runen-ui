@@ -72,6 +72,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     TransactionPlanError::ProducerViolation(cause) => {
                         RuntimeTerminalReason::ProducerContractViolation(cause)
                     }
+                    TransactionPlanError::QueueFrontierExceeded {
+                        declared,
+                        attempted,
+                    } => RuntimeTerminalReason::ProducerContractViolation(
+                        runenui_core::ProducerContractViolation {
+                            kind: runenui_core::ProducerViolationKind::DeclarationExceeded,
+                            phase: runenui_core::ProducerPhase::InitialEffects,
+                            component: runenui_core::BudgetComponent::QueueFrontier,
+                            declared,
+                            attempted,
+                        },
+                    ),
                     TransactionPlanError::ProducerQuotaExceeded => RuntimeTerminalReason::Poisoned,
                     TransactionPlanError::WorkSequenceExhausted => {
                         RuntimeTerminalReason::WorkSequenceExhausted
