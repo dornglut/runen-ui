@@ -43,11 +43,14 @@ with a fixed Rust toolchain, runner/hardware identity, and feature set:
 ```text
 cargo +stable test --release --locked --all-features -p runenui_runtime --test m10_semantic_integrity bench_u475_accumulated_noop_root_admission_scaling -- --ignored --nocapture
 cargo +stable test --release --locked --all-features -p runenui_runtime --lib bench_u475_keyed_generation_release_scaling -- --ignored --nocapture
+cargo +stable test --release --locked --all-features -p runenui_runtime --lib bench_u475_cross_root_cancellation_preflight_scaling -- --ignored --nocapture
 ```
 
 Each diagnostic uses 30 independent repetitions at root sizes 32, 256, 1024,
 and 2048. Admission covers trace disabled/enabled (0/512), while retirement
-compares sequential and batched keyed lease release. Each `U475_METRIC` line reports
+compares sequential and batched keyed lease release. Cross-root cancellation
+preflight also covers mixed host, framework-service, local task, send task,
+and repeating timer generations at the same root sizes. Each `U475_METRIC` line reports
 the phase, trace mode, roots, repetitions, p50/p95/maximum total batch time in
 microseconds, and the largest observed process VmRSS in KiB when available.
 VmRSS is a process-wide snapshot, not a per-root allocation or an isolated

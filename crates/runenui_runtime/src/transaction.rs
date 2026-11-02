@@ -398,34 +398,9 @@ fn root_work_cancellations<Action>(
     root_quota: RootQuotaId,
     invalidated: &[WorkGeneration],
 ) -> Result<(RootProducerCancellations, RootProducerResponseReleases), TransactionPlanError> {
-    let (host_requests, host_response_release) = queue
-        .preflight_host_request_cancellations(invalidated, root_quota)
-        .map_err(|_| TransactionPlanError::ProducerQuotaExceeded)?;
-    let (framework_services, framework_service_response_release) = queue
-        .preflight_framework_service_cancellations(invalidated, root_quota)
-        .map_err(|_| TransactionPlanError::ProducerQuotaExceeded)?;
-    let local_tasks = queue
-        .preflight_local_task_cancellations(invalidated)
-        .map_err(|_| TransactionPlanError::ProducerQuotaExceeded)?;
-    let send_tasks = queue
-        .preflight_send_task_cancellations(invalidated)
-        .map_err(|_| TransactionPlanError::ProducerQuotaExceeded)?;
-    let timers = queue
-        .preflight_timer_cancellations(invalidated)
-        .map_err(|_| TransactionPlanError::ProducerQuotaExceeded)?;
-    Ok((
-        RootProducerCancellations {
-            host_requests,
-            framework_services,
-            local_tasks,
-            send_tasks,
-            timers,
-        },
-        RootProducerResponseReleases {
-            host_requests: host_response_release,
-            framework_services: framework_service_response_release,
-        },
-    ))
+    queue
+        .preflight_root_cancellations(invalidated, root_quota)
+        .map_err(|_| TransactionPlanError::ProducerQuotaExceeded)
 }
 
 fn preflight_root_producer_commit<Action, Protocol: HostProtocol>(

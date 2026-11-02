@@ -3,6 +3,8 @@
 #![allow(clippy::redundant_pub_crate)]
 
 mod input_continuations;
+#[cfg(all(test, feature = "internal-test-seams"))]
+mod cancellation_preflight_tests;
 pub(crate) use input_continuations::InputContinuationKey;
 
 use core::{fmt, num::NonZeroU64};
@@ -839,125 +841,108 @@ impl<Action> WorkQueue<Action> {
         Ok(())
     }
 
-    pub(crate) fn preflight_host_request_cancellations(
+    /// Preflights one transaction's complete cross-family cancellation set.
+    ///
+    /// Scanning the live keyed-credit maps once avoids one linear root search
+    /// per invalidation and per work family. This is O(K + R + L), where K is
+    /// the invalidated generation count, R the root count, and L the total
+    /// live keyed-credit records. No ledger state is mutated by this pass.
+    pub(crate) fn preflight_root_cancellations(
         &self,
         generations: &[WorkGeneration],
         root: RootQuotaId,
-    ) -> Result<(usize, usize), QueueReservationError> {
-        generations
-            .iter()
-            .try_fold((0usize, 0usize), |(count, released), generation| {
-                let matching = self.root_quotas.iter().find_map(|(owner, quota)| {
-                    quota
+    ) -> Result<(RootProducerCancellations, RootProducerResponseReleases), QueueReservationError> {
+        let requested: HashSet<_> = generations.iter().copied().collect();
+        if requested.len() != generations.len() {
+            return Err(QueueReservationError::Stale);
+        }
+        let mut seen = HashSet::with_capacity(requested.len());
+        let mut cancellations = RootProducerCancellations {
+            host_requests: 0,
+            framework_services: 0,
+            local_tasks: 0,
+            send_tasks: 0,
+            timers: 0,
+        };
+        let mut releases = RootProducerResponseReleases {
+            host_requests: 0,
+            framework_services: 0,
+        };
+        for (owner, quota) in &self.root_quotas {
+            for (generation, credits) in &quota.host_requests {
+                if requested.contains(generation) {
+                    if !credits.cancellation || !seen.insert(*generation) {
+                        return Err(QueueReservationError::Stale);
+                    }
+                    cancellations.host_requests = cancellations
                         .host_requests
-                        .get(generation)
-                        .map(|credits| (*owner, credits))
-                });
-                match matching {
-                    Some((owner, credits)) if credits.cancellation => Ok((
-                        count
-                            .checked_add(1)
-                            .ok_or(QueueReservationError::Exhausted)?,
-                        released
-                            .checked_add(usize::from(owner == root && credits.response))
-                            .ok_or(QueueReservationError::Exhausted)?,
-                    )),
-                    Some(_) => Err(QueueReservationError::Stale),
-                    None => Ok((count, released)),
+                        .checked_add(1)
+                        .ok_or(QueueReservationError::Exhausted)?;
+                    releases.host_requests = releases
+                        .host_requests
+                        .checked_add(usize::from(*owner == root && credits.response))
+                        .ok_or(QueueReservationError::Exhausted)?;
                 }
-            })
-    }
-
-    pub(crate) fn preflight_local_task_cancellations(
-        &self,
-        generations: &[WorkGeneration],
-    ) -> Result<usize, QueueReservationError> {
-        generations.iter().try_fold(0usize, |count, generation| {
-            let matching = self
-                .root_quotas
-                .values()
-                .find_map(|quota| quota.local_tasks.get(generation));
-            match matching {
-                Some(credits)
-                    if !credits.invalidated
-                        && (credits.completion.outcome || credits.completion.cancellation) =>
-                {
-                    count.checked_add(1).ok_or(QueueReservationError::Exhausted)
-                }
-                Some(_) => Err(QueueReservationError::Stale),
-                None => Ok(count),
             }
-        })
-    }
-
-    pub(crate) fn preflight_framework_service_cancellations(
-        &self,
-        generations: &[WorkGeneration],
-        root: RootQuotaId,
-    ) -> Result<(usize, usize), QueueReservationError> {
-        generations
-            .iter()
-            .try_fold((0usize, 0usize), |(count, released), generation| {
-                let matching = self.root_quotas.iter().find_map(|(owner, quota)| {
-                    quota
+            for (generation, credits) in &quota.framework_services {
+                if requested.contains(generation) {
+                    if !credits.cancellation || !seen.insert(*generation) {
+                        return Err(QueueReservationError::Stale);
+                    }
+                    cancellations.framework_services = cancellations
                         .framework_services
-                        .get(generation)
-                        .map(|credits| (*owner, credits))
-                });
-                match matching {
-                    Some((owner, credits)) if credits.cancellation => Ok((
-                        count
-                            .checked_add(1)
-                            .ok_or(QueueReservationError::Exhausted)?,
-                        released
-                            .checked_add(usize::from(owner == root && credits.response))
-                            .ok_or(QueueReservationError::Exhausted)?,
-                    )),
-                    Some(_) => Err(QueueReservationError::Stale),
-                    None => Ok((count, released)),
+                        .checked_add(1)
+                        .ok_or(QueueReservationError::Exhausted)?;
+                    releases.framework_services = releases
+                        .framework_services
+                        .checked_add(usize::from(*owner == root && credits.response))
+                        .ok_or(QueueReservationError::Exhausted)?;
                 }
-            })
-    }
-
-    pub(crate) fn preflight_send_task_cancellations(
-        &self,
-        generations: &[WorkGeneration],
-    ) -> Result<usize, QueueReservationError> {
-        generations.iter().try_fold(0usize, |count, generation| {
-            let matching = self
-                .root_quotas
-                .values()
-                .find_map(|quota| quota.send_tasks.get(generation));
-            match matching {
-                Some(credits)
-                    if !credits.invalidated
-                        && (credits.completion.outcome || credits.completion.cancellation) =>
-                {
-                    count.checked_add(1).ok_or(QueueReservationError::Exhausted)
-                }
-                Some(_) => Err(QueueReservationError::Stale),
-                None => Ok(count),
             }
-        })
-    }
-
-    pub(crate) fn preflight_timer_cancellations(
-        &self,
-        generations: &[WorkGeneration],
-    ) -> Result<usize, QueueReservationError> {
-        generations.iter().try_fold(0usize, |count, generation| {
-            let matching = self
-                .root_quotas
-                .values()
-                .find_map(|quota| quota.timers.get(generation));
-            match matching {
-                Some(credits) if !credits.invalidated && credits.activity.cancellation => {
-                    count.checked_add(1).ok_or(QueueReservationError::Exhausted)
+            for (generation, credits) in &quota.local_tasks {
+                if requested.contains(generation) {
+                    if credits.invalidated
+                        || !(credits.completion.outcome || credits.completion.cancellation)
+                        || !seen.insert(*generation)
+                    {
+                        return Err(QueueReservationError::Stale);
+                    }
+                    cancellations.local_tasks = cancellations
+                        .local_tasks
+                        .checked_add(1)
+                        .ok_or(QueueReservationError::Exhausted)?;
                 }
-                Some(_) => Err(QueueReservationError::Stale),
-                None => Ok(count),
             }
-        })
+            for (generation, credits) in &quota.send_tasks {
+                if requested.contains(generation) {
+                    if credits.invalidated
+                        || !(credits.completion.outcome || credits.completion.cancellation)
+                        || !seen.insert(*generation)
+                    {
+                        return Err(QueueReservationError::Stale);
+                    }
+                    cancellations.send_tasks = cancellations
+                        .send_tasks
+                        .checked_add(1)
+                        .ok_or(QueueReservationError::Exhausted)?;
+                }
+            }
+            for (generation, credits) in &quota.timers {
+                if requested.contains(generation) {
+                    if credits.invalidated
+                        || !credits.activity.cancellation
+                        || !seen.insert(*generation)
+                    {
+                        return Err(QueueReservationError::Stale);
+                    }
+                    cancellations.timers = cancellations
+                        .timers
+                        .checked_add(1)
+                        .ok_or(QueueReservationError::Exhausted)?;
+                }
+            }
+        }
+        Ok((cancellations, releases))
     }
 
     pub(crate) fn preflight_root_host_response(
