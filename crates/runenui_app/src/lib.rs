@@ -86,6 +86,15 @@ pub struct ConfiguredApp<A: UiApp<HostProtocol = NoHostProtocol>> {
 }
 
 impl<A: UiApp<HostProtocol = NoHostProtocol>> ConfiguredApp<A> {
+    /// Selects the same single-window native profile after the UI model has
+    /// been configured. This remains unmounted configuration; it does not
+    /// construct another runtime or replace the application state.
+    #[must_use]
+    pub fn window(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
     /// Supplies application-owned styling for native surface publication.
     #[must_use]
     pub fn styles(mut self, styles: StyleEnvironment) -> Self {
@@ -284,5 +293,16 @@ mod tests {
         let model = App::new().window("Counter").ui(Minimal { value: 42 });
         assert_eq!(model.title.as_deref(), Some("Counter"));
         assert_eq!(model.state.value, 42);
+    }
+
+    #[test]
+    fn selecting_window_before_or_after_ui_preserves_one_typed_model() {
+        let before = App::new().window("Counter").ui(Minimal { value: 42 });
+        let after = App::new().ui(Minimal { value: 42 }).window("Counter");
+        assert_eq!(before.title, after.title);
+        assert_eq!(before.state.value, after.state.value);
+
+        let later = App::new().ui(Minimal { value: 7 }).window("");
+        assert!(matches!(later.run(), Err(NativeAppError::WindowTitleEmpty)));
     }
 }

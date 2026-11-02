@@ -13,6 +13,9 @@ App::new()
     .run()?;
 ```
 
+The equivalent `App::new().ui(Counter::new()).window("Counter").run()?`
+ordering is also supported; both paths create the same single native host.
+
 The model implements the existing `runenui_core::UiApp` with `State = Self`.
 The native shell supports a single window and `NoHostProtocol` currently.
 Additional application styling and resource providers can be specified with
@@ -62,6 +65,12 @@ the typed native fatal error and a nonzero exit, without claiming a real
 driver validation incident. This is Linux X11 virtual
 display evidence, **not** Windows/macOS, physical input, IME, accessibility
 or arbitrary device-loss qualification.
+
+The [Native Desktop Compile](../../.github/workflows/native-desktop-compile.yml)
+workflow separately checks the public examples, native crate and test-only
+feature for **Windows and macOS compilation** on hosted runners. Successful
+cross-platform compilation is not evidence that a physical native OS window
+ran or that its platform input/accessibility and GPU-loss behavior is qualified.
 
 The first native implementation is a standalone desktop delivery candidate
 owned by #543. The host-specific behavior still needs native platform and
