@@ -278,6 +278,13 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
                 .root_work_residency(root, family)
                 .ok_or(RegistryInsertError::Full)?;
             if required > claim {
+                let no_invalidations = HashSet::new();
+                let committed = self
+                    .resident_family_requirement(family, &no_invalidations, 0, Some(root))
+                    .ok_or(RegistryInsertError::Full)?;
+                if committed > claim {
+                    return Err(RegistryInsertError::Full);
+                }
                 return Err(RegistryInsertError::RootResidencyExceeded {
                     family,
                     declared: claim,
@@ -807,5 +814,80 @@ mod tests {
         }
         assert!(registry.records.is_empty());
         assert!(registry.keyed.is_empty());
+    }
+
+    #[test]
+    fn preexisting_rooted_residency_overclaim_remains_integrity_failure() {
+        let budget = runenui_core::ProducerBudget::new(3, 0)
+            .with_work_residency(runenui_core::WorkResidencyBudget::new(1, 0, 0, 0, 0, 0));
+        let mut queue = crate::queue::WorkQueue::new(8);
+        let reservation = queue
+            .reserve_for_producer(budget)
+            .unwrap_or_else(|_| unreachable!());
+        let root = reservation.quota();
+        let mut registry: WorkRegistry<(), NoHostProtocol> =
+            WorkRegistry::new(RuntimeLimits::default());
+        let (generations, _) = registry
+            .preview_generations(2)
+            .unwrap_or_else(|_| unreachable!());
+        for generation in generations {
+            let effect = Effects::local_task(async { None })
+                .__runtime_into_items()
+                .pop()
+                .unwrap_or_else(|| unreachable!());
+            registry.commit_record(
+                generation,
+                WorkOwner::Application,
+                WorkFamily::LocalTask,
+                None,
+                effect,
+                Some(root),
+            );
+        }
+        let invalidated = std::collections::HashSet::new();
+        assert_eq!(
+            registry.preflight_resident_family(
+                WorkFamily::LocalTask,
+                &invalidated,
+                0,
+                &queue,
+                Some(root),
+            ),
+            Err(super::RegistryInsertError::Full)
+        );
+        assert_eq!(registry.records.len(), 2);
+
+        let mut valid_registry: WorkRegistry<(), NoHostProtocol> =
+            WorkRegistry::new(RuntimeLimits::default());
+        let (generation, _) = valid_registry
+            .preview_generations(1)
+            .unwrap_or_else(|_| unreachable!());
+        let effect = Effects::local_task(async { None })
+            .__runtime_into_items()
+            .pop()
+            .unwrap_or_else(|| unreachable!());
+        valid_registry.commit_record(
+            generation[0],
+            WorkOwner::Application,
+            WorkFamily::LocalTask,
+            None,
+            effect,
+            Some(root),
+        );
+        assert_eq!(
+            valid_registry.preflight_resident_family(
+                WorkFamily::LocalTask,
+                &invalidated,
+                1,
+                &queue,
+                Some(root),
+            ),
+            Err(super::RegistryInsertError::RootResidencyExceeded {
+                family: WorkFamily::LocalTask,
+                declared: 1,
+                attempted: 2,
+            })
+        );
+        assert_eq!(valid_registry.records.len(), 1);
     }
 }
