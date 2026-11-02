@@ -1593,20 +1593,25 @@ impl<Action> WorkQueue<Action> {
         root: RootQuotaId,
         generation: WorkGeneration,
     ) -> Result<(), QueueReservationError> {
+        let reserved = self.reserved;
         let Some(quota) = self.root_quotas.get_mut(&root) else {
             return Err(QueueReservationError::Stale);
         };
-        if quota.keyed_family_count(generation) > 1 {
+        if quota.keyed_family_count(generation) > 1 || reserved < quota.remaining {
             return Err(QueueReservationError::Stale);
         }
         if let Some(credits) = quota.host_requests.get_mut(&generation) {
             if quota.live_work_leases == 0 || !credits.cancellation {
                 return Err(QueueReservationError::Stale);
             }
-            quota.remaining = quota
+            let remaining = quota
                 .remaining
                 .checked_add(usize::from(credits.response))
                 .ok_or(QueueReservationError::Exhausted)?;
+            if reserved < remaining {
+                return Err(QueueReservationError::Stale);
+            }
+            quota.remaining = remaining;
             credits.response = false;
             quota.live_work_leases -= 1;
             return Ok(());
@@ -1615,10 +1620,14 @@ impl<Action> WorkQueue<Action> {
             if quota.live_work_leases == 0 || !credits.cancellation {
                 return Err(QueueReservationError::Stale);
             }
-            quota.remaining = quota
+            let remaining = quota
                 .remaining
                 .checked_add(usize::from(credits.response))
                 .ok_or(QueueReservationError::Exhausted)?;
+            if reserved < remaining {
+                return Err(QueueReservationError::Stale);
+            }
+            quota.remaining = remaining;
             credits.response = false;
             quota.live_work_leases -= 1;
             return Ok(());
@@ -1652,10 +1661,14 @@ impl<Action> WorkQueue<Action> {
             }
             let released =
                 usize::from(credits.activity.firing) + usize::from(credits.activity.callback);
-            quota.remaining = quota
+            let remaining = quota
                 .remaining
                 .checked_add(released)
                 .ok_or(QueueReservationError::Exhausted)?;
+            if reserved < remaining {
+                return Err(QueueReservationError::Stale);
+            }
+            quota.remaining = remaining;
             credits.activity.firing = false;
             credits.activity.callback = false;
             credits.invalidated = true;
@@ -3237,6 +3250,95 @@ mod reservation_tests {
         assert_eq!(quota.live_work_leases, 0);
         assert_eq!(queue.reserved, 1);
         assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[test]
+    fn transaction_cancellation_rejects_underreserved_credits_before_mutation() {
+        use crate::{
+            RuntimeLimits,
+            work::{WorkFamily, WorkRegistry},
+        };
+
+        for family in [
+            WorkFamily::HostRequest,
+            WorkFamily::FrameworkService,
+            WorkFamily::Timer,
+        ] {
+            let mut queue = WorkQueue::<u8>::new(4);
+            let root = queue.reserve(3).expect("root credits");
+            let independent = queue.reserve(1).expect("independent root");
+            let generation =
+                WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                    .preview_generations(1)
+                    .expect("one generation")
+                    .0[0];
+
+            match family {
+                WorkFamily::HostRequest => {
+                    queue
+                        .retain_root_host_request_lease(root.quota(), generation)
+                        .expect("host request retained");
+                    let quota = queue.root_quotas.get_mut(&root.quota()).expect("root exists");
+                    quota.remaining -= 1;
+                    let credits = quota.host_requests.get_mut(&generation).expect("host credits");
+                    credits.start_pending = false;
+                    credits.response = true;
+                }
+                WorkFamily::FrameworkService => {
+                    queue
+                        .retain_root_framework_service_lease(root.quota(), generation)
+                        .expect("service retained");
+                }
+                WorkFamily::Timer => {
+                    queue
+                        .retain_root_timer_lease(root.quota(), generation, true)
+                        .expect("repeating timer retained");
+                }
+                _ => unreachable!("test covers credit-returning cancellation families"),
+            }
+            assert_eq!(queue.root_remaining(root.quota()), Ok(1));
+            assert_eq!(queue.root_quotas[&root.quota()].live_work_leases, 1);
+
+            // The global reserve lacks the backing needed by this credit return.
+            // Refusal must preserve the original generation and independent root.
+            queue.reserved = 1;
+            assert_eq!(
+                queue.release_root_work_lease_for_cancellation(root.quota(), generation),
+                Err(QueueReservationError::Stale),
+                "{family:?} must refuse before mutating",
+            );
+            let quota = &queue.root_quotas[&root.quota()];
+            assert_eq!(quota.remaining, 1);
+            assert_eq!(quota.live_work_leases, 1);
+            match family {
+                WorkFamily::HostRequest => {
+                    let credits = quota.host_requests[&generation];
+                    assert!(credits.response && credits.cancellation);
+                }
+                WorkFamily::FrameworkService => {
+                    let credits = quota.framework_services[&generation];
+                    assert!(credits.response && credits.cancellation);
+                }
+                WorkFamily::Timer => {
+                    let credits = quota.timers[&generation];
+                    assert!(credits.activity.callback && credits.activity.cancellation);
+                    assert!(!credits.invalidated);
+                }
+                _ => unreachable!("test covers credit-returning cancellation families"),
+            }
+            assert_eq!(queue.reserved, 1);
+            assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+            assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+
+            queue.reserved = 4;
+            queue
+                .release_root_work_lease_for_cancellation(root.quota(), generation)
+                .expect("restored global backing permits retirement");
+            assert_eq!(queue.root_quotas[&root.quota()].live_work_leases, 0);
+            assert_eq!(queue.root_quotas[&root.quota()].remaining, 2);
+            assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        }
     }
 
     #[test]
