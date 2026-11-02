@@ -6,12 +6,12 @@ use std::{
     future::Future,
     pin::Pin,
     rc::Rc,
-    task::{Context, Waker},
-    time::Duration,
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
+    task::{Context, Waker},
+    time::Duration,
 };
 
 use runenui_core::{
@@ -664,7 +664,6 @@ fn direct_mapped_host_covered_child_commits_and_preserves_trace_chain() {
     }
 }
 
-
 #[derive(Clone, Copy, Debug)]
 enum MixedAction {
     Cancel,
@@ -680,7 +679,10 @@ struct MixedSource {
 
 impl SendSubscriptionSource<Arc<u8>> for MixedSource {
     fn start(self: Box<Self>, sink: SendSubscriptionSink<Arc<u8>>) -> SendSubscriptionStartOutcome {
-        *self.sink.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(sink);
+        *self
+            .sink
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(sink);
         SendSubscriptionStartOutcome::Started
     }
 }
@@ -734,11 +736,9 @@ impl UiApp for MixedApp {
         action: &Self::Action,
     ) -> runenui_core::ProducerBudget {
         match action {
-            MixedAction::Cancel | MixedAction::Poison => {
-                runenui_core::ProducerBudget::new(8, 5)
-                    .with_reconciliation(0, 1, 0)
-                    .with_subscriptions(1, 0)
-            }
+            MixedAction::Cancel | MixedAction::Poison => runenui_core::ProducerBudget::new(8, 5)
+                .with_reconciliation(0, 1, 0)
+                .with_subscriptions(1, 0),
             MixedAction::Wide => runenui_core::ProducerBudget::new(25, 0),
             MixedAction::Survivor | MixedAction::Unexpected => {
                 runenui_core::ProducerBudget::new(1, 0)
@@ -760,11 +760,9 @@ impl UiApp for MixedApp {
         let local_polls = Rc::clone(&state.local_polls);
         let send_maps = Rc::clone(&state.send_maps);
         let timer_fires = Rc::clone(&state.timer_fires);
-        Effects::host_request(
-            Some(key("mixed.host")),
-            Command::Number(1),
-            |_| MixedAction::Unexpected,
-        )
+        Effects::host_request(Some(key("mixed.host")), Command::Number(1), |_| {
+            MixedAction::Unexpected
+        })
         .then(Effects::keyed_local_task(
             key("mixed.local"),
             std::future::poll_fn(move |_| {
