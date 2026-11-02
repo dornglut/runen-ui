@@ -277,6 +277,7 @@ fn process_application_action_inner<App: UiApp>(
             surface_publication.retire_motion_owner(owner);
             let owner = WorkOwner::Mounted(owner.clone());
             let generations = work.generations_for_owner(&owner);
+            let mut retired_by_root = HashMap::<_, Vec<_>>::new();
             for generation in &generations {
                 if let Some(identity) = work.trace_identity(*generation) {
                     lifecycle_invalidated_identities.push(public_trace_work_identity(identity));
@@ -291,10 +292,12 @@ fn process_application_action_inner<App: UiApp>(
                     subscriptions,
                     host_requests,
                     framework_services,
-                ) && queue
-                    .release_root_work_lease(root_quota, *generation)
-                    .is_err()
-                {
+                ) {
+                    retired_by_root.entry(root_quota).or_default().push(*generation);
+                }
+            }
+            for (root, retired) in retired_by_root {
+                if queue.release_root_work_leases(root, &retired).is_err() {
                     root_lease_release_failed = true;
                 }
             }

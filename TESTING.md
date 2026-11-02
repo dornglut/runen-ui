@@ -33,6 +33,33 @@ Exact-head CI must validate the frozen reviewed feature head. A successful run f
 
 The current testing surface reflects implemented framework behavior only. Accepted target architecture does not create test assertions or runtime products before implementation.
 
+## Opt-in producer-ledger performance qualification
+
+The U475 admission and keyed-generation retirement diagnostics are intentionally ignored
+by the normal test baseline. They measure cost; they do not set an acceptance limit or
+create a second CI/validation authority. Run them on an exact checked-out revision,
+with a fixed Rust toolchain, runner/hardware identity, and feature set:
+
+```text
+cargo +stable test --release --locked --all-features -p runenui_runtime --test m10_semantic_integrity bench_u475_accumulated_noop_root_admission_scaling -- --ignored --nocapture
+cargo +stable test --release --locked --all-features -p runenui_runtime --lib bench_u475_keyed_generation_release_scaling -- --ignored --nocapture
+```
+
+Each diagnostic uses 30 independent repetitions at root sizes 32, 256, 1024,
+and 2048. Admission covers trace disabled/enabled (0/512), while retirement
+compares sequential and batched keyed lease release. Each `U475_METRIC` line reports
+the phase, trace mode, roots, repetitions, p50/p95/maximum total batch time in
+microseconds, and the largest observed process VmRSS in KiB when available.
+VmRSS is a process-wide snapshot, not a per-root allocation or an isolated
+peak-memory measurement.
+
+Preserve the exact commit SHA, CPU/platform, Rust compiler version, feature
+selection, raw observations, and any elapsed-time distributions in the owning
+issue/PR. No workload-independent numeric latency, throughput, or memory limit
+has been adopted by this testing procedure; interpret results with the current
+conformance and accepted owner decision. These diagnostics do not qualify
+physical native input-to-present evidence.
+
 ## Evidence ownership
 
 - executable tests are evidence for observed implementation behavior;

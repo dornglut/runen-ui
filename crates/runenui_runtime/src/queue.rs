@@ -7,7 +7,7 @@ pub(crate) use input_continuations::InputContinuationKey;
 
 use core::{fmt, num::NonZeroU64};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
 };
 
@@ -1452,78 +1452,101 @@ impl<Action> WorkQueue<Action> {
         root: RootQuotaId,
         generation: WorkGeneration,
     ) -> Result<(), QueueReservationError> {
+        self.release_root_work_leases(root, &[generation])
+    }
+
+    /// Retires one mounted owner's generations together. This checks future
+    /// terminal credits once per root, rather than rescanning every remaining
+    /// generation on each individual lease release.
+    ///
+    /// No registry or queue mutation occurs if the combined transfer fails.
+    pub(crate) fn release_root_work_leases(
+        &mut self,
+        root: RootQuotaId,
+        generations: &[WorkGeneration],
+    ) -> Result<(), QueueReservationError> {
+        if generations.is_empty() {
+            return Ok(());
+        }
         let quota = self
             .root_quotas
             .get_mut(&root)
             .ok_or(QueueReservationError::Stale)?;
-        if quota.live_work_leases == 0 {
+        let retained_leases = quota
+            .live_work_leases
+            .checked_sub(generations.len())
+            .ok_or(QueueReservationError::Stale)?;
+
+        if generations.len() > 1 {
+            let mut unique = HashSet::with_capacity(generations.len());
+            if generations.iter().any(|generation| !unique.insert(*generation)) {
+                return Err(QueueReservationError::Stale);
+            }
+        }
+
+        let mut released = 0usize;
+        for generation in generations {
+            let credits = quota
+                .host_requests
+                .get(generation)
+                .map(|credits| usize::from(credits.response) + usize::from(credits.cancellation))
+                .or_else(|| {
+                    quota.framework_services.get(generation).map(|credits| {
+                        usize::from(credits.response) + usize::from(credits.cancellation)
+                    })
+                })
+                .or_else(|| {
+                    quota.local_tasks.get(generation).map(|credits| {
+                        usize::from(credits.completion.outcome)
+                            + usize::from(credits.completion.cancellation)
+                    })
+                })
+                .or_else(|| {
+                    quota.send_tasks.get(generation).map(|credits| {
+                        usize::from(credits.completion.outcome)
+                            + usize::from(credits.completion.cancellation)
+                    })
+                })
+                .or_else(|| {
+                    quota.timers.get(generation).map(|credits| {
+                        usize::from(credits.activity.firing)
+                            + usize::from(credits.activity.callback)
+                            + usize::from(credits.activity.cancellation)
+                    })
+                })
+                .unwrap_or(0);
+            // Subscription work is rooted but has no keyed terminal map.
+            released = released
+                .checked_add(credits)
+                .ok_or(QueueReservationError::Exhausted)?;
+        }
+        let future_after = future_credit_count(quota)
+            .and_then(|future| future.checked_sub(released))
+            .ok_or(QueueReservationError::Stale)?;
+        let remaining = quota
+            .remaining
+            .checked_add(released)
+            .ok_or(QueueReservationError::Exhausted)?;
+        if quota
+            .pending_envelopes
+            .checked_add(remaining)
+            .and_then(|occupied| occupied.checked_add(future_after))
+            .is_none_or(|occupied| occupied > quota.limit)
+        {
             return Err(QueueReservationError::Stale);
         }
 
-        // A keyed lease transfers its unused future terminal credits back to
-        // the same root. Prove the complete transfer before removing the work
-        // generation; an invalid ledger must not be partially repaired.
-        let released = quota
-            .host_requests
-            .get(&generation)
-            .map(|credits| usize::from(credits.response) + usize::from(credits.cancellation))
-            .or_else(|| {
-                quota.framework_services.get(&generation).map(|credits| {
-                    usize::from(credits.response) + usize::from(credits.cancellation)
-                })
-            })
-            .or_else(|| {
-                quota.local_tasks.get(&generation).map(|credits| {
-                    usize::from(credits.completion.outcome)
-                        + usize::from(credits.completion.cancellation)
-                })
-            })
-            .or_else(|| {
-                quota.send_tasks.get(&generation).map(|credits| {
-                    usize::from(credits.completion.outcome)
-                        + usize::from(credits.completion.cancellation)
-                })
-            })
-            .or_else(|| {
-                quota.timers.get(&generation).map(|credits| {
-                    usize::from(credits.activity.firing)
-                        + usize::from(credits.activity.callback)
-                        + usize::from(credits.activity.cancellation)
-                })
-            });
-
-        if let Some(released) = released {
-            let future_after = future_credit_count(quota)
-                .and_then(|future| future.checked_sub(released))
-                .ok_or(QueueReservationError::Stale)?;
-            let remaining = quota
-                .remaining
-                .checked_add(released)
-                .ok_or(QueueReservationError::Exhausted)?;
-            if quota
-                .pending_envelopes
-                .checked_add(remaining)
-                .and_then(|occupied| occupied.checked_add(future_after))
-                .is_none_or(|occupied| occupied > quota.limit)
+        for generation in generations {
+            if quota.host_requests.remove(generation).is_none()
+                && quota.framework_services.remove(generation).is_none()
+                && quota.local_tasks.remove(generation).is_none()
+                && quota.send_tasks.remove(generation).is_none()
             {
-                return Err(QueueReservationError::Stale);
+                quota.timers.remove(generation);
             }
-            if quota.host_requests.contains_key(&generation) {
-                quota.host_requests.remove(&generation);
-            } else if quota.framework_services.contains_key(&generation) {
-                quota.framework_services.remove(&generation);
-            } else if quota.local_tasks.contains_key(&generation) {
-                quota.local_tasks.remove(&generation);
-            } else if quota.send_tasks.contains_key(&generation) {
-                quota.send_tasks.remove(&generation);
-            } else {
-                quota.timers.remove(&generation);
-            }
-            quota.remaining = remaining;
         }
-        // A non-keyed subscription lease has no per-generation terminal map;
-        // its WorkRegistry record remains the authority for revocation.
-        quota.live_work_leases -= 1;
+        quota.remaining = remaining;
+        quota.live_work_leases = retained_leases;
         self.close_idle_root(root)
     }
 
@@ -3228,6 +3251,90 @@ mod reservation_tests {
     }
 
     #[test]
+    fn batch_lease_retirement_conserves_all_five_families_and_foreign_root() {
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        let mut queue = WorkQueue::<u8>::new(8);
+        let root = queue.reserve(7).expect("five work-family credits fit");
+        let independent = queue.reserve(1).expect("unrelated root stays funded");
+        let generations =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(5)
+                .expect("five unique generations")
+                .0;
+        queue
+            .retain_root_host_request_lease(root.quota(), generations[0])
+            .expect("host credit");
+        queue
+            .retain_root_framework_service_lease(root.quota(), generations[1])
+            .expect("framework response and cancellation");
+        queue
+            .retain_root_local_task_lease(root.quota(), generations[2])
+            .expect("local task");
+        queue
+            .retain_root_send_task_lease(root.quota(), generations[3])
+            .expect("send task");
+        queue
+            .retain_root_timer_lease(root.quota(), generations[4], true)
+            .expect("repeating timer");
+        assert_eq!(queue.root_remaining(root.quota()), Ok(0));
+        queue
+            .release_root_work_leases(root.quota(), &generations)
+            .expect("atomic release of all five keyed generations");
+        assert!(!queue.root_quotas.contains_key(&root.quota()));
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        assert_eq!(queue.reserved, 1);
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+    }
+
+    #[test]
+    fn batch_lease_retirement_rejects_duplicates_and_invalid_frontier_before_mutation() {
+        use crate::{RuntimeLimits, work::WorkRegistry};
+
+        let mut queue = WorkQueue::<u8>::new(4);
+        let root = queue.reserve(3).expect("three keyed terminal credits");
+        let independent = queue.reserve(1).expect("independent root credit");
+        let generations =
+            WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                .preview_generations(2)
+                .expect("two generations")
+                .0;
+        queue
+            .retain_root_local_task_lease(root.quota(), generations[0])
+            .expect("local terminal credit");
+        queue
+            .retain_root_framework_service_lease(root.quota(), generations[1])
+            .expect("framework terminal pair");
+        assert_eq!(
+            queue.release_root_work_leases(root.quota(), &[generations[0], generations[0]]),
+            Err(QueueReservationError::Stale)
+        );
+        let quota = queue.root_quotas.get_mut(&root.quota()).expect("root lives");
+        quota.pending_envelopes = 1; // Deliberately malformed internal ledger.
+        assert_eq!(
+            queue.release_root_work_leases(root.quota(), &generations),
+            Err(QueueReservationError::Stale)
+        );
+        let quota = queue.root_quotas.get(&root.quota()).expect("refused root remains");
+        assert_eq!(quota.remaining, 0);
+        assert_eq!(quota.live_work_leases, 2);
+        assert!(quota.local_tasks.contains_key(&generations[0]));
+        assert!(quota.framework_services.contains_key(&generations[1]));
+        assert_eq!(queue.reserved, 4);
+        assert_eq!(queue.root_remaining(independent.quota()), Ok(1));
+        assert_eq!(queue.next_sequence().map(WorkSequence::get), Some(1));
+        queue
+            .root_quotas
+            .get_mut(&root.quota())
+            .expect("test restores internal ledger")
+            .pending_envelopes = 0;
+        queue
+            .release_root_work_leases(root.quota(), &generations)
+            .expect("restored conservation permits a complete release");
+        assert_eq!(queue.reserved, 1);
+    }
+
+    #[test]
     fn foreign_reserved_envelope_refusal_preserves_sequence_and_both_root_credits() {
         let mut queue = WorkQueue::<u8>::new(2);
         let first = queue.reserve(1).expect("first root fits");
@@ -3803,59 +3910,67 @@ mod reservation_tests {
 
     /// Opt-in release-mode diagnostic, not a timing assertion or acceptance limit.
     #[test]
-    #[ignore = "run by producer-ledger-performance workflow"]
+    #[ignore = "opt-in release-mode U475 keyed-credit cost measurements"]
     fn bench_u475_keyed_generation_release_scaling() {
         use std::time::Instant;
 
         use crate::{RuntimeLimits, work::WorkRegistry};
 
         const REPEATS: usize = 30;
-        for size in [32usize, 256, 1024, 2048] {
-            let mut timings = Vec::with_capacity(REPEATS);
-            let mut max_rss_kib = 0usize;
-            for _ in 0..REPEATS {
-                let mut queue = WorkQueue::<u8>::new(size);
-                let reservation = queue
-                    .reserve(size)
-                    .expect("finite local-task terminal frontier fits");
-                let generations =
-                    WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
-                        .preview_generations(size)
-                        .expect("the benchmark generations fit")
-                        .0;
-                for generation in &generations {
-                    queue
-                        .retain_root_local_task_lease(reservation.quota(), *generation)
-                        .expect("generation reserves exactly one terminal credit");
+        for mode in ["sequential", "batched"] {
+            for size in [32usize, 256, 1024, 2048] {
+                let mut timings = Vec::with_capacity(REPEATS);
+                let mut max_rss_kib = 0usize;
+                for _ in 0..REPEATS {
+                    let mut queue = WorkQueue::<u8>::new(size);
+                    let reservation = queue
+                        .reserve(size)
+                        .expect("finite local-task terminal frontier fits");
+                    let generations =
+                        WorkRegistry::<u8, runenui_core::NoHostProtocol>::new(RuntimeLimits::default())
+                            .preview_generations(size)
+                            .expect("the benchmark generations fit")
+                            .0;
+                    for generation in &generations {
+                        queue
+                            .retain_root_local_task_lease(reservation.quota(), *generation)
+                            .expect("generation reserves exactly one terminal credit");
+                    }
+                    assert_eq!(queue.root_remaining(reservation.quota()), Ok(0));
+                    if let Ok(status) = std::fs::read_to_string("/proc/self/status")
+                        && let Some(kib) = status
+                            .lines()
+                            .find_map(|line| line.strip_prefix("VmRSS:"))
+                            .and_then(|value| value.split_whitespace().next())
+                            .and_then(|value| value.parse::<usize>().ok())
+                    {
+                        max_rss_kib = max_rss_kib.max(kib);
+                    }
+                    let start = Instant::now();
+                    if mode == "batched" {
+                        queue
+                            .release_root_work_leases(reservation.quota(), &generations)
+                            .expect("all keyed terminal credits retire atomically");
+                    } else {
+                        for generation in generations {
+                            queue
+                                .release_root_work_lease(reservation.quota(), generation)
+                                .expect("generation returns its unused terminal credit");
+                        }
+                    }
+                    timings.push(start.elapsed().as_micros());
+                    assert!(queue.root_quotas.is_empty());
+                    assert_eq!(queue.reserved, 0);
+                    assert!(queue.is_empty());
                 }
-                assert_eq!(queue.root_remaining(reservation.quota()), Ok(0));
-                if let Ok(status) = std::fs::read_to_string("/proc/self/status")
-                    && let Some(kib) = status
-                        .lines()
-                        .find_map(|line| line.strip_prefix("VmRSS:"))
-                        .and_then(|value| value.split_whitespace().next())
-                        .and_then(|value| value.parse::<usize>().ok())
-                {
-                    max_rss_kib = max_rss_kib.max(kib);
-                }
-                let start = Instant::now();
-                for generation in generations {
-                    queue
-                        .release_root_work_lease(reservation.quota(), generation)
-                        .expect("generation returns its unused terminal credit");
-                }
-                timings.push(start.elapsed().as_micros());
-                assert!(queue.root_quotas.is_empty());
-                assert_eq!(queue.reserved, 0);
-                assert!(queue.is_empty());
+                timings.sort_unstable();
+                println!(
+                    "U475_METRIC,keyed-release-{mode},off,{size},{REPEATS},{},{},{},{max_rss_kib}",
+                    timings[REPEATS / 2],
+                    timings[(95 * REPEATS).div_ceil(100) - 1],
+                    timings[REPEATS - 1]
+                );
             }
-            timings.sort_unstable();
-            println!(
-                "U475_METRIC,keyed-release,off,{size},{REPEATS},{},{},{},{max_rss_kib}",
-                timings[REPEATS / 2],
-                timings[(95 * REPEATS).div_ceil(100) - 1],
-                timings[REPEATS - 1]
-            );
         }
     }
 

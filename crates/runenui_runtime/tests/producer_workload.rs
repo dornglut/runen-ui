@@ -412,7 +412,7 @@ fn sixteen_credits_refuse_an_independent_ime_update_without_spending_cleanup() {
 
 /// Opt-in release-mode diagnostic, not a timing assertion or acceptance limit.
 #[test]
-#[ignore = "run by producer-ledger-performance workflow"]
+#[ignore = "opt-in release-mode U475 admission cost measurements"]
 fn bench_u475_accumulated_noop_root_admission_scaling() {
     const REPEATS: usize = 30;
     for size in [32usize, 256, 1024, 2048] {
