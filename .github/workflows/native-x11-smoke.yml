@@ -1,0 +1,190 @@
+name: Native X11 Smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-x11-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Independent fluent desktop window lifecycle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Resolve exact revision
+        id: revision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SHA: ${{ github.sha }}
+          PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request) expected_revision="$PULL_REQUEST_HEAD_SHA" ;;
+            push|workflow_dispatch) expected_revision="$EVENT_SHA" ;;
+            *) echo "Unsupported event: $EVENT_NAME" >&2; exit 1 ;;
+          esac
+          test -n "$expected_revision"
+          echo "expected_revision=$expected_revision" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ steps.revision.outputs.expected_revision }}
+          clean: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Assert checkout identity
+        env:
+          EXPECTED_REVISION: ${{ steps.revision.outputs.expected_revision }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_REVISION"
+
+      - name: Install stable Rust and native X11/Vulkan software stack
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          sudo apt-get update
+          sudo apt-get install --yes xvfb openbox xdotool wmctrl libxkbcommon-x11-0 mesa-vulkan-drivers vulkan-tools
+          icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -type f -name 'lvp_icd*.json' -print -quit)"
+          test -n "$icd"
+          echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          echo "WGPU_BACKEND=vulkan" >> "$GITHUB_ENV"
+          echo "LIBGL_ALWAYS_SOFTWARE=1" >> "$GITHUB_ENV"
+          echo "XDG_RUNTIME_DIR=${RUNNER_TEMP}/runenui-xdg" >> "$GITHUB_ENV"
+          mkdir -p "${RUNNER_TEMP}/runenui-xdg"
+          chmod 700 "${RUNNER_TEMP}/runenui-xdg"
+          vulkaninfo --summary
+
+      - name: Build independent native consumer executables
+        run: |
+          set -euo pipefail
+          cargo +stable build --locked -p fluent_counter -p fluent_status
+
+      - name: Exercise real X11 windows and OS shutdown
+        env:
+          RUST_BACKTRACE: "1"
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM 120s xvfb-run -a --server-args="-screen 0 1280x800x24" bash .github/scripts/native-app-smoke.sh
+
+      - name: Build explicit debug-only native renderer fault-injection consumer
+        run: |
+          set -euo pipefail
+          cargo +stable build --locked -p fluent_counter -p fluent_status --features runenui_app/internal-test-seams
+
+      - name: Inject recoverable native presentation statuses in X11 windows
+        env:
+          RUST_BACKTRACE: "1"
+          RUNENUI_NATIVE_TEST_RENDER_FAULTS: "timeout,occluded,outdated,suboptimal,not-configured,lost"
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM 120s xvfb-run -a --server-args="-screen 0 1280x800x24" bash .github/scripts/native-app-smoke.sh
+
+      - name: Verify typed fatal native presentation and nonzero process exit
+        env:
+          RUST_BACKTRACE: "1"
+          RUNENUI_NATIVE_TEST_RENDER_FAULTS: "validation"
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM 45s xvfb-run -a --server-args="-screen 0 1280x800x24" bash .github/scripts/native-app-fatal-smoke.sh
+
+      - name: Confirm checkout unchanged
+        if: always()
+        run: |
+          set -euo pipefail
+          git diff --check
+          test -z "$(git status --short)"
+
+      - name: Upload native smoke logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: runenui-native-x11-${{ steps.revision.outputs.expected_revision }}
+          path: |
+            ${{ runner.temp }}/fluent_counter.log
+            ${{ runner.temp }}/fluent_status.log
+            ${{ runner.temp }}/fluent_counter_fatal.log
+            ${{ runner.temp }}/runenui-openbox.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  native-compile:
+    name: Native App public API compile (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - name: Resolve exact revision
+        id: revision
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SHA: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request) expected_revision="$PR_HEAD_SHA" ;;
+            push|workflow_dispatch) expected_revision="$EVENT_SHA" ;;
+            *) echo "Unsupported event: $EVENT_NAME" >&2; exit 1 ;;
+          esac
+          test -n "$expected_revision"
+          echo "expected_revision=$expected_revision" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact native feature head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ steps.revision.outputs.expected_revision }}
+          clean: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate checkout identity
+        shell: bash
+        env:
+          EXPECTED_REVISION: ${{ steps.revision.outputs.expected_revision }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_REVISION"
+
+      - name: Install stable Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+
+      - name: Compile default native API and both consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +stable check --locked --all-targets -p runenui_app -p fluent_counter -p fluent_status
+
+      - name: Compile explicit debug-only native test seams
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +stable check --locked --all-targets -p runenui_app -p fluent_counter -p fluent_status --features runenui_app/internal-test-seams
+
+      - name: Confirm checkout unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test -z "$(git status --short)"

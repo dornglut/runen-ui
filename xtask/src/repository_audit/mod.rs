@@ -377,6 +377,15 @@ fn expected_active_workflow_files(root: &Path) -> BTreeSet<String> {
     {
         expected.insert("visual-conformance.yml".to_owned());
     }
+    // This optional native proof belongs only to the independently hosted
+    // fluent application delivery; a mainline workspace without both
+    // consumers must not be forced to carry the workflow.
+    if root.join("crates/runenui_app/Cargo.toml").is_file()
+        && root.join("examples/fluent_counter/Cargo.toml").is_file()
+        && root.join("examples/fluent_status/Cargo.toml").is_file()
+    {
+        expected.insert("native-x11-smoke.yml".to_owned());
+    }
     expected
 }
 

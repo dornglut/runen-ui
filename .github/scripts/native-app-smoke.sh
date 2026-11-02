@@ -1,0 +1,334 @@
+#!/usr/bin/env bash
+# Native X11/Xvfb smoke: two independent public-API programs, real windows,
+# real renderer startup and WM_DELETE_WINDOW shutdown. Not an IME proof.
+set -euo pipefail
+
+wm_pid=""
+app_pid=""
+focus_peer_pid=""
+cleanup() {
+  if [[ -n "$focus_peer_pid" ]]; then
+    kill "$focus_peer_pid" 2>/dev/null || true
+    wait "$focus_peer_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$app_pid" ]]; then
+    kill "$app_pid" 2>/dev/null || true
+    wait "$app_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$wm_pid" ]]; then
+    kill "$wm_pid" 2>/dev/null || true
+    wait "$wm_pid" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
+openbox --sm-disable >"${RUNNER_TEMP:-/tmp}/runenui-openbox.log" 2>&1 &
+wm_pid="$!"
+sleep 1
+kill -0 "$wm_pid"
+
+for entry in "fluent_counter:Counter" "fluent_status:Status"; do
+  executable="${entry%%:*}"
+  window_title="${entry#*:}"
+  log="${RUNNER_TEMP:-/tmp}/${executable}.log"
+  window_id=""
+  echo "Starting ${executable} as a real native window"
+  "./target/debug/${executable}" >"$log" 2>&1 &
+  app_pid="$!"
+
+  for _ in $(seq 1 100); do
+    if ! kill -0 "$app_pid" 2>/dev/null; then
+      echo "Native process terminated before window became visible: ${executable}" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    window_id="$(xdotool search --onlyvisible --name "^${window_title}$" 2>/dev/null | head -n 1 || true)"
+    if [[ -n "$window_id" ]]; then
+      break
+    fi
+    sleep 0.2
+  done
+
+  if [[ -z "$window_id" ]]; then
+    echo "Native window did not appear: ${executable}" >&2
+    cat "$log" >&2
+    exit 1
+  fi
+
+  echo "Found visible native window: ${executable} id=${window_id}"
+  if [[ -n "${RUNENUI_NATIVE_TEST_RENDER_FAULTS:-}" ]]; then
+    for status in SurfaceTimeout SurfaceOccluded SurfaceOutdated SurfaceSuboptimal SurfaceNotConfigured SurfaceLost; do
+      if ! grep -Fq "RUNENUI_NATIVE_TEST_RENDER_FAULT=${status}" "$log"; then
+        # These exact recoverable statuses must all have passed through the
+        # real native host's production recovery branches before first Present.
+        for _ in $(seq 1 100); do
+          grep -Fq "RUNENUI_NATIVE_TEST_RENDER_FAULT=${status}" "$log" && break
+          if ! kill -0 "$app_pid" 2>/dev/null; then break; fi
+          sleep 0.1
+        done
+      fi
+      if ! grep -Fq "RUNENUI_NATIVE_TEST_RENDER_FAULT=${status}" "$log"; then
+        echo "Missing injected native renderer surface status: ${status}" >&2
+        cat "$log" >&2
+        exit 1
+      fi
+    done
+    # The final injected loss is followed by a bounded native retry, not
+    # synchronous Present. Observe completion without treating a still-pending
+    # retry as a failure at the exact moment the last fault was logged.
+    recovered=""
+    for _ in $(seq 1 100); do
+      if grep -Fq "RUNENUI_NATIVE_TEST_RENDER_RECOVERED=same_immutable_publication" "$log"; then
+        recovered=yes
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.1
+    done
+    if [[ -z "$recovered" ]]; then
+      echo "Native renderer did not Present the preserved publication after injected failures" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    echo "Injected native surface statuses and immutable publication recovery PASS"
+  fi
+  xdotool windowactivate --sync "$window_id"
+  xdotool windowsize "$window_id" 850 530
+  # The second consumer has a one-shot initial timer (1500 ms).
+  # Require an exact callback observation, not just an idle process.
+  if [[ "$executable" == "fluent_status" ]]; then
+    timer_observed=""
+    for _ in $(seq 1 100); do
+      if grep -Fq "RUNENUI_FLUENT_STATUS_TIMER_FIRED" "$log"; then
+        timer_observed=yes
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$timer_observed" ]]; then
+      echo "Canonical initial timer did not reach application action" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    echo "Canonical native timer action PASS"
+    # A genuine XTest keyboard event should activate the explicitly authored
+    # and runtime-focused button. Do not submit an internal semantic action.
+    xdotool windowactivate --sync "$window_id"
+    xdotool key --clearmodifiers space
+    key_observed=""
+    for _ in $(seq 1 50); do
+      if grep -Fq "RUNENUI_FLUENT_STATUS_TOGGLED" "$log"; then
+        key_observed=yes
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$key_observed" ]]; then
+      echo "Native X11 Space activation did not reach authored button action" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    echo "Focused native keyboard action PASS"
+    # Black-box hit probe, using only XTest OS pointer events. Search a
+    # bounded visible grid rather than relying on an internal UI geometry
+    # hook or a guessed single button pixel.
+    toggle_count="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+    pointer_observed=""
+    for y in 15 35 55 75 100 130 170 215 270; do
+      for x in 15 35 65 100 150 230 350 490; do
+        xdotool mousemove --window "$window_id" "$x" "$y"
+        xdotool click 1
+        sleep 0.12
+        observed_count="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+        if (( observed_count > toggle_count )); then
+          pointer_observed=yes
+          break 2
+        fi
+        if ! kill -0 "$app_pid" 2>/dev/null; then
+          break 2
+        fi
+      done
+    done
+    if [[ -z "$pointer_observed" ]]; then
+      echo "Native X11 pointer activation did not reach authored button action" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    echo "Native pointer action PASS"
+    # Hide and restore the SAME X11 window without terminating the app or
+    # rebuilding its UI runtime. A restored native window must remain able to
+    # receive genuine OS input after focus and surface visibility transitions.
+    xdotool windowactivate --sync "$window_id"
+    xdotool keydown --clearmodifiers space
+    sleep 0.15
+    before_hide_release="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+    xdotool windowunmap "$window_id"
+    sleep 0.3
+    # Up is delivered after this window lost visibility/focus; it must never
+    # complete the old key lifetime as a fresh button activation.
+    xdotool keyup --clearmodifiers space
+    sleep 0.2
+    after_hide_release="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+    if (( after_hide_release != before_hide_release )); then
+      echo "Native hidden-window Space release completed a retired key lifetime" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    pre_restore_toggles="$after_hide_release"
+    if ! kill -0 "$app_pid" 2>/dev/null; then
+      echo "Native process died while X11 window was unmapped" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    xdotool windowmap "$window_id"
+    remapped=""
+    for _ in $(seq 1 50); do
+      if xdotool search --onlyvisible --name "^${window_title}$" 2>/dev/null | grep -Fxq "$window_id"; then
+        remapped=yes
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$remapped" ]]; then
+      echo "Same native window did not become visible after X11 remap" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    xdotool windowactivate --sync "$window_id"
+    xdotool windowsize "$window_id" 790 490
+    xdotool key --clearmodifiers space
+    restored_input=""
+    for _ in $(seq 1 50); do
+      toggles="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+      if (( toggles > pre_restore_toggles )); then
+        restored_input=yes
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$restored_input" ]]; then
+      echo "Native keyboard action did not recover after X11 unmap/remap" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    echo "Native X11 hide/restore and post-restore keyboard action PASS"
+
+    # A different real native application owns the focus while the original
+    # button's Space Down lifetime is interrupted. This is an OS focus-change
+    # test, not a synthetic runtime cancellation or semantic activation.
+    peer_log="${RUNNER_TEMP:-/tmp}/fluent_counter_focus_peer.log"
+    env -u RUNENUI_NATIVE_TEST_RENDER_FAULTS ./target/debug/fluent_counter >"$peer_log" 2>&1 &
+    focus_peer_pid="$!"
+    peer_id=""
+    for _ in $(seq 1 100); do
+      peer_id="$(xdotool search --onlyvisible --name "^Counter$" 2>/dev/null | head -n 1 || true)"
+      if [[ -n "$peer_id" ]]; then
+        break
+      fi
+      if ! kill -0 "$focus_peer_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$peer_id" ]]; then
+      echo "Independent native focus peer did not open" >&2
+      cat "$peer_log" >&2
+      exit 1
+    fi
+
+    xdotool windowactivate --sync "$window_id"
+    xdotool keydown --clearmodifiers space
+    sleep 0.15
+    held_down_count="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+    xdotool windowactivate --sync "$peer_id"
+    if [[ "$(xdotool getwindowfocus)" != "$peer_id" ]]; then
+      echo "X11 did not transfer focus to the second native process" >&2
+      exit 1
+    fi
+    xdotool keyup --clearmodifiers space
+    sleep 0.3
+    after_release_count="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+    if (( after_release_count != held_down_count )); then
+      echo "Unfocused native app received a stray Space release activation" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+
+    xdotool windowactivate --sync "$window_id"
+    xdotool key --clearmodifiers space
+    focus_recovered=""
+    for _ in $(seq 1 50); do
+      fresh_count="$(grep -Fc "RUNENUI_FLUENT_STATUS_TOGGLED" "$log" || true)"
+      if (( fresh_count > after_release_count )); then
+        focus_recovered=yes
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$focus_recovered" ]]; then
+      echo "Native keyboard lifetime failed to recover after external focus handoff" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+    wmctrl -ic "$peer_id"
+    peer_closed=""
+    for _ in $(seq 1 100); do
+      if ! kill -0 "$focus_peer_pid" 2>/dev/null; then
+        peer_closed=yes
+        break
+      fi
+      sleep 0.2
+    done
+    if [[ -z "$peer_closed" ]]; then
+      echo "Independent native focus peer did not exit on WM close" >&2
+      cat "$peer_log" >&2
+      exit 1
+    fi
+    wait "$focus_peer_pid" || { cat "$peer_log" >&2; exit 1; }
+    focus_peer_pid=""
+    echo "Native two-process focus handoff, key cancellation and recovery PASS"
+  fi
+  if ! kill -0 "$app_pid" 2>/dev/null; then
+    echo "Native process failed during resize/idle: ${executable}" >&2
+    cat "$log" >&2
+    exit 1
+  fi
+  # Request WM-managed graceful closure via _NET_CLOSE_WINDOW. Unlike
+  # xdotool windowclose (XDestroyWindow), this must not destroy the X11
+  # target before winit can retire its native input context.
+  wmctrl -ic "$window_id"
+
+  closed=""
+  for _ in $(seq 1 100); do
+    if ! kill -0 "$app_pid" 2>/dev/null; then
+      closed=yes
+      break
+    fi
+    sleep 0.2
+  done
+  if [[ -z "$closed" ]]; then
+    echo "Window did not exit after WM close: ${executable}" >&2
+    cat "$log" >&2
+    exit 1
+  fi
+  wait "$app_pid" || { echo "Native application exited with error: ${executable}" >&2; cat "$log" >&2; exit 1; }
+  app_pid=""
+  echo "Native open/resize/close PASS: ${executable}"
+done

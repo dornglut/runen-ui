@@ -1,3 +1,5 @@
+#[path = "../host_mount_adapters.rs"]
+mod host_mount_adapters;
 #[path = "../mounted_work_output.rs"]
 mod mounted_work_output;
 #[path = "../pump_scheduler.rs"]
