@@ -166,6 +166,12 @@ impl NativeVisibility {
     const fn admits_keyboard(self, window_has_focus: bool) -> bool {
         !self.suppresses_presentation() && window_has_focus
     }
+
+    const fn can_configure_surface(self) -> bool {
+        // The renderer is deliberately absent between suspended() and resumed().
+        // An occluded but resumed window may still configure its surface.
+        !self.suspended
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -672,11 +678,7 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
         // Consume this one-time intent on the first genuinely focused
         // native window, even if the app already chose a runtime focus target.
         // Do not replay an obsolete initial intent after focus is lost.
-        let initial_focus_target = if self
-            .window
-            .as_ref()
-            .is_some_and(|window| window.has_focus())
-        {
+        let initial_focus_target = if self.accepts_native_keyboard() {
             self.initial_focus.take()
         } else {
             None
@@ -1080,6 +1082,12 @@ impl<A: UiApp<HostProtocol = NoHostProtocol>> NativeHost<A> {
     }
 
     fn handle_mapping_change(&mut self, event_loop: &ActiveEventLoop) {
+        // Winit may deliver resize/scale changes while suspended(). The GPU
+        // renderer and its surface mapping are intentionally absent then;
+        // resumed() reconstructs both from the current window dimensions.
+        if !self.visibility.can_configure_surface() {
+            return;
+        }
         let changed = self.refresh_mapping();
         if changed && !self.invalidate_mouse_point_authority(event_loop, "native mapping changed") {
             return;
@@ -1528,6 +1536,23 @@ mod tests {
         assert!(visibility.suppresses_presentation());
         visibility.occluded = false;
         assert!(!visibility.suppresses_presentation());
+    }
+
+    #[test]
+    fn native_surface_configuration_waits_for_resume_not_unocclusion() {
+        let mut visibility = NativeVisibility {
+            suspended: true,
+            occluded: true,
+        };
+        assert!(!visibility.can_configure_surface());
+        visibility.occluded = false;
+        assert!(!visibility.can_configure_surface());
+
+        visibility.occluded = true;
+        visibility.suspended = false;
+        assert!(visibility.can_configure_surface());
+        visibility.occluded = false;
+        assert!(visibility.can_configure_surface());
     }
 
     #[test]
