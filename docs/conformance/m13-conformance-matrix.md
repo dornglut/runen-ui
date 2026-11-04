@@ -49,6 +49,47 @@ invent settlements or repeat physical qualification on another source revision.
 
 The accepted RunenUI runtime/API slice qualifies `M13ARB-01`–`M13ARB-07`; `M13ARB-08`–`M13ARB-10` additionally require independently owned Runenwerk/native/external proof. No row is `owner-accepted` merely because this matrix or its ADR is merged. Before changing any status, qualify the complete positive, negative and diagnostic/trace evidence required by that row on the exact reviewed feature head, independent critical review, canonical validation, guarded merge and accepted-main verification. [Current status](../status.md) owns capability maturity; this matrix owns the exact observable and proof obligations.
 
+## #472 — old-focus retirement proof (framework-only extension)
+
+For an earlier genuinely queued and M13-`Committed` keyboard Down, subsequent
+loss of its original focused recipient is **not** automatically a successful
+UI Cancel. The accepted #475 live-route `FocusOut` is authoritative only if
+actually delivered; focus=None or an ownership revision alone cannot prove it.
+
+A qualifying canonical focus boundary emits one immutable
+`InputArbitrationRecord::FocusRecipientRetired` naming the exact runtime
+scope, cause, recipient, retiring work sequence and non-reused focus
+generation. The causes are `DeliveredFocusOut` and `Unmounted`.
+One new witness is observed at most once, after the same boundary's
+`OwnershipChanged`, independent of debug trace. Multiple focus retirements
+within one observation interval conservatively expose only the latest;
+an omitted proof never authorizes no-recipient terminal interpretation.
+Suppressed callbacks, still-mounted reparent/route mismatch, attempted
+or failed delivery, and terminal/partial ambiguity supply **no** certificate.
+The existing M13 record budget is preflighted before any mutation, including
+the optional fourth per-boundary record.
+
+**Positive proof:** the registered [public finality fixture](../../tests/external_widget/tests/input_arbitration_finality.rs)
+checks committed original Down followed by an exact unmount, ordered M13
+retirement and no repeated witness with zero/truncated/full trace. The
+[producer focus retirement suite](../../crates/runenui_runtime/tests/producer_focus_retirement.rs)
+checks actual fully delivered old-route `FocusOut` under maximum follower
+pressure, removal and replacement, and authentic no-focus Up/Cancel with no
+invented `InputSettled`.
+
+**Negative proof:** unchanged retained focus produces no witness; an
+incomplete, failing callback followed by terminal poison never certifies
+retirement. Wrong original scope, missing/duplicate or noncommitted original
+receipt, uncertain native device generation, paused/unsettled FIFO, and
+A→B→A without exact retirement correlation remain nonpermissive to a native
+consumer. No new keyboard pressed store, host/game permission or synthetic
+M13 settlement exists in this framework extension.
+
+These observations extend M13ARB-02/04/05/06/07; they do **not** satisfy
+M13ARB-08–10, which still require independent Runenwerk native/Engine proof,
+including authenticated raw-device/window-keyboard mapping and the
+source-qualified ActionState/Present integration of [Runenwerk #1276](https://github.com/dornglut/runenwerk/issues/1276).
+
 ## Accepted framework proof
 
 The public-only [input fixtures](../../tests/external_widget/tests/input.rs), [pointer fixtures](../../tests/external_widget/tests/pointer.rs) and [external host consumer](../../tests/external_host/src/lib.rs) exercise the ordinary core/runtime contracts. [Two unrelated runtime slots](../../tests/external_widget/tests/input_arbitration_slot_families.rs) correlate all four native families; [causal finality](../../tests/external_widget/tests/input_arbitration_finality.rs), [capture transfer](../../tests/external_widget/tests/input_arbitration_pointer_route.rs) and [text capability withdrawal](../../tests/external_widget/tests/input_arbitration_text_boundary.rs) distinguish event-time settlement from subsequent work and effective ownership.
