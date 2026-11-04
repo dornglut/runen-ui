@@ -473,8 +473,14 @@ fn exact_focus_retirement_generation_does_not_alias_aba_refocus() {
         assert_eq!(first_retirement.scope(), &scope);
         assert_eq!(first_retirement.recipient(), &first);
         assert_eq!(first_retirement.sequence(), to_second.sequence());
-        assert_eq!(first_retirement.kind(), UiFocusRetirementKind::DeliveredFocusOut);
-        assert_eq!(outgoing_first.final_ownership().keyboard().focused_node(), Some(&second));
+        assert_eq!(
+            first_retirement.kind(),
+            UiFocusRetirementKind::DeliveredFocusOut
+        );
+        assert_eq!(
+            outgoing_first.final_ownership().keyboard().focused_node(),
+            Some(&second)
+        );
 
         let to_first = runtime
             .submit_command(
@@ -497,15 +503,26 @@ fn exact_focus_retirement_generation_does_not_alias_aba_refocus() {
         assert_eq!(second_retirement.scope(), &scope);
         assert_eq!(second_retirement.recipient(), &second);
         assert_eq!(second_retirement.sequence(), to_first.sequence());
-        assert_eq!(second_retirement.kind(), UiFocusRetirementKind::DeliveredFocusOut);
+        assert_eq!(
+            second_retirement.kind(),
+            UiFocusRetirementKind::DeliveredFocusOut
+        );
         assert!(second_retirement.focus_generation() > first_retirement.focus_generation());
         assert!(second_retirement.sequence() > first_retirement.sequence());
-        assert_eq!(outgoing_second.final_ownership().keyboard().focused_node(), Some(&first));
-        assert!(!outgoing_second.ordered_records().iter().any(|record| matches!(
-            record,
-            InputArbitrationRecord::FocusRecipientRetired(value)
-                if value.recipient() == &first
-        )));
+        assert_eq!(
+            outgoing_second.final_ownership().keyboard().focused_node(),
+            Some(&first)
+        );
+        assert!(
+            !outgoing_second
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(
+                    record,
+                    InputArbitrationRecord::FocusRecipientRetired(value)
+                        if value.recipient() == &first
+                ))
+        );
     }
 }
 
