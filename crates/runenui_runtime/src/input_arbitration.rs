@@ -165,6 +165,9 @@ pub struct InputOwnershipSnapshot {
     pub(crate) revision: InputOwnershipRevision,
     pub(crate) status: RuntimeStatus,
     pub(crate) keyboard: KeyboardInputOwnership,
+    /// One latest runtime-authored witness; only new witnesses enter the
+    /// bounded ordered pump records, never a retained stream or host ledger.
+    pub(crate) latest_recipient_retirement: Option<UiFocusRecipientRetirement>,
     pub(crate) surfaces: Vec<SurfaceInputOwnership>,
     pub(crate) pointers: Vec<PointerInputOwnership>,
 }
@@ -197,6 +200,7 @@ impl InputOwnershipSnapshot {
     pub(crate) fn same_ownership_facts(&self, other: &Self) -> bool {
         self.status == other.status
             && self.keyboard == other.keyboard
+            && self.latest_recipient_retirement == other.latest_recipient_retirement
             && self.surfaces == other.surfaces
             && self.pointers == other.pointers
     }
@@ -216,6 +220,58 @@ impl InputOwnershipTransition {
     #[must_use]
     pub const fn after(&self) -> &InputOwnershipSnapshot {
         &self.after
+    }
+}
+
+/// Exact, trace-independent cause of a former focused recipient's retirement.
+/// A suppressed FocusOut or mere focus/revision change never qualifies.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiFocusRetirementKind {
+    /// The checked old route actually received the required FocusOut callback.
+    DeliveredFocusOut,
+    /// The precise old mounted lifetime was removed by committed reconciliation.
+    Unmounted,
+}
+
+/// Immutable certificate for one former focused mounted lifetime. It carries
+/// no key claim, gameplay permission, synthesized Cancel or input settlement.
+/// The host must independently correlate a genuinely committed original Down,
+/// its exact scope, recipient and work order, and prove the required quiescence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiFocusRecipientRetirement {
+    pub(crate) scope: InputArbitrationScope,
+    pub(crate) sequence: WorkSequence,
+    pub(crate) recipient: MountedNodeId,
+    pub(crate) focus_generation: u64,
+    pub(crate) kind: UiFocusRetirementKind,
+}
+
+impl UiFocusRecipientRetirement {
+    #[must_use]
+    pub const fn scope(&self) -> &InputArbitrationScope {
+        &self.scope
+    }
+
+    #[must_use]
+    pub const fn sequence(&self) -> WorkSequence {
+        self.sequence
+    }
+
+    #[must_use]
+    pub const fn recipient(&self) -> &MountedNodeId {
+        &self.recipient
+    }
+
+    /// Non-reused focus-session generation within this exact runtime scope.
+    #[must_use]
+    pub const fn focus_generation(&self) -> u64 {
+        self.focus_generation
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> UiFocusRetirementKind {
+        self.kind
     }
 }
 
@@ -477,6 +533,8 @@ impl InputScopeRetirement {
 pub enum InputArbitrationRecord {
     InputSettled(UiInputSettlement),
     OwnershipChanged(InputOwnershipTransition),
+    /// Bounded committed old-route proof. Never an InputSettled receipt.
+    FocusRecipientRetired(UiFocusRecipientRetirement),
     ScopeRetired(InputScopeRetirement),
 }
 
