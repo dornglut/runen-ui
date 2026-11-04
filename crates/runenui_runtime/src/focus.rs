@@ -16,6 +16,12 @@ use crate::{LogicalRect, MountedNodeId, WorkSequence, mounted::MountedTree};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FocusSession(u64);
 
+impl FocusSession {
+    pub(crate) const fn get(self) -> u64 {
+        self.0
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FocusEligibilityProjection {
     scrollable_controls: HashSet<MountedNodeId>,
