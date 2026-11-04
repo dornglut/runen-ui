@@ -477,6 +477,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .unwrap_or(WidgetTextInput::NONE);
         let keyboard = KeyboardInputOwnership {
             focused_node,
+            focus_generation: self.focus.session().map(crate::focus::FocusSession::get),
             text_input_capability,
             composition_generation: self.composition.generation().cloned(),
             composition_device_id: self.composition.device_id(),
