@@ -221,13 +221,16 @@ impl RecordedPump {
         })
     }
 
-    /// Reserve three ordered records and all nested ownership snapshot storage
-    /// before reaching the next canonical mutation/checkpoint.
+    /// Reserve at most four ordered records (ownership, one latest certified
+    /// recipient retirement, input settlement, and scope retirement) plus all
+    /// nested ownership snapshots BEFORE reaching a mutation/checkpoint.
+    /// Multiple retirements in one boundary conservatively expose only the
+    /// latest witness; absence never grants a no-recipient terminal disposition.
     fn admit<State, Action, Protocol: runenui_core::HostProtocol>(
         &mut self,
         runtime: &mut Runtime<State, Action, Protocol>,
     ) -> Result<bool, crate::InputObservationError> {
-        if self.records.try_reserve(3).is_err() {
+        if self.records.try_reserve(4).is_err() {
             if self.progress {
                 return Ok(false);
             }
@@ -289,6 +292,17 @@ impl RecordedPump {
                         after: transition,
                     },
                 ));
+        }
+        // A changing focus snapshot is not retirement proof: only an exact
+        // delivered callback or unmounted generation can publish this fact.
+        // The focus authority retains only one latest witness; the canonical
+        // record is one-shot, bounded and independent of optional debug trace.
+        if matches!(latest.status(), RuntimeStatus::Running)
+            && latest.latest_recipient_retirement != self.latest.latest_recipient_retirement
+            && let Some(retired) = latest.latest_recipient_retirement.as_ref()
+        {
+            self.records
+                .push(crate::InputArbitrationRecord::FocusRecipientRetired(retired.clone()));
         }
         if let Some(ReachedInput {
             sequence,
