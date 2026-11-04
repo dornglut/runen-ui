@@ -225,8 +225,7 @@ fn public_type_ahead_focus_default_is_claimed_before_its_exact_settlement() {
         assert_eq!(facts.conflict(), UiInputConflict::ExclusiveUi);
         assert_eq!(facts.reasons(), [UiInputClaimReason::FocusNavigation]);
         assert_eq!(facts.default_disposition(), UiDefaultDisposition::Applied);
-        assert!(
-            matches!(batch.ordered_records(), [
+        assert!(matches!(batch.ordered_records(), [
                 InputArbitrationRecord::OwnershipChanged(change),
                 InputArbitrationRecord::FocusRecipientRetired(retired),
                 InputArbitrationRecord::InputSettled(input)
@@ -236,8 +235,7 @@ fn public_type_ahead_focus_default_is_claimed_before_its_exact_settlement() {
                 && retired.scope() == before.scope()
                 && Some(retired.recipient()) == before.keyboard().focused_node()
                 && retired.kind() == runenui_runtime::UiFocusRetirementKind::DeliveredFocusOut
-                && retired.sequence() == receipt.sequence())
-        );
+                && retired.sequence() == receipt.sequence()));
         assert_eq!(runtime.state(), &false);
         if trace_capacity == 0 {
             assert_eq!(runtime.trace().len(), 0);

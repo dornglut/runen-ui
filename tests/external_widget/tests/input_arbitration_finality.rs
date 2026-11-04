@@ -478,7 +478,10 @@ fn exact_focus_retirement_generation_does_not_alias_aba_refocus() {
             .unwrap_or_else(|| unreachable!("old focus callback delivered"));
         assert_eq!(first_retirement.scope(), &scope);
         assert_eq!(first_retirement.recipient(), &first);
-        assert_eq!(first_retirement.focus_generation(), original_focus_generation);
+        assert_eq!(
+            first_retirement.focus_generation(),
+            original_focus_generation
+        );
         assert_eq!(first_retirement.sequence(), to_second.sequence());
         assert_eq!(
             first_retirement.kind(),
@@ -517,7 +520,10 @@ fn exact_focus_retirement_generation_does_not_alias_aba_refocus() {
         assert!(second_retirement.focus_generation() > first_retirement.focus_generation());
         assert!(second_retirement.sequence() > first_retirement.sequence());
         assert_ne!(
-            outgoing_second.final_ownership().keyboard().focus_generation(),
+            outgoing_second
+                .final_ownership()
+                .keyboard()
+                .focus_generation(),
             Some(original_focus_generation),
             "focus A->B->A must never reuse A's original lifetime"
         );
