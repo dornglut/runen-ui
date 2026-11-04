@@ -45,6 +45,7 @@ enum OutputMode {
     Honest,
     Overrun,
     StopAtCapture,
+    StopAtTarget,
 }
 
 struct State {
@@ -150,6 +151,11 @@ impl Widget<Action> for KeyOwner {
             self.log
                 .borrow_mut()
                 .push(Fact::Out(context.phase(), focus.reason(), *held));
+            if self.output_mode == OutputMode::StopAtTarget
+                && context.phase() == EventPhase::Target
+            {
+                context.stop_propagation();
+            }
             if self.notification_outputs {
                 let _ = context.try_emit(Action::Notification(context.phase()));
                 if self.output_mode == OutputMode::Overrun {
@@ -460,6 +466,37 @@ fn unchanged_live_route_delivers_non_cancelable_focusout_under_full_follower_pre
             ],
             "notification outputs precede the initiating application output exactly once"
         );
+    }
+}
+
+#[test]
+fn delivered_old_target_focusout_certifies_even_if_bubble_is_stopped() {
+    for trace in [0, 512] {
+        let mut app = focused_held_runtime(32, trace, OutputMode::StopAtTarget);
+        let old = app
+            .focus()
+            .focused_node()
+            .cloned()
+            .unwrap_or_else(|| unreachable!("old focused target"));
+        app.submit_action(Action::Disable)
+            .unwrap_or_else(|_| unreachable!("disablement admitted"));
+        let batch = app.pump(FULL).unwrap_or_else(|_| unreachable!("focus action processed"));
+        assert_eq!(app.status(), RuntimeStatus::Running);
+        assert!(app.focus().focused_node().is_none());
+        assert!(app.state().log.borrow().iter().any(|fact| matches!(
+            fact,
+            Fact::Out(EventPhase::Target, FocusReason::Disablement, false)
+        )));
+        assert!(!app.state().log.borrow().iter().any(|fact| matches!(
+            fact,
+            Fact::Out(EventPhase::Bubble, FocusReason::Disablement, _)
+        )));
+        assert!(batch.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::FocusRecipientRetired(value)
+                if value.recipient() == &old
+                    && value.kind() == UiFocusRetirementKind::DeliveredFocusOut
+        )));
     }
 }
 
