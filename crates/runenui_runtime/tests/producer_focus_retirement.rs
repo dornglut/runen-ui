@@ -393,7 +393,8 @@ fn unchanged_live_route_delivers_non_cancelable_focusout_under_full_follower_pre
         );
         assert!(app.state().eligible);
         assert!(app.state().log.borrow().is_empty());
-        let committed = app.pump(PumpBudget::new(1, 0, 0, 0))
+        let committed = app
+            .pump(PumpBudget::new(1, 0, 0, 0))
             .unwrap_or_else(|_| unreachable!());
         let retired = committed
             .ordered_records()
@@ -403,7 +404,11 @@ fn unchanged_live_route_delivers_non_cancelable_focusout_under_full_follower_pre
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(retired.len(), 1, "one committed live FocusOut, not one per callback phase");
+        assert_eq!(
+            retired.len(),
+            1,
+            "one committed live FocusOut, not one per callback phase"
+        );
         assert_eq!(retired[0].recipient(), &target);
         assert_eq!(retired[0].scope(), committed.final_ownership().scope());
         assert_eq!(retired[0].kind(), UiFocusRetirementKind::DeliveredFocusOut);
@@ -426,10 +431,13 @@ fn unchanged_live_route_delivers_non_cancelable_focusout_under_full_follower_pre
         assert_eq!(app.state().noops, 0, "notification outputs remain queued");
         let later = app.pump(FULL).unwrap_or_else(|_| unreachable!());
         assert!(later.report().is_quiescent());
-        assert!(!later.ordered_records().iter().any(|record| matches!(
-            record,
-            InputArbitrationRecord::FocusRecipientRetired(_)
-        )), "already delivered proof must not replay");
+        assert!(
+            !later
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::FocusRecipientRetired(_))),
+            "already delivered proof must not replay"
+        );
         assert_eq!(app.state().noops, followers + 3);
         assert_eq!(
             &*app.state().log.borrow(),
@@ -447,14 +455,15 @@ fn unchanged_live_route_delivers_non_cancelable_focusout_under_full_follower_pre
     }
 }
 
-
 #[test]
 fn old_live_focus_retirement_does_not_fabricate_no_recipient_keyboard_up_or_cancel() {
     for trace in [0, 512] {
         let mut app = focused_held_runtime(32, trace, OutputMode::Honest);
         app.submit_action(Action::Disable)
             .unwrap_or_else(|_| unreachable!("retirement admission"));
-        let retired = app.pump(FULL).unwrap_or_else(|_| unreachable!("retirement pump"));
+        let retired = app
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("retirement pump"));
         assert!(retired.ordered_records().iter().any(|record| matches!(
             record,
             InputArbitrationRecord::FocusRecipientRetired(value)
@@ -479,12 +488,17 @@ fn old_live_focus_retirement_does_not_fabricate_no_recipient_keyboard_up_or_canc
                 .unwrap_or_else(|| unreachable!("no recipient must reject original M13 ingress"));
             assert_eq!(error.kind(), SubmitKeyboardErrorKind::NoFocusedTarget);
         }
-        let after = app.pump(FULL).unwrap_or_else(|_| unreachable!("post-rejection observation"));
-        assert!(!after.ordered_records().iter().any(|record| matches!(
-            record,
-            InputArbitrationRecord::InputSettled(_)
-                | InputArbitrationRecord::FocusRecipientRetired(_)
-        )), "no-focus terminal is host-owned, not a fabricated M13 settlement");
+        let after = app
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("post-rejection observation"));
+        assert!(
+            !after.ordered_records().iter().any(|record| matches!(
+                record,
+                InputArbitrationRecord::InputSettled(_)
+                    | InputArbitrationRecord::FocusRecipientRetired(_)
+            )),
+            "no-focus terminal is host-owned, not a fabricated M13 settlement"
+        );
     }
 }
 
@@ -708,10 +722,13 @@ fn undeclared_focusout_fanout_poison_commits_no_provisional_outputs() {
             )
         );
         assert_eq!(batch.report().cancelled_by_terminal_transition(), followers);
-        assert!(!batch.ordered_records().iter().any(|record| matches!(
-            record,
-            InputArbitrationRecord::FocusRecipientRetired(_)
-        )), "partial/failing FocusOut is not a retirement certificate");
+        assert!(
+            !batch
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::FocusRecipientRetired(_))),
+            "partial/failing FocusOut is not a retirement certificate"
+        );
         assert_eq!(app.state().noops, 0);
         assert_eq!(
             &*app.state().log.borrow(),
