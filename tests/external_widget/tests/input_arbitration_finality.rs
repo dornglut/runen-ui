@@ -11,9 +11,9 @@ use runenui_core::{
 use runenui_runtime::{
     AppRuntime, InputArbitrationRecord, InputArbitrationScope, InputPumpBatch,
     InputScopeRetirementReason, MountedNodeId, PumpBudget, RuntimeConfig, RuntimeLimits,
-    RuntimeStatus, RuntimeTerminalReason, TraceConfig, TraceRecordKind, UiInputAbortReason,
-    UiInputClaimReason, UiInputConflict, UiInputFamily, UiInputFinality,
-    UiInputProcessingRejection, UiInputSettlement, UiFocusRetirementKind,
+    RuntimeStatus, RuntimeTerminalReason, TraceConfig, TraceRecordKind, UiFocusRetirementKind,
+    UiInputAbortReason, UiInputClaimReason, UiInputConflict, UiInputFamily, UiInputFinality,
+    UiInputProcessingRejection, UiInputSettlement,
 };
 
 const FULL: PumpBudget = PumpBudget::new(64, 64, 64, 64);
@@ -486,8 +486,7 @@ fn native_settlement_precedes_application_action_and_focus_revocation_across_bou
                 .processed_through()
                 .is_some_and(|sequence| sequence > receipt.sequence())
         );
-        assert!(
-            matches!(action.ordered_records(), [
+        assert!(matches!(action.ordered_records(), [
                 InputArbitrationRecord::OwnershipChanged(change),
                 InputArbitrationRecord::FocusRecipientRetired(retired)
             ]
@@ -497,17 +496,18 @@ fn native_settlement_precedes_application_action_and_focus_revocation_across_bou
                 && retired.scope() == before.scope()
                 && Some(retired.recipient()) == before.keyboard().focused_node()
                 && retired.kind() == UiFocusRetirementKind::Unmounted
-                && Some(retired.sequence()) == action.processed_through())
-        );
+                && Some(retired.sequence()) == action.processed_through()));
         assert_eq!(action.final_ownership().keyboard().focused_node(), None);
         assert!(action.final_ownership().revision() > input.final_ownership().revision());
         let no_replay = runtime
             .pump(ONE)
             .unwrap_or_else(|_| unreachable!("a repeated observation succeeds"));
-        assert!(!no_replay.ordered_records().iter().any(|record| matches!(
-            record,
-            InputArbitrationRecord::FocusRecipientRetired(_)
-        )));
+        assert!(
+            !no_replay
+                .ordered_records()
+                .iter()
+                .any(|record| matches!(record, InputArbitrationRecord::FocusRecipientRetired(_)))
+        );
         assert_eq!(
             input.final_ownership(),
             &before,
