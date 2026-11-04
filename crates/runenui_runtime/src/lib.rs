@@ -247,8 +247,9 @@ pub use input_arbitration::{
     InputOwnershipSnapshot, InputOwnershipTransition, InputPumpBatch, InputPumpPauseReason,
     InputScopeRetirement, InputScopeRetirementReason, InputShutdownBatch, KeyboardInputOwnership,
     PointerInputOwnership, SurfaceInputOwnership, UiDefaultDisposition, UiFocusRecipientRetirement,
-    UiFocusRetirementKind, UiInputAbortReason, UiInputClaimReason, UiInputConflict, UiInputFamily, UiInputFinality,
-    UiInputProcessingRejection, UiInputRoute, UiInputRoutingFacts, UiInputSettlement,
+    UiFocusRetirementKind, UiInputAbortReason, UiInputClaimReason, UiInputConflict, UiInputFamily,
+    UiInputFinality, UiInputProcessingRejection, UiInputRoute, UiInputRoutingFacts,
+    UiInputSettlement,
 };
 pub use mounted::{
     AutomationMatchDiagnostic, DuplicateIdentityKind, IdentityDiagnostic, InteractionStateRef,
