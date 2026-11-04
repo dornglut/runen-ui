@@ -234,18 +234,19 @@ impl InputOwnershipTransition {
 }
 
 /// Exact, trace-independent cause of a former focused recipient's retirement.
-/// A suppressed FocusOut or mere focus/revision change never qualifies.
+/// A suppressed `FocusOut` or mere focus/revision change never qualifies.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UiFocusRetirementKind {
-    /// The checked old route actually received the required FocusOut callback.
+    /// The checked old route actually received the required `FocusOut` callback.
     DeliveredFocusOut,
     /// The precise old mounted lifetime was removed by committed reconciliation.
     Unmounted,
 }
 
-/// Immutable certificate for one former focused mounted lifetime. It carries
-/// no key claim, gameplay permission, synthesized Cancel or input settlement.
+/// Immutable certificate for one former focused mounted lifetime.
+///
+/// It carries no key claim, gameplay permission, synthesized Cancel or input settlement.
 /// The host must independently correlate a genuinely committed original Down,
 /// its exact scope, recipient and work order, and prove the required quiescence.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -543,7 +544,7 @@ impl InputScopeRetirement {
 pub enum InputArbitrationRecord {
     InputSettled(UiInputSettlement),
     OwnershipChanged(InputOwnershipTransition),
-    /// Bounded committed old-route proof. Never an InputSettled receipt.
+    /// Bounded committed old-route proof. Never an `InputSettled` receipt.
     FocusRecipientRetired(UiFocusRecipientRetirement),
     ScopeRetired(InputScopeRetirement),
 }

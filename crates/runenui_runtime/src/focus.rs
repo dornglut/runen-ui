@@ -77,7 +77,7 @@ pub const fn focusability_is_eligible(
 /// One bounded proof of an exact former focus lifetime. This is not an input
 /// ledger: a later retirement replaces it, and omitted older proofs fail closed.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct FocusRetirementFact {
+pub struct FocusRetirementFact {
     pub(crate) recipient: MountedNodeId,
     pub(crate) generation: u64,
     pub(crate) sequence: WorkSequence,
@@ -171,7 +171,7 @@ impl FocusState {
         self.latest_retirement.as_ref()
     }
 
-    /// Called only after a required live FocusOut completes or after an exact
+    /// Called only after a required live `FocusOut` completes or after an exact
     /// mounted lifetime has actually been removed. Callback attempt, route
     /// mismatch and a mere change of focused-node snapshot do not qualify.
     pub(crate) fn record_recipient_retirement(

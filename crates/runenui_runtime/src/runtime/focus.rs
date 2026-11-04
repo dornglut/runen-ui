@@ -1078,6 +1078,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             return;
         }
+        self.commit_nonlive_reconciled_focus_cleanup(cleanup);
+    }
+
+    fn commit_nonlive_reconciled_focus_cleanup(&mut self, cleanup: ReconciledFocusCleanup) {
         let ReconciledFocusCleanup {
             old_route,
             reason,
