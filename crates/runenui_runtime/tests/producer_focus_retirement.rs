@@ -44,6 +44,7 @@ type Log = Rc<RefCell<Vec<Fact>>>;
 enum OutputMode {
     Honest,
     Overrun,
+    StopAtCapture,
 }
 
 struct State {
@@ -59,6 +60,7 @@ struct State {
 struct Parent {
     log: Log,
     notification_outputs: bool,
+    output_mode: OutputMode,
 }
 
 impl Widget<Action> for Parent {
@@ -83,6 +85,11 @@ impl Widget<Action> for Parent {
             self.log
                 .borrow_mut()
                 .push(Fact::Out(context.phase(), focus.reason(), false));
+            if self.output_mode == OutputMode::StopAtCapture
+                && context.phase() == EventPhase::Capture
+            {
+                context.stop_propagation();
+            }
             if self.notification_outputs {
                 let _ = context.try_emit(Action::Notification(context.phase()));
             }
@@ -223,6 +230,7 @@ impl UiApp for App {
             Parent {
                 log: Rc::clone(&state.log),
                 notification_outputs: !state.eligible,
+                output_mode: state.output_mode,
             },
             children,
         )
@@ -452,6 +460,38 @@ fn unchanged_live_route_delivers_non_cancelable_focusout_under_full_follower_pre
             ],
             "notification outputs precede the initiating application output exactly once"
         );
+    }
+}
+
+#[test]
+fn interrupted_focusout_route_never_certifies_old_target_cleanup() {
+    for trace in [0, 512] {
+        let mut app = focused_held_runtime(32, trace, OutputMode::StopAtCapture);
+        app.submit_action(Action::Disable)
+            .unwrap_or_else(|_| unreachable!("disablement admitted"));
+        let batch = app.pump(FULL).unwrap_or_else(|_| unreachable!("focus action processed"));
+        assert_eq!(app.status(), RuntimeStatus::Running);
+        assert!(app.focus().focused_node().is_none());
+        assert!(app.state().log.borrow().iter().any(|fact| matches!(
+            fact,
+            Fact::Out(EventPhase::Capture, FocusReason::Disablement, false)
+        )));
+        assert!(!app.state().log.borrow().iter().any(|fact| matches!(
+            fact,
+            Fact::Out(EventPhase::Target, FocusReason::Disablement, _)
+        )));
+        assert!(!batch.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::FocusRecipientRetired(_)
+        )));
+        if trace != 0 {
+            assert!(app.trace().records().any(|record| matches!(
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out
+                }
+            ) && record.context().delivery() == Some(runenui_runtime::TraceDeliveryOutcome::Suppressed)));
+        }
     }
 }
 
