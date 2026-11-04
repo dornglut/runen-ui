@@ -273,7 +273,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         event: &UiEvent,
         route: Vec<MountedNodeId>,
         related: Option<&MountedNodeId>,
-    ) -> Result<(), TraceRoutedIntegrityFailure> {
+    ) -> Result<(bool, Vec<MountedNodeId>), TraceRoutedIntegrityFailure> {
         let target = route
             .last()
             .cloned()
@@ -308,6 +308,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .cloned()
                 .map(|id| (EventPhase::Bubble, id)),
         );
+        let mut target_delivered = false;
         let mut result = Ok(());
         for (phase, current) in invocations {
             if transaction.propagation_stopped {
@@ -319,15 +320,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 result = Err(error);
                 break;
             }
+            // A capture handler may suppress the old recipient entirely.
+            // Stopping propagation *at* the recipient is different: its own
+            // required cleanup already ran, regardless of ancestor bubbling.
+            if phase == EventPhase::Target {
+                target_delivered = true;
+            }
         }
 
         transaction.target = saved_target;
-        transaction.route = saved_route;
+        let completed_route = core::mem::replace(&mut transaction.route, saved_route);
         transaction.target_trace = saved_trace;
         transaction.propagation_stopped = saved_stopped;
         transaction.default_prevented = saved_prevented;
         transaction.collecting_notification_outputs = saved_notifications;
-        result
+        result.map(|()| (target_delivered, completed_route))
     }
 
     #[allow(clippy::too_many_arguments)]

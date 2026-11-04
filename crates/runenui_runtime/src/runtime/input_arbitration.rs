@@ -79,6 +79,7 @@ impl SnapshotBuffer {
             revision: source.revision,
             status: source.status,
             keyboard: source.keyboard.clone(),
+            latest_recipient_retirement: source.latest_recipient_retirement.clone(),
             surfaces: self.surfaces,
             pointers: self.pointers,
         }
@@ -476,6 +477,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .unwrap_or(WidgetTextInput::NONE);
         let keyboard = KeyboardInputOwnership {
             focused_node,
+            focus_generation: self.focus.session().map(crate::focus::FocusSession::get),
             text_input_capability,
             composition_generation: self.composition.generation().cloned(),
             composition_device_id: self.composition.device_id(),
@@ -511,6 +513,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             revision: self.input_observation.revision,
             status: self.status,
             keyboard,
+            latest_recipient_retirement: self.focus.latest_retirement().map(|fact| {
+                crate::UiFocusRecipientRetirement {
+                    scope: self.input_observation.scope.clone(),
+                    sequence: fact.sequence,
+                    recipient: fact.recipient.clone(),
+                    focus_generation: fact.generation,
+                    kind: fact.kind,
+                }
+            }),
             surfaces,
             pointers,
         };

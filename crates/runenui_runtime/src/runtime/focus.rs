@@ -721,6 +721,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         reason: FocusReason,
     ) -> Result<(), TraceRoutedIntegrityFailure> {
         let old_target = self.focus.focused_node().cloned();
+        let old_session = self.focus.session();
         if old_target == new_target {
             return Ok(());
         }
@@ -813,7 +814,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             if plan.route.is_empty() {
                 self.record_suppressed_focus_notification(transaction, &plan);
             } else {
-                self.invoke_focus_notification(transaction, plan)?;
+                let fully_delivered = self.invoke_focus_notification(transaction, plan)?;
+                // A callback attempt is insufficient: the old recipient's
+                // target callback must complete, regardless of later bubble
+                // suppression. Earlier capture suppression is not proof.
+                if fully_delivered && let Some(session) = old_session {
+                    self.focus.record_recipient_retirement(
+                        old.clone(),
+                        session,
+                        transaction.sequence,
+                        crate::UiFocusRetirementKind::DeliveredFocusOut,
+                    );
+                }
             }
         }
         if let Some(new) = new_target {
@@ -983,15 +995,25 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     fn invoke_focus_notification(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
-        plan: FocusNotificationPlan,
-    ) -> Result<(), TraceRoutedIntegrityFailure> {
-        let context = self.focus_notification_context(&plan, TraceDeliveryOutcome::Delivered);
+        mut plan: FocusNotificationPlan,
+    ) -> Result<bool, TraceRoutedIntegrityFailure> {
         let event = UiEvent::Focus(FocusEvent::__runtime_new(
             plan.kind,
             plan.reason,
             plan.target.clone(),
         ));
-        self.invoke_focus_callbacks(transaction, &event, plan.route, plan.related.as_ref())?;
+        let route = core::mem::take(&mut plan.route);
+        let (fully_delivered, route) =
+            self.invoke_focus_callbacks(transaction, &event, route, plan.related.as_ref())?;
+        plan.route = route;
+        let context = self.focus_notification_context(
+            &plan,
+            if fully_delivered {
+                TraceDeliveryOutcome::Delivered
+            } else {
+                TraceDeliveryOutcome::Suppressed
+            },
+        );
         if let Some(context) = context {
             transaction.parent = self.trace.record_draft(
                 TraceRecordDraft::focus_fact(
@@ -1009,7 +1031,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 ),
             );
         }
-        Ok(())
+        Ok(fully_delivered)
     }
 
     pub(in crate::runtime) fn refresh_focused_text_capability(&mut self) {
@@ -1056,6 +1078,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             return;
         }
+        self.commit_nonlive_reconciled_focus_cleanup(cleanup);
+    }
+
+    fn commit_nonlive_reconciled_focus_cleanup(&mut self, cleanup: ReconciledFocusCleanup) {
         let ReconciledFocusCleanup {
             old_route,
             reason,
@@ -1069,7 +1095,27 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             ..
         } = cleanup;
         let previous_visibility = self.focus.focus_visible();
+        // Only a physically absent *exact* mounted generation can be certified
+        // by removal. A still-live, reparented or mismatched route remains
+        // unproven if its required FocusOut was suppressed.
+        let removed_exact = (reason == FocusReason::Removal)
+            .then(|| self.focus.focused_node().cloned().zip(self.focus.session()))
+            .flatten()
+            .filter(|(target, _)| {
+                matches!(
+                    self.tree.target_status(target),
+                    TargetStatus::Stale | TargetStatus::Missing
+                )
+            });
         self.focus.commit(None, Vec::new(), reason, false);
+        if let Some((recipient, session)) = removed_exact {
+            self.focus.record_recipient_retirement(
+                recipient,
+                session,
+                sequence,
+                crate::UiFocusRetirementKind::Unmounted,
+            );
+        }
         self.reconcile_focus_group_type_ahead_state();
         let Some(trace_target) = trace_target else {
             return;

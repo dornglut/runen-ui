@@ -68,9 +68,63 @@ Exclusive UI claims require actual runtime-certified reasons, including focused 
 
 ## One ordered observation stream, not two replay lists
 
-`InputArbitrationRecord` has `InputSettled`, `OwnershipChanged` and `ScopeRetired`. A single `InputPumpBatch::ordered_records()` array reflects the actual runtime processing/checkpoint **commit order**. No sort by timestamp or native occurrence, and no second queue.
+`InputArbitrationRecord` has `InputSettled`, `OwnershipChanged`, `FocusRecipientRetired` and `ScopeRetired`. A single `InputPumpBatch::ordered_records()` array reflects the actual runtime processing/checkpoint **commit order**. No sort by timestamp or native occurrence, and no second queue.
 
 An input may itself synchronously change focus, composition, Space ownership or pointer capture. In that case its **committed `OwnershipChanged` precedes its own `InputSettled`**, whose `ownership_revision` names the new revision. A later derived semantic command/application action is a separate canonical envelope and emits later revisions when *it* commits. A settlement is never a claim that causal descendants have drained. `processed_through` names the last actually processed work sequence (if any), **not** queued, cancelled or all transitive work. `final_ownership` agrees with the last externally observable revision at batch return.
+
+### #472 — exact old-focus recipient retirement, not a synthetic Cancel
+
+A previously admitted keyboard Down cannot later be treated as a rejected original
+Down merely because a derived Up or Cancel now finds no focused recipient.
+The existing admission-aware Winit translator owns the physical generation; an
+original queued Down still needs its exact M13 `Committed` settlement before
+any downstream retirement interpretation. `FocusRecipientRetired` is the
+runtime's independent, trace-free proof of **only** one exact old focused
+mounted recipient whose required live-route `FocusOut` **target callback**
+actually completed or whose precise mounted generation was removed by
+committed reconciliation. An ancestor stopping propagation before the target
+does not qualify; the target stopping subsequent bubbling after its own
+successful callback does not undo that cleanup. It carries the runtime `scope`, canonical `WorkSequence`,
+old `recipient`, non-reused focus-session generation and typed cause
+`DeliveredFocusOut | Unmounted`. It is **not** a keyboard receipt or an
+`InputSettled` for the later no-recipient Up/Cancel.
+
+The `KeyboardInputOwnership::focus_generation()` snapshot exposes the exact
+nonreused current focus session (or `None`). A host MUST retain that value
+with the original genuinely M13-`Committed` Down and compare it against
+the retirement certificate's `focus_generation()`; matching only the old
+`MountedNodeId` is unsound across focus A→B→A. Scope, recipient and focus
+generation are all required, along with the original work and source binding.
+A new focus session is never retroactively attached to an old Down.
+
+The focus owner holds at most one latest witness and only a newly observed
+witness is emitted, once, through the existing ordered pump batch **after**
+its ownership change and before an input settlement at the same boundary.
+Multiple distinct retirements before one observation conservatively expose
+only the latest; missing evidence cannot be interpreted as success. One
+boundary reserves capacity for at most four M13 records. An attempted,
+suppressed or failed callback, still-mounted changed route, unknown or stale
+generation, partial observation, or non-Running scope provides **no
+positive retirement certificate**. An earlier retained witness is not
+renewed by a later snapshot. Hosts must correlate the prior committed Down's
+exact original scope, recipient and source/key generation, ensure its
+`WorkSequence` precedes the retiring work and the required FIFO work has
+fully settled, and check that no newer active recipient invalidates that
+particular terminal interpretation. No arbitrary widget-private state is
+certified: the runtime proves actual delivery/unmount, nothing more.
+
+The host MAY subsequently classify the authentic original no-recipient
+physical Up or a reliably identified source Cancel as **native source
+retirement without an eligible UI callback**, with no new RunenUI submission,
+`WorkSequence`, fake `InputSettled`, gameplay Down permission or re-arm.
+RunenUI's generic `submit_keyboard` still correctly returns
+`NoFocusedTarget` when there is no recipient. Missing, duplicate,
+wrong-scope/device, aborted, pending, processing-rejected, capacity-paused
+or failed upstream proof remains fail-closed. The host alone owns physical
+source/window/device association, actual ActionState revocation and OS
+device-disconnect evidence; raw Winit `DeviceEvent::Removed` IDs must
+not be guessed equal to window-keyboard IDs. Those downstream proofs remain
+Runenwerk U9-C #1276, not #472.
 
 The host MUST gate only conflicting native/game actions until required UI decisions are settled. An unresolved pending receipt, unknown required owner state, terminal scope or processing failure may not turn into game permission. A budget-exhausted pump is progress, not a negative UI decision. Runenwerk's action reducer maintains eligible game Down **per source/window/device/press lifetime** and evaluates both press edges and continuously held action state. UI focus/modal changes revoke incompatible game holds; physically still-held keys never ghost-reactivate when a menu closes. Up/Cancel/source/window loss retires the matching game hold independent of UI admission; a separate eligible source's W remains valid.
 
@@ -78,7 +132,7 @@ The host MUST gate only conflicting native/game actions until required UI decisi
 
 `InputArbitrationScope` is opaque, unforgeable by a host and unique per mounted runtime lifetime. Work sequences are **not globally unique** across scopes. `InputOwnershipRevision` changes only for meaningful externally observable UI arbitration ownership and never wraps; checked exhaustion terminalizes/invalidate scope instead of reusing an old revision.
 
-`InputOwnershipSnapshot` exposes read-only runtime status, exact scope/revision, focused mounted owner, host-neutral `WidgetTextInput`, pending and active composition, Space activation owner, per-pointer pressed/captured identities, modal presentation barrier and retained surface input-context readiness. The relevant runtime owns each value. A snapshot MUST NOT include engine source/window policy, cursor grab or game-action mapping.
+`InputOwnershipSnapshot` exposes read-only runtime status, exact scope/revision, focused mounted owner and its checked nonreused focus generation, host-neutral `WidgetTextInput`, pending and active composition, Space activation owner, per-pointer pressed/captured identities, modal presentation barrier and retained surface input-context readiness. The relevant runtime owns each value. A snapshot MUST NOT include engine source/window policy, cursor grab or game-action mapping.
 
 Not all mutations happen during pump. `start_composition` binds a pending generation during accepted ingress; public surface publication changes retained input context; explicit or direct terminal, shutdown, reconciliation and other synchronous operations can change ownership. `AppRuntime::input_ownership()` MUST observe the revision and status after those operations, even without an intervening pump or newly admitted input. The host MUST query it after relevant synchronous mutation boundaries and before dependent game projection. If intermediate non-pump state transitions are coalesced into a later snapshot, the host conservatively revokes eligibility when a revision gap prevents continuity proof; it cannot assume skipped states were absent.
 
@@ -96,7 +150,7 @@ Consuming a `SurfacePublication` into renderer products MUST preserve the option
 
 ## Boundedness, partial progress and observation failure
 
-No global settlement backlog, second event queue, producer callback, trace dependency or unbounded receipt ledger. The output is **owned by its caller** per pump/shutdown; its input-settlement cardinality is at most the number of reached external input envelopes. Ownership transitions consolidate at most once per committed processing/checkpoint boundary; snapshot pointer cardinality is bounded by `RuntimeLimits::pointer_streams` and hosted work/checkpoints by `PumpBudget` and existing capacity limits. Include terminal retirement in the preflight bound; overflow never silently drops a required fact.
+No global settlement backlog, second event queue, producer callback, trace dependency or unbounded receipt ledger. The output is **owned by its caller** per pump/shutdown; its input-settlement cardinality is at most the number of reached external input envelopes. Ownership transitions and at most one latest certified old-recipient retirement consolidate per committed processing/checkpoint boundary; snapshot pointer cardinality is bounded by `RuntimeLimits::pointer_streams` and hosted work/checkpoints by `PumpBudget` and existing capacity limits. Include terminal retirement in the preflight bound; overflow never silently drops a required fact.
 
 Required observation capacity MUST be admitted **before** the corresponding readiness checkpoint, envelope pop, transaction or shutdown mutation. If an initial reservation fails before any mutation, `Err(InputObservationError::Capacity)` is permitted. If an earlier envelope/checkpoint **already committed in this same call**, a later capacity shortage MUST return `Ok(InputPumpBatch)` containing all prior records, a precise `pause_reason() == Some(InputPumpPauseReason::ObservationCapacity)`, and leave the next boundary untouched. A proved whole-call worst-case reservation *before any mutation* is an alternative. A plain error after partial progress would destroy receipts and is forbidden. A paused report cannot claim `Quiescent` or suppress the re-wake obligation. Observation allocation or checked-revision exhaustion fails closed; do not manufacture `Unclaimed`.
 
@@ -124,8 +178,8 @@ AppRuntime::<App>::shutdown(
 // Target public types:
 InputArbitrationScope; InputOwnershipRevision; InputOwnershipSnapshot;
 KeyboardInputOwnership; PointerInputOwnership; SurfaceInputOwnership;
-InputOwnershipTransition; UiInputSettlement; UiInputFamily;
-UiInputFinality; UiInputProcessingRejection; UiInputAbortReason;
+InputOwnershipTransition; UiFocusRecipientRetirement; UiFocusRetirementKind;
+UiInputSettlement; UiInputFamily; UiInputFinality; UiInputProcessingRejection; UiInputAbortReason;
 UiInputRoutingFacts; UiInputConflict; UiInputClaimReason; UiInputRoute;
 UiDefaultDisposition; InputScopeRetirement; InputScopeRetirementReason;
 InputArbitrationRecord; InputPumpBatch; InputPumpPauseReason;
@@ -134,6 +188,7 @@ InputShutdownBatch; InputObservationError;
 // InputArbitrationRecord:
 //   InputSettled(UiInputSettlement)
 //   OwnershipChanged(InputOwnershipTransition)
+//   FocusRecipientRetired(UiFocusRecipientRetirement)
 //   ScopeRetired(InputScopeRetirement)
 //
 // UiInputFinality:
@@ -148,7 +203,7 @@ InputShutdownBatch; InputObservationError;
 //   Capacity | RevisionExhausted
 ```
 
-Required public accessors: `InputOwnershipSnapshot::{scope,revision,status,keyboard,surfaces,pointers}`; `InputOwnershipTransition::{before_revision,after}`; `UiInputSettlement::{scope,sequence,family,surface_id,device_id,pointer_id,finality,ownership_revision}`; `UiInputRoutingFacts::{conflict,reasons,route,propagation_stopped,default_prevented,default_disposition}`; `InputPumpBatch::{report,ordered_records,processed_through,final_ownership,pause_reason}`; `InputShutdownBatch::{report,ordered_records,final_ownership}`; `InputScopeRetirement::{scope,reason}`; `SurfaceInputOwnership::{surface_id,latest_retained_context,modal_blocker}`. Neutral keyboard and pointer projections must expose existing `WidgetTextInput`, composition/Space owner and exact active pointer pressed/capture owner respectively. Do not assert `Send`/`Sync`, OS source identity, host cursor controls or downstream availability without proof.
+Required public accessors: `InputOwnershipSnapshot::{scope,revision,status,keyboard,surfaces,pointers}`; `InputOwnershipTransition::{before_revision,after}`; `UiInputSettlement::{scope,sequence,family,surface_id,device_id,pointer_id,finality,ownership_revision}`; `UiInputRoutingFacts::{conflict,reasons,route,propagation_stopped,default_prevented,default_disposition}`; `InputPumpBatch::{report,ordered_records,processed_through,final_ownership,pause_reason}`; `InputShutdownBatch::{report,ordered_records,final_ownership}`; `InputScopeRetirement::{scope,reason}`; `UiFocusRecipientRetirement::{scope,sequence,recipient,focus_generation,kind}`; `SurfaceInputOwnership::{surface_id,latest_retained_context,modal_blocker}`. Neutral keyboard and pointer projections must expose existing `WidgetTextInput`, composition/Space owner and exact active pointer pressed/capture owner respectively. Do not assert `Send`/`Sync`, OS source identity, host cursor controls or downstream availability without proof.
 
 ### Frozen neutral enum vocabulary and accessors
 
@@ -164,7 +219,8 @@ These names, distinctions, field privacy and semantic accessor types are **norma
 | `UiInputProcessingRejection` | `MissingTarget`, `StaleTarget`, `ForeignTarget`, `InvalidDisplayedSnapshot`, `MissingDisplayedSnapshot`, `InvalidPointerStream`, `StaleCompositionGeneration`, `InsufficientTransactionCapacity` (names classify the exact **rejected** route, not an accepted integrity-only pointer release) |
 | `UiInputAbortReason` | `RuntimeIntegrity`, `TraceOrSequenceExhausted`, `Terminal(RuntimeTerminalReason)` |
 | `UiInputFinality` | `Committed(UiInputRoutingFacts)`, `ProcessingRejected(UiInputProcessingRejection)`, `Aborted(UiInputAbortReason)` |
-| `InputArbitrationRecord` | `InputSettled(UiInputSettlement)`, `OwnershipChanged(InputOwnershipTransition)`, `ScopeRetired(InputScopeRetirement)` |
+| `InputArbitrationRecord` | `InputSettled(UiInputSettlement)`, `OwnershipChanged(InputOwnershipTransition)`, `FocusRecipientRetired(UiFocusRecipientRetirement)`, `ScopeRetired(InputScopeRetirement)` |
+| `UiFocusRetirementKind` | `DeliveredFocusOut`, `Unmounted`; only successful canonical callback delivery or committed exact unmount may author these |
 | `InputPumpPauseReason` | `ObservationCapacity`; this is a **successful partial batch** disposition, not a hidden new `PumpOutcome::Quiescent` |
 | `InputScopeRetirementReason` | `Shutdown`, `Terminal(RuntimeTerminalReason)` |
 | `InputObservationError` | `Capacity`, `RevisionExhausted`; an error is permissible only before any mutation/observation is lost |
@@ -199,6 +255,7 @@ InputOwnershipSnapshot:
   pointers(&self) -> &[PointerInputOwnership]
 KeyboardInputOwnership:
   focused_node(&self) -> Option<&MountedNodeId>
+  focus_generation(&self) -> Option<u64>
   text_input_capability(&self) -> WidgetTextInput
   composition_generation(&self) -> Option<&CompositionGeneration>
   space_activation_owner(&self) -> Option<&MountedNodeId>
