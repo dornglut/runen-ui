@@ -80,9 +80,11 @@ The existing admission-aware Winit translator owns the physical generation; an
 original queued Down still needs its exact M13 `Committed` settlement before
 any downstream retirement interpretation. `FocusRecipientRetired` is the
 runtime's independent, trace-free proof of **only** one exact old focused
-mounted recipient whose required live-route `FocusOut` callback actually
-completed or whose precise mounted generation was removed by committed
-reconciliation. It carries the runtime `scope`, canonical `WorkSequence`,
+mounted recipient whose required live-route `FocusOut` **target callback**
+actually completed or whose precise mounted generation was removed by
+committed reconciliation. An ancestor stopping propagation before the target
+does not qualify; the target stopping subsequent bubbling after its own
+successful callback does not undo that cleanup. It carries the runtime `scope`, canonical `WorkSequence`,
 old `recipient`, non-reused focus-session generation and typed cause
 `DeliveredFocusOut | Unmounted`. It is **not** a keyboard receipt or an
 `InputSettled` for the later no-recipient Up/Cancel.
