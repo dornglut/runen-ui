@@ -446,6 +446,12 @@ fn exact_focus_retirement_generation_does_not_alias_aba_refocus() {
         let mut runtime = focused::<CompositionApp>(state, config);
         let first = target(&mut runtime, "probe");
         let second = target(&mut runtime, "second");
+        let original_focus_generation = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("exact initial focus lifetime"))
+            .keyboard()
+            .focus_generation()
+            .unwrap_or_else(|| unreachable!("focused widget has a generation"));
         let scope = runtime
             .input_ownership()
             .unwrap_or_else(|_| unreachable!("initial scope"))
@@ -472,6 +478,7 @@ fn exact_focus_retirement_generation_does_not_alias_aba_refocus() {
             .unwrap_or_else(|| unreachable!("old focus callback delivered"));
         assert_eq!(first_retirement.scope(), &scope);
         assert_eq!(first_retirement.recipient(), &first);
+        assert_eq!(first_retirement.focus_generation(), original_focus_generation);
         assert_eq!(first_retirement.sequence(), to_second.sequence());
         assert_eq!(
             first_retirement.kind(),
@@ -509,6 +516,11 @@ fn exact_focus_retirement_generation_does_not_alias_aba_refocus() {
         );
         assert!(second_retirement.focus_generation() > first_retirement.focus_generation());
         assert!(second_retirement.sequence() > first_retirement.sequence());
+        assert_ne!(
+            outgoing_second.final_ownership().keyboard().focus_generation(),
+            Some(original_focus_generation),
+            "focus A->B->A must never reuse A's original lifetime"
+        );
         assert_eq!(
             outgoing_second.final_ownership().keyboard().focused_node(),
             Some(&first)
@@ -584,6 +596,7 @@ fn native_settlement_precedes_application_action_and_focus_revocation_across_bou
                 && retired.scope() == before.scope()
                 && Some(retired.recipient()) == before.keyboard().focused_node()
                 && retired.kind() == UiFocusRetirementKind::Unmounted
+                && Some(retired.focus_generation()) == before.keyboard().focus_generation()
                 && Some(retired.sequence()) == action.processed_through()));
         assert_eq!(action.final_ownership().keyboard().focused_node(), None);
         assert!(action.final_ownership().revision() > input.final_ownership().revision());
