@@ -60,6 +60,10 @@ A qualifying canonical focus boundary emits one immutable
 `InputArbitrationRecord::FocusRecipientRetired` naming the exact runtime
 scope, cause, recipient, retiring work sequence and non-reused focus
 generation. The causes are `DeliveredFocusOut` and `Unmounted`.
+The ordinary `KeyboardInputOwnership::focus_generation()` public snapshot
+supplies the nonreused identity that must be retained with a genuinely
+M13-`Committed` original Down and matched against the later witness;
+the recipient ID alone is insufficient under A→B→A.
 One new witness is observed at most once, after the same boundary's
 `OwnershipChanged`, independent of debug trace. Multiple focus retirements
 within one observation interval conservatively expose only the latest;
