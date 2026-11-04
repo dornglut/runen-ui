@@ -439,6 +439,77 @@ fn causal_action_trace(
 }
 
 #[test]
+fn exact_focus_retirement_generation_does_not_alias_aba_refocus() {
+    for trace_capacity in [0, 512] {
+        let state = Rc::new(RefCell::new(Vec::new()));
+        let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
+        let mut runtime = focused::<CompositionApp>(state, config);
+        let first = target(&mut runtime, "probe");
+        let second = target(&mut runtime, "second");
+        let scope = runtime
+            .input_ownership()
+            .unwrap_or_else(|_| unreachable!("initial scope"))
+            .scope()
+            .clone();
+
+        let to_second = runtime
+            .submit_command(
+                second.clone(),
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("second focus admitted"));
+        let outgoing_first = runtime
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("second focus committed"));
+        let first_retirement = outgoing_first
+            .ordered_records()
+            .iter()
+            .find_map(|record| match record {
+                InputArbitrationRecord::FocusRecipientRetired(value) => Some(value.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| unreachable!("old focus callback delivered"));
+        assert_eq!(first_retirement.scope(), &scope);
+        assert_eq!(first_retirement.recipient(), &first);
+        assert_eq!(first_retirement.sequence(), to_second.sequence());
+        assert_eq!(first_retirement.kind(), UiFocusRetirementKind::DeliveredFocusOut);
+        assert_eq!(outgoing_first.final_ownership().keyboard().focused_node(), Some(&second));
+
+        let to_first = runtime
+            .submit_command(
+                first.clone(),
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("return focus admitted"));
+        let outgoing_second = runtime
+            .pump(FULL)
+            .unwrap_or_else(|_| unreachable!("return focus committed"));
+        let second_retirement = outgoing_second
+            .ordered_records()
+            .iter()
+            .find_map(|record| match record {
+                InputArbitrationRecord::FocusRecipientRetired(value) => Some(value.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| unreachable!("second focus callback delivered"));
+        assert_eq!(second_retirement.scope(), &scope);
+        assert_eq!(second_retirement.recipient(), &second);
+        assert_eq!(second_retirement.sequence(), to_first.sequence());
+        assert_eq!(second_retirement.kind(), UiFocusRetirementKind::DeliveredFocusOut);
+        assert!(second_retirement.focus_generation() > first_retirement.focus_generation());
+        assert!(second_retirement.sequence() > first_retirement.sequence());
+        assert_eq!(outgoing_second.final_ownership().keyboard().focused_node(), Some(&first));
+        assert!(!outgoing_second.ordered_records().iter().any(|record| matches!(
+            record,
+            InputArbitrationRecord::FocusRecipientRetired(value)
+                if value.recipient() == &first
+        )));
+    }
+}
+
+#[test]
 fn native_settlement_precedes_application_action_and_focus_revocation_across_bounded_pumps() {
     for trace_capacity in [0, 1, 512] {
         let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(trace_capacity));
