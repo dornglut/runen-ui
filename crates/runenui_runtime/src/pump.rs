@@ -302,7 +302,9 @@ impl RecordedPump {
             && let Some(retired) = latest.latest_recipient_retirement.as_ref()
         {
             self.records
-                .push(crate::InputArbitrationRecord::FocusRecipientRetired(retired.clone()));
+                .push(crate::InputArbitrationRecord::FocusRecipientRetired(
+                    retired.clone(),
+                ));
         }
         if let Some(ReachedInput {
             sequence,
