@@ -87,6 +87,14 @@ old `recipient`, non-reused focus-session generation and typed cause
 `DeliveredFocusOut | Unmounted`. It is **not** a keyboard receipt or an
 `InputSettled` for the later no-recipient Up/Cancel.
 
+The `KeyboardInputOwnership::focus_generation()` snapshot exposes the exact
+nonreused current focus session (or `None`). A host MUST retain that value
+with the original genuinely M13-`Committed` Down and compare it against
+the retirement certificate's `focus_generation()`; matching only the old
+`MountedNodeId` is unsound across focus A→B→A. Scope, recipient and focus
+generation are all required, along with the original work and source binding.
+A new focus session is never retroactively attached to an old Down.
+
 The focus owner holds at most one latest witness and only a newly observed
 witness is emitted, once, through the existing ordered pump batch **after**
 its ownership change and before an input settlement at the same boundary.
@@ -122,7 +130,7 @@ The host MUST gate only conflicting native/game actions until required UI decisi
 
 `InputArbitrationScope` is opaque, unforgeable by a host and unique per mounted runtime lifetime. Work sequences are **not globally unique** across scopes. `InputOwnershipRevision` changes only for meaningful externally observable UI arbitration ownership and never wraps; checked exhaustion terminalizes/invalidate scope instead of reusing an old revision.
 
-`InputOwnershipSnapshot` exposes read-only runtime status, exact scope/revision, focused mounted owner, host-neutral `WidgetTextInput`, pending and active composition, Space activation owner, per-pointer pressed/captured identities, modal presentation barrier and retained surface input-context readiness. The relevant runtime owns each value. A snapshot MUST NOT include engine source/window policy, cursor grab or game-action mapping.
+`InputOwnershipSnapshot` exposes read-only runtime status, exact scope/revision, focused mounted owner and its checked nonreused focus generation, host-neutral `WidgetTextInput`, pending and active composition, Space activation owner, per-pointer pressed/captured identities, modal presentation barrier and retained surface input-context readiness. The relevant runtime owns each value. A snapshot MUST NOT include engine source/window policy, cursor grab or game-action mapping.
 
 Not all mutations happen during pump. `start_composition` binds a pending generation during accepted ingress; public surface publication changes retained input context; explicit or direct terminal, shutdown, reconciliation and other synchronous operations can change ownership. `AppRuntime::input_ownership()` MUST observe the revision and status after those operations, even without an intervening pump or newly admitted input. The host MUST query it after relevant synchronous mutation boundaries and before dependent game projection. If intermediate non-pump state transitions are coalesced into a later snapshot, the host conservatively revokes eligibility when a revision gap prevents continuity proof; it cannot assume skipped states were absent.
 
@@ -245,6 +253,7 @@ InputOwnershipSnapshot:
   pointers(&self) -> &[PointerInputOwnership]
 KeyboardInputOwnership:
   focused_node(&self) -> Option<&MountedNodeId>
+  focus_generation(&self) -> Option<u64>
   text_input_capability(&self) -> WidgetTextInput
   composition_generation(&self) -> Option<&CompositionGeneration>
   space_activation_owner(&self) -> Option<&MountedNodeId>
