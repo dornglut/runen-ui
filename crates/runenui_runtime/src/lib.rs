@@ -246,8 +246,8 @@ pub use input_arbitration::{
     InputArbitrationRecord, InputArbitrationScope, InputObservationError, InputOwnershipRevision,
     InputOwnershipSnapshot, InputOwnershipTransition, InputPumpBatch, InputPumpPauseReason,
     InputScopeRetirement, InputScopeRetirementReason, InputShutdownBatch, KeyboardInputOwnership,
-    PointerInputOwnership, SurfaceInputOwnership, UiDefaultDisposition, UiInputAbortReason,
-    UiInputClaimReason, UiInputConflict, UiInputFamily, UiInputFinality,
+    PointerInputOwnership, SurfaceInputOwnership, UiDefaultDisposition, UiFocusRecipientRetirement,
+    UiFocusRetirementKind, UiInputAbortReason, UiInputClaimReason, UiInputConflict, UiInputFamily, UiInputFinality,
     UiInputProcessingRejection, UiInputRoute, UiInputRoutingFacts, UiInputSettlement,
 };
 pub use mounted::{
