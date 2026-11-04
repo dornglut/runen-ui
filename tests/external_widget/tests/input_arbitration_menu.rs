@@ -304,9 +304,16 @@ fn standard_controls_home_end_claim_the_native_key_before_queued_focus_changes()
                     .pump(ONE)
                     .unwrap_or_else(|_| unreachable!("queued focus boundary"));
                 assert!(
-                    matches!(navigation.ordered_records(), [InputArbitrationRecord::OwnershipChanged(change)]
+                    matches!(navigation.ordered_records(), [
+                        InputArbitrationRecord::OwnershipChanged(change),
+                        InputArbitrationRecord::FocusRecipientRetired(retired)
+                    ]
                     if change.before_revision() == before.revision()
-                        && change.after().keyboard().focused_node() == Some(&destination))
+                        && change.after().keyboard().focused_node() == Some(&destination)
+                        && retired.scope() == before.scope()
+                        && Some(retired.recipient()) == before.keyboard().focused_node()
+                        && retired.kind() == runenui_runtime::UiFocusRetirementKind::DeliveredFocusOut
+                        && Some(retired.sequence()) == navigation.processed_through())
                 );
                 assert!(
                     navigation
