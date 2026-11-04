@@ -1088,7 +1088,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .then(|| self.focus.focused_node().cloned().zip(self.focus.session()))
             .flatten()
             .filter(|(target, _)| {
-                matches!(self.tree.target_status(target), TargetStatus::Stale | TargetStatus::Missing)
+                matches!(
+                    self.tree.target_status(target),
+                    TargetStatus::Stale | TargetStatus::Missing
+                )
             });
         self.focus.commit(None, Vec::new(), reason, false);
         if let Some((recipient, session)) = removed_exact {
