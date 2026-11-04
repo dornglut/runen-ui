@@ -308,8 +308,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .cloned()
                 .map(|id| (EventPhase::Bubble, id)),
         );
-        let required = invocations.len();
-        let mut completed = 0;
+        let mut target_delivered = false;
         let mut result = Ok(());
         for (phase, current) in invocations {
             if transaction.propagation_stopped {
@@ -321,7 +320,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 result = Err(error);
                 break;
             }
-            completed += 1;
+            // A capture handler may suppress the old recipient entirely.
+            // Stopping propagation *at* the recipient is different: its own
+            // required cleanup already ran, regardless of ancestor bubbling.
+            if phase == EventPhase::Target {
+                target_delivered = true;
+            }
         }
 
         transaction.target = saved_target;
@@ -330,9 +334,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         transaction.propagation_stopped = saved_stopped;
         transaction.default_prevented = saved_prevented;
         transaction.collecting_notification_outputs = saved_notifications;
-        // A short-circuited route is not a completed old-recipient retirement,
-        // even when the already invoked callback phases returned successfully.
-        result.map(|()| (completed == required, completed_route))
+        result.map(|()| (target_delivered, completed_route))
     }
 
     #[allow(clippy::too_many_arguments)]
