@@ -77,7 +77,7 @@ the optional fourth per-boundary record.
 checks committed original Down followed by an exact unmount, ordered M13
 retirement and no repeated witness with zero/truncated/full trace. The
 [producer focus retirement suite](../../crates/runenui_runtime/tests/producer_focus_retirement.rs)
-checks actual fully delivered old-route `FocusOut` under maximum follower
+checks completed old-recipient target `FocusOut` under maximum follower
 pressure, removal and replacement, and authentic no-focus Up/Cancel with no
 invented `InputSettled`.
 
