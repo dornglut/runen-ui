@@ -30,10 +30,10 @@ contained 245 rows, and all were owner-accepted. The current inventory is:
 
 ```text
 251 total unique rows
-245 owner-accepted
+251 owner-accepted
 0 implementation-complete
 0 proof-complete
-6 blocked
+0 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -251,15 +251,23 @@ numerical-workload gates do not become framework proof through this extension.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Trace proof owner | Delivery slice | Status | M4 gate |
 |---|---|---|---|---|---|---|---|
-| APP-09 | A finite predecessor-safe root is funded before original action acceptance; ordinary FIFO pressure returns the same unconsumed payload without callbacks, mutation, accepted sequence or hidden buffering. Admitted work and descendants retain FIFO ordering. | `producer_application_outputs::ordinary_pressure_returns_the_same_nonclone_action_without_acceptance_or_mutation` | Exact owned allocation, contiguous accepted sequence, zero pump, explicit retry; trace0 and default capacity | Same named fixtures with trace0 and retained causal trace | M4B | blocked | Required |
-| APP-10 | The complete returned Effects group is checked before root/reconciliation/live starts; known false declarations produce a typed trace-independent terminal cause, discard all provisional output once and do not roll back app state. | Public `producer_migration` and `producer_owned_emission` | Family/residency/cardinality overrun, mapper/start suppression, earlier M13 Committed plus failing Aborted and one scope retirement | Same named fixtures with trace0 and retained causal trace | M4B | blocked | Required |
-| APP-11 | Initial effects follow successful root mounting; owned constructor refusal after mounting runs mandatory unmount once and never starts provisional work. | `producer_initial_admission::initial_lifecycle_precedes_effects_and_refusal_unmounts_once` | Known resource refusal before producer entry, owned state/config retry, rejected initial output, repeated cleanup | Same named fixtures with trace0 and retained causal trace | M4B | blocked | Required |
-| ROUTE-14 | Owned fallible event/lifecycle/activation/subscription operations retain original non-Clone input and first typed failure through mapping, with atomic family/output charge and one primary activation credit. | Public `producer_migration`, `producer_work_operations`, `producer_subscription_operations` | Ignored Result, nested mapping, no rejected mapper invocation, trace0 and compile-fail legacy output API | Same named fixtures with trace0 and retained causal trace | M4C1 | blocked | Required |
-| FOCUS-17 | Correctly declared focus retirement survives ordinary follower pressure with independent composition-cancel and FocusOut C/T/B maxima; composition and Space retire before live FocusOut. | `producer_focus_retirement::{unchanged_live_route_delivers_non_cancelable_focusout_under_full_follower_pressure,composition_and_space_retire_before_live_focusout_without_losing_independent_outputs}` | C=16/32/39/64/4096, R=3/1024 as applicable; retained/removal/replacement, predecessor changes, typed underdeclaration and trace0 | Same named fixtures with trace0 and retained causal trace | M4C4 | blocked | Required |
-| WORK-53 | Root work residency includes all live descendants and provisional overlap; cancellation and keyed replacement preserve exact generations and fund eventual outcomes/cleanup until retirement. Retained app subscriptions spend no new-start credit. | `producer_work_residency`, `producer_focus_work_residency` and public subscription producer fixtures | Exact fit/one short, replacement/cancel order, duplicate declaration policy, completion no-poll/start and trace0 | Same named fixtures with trace0 and retained causal trace | M4B | blocked | Required |
+| APP-09 | A finite predecessor-safe root is funded before original action acceptance; ordinary FIFO pressure returns the same unconsumed payload without callbacks, mutation, accepted sequence or hidden buffering. Admitted work and descendants retain FIFO ordering. | `producer_application_outputs::ordinary_pressure_returns_the_same_nonclone_action_without_acceptance_or_mutation` | Exact owned allocation, contiguous accepted sequence, zero pump, explicit retry; trace0 and default capacity | Same named fixtures with trace0 and retained causal trace | M4B | owner-accepted | Required |
+| APP-10 | The complete returned Effects group is checked before root/reconciliation/live starts; known false declarations produce a typed trace-independent terminal cause, discard all provisional output once and do not roll back app state. | Public `producer_migration` and `producer_owned_emission` | Family/residency/cardinality overrun, mapper/start suppression, earlier M13 Committed plus failing Aborted and one scope retirement | Same named fixtures with trace0 and retained causal trace | M4B | owner-accepted | Required |
+| APP-11 | Initial effects follow successful root mounting; owned constructor refusal after mounting runs mandatory unmount once and never starts provisional work. | `producer_initial_admission::initial_lifecycle_precedes_effects_and_refusal_unmounts_once` | Known resource refusal before producer entry, owned state/config retry, rejected initial output, repeated cleanup | Same named fixtures with trace0 and retained causal trace | M4B | owner-accepted | Required |
+| ROUTE-14 | Owned fallible event/lifecycle/activation/subscription operations retain original non-Clone input and first typed failure through mapping, with atomic family/output charge and one primary activation credit. | Public `producer_migration`, `producer_work_operations`, `producer_subscription_operations` | Ignored Result, nested mapping, no rejected mapper invocation, trace0 and compile-fail legacy output API | Same named fixtures with trace0 and retained causal trace | M4C1 | owner-accepted | Required |
+| FOCUS-17 | Correctly declared focus retirement survives ordinary follower pressure with independent composition-cancel and FocusOut C/T/B maxima; composition and Space retire before live FocusOut. | `producer_focus_retirement::{unchanged_live_route_delivers_non_cancelable_focusout_under_full_follower_pressure,composition_and_space_retire_before_live_focusout_without_losing_independent_outputs}` | C=16/32/39/64/4096, R=3/1024 as applicable; retained/removal/replacement, predecessor changes, typed underdeclaration and trace0 | Same named fixtures with trace0 and retained causal trace | M4C4 | owner-accepted | Required |
+| WORK-53 | Root work residency includes all live descendants and provisional overlap; cancellation and keyed replacement preserve exact generations and fund eventual outcomes/cleanup until retirement. Retained app subscriptions spend no new-start credit. | `producer_work_residency`, `producer_focus_work_residency` and public subscription producer fixtures | Exact fit/one short, replacement/cancel order, duplicate declaration policy, completion no-poll/start and trace0 | Same named fixtures with trace0 and retained causal trace | M4B | owner-accepted | Required |
 
-Historical rows and accepted milestone inventory follow unchanged. New rows stay
-unaccepted until their full production delivery gates are satisfied.
+Historical rows and accepted milestone inventory follow unchanged. The six
+qualified-producer extension rows above were accepted through the independently
+reviewed exact feature head `9c1febbdf97299488edb21680a87be33cb817cf2`
+([PR #545](https://github.com/dornglut/runen-ui/pull/545)), protected squash
+`ec3a917b6f5e92c5a17aedf2e69014911d0fd199` with identical source tree,
+and canonical/real-wgpu exact-head validation. [Owner's #475 delivery decision](https://github.com/dornglut/runen-ui/issues/475#issuecomment-6631355077)
+accepts the residual CPU numerical-evidence uncertainty **for that delivery only**;
+the interrupted native performance cohort remains technically HOLD, not a CPU
+PASS. This does not change the 10% performance standard or independently
+blocked native/Engine M13 proof obligations.
 
 [archive PR #75](../history/public-repository-migration.md#accepted-imported-milestone-history) was owner-accepted and squash-merged as `7a0a5786bb796aeb81d4eac3fe87d254efba540a`.
 The rows below preserve the detailed ADR 0006 acceptance inventory. M4A's
