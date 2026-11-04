@@ -814,11 +814,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             if plan.route.is_empty() {
                 self.record_suppressed_focus_notification(transaction, &plan);
             } else {
-                self.invoke_focus_notification(transaction, plan)?;
-                // A callback attempt is not proof. Record only after the entire
-                // checked live route completed its required notification. A
-                // later failed transaction terminalizes and cannot certify it.
-                if let Some(session) = old_session {
+                let fully_delivered = self.invoke_focus_notification(transaction, plan)?;
+                // A callback attempt or short-circuited propagation is not
+                // proof: the whole required checked route must complete.
+                if fully_delivered && let Some(session) = old_session {
                     self.focus.record_recipient_retirement(
                         old.clone(),
                         session,
@@ -995,15 +994,25 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     fn invoke_focus_notification(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
-        plan: FocusNotificationPlan,
-    ) -> Result<(), TraceRoutedIntegrityFailure> {
-        let context = self.focus_notification_context(&plan, TraceDeliveryOutcome::Delivered);
+        mut plan: FocusNotificationPlan,
+    ) -> Result<bool, TraceRoutedIntegrityFailure> {
         let event = UiEvent::Focus(FocusEvent::__runtime_new(
             plan.kind,
             plan.reason,
             plan.target.clone(),
         ));
-        self.invoke_focus_callbacks(transaction, &event, plan.route, plan.related.as_ref())?;
+        let route = core::mem::take(&mut plan.route);
+        let (fully_delivered, route) =
+            self.invoke_focus_callbacks(transaction, &event, route, plan.related.as_ref())?;
+        plan.route = route;
+        let context = self.focus_notification_context(
+            &plan,
+            if fully_delivered {
+                TraceDeliveryOutcome::Delivered
+            } else {
+                TraceDeliveryOutcome::Suppressed
+            },
+        );
         if let Some(context) = context {
             transaction.parent = self.trace.record_draft(
                 TraceRecordDraft::focus_fact(
@@ -1021,7 +1030,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 ),
             );
         }
-        Ok(())
+        Ok(fully_delivered)
     }
 
     pub(in crate::runtime) fn refresh_focused_text_capability(&mut self) {
