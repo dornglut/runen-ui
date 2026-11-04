@@ -68,6 +68,16 @@ pub const fn focusability_is_eligible(
     }
 }
 
+/// One bounded proof of an exact former focus lifetime. This is not an input
+/// ledger: a later retirement replaces it, and omitted older proofs fail closed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct FocusRetirementFact {
+    pub(crate) recipient: MountedNodeId,
+    pub(crate) generation: u64,
+    pub(crate) sequence: WorkSequence,
+    pub(crate) kind: crate::UiFocusRetirementKind,
+}
+
 /// Read-only inspection of the runtime's single focus authority.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FocusState {
@@ -80,6 +90,8 @@ pub struct FocusState {
     session: Option<FocusSession>,
     last_session: Option<FocusSession>,
     completed_entry: Option<(WorkSequence, FocusSession)>,
+    /// Latest actually completed recipient retirement, not a second focus owner.
+    latest_retirement: Option<FocusRetirementFact>,
     committed_text_capable: bool,
 }
 
@@ -147,6 +159,29 @@ impl FocusState {
 
     pub(crate) const fn session(&self) -> Option<FocusSession> {
         self.session
+    }
+
+    pub(crate) const fn latest_retirement(&self) -> Option<&FocusRetirementFact> {
+        self.latest_retirement.as_ref()
+    }
+
+    /// Called only after a required live FocusOut completes or after an exact
+    /// mounted lifetime has actually been removed. Callback attempt, route
+    /// mismatch and a mere change of focused-node snapshot do not qualify.
+    pub(crate) fn record_recipient_retirement(
+        &mut self,
+        recipient: MountedNodeId,
+        prior_session: FocusSession,
+        sequence: WorkSequence,
+        kind: crate::UiFocusRetirementKind,
+    ) {
+        debug_assert_ne!(self.session, Some(prior_session));
+        self.latest_retirement = Some(FocusRetirementFact {
+            recipient,
+            generation: prior_session.0,
+            sequence,
+            kind,
+        });
     }
 
     /// Checked preflight before any irreversible callbacks or `App::update`.
