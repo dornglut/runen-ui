@@ -815,8 +815,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 self.record_suppressed_focus_notification(transaction, &plan);
             } else {
                 let fully_delivered = self.invoke_focus_notification(transaction, plan)?;
-                // A callback attempt or short-circuited propagation is not
-                // proof: the whole required checked route must complete.
+                // A callback attempt is insufficient: the old recipient's
+                // target callback must complete, regardless of later bubble
+                // suppression. Earlier capture suppression is not proof.
                 if fully_delivered && let Some(session) = old_session {
                     self.focus.record_recipient_retirement(
                         old.clone(),
