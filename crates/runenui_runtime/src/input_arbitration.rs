@@ -64,6 +64,8 @@ impl InputOwnershipRevision {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct KeyboardInputOwnership {
     pub(crate) focused_node: Option<MountedNodeId>,
+    /// Exact nonreused focus lifetime within one runtime scope, not input work.
+    pub(crate) focus_generation: Option<u64>,
     pub(crate) text_input_capability: WidgetTextInput,
     pub(crate) composition_generation: Option<CompositionGeneration>,
     pub(crate) composition_device_id: Option<InputDeviceId>,
@@ -75,6 +77,14 @@ impl KeyboardInputOwnership {
     pub const fn focused_node(&self) -> Option<&MountedNodeId> {
         self.focused_node.as_ref()
     }
+
+    /// Checked focus-session generation for matching an exact previous
+    /// committed Down to a later old-recipient retirement, including ABA.
+    #[must_use]
+    pub const fn focus_generation(&self) -> Option<u64> {
+        self.focus_generation
+    }
+
     #[must_use]
     pub const fn text_input_capability(&self) -> WidgetTextInput {
         self.text_input_capability
